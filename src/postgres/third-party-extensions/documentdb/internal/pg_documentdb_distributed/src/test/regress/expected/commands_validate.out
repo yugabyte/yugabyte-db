@@ -10,12 +10,12 @@ SELECT documentdb_api.drop_collection('db', 'validatecoll');
 
 -- Empty collection name
 SELECT documentdb_api.validate('db','{}');
-ERROR:  Invalid namespace specified 'db.'
+ERROR:  The specified namespace is invalid: 'db'.
 SELECT documentdb_api.validate('db', '{"validate" : ""}');
-ERROR:  Invalid namespace specified 'db.'
+ERROR:  The specified namespace is invalid: 'db'.
 -- Collection does not exist
 SELECT documentdb_api.validate('db', '{"validate" : "missingcoll"}');
-ERROR:  Collection 'db.missingcoll' does not exist to validate.
+ERROR:  The collection 'db.missingcoll' cannot be validated because it does not exist.
 -- Create Collection
 SELECT documentdb_api.create_collection('db', 'validatecoll');
 NOTICE:  creating collection
@@ -129,4 +129,4 @@ SELECT documentdb_api.validate('db', '{"validate" : "validatecoll", "full" : tru
 ERROR:  Running the validate command with { metadata: true } is not supported with any other options
 -- validate field is an object
 SELECT documentdb_api.validate('db','{"validate":{}}');
-ERROR:  collection name has invalid type object
+ERROR:  Collection name contains an invalid object type

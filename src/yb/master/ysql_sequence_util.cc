@@ -66,16 +66,17 @@ Result<std::vector<YsqlSequenceInfo>> ScanSequencesDataTable(
       client.NewSession(MonoDelta::FromMilliseconds(FLAGS_master_yb_client_default_timeout_ms));
   session->set_allow_local_calls_in_curr_thread(false);
 
-  PgsqlPagingStatePB* paging_state = nullptr;
+  std::shared_ptr<LWPgsqlPagingStatePB> paging_state;
   std::vector<YsqlSequenceInfo> results;
-  do {
+  for (;;) {
     // Prepare a YBPgsqlReadOp to read all the rows of the sequences_data table.
     //
     // It doesn't appear possible to just attach a WHERE condition here to select only the rows for
     // the db_oid database: where_expr isn't supported and where_clauses require serialized Postgres
     // expressions.  Accordingly, we will fetch everything then filter the results.
     rpc::Sidecars sidecars;
-    auto psql_read = client::YBPgsqlReadOp::NewSelect(table, &sidecars);
+    auto arena = SharedThreadSafeArena();
+    auto psql_read = client::YBPgsqlReadOp::NewSelect(table, arena, &sidecars);
     auto read_request = psql_read->mutable_request();
     // Each row has four columns and we want all of them.
     for (int i = 0; i < 4; i++) {
@@ -94,8 +95,7 @@ Result<std::vector<YsqlSequenceInfo>> ScanSequencesDataTable(
     read_request->set_limit(max_rows_per_read);
     read_request->set_return_paging_state(true);
     if (paging_state) {
-      read_request->set_allocated_paging_state(paging_state);
-      paging_state = nullptr;
+      read_request->ref_paging_state(paging_state.get());
     }
     VLOG(3) << "read request: " << read_request->ShortDebugString();
 
@@ -137,11 +137,13 @@ Result<std::vector<YsqlSequenceInfo>> ScanSequencesDataTable(
       }
     }
 
-    auto* resp = psql_read->mutable_response();
-    if (resp->has_paging_state()) {
-      paging_state = resp->release_paging_state();
+    auto* resp = &psql_read->response();
+    if (!resp->has_paging_state()) {
+      break;
     }
-  } while (paging_state != nullptr);
+
+    paging_state = SharedField(psql_read, resp->mutable_paging_state());
+  }
 
   return results;
 }
@@ -165,7 +167,8 @@ Result<int> EnsureSequenceUpdatesAreInWal(
     //   WHERE db_oid={db_oid} AND seq_oid={sequence.sequence_oid}
     //   AND last_value={sequence.last_value} AND is_called={sequence.is_called}
 
-    auto psql_write = client::YBPgsqlWriteOp::NewUpdate(table, &sidecars_storage[i]);
+    auto psql_write = client::YBPgsqlWriteOp::NewUpdate(
+        table, SharedThreadSafeArena(), &sidecars_storage[i]);
     auto write_request = psql_write->mutable_request();
     // We do not set the PG catalog version numbers in the request because we don't care what the PG
     // catalog state is.

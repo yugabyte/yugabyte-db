@@ -144,7 +144,8 @@ TEST_F(PgConnTest, TabletMetadataConnectWithLeader) {
   ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 'test_data')"));
 
   auto tablet_infos = ASSERT_RESULT((conn.FetchRows<std::string>(
-      "SELECT leader FROM yb_tablet_metadata WHERE relname = 'test' ORDER BY tablet_id")));
+      "SELECT leader FROM yb_tablet_metadata "
+      "WHERE db_name = current_database() AND relname = 'test' ORDER BY tablet_id")));
   ASSERT_FALSE(tablet_infos.empty()) << "No tablets  found for table 'test'";
 
   // Parse leader IP and port from the first rows leader

@@ -63,10 +63,11 @@ void AppendItem(std::string* props, const TKey& key, const std::string& value) {
 // Generate new filter for fixed number of keys
 FixedSizeFilterBlockBuilder::FixedSizeFilterBlockBuilder(
     const SliceTransform* prefix_extractor,
-    const BlockBasedTableOptions& table_opt)
+    const BlockBasedTableOptions& table_opt, const yb::MemTrackerPtr& mem_tracker)
     : policy_(table_opt.filter_policy.get()),
       prefix_extractor_(prefix_extractor),
       whole_key_filtering_(table_opt.whole_key_filtering),
+      mem_tracker_(mem_tracker),
       bits_builder_(nullptr) {
 }
 
@@ -108,7 +109,7 @@ Slice FixedSizeFilterBlockBuilder::Finish() {
   assert(bits_builder_);
   Slice finished_slice = bits_builder_->Finish(&active_block_data_);
   bits_builder_.reset();
-  results_.push_back(std::move(active_block_data_));
+  results_.emplace_back(std::move(active_block_data_), finished_slice.size(), mem_tracker_);
   return finished_slice;
 }
 

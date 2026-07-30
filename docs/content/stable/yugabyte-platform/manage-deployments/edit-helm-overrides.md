@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-If your universe was created using Kubernetes, you have an option of modifying the Helm chart overrides.
+If your universe was created using Kubernetes, you have an option of modifying the Helm chart overrides. To change storage class or volume count on a running universe (v2026.1.0.0 or later), use [Full move for Kubernetes universes](../kubernetes-full-move/) instead.
 
 ## Edit Kubernetes overrides
 

@@ -24,29 +24,25 @@ The YugabyteDB gRPC Connector is based on the Debezium Connector, and captures r
 
 ## Connector compatibility
 
-The connector is compatible with the following versions of YugabyteDB.
-
-| YugabyteDB | Connector |
-| :--- | :--- |
-| 2.14 | 1.9.5.y.3 |
-| 2.16 | 1.9.5.y.24 |
-| 2.18.2 | 1.9.5.y.33.2 |
-| 2.20 | 1.9.5.y.220.4 |
-| 2024.1 | dz.1.9.5.yb.grpc.2024.1 |
-| 2024.2 | dz.1.9.5.yb.grpc.2024.2.3 |
-| 2025.1 | dz.1.9.5.yb.grpc.2024.2.3 |
-
-Starting with YugabyteDB v2024.1, the connector uses the following naming convention:
+Starting with YugabyteDB v2024.1, connector versions follow this scheme:
 
 ```output
-dz.<Debezium Release>.yb.grpc.<YugabyteDB Version>.<Patch>
+dz.<debezium-base>.yb.grpc.<yugabytedb-series>.<connector-patch>[.SNAPSHOT.<n>]
 ```
 
-* Debezium Release - Debezium release the connector is based on
-* YugabyteDB Version - version of YugabyteDB the connector works with
-* Patch - patch release version, if applicable
+| Component | Example | Description |
+| :---- | :------ | :------ |
+| `dz.<debezium-base>` | `dz.1.9.5` | Upstream Debezium release the connector is built on (the gRPC connector uses Debezium 1.9.5). |
+| `yb.grpc` | `yb.grpc` | Identifies the gRPC-protocol connector (distinct from the logical replication connector). |
+| `<yugabytedb-series>` | `2025.2` | YugabyteDB release series the build is aligned to. |
+| `<connector-patch>` | `.3` | Connector patch in that series. Higher is more recent. |
+| `.SNAPSHOT.<n>` | `.SNAPSHOT.1` | Pre-release. Don't use in production. |
 
-The connector is backward compatible with previous releases of YugabyteDB unless stated otherwise. For the latest YugabyteDB preview version, use the latest available connector.
+Release tags carry a leading `v`. For example, version `dz.1.9.5.yb.grpc.2025.2` is tagged `vdz.1.9.5.yb.grpc.2025.2`.
+
+The connector is *backward compatible only*; a connector release supports the YugabyteDB version it was built for, and all earlier releases, but *not newer releases* (forward compatibility is not supported). For example, connector release `dz.1.9.5.yb.grpc.2025.2.3` supports YugabyteDB v2025.2.3.0 and earlier, but not v2026.1.0.0 or later.
+
+Also, if a connector release for a particular version is not available, then it is recommended to use the latest released connector.
 
 In addition, the connector supports Kafka Connect v2.x and later.
 
@@ -567,7 +563,7 @@ The following example shows the value portion of a change event that the connect
       "version": "1.9.5.y.11",
       "connector": "yugabytedb",
       "name": "dbserver1",
-      "ts_ms": -8898156066356,
+      "ts_ms": 1775704405230,
       "snapshot": "false",
       "db": "yugabyte",
       "sequence": "[null,\"1:4::0:0\"]",
@@ -578,7 +574,7 @@ The following example shows the value portion of a change event that the connect
       "xmin": null
     },
     "op": "c", --> 7
-    "ts_ms": 1646145062480, --> 8
+    "ts_ms": 1775704405236, --> 8
     "transaction": null
   }
 }
@@ -635,7 +631,7 @@ The update event is as follows:
       "version": "1.9.5.y.11",
       "connector": "yugabytedb",
       "name": "dbserver1",
-      "ts_ms": -8881476960074,
+      "ts_ms": 1775704408457,
       "snapshot": "false",
       "db": "yugabyte",
       "sequence": "[null,\"1:5::0:0\"]",
@@ -646,7 +642,7 @@ The update event is as follows:
       "xmin": null
     },
     "op": "u", --> 4
-    "ts_ms": 1646149134341,
+    "ts_ms": 1775704408463,
     "transaction": null
   }
 }
@@ -693,7 +689,7 @@ DELETE FROM customers WHERE id = 1;
       "version": "1.9.5.y.11",
       "connector": "yugabytedb",
       "name": "dbserver1",
-      "ts_ms": -8876894517738,
+      "ts_ms": 1775704411532,
       "snapshot": "false",
       "db": "yugabyte",
       "sequence": "[null,\"1:6::0:0\"]",
@@ -704,7 +700,7 @@ DELETE FROM customers WHERE id = 1;
       "xmin": null
     },
     "op": "d", --> 3
-    "ts_ms": 1646150253203,
+    "ts_ms": 1775704411538,
     "transaction": null
   }
 }
@@ -1087,7 +1083,9 @@ Advanced connector configuration properties:
 | :------- | :------ | :---------- |
 | snapshot.mode | N/A | `never` - Don't take a snapshot <br/> `initial` - Take a snapshot when the connector is first started <br/> `initial_only` - Only take a snapshot of the table, do not stream further changes |
 | snapshot.include.collection.list | All tables specified in `table.include.list` | An optional, comma-separated list of regular expressions that match the fully-qualified names (`<schemaName>.<tableName>`) of the tables to include in a snapshot. The specified items must also be named in the connector's `table.include.list` property. This property takes effect only if the connector's `snapshot.mode` property is set to a value other than `never`. |
-| cdc.poll.interval.ms | 500 | The interval at which the connector will poll the database for the changes. |
+| cdc.poll.interval.ms | 500 | The interval at which the connector will poll the database for the changes. <br/><br/> **Note:** This flag is only valid for `dz.1.9.5.yb.grpc.2025.1` and earlier. For `dz.1.9.5.yb.grpc.2025.2` and later, use `cdc.poll.interval.active.ms` and `cdc.poll.interval.idle.ms`. |
+| cdc.poll.interval.active.ms | 10 | Poll interval when actively receiving data. <br/><br/> **Note:** This flag is only available in `dz.1.9.5.yb.grpc.2025.2` and later. |
+| cdc.poll.interval.idle.ms | 500 | Poll interval when no data is being received. <br/><br/> **Note:** This flag is only available in `dz.1.9.5.yb.grpc.2025.2` and later. |
 | admin.operation.timeout.ms | 60000 | The default timeout used for administrative operations (such as createTable, deleteTable, getTables, etc). |
 | operation.timeout.ms | 60000 | The default timeout used for user operations (using sessions and scanners). |
 | socket.read.timeout.ms | 60000 | The default timeout to use when waiting on data from a socket. |

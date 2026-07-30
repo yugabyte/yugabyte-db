@@ -27,7 +27,7 @@ export default class TaskListTable extends Component {
 
   state = {
     selectedTaskUUID: undefined
-  }
+  };
 
   render() {
     const { taskList, title, visibleModal, hideTaskAbortModal, showTaskAbortModal, featureFlags, showTaskDrawer } = this.props;

@@ -46,10 +46,14 @@
 #include <sys/sysinfo.h>
 #endif
 
+#include <algorithm>
+
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/malloc.h"
+#include "yb/util/status_format.h"
 #include "yb/util/thread_restrictions.h"
 
 using std::string;
@@ -58,7 +62,7 @@ namespace yb {
 
 static const char* const kTmpTemplateSuffix = ".tmp.XXXXXX";
 
-void AppendPathSegments(std::string* out, const std::string &b) {
+void AppendPathSegments(std::string* out, std::string_view b) {
   CHECK(!out->empty()) << "empty first component: " << *out;
   CHECK(!b.empty() && b[0] != '/')
     << "second path component must be non-empty and relative: "

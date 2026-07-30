@@ -14,6 +14,7 @@
 #include "yb/server/monitored_task.h"
 
 #include "yb/util/format.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace server {

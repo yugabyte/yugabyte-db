@@ -38,7 +38,7 @@
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/slice_transform.h"
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/types.h"
 #include "yb/rocksdb/util/coding.h"
 
@@ -232,7 +232,7 @@ class InternalKey {
 class BoundaryValuesExtractor {
  public:
   virtual Status Extract(Slice user_key, UserBoundaryValueRefs* values) = 0;
-  virtual UserFrontierPtr CreateFrontier() = 0;
+  virtual yb::storage::UserFrontierPtr CreateFrontier() = 0;
  protected:
   ~BoundaryValuesExtractor() {}
 };

@@ -1,0 +1,6 @@
+title: BackupPagedResp
+description: Paged list response for universe backups.
+type: object
+x-data-container: PaginationResp
+x-data-item: Backup
+x-data-entities-description: Universe backups for this page.

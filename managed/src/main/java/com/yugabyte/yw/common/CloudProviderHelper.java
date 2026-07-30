@@ -552,6 +552,45 @@ public class CloudProviderHelper {
     }
   }
 
+  /**
+   * Blocks transitions between single-AZ and multi-AZ for Kubernetes providers. Changing from 1 AZ
+   * to 2+ or from 2+ AZs down to 1 is not supported. Changes within multi-AZ (e.g. 3 to 4) are
+   * allowed.
+   */
+  private void validateKubernetesAZCountChange(
+      Provider existingProvider, Provider editProviderReq) {
+    CloudType providerCode = CloudType.valueOf(editProviderReq.getCode());
+    if (!providerCode.equals(kubernetes)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "API for only kubernetes provider creation: " + providerCode);
+    }
+    if (existingProvider.getUniverseCount() == 0) {
+      return;
+    }
+    long existingAZCount =
+        existingProvider.getRegions().stream().flatMap(r -> r.getZones().stream()).count();
+    long newAZCount =
+        editProviderReq.getRegions().stream()
+            .filter(Region::isActive)
+            .flatMap(r -> r.getZones().stream())
+            .filter(AvailabilityZone::isActive)
+            .count();
+    boolean wasSingleAZ = existingAZCount == 1;
+    boolean willBeSingleAZ = newAZCount == 1;
+    if (wasSingleAZ && !willBeSingleAZ && newAZCount > 1) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot change a single-AZ Kubernetes provider to multi-AZ."
+              + " Please create a new provider instead.");
+    }
+    if (!wasSingleAZ && existingAZCount > 1 && willBeSingleAZ) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot change a multi-AZ Kubernetes provider to single-AZ."
+              + " Please create a new provider instead.");
+    }
+  }
+
   public void validateKubernetesProviderConfig(Provider reqProvider) {
     CloudType providerCode = CloudType.valueOf(reqProvider.getCode());
     if (!providerCode.equals(kubernetes)) {
@@ -565,7 +604,7 @@ public class CloudProviderHelper {
     KubernetesInfo kubernetesInfo = CloudInfoInterface.get(reqProvider);
 
     boolean hasConfigInProvider = providerConfig.containsKey("KUBECONFIG_NAME");
-    if (kubernetesInfo.getKubeConfig() != null) {
+    if (StringUtils.isNotBlank(kubernetesInfo.getKubeConfig())) {
       hasConfigInProvider = true;
     }
     for (Region rd : reqProvider.getRegions()) {
@@ -584,7 +623,8 @@ public class CloudProviderHelper {
       for (AvailabilityZone zd : rd.getZones()) {
         Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(zd);
         k8sRegionInfo = CloudInfoInterface.get(zd);
-        if (zoneConfig.containsKey("KUBECONFIG_NAME") || k8sRegionInfo.getKubeConfig() != null) {
+        if (zoneConfig.containsKey("KUBECONFIG_NAME")
+            || StringUtils.isNotBlank(k8sRegionInfo.getKubeConfig())) {
           if (hasConfig) {
             throw new PlatformServiceException(BAD_REQUEST, "Kubeconfig can't be at two levels");
           }
@@ -944,6 +984,9 @@ public class CloudProviderHelper {
             String.format("Provider with name %s already exists.", editProviderReq.getName()));
       }
     }
+    if (provider.getCloudCode() == CloudType.onprem) {
+      editProviderReq.validateInstanceTypeMountPoints(provider.getInstanceTypes());
+    }
     CloudInfoInterface.mergeSensitiveFields(provider, editProviderReq);
     // Validate the provider request so as to ensure we only allow editing of fields
     // that does not impact the existing running universes.
@@ -979,9 +1022,10 @@ public class CloudProviderHelper {
                   });
         }
 
-        if (enableVMOSPatching && provider.getCloudCode() == CloudType.aws) {
+        if (enableVMOSPatching && provider.getCloudCode().usesPerRegionImages()) {
           // Validate the image_bundles when the VM OS Patching is enabled
-          // for AWS providers, as these only have the concept the per region AMIs.
+          // for providers with per-region images (AWS, OCI), as these have the
+          // concept of a per region image.
           validateImageBundles(region, bundles);
         }
       }
@@ -997,6 +1041,7 @@ public class CloudProviderHelper {
           BAD_REQUEST, String.format("Invalid %s Credentials.", provider.getCode().toUpperCase()));
     }
     if (provider.getCloudCode().equals(CloudType.kubernetes)) {
+      validateKubernetesAZCountChange(provider, editProviderReq);
       validateKubernetesProviderConfig(editProviderReq);
     }
     JsonNode newErrors = null;
@@ -1018,7 +1063,7 @@ public class CloudProviderHelper {
   public void validateImageBundles(Region region, List<ImageBundle> bundles) {
     /*
      * Utility function for validating the image bundle when the region is added to
-     * the AWS provider.
+     * a provider with per-region images (AWS, OCI).
      * We will validate as follows:
      * 1. YBA_ACTIVE: No Validation
      * 2. YBA_DEPRECATED: In case the region is not present, we will mark the bundle
@@ -1044,7 +1089,7 @@ public class CloudProviderHelper {
             throw new PlatformServiceException(
                 BAD_REQUEST,
                 String.format(
-                    "Specify the AMI for the region %s in the image bundle %s",
+                    "Specify the image for the region %s in the image bundle %s",
                     region.getCode(), bundle.getName()));
           }
         }

@@ -11,8 +11,8 @@ CREATE OR REPLACE FUNCTION documentdb_distributed_test_helpers.generate_create_i
 RETURNS documentdb_core.bson LANGUAGE C STRICT AS 'pg_documentdb', $$generate_create_index_arg$$;
 
 -- Returns the command (without "CONCURRENTLY" option) used to create given
--- Mongo index on given collection.
-CREATE FUNCTION documentdb_distributed_test_helpers.mongo_index_get_pg_def(
+-- documentdb index on given collection.
+CREATE FUNCTION documentdb_distributed_test_helpers.documentdb_index_get_pg_def(
     p_database_name text,
     p_collection_name text,
     p_index_name text)
@@ -49,7 +49,7 @@ AS $$
 BEGIN
   RETURN QUERY
   SELECT mi.collection_id, mi.index_id,
-         documentdb_api_internal.index_spec_as_bson(mi.index_spec),
+         documentdb_api_internal.index_spec_as_bson(mi.index_spec, for_get_indexes=>true),
          mi.index_is_valid
   FROM documentdb_api_catalog.collection_indexes AS mi
   WHERE mi.collection_id = (SELECT mc.collection_id FROM documentdb_api_catalog.collections AS mc
@@ -155,7 +155,7 @@ $$ LANGUAGE plpgsql;
 -- error if not valid and only is applicable for creating the geospatial index and control
 -- insert behaviors for invalid geodetic data points.
 --
--- example scenario with native mongo db:
+-- example scenario with the reference implementation:
 -- - db.coll.createIndex({loc: "2dsphere"});
 -- 
 -- - db.insert({loc: [10, 'text']}); => This throws error
@@ -173,7 +173,7 @@ AS 'pg_documentdb', $function$bson_extract_geometry$function$;
 -- This method mimics how the runtime extract the geometries from `p_document` from `p_keyPath`
 -- This is similar to bson_extract_geometry function but
 -- it performs a `weak` validation and doesn't throw error in case where the `bson_extract_geometry` function may throw error
--- e.g. scenarios with native mongo db:
+-- e.g. scenarios with the reference implementation:
 -- - db.coll.insert({loc: [[10, 20], [30, 40], ["invalid"]]}); (without 2d index on 'loc')
 -- - db.coll.find({loc: {$geoWithin: { $box: [[30, 30], [40, 40]] }}})
 --
@@ -258,6 +258,28 @@ CREATE OR REPLACE FUNCTION documentdb_distributed_test_helpers.evaluate_expressi
  IMMUTABLE STRICT
 AS '$libdir/pg_documentdb.so', $function$command_evaluate_expression_get_first_match$function$;
 
+-- Wait for the background worker to be launched in the `regression` database
+-- When the extension is loaded, this isn't created yet. 
+CREATE OR REPLACE PROCEDURE documentdb_distributed_test_helpers.wait_for_background_worker()
+AS $$
+DECLARE 
+  v_bg_worker_app_name text := NULL;
+BEGIN
+  LOOP
+    SELECT application_name INTO v_bg_worker_app_name FROM pg_stat_activity WHERE application_name = 'documentdb_bg_worker_leader';
+    IF v_bg_worker_app_name IS NOT NULL THEN
+      RETURN;
+    END IF;
+
+    COMMIT; -- This is needed so that we grab a fresh snapshot of pg_stat_activity
+    PERFORM pg_sleep_for('100 ms');
+  END LOOP;
+END
+$$
+LANGUAGE plpgsql;
+
+CALL documentdb_distributed_test_helpers.wait_for_background_worker();
+
 -- validate background worker is launched
 SELECT application_name FROM pg_stat_activity WHERE application_name = 'documentdb_bg_worker_leader';
 
@@ -273,7 +295,8 @@ CREATE OR REPLACE FUNCTION documentdb_distributed_test_helpers.gin_bson_get_sing
     isWildcard bool,
     generateNotFoundTerm bool default false,
     addMetadata bool default false,
-    indexTermSizeLimit int default -1)
+    indexTermSizeLimit int default -1,
+    enableReducedWildcardTerms bool default false)
  RETURNS SETOF documentdb_core.bson
  LANGUAGE c
  IMMUTABLE PARALLEL SAFE STRICT ROWS 100

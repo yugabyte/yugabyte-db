@@ -17,7 +17,7 @@
 
 #include <boost/algorithm/string/case_conv.hpp>
 #include <boost/lockfree/queue.hpp>
-#include "yb/util/flags.h"
+#include <boost/thread/locks.hpp>
 
 #include "yb/client/client.h"
 #include "yb/client/error.h"
@@ -32,18 +32,16 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/join.h"
 
 #include "yb/master/master_heartbeat.pb.h"
 
 #include "yb/rpc/connection.h"
 #include "yb/rpc/rpc_controller.h"
-#include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
-#include "yb/util/locks.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/mc_types.h"
 #include "yb/util/metrics.h"
@@ -219,9 +217,9 @@ class Operation {
   RedisResponseMsg& response() {
     switch (type_) {
       case OperationType::kRead:
-        return *down_cast<YBRedisReadOp*>(operation_.get())->mutable_response();
+        return down_cast<YBRedisReadOp*>(operation_.get())->response();
       case OperationType::kWrite:
-        return *down_cast<YBRedisWriteOp*>(operation_.get())->mutable_response();
+        return down_cast<YBRedisWriteOp*>(operation_.get())->response();
       case OperationType::kNone: FALLTHROUGH_INTENDED;
       case OperationType::kLocal:
         FATAL_INVALID_ENUM_VALUE(OperationType, type_);
@@ -294,14 +292,14 @@ class Operation {
 
     if (status.ok()) {
       if (operation_) {
-        call_->RespondSuccess(index_, metrics_, &response());
+        call_->RespondSuccess(
+            index_, metrics_, std::shared_ptr<LWRedisResponsePB>(operation_, &response()));
       } else {
-        RedisResponsePB resp;
-        call_->RespondSuccess(index_, metrics_, &resp);
+        call_->RespondSuccess(index_, metrics_, rpc::MakeSharedMessage<LWRedisResponsePB>());
       }
     } else if ((type_ == OperationType::kRead || type_ == OperationType::kWrite) &&
                response().code() == RedisResponsePB_RedisStatusCode_SERVER_ERROR) {
-      call_->Respond(index_, false, &response());
+      call_->Respond(index_, false, std::shared_ptr<LWRedisResponsePB>(operation_, &response()));
     } else {
       call_->RespondFailure(index_, status);
     }
@@ -463,7 +461,7 @@ class Block : public std::enable_shared_from_this<Block> {
     bool tablet_not_found = false;
     if (!flush_status->status.ok()) {
       for (const auto& error : flush_status->errors) {
-        if (error->status().IsNotFound()) {
+        if (error->status().IsNotFound() || error->status().IsDeleted()) {
           tablet_not_found = true;
         }
         op_errors[&error->failed_op()] = std::move(error->status());
@@ -914,6 +912,10 @@ class BatchContextImpl : public BatchContext {
   std::string ToString() const {
     return Format("{ tablets: $0 }", tablets_);
   }
+
+  const ThreadSafeArenaPtr& arena() const override {
+    return thread_safe_arena_;
+  };
 
  private:
   template <class... Args>

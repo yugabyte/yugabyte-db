@@ -28,7 +28,7 @@
 
 #include "yb/util/condition_variable.h"
 #include "yb/util/mutex.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 

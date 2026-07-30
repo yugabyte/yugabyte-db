@@ -1,0 +1,7 @@
+description: Current export telemetry configs for a universe
+x-yba-api-since: 2026.1.0.0
+x-yba-api-visibility: internal
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/TelemetryConfig.yaml"

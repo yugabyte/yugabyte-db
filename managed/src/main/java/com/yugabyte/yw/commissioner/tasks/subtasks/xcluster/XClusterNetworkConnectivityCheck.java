@@ -7,7 +7,6 @@
  *
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-
 package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -38,7 +37,6 @@ public class XClusterNetworkConnectivityCheck extends NodeTaskBase {
     // The universe UUID of the target universe.
     // The name of the node to check the connectivity against the source universe must be stored in
     // nodeName field.
-
     public XClusterConfig xClusterConfig;
   }
 
@@ -57,11 +55,26 @@ public class XClusterNetworkConnectivityCheck extends NodeTaskBase {
         taskParams().xClusterConfig);
   }
 
+  // Ping results are informational only (ICMP may be disabled so it doesn't fail the precheck).
+  private record PingResult(boolean success, String details) {}
+
+  private record MethodAttempt(String method, boolean success, String details) {}
+
+  private record PortCheckResult(boolean success, List<MethodAttempt> attempts) {}
+
+  private record PortFailure(
+      String targetNodeName,
+      String sourceNodeName,
+      String sourceIp,
+      int port,
+      List<MethodAttempt> attempts) {}
+
   @Override
   public void run() {
     log.info("Running {}", getName());
 
     XClusterConfig xClusterConfig = taskParams().xClusterConfig;
+
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     NodeDetails targetNode = targetUniverse.getNode(taskParams().nodeName);
     if (targetNode == null) {
@@ -70,14 +83,15 @@ public class XClusterNetworkConnectivityCheck extends NodeTaskBase {
               "Node with name %s in universe %s not found",
               taskParams().nodeName, taskParams().getUniverseUUID()));
     }
+
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
     Collection<NodeDetails> sourceNodes = sourceUniverse.getNodes();
-
-    boolean allConnected = true;
 
     Duration pingTimeout =
         confGetter.getConfForScope(
             targetUniverse, UniverseConfKeys.xClusterNetworkConnectivityCheckPingCommandTimeout);
+
+    List<PortFailure> portFailures = new ArrayList<>();
 
     for (NodeDetails sourceNode : sourceNodes) {
       log.info(
@@ -85,18 +99,21 @@ public class XClusterNetworkConnectivityCheck extends NodeTaskBase {
           targetNode.nodeName,
           sourceNode.nodeName);
 
-      // Perform ping test.
-      boolean pingSuccess = checkPing(targetNode, sourceNode, pingTimeout);
-      if (!pingSuccess) {
-        log.error("Ping failed from {} to {}", targetNode.nodeName, sourceNode.nodeName);
-        allConnected = false;
-        continue; // Skip port checks if ping fails
+      // Perform ping test (informational only; does NOT fail the precheck).
+      PingResult pingResult = checkPing(targetNode, targetUniverse, sourceNode, pingTimeout);
+      if (!pingResult.success()) {
+        log.warn(
+            "Ping failed from {} to {} (ICMP may be disabled). Continuing with TCP port checks."
+                + " Details: {}",
+            targetNode.nodeName,
+            sourceNode.nodeName,
+            sanitizeOneLine(pingResult.details()));
+      } else {
+        log.info("Ping successful from {} to {}", targetNode.nodeName, sourceNode.nodeName);
       }
-      log.info("Ping successful from {} to {}", targetNode.nodeName, sourceNode.nodeName);
 
       // Determine which ports to check based on the source node's roles.
       List<Integer> portsToCheck = new ArrayList<>();
-
       if (sourceNode.isMaster) {
         portsToCheck.add(sourceNode.masterRpcPort);
       }
@@ -105,14 +122,23 @@ public class XClusterNetworkConnectivityCheck extends NodeTaskBase {
       }
 
       for (Integer port : portsToCheck) {
-        boolean portSuccess = checkPort(targetNode, sourceNode, port);
-        if (!portSuccess) {
-          log.error(
-              "Port {} is not accessible from {} to {}",
+        PortCheckResult result = checkPort(targetNode, targetUniverse, sourceNode, port);
+        if (!result.success()) {
+          portFailures.add(
+              new PortFailure(
+                  targetNode.nodeName,
+                  sourceNode.nodeName,
+                  sourceNode.cloudInfo.private_ip,
+                  port,
+                  result.attempts()));
+
+          // Single warning per failed port; details also go into the thrown exception.
+          log.warn(
+              "Port {} is NOT accessible from {} to {} (attempts: {})",
               port,
               targetNode.nodeName,
-              sourceNode.nodeName);
-          allConnected = false;
+              sourceNode.nodeName,
+              formatAttemptsOneLine(result.attempts()));
         } else {
           log.info(
               "Port {} is accessible from {} to {}",
@@ -123,9 +149,10 @@ public class XClusterNetworkConnectivityCheck extends NodeTaskBase {
       }
     }
 
-    if (!allConnected) {
+    if (!portFailures.isEmpty()) {
       throw new RuntimeException(
-          "Network connectivity check failed between target and source universe nodes.");
+          "Network connectivity check failed (TCP port connectivity). Port failures: "
+              + formatPortFailuresAsArray(portFailures));
     }
 
     log.info("Completed {}", getName());
@@ -134,12 +161,11 @@ public class XClusterNetworkConnectivityCheck extends NodeTaskBase {
   /**
    * Checks basic network connectivity using ping from the target node to the source node.
    *
-   * @param targetNode The node from which the ping will be initiated.
-   * @param sourceNode The node to which the ping will be sent.
-   * @param timeout The duration for which the ping command will wait for a response.
-   * @return true if ping is successful, false otherwise.
+   * <p>NOTE: Ping (ICMP) failure is treated as informational only because some customer networks
+   * disable ICMP while allowing required TCP ports.
    */
-  private boolean checkPing(NodeDetails targetNode, NodeDetails sourceNode, Duration timeout) {
+  private PingResult checkPing(
+      NodeDetails targetNode, Universe targetUniverse, NodeDetails sourceNode, Duration timeout) {
     List<String> pingCommand =
         List.of(
             "ping",
@@ -148,168 +174,188 @@ public class XClusterNetworkConnectivityCheck extends NodeTaskBase {
             "-W",
             String.valueOf(timeout.getSeconds()),
             sourceNode.cloudInfo.private_ip);
+
     ShellProcessContext context =
         ShellProcessContext.builder()
-            .logCmdOutput(true)
+            // Keep ping logs quiet; surface details in our warning instead.
+            .logCmdOutput(false)
             .timeoutSecs(3 * timeout.getSeconds() + 10)
             .build();
+
     try {
       ShellResponse response =
-          nodeUniverseManager.runCommand(
-              targetNode,
-              Universe.getOrBadRequest(taskParams().xClusterConfig.getTargetUniverseUUID()),
-              pingCommand,
-              context);
-      return response.isSuccess();
+          nodeUniverseManager.runCommand(targetNode, targetUniverse, pingCommand, context);
+      if (response.isSuccess()) {
+        return new PingResult(true, response.getMessage());
+      }
+      return new PingResult(false, response.getMessage());
     } catch (Exception e) {
-      log.error("Ping command failed: {}", e.getMessage());
-      return false;
+      return new PingResult(false, e.getMessage());
     }
   }
 
   /**
    * Checks if a specific port is accessible from the target node to the source node using multiple
    * methods: nc, telnet, and bash's /dev/tcp.
-   *
-   * @param targetNode The node from which the port check will be initiated.
-   * @param sourceNode The node to which the port will be checked.
-   * @param port The port number to check.
-   * @return true if the port is accessible using any method, false otherwise.
    */
-  private boolean checkPort(NodeDetails targetNode, NodeDetails sourceNode, int port) {
-    // Attempt using nc (netcat).
-    if (checkPortWithNC(targetNode, sourceNode, port)) {
-      log.debug(
-          "Port {} accessible via nc from {} to {}",
-          port,
-          targetNode.nodeName,
-          sourceNode.nodeName);
-      return true;
+  private PortCheckResult checkPort(
+      NodeDetails targetNode, Universe targetUniverse, NodeDetails sourceNode, int port) {
+    List<MethodAttempt> attempts = new ArrayList<>(3);
+
+    MethodAttempt ncAttempt = attemptPortWithNC(targetNode, targetUniverse, sourceNode, port);
+    attempts.add(ncAttempt);
+    if (ncAttempt.success()) {
+      return new PortCheckResult(true, attempts);
     }
 
-    // Attempt using telnet.
-    if (checkPortWithTelnet(targetNode, sourceNode, port)) {
-      log.debug(
-          "Port {} accessible via telnet from {} to {}",
-          port,
-          targetNode.nodeName,
-          sourceNode.nodeName);
-      return true;
+    MethodAttempt telnetAttempt =
+        attemptPortWithTelnet(targetNode, targetUniverse, sourceNode, port);
+    attempts.add(telnetAttempt);
+    if (telnetAttempt.success()) {
+      return new PortCheckResult(true, attempts);
     }
 
-    // Attempt using bash's /dev/tcp.
-    if (checkPortWithBashTCP(targetNode, sourceNode, port)) {
-      log.debug(
-          "Port {} accessible via bash /dev/tcp from {} to {}",
-          port,
-          targetNode.nodeName,
-          sourceNode.nodeName);
-      return true;
+    MethodAttempt bashAttempt =
+        attemptPortWithBashTCP(targetNode, targetUniverse, sourceNode, port);
+    attempts.add(bashAttempt);
+    if (bashAttempt.success()) {
+      return new PortCheckResult(true, attempts);
     }
 
-    log.error(
-        "Port {} is not accessible via any method from {} to {}",
-        port,
-        targetNode.nodeName,
-        sourceNode.nodeName);
-    return false;
+    return new PortCheckResult(false, attempts);
   }
 
-  /**
-   * Attempts to check port connectivity using nc (netcat).
-   *
-   * @param targetNode The node from which the port check will be initiated.
-   * @param sourceNode The node to which the port will be checked.
-   * @param port The port number to check.
-   * @return true if the port is accessible via nc, false otherwise.
-   */
-  private boolean checkPortWithNC(NodeDetails targetNode, NodeDetails sourceNode, int port) {
+  private MethodAttempt attemptPortWithNC(
+      NodeDetails targetNode, Universe targetUniverse, NodeDetails sourceNode, int port) {
     List<String> ncCommand =
         List.of("nc", "-zv", sourceNode.cloudInfo.private_ip, String.valueOf(port));
     ShellProcessContext context =
-        ShellProcessContext.builder().logCmdOutput(true).timeoutSecs(5).build();
+        ShellProcessContext.builder().logCmdOutput(false).timeoutSecs(5).build();
     try {
       ShellResponse response =
-          nodeUniverseManager.runCommand(
-              targetNode,
-              Universe.getOrBadRequest(taskParams().xClusterConfig.getTargetUniverseUUID()),
-              ncCommand,
-              context);
-      if (response.isSuccess()) {
-        return true;
-      } else {
-        log.warn("nc command failed for port {}: {}", port, response.getMessage());
-        return false;
-      }
+          nodeUniverseManager.runCommand(targetNode, targetUniverse, ncCommand, context);
+      return new MethodAttempt("nc", response.isSuccess(), response.getMessage());
     } catch (Exception e) {
-      log.warn("nc command execution failed for port {}: {}", port, e.getMessage());
-      return false;
+      return new MethodAttempt("nc", false, e.getMessage());
     }
   }
 
-  /**
-   * Attempts to check port connectivity using telnet.
-   *
-   * @param targetNode The node from which the port check will be initiated.
-   * @param sourceNode The node to which the port will be checked.
-   * @param port The port number to check.
-   * @return true if the port is accessible via telnet, false otherwise.
-   */
-  private boolean checkPortWithTelnet(NodeDetails targetNode, NodeDetails sourceNode, int port) {
+  private MethodAttempt attemptPortWithTelnet(
+      NodeDetails targetNode, Universe targetUniverse, NodeDetails sourceNode, int port) {
     List<String> telnetCommand =
         List.of("telnet", sourceNode.cloudInfo.private_ip, String.valueOf(port));
     ShellProcessContext context =
-        ShellProcessContext.builder().logCmdOutput(true).timeoutSecs(5).build();
+        ShellProcessContext.builder().logCmdOutput(false).timeoutSecs(5).build();
     try {
       ShellResponse response =
-          nodeUniverseManager.runCommand(
-              targetNode,
-              Universe.getOrBadRequest(taskParams().xClusterConfig.getTargetUniverseUUID()),
-              telnetCommand,
-              context);
-      if (response.isSuccess()) {
-        return true;
-      } else {
-        log.warn("telnet command failed for port {}: {}", port, response.getMessage());
-        return false;
-      }
+          nodeUniverseManager.runCommand(targetNode, targetUniverse, telnetCommand, context);
+      return new MethodAttempt("telnet", response.isSuccess(), response.getMessage());
     } catch (Exception e) {
-      log.warn("telnet command execution failed for port {}: {}", port, e.getMessage());
-      return false;
+      return new MethodAttempt("telnet", false, e.getMessage());
     }
   }
 
-  /**
-   * Attempts to check port connectivity using bash's /dev/tcp.
-   *
-   * @param targetNode The node from which the port check will be initiated.
-   * @param sourceNode The node to which the port will be checked.
-   * @param port The port number to check.
-   * @return true if the port is accessible via bash /dev/tcp, false otherwise.
-   */
-  private boolean checkPortWithBashTCP(NodeDetails targetNode, NodeDetails sourceNode, int port) {
-    // Using bash to attempt opening /dev/tcp/host/port
+  private MethodAttempt attemptPortWithBashTCP(
+      NodeDetails targetNode, Universe targetUniverse, NodeDetails sourceNode, int port) {
     String bashCommand =
         String.format("echo > /dev/tcp/%s/%d", sourceNode.cloudInfo.private_ip, port);
     List<String> bashCheckCommand = List.of("bash", "-c", bashCommand);
     ShellProcessContext context =
-        ShellProcessContext.builder().logCmdOutput(true).timeoutSecs(5).build();
+        ShellProcessContext.builder().logCmdOutput(false).timeoutSecs(5).build();
     try {
       ShellResponse response =
-          nodeUniverseManager.runCommand(
-              targetNode,
-              Universe.getOrBadRequest(taskParams().xClusterConfig.getTargetUniverseUUID()),
-              bashCheckCommand,
-              context);
-      if (response.isSuccess()) {
-        return true;
-      } else {
-        log.warn("Bash TCP check command failed for port {}: {}", port, response.getMessage());
-        return false;
-      }
+          nodeUniverseManager.runCommand(targetNode, targetUniverse, bashCheckCommand, context);
+      return new MethodAttempt("bash:/dev/tcp", response.isSuccess(), response.getMessage());
     } catch (Exception e) {
-      log.warn("Bash TCP check execution failed for port {}: {}", port, e.getMessage());
-      return false;
+      return new MethodAttempt("bash:/dev/tcp", false, e.getMessage());
     }
+  }
+
+  private static String formatAttemptsOneLine(List<MethodAttempt> attempts) {
+    StringBuilder sb = new StringBuilder();
+    sb.append("[");
+    for (int i = 0; i < attempts.size(); i++) {
+      MethodAttempt a = attempts.get(i);
+      sb.append("{method=").append(a.method()).append(", success=").append(a.success());
+      if (!a.success() && a.details() != null && !a.details().isBlank()) {
+        sb.append(", details=").append(sanitizeOneLine(a.details()));
+      }
+      sb.append("}");
+      if (i < attempts.size() - 1) {
+        sb.append(", ");
+      }
+    }
+    sb.append("]");
+    return sb.toString();
+  }
+
+  private static String formatPortFailuresAsArray(List<PortFailure> failures) {
+    StringBuilder sb = new StringBuilder();
+    sb.append("[\n");
+    for (int i = 0; i < failures.size(); i++) {
+      PortFailure f = failures.get(i);
+      sb.append("  {")
+          .append("\"target\":\"")
+          .append(escapeJson(f.targetNodeName()))
+          .append("\",")
+          .append("\"source\":\"")
+          .append(escapeJson(f.sourceNodeName()))
+          .append("\",")
+          .append("\"sourceIp\":\"")
+          .append(escapeJson(f.sourceIp()))
+          .append("\",")
+          .append("\"port\":")
+          .append(f.port())
+          .append(",")
+          .append("\"attempts\":")
+          .append(formatAttemptsAsJsonArray(f.attempts()))
+          .append("}");
+      if (i < failures.size() - 1) {
+        sb.append(",");
+      }
+      sb.append("\n");
+    }
+    sb.append("]");
+    return sb.toString();
+  }
+
+  private static String formatAttemptsAsJsonArray(List<MethodAttempt> attempts) {
+    StringBuilder sb = new StringBuilder();
+    sb.append("[");
+    for (int i = 0; i < attempts.size(); i++) {
+      MethodAttempt a = attempts.get(i);
+      sb.append("{")
+          .append("\"method\":\"")
+          .append(escapeJson(a.method()))
+          .append("\",")
+          .append("\"success\":")
+          .append(a.success());
+      if (a.details() != null && !a.details().isBlank()) {
+        sb.append(",\"details\":\"").append(escapeJson(sanitizeOneLine(a.details()))).append("\"");
+      }
+      sb.append("}");
+      if (i < attempts.size() - 1) {
+        sb.append(",");
+      }
+    }
+    sb.append("]");
+    return sb.toString();
+  }
+
+  private static String sanitizeOneLine(String s) {
+    if (s == null) {
+      return "";
+    }
+    String v = s.replace("\r", " ").replace("\n", " ").trim();
+    // Avoid massive exception messages from command output.
+    int max = 800;
+    return v.length() <= max ? v : v.substring(0, max) + "...(truncated)";
+  }
+
+  private static String escapeJson(String s) {
+    if (s == null) {
+      return "";
+    }
+    return s.replace("\\", "\\\\").replace("\"", "\\\"");
   }
 }

@@ -134,9 +134,4 @@ public class TestTestUtils {
       return counter.get();
     }
   }
-
-  @Test
-  public void testDummy() {
-    // We run this test just to force Maven to download all test-time dependencies.
-  }
 }

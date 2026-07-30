@@ -136,8 +136,9 @@ enum PgVectorIndexType {
 
 enum HnswBackend {
   USEARCH = 0;
-  YB_HNSW = 1;
+  YB_HNSW_USEARCH = 1;
   HNSWLIB = 2;
+  YB_HNSW_HNSWLIB = 3;
 };
 
 message HnswIndexOptionsPB {
@@ -159,6 +160,10 @@ message PgVectorIdxOptionsPB {
   // Permanent index id. It should be unique for tablet, but when tablet is cloned,
   // index id in new tablet remains the same.
   optional string id = 8;
+
+  // Deprecated: skip_reverse_mapping_backfill. TablePropertiesPB.owns_vector_reverse_mapping
+  // on the indexed table is used instead.
+  reserved 9;
 }
 
 message PgHnswReadOptionsPB {
@@ -214,6 +219,12 @@ message TablePropertiesPB {
   optional uint32 partitioning_version = 11;
 
   optional PgReplicaIdentity ysql_replica_identity = 12;
+
+  // When true, the base table owns vector reverse mapping lifecycle: mappings are written on
+  // row insert/update regardless of whether a vector index exists, and backfill skips reverse
+  // mapping. Set at table creation on the master from `enable_table_owned_vector_reverse_mapping`
+  // gflag and cannot be changed afterwards.
+  optional bool owns_vector_reverse_mapping = 13;
 }
 
 message SchemaPB {
@@ -743,6 +754,9 @@ message AshMetadataPB {
   optional int64 rpc_request_id = 4;
   // Query id as seen on pg_stat_statements to identify identical normalized queries.
   optional uint64 query_id = 5;
+  // Plan identifier (plan hash) for the current execution plan. Same as in yb_pg_stat_plans.
+  // 0 when no plan (e.g. utility statement) or for YCQL components.
+  optional uint64 plan_id = 11;
   // Deprecated session_id
   reserved 6;
   // pid of the YSQL/YCQL backend which is executing the query. TServer pid for
@@ -783,6 +797,11 @@ message CDCSDKStreamCreateOptionsPB {
   optional ReplicationSlotLsnType lsn_type = 12 [default = ReplicationSlotLsnType_SEQUENCE];
   optional ReplicationSlotOrderingMode ordering_mode =
     13 [default = ReplicationSlotOrderingMode_UNSPECIFIED];
+  optional CDCSDKBoundTableIds bound_table_ids = 14;
+}
+
+message CDCSDKBoundTableIds {
+  repeated string table_ids = 1;
 }
 
 message TserverMetricsInfoPB {
@@ -802,4 +821,17 @@ enum DocDbBlocksSamplingMethod {
 enum YsqlSamplingAlgorithm {
   FULL_TABLE_SCAN = 0;
   BLOCK_BASED_SAMPLING = 1;
+}
+
+message PgResultPB {
+  message PgResultRowPB {
+    message PgResultColumnPB {
+      // Absence of value (has_value() == false) indicates NULL.
+      optional bytes value = 1;
+    }
+    repeated PgResultColumnPB columns = 1;
+  }
+  repeated PgResultRowPB rows = 1;
+  optional int32 exec_status = 2;
+  optional string error_message = 3;
 }

@@ -8,7 +8,7 @@ import {
 } from '../../metrics/constants';
 import { SplitType } from '../dtos';
 import { YBControlledNumericInput } from '../../common/forms/fields';
-import TreeIcon from '../../metrics/images/tree-icon.svg?img';
+import TreeIcon from '../../../redesign/assets/tree-icon.svg?img';
 import './OutlierSelector.scss';
 
 interface OutlierSelectorData {

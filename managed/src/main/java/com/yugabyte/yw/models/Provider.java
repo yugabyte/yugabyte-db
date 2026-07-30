@@ -16,6 +16,9 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap.Params.PerRegionMetadata;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.RuntimeConfigCacheInvalidator;
+import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
@@ -31,10 +34,14 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.PostRemove;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
 import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.Version;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +50,8 @@ import java.util.Set;
 import java.util.UUID;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
@@ -86,7 +95,11 @@ public class Provider extends Model {
 
   public static final Set<Common.CloudType> InstanceTagsEnabledProviders =
       ImmutableSet.of(
-          Common.CloudType.aws, Common.CloudType.azu, Common.CloudType.gcp, Common.CloudType.local);
+          Common.CloudType.aws,
+          Common.CloudType.azu,
+          Common.CloudType.gcp,
+          Common.CloudType.oci,
+          Common.CloudType.local);
   public static final Set<Common.CloudType> InstanceTagsModificationEnabledProviders =
       ImmutableSet.of(Common.CloudType.aws, Common.CloudType.gcp, Common.CloudType.local);
 
@@ -638,5 +651,53 @@ public class Provider extends Model {
   @JsonIgnore
   public boolean isManualOnprem() {
     return getCloudCode() == CloudType.onprem && getDetails().skipProvisioning;
+  }
+
+  /**
+   * Validates that the mount points of the instance types are not same or descendant of each other
+   * or YB home directory.
+   *
+   * @param instanceTypes Collection of instance types to validate mount points.
+   */
+  public void validateInstanceTypeMountPoints(Collection<InstanceType> instanceTypes) {
+    for (InstanceType instanceType : instanceTypes) {
+      InstanceTypeDetails details = instanceType.getInstanceTypeDetails();
+      if (details == null || CollectionUtils.isEmpty(details.volumeDetailsList)) {
+        continue;
+      }
+      List<String> paths = new ArrayList<>();
+      paths.add(getYbHome());
+      details.volumeDetailsList.stream()
+          .filter(v -> StringUtils.isNotBlank(v.mountPath))
+          .flatMap(v -> Arrays.stream(v.mountPath.split("[, ]")))
+          .forEach(paths::add);
+      for (int i = 0; i < paths.size(); i++) {
+        for (int j = i + 1; j < paths.size(); j++) {
+          String p1 = paths.get(i);
+          String p2 = paths.get(j);
+          if (Util.isPathSameOrDescendant(p1, p2) || Util.isPathSameOrDescendant(p2, p1)) {
+            String errMsg = null;
+            if (i == 0) {
+              errMsg =
+                  String.format(
+                      "YB home directory %s cannot be the same or descendent of the the mount path"
+                          + " %s",
+                      p1, p2);
+            } else {
+              errMsg =
+                  String.format(
+                      "Mount path %s cannot be same or descendant of another mount path %s",
+                      p1, p2);
+            }
+            throw new PlatformServiceException(BAD_REQUEST, errMsg);
+          }
+        }
+      }
+    }
+  }
+
+  @PostRemove
+  public void cleanupProvider() {
+    RuntimeConfigCacheInvalidator.invalidateScopeForDeletedEntity(getUuid());
   }
 }

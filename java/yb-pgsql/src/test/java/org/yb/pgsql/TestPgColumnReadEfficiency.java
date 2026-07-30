@@ -18,7 +18,8 @@ import org.slf4j.LoggerFactory;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
+import org.yb.util.SkipOnTSAN;
 
 import java.sql.Statement;
 import java.util.List;
@@ -34,7 +35,8 @@ import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_ONLY_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
 
-@RunWith(YBTestRunnerNonTsanOnly.class)
+@SkipOnTSAN
+@RunWith(YBTestRunner.class)
 public class TestPgColumnReadEfficiency extends BasePgSQLTest {
   private static final int N_ROWS = 10000;
   private static final Logger LOG = LoggerFactory.getLogger(TestPgColumnReadEfficiency.class);

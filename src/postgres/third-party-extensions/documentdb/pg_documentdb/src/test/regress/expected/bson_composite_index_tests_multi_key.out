@@ -1,0 +1,482 @@
+SET search_path TO documentdb_api,documentdb_core,documentdb_api_catalog;
+SET documentdb.next_collection_id TO 500;
+SET documentdb.next_collection_index_id TO 500;
+set documentdb.enableCompositeReducedCorrelatedTerms to on;
+set documentdb.enableUniqueCompositeReducedCorrelatedTerms to on;
+CREATE SCHEMA multi_key_tests;
+CREATE FUNCTION multi_key_tests.gin_bson_get_composite_path_generated_terms(documentdb_core.bson, text, int4, bool, p_wildcardIndex int4 = -1, p_reduced_correlated bool = TRUE)
+    RETURNS SETOF documentdb_core.bson LANGUAGE C IMMUTABLE PARALLEL SAFE STRICT AS '$libdir/pg_documentdb',
+$$gin_bson_get_composite_path_generated_terms$$;
+-- this should only generate 2 index keys since the multi-key is on the parent of the index path (/a/b/1, /a/c/1) and (/a/b/2, /a/c/2)
+-- todo: this is inefficient.
+SELECT * FROM multi_key_tests.gin_bson_get_composite_path_generated_terms('{ "a": [ { "b": 1, "c": 1 }, { "b": 2, "c": 2 }] }', '[ "a.b", "a.c" ]', 2000, false);
+         gin_bson_get_composite_path_generated_terms          
+--------------------------------------------------------------
+ { "$" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }
+ { "$" : [ { "$numberInt" : "2" }, { "$numberInt" : "2" } ] }
+ { "" : { "$numberInt" : "1" } }
+ { "" : [  ] }
+(4 rows)
+
+-- this should generate 2 index keys (/a/b/1, /a/c/1) and (/a/b/2, /a/c/1)
+SELECT * FROM multi_key_tests.gin_bson_get_composite_path_generated_terms('{ "a": { "b": [ 1, 2 ], "c": 1 } }', '[ "a.b", "a.c" ]', 2000, false);
+         gin_bson_get_composite_path_generated_terms          
+--------------------------------------------------------------
+ { "$" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }
+ { "$" : [ { "$numberInt" : "2" }, { "$numberInt" : "1" } ] }
+ { "" : [  ] }
+(3 rows)
+
+-- this should generate 2 index keys (/a/b/1, /a/c/1) and (/a/b/1, /a/c/2)
+SELECT * FROM multi_key_tests.gin_bson_get_composite_path_generated_terms('{ "a": { "b": 1, "c": [ 1, 2 ] } }', '[ "a.b", "a.c" ]', 2000, false);
+         gin_bson_get_composite_path_generated_terms          
+--------------------------------------------------------------
+ { "$" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }
+ { "$" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "" : [  ] }
+(3 rows)
+
+-- this should generate 4 keys:  (/a/b/1, /a/c/1),  (/a/b/2, /a/c/1),  (/a/b/3, /a/c/4),  (/a/b/4, /a/c/4)
+-- todo: this is inefficient.
+SELECT * FROM multi_key_tests.gin_bson_get_composite_path_generated_terms('{ "a": [ { "b": [ 1, 2 ], "c": 1 }, { "b": [ 3, 4 ], "c": 4 } ] }', '[ "a.b", "a.c" ]', 2000, false);
+         gin_bson_get_composite_path_generated_terms          
+--------------------------------------------------------------
+ { "$" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }
+ { "$" : [ { "$numberInt" : "2" }, { "$numberInt" : "1" } ] }
+ { "$" : [ { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }
+ { "$" : [ { "$numberInt" : "4" }, { "$numberInt" : "4" } ] }
+ { "" : { "$numberInt" : "1" } }
+ { "" : [  ] }
+(6 rows)
+
+-- this should generate 4 keys:  (/a/b/1, /a/c/1),  (/a/b/1, /a/c/2),  (/a/b/4, /a/c/3),  (/a/b/4, /a/c/4)
+-- todo: this is inefficient.
+SELECT * FROM multi_key_tests.gin_bson_get_composite_path_generated_terms('{ "a": [ { "b": 1, "c": [ 1, 2 ] }, { "b": 4, "c": [ 3, 4 ] } ] }', '[ "a.b", "a.c" ]', 2000, false);
+         gin_bson_get_composite_path_generated_terms          
+--------------------------------------------------------------
+ { "$" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }
+ { "$" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "$" : [ { "$numberInt" : "4" }, { "$numberInt" : "3" } ] }
+ { "$" : [ { "$numberInt" : "4" }, { "$numberInt" : "4" } ] }
+ { "" : { "$numberInt" : "1" } }
+ { "" : [  ] }
+(6 rows)
+
+-- todo: should these error out
+SELECT * FROM multi_key_tests.gin_bson_get_composite_path_generated_terms('{ "a": { "b": [ 1, 2 ], "c": [ 1, 2 ] } }', '[ "a.b", "a.c" ]', 2000, false);
+         gin_bson_get_composite_path_generated_terms          
+--------------------------------------------------------------
+ { "$" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }
+ { "$" : [ { "$numberInt" : "2" }, { "$numberInt" : "1" } ] }
+ { "$" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "$" : [ { "$numberInt" : "2" }, { "$numberInt" : "2" } ] }
+ { "" : [  ] }
+(5 rows)
+
+SELECT * FROM multi_key_tests.gin_bson_get_composite_path_generated_terms('{ "a": [ { "b": [ 1, 2 ], "c": [1, 2] }, { "b": 3, "c": [ 3, 4 ] } ] }', '[ "a.b", "a.c" ]', 2000, false);
+         gin_bson_get_composite_path_generated_terms          
+--------------------------------------------------------------
+ { "$" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }
+ { "$" : [ { "$numberInt" : "2" }, { "$numberInt" : "1" } ] }
+ { "$" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "$" : [ { "$numberInt" : "2" }, { "$numberInt" : "2" } ] }
+ { "$" : [ { "$numberInt" : "3" }, { "$numberInt" : "3" } ] }
+ { "$" : [ { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }
+ { "" : { "$numberInt" : "1" } }
+ { "" : [  ] }
+(8 rows)
+
+-- this works and generates 4 terms  (/a/b/1, /a/c/1),  (/a/b/1, /a/c/2),  (/a/b/3, /a/c/3),  (/a/b/3, /a/c/4)
+-- todo: this is inefficient.
+SELECT * FROM multi_key_tests.gin_bson_get_composite_path_generated_terms('{ "a": [ { "b": [ 1, 2 ], "c": 1 }, { "b": 3, "c": [ 3, 4 ] } ] }', '[ "a.b", "a.c" ]', 2000, false);
+         gin_bson_get_composite_path_generated_terms          
+--------------------------------------------------------------
+ { "$" : [ { "$numberInt" : "1" }, { "$numberInt" : "1" } ] }
+ { "$" : [ { "$numberInt" : "2" }, { "$numberInt" : "1" } ] }
+ { "$" : [ { "$numberInt" : "3" }, { "$numberInt" : "3" } ] }
+ { "$" : [ { "$numberInt" : "3" }, { "$numberInt" : "4" } ] }
+ { "" : { "$numberInt" : "1" } }
+ { "" : [  ] }
+(6 rows)
+
+-- term generation with independent parent paths:
+SELECT * FROM multi_key_tests.gin_bson_get_composite_path_generated_terms('{ "a": { "b": 1 }, "c": { "d": 2 } }', '[ "a.b", "c.d" ]', 2000, false);
+         gin_bson_get_composite_path_generated_terms          
+--------------------------------------------------------------
+ { "$" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+(1 row)
+
+-- generates 2 terms (/a/b/1, /c/d/2), (/a/b/2, /c/d/2)
+SELECT * FROM multi_key_tests.gin_bson_get_composite_path_generated_terms('{ "a": { "b": [ 1, 2 ] }, "c": { "d": 2 } }', '[ "a.b", "c.d" ]', 2000, false);
+         gin_bson_get_composite_path_generated_terms          
+--------------------------------------------------------------
+ { "$" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "$" : [ { "$numberInt" : "2" }, { "$numberInt" : "2" } ] }
+ { "" : [  ] }
+(3 rows)
+
+-- generates 4 terms
+SELECT * FROM multi_key_tests.gin_bson_get_composite_path_generated_terms('{ "a": [ { "b": [ 1, 2 ] }, { "b": [ 3, 4 ] } ], "c": { "d": 2 } }', '[ "a.b", "c.d" ]', 2000, false);
+         gin_bson_get_composite_path_generated_terms          
+--------------------------------------------------------------
+ { "$" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "$" : [ { "$numberInt" : "2" }, { "$numberInt" : "2" } ] }
+ { "$" : [ { "$numberInt" : "3" }, { "$numberInt" : "2" } ] }
+ { "$" : [ { "$numberInt" : "4" }, { "$numberInt" : "2" } ] }
+ { "" : [  ] }
+(5 rows)
+
+SELECT * FROM multi_key_tests.gin_bson_get_composite_path_generated_terms('{ "a": { "b": 2 }, "c": { "d": [ 2, 3 ] } }', '[ "a.b", "c.d" ]', 2000, false);
+         gin_bson_get_composite_path_generated_terms          
+--------------------------------------------------------------
+ { "$" : [ { "$numberInt" : "2" }, { "$numberInt" : "2" } ] }
+ { "$" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "" : [  ] }
+(3 rows)
+
+SELECT * FROM multi_key_tests.gin_bson_get_composite_path_generated_terms('{ "a": { "b": 2 }, "c": [ { "d": [ 2, 3 ] }, { "d": [ 4, 5 ] } ] }', '[ "a.b", "c.d" ]', 2000, false);
+         gin_bson_get_composite_path_generated_terms          
+--------------------------------------------------------------
+ { "$" : [ { "$numberInt" : "2" }, { "$numberInt" : "2" } ] }
+ { "$" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "$" : [ { "$numberInt" : "2" }, { "$numberInt" : "4" } ] }
+ { "$" : [ { "$numberInt" : "2" }, { "$numberInt" : "5" } ] }
+ { "" : [  ] }
+(5 rows)
+
+-- todo: should these error out 
+SELECT * FROM multi_key_tests.gin_bson_get_composite_path_generated_terms('{ "a": [ { "b": [ 1, 2 ] }, { "b": [ 3, 4 ] } ], "c": { "d": [ 2, 3 ] } }', '[ "a.b", "c.d" ]', 2000, false);
+         gin_bson_get_composite_path_generated_terms          
+--------------------------------------------------------------
+ { "$" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "$" : [ { "$numberInt" : "2" }, { "$numberInt" : "2" } ] }
+ { "$" : [ { "$numberInt" : "3" }, { "$numberInt" : "2" } ] }
+ { "$" : [ { "$numberInt" : "4" }, { "$numberInt" : "2" } ] }
+ { "$" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }
+ { "$" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "$" : [ { "$numberInt" : "3" }, { "$numberInt" : "3" } ] }
+ { "$" : [ { "$numberInt" : "4" }, { "$numberInt" : "3" } ] }
+ { "" : [  ] }
+(9 rows)
+
+SELECT * FROM multi_key_tests.gin_bson_get_composite_path_generated_terms('{ "a": [ { "b": [ 1, 2 ] }, { "b": [ 3, 4 ] } ], "c": [ { "d": 2 }, { "d": 3 } ] }', '[ "a.b", "c.d" ]', 2000, false);
+         gin_bson_get_composite_path_generated_terms          
+--------------------------------------------------------------
+ { "$" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "$" : [ { "$numberInt" : "2" }, { "$numberInt" : "2" } ] }
+ { "$" : [ { "$numberInt" : "3" }, { "$numberInt" : "2" } ] }
+ { "$" : [ { "$numberInt" : "4" }, { "$numberInt" : "2" } ] }
+ { "$" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }
+ { "$" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "$" : [ { "$numberInt" : "3" }, { "$numberInt" : "3" } ] }
+ { "$" : [ { "$numberInt" : "4" }, { "$numberInt" : "3" } ] }
+ { "" : [  ] }
+(9 rows)
+
+-- when one path has some terms and another doesn't generates the right type of null terms.
+-- here a.b has "some paths" existing, and "a.c" has none
+SELECT * FROM multi_key_tests.gin_bson_get_composite_path_generated_terms('{ "a": [ { "b": 2 }, { "d": 2 } ] }', '[ "a.b", "a.c" ]', 2000, false);
+          gin_bson_get_composite_path_generated_terms          
+---------------------------------------------------------------
+ { "$" : [ { "$numberInt" : "2" }, { "$undefined" : true } ] }
+ { "" : { "$numberInt" : "1" } }
+ { "" : [  ] }
+(3 rows)
+
+SELECT * FROM multi_key_tests.gin_bson_get_composite_path_generated_terms('{ "a": [ { "b": 2 }, { "d": 2, "c": 5 } ] }', '[ "a.b", "a.c" ]', 2000, false);
+          gin_bson_get_composite_path_generated_terms          
+---------------------------------------------------------------
+ { "$" : [ { "$numberInt" : "2" }, { "$undefined" : true } ] }
+ { "$" : [ { "$undefined" : true }, { "$numberInt" : "5" } ] }
+ { "" : { "$numberInt" : "1" } }
+ { "" : [  ] }
+(4 rows)
+
+-- try with many dotted paths
+SELECT * FROM multi_key_tests.gin_bson_get_composite_path_generated_terms('{ "a": [ { "b": { "c": [ { "d": [ 3, 4 ], "e": 5 }, { "d": 6, "e": 7 } ] } }, { "b": { "c": { "d": [ 1, 2 ], "e": 3 } } } ] }', '[ "a.b.c.d", "a.b.c.e" ]', 2000, false);
+         gin_bson_get_composite_path_generated_terms          
+--------------------------------------------------------------
+ { "$" : [ { "$numberInt" : "3" }, { "$numberInt" : "5" } ] }
+ { "$" : [ { "$numberInt" : "4" }, { "$numberInt" : "5" } ] }
+ { "$" : [ { "$numberInt" : "6" }, { "$numberInt" : "7" } ] }
+ { "$" : [ { "$numberInt" : "1" }, { "$numberInt" : "3" } ] }
+ { "$" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
+ { "" : { "$numberInt" : "1" } }
+ { "" : [  ] }
+(7 rows)
+
+-- now test query path pushdown
+SELECT documentdb_api_internal.create_indexes_non_concurrently('mkey_db', '{ "createIndexes": "mkey_coll", "indexes": [ { "key": { "a.b": 1, "a.c": 1 }, "name": "a_b_c_1", "enableOrderedIndex": 1 } ] }');
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- multikey path on "a" - query on a.c can't be pushed
+SELECT documentdb_api.insert_one('mkey_db', 'mkey_coll', '{ "_id": 1, "a": [ { "b": 1, "c": 1 }, { "b": 2, "c": 2 }] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+set documentdb.enableExtendedExplainPlans to on;
+SELECT documentdb_test_helpers.run_explain_and_trim( $cmd$
+    EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_find('mkey_db', '{ "find": "mkey_coll", "filter": { "a.b": { "$gt": 0 }, "a.c": 2 }}') $cmd$);
+                                                            run_explain_and_trim                                                             
+---------------------------------------------------------------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=1 loops=1)
+   indexName: a_b_c_1
+   indexKey: {"a.b": 1,"a.c": 1}
+   isMultiKey: true
+   hasCorrelatedTerms: true
+   indexBounds: ["a.b": (0, Infinity], "a.c": (MinKey, MaxKey)]
+   ->  Index Scan using a_b_c_1 on documents_501 collection (actual rows=1 loops=1)
+         Index Cond: ((document @> '{ "a.b" : { "$numberInt" : "0" } }'::bson) AND (document @= '{ "a.c" : { "$numberInt" : "2" } }'::bson))
+(8 rows)
+
+SELECT documentdb_test_helpers.run_explain_and_trim( $cmd$
+    EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_find('mkey_db', '{ "find": "mkey_coll", "filter": { "a.b": 1, "a.c": 2 }}') $cmd$);
+                                                            run_explain_and_trim                                                             
+---------------------------------------------------------------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=1 loops=1)
+   indexName: a_b_c_1
+   indexKey: {"a.b": 1,"a.c": 1}
+   isMultiKey: true
+   hasCorrelatedTerms: true
+   indexBounds: ["a.b": [1, 1], "a.c": (MinKey, MaxKey)]
+   ->  Index Scan using a_b_c_1 on documents_501 collection (actual rows=1 loops=1)
+         Index Cond: ((document @= '{ "a.b" : { "$numberInt" : "1" } }'::bson) AND (document @= '{ "a.c" : { "$numberInt" : "2" } }'::bson))
+(8 rows)
+
+-- test elemMatch behavior
+SELECT documentdb_test_helpers.run_explain_and_trim( $cmd$
+    EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_find('mkey_db', '{ "find": "mkey_coll", "filter": { "a": { "$elemMatch": { "b": 1, "c": 2 } } }}') $cmd$);
+                                                                                run_explain_and_trim                                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=0 loops=1)
+   indexName: a_b_c_1
+   indexKey: {"a.b": 1,"a.c": 1}
+   isMultiKey: true
+   hasCorrelatedTerms: true
+   indexBounds: ["a.b": [1, 1], "a.c": (MinKey, MaxKey)]
+   ->  Bitmap Heap Scan on documents_501 collection (actual rows=0 loops=1)
+         Filter: (document @#? '{ "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }'::bson)
+         Rows Removed by Filter: 1
+         Heap Blocks: exact=1
+         ->  Bitmap Index Scan on a_b_c_1 (actual rows=1 loops=1)
+               Index Cond: (document @<> '{ "a.b" : { "elemMatchIndexOp" : [ { "op" : { "$numberInt" : "1" }, "value" : { "$numberInt" : "1" }, "isTopLevel" : false } ] } }'::bson)
+(12 rows)
+
+SELECT documentdb_test_helpers.run_explain_and_trim( $cmd$
+    EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_find('mkey_db', '{ "find": "mkey_coll", "filter": { "a": { "$elemMatch": { "b": 2, "c": 2 } } }}') $cmd$);
+                                                                                run_explain_and_trim                                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=1 loops=1)
+   indexName: a_b_c_1
+   indexKey: {"a.b": 1,"a.c": 1}
+   isMultiKey: true
+   hasCorrelatedTerms: true
+   indexBounds: ["a.b": [2, 2], "a.c": (MinKey, MaxKey)]
+   ->  Bitmap Heap Scan on documents_501 collection (actual rows=1 loops=1)
+         Filter: (document @#? '{ "a" : { "b" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "2" } } }'::bson)
+         Heap Blocks: exact=1
+         ->  Bitmap Index Scan on a_b_c_1 (actual rows=1 loops=1)
+               Index Cond: (document @<> '{ "a.b" : { "elemMatchIndexOp" : [ { "op" : { "$numberInt" : "1" }, "value" : { "$numberInt" : "2" }, "isTopLevel" : false } ] } }'::bson)
+(11 rows)
+
+-- multikey on a.b - query on a.c can be pushed
+TRUNCATE documentdb_data.documents_501;
+SELECT documentdb_api.insert_one('mkey_db', 'mkey_coll', '{ "_id": 1, "a": { "b": [ 1, 2 ], "c": 2 } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_test_helpers.run_explain_and_trim( $cmd$
+    EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_find('mkey_db', '{ "find": "mkey_coll", "filter": { "a.b": { "$gt": 0 }, "a.c": 2 }}') $cmd$);
+                                                            run_explain_and_trim                                                             
+---------------------------------------------------------------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=1 loops=1)
+   indexName: a_b_c_1
+   indexKey: {"a.b": 1,"a.c": 1}
+   isMultiKey: true
+   indexBounds: ["a.b": (0, Infinity], "a.c": [2, 2]]
+   ->  Index Scan using a_b_c_1 on documents_501 collection (actual rows=1 loops=1)
+         Index Cond: ((document @> '{ "a.b" : { "$numberInt" : "0" } }'::bson) AND (document @= '{ "a.c" : { "$numberInt" : "2" } }'::bson))
+(7 rows)
+
+SELECT documentdb_test_helpers.run_explain_and_trim( $cmd$
+    EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_find('mkey_db', '{ "find": "mkey_coll", "filter": { "a.b": 1, "a.c": 2 }}') $cmd$);
+                                                            run_explain_and_trim                                                             
+---------------------------------------------------------------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=1 loops=1)
+   indexName: a_b_c_1
+   indexKey: {"a.b": 1,"a.c": 1}
+   isMultiKey: true
+   indexBounds: ["a.b": [1, 1], "a.c": [2, 2]]
+   ->  Index Scan using a_b_c_1 on documents_501 collection (actual rows=1 loops=1)
+         Index Cond: ((document @= '{ "a.b" : { "$numberInt" : "1" } }'::bson) AND (document @= '{ "a.c" : { "$numberInt" : "2" } }'::bson))
+(7 rows)
+
+-- none of these since "a" is not an array.
+SELECT documentdb_test_helpers.run_explain_and_trim( $cmd$
+    EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_find('mkey_db', '{ "find": "mkey_coll", "filter": { "a": { "$elemMatch": { "b": 1, "c": 2 } } }}') $cmd$);
+                                                                                run_explain_and_trim                                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=0 loops=1)
+   indexName: a_b_c_1
+   indexKey: {"a.b": 1,"a.c": 1}
+   isMultiKey: true
+   indexBounds: ["a.b": [1, 1], "a.c": (MinKey, MaxKey)]
+   ->  Bitmap Heap Scan on documents_501 collection (actual rows=0 loops=1)
+         Filter: (document @#? '{ "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } }'::bson)
+         Rows Removed by Filter: 1
+         Heap Blocks: exact=1
+         ->  Bitmap Index Scan on a_b_c_1 (actual rows=1 loops=1)
+               Index Cond: (document @<> '{ "a.b" : { "elemMatchIndexOp" : [ { "op" : { "$numberInt" : "1" }, "value" : { "$numberInt" : "1" }, "isTopLevel" : false } ] } }'::bson)
+(11 rows)
+
+SELECT documentdb_test_helpers.run_explain_and_trim( $cmd$
+    EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, TIMING OFF, BUFFERS OFF) SELECT document FROM bson_aggregation_find('mkey_db', '{ "find": "mkey_coll", "filter": { "a": { "$elemMatch": { "b": 2 } } }}') $cmd$);
+                                                                                run_explain_and_trim                                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=0 loops=1)
+   indexName: a_b_c_1
+   indexKey: {"a.b": 1,"a.c": 1}
+   isMultiKey: true
+   indexBounds: ["a.b": [2, 2], "a.c": (MinKey, MaxKey)]
+   ->  Bitmap Heap Scan on documents_501 collection (actual rows=0 loops=1)
+         Filter: (document @#? '{ "a" : { "b" : { "$numberInt" : "2" } } }'::bson)
+         Rows Removed by Filter: 1
+         Heap Blocks: exact=1
+         ->  Bitmap Index Scan on a_b_c_1 (actual rows=1 loops=1)
+               Index Cond: (document @<> '{ "a.b" : { "elemMatchIndexOp" : [ { "op" : { "$numberInt" : "1" }, "value" : { "$numberInt" : "2" }, "isTopLevel" : false } ] } }'::bson)
+(11 rows)
+
+-- now test unique constraint checks
+SELECT documentdb_api_internal.create_indexes_non_concurrently('mkey_db', '{ "createIndexes": "mkey_coll_unique", "indexes": [ { "key": { "a.b": 1, "a.c": 1 }, "name": "a_b_c_1", "enableOrderedIndex": 1, "unique": true } ] }');
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+set documentdb.enableUniqueCompositeReducedCorrelatedTerms to off;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('mkey_db', '{ "createIndexes": "mkey_coll_unique_base", "indexes": [ { "key": { "a.b": 1, "a.c": 1 }, "name": "a_b_c_1", "enableOrderedIndex": 1, "unique": true } ] }');
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+set documentdb.enableUniqueCompositeReducedCorrelatedTerms to on;
+\d documentdb_data.documents_502
+           Table "documentdb_data.documents_502"
+     Column      |  Type  | Collation | Nullable | Default 
+-----------------+--------+-----------+----------+---------
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
+Indexes:
+    "collection_pk_502" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_504" EXCLUDE USING documentdb_rum (document documentdb_api_internal.bson_rum_composite_path_ops (pathspec='[ "a.b", "a.c" ]', tl='2691', rct='true') WITH =?=, documentdb_api_internal.generate_unique_shard_document(document, shard_key_value, '{ "a.b" : { "$numberInt" : "1" }, "a.c" : { "$numberInt" : "1" } }'::bson, false, true) documentdb_api_internal.bson_rum_unique_shard_path_ops (cmp='true') WITH OPERATOR(documentdb_api_internal.=#=))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '502'::bigint)
+
+\d documentdb_data.documents_503
+           Table "documentdb_data.documents_503"
+     Column      |  Type  | Collation | Nullable | Default 
+-----------------+--------+-----------+----------+---------
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
+Indexes:
+    "collection_pk_503" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_506" EXCLUDE USING documentdb_rum (document documentdb_api_internal.bson_rum_composite_path_ops (pathspec='[ "a.b", "a.c" ]', tl='2691') WITH =?=, documentdb_api_internal.generate_unique_shard_document(document, shard_key_value, '{ "a.b" : { "$numberInt" : "1" }, "a.c" : { "$numberInt" : "1" } }'::bson, false, true) documentdb_api_internal.bson_rum_unique_shard_path_ops (cmp='true') WITH OPERATOR(documentdb_api_internal.=#=))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '503'::bigint)
+
+-- baseline doc.
+SELECT documentdb_api.insert_one('mkey_db', 'mkey_coll_unique', '{ "_id": 1, "a": [ { "b": 1, "c": 1 }, { "b": 2, "c": 2 } ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('mkey_db', 'mkey_coll_unique_base', '{ "_id": 1, "a": [ { "b": 1, "c": 1 }, { "b": 2, "c": 2 } ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- this does not cause unique violation but does for the base
+SELECT documentdb_api.insert_one('mkey_db', 'mkey_coll_unique', '{ "_id": 2, "a": [ { "b": 1, "c": 2 }, { "b": 3 } ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('mkey_db', 'mkey_coll_unique_base', '{ "_id": 2, "a": [ { "b": 1, "c": 2 }, { "b": 3 } ] }');
+                                                                                                                         insert_one                                                                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'a_b_c_1'" } ] }
+(1 row)
+
+-- now it doesn't violate the base
+SELECT documentdb_api.insert_one('mkey_db', 'mkey_coll_unique_base', '{ "_id": 2, "a": [ { "b": 1, "c": 99 }, { "b": 3 } ] }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- this will however cause one for both
+SELECT documentdb_api.insert_one('mkey_db', 'mkey_coll_unique', '{ "_id": 3, "a": [ { "b": 3 }, { "b": 4 } ] }');
+                                                                                                                         insert_one                                                                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'a_b_c_1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('mkey_db', 'mkey_coll_unique_base', '{ "_id": 3, "a": [ { "b": 3 }, { "b": 4 } ] }');
+                                                                                                                         insert_one                                                                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'a_b_c_1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('mkey_db', 'mkey_coll_unique', '{ "_id": 4, "a": { "b": 4 } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('mkey_db', 'mkey_coll_unique_base', '{ "_id": 4, "a": { "b": 4 } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- exact match does cause unique violation for both
+SELECT documentdb_api.insert_one('mkey_db', 'mkey_coll_unique', '{ "_id": 5, "a": [ { "b": 4, "c": 2 }, { "b": 1, "c": [ 1, 3 ] } ] }');
+                                                                                                                         insert_one                                                                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'a_b_c_1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('mkey_db', 'mkey_coll_unique', '{ "_id": 6, "a": { "b": 1, "c": 1 } }');
+                                                                                                                         insert_one                                                                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'a_b_c_1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('mkey_db', 'mkey_coll_unique_base', '{ "_id": 5, "a": [ { "b": 4, "c": 2 }, { "b": 1, "c": [ 1, 3 ] } ] }');
+                                                                                                                         insert_one                                                                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'a_b_c_1'" } ] }
+(1 row)
+
+SELECT documentdb_api.insert_one('mkey_db', 'mkey_coll_unique_base', '{ "_id": 6, "a": { "b": 1, "c": 1 } }');
+                                                                                                                         insert_one                                                                                                                         
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "319029277" }, "errmsg" : "Duplicate key violation on the requested collection: Index 'a_b_c_1'" } ] }
+(1 row)
+

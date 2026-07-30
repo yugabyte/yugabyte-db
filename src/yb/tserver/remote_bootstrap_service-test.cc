@@ -30,6 +30,7 @@
 // under the License.
 //
 
+#include <future>
 #include <limits>
 
 #include "yb/util/flags.h"
@@ -42,6 +43,8 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 
+#include "yb/gutil/strings/substitute.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_header.pb.h"
@@ -50,9 +53,11 @@
 #include "yb/tserver/remote_bootstrap-test-base.h"
 #include "yb/tserver/remote_bootstrap.pb.h"
 #include "yb/tserver/remote_bootstrap.proxy.h"
+#include "yb/tserver/remote_bootstrap_session.h"
 
 #include "yb/util/crc.h"
 #include "yb/util/env_util.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
@@ -65,6 +70,11 @@ using std::vector;
 
 DECLARE_uint64(remote_bootstrap_idle_timeout_ms);
 DECLARE_uint64(remote_bootstrap_timeout_poll_period_ms);
+
+DECLARE_int32(remote_bootstrap_begin_session_timeout_ms);
+DECLARE_int32(rbs_init_max_number_of_retries);
+
+DECLARE_bool(TEST_pause_create_checkpoint);
 
 namespace yb {
 namespace tserver {
@@ -151,6 +161,29 @@ class RemoteBootstrapServiceTest : public RemoteBootstrapTest {
         remote_bootstrap_proxy_->FetchData(req, resp, controller), controller);
   }
 
+  Status DoRegisterLogAnchor(const string& owner_info, int64_t log_index,
+                             RegisterLogAnchorResponsePB* resp, RpcController* controller) {
+    controller->set_timeout(MonoDelta::FromSeconds(1.0));
+    RegisterLogAnchorRequestPB req;
+    req.set_owner_info(owner_info);
+    req.set_tablet_id(GetTabletId());
+    req.mutable_op_id()->set_term(-1);
+    req.mutable_op_id()->set_index(log_index);
+    return UnwindRemoteError(
+        remote_bootstrap_proxy_->RegisterLogAnchor(req, resp, controller), controller);
+  }
+
+  Status DoUpdateLogAnchor(const string& owner_info, int64_t log_index,
+                            UpdateLogAnchorResponsePB* resp, RpcController* controller) {
+    controller->set_timeout(MonoDelta::FromSeconds(1.0));
+    UpdateLogAnchorRequestPB req;
+    req.set_owner_info(owner_info);
+    req.mutable_op_id()->set_term(-1);
+    req.mutable_op_id()->set_index(log_index);
+    return UnwindRemoteError(
+        remote_bootstrap_proxy_->UpdateLogAnchor(req, resp, controller), controller);
+  }
+
   Status DoEndRemoteBootstrapSession(const string& session_id, bool is_success,
                                      const Status* error_msg,
                                      EndRemoteBootstrapSessionResponsePB* resp,
@@ -207,6 +240,88 @@ class RemoteBootstrapServiceTest : public RemoteBootstrapTest {
 
   std::unique_ptr<RemoteBootstrapServiceProxy> remote_bootstrap_proxy_;
 };
+
+// When a destination retries an RBS against the same source after a failed/abandoned attempt,
+// BeginRemoteBootstrapSession on the source produces a new session id and must evict the prior
+// session for the same (requestor_uuid, tablet_id). Otherwise the prior RemoteBootstrapSession
+// keeps its source-side log anchor (RemoteBootstrapSession::log_anchor_) registered on the source
+// tablet's LogAnchorRegistry, dragging GetEarliestNeededLogIndex down and defeating the
+// GC-eligible boundary InitBootstrapSession now computes (D52827).
+TEST_F(RemoteBootstrapServiceTest, TestPruneStaleRemoteBootstrapSessions) {
+  string old_session_id;
+  ASSERT_OK(DoBeginValidRemoteBootstrapSession(&old_session_id));
+
+  // MonoTime::ToString uses millisecond precision (%.3fs), so two BeginRBS calls fired in the
+  // same millisecond would collide on session_id and skip the prune path. A short sleep is
+  // sufficient to guarantee distinct suffixes.
+  SleepFor(MonoDelta::FromMilliseconds(2));
+
+  string new_session_id;
+  ASSERT_OK(DoBeginValidRemoteBootstrapSession(&new_session_id));
+  ASSERT_NE(old_session_id, new_session_id)
+      << "BeginRBS produced identical session ids; test cannot distinguish old from new";
+
+  // The old session must have been pruned synchronously by the second BeginRBS. Confirm it via
+  // EndRemoteBootstrapSession surfacing NO_SESSION on the now-evicted id.
+  EndRemoteBootstrapSessionResponsePB end_old_resp;
+  RpcController end_old_ctl;
+  Status old_end_status = DoEndRemoteBootstrapSession(
+      old_session_id, /*is_success=*/false, /*error_msg=*/nullptr, &end_old_resp, &end_old_ctl);
+  ASSERT_REMOTE_ERROR(
+      old_end_status, end_old_ctl.error_response(), RemoteBootstrapErrorPB::NO_SESSION,
+      STATUS(NotFound, "").CodeAsString());
+
+  // The new session is the only survivor; EndRemoteBootstrapSession on it succeeds.
+  EndRemoteBootstrapSessionResponsePB end_new_resp;
+  RpcController end_new_ctl;
+  ASSERT_OK(DoEndRemoteBootstrapSession(
+      new_session_id, /*is_success=*/false, /*error_msg=*/nullptr, &end_new_resp, &end_new_ctl));
+}
+
+// Verifies the leader-side prune of log_anchors_map_ also fires from the BeginRBS path, not just
+// from RegisterLogAnchor. Without this, the corner case where a prior RBS attempt picked a
+// follower (S != L), registered a remote anchor on the leader, then failed, would leave that
+// anchor on the leader. The destination's retry, choosing the leader directly (S == L), never
+// sends a RegisterLogAnchor RPC, so the existing prune would never fire.
+TEST_F(RemoteBootstrapServiceTest, TestBeginRBSPrunesStaleRemoteLogAnchor) {
+  auto log_reader = ASSERT_RESULT(tablet_peer_->log()->GetLogReader());
+  int64_t min_index = log_reader->GetMinReplicateIndex();
+  if (min_index < 0) {
+    min_index = tablet_peer_->log()->GetMinReplicateIndex();
+  }
+  ASSERT_GE(min_index, 0);
+
+  const string& requestor = GetLocalUUID();
+  const string& tablet_id = GetTabletId();
+  // Manually register a remote log anchor under the (requestor, tablet) tuple, mimicking what
+  // an S != L source's RemoteBootstrapAnchorClient would have done on the leader before a prior
+  // RBS attempt aborted.
+  const string stale_owner =
+      strings::Substitute("$0-$1-$2", requestor, tablet_id, "1000.000s");
+  RegisterLogAnchorResponsePB reg_resp;
+  RpcController reg_ctl;
+  ASSERT_OK(DoRegisterLogAnchor(stale_owner, min_index, &reg_resp, &reg_ctl));
+
+  // Now retry RBS, this time with the leader as the source. CreateRemoteSession should prune
+  // the stale leader-side anchor even though no RegisterLogAnchor RPC arrives.
+  string new_session_id;
+  ASSERT_OK(DoBeginValidRemoteBootstrapSession(&new_session_id));
+
+  // Confirm the stale anchor is gone: UpdateLogAnchor on the old owner_info now surfaces
+  // NO_SESSION on the now-evicted entry.
+  UpdateLogAnchorResponsePB upd_resp;
+  RpcController upd_ctl;
+  Status stale_update_status = DoUpdateLogAnchor(stale_owner, min_index, &upd_resp, &upd_ctl);
+  ASSERT_REMOTE_ERROR(
+      stale_update_status, upd_ctl.error_response(), RemoteBootstrapErrorPB::NO_SESSION,
+      STATUS(IllegalState, "").CodeAsString());
+
+  // The new session is the only survivor.
+  EndRemoteBootstrapSessionResponsePB end_resp;
+  RpcController end_ctl;
+  ASSERT_OK(DoEndRemoteBootstrapSession(
+      new_session_id, /*is_success=*/false, /*error_msg=*/nullptr, &end_resp, &end_ctl));
+}
 
 // Test beginning and ending a remote bootstrap session.
 TEST_F(RemoteBootstrapServiceTest, TestSimpleBeginEndSession) {
@@ -358,7 +473,8 @@ TEST_F(RemoteBootstrapServiceTest, TestFetchLog) {
 
   // Fetch the local data.
   log::SegmentSequence local_segments;
-  ASSERT_OK(tablet_peer_->log()->GetLogReader()->GetSegmentsSnapshot(&local_segments));
+  ASSERT_OK(ASSERT_RESULT(tablet_peer_->log()->GetLogReader())
+      ->GetSegmentsSnapshot(&local_segments));
 
   uint64_t first_seg_seqno = (*local_segments.begin())->header().sequence_number();
 
@@ -400,6 +516,105 @@ TEST_F(RemoteBootstrapServiceTest, TestSessionTimeout) {
   } while (MonoTime::Now().GetDeltaSince(start_time).ToSeconds() < 10);
 
   ASSERT_FALSE(resp.session_is_active()) << "Remote bootstrap session did not time out!";
+}
+
+// Test that when a BeginRemoteBootstrapSession RPC holds the checkpoint lock,
+// a subsequent BeginRemoteBootstrapSession RPC call fails to acquire the lock.
+// This tests the RPC-level behavior when checkpoint lock contention occurs.
+TEST_F(RemoteBootstrapServiceTest, TestBeginRBSCheckpointLockContention) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_create_checkpoint) = true;
+
+  // Set up log waiter to detect when first RPC acquires the lock and starts sleeping.
+  StringWaiterLogSink log_waiter("Pausing due to flag TEST_pause_create_checkpoint");
+
+  // Start first RPC call in a separate thread - it will acquire the lock and sleep.
+  // Use a longer timeout so the RPC doesn't timeout before the sleep completes.
+  auto first_rpc_future = std::async(std::launch::async, [this]() {
+    BeginRemoteBootstrapSessionResponsePB resp;
+    RpcController controller;
+    controller.set_timeout(MonoDelta::FromSeconds(30));
+    BeginRemoteBootstrapSessionRequestPB req;
+    req.set_tablet_id(GetTabletId());
+    req.set_requestor_uuid(GetLocalUUID());
+    return UnwindRemoteError(
+        remote_bootstrap_proxy_->BeginRemoteBootstrapSession(req, &resp, &controller), &controller);
+  });
+
+  // Wait for first RPC to acquire the lock and start sleeping.
+  ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(10)));
+
+  // Now try to make a second RPC call - it should fail to acquire the lock with try_lock.
+  BeginRemoteBootstrapSessionResponsePB resp;
+  RpcController controller;
+  Status second_rpc_status = DoBeginRemoteBootstrapSession(
+      GetTabletId(), GetLocalUUID(), &resp, &controller);
+
+  // Verify the second RPC failed with RemoteError status.
+  ASSERT_TRUE(second_rpc_status.IsRemoteError())
+      << "Expected RemoteError status, got: " << second_rpc_status;
+  ASSERT_STR_CONTAINS(second_rpc_status.ToString(), "Internal error");
+  ASSERT_STR_CONTAINS(second_rpc_status.ToString(),
+                      "Unable to acquire checkpoint lock");
+
+  // Release the lock and wait for first RPC to complete.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_create_checkpoint) = false;
+  Status first_rpc_status = first_rpc_future.get();
+  ASSERT_OK(first_rpc_status);
+}
+
+// Test that when a BeginRemoteBootstrapSession RPC times out while holding
+// the checkpoint lock, the RPC returns a timeout status.
+// This simulates the scenario where:
+// 1. First RPC acquires checkpoint lock and takes longer than RPC timeout (sleeps)
+// 2. Client times out on first RPC
+// 3. Second RPC sent now fails to acquire the lock and returns RemoteError
+//    if sleep of step 1 is still in progress (lock is still held).
+// 4. Once the sleep of step 1 completes, the second RPC should succeed.
+TEST_F(RemoteBootstrapServiceTest, TestBeginRBSRPCTimeoutWithCheckpointLock) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_create_checkpoint) = true;
+
+  const auto kRPCTimeoutSec = 5;
+
+  // Start first RPC call - it will acquire the lock and sleep indefinitely,
+  // but the RPC timeout is 5 seconds, so it should timeout.
+  BeginRemoteBootstrapSessionResponsePB resp;
+  RpcController controller;
+  controller.set_timeout(MonoDelta::FromSeconds(kRPCTimeoutSec));
+  Status first_rpc_status = DoBeginRemoteBootstrapSession(
+      GetTabletId(), GetLocalUUID(), &resp, &controller);
+
+  // Verify the first RPC timed out.
+  LOG(INFO) << "First RPC status: " << first_rpc_status.ToString();
+  ASSERT_TRUE(first_rpc_status.IsTimedOut() || first_rpc_status.IsRemoteError())
+      << "Expected TimedOut or RemoteError status, got: " << first_rpc_status;
+  ASSERT_STR_CONTAINS(first_rpc_status.ToString(), "Timed out");
+
+  // The server-side thread is still holding the lock. A second RPC should fail with contention.
+  BeginRemoteBootstrapSessionResponsePB resp2;
+  RpcController controller2;
+  Status second_rpc_status = DoBeginRemoteBootstrapSession(
+      GetTabletId(), GetLocalUUID(), &resp2, &controller2);
+
+  LOG(INFO) << "Second RPC status after first RPC timed out: " << second_rpc_status.ToString();
+  ASSERT_TRUE(second_rpc_status.IsRemoteError())
+      << "Expected RemoteError, got: " << second_rpc_status;
+  ASSERT_STR_CONTAINS(second_rpc_status.ToString(), "Internal error");
+  ASSERT_STR_CONTAINS(second_rpc_status.ToString(), "Unable to acquire checkpoint lock");
+
+  // Set up a log waiter to detect when the checkpoint is created (=> lock released).
+  StringWaiterLogSink log_waiter("Checkpoint created in");
+
+  // Reset the flag to unblock the server-side thread and let it create the checkpoint.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_create_checkpoint) = false;
+  ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(10)));
+
+  // Now a third RPC should succeed.
+  BeginRemoteBootstrapSessionResponsePB resp3;
+  RpcController controller3;
+  Status third_rpc_status = DoBeginRemoteBootstrapSession(
+      GetTabletId(), GetLocalUUID(), &resp3, &controller3);
+  LOG(INFO) << "Third RPC status: " << third_rpc_status.ToString();
+  ASSERT_OK(third_rpc_status);
 }
 
 } // namespace tserver

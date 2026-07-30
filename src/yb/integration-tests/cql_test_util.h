@@ -17,6 +17,7 @@
 
 #include <string>
 
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
@@ -357,7 +358,7 @@ inline bool operator==(const CassandraJson& lhs, const CassandraJson& rhs) {
 }
 
 extern const MonoDelta kCassandraTimeOut;
-extern const std::string kCqlTestKeyspace;
+inline constexpr const char* kCqlTestKeyspace = "test";
 
 Result<CassandraSession> EstablishSession(CppCassandraDriver* driver);
 

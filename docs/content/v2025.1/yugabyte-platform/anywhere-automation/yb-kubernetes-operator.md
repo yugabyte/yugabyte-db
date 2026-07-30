@@ -414,9 +414,9 @@ Set up scheduled backups as follows:
 
 ##### Example
 
-This example decribes how to create and delete scheduled backups, and assumes you have the following:
+This example describes how to create and delete scheduled backups, and assumes you have the following:
 
-- An existing YugabyteDB Anywhwere universe deployed using the YugabyteDB Kubernetes Operator.
+- An existing YugabyteDB Anywhere universe deployed using the YugabyteDB Kubernetes Operator.
 - A configured storage location for your backups.
 
 Use the following CRD to create a scheduled backup:
@@ -528,9 +528,9 @@ Set up incremental backups as follows:
 
 ##### Example
 
-This example decribes how to create and delete incremental backups, and assumes you have the following:
+This example describes how to create and delete incremental backups, and assumes you have the following:
 
-- An existing YugabyteDB Anywhwere universe deployed using the YugabyteDB Kubernetes Operator.
+- An existing YugabyteDB Anywhere universe deployed using the YugabyteDB Kubernetes Operator.
 - A configured storage location for your backups. You must have an existing base backup (either a full backup or a previous incremental backup) to create the new incremental backup.
 
 Use the following CRD to create an incremental backup:

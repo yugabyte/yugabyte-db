@@ -1,0 +1,26 @@
+# src/test/regress/yb_planner_estimates_schedule
+#
+####################################################################################################
+# Testsuite for tests covering planner/optimizer estimates.
+####################################################################################################
+# Dependency for `yb.orig.cardinality_estimate_*`
+test: yb.orig.cardinality_estimate_setup
+
+test: yb.orig.cardinality_estimate_modes
+test: yb.orig.cardinality_estimate_consistency
+
+# Dependency for the seeknext estimate tests
+test: yb.orig.seeknext_estimate_setup
+
+test: yb.orig.seeknext_estimate
+
+# Shared dependency for the serial and parallel roundtrip estimate tests
+test: yb.orig.roundtrip_estimate_setup
+
+test: yb.orig.roundtrip_estimate
+test: yb.orig.roundtrip_estimate_parallel
+
+# Dependency for the BNL cost parity tests
+test: yb.orig.bnl_cost_parity_setup
+
+test: yb.orig.bnl_cost_parity

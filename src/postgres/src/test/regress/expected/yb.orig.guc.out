@@ -344,11 +344,95 @@ SHOW session_replication_role;
  origin
 (1 row)
 
+SHOW backtrace_functions;
+ backtrace_functions 
+---------------------
+ 
+(1 row)
+
+SET backtrace_functions TO 'SearchCatCacheMiss';
+SHOW backtrace_functions;
+ backtrace_functions 
+---------------------
+ SearchCatCacheMiss
+(1 row)
+
+RESET backtrace_functions;
+SHOW backtrace_functions;
+ backtrace_functions 
+---------------------
+ 
+(1 row)
+
 -- test `yb_db_admin` role cannot set and reset other PGC_SUSET variables
 SET track_functions TO TRACK_FUNC_PL;
 ERROR:  permission denied to set parameter "track_functions"
 RESET track_functions;
 ERROR:  permission denied to set parameter "track_functions"
+-- test a non-privileged role cannot set backtrace_functions
+RESET SESSION AUTHORIZATION;
+CREATE ROLE yb_backtrace_test_regular_user;
+SET SESSION AUTHORIZATION yb_backtrace_test_regular_user;
+SET backtrace_functions TO 'SearchCatCacheMiss';
+ERROR:  permission denied to set parameter "backtrace_functions"
+RESET SESSION AUTHORIZATION;
+DROP ROLE yb_backtrace_test_regular_user;
+-- Test the parsers for yb_extra_commands_to_retry and
+-- yb_extra_commands_to_retry_in_proc: case-insensitivity, whitespace
+-- tolerance, multi-word tags, the unknown-tag error path, and the
+-- COPY / COPY FROM / ANALYZE rejection.
+SET yb_extra_commands_to_retry = 'alter table';
+SHOW yb_extra_commands_to_retry;
+ yb_extra_commands_to_retry 
+----------------------------
+ alter table
+(1 row)
+
+SET yb_extra_commands_to_retry = '  alter table  ,  truncate table  ';
+SHOW yb_extra_commands_to_retry;
+     yb_extra_commands_to_retry     
+------------------------------------
+   alter table  ,  truncate table  
+(1 row)
+
+SET yb_extra_commands_to_retry = '';
+SHOW yb_extra_commands_to_retry;
+ yb_extra_commands_to_retry 
+----------------------------
+ 
+(1 row)
+
+SET yb_extra_commands_to_retry_in_proc = 'LOCK TABLE, CREATE INDEX';
+SHOW yb_extra_commands_to_retry_in_proc;
+ yb_extra_commands_to_retry_in_proc 
+------------------------------------
+ LOCK TABLE, CREATE INDEX
+(1 row)
+
+SET yb_extra_commands_to_retry_in_proc = '';
+SHOW yb_extra_commands_to_retry_in_proc;
+ yb_extra_commands_to_retry_in_proc 
+------------------------------------
+ 
+(1 row)
+
+SET yb_extra_commands_to_retry = 'NONSENSE TAG';                -- ERROR
+ERROR:  invalid value for parameter "yb_extra_commands_to_retry": "NONSENSE TAG"
+DETAIL:  Unrecognized command tag: "NONSENSE TAG".
+SET yb_extra_commands_to_retry_in_proc = 'select, NOPE';        -- ERROR
+ERROR:  invalid value for parameter "yb_extra_commands_to_retry_in_proc": "select, NOPE"
+DETAIL:  Unrecognized command tag: "NOPE".
+SET yb_extra_commands_to_retry = 'COPY';                        -- ERROR
+ERROR:  invalid value for parameter "yb_extra_commands_to_retry": "COPY"
+DETAIL:  "COPY" cannot be retried (COPY may double-apply rows; ANALYZE errors out on retry).
+SET yb_extra_commands_to_retry_in_proc = 'ANALYZE';             -- ERROR
+ERROR:  invalid value for parameter "yb_extra_commands_to_retry_in_proc": "ANALYZE"
+DETAIL:  "ANALYZE" cannot be retried (COPY may double-apply rows; ANALYZE errors out on retry).
+SET yb_extra_commands_to_retry = 'COPY FROM, ALTER TABLE';      -- ERROR
+ERROR:  invalid value for parameter "yb_extra_commands_to_retry": "COPY FROM, ALTER TABLE"
+DETAIL:  "COPY FROM" cannot be retried (COPY may double-apply rows; ANALYZE errors out on retry).
+RESET yb_extra_commands_to_retry;
+RESET yb_extra_commands_to_retry_in_proc;
 -- cleanup
 RESET foo;
 ERROR:  unrecognized configuration parameter "foo"

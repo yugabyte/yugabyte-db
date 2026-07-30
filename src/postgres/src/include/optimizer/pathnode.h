@@ -26,6 +26,8 @@ extern int	compare_path_costs(Path *path1, Path *path2,
 extern int	compare_fractional_path_costs(Path *path1, Path *path2,
 										  double fraction);
 extern void set_cheapest(RelOptInfo *parent_rel);
+extern bool yb_path_contains_gather(Path *path);
+extern bool yb_path_contains_parallel_hash(Path *path);
 extern void add_path(RelOptInfo *parent_rel, Path *new_path);
 extern bool add_path_precheck(RelOptInfo *parent_rel,
 							  Cost startup_cost, Cost total_cost,
@@ -50,7 +52,7 @@ extern IndexPath *create_index_path(PlannerInfo *root,
 									Relids required_outer,
 									double loop_count,
 									bool partial_path,
-									List *yb_saop_merge_saop_cols);
+									List *yb_merge_scan_saop_cols);
 extern BitmapHeapPath *create_bitmap_heap_path(PlannerInfo *root,
 											   RelOptInfo *rel,
 											   Path *bitmapqual,

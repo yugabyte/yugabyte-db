@@ -22,6 +22,8 @@ Use the EXPLAIN statement to show the execution plan for a statement. If the ANA
 The EXPLAIN statement is designed to work primarily for DML statements (for example, SELECT, INSERT, and so on). DDL statements are _not_ explainable and in cases where DDL and DML are combined, the EXPLAIN statement shows only an approximation. For example, EXPLAIN on `SELECT * FROM <TABLE-1> INTO <TABLE-2>` provides only an approximation as INTO is a DDL statement.
 {{</ warning >}}
 
+If you are using bucket-based scan optimizations, EXPLAIN output includes additional fields. Refer to [Bucket-based indexes](../../../../../develop/data-modeling/bucket-based-index-ysql/).
+
 ## Syntax
 
 {{%ebnf%}}
@@ -60,6 +62,14 @@ Display low-level runtime metrics related to [Cache and storage subsystems](../.
 ### FORMAT
 
 Define the desired output format, choosing from TEXT, XML, JSON, or YAML. Non-text output retains the same information as the text format, but is more programmatically accessible (default: `TEXT`).
+
+### QUERYID
+
+Output the query ID (`EXPLAIN (QUERYID ON)`). Use this ID to match queries in [Query plan management](../../../../../launch-and-manage/monitor-and-alert/query-tuning/query-plan-manage/), to see if execution time has recently increased, and detect plan regressions. Default is OFF.
+
+### PLANID
+
+Output the plan ID (`EXPLAIN (PLANID ON)`). Use this ID to match plans in [Query plan management](../../../../../launch-and-manage/monitor-and-alert/query-tuning/query-plan-manage/) to see if this is a new plan or if its execution time has recently increased, and detect plan regressions. Default is OFF.
 
 ### SUMMARY
 

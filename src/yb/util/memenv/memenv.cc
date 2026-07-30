@@ -84,50 +84,6 @@ class RandomAccessFileImpl : public RandomAccessFile {
   const std::shared_ptr<InMemoryFileState> file_;
 };
 
-class WritableFileImpl : public WritableFile {
- public:
-  explicit WritableFileImpl(const std::shared_ptr<InMemoryFileState>& file)
-    : file_(file) {
-  }
-
-  ~WritableFileImpl() {
-  }
-
-  Status PreAllocate(uint64_t size) override {
-    return file_->PreAllocate(size);
-  }
-
-  Status Append(const Slice& data) override {
-    return file_->Append(data);
-  }
-
-  // This is a dummy implementation that simply serially appends all
-  // slices using regular I/O.
-  Status AppendSlices(const Slice* slices, size_t num) override {
-    for (const auto* end = slices + num; slices != end; ++slices) {
-      RETURN_NOT_OK(file_->Append(*slices));
-    }
-    return Status::OK();
-  }
-
-  Status Close() override { return Status::OK(); }
-
-  Status Flush(FlushMode mode) override { return Status::OK(); }
-
-  Status Sync() override { return Status::OK(); }
-
-  uint64_t Size() const override { return file_->Size(); }
-
-  Result<uint64_t> SizeOnDisk() const override { return file_->Size(); }
-
-  const string& filename() const override {
-    return file_->filename();
-  }
-
- private:
-  const std::shared_ptr<InMemoryFileState> file_;
-};
-
 class RWFileImpl : public RWFile {
  public:
   explicit RWFileImpl(const std::shared_ptr<InMemoryFileState>& file)
@@ -220,7 +176,7 @@ class InMemoryEnv : public EnvWrapper {
   virtual Status NewWritableFile(const WritableFileOptions& opts,
                                  const std::string& fname,
                                  std::unique_ptr<WritableFile>* result) override {
-    std::unique_ptr<WritableFileImpl> wf;
+    std::unique_ptr<InMemoryWritableFile> wf;
     RETURN_NOT_OK(CreateAndRegisterNewFile(fname, opts.mode, &wf));
     result->reset(wf.release());
     return Status::OK();
@@ -262,7 +218,7 @@ class InMemoryEnv : public EnvWrapper {
 
       MutexLock lock(mutex_);
       if (!ContainsKey(file_map_, path)) {
-        CreateAndRegisterNewWritableFileUnlocked<WritableFile, WritableFileImpl>(path, result);
+        CreateAndRegisterNewWritableFileUnlocked<WritableFile, InMemoryWritableFile>(path, result);
         *created_filename = path;
         return Status::OK();
       }

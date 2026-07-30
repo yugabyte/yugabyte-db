@@ -132,6 +132,7 @@ struct TableInfo {
             Primary primary,
             std::string table_id,
             std::string namespace_name,
+            NamespaceId namespace_id,
             std::string table_name,
             TableType table_type,
             const Schema& schema,
@@ -211,6 +212,23 @@ struct TableInfo {
   void CompleteInit();
 };
 
+// In-memory representation of one TierPathPB: maps a RocksDB path_id to an absolute directory on
+// this node for a given storage tier.
+struct TierPathInfo {
+  uint32_t    path_id = 0;
+  std::string tier;
+  std::string path;
+
+  bool operator==(const TierPathInfo& o) const {
+    return path_id == o.path_id && tier == o.tier && path == o.path;
+  }
+};
+
+// A tablet's per-tier rocksdb dir has the form <data_root>/rocksdb/table-X/tablet-Y (3 path
+// components under the data root that owns the disk/tier. Given such
+// a path, returns the data root directory (the --fs_data_dirs entry it lives under).
+std::string GetDataRootFromTabletDir(const std::string& tablet_rocksdb_dir);
+
 // Describes KV-store. Single KV-store is backed by one or two RocksDB instances, depending on
 // whether distributed transactions are enabled for the table. KV-store for sys catalog could
 // contain multiple tables.
@@ -232,7 +250,7 @@ struct KvStoreInfo {
       const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
       dockv::OverwriteSchemaPacking overwrite);
 
-  Status MergeTableSchemaPackings(
+  Status RestoreMissingValuesAndMergeTableSchemaPackings(
       const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
       dockv::OverwriteSchemaPacking overwrite);
 
@@ -258,6 +276,15 @@ struct KvStoreInfo {
   // tables with distributed transactions enabled an additional RocksDB is created in directory at
   // `rocksdb_dir + kIntentsDBSuffix` path.
   std::string rocksdb_dir;
+
+  // Tiered storage directory pins for every disk configured on this node, ordered by path_id.
+  // Entry 0 is always the home disk (path == rocksdb_dir). Every other disk on the node
+  // gets its own slot. This is necessary because it is not possible to determine
+  // which disk might host the data in case of a tier migration.
+  // DBOptions::db_paths is fixed at DB::Open and cannot be extended later so all
+  // disks must be pre-registered to allow a tier migration to place SSTs on any disk without
+  // ever reopening the DB. Persisted in the superblock at tablet creation.
+  std::vector<TierPathInfo> tier_paths;
 
   // Optional inclusive lower bound and exclusive upper bound for keys served by this KV-store.
   // See docdb::KeyBounds.
@@ -371,7 +398,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   [[deprecated]]
   SchemaPtr schema(const TableId& table_id = "") const;
 
-  std::shared_ptr<qlexpr::IndexMap> index_map(const TableId& table_id = "") const;
+  Result<std::shared_ptr<qlexpr::IndexMap>> index_map(const TableId& table_id = "") const;
 
   SchemaVersion primary_table_schema_version() const;
 
@@ -404,6 +431,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
       const TableId& table_id = "") const;
 
   const std::string& rocksdb_dir() const { return kv_store_.rocksdb_dir; }
+  const std::vector<TierPathInfo>& tier_paths() const { return kv_store_.tier_paths; }
+
+  void TEST_SetTierPaths(std::vector<TierPathInfo> paths) EXCLUDES(data_mutex_);
+
   std::string intents_rocksdb_dir() const;
   std::string snapshots_dir() const;
   std::string vector_index_dir(const PgVectorIdxOptionsPB& vector_index_options) const;
@@ -449,7 +480,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   bool is_under_cdc_sdk_replication() const;
 
-  Result<bool> SetAllCDCRetentionBarriers(
+  Status SetAllCDCRetentionBarriers(
       int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, HybridTime cdc_sdk_history_cutoff,
       bool require_history_cutoff, bool initial_retention_barrier);
 
@@ -552,6 +583,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   Result<TableInfoPtr> AddTable(
       const std::string& table_id,
       const std::string& namespace_name,
+      const NamespaceId& namespace_id,
       const std::string& table_name,
       const TableType table_type,
       const Schema& schema,

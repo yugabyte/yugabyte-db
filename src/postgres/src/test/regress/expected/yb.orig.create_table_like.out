@@ -78,6 +78,7 @@ CREATE INDEX ON testlikesplitat(a ASC) SPLIT AT VALUES ((10), (20));
 Indexes:
     "testlikesplitat_pkey" PRIMARY KEY, lsm (a ASC, b ASC)
     "testlikesplitat_a_idx" lsm (a ASC)
+Options: yb_presplit=((-100, 'bar'), (250, 'foo'))
 
 SELECT yb_get_range_split_clause('testlikesplitat'::regclass);
            yb_get_range_split_clause           
@@ -104,6 +105,7 @@ CREATE INDEX ON testlikesplitinto(a) SPLIT INTO 5 TABLETS;
 Indexes:
     "testlikesplitinto_pkey" PRIMARY KEY, lsm ((a, b) HASH)
     "testlikesplitinto_a_idx" lsm (a HASH)
+Options: yb_presplit=2
 
 SELECT num_tablets, num_hash_key_columns FROM yb_table_properties('testlikesplitinto'::regclass);
  num_tablets | num_hash_key_columns 

@@ -1,0 +1,69 @@
+name: Build / Regression
+
+on:
+  push:
+    branches: [ "PG15" ]
+  pull_request:
+    branches: [ "PG15" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get latest commit id of PostgreSQL 15
+        run: |
+          echo "PG_COMMIT_HASH=$(git ls-remote https://git.postgresql.org/git/postgresql.git refs/heads/REL_15_STABLE | awk '{print $1}')" >> $GITHUB_ENV
+
+      - name: Cache PostgreSQL 15
+        uses: actions/cache@v3
+        id: pg15cache
+        with:
+          path: ~/pg15
+          key: ${{ runner.os }}-v1-pg15-${{ env.PG_COMMIT_HASH }}
+
+      - name: Install necessary dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libreadline-dev zlib1g-dev flex bison
+
+      - name: Install PostgreSQL 15 and some extensions
+        if: steps.pg15cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch REL_15_STABLE https://git.postgresql.org/git/postgresql.git ~/pg15source
+          cd ~/pg15source
+          ./configure --prefix=$HOME/pg15 CFLAGS="-std=gnu99 -ggdb -O0" --enable-cassert
+          make install -j$(nproc) > /dev/null
+          cd contrib
+          cd fuzzystrmatch
+          make PG_CONFIG=$HOME/pg15/bin/pg_config install -j$(nproc) > /dev/null
+          cd ../pg_trgm
+          make PG_CONFIG=$HOME/pg15/bin/pg_config install -j$(nproc) > /dev/null
+
+      - uses: actions/checkout@v3
+
+      - name: Build AGE
+        id: build
+        run: |
+          make PG_CONFIG=$HOME/pg15/bin/pg_config install -j$(nproc)
+        
+      - name: Pull and build pgvector
+        id: pgvector
+        run: |
+          git clone https://github.com/pgvector/pgvector.git
+          cd pgvector
+          make PG_CONFIG=$HOME/pg15/bin/pg_config install -j$(nproc) > /dev/null
+
+      - name: Regression tests
+        id: regression_tests
+        run: |
+          make PG_CONFIG=$HOME/pg15/bin/pg_config installcheck EXTRA_TESTS="pgvector fuzzystrmatch pg_trgm"
+        continue-on-error: true
+
+      - name: Dump regression test errors
+        if: steps.regression_tests.outcome != 'success'
+        run: |
+          echo "Dump section begin."
+          cat $HOME/work/age/age/regress/regression.diffs
+          echo "Dump section end."
+          exit 1

@@ -405,6 +405,29 @@ kiwi_fe_write_set_client_id(machine_msg_t *msg, int arg)
 	return msg;
 }
 
+/*
+ * Write a packet to set or reset custom GUC defaults
+ */
+KIWI_API static inline machine_msg_t *
+yb_kiwi_fe_write_guc_defaults(machine_msg_t *msg, char *data, int data_len,
+			      kiwi_fe_type_t type)
+{
+	int size = sizeof(kiwi_header_t) + data_len;
+	int offset = 0;
+	if (msg)
+		offset = machine_msg_size(msg);
+	msg = machine_msg_create_or_advance(msg, size);
+	if (kiwi_unlikely(msg == NULL))
+		return NULL;
+	char *pos;
+	pos = (char *)machine_msg_data(msg) + offset;
+	kiwi_write8(&pos, type);
+	kiwi_write32(&pos, sizeof(uint32_t) + data_len);
+	if (data_len > 0)
+		kiwi_write(&pos, data, data_len);
+	return msg;
+}
+
 KIWI_API static inline machine_msg_t *
 kiwi_fe_write_authentication_sasl_initial(machine_msg_t *msg, char *mechanism,
 					  char *initial_response,

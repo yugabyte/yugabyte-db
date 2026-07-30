@@ -831,6 +831,7 @@ determine_test_timeout() {
             $rel_test_binary == "tests-pgwrapper/pg_libpq_err-test" ||
             $rel_test_binary == "tests-pgwrapper/pg_mini-test" ||
             $rel_test_binary == "tests-pgwrapper/pg_wrapper-test" ||
+            $rel_test_binary == "tests-integration-tests/ysql_major_upgrade_check-test" ||
             $rel_test_binary == "tests-tools/yb-admin-snapshot-schedule-test" ) ||
           ( $build_root_basename =~ ^asan &&
             ( $rel_test_binary == "tests-integration-tests/pg_partman-test" )) ||
@@ -865,6 +866,108 @@ is_ctest_verbose() {
   [[ ${YB_CTEST_VERBOSE:-0} == "1" ]]
 }
 
+is_linux_with_cgroups_setup() {
+  if ! is_linux ; then
+    return 1
+  fi
+
+  # Our devserver/workstation setup for cgroup v1 creates this globally modifiable CPU cgroup.
+  if [[ -e /sys/fs/cgroup/cpu/yb-unit-test ]]; then
+    return 0
+  fi
+
+  # cgroup v2 requires cpu controller delegated to user@.service
+  local user_at_cgroup="/sys/fs/cgroup/user.slice/user-$UID.slice/user@$UID.service"
+  if [[ -e "$user_at_cgroup/cgroup.controllers" &&
+        "$(cat "$user_at_cgroup/cgroup.controllers")" == *"cpu"* ]]; then
+    return 0
+  fi
+
+  # Alternate setup used on Spark workers for cgroup v2.
+  if grep -q 'yb_spark_worker_supervisor.service/supervisor' /proc/$$/cgroup ; then
+    return 0
+  fi
+
+  return 1
+}
+
+# shellcheck disable=SC2120
+determine_cgroup_version() {
+  expect_no_args "$#"
+  cgroup_version=1
+  if [[ "$(stat -fc %T /sys/fs/cgroup)" == "cgroup2fs" ]]; then
+    cgroup_version=2
+  fi
+}
+
+find_cgroup_for_controller() {
+  expect_num_args 1 "$@"
+
+  local controller="$1"
+
+  # CGroup V1: /proc/$$/cgroup contains multiple lines. We're looking for the ones looking like:
+  #     6:$CONTROLLER:/
+  # (numbers may vary, and there may be multiple controllers co-mounted like 5:cpu,cpuacct:/).
+  # CGroup V2: /proc/$$/cgroup contains a single line, always starting with 0:: like:
+  #     0::/user.slice/.../run-r9635f7af80544fa48553dcba56d772f4.scope
+  local cgroup_regex='^\(0::\|.*:.*\<'"$controller"'\>.*:\)'
+  controller_cgroup="$(grep "$cgroup_regex" /proc/$$/cgroup | cut -d ':' -f 3)"
+}
+
+run_cmd_in_dedicated_cgroup() {
+  local controller="$1"
+  local cgroup="$2"
+  shift 2
+
+  local cmd=("$@")
+
+  # shellcheck disable=SC2119
+  determine_cgroup_version
+
+  local cgroup_root="/sys/fs/cgroup"
+  if [[ $cgroup_version == 1 ]] ; then
+    cgroup_root="/sys/fs/cgroup/$controller"
+  fi
+
+  local new_cgroup="$cgroup_root$cgroup"
+  if [[ -e $new_cgroup ]]; then
+    fatal "$new_cgroup already exists"
+  fi
+  log "Creating cgroup for unit test: $new_cgroup"
+  mkdir -p "$new_cgroup"
+
+  (
+    # Move this wrapper into the cgroup so that the process is started inside the cgroup as well.
+    echo $BASHPID > "$new_cgroup/cgroup.procs"
+
+    "${cmd[@]}"
+  )
+  local cmd_exit_code=$?
+
+  # Delete all child cgroups. -depth to delete bottom-up.
+  find "$new_cgroup" -mindepth 1 -depth -type d -exec rmdir {} \;
+
+  log "Removing cgroup: $new_cgroup"
+  # TSan builds may leave llvm-symbolizer running for a brief period after the main process
+  # exits. We can't clean up the cgroup until that has exited, so wait for a bit.
+  local i=0
+  while [[ "$(wc -l < "$new_cgroup/cgroup.procs")" -gt 0 && $i -lt 10 ]]; do
+    log "Waiting for all processes in $new_cgroup to finish"
+    sleep 1
+    i=$((i + 1))
+  done
+  while IFS= read -r pid ; do
+    # Disable failure on error here, since there is a race: process may exit before we read
+    # information about it. This is just to help with debugging if we do have lingering
+    # processes, so the race is ok.
+    set +e
+    log "Lingering process: exe=$(readlink "/proc/$pid/exe") cmd=$(strings "/proc/$pid/cmdline")"
+    set -e
+  done < "$new_cgroup/cgroup.procs"
+  rmdir "$new_cgroup"
+  return "$cmd_exit_code"
+}
+
 run_one_cxx_test() {
   expect_no_args "$#"
   expect_vars_to_be_set \
@@ -885,6 +988,60 @@ run_one_cxx_test() {
   local test_wrapper_cmd_line=(
     "$BUILD_ROOT"/bin/run-with-timeout $(( timeout_sec + 1 )) "${test_cmd_line[@]}"
   )
+
+  if is_linux_with_cgroups_setup ; then
+    local test_cmd_line_with_cgroups
+
+    # shellcheck disable=SC2119
+    determine_cgroup_version
+
+    if [[ $cgroup_version == 1 ]]; then
+      # Move this process to /yb-unit-test cgroup of CPU controller, so that later
+      # run_cmd_in_dedicated_cgroup has a writable cgroup to revert to (we are initially in
+      # the root cgroup that we cannot write to).
+      echo $BASHPID >> /sys/fs/cgroup/cpu/yb-unit-test/cgroup.procs
+    fi
+
+    find_cgroup_for_controller cpu
+    if [[ $cgroup_version == 2 && "$controller_cgroup" == */user.slice/* ]] ; then
+      # CGroup v2 doesn't let non-root move a process from cgroup A to cgroup B unless it has
+      # write permission to the cgroup.procs file in the common ancestor of A and B. So we use
+      # systemd to run things in a cgroup we have control over.
+      test_cmd_line_with_cgroups=(
+        systemd-run --scope --user -p "Delegate=cpu" "${test_wrapper_cmd_line[@]}"
+      )
+    else
+      # For CGroups v2 + Spark, since we run things as a systemd system service on Spark workers,
+      # systemd-run --user doesn't work (user is not logged in normally). So we instead have the
+      # following hierarchy set up under the service cgroup:
+      #   $SERVICE_CGROUP
+      #     - supervisor (supervisor script, this script, etc.)
+      #     - yb_unit_test (inner cgroup with CPU controller)
+      # and can just make a child cgroup under $THIS_PROCESS_CGROUP/../yb_unit_test that is
+      # dedicated to this test run.
+      # Note that for Jenkins build workers, we don't run things as a systemd service, so it falls
+      # under the other path.
+      #
+      # For CGroup v1 we just rely on a global writable cgroup dedicated for YB unit tests
+      # (/sys/fs/cgroup/cpu/yb-unit-test) that our dev and Jenkins environments have set up.
+      # Since we have already moved to the /yb-unit-test cgroup of the CPU controller,
+      # $THIS_PROCESS_CGROUP/../yb_unit_test is just /yb_unit_test.
+      local random_md5
+      random_md5="$(head -c 32 /dev/urandom | md5sum | cut -d' ' -f 1)"
+      local cgroup_name="$controller_cgroup/../yb-unit-test/run-r$random_md5.scope"
+      test_cmd_line_with_cgroups=(
+        run_cmd_in_dedicated_cgroup cpu "$cgroup_name" "${test_wrapper_cmd_line[@]}"
+      )
+    fi
+
+    test_wrapper_cmd_line=("${test_cmd_line_with_cgroups[@]}")
+  elif is_linux; then
+    log_with_color "$YELLOW_COLOR" "WARNING: cgroups environment is not set up." \
+        "Tests requiring cgroup isolation (e.g. cgroups-test, pg_cgroups-test," \
+        "tserver_cgroup_manager-test) will fail." \
+        "For cgroup v1, run: sudo mkdir /sys/fs/cgroup/cpu/yb-unit-test &&" \
+        "sudo chmod o+w /sys/fs/cgroup/cpu/yb-unit-test{,/cgroup.procs}"
+  fi
   if [[ $TEST_TMPDIR == "/" || $TEST_TMPDIR == "/tmp" ]]; then
     # Let's be paranoid because we'll be deleting everything inside this directory.
     fatal "Invalid TEST_TMPDIR: '$TEST_TMPDIR': must be a unique temporary directory."
@@ -1504,6 +1661,7 @@ run_java_test() {
   fi
   set_mvn_parameters
 
+  ensure_test_tmp_dir_is_set
   set_sanitizer_runtime_options
   mkdir -p "$YB_TEST_LOG_ROOT_DIR/java"
 
@@ -1868,9 +2026,11 @@ run_python_doctest() {
     local basename=${python_file##*/}
     if [[ $python_file == managed/* ||
           $python_file == cloud/* ||
+          $python_file == src/postgres/contrib/pgcrypto/scripts/pgp_session_data.py ||
           $python_file == src/postgres/src/test/locale/sort-test.py ||
           $python_file == src/postgres/third-party-extensions/* ||
           $python_file == bin/test_bsopt.py ||
+          $python_file == python/ai/rag_agent/* ||
           $python_file == thirdparty/* ]]; then
       continue
     fi
@@ -1902,6 +2062,110 @@ should_run_java_test_methods_separately() {
   [[ ${YB_RUN_JAVA_TEST_METHODS_SEPARATELY:-0} == "1" ]]
 }
 
+# Finds the Maven module for the given Java test. The test may be given either
+# fully-qualified (org.yb.client.TestBytes) or as a bare class name (TestBytes), optionally with a
+# "#method" (and parameter index) suffix.
+#
+# On success returns 0 and sets these variables in the caller's scope:
+#   resolved_java_test_module      - the module's leaf directory name under java/ (e.g. yb-client)
+#   resolved_java_test_module_dir  - the module directory relative to $YB_SRC_ROOT (java/yb-client)
+#   resolved_java_test_name        - the fully-qualified test name, "#method" suffix preserved
+# Calls fatal if the test cannot be resolved or is ambiguous.
+resolve_java_test() {
+  expect_num_args 1 "$@"
+  local java_test_name=$1
+  local java_test_method_name=""
+  if [[ $java_test_name == *\#* ]]; then
+    java_test_method_name=${java_test_name##*#}
+  fi
+  local java_test_class=${java_test_name%#*}
+  local rel_java_src_path=${java_test_class//./\/}
+
+  local module_name="" rel_module_dir="" rel_source_path=""
+  local java_project_dir module_dir language current_module_name
+
+  # Strategy 1: assume a fully-qualified class name and look for the matching source file directly.
+  for java_project_dir in "${yb_java_project_dirs[@]}"; do
+    for module_dir in "$java_project_dir"/*; do
+      [[ $module_dir == */target ]] && continue
+      [[ -d $module_dir ]] || continue
+      for language in java scala; do
+        if [[ -f $module_dir/src/test/$language/$rel_java_src_path.$language ]]; then
+          current_module_name=${module_dir##*/}
+          if [[ -n $module_name ]]; then
+            fatal "Could not determine module for Java/Scala test '$java_test_name': found in" \
+                  "both '$rel_module_dir' and '${module_dir#"$YB_SRC_ROOT/"}'."
+          fi
+          module_name=$current_module_name
+          rel_module_dir=${module_dir##"${YB_SRC_ROOT}"/}
+        fi
+      done
+    done
+  done
+
+  # Strategy 2: no match for a fully-qualified name, so assume only a bare class name was given and
+  # search for the source file by name.
+  if [[ -z $module_name ]]; then
+    for java_project_dir in "${yb_java_project_dirs[@]}"; do
+      for module_dir in "$java_project_dir"/*; do
+        [[ $module_dir == */target ]] && continue
+        [[ -d $module_dir ]] || continue
+        local module_test_src_root="$module_dir/src/test"
+        [[ -d $module_test_src_root ]] || continue
+        local candidate_files=()
+        local line
+        while IFS='' read -r line; do
+          candidate_files+=( "$line" )
+        done < <(
+          cd "$module_test_src_root" &&
+          find . '(' -name "$java_test_class.java" -or -name "$java_test_class.scala" ')'
+        )
+        if [[ ${#candidate_files[@]} -gt 0 ]]; then
+          current_module_name=${module_dir##*/}
+          if [[ -n $module_name ]]; then
+            fatal "Could not determine module for Java/Scala test '$java_test_name': both" \
+                  "'$module_name' and '$current_module_name' are valid candidates."
+          fi
+          if [[ ${#candidate_files[@]} -gt 1 ]]; then
+            fatal "Ambiguous source files for Java/Scala test '$java_test_name':" \
+                  "${candidate_files[*]}"
+          fi
+          module_name=$current_module_name
+          rel_module_dir=${module_dir##"${YB_SRC_ROOT}"/}
+          rel_source_path=${candidate_files[0]}
+        fi
+      done
+    done
+  fi
+
+  if [[ -z $module_name ]]; then
+    fatal "Could not find module name for Java/Scala test '$java_test_name'"
+  fi
+
+  # If we resolved via the bare class name, reconstruct the fully-qualified test name from the
+  # source path so callers always get a canonical name.
+  if [[ -n $rel_source_path ]]; then
+    local java_class_with_package=${rel_source_path%.java}
+    java_class_with_package=${java_class_with_package%.scala}
+    java_class_with_package=${java_class_with_package#./java/}
+    java_class_with_package=${java_class_with_package#./scala/}
+    java_class_with_package=${java_class_with_package//\//.}
+    if [[ $java_class_with_package != *.$java_test_class ]]; then
+      fatal "Internal error: could not find Java package name for test class $java_test_name." \
+            "Found source file: $rel_source_path, and extracted Java class with package from it:" \
+            "'$java_class_with_package'. Expected it to end with '.$java_test_class'."
+    fi
+    java_test_name=$java_class_with_package
+    if [[ -n $java_test_method_name ]]; then
+      java_test_name+="#$java_test_method_name"
+    fi
+  fi
+
+  resolved_java_test_module=$module_name
+  resolved_java_test_module_dir=$rel_module_dir
+  resolved_java_test_name=$java_test_name
+}
+
 # Finds the directory (Maven module) the given Java test belongs to and runs it.
 #
 # Argument: the test to run in the following form:
@@ -1912,118 +2176,24 @@ resolve_and_run_java_test() {
   # shellcheck disable=SC2119
   set_common_test_paths
   log "Running Java test $java_test_name"
-  local module_dir
-  local language
-  local java_test_method_name=""
-  if [[ $java_test_name == *\#* ]]; then
-    java_test_method_name=${java_test_name##*#}
-  fi
-  local java_test_class=${java_test_name%#*}
-  local rel_java_src_path=${java_test_class//./\/}
+
+  local resolved_java_test_module resolved_java_test_module_dir resolved_java_test_name
+  resolve_java_test "$java_test_name"
+
   if ! is_jenkins; then
-    log "Java test class: $java_test_class"
-    if [[ -n $java_test_method_name ]]; then
-      log "Java test method name and optionally a parameter set index: $java_test_method_name"
-    fi
-  fi
-
-  local module_name=""
-  local rel_module_dir=""
-  local java_project_dir
-
-  for java_project_dir in "${yb_java_project_dirs[@]}"; do
-    for module_dir in "$java_project_dir"/*; do
-      if [[ "$module_dir" == */target ]]; then
-        continue
-      fi
-      if [[ -d $module_dir ]]; then
-        for language in java scala; do
-          candidate_source_path=$module_dir/src/test/$language/$rel_java_src_path.$language
-          if [[ -f $candidate_source_path ]]; then
-            local current_module_name=${module_dir##*/}
-            if [[ -n $module_name ]]; then
-              fatal "Could not determine module for Java/Scala test '$java_test_name': both" \
-                    "'$module_name' and '$current_module_name' are valid candidates."
-            fi
-            module_name=$current_module_name
-            rel_module_dir=${module_dir##"${YB_SRC_ROOT}"/}
-          fi
-        done
-      fi
-    done
-  done
-
-  if [[ -z $module_name ]]; then
-    # Could not find the test source assuming we are given the complete package. Let's assume we
-    # only have the class name.
-    module_name=""
-    local rel_source_path=""
-    local java_project_dir
-    for java_project_dir in "${yb_java_project_dirs[@]}"; do
-      for module_dir in "$java_project_dir"/*; do
-        if [[ "$module_dir" == */target ]]; then
-          continue
-        fi
-        if [[ -d $module_dir ]]; then
-          local module_test_src_root="$module_dir/src/test"
-          if [[ -d $module_test_src_root ]]; then
-            local candidate_files=()
-            local line
-            while IFS='' read -r line; do
-              candidate_files+=( "$line" )
-            done < <(
-              cd "$module_test_src_root" &&
-              find . '(' -name "$java_test_class.java" -or -name "$java_test_class.scala" ')'
-            )
-            if [[ ${#candidate_files[@]} -gt 0 ]]; then
-              local current_module_name=${module_dir##*/}
-              if [[ -n $module_name ]]; then
-                fatal "Could not determine module for Java/Scala test '$java_test_name': both" \
-                      "'$module_name' and '$current_module_name' are valid candidates."
-              fi
-              module_name=$current_module_name
-              rel_module_dir=${module_dir##"${YB_SRC_ROOT}"/}
-
-              if [[ ${#candidate_files[@]} -gt 1 ]]; then
-                fatal "Ambiguous source files for Java/Scala test '$java_test_name': " \
-                      "${candidate_files[*]}"
-              fi
-
-              rel_source_path=${candidate_files[0]}
-            fi
-          fi
-        fi
-      done
-    done
-
-    if [[ -z $module_name ]]; then
-      fatal "Could not find module name for Java/Scala test '$java_test_name'"
-    fi
-
-    local java_class_with_package=${rel_source_path%.java}
-    java_class_with_package=${java_class_with_package%.scala}
-    java_class_with_package=${java_class_with_package#./java/}
-    java_class_with_package=${java_class_with_package#./scala/}
-    java_class_with_package=${java_class_with_package//\//.}
-    if [[ $java_class_with_package != *.$java_test_class ]]; then
-      fatal "Internal error: could not find Java package name for test class $java_test_name. " \
-            "Found source file: $rel_source_path, and extracted Java class with package from it:" \
-            "'$java_class_with_package'. Expected that Java class name with package" \
-            "('$java_class_with_package') would end dot and Java test class name" \
-            "('.$java_test_class') but that is not the case."
-    fi
-    java_test_name=$java_class_with_package
-    if [[ -n $java_test_method_name ]]; then
-      java_test_name+="#$java_test_method_name"
+    log "Java test class: ${resolved_java_test_name%#*}"
+    if [[ $resolved_java_test_name == *\#* ]]; then
+      log "Java test method name and optionally a parameter set index:" \
+          "${resolved_java_test_name##*#}"
     fi
   fi
 
   if [[ ${num_test_repetitions:-1} -eq 1 ]]; then
     # This will return an error code appropriate to the test result.
-    run_java_test "$rel_module_dir" "$java_test_name"
+    run_java_test "$resolved_java_test_module_dir" "$resolved_java_test_name"
   else
     # TODO: support enterprise case by passing rel_module_dir here.
-    run_repeat_unit_test "$module_name" "$java_test_name" --java
+    run_repeat_unit_test "$resolved_java_test_module" "$resolved_java_test_name" --java
   fi
 }
 

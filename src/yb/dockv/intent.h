@@ -177,5 +177,8 @@ struct ParsedIntent {
 // used for error reporting.
 Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_source);
 
+// Returns true if 'key' is a top level intent key. 'key' should include doc path only.
+bool IsTopLevelIntentKey(Slice key);
+
 }  // namespace dockv
 }  // namespace yb

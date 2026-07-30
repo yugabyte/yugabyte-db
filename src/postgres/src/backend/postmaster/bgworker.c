@@ -37,6 +37,7 @@
 #include "utils/timeout.h"
 
 /* YB includes */
+#include "commands/async.h"
 #include "yb_ash.h"
 #include "yb_query_diagnostics.h"
 
@@ -141,6 +142,9 @@ static const struct
 	},
 	{
 		"YbQueryDiagnosticsDatabaseConnectionWorkerMain", YbQueryDiagnosticsDatabaseConnectionWorkerMain
+	},
+	{
+		"YbNotifsPollerMain", YbNotifsPollerMain
 	}
 };
 
@@ -782,6 +786,8 @@ StartBackgroundWorker(void)
 		pqsignal(SIGINT, StatementCancelHandler);
 		pqsignal(SIGUSR1, procsignal_sigusr1_handler);
 		pqsignal(SIGFPE, FloatExceptionHandler);
+		pqsignal(SIGSEGV, YbCriticalSignalHandler);
+		pqsignal(SIGABRT, YbCriticalSignalHandler);
 
 		/* XXX Any other handlers needed here? */
 	}
@@ -851,6 +857,16 @@ StartBackgroundWorker(void)
 	 * Early initialization.
 	 */
 	BaseInit();
+
+	if (YBIsEnabledInPostgresEnvVar())
+	{
+		const char *background_worker_name =
+			worker->bgw_name[0] != '\0' ? worker->bgw_name : "[unknown]";
+
+		YBC_LOG_INFO("Started %s with pid: %d",
+					 background_worker_name,
+					 MyProcPid);
+	}
 
 	/*
 	 * Look up the entry point function, loading its library if necessary.
@@ -1320,4 +1336,10 @@ GetBackgroundWorkerTypeByPid(pid_t pid)
 		return NULL;
 
 	return result;
+}
+
+size_t
+YbBackgroundWorkerHandleSize()
+{
+	return sizeof(BackgroundWorkerHandle);
 }

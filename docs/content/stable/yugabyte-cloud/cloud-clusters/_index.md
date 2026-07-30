@@ -20,10 +20,15 @@ YugabyteDB Aeon provides the following tools to manage clusters:
 | [Scaling](configure-clusters/) | To ensure the cluster configuration matches its performance requirements, scale the cluster vertically or horizontally as your requirements change. |
 | [Read replicas](managed-read-replica/) | Add read replicas to lower read latencies in regions that are distant from your primary cluster. |
 | [Backups](backup-clusters/) | Configure a regular backup schedule, run manual backups, restore from backups, and set up remote backup replication. |
-| [Point-in-time recovery](aeon-pitr/) | Create a database clone at a point in time for recovery or testing. |
+| [Point-in-time recovery](aeon-pitr/) | Branch a database (clone) at a point in time for recovery or testing. |
 | [Maintenance windows](cloud-maintenance/) | Yugabyte only performs cluster maintenance, including database upgrades, during a weekly maintenance window that you configure. |
+| [Database upgrade](database-upgrade/) | Upgrade the YugabyteDB software on your cluster. |
 | [PostgreSQL&nbsp;extensions](add-extensions/) | Extend the functionality of your cluster using PostgreSQL extensions. |
 | [Change Data Capture](aeon-cdc/) | Capture and stream changes made to data in the database to external processes, applications, or other databases. |
+| [Disaster recovery](disaster-recovery/) | Fail over to a replica cluster in case of unplanned outages. |
+
+<!--| [Resource governance](resource-governance/) | Manage CPU use between databases during contention, while allowing databases to use available capacity when the cluster is underused. |
+-->
 
 ### Pause, resume, and delete clusters
 
@@ -76,7 +81,7 @@ If your cluster database version is v2024.1.0 or later, you can enable early acc
 
 {{<tags/feature/ea>}}If your cluster database version is v2024.2.3 or later, you can enable built-in Connection Pooling on the cluster **Settings>Connection Pooling** tab. For more information and limitations, refer to [Built-in connection pooling](../../additional-features/connection-manager-ysql/).
 
-For Connection Pooling metrics, see [YSQL Ops metrics](../cloud-monitor/overview/#ysql-ops).
+For Connection Pooling metrics, see [YSQL Ops metrics](../cloud-monitor/monitor-metrics/#ysql-ops).
 
 &nbsp;
 
@@ -86,48 +91,48 @@ For Connection Pooling metrics, see [YSQL Ops metrics](../cloud-monitor/overview
     title="Scale clusters"
     body="Scale clusters horizontally or vertically."
     href="configure-clusters/"
-    icon="/images/section_icons/explore/linear_scalability.png">}}
+    icon="fa-thin fa-pen">}}
 
   {{<index/item
     title="Read replicas"
     body="Serve read requests from remote regions."
     href="managed-read-replica/"
-    icon="/images/section_icons/explore/planet_scale.png">}}
+    icon="fa-thin fa-clone">}}
 
   {{<index/item
     title="Back up clusters"
     body="Perform on-demand backups and restores, and customize the backup policy."
     href="backup-clusters/"
-    icon="/images/section_icons/manage/backup.png">}}
+    icon="fa-thin fa-down-to-bracket">}}
 
   {{<index/item
     title="Point-in-time recovery"
     body="Create a database clone at a point in time for recovery or testing."
     href="aeon-pitr/"
-    icon="/images/section_icons/manage/backup.png">}}
+    icon="fa-thin fa-timeline-arrow">}}
 
   {{<index/item
     title="Maintenance windows"
     body="Set up maintenance windows and exclusion periods for cluster upgrades."
     href="cloud-maintenance/"
-    icon="/images/section_icons/manage/backup.png">}}
+    icon="fa-thin fa-window-frame-open">}}
 
   {{<index/item
     title="Database upgrade"
     body="Manage upgrades to the YugabyteDB software powering your cluster."
     href="database-upgrade/"
-    icon="/images/section_icons/manage/backup.png">}}
+    icon="fa-thin fa-cloud-plus">}}
 
   {{<index/item
     title="Create extensions"
     body="Create PostgreSQL extensions in YugabyteDB Aeon clusters."
     href="add-extensions/"
-    icon="/images/section_icons/explore/administer.png">}}
+    icon="fa-thin fa-cubes">}}
 
   {{<index/item
     title="Change Data Capture"
     body="Capture changes made to data in the database."
-    href="change-data-capture/"
+    href="aeon-cdc/"
     icon="fa-thin fa-arrows-rotate">}}
 
 {{</index/block>}}

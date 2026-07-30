@@ -260,6 +260,20 @@ SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "
 SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "movies", "ntoreturn":1 , "batchSize":1, "$db" : "test" }');
 SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "movies", "ntoreturn":1 , "limit":1, "$db" : "test" }');
 
+-- GUC to change default batch size should be honored but should follow the 16MB limit
+BEGIN;
+set local documentdb.defaultCursorFirstPageBatchSize = 10;
+with cte as (SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "get_aggregation_cursor_smalldoc_test", "$db" : "db" }')) SELECT documentdb_api_catalog.bson_dollar_project(cte.cursorPage,
+    '{ "ok": 1, "cursor.ns": 1, "batchCount": { "$size": { "$ifNull": [ "$cursor.firstBatch", "$cursor.nextBatch" ] } }}') FROM cte;
+set local documentdb.defaultCursorFirstPageBatchSize = 5;
+with cte as (SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "get_aggregation_cursor_smalldoc_test", "$db" : "db" }')) SELECT documentdb_api_catalog.bson_dollar_project(cte.cursorPage,
+    '{ "ok": 1, "cursor.ns": 1, "batchCount": { "$size": { "$ifNull": [ "$cursor.firstBatch", "$cursor.nextBatch" ] } }}') FROM cte;
+set local documentdb.defaultCursorFirstPageBatchSize = 500;
+with cte as (SELECT cursorPage FROM documentdb_api.find_cursor_first_page('db', '{ "find" : "get_aggregation_cursor_test", "$db" : "db" }')) SELECT documentdb_api_catalog.bson_dollar_project(cte.cursorPage,
+    '{ "ok": 1,  "cursor.ns": 1, "batchCount": { "$size": { "$ifNull": [ "$cursor.firstBatch", "$cursor.nextBatch" ] } }}') FROM cte;
+END;
+
+
 -- testing with batchSize that doesn't drain
 -- first drain one time with a batchSize of 2 - this leaves a cursor state around
 SELECT * FROM aggregation_cursor_test.drain_aggregation_query(loopCount => 1, pageSize => 1, pipeline => '{ "": [{ "$skip": 2 }]}');

@@ -1,3 +1,5 @@
+// Copyright (c) YugabyteDB, Inc.
+
 package com.yugabyte.yw.commissioner.tasks.params;
 
 import com.yugabyte.yw.models.AccessKey;
@@ -12,9 +14,6 @@ public class NodeAccessTaskParams extends NodeTaskParams {
   public UUID regionUUID;
 
   public AccessKey accessKey;
-
-  // Key to be used for add/remove authorized key tasks
-  public AccessKey taskAccessKey;
 
   public String sshUser;
 

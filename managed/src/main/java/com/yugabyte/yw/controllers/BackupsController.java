@@ -2,13 +2,12 @@
 
 package com.yugabyte.yw.controllers;
 
+import api.v2.handlers.BackupAndRestoreHandler;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.SoftwareUpgradeHelper;
-import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
@@ -56,6 +55,7 @@ import com.yugabyte.yw.models.paging.BackupPagedApiResponse;
 import com.yugabyte.yw.models.paging.BackupPagedQuery;
 import com.yugabyte.yw.models.paging.RestorePagedApiResponse;
 import com.yugabyte.yw.models.paging.RestorePagedQuery;
+import com.yugabyte.yw.models.paging.RestorePagedResponse;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -90,9 +90,9 @@ public class BackupsController extends AuthenticatedController {
   private final CustomerConfigService customerConfigService;
   private final BackupHelper backupHelper;
   private final YbcManager ybcManager;
-  private final StorageUtilFactory storageUtilFactory;
   private final ScheduleTaskHelper scheduleTaskHelper;
-  private final SoftwareUpgradeHelper softwareUpgradeHelper;
+  private final BackupAndRestoreHandler backupAndRestoreHandler;
+  private final TaskInfoManager taskManager;
 
   @Inject
   public BackupsController(
@@ -100,19 +100,17 @@ public class BackupsController extends AuthenticatedController {
       CustomerConfigService customerConfigService,
       BackupHelper backupHelper,
       YbcManager ybcManager,
-      StorageUtilFactory storageUtilFactory,
       ScheduleTaskHelper scheduleTaskHelper,
-      SoftwareUpgradeHelper softwareUpgradeHelper) {
+      TaskInfoManager taskManager,
+      BackupAndRestoreHandler backupAndRestoreHandler) {
     this.commissioner = commissioner;
     this.customerConfigService = customerConfigService;
     this.backupHelper = backupHelper;
     this.ybcManager = ybcManager;
-    this.storageUtilFactory = storageUtilFactory;
     this.scheduleTaskHelper = scheduleTaskHelper;
-    this.softwareUpgradeHelper = softwareUpgradeHelper;
+    this.taskManager = taskManager;
+    this.backupAndRestoreHandler = backupAndRestoreHandler;
   }
-
-  @Inject TaskInfoManager taskManager;
 
   @Deprecated
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
@@ -228,7 +226,8 @@ public class BackupsController extends AuthenticatedController {
     RestoreFilter filter = apiFilter.toFilter().toBuilder().customerUUID(customerUUID).build();
     RestorePagedQuery query = apiQuery.copyWithFilter(filter, RestorePagedQuery.class);
 
-    RestorePagedApiResponse restores = Restore.pagedList(query);
+    RestorePagedResponse response = backupAndRestoreHandler.pagedListRestores(query);
+    RestorePagedApiResponse restores = Restore.createResponse(response);
 
     return PlatformResults.withData(restores);
   }
@@ -481,7 +480,7 @@ public class BackupsController extends AuthenticatedController {
     if (taskParams.keyspaceTableList != null) {
       for (BackupRequestParams.KeyspaceTable keyspaceTable : taskParams.keyspaceTableList) {
         if (keyspaceTable.tableUUIDList == null) {
-          keyspaceTable.tableUUIDList = new ArrayList<UUID>();
+          keyspaceTable.tableUUIDList = new ArrayList<>();
         }
         backupHelper.validateTables(
             keyspaceTable.tableUUIDList, universe, keyspaceTable.keyspace, taskParams.backupType);

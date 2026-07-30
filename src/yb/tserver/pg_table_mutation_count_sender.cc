@@ -25,6 +25,7 @@
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/unique_lock.h"
 
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
@@ -103,7 +104,7 @@ Status TableMutationCountSender::DoSendMutationCounts() {
   VLOG(3) << "Sending table mutation counts: " << req.ShortDebugString();
 
   const auto result = client_->IncreaseMutationCounters(
-      req, GetAtomicFlag(&FLAGS_ysql_node_level_mutation_reporting_timeout_ms) * 1ms);
+      req, FLAGS_ysql_node_level_mutation_reporting_timeout_ms * 1ms);
   if (!result) {
     VLOG(2) << "Result: " << result.ToString();
 
@@ -130,9 +131,9 @@ void TableMutationCountSender::RunThread() {
     {
       UniqueLock lock(mutex_);
       VLOG(5) << "Next send after "
-              << GetAtomicFlag(&FLAGS_ysql_node_level_mutation_reporting_interval_ms) << "ms";
+              << FLAGS_ysql_node_level_mutation_reporting_interval_ms << "ms";
       cond_.wait_for(GetLockForCondition(lock),
-                     GetAtomicFlag(&FLAGS_ysql_node_level_mutation_reporting_interval_ms) * 1ms);
+                     FLAGS_ysql_node_level_mutation_reporting_interval_ms * 1ms);
 
       if (stopped_) {
         VLOG(1) << "Table mutation count sender thread has finished";

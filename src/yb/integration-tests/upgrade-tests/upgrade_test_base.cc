@@ -25,6 +25,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/common/version_info.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -168,8 +169,9 @@ Result<std::string> DownloadAndGetBinPath(const BuildInfo& build_info) {
     RETURN_NOT_OK(env->DeleteRecursively(extract_path));
   }
   RETURN_NOT_OK(env->CreateDir(extract_path));
-  RETURN_NOT_OK(
-      RunCommand({tar_bin, "xzf", tar_file_path, "--skip-old-files", "-C", version_root_path}));
+  RETURN_NOT_OK(RunCommand(
+      {tar_bin, "xzf", tar_file_path, "--skip-old-files", "--exclude=._*", "-C",
+       version_root_path}));
 
 #if defined(__linux__)
   RETURN_NOT_OK(RunCommand({"bash", JoinPathSegments(bin_path, "post_install.sh")}));
@@ -582,7 +584,7 @@ Status UpgradeTestBase::PerformYsqlUpgrade() {
   tserver::UpgradeYsqlRequestPB req;
   tserver::UpgradeYsqlResponsePB resp;
   rpc::RpcController rpc;
-  rpc.set_timeout(2min * kTimeMultiplier);
+  rpc.set_timeout(4min * kTimeMultiplier);
 
   RETURN_NOT_OK(cluster_->GetTServerProxy<tserver::TabletServerAdminServiceProxy>(0).UpgradeYsql(
       req, &resp, &rpc));

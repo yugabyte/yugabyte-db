@@ -232,8 +232,10 @@ BEGIN
     )::public.geography;
     EXCEPTION WHEN OTHERS THEN
         errorMessage := SQLERRM;
-        IF errorMessage LIKE '%Self-intersection at%' THEN
-            errorMessage := REGEXP_REPLACE(errorMessage, '[0-9]+(\.[0-9]+)? [0-9]+(\.[0-9]+)?', '<longitude> <latitude>');
+        IF errorMessage LIKE '%Self-intersection at%' OR errorMessage LIKE '%geometry is invalid%' THEN
+            -- We are only showing that after segmentize the geometry is invalid, the actual error message is irrelevant
+            -- because the next test shows ST_MAKEVALID fixes this
+            errorMessage := 'Invalid geometry found after segmentize.';
         END IF;
         RAISE EXCEPTION '%', errorMessage using ERRCODE = SQLSTATE;
 END $$;
@@ -243,7 +245,8 @@ SELECT public.ST_ASTEXT(
     public.ST_SUBDIVIDE(
         public.ST_MAKEVALID(public.ST_SEGMENTIZE('SRID=4326;POLYGON((-180 40, -157.5 40, -157.5 55, -180 55, -180 40))'::public.geography, 500000)::public.geometry),
         8 -- 8 is the default number of max vertices a divide segment can have
-    )::public.geography
+    )::public.geography,
+    12 -- Limit output to 12 decimal digits
 );
 
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "segmentsTest", "indexes": [{"key": {"a": "2dsphere"}, "name": "my_2ds" }]}', true);

@@ -25,7 +25,6 @@ class FileBlockCache;
 class YbHnsw;
 
 using BlockCachePtr = std::shared_ptr<BlockCache>;
-using DataBlock = std::vector<std::byte>;
 using FileBlockCachePtr = std::unique_ptr<FileBlockCache>;
 using HnswDistanceType = float;
 using HnswEndian = LittleEndian;

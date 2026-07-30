@@ -49,7 +49,7 @@ typedef enum CacheValidityValue
 	/* cache was not succesfully initialized */
 	CACHE_INVALID,
 
-	/* extension does not exist, nothing to cache */
+	/* The specified extension is missing, so there is nothing available to cache. */
 	CACHE_VALID_NO_EXTENSION,
 
 	/* extension exist, cache is valid */
@@ -108,26 +108,30 @@ static CacheValidityValue CacheValidity = CACHE_INVALID;
 MemoryContext DocumentDBApiMetadataCacheContext = NULL;
 
 PGDLLEXPORT char *ApiDataSchemaName = "documentdb_data";
-PGDLLEXPORT char *ApiAdminRole = "documentdb_admin_role";
-PGDLLEXPORT char *ApiAdminRoleV2 = "documentdb_admin_role";
-PGDLLEXPORT char *ApiReadOnlyRole = "documentdb_readonly_role";
 PGDLLEXPORT char *ApiSchemaName = "documentdb_api";
 PGDLLEXPORT char *ApiSchemaNameV2 = "documentdb_api";
 PGDLLEXPORT char *ApiInternalSchemaName = "documentdb_api_internal";
 PGDLLEXPORT char *ApiInternalSchemaNameV2 = "documentdb_api_internal";
 PGDLLEXPORT char *ExtensionObjectPrefix = "documentdb";
 PGDLLEXPORT char *ExtensionObjectPrefixV2 = "documentdb";
-/*
- * YB: Upstream bug(#164). AddressSanitizer: odr-violation. Already declared in type_cache.c.
-PGDLLEXPORT char *CoreSchemaName = "documentdb_core";
-PGDLLEXPORT char *CoreSchemaNameV2 = "documentdb_core";
- */
 PGDLLEXPORT char *FullBsonTypeName = "documentdb_core.bson";
 PGDLLEXPORT char *ApiExtensionName = "documentdb";
 PGDLLEXPORT char *ApiCatalogSchemaName = "documentdb_api_catalog";
 PGDLLEXPORT char *ApiCatalogSchemaNameV2 = "documentdb_api_catalog";
 PGDLLEXPORT char *ApiGucPrefix = "documentdb";
+PGDLLEXPORT char *ApiGucPrefixV2 = "documentdb";
 PGDLLEXPORT char *PostgisSchemaName = "public";
+
+/* Role names */
+PGDLLEXPORT char *ApiAdminRole = "documentdb_admin_role";
+PGDLLEXPORT char *ApiAdminRoleV2 = "documentdb_admin_role";
+PGDLLEXPORT char *ApiBgWorkerRole = "documentdb_bg_worker_role";
+PGDLLEXPORT char *ApiReadOnlyRole = "documentdb_readonly_role";
+PGDLLEXPORT char *ApiReadWriteRole = "documentdb_readwrite_role";
+PGDLLEXPORT char *ApiReplicationRole = "";
+PGDLLEXPORT char *ApiRootInternalRole = "documentdb_root_role";
+PGDLLEXPORT char *ApiRootRole = "documentdb_root_role";
+PGDLLEXPORT char *ApiUserAdminRole = "documentdb_user_admin_role";
 
 /* Schema functions migrated from a public API to an internal API schema
  * (e.g. from documentdb_api -> documentdb_api_internal)
@@ -146,6 +150,9 @@ typedef struct DocumentDBApiOidCacheData
 	/* OID of the <bigint> OPERATOR(pg_catalog.=) <bigint> operator */
 	Oid BigintEqualOperatorId;
 
+	/* OID of hte <bigint> > <bigint> operator */
+	Oid BigIntGreaterOperatorId;
+
 	/* OID of the <text> OPERATOR(pg_catalog.=) <text> operator */
 	Oid TextEqualOperatorId;
 
@@ -158,11 +165,14 @@ typedef struct DocumentDBApiOidCacheData
 	/* OID of the vector type */
 	Oid VectorTypeId;
 
+	/* OID of the half vector type */
+	Oid HalfVectorTypeId;
+
 	/* OID of the index_spec_type */
 	Oid IndexSpecTypeId;
 
 	/* OID of the ApiCatalogSchemaName.collections */
-	Oid MongoCatalogCollectionsTypeOid;
+	Oid ApiCatalogCollectionsTypeOid;
 
 	/* OID of the <bson> OPERATOR(ApiCatalogSchemaName.=) <bson> operator */
 	Oid BsonEqualOperatorId;
@@ -228,7 +238,7 @@ typedef struct DocumentDBApiOidCacheData
 	Oid CollectionIndexIdSequenceId;
 
 	/* OID of ApiCatalogSchemaName schema */
-	Oid MongoCatalogNamespaceId;
+	Oid ApiCatalogNamespaceId;
 
 	/* OID of the current extension */
 	Oid DocumentDBApiExtensionId;
@@ -239,29 +249,80 @@ typedef struct DocumentDBApiOidCacheData
 	/* OID of the bson_orderby function */
 	Oid BsonOrderByFunctionId;
 
+	/* OID of the bson_orderby with collation function */
+	Oid BsonOrderByWithCollationFunctionId;
+
+	/* OID of the bson_orderby_compare function */
+	Oid BsonOrderByCompareFunctionOId;
+
+	/* OID of bson_orderby_eq function */
+	Oid BsonOrderByEqFunctionOId;
+
+	/* OID of bson_orderby_gt function */
+	Oid BsonOrderByGtFunctionOId;
+
+	/* OID of bson_orderby_lt function */
+	Oid BsonOrderByLtFunctionOId;
+
+	/* OID of the bson (ApiInternalSchemaV2.<<<) bson function */
+	Oid BsonOrderyByLtOperatorId;
+
+	/* OID of the bson (ApiInternalSchemaV2.===) bson function */
+	Oid BsonOrderyByEqOperatorId;
+
+	/* OID of the bson (ApiInternalSchemaV2.<<<) bson function */
+	Oid BsonOrderyByGtOperatorId;
+
+	/* OID of hte bson order by index operator */
+	Oid BsonOrderByIndexOperatorId;
+
+	/* OID of the reverse sort order by index operator */
+	Oid BsonOrderByReverseIndexOperatorId;
+
 	/* OID of the bson_orderby_partition function */
 	Oid BsonOrderByPartitionFunctionOid;
+
+	/* OID of the bson_orderby_partition with collation function */
+	Oid BsonOrderByPartitionWithCollationFunctionOid;
 
 	/* OID of the bson vector search orderby operator */
 	Oid VectorOrderByQueryOperatorId;
 
 	/* OID of the pg_vector cosine similarity operator */
-	Oid VectorCosineSimilaritySearchOperatorId;
+	Oid VectorCosineSimilarityOperatorId;
 
 	/* OID of the pg_vector l2 similarity operator */
-	Oid VectorL2SimilaritySearchOperatorId;
+	Oid VectorL2SimilarityOperatorId;
 
 	/* OID of the pg_vector ip similarity operator */
-	Oid VectorIPSimilaritySearchOperatorId;
+	Oid VectorIPSimilarityOperatorId;
 
 	/* OID of the cosine_distance function */
-	Oid VectorCosineSimilaritySearchFunctionId;
+	Oid VectorCosineSimilarityFunctionId;
 
 	/* OID of the l2_distance function */
-	Oid VectorL2SimilaritySearchFunctionId;
+	Oid VectorL2SimilarityFunctionId;
 
 	/* OID of the vector_negative_inner_product function */
-	Oid VectorIPSimilaritySearchFunctionId;
+	Oid VectorIPSimilarityFunctionId;
+
+	/* OID of the pg_vector half cosine similarity operator */
+	Oid VectorHalfCosineSimilarityOperatorId;
+
+	/* OID of the pg_vector half l2 similarity operator */
+	Oid VectorHalfL2SimilarityOperatorId;
+
+	/* OID of the pg_vector half ip similarity operator */
+	Oid VectorHalfIPSimilarityOperatorId;
+
+	/* OID of the halfvec_cosine_distance function */
+	Oid VectorHalfCosineSimilarityFunctionId;
+
+	/* OID of the halfvec_l2_distance function */
+	Oid VectorHalfL2SimilarityFunctionId;
+
+	/* OID of the halfvec_negative_inner_product function */
+	Oid VectorHalfIPSimilarityFunctionId;
 
 	/* OID of the pg_vector ivfflat cosine similarity operator */
 	Oid VectorIVFFlatCosineSimilarityOperatorFamilyId;
@@ -352,6 +413,12 @@ typedef struct DocumentDBApiOidCacheData
 
 	/* Oid of the bson_dollar_range function */
 	Oid BsonRangeMatchFunctionId;
+
+	/* Oid of the bson_full_scan function */
+	Oid BsonFullScanFunctionId;
+
+	/* Oid of the index hint function */
+	Oid BsonIndexHintFunctionId;
 
 	/* Oid of the $range runtime operator #<> */
 	Oid BsonRangeMatchOperatorOid;
@@ -552,6 +619,12 @@ typedef struct DocumentDBApiOidCacheData
 	/* OID of the float8 >= float8 operator */
 	Oid Float8GreaterThanEqualOperatorId;
 
+	/* OID of the bson_unique_index_equal operator =?= */
+	Oid BsonUniqueIndexEqualOperatorId;
+
+	/* OID of the bson_unique_shard_path_equal operator =#= */
+	Oid BsonUniqueShardPathEqualOperatorId;
+
 	/* OID of the array_append postgres function */
 	Oid PostgresArrayAppendFunctionOid;
 
@@ -563,9 +636,6 @@ typedef struct DocumentDBApiOidCacheData
 
 	/* Oid of the extract_interval postgres function which extracts a given date part from interval. */
 	Oid PostgresDatePartFromInterval;
-
-	/* OID of the uuid_in postgres method which converts a string to uuid */
-	Oid PostgresUUIDInFunctionIdOid;
 
 	/* OID of Rum Index access methods */
 	Oid RumIndexAmId;
@@ -579,8 +649,14 @@ typedef struct DocumentDBApiOidCacheData
 	/* OID of the array_to_vector function. */
 	Oid PgDoubleToVectorFunctionOid;
 
+	/* OID of the array_to_sparsevec function. */
+	Oid PgDoubleToSparseVecFunctionOid;
+
 	/* OID of the vector as vector Cast function */
 	Oid VectorAsVectorFunctionOid;
+
+	/* OID of the vector as half vector Cast function */
+	Oid VectorAsHalfVecFunctionOid;
 
 	/* OID of the bson_extract_vector function from a document and path */
 	Oid ApiCatalogBsonExtractVectorFunctionId;
@@ -597,11 +673,14 @@ typedef struct DocumentDBApiOidCacheData
 	/* OID of the websearch_to_tsquery function with regconfig option. */
 	Oid WebSearchToTsQueryWithRegConfigFunctionId;
 
-	/* OID of the rum_extract_tsvector function */
-	Oid RumExtractTsVectorFunctionId;
-
 	/* OID of the operator class for BSON Text operations with {ExtensionObjectPrefix}_rum */
 	Oid BsonRumTextPathOperatorFamily;
+
+	/* OID of the operator class for BSON Unique Path operations with {ExtensionObjectPrefix}_rum */
+	Oid BsonRumUniquePathOperatorFamily;
+
+	/* OID of the operator class for BSON Path operations with {ExtensionObjectPrefix}_rum */
+	Oid BsonRumHashPathOperatorFamily;
 
 	/* OID of the operator class for BSON GIST geography */
 	Oid BsonGistGeographyOperatorFamily;
@@ -635,6 +714,12 @@ typedef struct DocumentDBApiOidCacheData
 
 	/* OID of the bson_aggregation_distinct function */
 	Oid ApiCatalogAggregationDistinctFunctionId;
+
+	/* OID of the bson_aggregation_getmore function */
+	Oid ApiCatalogAggregationGetMoreFunctionId;
+
+	/* OID of the cursor_get_more function */
+	Oid CursorGetMoreFunctionOid;
 
 	/* OID of the BSONCOVARIANCEPOP aggregate function */
 	Oid ApiCatalogBsonCovariancePopAggregateFunctionOid;
@@ -735,6 +820,12 @@ typedef struct DocumentDBApiOidCacheData
 	/* OID of the BSONSUM aggregate function */
 	Oid ApiCatalogBsonSumAggregateFunctionOid;
 
+	/* OID of the BSONCOMMANDCOUNT aggregate function */
+	Oid ApiCatalogBsonCommandCountAggregateFunctionOid;
+
+	/* OID of the BSONCOUNT aggregate function */
+	Oid ApiCatalogBsonCountAggregateFunctionOid;
+
 	/* OID of the bson_linear_fill window function */
 	Oid ApiCatalogBsonLinearFillFunctionOid;
 
@@ -756,7 +847,7 @@ typedef struct DocumentDBApiOidCacheData
 	/* OID of the bson_array_agg function */
 	Oid ApiCatalogBsonArrayAggregateAllArgsFunctionOid;
 
-	/* OID of the mongo bson_distinct_agg function */
+	/* OID of the bson_distinct_agg function */
 	Oid ApiCatalogBsonDistinctAggregateFunctionOid;
 
 	/* OID of the bson_object_agg function */
@@ -861,11 +952,17 @@ typedef struct DocumentDBApiOidCacheData
 	/* OID of the bson_expression_get with let function */
 	Oid ApiCatalogBsonExpressionGetWithLetFunctionOid;
 
+	/* OID of the bson_expression_get with let and collation function */
+	Oid ApiCatalogBsonExpressionGetWithLetAndCollationFunctionOid;
+
 	/* OID of the bson_expression_partition_get function */
 	Oid ApiCatalogBsonExpressionPartitionGetFunctionOid;
 
 	/* OID of the bson_expression_partition_get with let function */
 	Oid ApiCatalogBsonExpressionPartitionGetWithLetFunctionOid;
+
+	/* OID of the bson_expression_partition_get with let and collation function */
+	Oid ApiCatalogBsonExpressionPartitionGetWithLetAndCollationFunctionOid;
 
 	/* OID of the bson_expression_map function */
 	Oid ApiCatalogBsonExpressionMapFunctionOid;
@@ -891,7 +988,7 @@ typedef struct DocumentDBApiOidCacheData
 	/* OID of the bson_const_fill window function */
 	Oid BsonConstFillFunctionOid;
 
-	/* OID of ApiInternalSchemaName.bson_dollar_lookup_join_filter function */
+	/* OID of ApiInternalSchemaNameV2.bson_dollar_lookup_join_filter function */
 	Oid BsonDollarLookupJoinFilterFunctionOid;
 
 	/* OID of the bson_lookup_unwind function */
@@ -902,6 +999,9 @@ typedef struct DocumentDBApiOidCacheData
 
 	/* OID of the bson_expression_partition_get function */
 	Oid BsonExpressionPartitionByFieldsGetFunctionOid;
+
+	/* OID of the ApiInternalSchemaName.bson_dollar_bucket_auto function */
+	Oid BsonDollarBucketAutoFunctionOid;
 
 	/* Postgis box2df type id */
 	Oid Box2dfTypeId;
@@ -1071,6 +1171,9 @@ typedef struct DocumentDBApiOidCacheData
 	/* OID of the ApiInternalSchemaName.delete_worker function */
 	Oid DeleteWorkerFunctionOid;
 
+	/* OID of the ApiInternalSchemaName.command_node_worker function */
+	Oid CommandNodeWorkerFunctionOid;
+
 	/* OID of ApiInternalSchemaName.{ExtensionObjectPrefix}_core_bson_to_bson*/
 	Oid DocumentDBCoreBsonToBsonFunctionOId;
 
@@ -1085,6 +1188,15 @@ typedef struct DocumentDBApiOidCacheData
 
 	/* Oid of ApiInternalSchemaName.bson_query_match with collation and let */
 	Oid BsonQueryMatchWithLetAndCollationFunctionId;
+
+	/* Opclass for the integer ops */
+	Oid IntegerOpsOpFamilyOid;
+
+	/* OpFamily for the Bson BTree ops */
+	Oid BsonBtreeOpFamilyOid;
+
+	/* Opfamily for the bson */
+	Oid BsonRumCompositeIndexOperatorFamily;
 } DocumentDBApiOidCacheData;
 
 static DocumentDBApiOidCacheData Cache;
@@ -1139,11 +1251,11 @@ InitializeDocumentDBApiExtensionCache(void)
 
 	/* since the extension exists, we expect ApiCatalogSchemaName to exist too */
 	missingOK = false;
-	Cache.MongoCatalogNamespaceId = get_namespace_oid(ApiCatalogSchemaName, missingOK);
+	Cache.ApiCatalogNamespaceId = get_namespace_oid(ApiCatalogSchemaName, missingOK);
 
 	/* look up the ApiCatalogSchemaName.collections OID to catch invalidations */
 	Cache.CollectionsTableId = get_relname_relid("collections",
-												 Cache.MongoCatalogNamespaceId);
+												 Cache.ApiCatalogNamespaceId);
 
 	/* after cache reset (e.g. drop+create extension), also reset collections cache */
 	ResetCollectionsCache();
@@ -1211,7 +1323,7 @@ InvalidateDocumentDBApiCache(Datum argument, Oid relationId)
 /*
  * Helper method abstracting typename parsing across PG Versions
  */
-inline static TypeName *
+TypeName *
 ParseTypeNameCore(const char *typeName)
 {
 #if PG_VERSION_NUM >= 160000
@@ -1267,7 +1379,7 @@ DocumentDBApiExtensionOwner(void)
 	if (!HeapTupleIsValid(extensionTuple))
 	{
 		ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-						errmsg("API extension has not been loaded")));
+						errmsg("The API extension is currently not loaded")));
 	}
 
 	Form_pg_extension extensionForm = (Form_pg_extension) GETSTRUCT(extensionTuple);
@@ -1344,6 +1456,27 @@ BigintEqualOperatorId(void)
 	}
 
 	return Cache.BigintEqualOperatorId;
+}
+
+
+/*
+ * BigintEqualOperatorId returns the OID of the <bigint> = <bigint> operator.
+ */
+Oid
+BigIntGreaterOperatorId(void)
+{
+	InitializeDocumentDBApiExtensionCache();
+
+	if (Cache.BigIntGreaterOperatorId == InvalidOid)
+	{
+		List *operatorNameList = list_make2(makeString("pg_catalog"),
+											makeString(">"));
+
+		Cache.BigIntGreaterOperatorId =
+			OpernameGetOprid(operatorNameList, INT8OID, INT8OID);
+	}
+
+	return Cache.BigIntGreaterOperatorId;
 }
 
 
@@ -1742,6 +1875,32 @@ BsonRangeMatchFunctionId(void)
 }
 
 
+Oid
+BsonFullScanFunctionOid(void)
+{
+	int nargs = 2;
+	Oid argTypes[2] = { BsonTypeId(), BsonTypeId() };
+	bool missingOk = true;
+	return GetSchemaFunctionIdWithNargs(&Cache.BsonFullScanFunctionId,
+										ApiInternalSchemaNameV2,
+										"bson_dollar_fullscan", nargs, argTypes,
+										missingOk);
+}
+
+
+Oid
+BsonIndexHintFunctionOid(void)
+{
+	int nargs = 4;
+	Oid argTypes[4] = { BsonTypeId(), TEXTOID, BsonTypeId(), BOOLOID };
+	bool missingOk = true;
+	return GetSchemaFunctionIdWithNargs(&Cache.BsonIndexHintFunctionId,
+										ApiInternalSchemaNameV2,
+										"bson_dollar_index_hint", nargs, argTypes,
+										missingOk);
+}
+
+
 /*
  * Returns the OID of ApiCatalogSchemaName.bson_dollar_not_lte function.
  */
@@ -1840,6 +1999,33 @@ BsonRangeMatchOperatorOid(void)
 {
 	return GetBinaryOperatorId(&Cache.BsonRangeMatchOperatorOid,
 							   BsonTypeId(), "@<>", BsonTypeId());
+}
+
+
+/* Returns the OID of bson_dollar_unique_index_equal operator =?= */
+Oid
+BsonUniqueIndexEqualOperatorId(void)
+{
+	/* Initially we defined this one in the catalog schema, then we moved it to the internal schema. */
+	Oid result = GetBinaryOperatorId(&Cache.BsonUniqueIndexEqualOperatorId, BsonTypeId(),
+									 "=?=", BsonTypeId());
+
+	if (result == InvalidOid)
+	{
+		result = GetInternalBinaryOperatorId(&Cache.BsonUniqueIndexEqualOperatorId,
+											 BsonTypeId(), "=?=", BsonTypeId());
+	}
+
+	return result;
+}
+
+
+/* Returns the OID of ApiInternalSchema.bson_dollar_unique_shard_path_equal operator =#= */
+Oid
+BsonUniqueShardPathEqualOperatorId(void)
+{
+	return GetInternalBinaryOperatorId(&Cache.BsonUniqueShardPathEqualOperatorId,
+									   BsonTypeId(), "=#=", BsonTypeId());
 }
 
 
@@ -2619,16 +2805,6 @@ PostgresDatePartFromInterval(void)
 }
 
 
-/*
- * Returns the OID of the "uuid_in" internal postgres method
- */
-Oid
-PostgresUUIDInFunctionId(void)
-{
-	return GetPostgresInternalFunctionId(&Cache.PostgresUUIDInFunctionIdOid, "uuid_in");
-}
-
-
 /* Returns the OID of Rum Index Access method.
  */
 Oid
@@ -2735,6 +2911,32 @@ PgDoubleToVectorFunctionOid(void)
 
 
 /*
+ * Returns the function Oid for converting a double[] to a sparse vector specifically the array_to_sparsevec function.
+ * Note: the array_to_sparsevec function is introduced in pgvector 0.8.0,
+ * Currently it is only used for checking if the version of pgvector is 0.8.0
+ * Set missingOK to true, this function will return InvalidOid if the pgvector version is lower than that.
+ */
+Oid
+PgDoubleToSparseVecFunctionOid(bool missingOK)
+{
+	InitializeDocumentDBApiExtensionCache();
+
+	if (Cache.PgDoubleToSparseVecFunctionOid == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString("public"),
+											makeString("array_to_sparsevec"));
+
+		Oid paramOids[3] = { FLOAT8ARRAYOID, INT4OID, BOOLOID };
+
+		Cache.PgDoubleToSparseVecFunctionOid =
+			LookupFuncName(functionNameList, 3, paramOids, missingOK);
+	}
+
+	return Cache.PgDoubleToSparseVecFunctionOid;
+}
+
+
+/*
  * VectorAsVectorFunctionOid returns the OID of the vector as vector cast function.
  */
 Oid
@@ -2754,6 +2956,30 @@ VectorAsVectorFunctionOid(void)
 	}
 
 	return Cache.VectorAsVectorFunctionOid;
+}
+
+
+/*
+ * VectorAsHalfVecFunctionOid returns the OID of the vector as half vector cast function.
+ * Note: with older versions of pgvector, the cast function "public.vector_to_halfvec" is not supported.
+ * So we need to check InvalidOid
+ */
+Oid
+VectorAsHalfVecFunctionOid(bool missingOK)
+{
+	InitializeDocumentDBApiExtensionCache();
+
+	if (Cache.VectorAsHalfVecFunctionOid == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString("public"),
+											makeString("vector_to_halfvec"));
+
+		Oid paramOids[3] = { VectorTypeId(), INT4OID, BOOLOID };
+		Cache.VectorAsHalfVecFunctionOid =
+			LookupFuncName(functionNameList, 3, paramOids, missingOK);
+	}
+
+	return Cache.VectorAsHalfVecFunctionOid;
 }
 
 
@@ -2889,6 +3115,29 @@ InsertWorkerFunctionOid(void)
 
 
 Oid
+CommandNodeWorkerFunctionOid(void)
+{
+	InitializeDocumentDBApiExtensionCache();
+
+	if (Cache.CommandNodeWorkerFunctionOid == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString(DocumentDBApiInternalSchemaName),
+											makeString("command_node_worker"));
+		Oid paramOids[6] = {
+			OIDOID, DocumentDBCoreBsonTypeId(), REGCLASSOID, TEXTARRAYOID, BOOLOID,
+			TEXTOID
+		};
+		bool missingOK = true;
+
+		Cache.CommandNodeWorkerFunctionOid =
+			LookupFuncName(functionNameList, 6, paramOids, missingOK);
+	}
+
+	return Cache.CommandNodeWorkerFunctionOid;
+}
+
+
+Oid
 DeleteWorkerFunctionOid(void)
 {
 	InitializeDocumentDBApiExtensionCache();
@@ -2944,7 +3193,7 @@ BsonEmptyDataTableFunctionId(void)
 
 	if (Cache.BsonEmptyDataTableFunctionId == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(ApiToApiInternalSchemaName),
+		List *functionNameList = list_make2(makeString(ApiInternalSchemaNameV2),
 											makeString("empty_data_table"));
 		Oid paramOids[0] = { };
 		bool missingOK = false;
@@ -3177,6 +3426,36 @@ ApiCatalogAggregationDistinctFunctionId(void)
 
 
 Oid
+ApiCatalogAggregationGetMoreFunctionId(void)
+{
+	InitializeDocumentDBApiExtensionCache();
+
+	if (Cache.ApiCatalogAggregationGetMoreFunctionId == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString(ApiCatalogSchemaName),
+											makeString("bson_aggregation_getmore"));
+		Oid paramOids[3] = { TEXTOID, BsonTypeId(), BsonTypeId() };
+		bool missingOK = true;
+
+		Cache.ApiCatalogAggregationGetMoreFunctionId =
+			LookupFuncName(functionNameList, 3, paramOids, missingOK);
+	}
+
+	return Cache.ApiCatalogAggregationGetMoreFunctionId;
+}
+
+
+Oid
+CursorGetMoreFunctionOid(void)
+{
+	return GetOperatorFunctionIdThreeArgs(
+		&Cache.CursorGetMoreFunctionOid, ApiSchemaNameV2, "cursor_get_more", TEXTOID,
+		DocumentDBCoreBsonTypeId(),
+		DocumentDBCoreBsonTypeId());
+}
+
+
+Oid
 BsonDollarAddFieldsFunctionOid(void)
 {
 	return GetBinaryOperatorFunctionId(&Cache.ApiCatalogBsonDollarAddFieldsFunctionOid,
@@ -3211,11 +3490,13 @@ Oid
 BsonDollaMergeDocumentsFunctionOid(void)
 {
 	bool missingOk = false;
-	return GetDocumentDBInternalBinaryOperatorFunctionId(
+	int nargs = 3;
+	Oid argTypes[3] = { BsonTypeId(), BsonTypeId(), BOOLOID };
+	return GetSchemaFunctionIdWithNargs(
 		&Cache.ApiInternalSchemaBsonDollarMergeDocumentsFunctionOid,
+		DocumentDBApiInternalSchemaName,
 		"bson_dollar_merge_documents",
-		BsonTypeId(),
-		BsonTypeId(), missingOk);
+		nargs, argTypes, missingOk);
 }
 
 
@@ -3385,25 +3666,13 @@ BsonDollarMergeHandleWhenMatchedFunctionOid(void)
 		List *functionNameList = list_make2(makeString(DocumentDBApiInternalSchemaName),
 											makeString(
 												"bson_dollar_merge_handle_when_matched"));
-		Oid *paramOids;
-		int nargs = 3;
-		if (IsClusterVersionAtleast(DocDB_V0, 102, 0))
-		{
-			paramOids = (Oid *) palloc(sizeof(Oid) * 5);
-			paramOids[0] = BsonTypeId();
-			paramOids[1] = BsonTypeId();
-			paramOids[2] = INT4OID;
-			paramOids[3] = BsonTypeId();
-			paramOids[4] = INT4OID;
-			nargs = 5;
-		}
-		else
-		{
-			paramOids = (Oid *) palloc(sizeof(Oid) * 3);
-			paramOids[0] = BsonTypeId();
-			paramOids[1] = BsonTypeId();
-			paramOids[2] = INT4OID;
-		}
+		Oid paramOids[5];
+		int nargs = 5;
+		paramOids[0] = BsonTypeId();
+		paramOids[1] = BsonTypeId();
+		paramOids[2] = INT4OID;
+		paramOids[3] = BsonTypeId();
+		paramOids[4] = INT4OID;
 
 		bool missingOK = false;
 
@@ -3425,25 +3694,13 @@ BsonDollarMergeAddObjectIdFunctionOid(void)
 		List *functionNameList = list_make2(makeString(DocumentDBApiInternalSchemaName),
 											makeString(
 												"bson_dollar_merge_add_object_id"));
-		Oid *paramOids;
-		int nargs = 2;
-		if (IsClusterVersionAtleast(DocDB_V0, 102, 0))
-		{
-			paramOids = (Oid *) palloc(sizeof(Oid) * 3);
-			paramOids[0] = BsonTypeId();
-			paramOids[1] = BsonTypeId();
-			paramOids[2] = BsonTypeId();
-			nargs = 3;
-		}
-		else
-		{
-			paramOids = (Oid *) palloc(sizeof(Oid) * 2);
-			paramOids[0] = BsonTypeId();
-			paramOids[1] = BsonTypeId();
-		}
+		Oid paramOids[3];
+		int nargs = 3;
+		paramOids[0] = BsonTypeId();
+		paramOids[1] = BsonTypeId();
+		paramOids[2] = BsonTypeId();
 
 		bool missingOK = false;
-
 		Cache.ApiInternalBsonDollarMergeAddObjectIdFunctionId =
 			LookupFuncName(functionNameList, nargs, paramOids, missingOK);
 	}
@@ -3671,6 +3928,23 @@ BsonSumAggregateFunctionOid(void)
 {
 	return GetAggregateFunctionByName(&Cache.ApiCatalogBsonSumAggregateFunctionOid,
 									  ApiCatalogSchemaName, "bsonsum");
+}
+
+
+Oid
+BsonCommandCountAggregateFunctionOid(void)
+{
+	return GetAggregateFunctionByName(
+		&Cache.ApiCatalogBsonCommandCountAggregateFunctionOid,
+		ApiInternalSchemaNameV2, "bsoncommandcount");
+}
+
+
+Oid
+BsonCountAggregateFunctionOid(void)
+{
+	return GetAggregateFunctionByName(&Cache.ApiCatalogBsonCountAggregateFunctionOid,
+									  ApiInternalSchemaNameV2, "bsoncount");
 }
 
 
@@ -4378,6 +4652,26 @@ BsonDistinctUnwindFunctionOid(void)
 
 
 Oid
+BsonDollarBucketAutoFunctionOid(void)
+{
+	InitializeDocumentDBApiExtensionCache();
+
+	if (Cache.BsonDollarBucketAutoFunctionOid == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString(DocumentDBApiInternalSchemaName),
+											makeString("bson_dollar_bucket_auto"));
+		Oid paramOids[2] = { BsonTypeId(), BsonTypeId() };
+		bool missingOK = false;
+
+		Cache.BsonDollarBucketAutoFunctionOid =
+			LookupFuncName(functionNameList, 2, paramOids, missingOK);
+	}
+
+	return Cache.BsonDollarBucketAutoFunctionOid;
+}
+
+
+Oid
 BsonRepathAndBuildFunctionOid(void)
 {
 	InitializeDocumentDBApiExtensionCache();
@@ -4444,6 +4738,17 @@ BsonExpressionGetWithLetFunctionOid(void)
 
 
 Oid
+BsonExpressionGetWithLetAndCollationFunctionOid(void)
+{
+	return GetOperatorFunctionIdFiveArgs(
+		&Cache.ApiCatalogBsonExpressionGetWithLetAndCollationFunctionOid,
+		DocumentDBApiInternalSchemaName, "bson_expression_get",
+		DocumentDBCoreBsonTypeId(), DocumentDBCoreBsonTypeId(), BOOLOID,
+		DocumentDBCoreBsonTypeId(), TEXTOID);
+}
+
+
+Oid
 BsonExpressionPartitionGetFunctionOid(void)
 {
 	return GetOperatorFunctionIdThreeArgs(
@@ -4476,6 +4781,17 @@ BsonExpressionPartitionGetWithLetFunctionOid(void)
 		DocumentDBApiInternalSchemaName, "bson_expression_partition_get",
 		DocumentDBCoreBsonTypeId(), DocumentDBCoreBsonTypeId(), BOOLOID,
 		DocumentDBCoreBsonTypeId());
+}
+
+
+Oid
+BsonExpressionPartitionGetWithLetAndCollationFunctionOid(void)
+{
+	return GetOperatorFunctionIdFiveArgs(
+		&Cache.ApiCatalogBsonExpressionPartitionGetWithLetAndCollationFunctionOid,
+		DocumentDBApiInternalSchemaName, "bson_expression_partition_get",
+		DocumentDBCoreBsonTypeId(), DocumentDBCoreBsonTypeId(), BOOLOID,
+		DocumentDBCoreBsonTypeId(), TEXTOID);
 }
 
 
@@ -4612,6 +4928,26 @@ VectorTypeId(void)
 
 
 /*
+ * HalfVectorTypeId returns the OID of the half vector type.
+ */
+Oid
+HalfVectorTypeId(void)
+{
+	InitializeDocumentDBApiExtensionCache();
+
+	if (Cache.HalfVectorTypeId == InvalidOid)
+	{
+		List *vectorTypeNameList = list_make2(makeString("public"), makeString(
+												  "halfvec"));
+		TypeName *vectorTypeName = makeTypeNameFromNameList(vectorTypeNameList);
+		Cache.HalfVectorTypeId = typenameTypeId(NULL, vectorTypeName);
+	}
+
+	return Cache.HalfVectorTypeId;
+}
+
+
+/*
  * IndexSpecTypeId returns the OID of the ApiCatalogSchemaName.index_spec_type.
  */
 Oid
@@ -4632,19 +4968,19 @@ IndexSpecTypeId(void)
 
 
 Oid
-MongoCatalogCollectionsTypeOid(void)
+ApiCatalogCollectionsTypeOid(void)
 {
 	InitializeDocumentDBApiExtensionCache();
 
-	if (Cache.MongoCatalogCollectionsTypeOid == InvalidOid)
+	if (Cache.ApiCatalogCollectionsTypeOid == InvalidOid)
 	{
 		List *typeNameList = list_make2(makeString(ApiCatalogSchemaName),
 										makeString("collections"));
 		TypeName *typeName = makeTypeNameFromNameList(typeNameList);
-		Cache.MongoCatalogCollectionsTypeOid = typenameTypeId(NULL, typeName);
+		Cache.ApiCatalogCollectionsTypeOid = typenameTypeId(NULL, typeName);
 	}
 
-	return Cache.MongoCatalogCollectionsTypeOid;
+	return Cache.ApiCatalogCollectionsTypeOid;
 }
 
 
@@ -4656,6 +4992,123 @@ BsonOrderByFunctionOid(void)
 {
 	return GetBinaryOperatorFunctionId(&Cache.BsonOrderByFunctionId,
 									   "bson_orderby", BsonTypeId(), BsonTypeId());
+}
+
+
+Oid
+BsonOrderByIndexOperatorId(void)
+{
+	return GetBinaryOperatorId(&Cache.BsonOrderByIndexOperatorId,
+							   BsonTypeId(), "|-<>", BsonTypeId());
+}
+
+
+Oid
+BsonOrderByReverseIndexOperatorId(void)
+{
+	return GetInternalBinaryOperatorId(&Cache.BsonOrderByReverseIndexOperatorId,
+									   BsonTypeId(), "<>-|", BsonTypeId());
+}
+
+
+/*
+ * BsonOrderByFunctionId returns the OID of the bson_orderby(<bson>, <bson>, text) function.
+ */
+Oid
+BsonOrderByWithCollationFunctionOid(void)
+{
+	return GetOperatorFunctionIdThreeArgs(&Cache.BsonOrderByWithCollationFunctionId,
+										  DocumentDBApiInternalSchemaName,
+										  "bson_orderby", BsonTypeId(), BsonTypeId(),
+										  TEXTOID);
+}
+
+
+/*
+ * BsonOrderByFunctionId returns the OID of the bson_orderby_compare(<bson>, <bson>) function.
+ */
+Oid
+BsonOrderByCompareFunctionOId(void)
+{
+	return GetBinaryOperatorFunctionIdWithSchema(
+		&Cache.BsonOrderByCompareFunctionOId,
+		"bson_orderby_compare", BsonTypeId(), BsonTypeId(),
+		DocumentDBApiInternalSchemaName);
+}
+
+
+/*
+ * BsonOrderByLtFunctionOId returns the OID of the bson_orderby_lt(<bson>, <bson>) function.
+ */
+Oid
+BsonOrderByLtFunctionOId(void)
+{
+	return GetBinaryOperatorFunctionIdWithSchema(
+		&Cache.BsonOrderByLtFunctionOId,
+		"bson_orderby_lt", BsonTypeId(), BsonTypeId(),
+		DocumentDBApiInternalSchemaName);
+}
+
+
+/*
+ * BsonOrderByEqFunctionOId returns the OID of the bson_orderby_eq(<bson>, <bson>) function.
+ */
+Oid
+BsonOrderByEqFunctionOId(void)
+{
+	return GetBinaryOperatorFunctionIdWithSchema(
+		&Cache.BsonOrderByEqFunctionOId,
+		"bson_orderby_eq", BsonTypeId(), BsonTypeId(),
+		DocumentDBApiInternalSchemaName);
+}
+
+
+/*
+ * BsonOrderByGtFunctionOId returns the OID of the bson_orderby_gt(<bson>, <bson>) function.
+ */
+Oid
+BsonOrderByGtFunctionOId(void)
+{
+	return GetBinaryOperatorFunctionIdWithSchema(
+		&Cache.BsonOrderByGtFunctionOId,
+		"bson_orderby_gt", BsonTypeId(), BsonTypeId(),
+		DocumentDBApiInternalSchemaName);
+}
+
+
+/*
+ * BsonOrderByLtFunctionOId returns the OID of the <bson> <<< <bson> function.
+ */
+Oid
+BsonOrderyByLtOperatorId(void)
+{
+	return GetInternalBinaryOperatorId(
+		&Cache.BsonOrderyByLtOperatorId,
+		BsonTypeId(), "<<<", BsonTypeId());
+}
+
+
+/*
+ * BsonOrderByMatchOperatorId returns the OID of the <bson> === <bson> function.
+ */
+Oid
+BsonOrderyByEqOperatorId(void)
+{
+	return GetInternalBinaryOperatorId(
+		&Cache.BsonOrderyByEqOperatorId,
+		BsonTypeId(), "===", BsonTypeId());
+}
+
+
+/*
+ * BsonOrderByDescOperatorId returns the OID of the <bson> >>> <bson> function.
+ */
+Oid
+BsonOrderyByGtOperatorId(void)
+{
+	return GetInternalBinaryOperatorId(
+		&Cache.BsonOrderyByGtOperatorId,
+		BsonTypeId(), ">>>", BsonTypeId());
 }
 
 
@@ -4677,6 +5130,30 @@ BsonOrderByPartitionFunctionOid(void)
 
 		Cache.BsonOrderByPartitionFunctionOid =
 			LookupFuncName(functionNameList, 3, paramOids, missingOK);
+	}
+
+	return Cache.BsonOrderByPartitionFunctionOid;
+}
+
+
+/*
+ * BsonOrderByPartitionFunctionOid returns the OID of the bson_orderby_partition(<bson>, <bson>, bool, text) function.
+ */
+Oid
+BsonOrderByPartitionWithCollationFunctionOid(void)
+{
+	InitializeDocumentDBApiExtensionCache();
+
+	if (Cache.BsonOrderByPartitionFunctionOid == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString(DocumentDBApiInternalSchemaName),
+											makeString(
+												"bson_orderby_partition"));
+		Oid paramOids[4] = { BsonTypeId(), BsonTypeId(), BOOLOID, TEXTOID };
+		bool missingOK = false;
+
+		Cache.BsonOrderByPartitionWithCollationFunctionOid =
+			LookupFuncName(functionNameList, 4, paramOids, missingOK);
 	}
 
 	return Cache.BsonOrderByPartitionFunctionOid;
@@ -5476,126 +5953,250 @@ Float8MultiplyOperatorId(void)
 
 
 /*
- * VectorCosineSimilaritySearchOperatorId returns the OID of the <vector> <=> <vector> operator.
+ * VectorCosineSimilarityOperatorId returns the OID of the <vector> <=> <vector> operator.
  */
 Oid
-VectorCosineSimilaritySearchOperatorId(void)
+VectorCosineSimilarityOperatorId(void)
 {
 	InitializeDocumentDBApiExtensionCache();
 
-	if (Cache.VectorCosineSimilaritySearchOperatorId == InvalidOid)
+	if (Cache.VectorCosineSimilarityOperatorId == InvalidOid)
 	{
 		List *operatorNameList = list_make2(makeString("public"), makeString("<=>"));
 
-		Cache.VectorCosineSimilaritySearchOperatorId =
+		Cache.VectorCosineSimilarityOperatorId =
 			OpernameGetOprid(operatorNameList, VectorTypeId(), VectorTypeId());
 	}
 
-	return Cache.VectorCosineSimilaritySearchOperatorId;
+	return Cache.VectorCosineSimilarityOperatorId;
 }
 
 
 /*
- * VectorL2SimilaritySearchOperatorId returns the OID of the <vector> <-> <vector> operator.
+ * VectorL2SimilarityOperatorId returns the OID of the <vector> <-> <vector> operator.
  */
 Oid
-VectorL2SimilaritySearchOperatorId(void)
+VectorL2SimilarityOperatorId(void)
 {
 	InitializeDocumentDBApiExtensionCache();
 
-	if (Cache.VectorL2SimilaritySearchOperatorId == InvalidOid)
+	if (Cache.VectorL2SimilarityOperatorId == InvalidOid)
 	{
 		List *operatorNameList = list_make2(makeString("public"), makeString("<->"));
 
-		Cache.VectorL2SimilaritySearchOperatorId =
+		Cache.VectorL2SimilarityOperatorId =
 			OpernameGetOprid(operatorNameList, VectorTypeId(), VectorTypeId());
 	}
 
-	return Cache.VectorL2SimilaritySearchOperatorId;
+	return Cache.VectorL2SimilarityOperatorId;
 }
 
 
 /*
- * VectorIPSimilaritySearchOperatorId returns the OID of the <vector> <#> <vector> operator.
+ * VectorIPSimilarityOperatorId returns the OID of the <vector> <#> <vector> operator.
  */
 Oid
-VectorIPSimilaritySearchOperatorId(void)
+VectorIPSimilarityOperatorId(void)
 {
 	InitializeDocumentDBApiExtensionCache();
 
-	if (Cache.VectorIPSimilaritySearchOperatorId == InvalidOid)
+	if (Cache.VectorIPSimilarityOperatorId == InvalidOid)
 	{
 		List *operatorNameList = list_make2(makeString("public"), makeString("<#>"));
 
-		Cache.VectorIPSimilaritySearchOperatorId =
+		Cache.VectorIPSimilarityOperatorId =
 			OpernameGetOprid(operatorNameList, VectorTypeId(), VectorTypeId());
 	}
 
-	return Cache.VectorIPSimilaritySearchOperatorId;
+	return Cache.VectorIPSimilarityOperatorId;
 }
 
 
 /* OID of the cosine_distance(vector, vector) function */
 Oid
-VectorCosineSimilaritySearchFunctionId(void)
+VectorCosineSimilarityFunctionId(void)
 {
 	InitializeDocumentDBApiExtensionCache();
 
-	if (Cache.VectorCosineSimilaritySearchFunctionId == InvalidOid)
+	if (Cache.VectorCosineSimilarityFunctionId == InvalidOid)
 	{
 		List *functionNameList = list_make2(makeString("public"), makeString(
 												"cosine_distance"));
 		Oid paramOids[2] = { VectorTypeId(), VectorTypeId() };
 		bool missingOK = false;
 
-		Cache.VectorCosineSimilaritySearchFunctionId = LookupFuncName(functionNameList, 2,
-																	  paramOids,
-																	  missingOK);
+		Cache.VectorCosineSimilarityFunctionId = LookupFuncName(functionNameList, 2,
+																paramOids,
+																missingOK);
 	}
 
-	return Cache.VectorCosineSimilaritySearchFunctionId;
+	return Cache.VectorCosineSimilarityFunctionId;
 }
 
 
 /* OID of the l2_distance(vector, vector) function */
 Oid
-VectorL2SimilaritySearchFunctionId(void)
+VectorL2SimilarityFunctionId(void)
 {
 	InitializeDocumentDBApiExtensionCache();
 
-	if (Cache.VectorL2SimilaritySearchFunctionId == InvalidOid)
+	if (Cache.VectorL2SimilarityFunctionId == InvalidOid)
 	{
 		List *functionNameList = list_make2(makeString("public"), makeString(
 												"l2_distance"));
 		Oid paramOids[2] = { VectorTypeId(), VectorTypeId() };
 		bool missingOK = false;
 
-		Cache.VectorL2SimilaritySearchFunctionId = LookupFuncName(functionNameList, 2,
-																  paramOids, missingOK);
+		Cache.VectorL2SimilarityFunctionId = LookupFuncName(functionNameList, 2,
+															paramOids, missingOK);
 	}
 
-	return Cache.VectorL2SimilaritySearchFunctionId;
+	return Cache.VectorL2SimilarityFunctionId;
 }
 
 
 /* OID of the vector_negative_inner_product(vector, vector) function */
 Oid
-VectorIPSimilaritySearchFunctionId(void)
+VectorIPSimilarityFunctionId(void)
 {
 	InitializeDocumentDBApiExtensionCache();
 
-	if (Cache.VectorIPSimilaritySearchFunctionId == InvalidOid)
+	if (Cache.VectorIPSimilarityFunctionId == InvalidOid)
 	{
 		List *functionNameList = list_make2(makeString("public"), makeString(
 												"vector_negative_inner_product"));
 		Oid paramOids[2] = { VectorTypeId(), VectorTypeId() };
 		bool missingOK = false;
 
-		Cache.VectorIPSimilaritySearchFunctionId = LookupFuncName(functionNameList, 2,
-																  paramOids, missingOK);
+		Cache.VectorIPSimilarityFunctionId = LookupFuncName(functionNameList, 2,
+															paramOids, missingOK);
 	}
 
-	return Cache.VectorIPSimilaritySearchFunctionId;
+	return Cache.VectorIPSimilarityFunctionId;
+}
+
+
+/*
+ * VectorHalfCosineSimilarityOperatorId returns the OID of the <halfvec> <=> <halfvec> operator.
+ */
+Oid
+VectorHalfCosineSimilarityOperatorId(void)
+{
+	InitializeDocumentDBApiExtensionCache();
+
+	if (Cache.VectorHalfCosineSimilarityOperatorId == InvalidOid)
+	{
+		List *operatorNameList = list_make2(makeString("public"), makeString("<=>"));
+
+		Cache.VectorHalfCosineSimilarityOperatorId =
+			OpernameGetOprid(operatorNameList, HalfVectorTypeId(), HalfVectorTypeId());
+	}
+
+	return Cache.VectorHalfCosineSimilarityOperatorId;
+}
+
+
+/*
+ * VectorHalfL2SimilarityOperatorId returns the OID of the <halfvec> <-> <halfvec> operator.
+ */
+Oid
+VectorHalfL2SimilarityOperatorId(void)
+{
+	InitializeDocumentDBApiExtensionCache();
+
+	if (Cache.VectorHalfL2SimilarityOperatorId == InvalidOid)
+	{
+		List *operatorNameList = list_make2(makeString("public"), makeString("<->"));
+
+		Cache.VectorHalfL2SimilarityOperatorId =
+			OpernameGetOprid(operatorNameList, HalfVectorTypeId(), HalfVectorTypeId());
+	}
+
+	return Cache.VectorHalfL2SimilarityOperatorId;
+}
+
+
+/*
+ * VectorHalfIPSimilarityOperatorId returns the OID of the <halfvec> <#> <halfvec> operator.
+ */
+Oid
+VectorHalfIPSimilarityOperatorId(void)
+{
+	InitializeDocumentDBApiExtensionCache();
+
+	if (Cache.VectorHalfIPSimilarityOperatorId == InvalidOid)
+	{
+		List *operatorNameList = list_make2(makeString("public"), makeString("<#>"));
+
+		Cache.VectorHalfIPSimilarityOperatorId =
+			OpernameGetOprid(operatorNameList, HalfVectorTypeId(), HalfVectorTypeId());
+	}
+
+	return Cache.VectorHalfIPSimilarityOperatorId;
+}
+
+
+/* OID of the cosine_distance(halfvec, halfvec) function */
+Oid
+VectorHalfCosineSimilarityFunctionId(void)
+{
+	InitializeDocumentDBApiExtensionCache();
+
+	if (Cache.VectorHalfCosineSimilarityFunctionId == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString("public"), makeString(
+												"cosine_distance"));
+		Oid paramOids[2] = { HalfVectorTypeId(), HalfVectorTypeId() };
+		bool missingOK = false;
+
+		Cache.VectorHalfCosineSimilarityFunctionId = LookupFuncName(functionNameList, 2,
+																	paramOids,
+																	missingOK);
+	}
+
+	return Cache.VectorHalfCosineSimilarityFunctionId;
+}
+
+
+/* OID of the l2_distance(halfvec, halfvec) function */
+Oid
+VectorHalfL2SimilarityFunctionId(void)
+{
+	InitializeDocumentDBApiExtensionCache();
+
+	if (Cache.VectorHalfL2SimilarityFunctionId == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString("public"), makeString(
+												"l2_distance"));
+		Oid paramOids[2] = { HalfVectorTypeId(), HalfVectorTypeId() };
+		bool missingOK = false;
+
+		Cache.VectorHalfL2SimilarityFunctionId = LookupFuncName(functionNameList, 2,
+																paramOids, missingOK);
+	}
+
+	return Cache.VectorHalfL2SimilarityFunctionId;
+}
+
+
+/* OID of the halfvec_negative_inner_product(halfvec, halfvec) function */
+Oid
+VectorHalfIPSimilarityFunctionId(void)
+{
+	InitializeDocumentDBApiExtensionCache();
+
+	if (Cache.VectorHalfIPSimilarityFunctionId == InvalidOid)
+	{
+		List *functionNameList = list_make2(makeString("public"), makeString(
+												"halfvec_negative_inner_product"));
+		Oid paramOids[2] = { HalfVectorTypeId(), HalfVectorTypeId() };
+		bool missingOK = false;
+
+		Cache.VectorHalfIPSimilarityFunctionId = LookupFuncName(functionNameList, 2,
+																paramOids, missingOK);
+	}
+
+	return Cache.VectorHalfIPSimilarityFunctionId;
 }
 
 
@@ -5820,6 +6421,46 @@ BsonRumTextPathOperatorFamily(void)
 }
 
 
+Oid
+BsonRumUniquePathOperatorFamily(void)
+{
+	InitializeDocumentDBApiExtensionCache();
+
+	if (Cache.BsonRumUniquePathOperatorFamily == InvalidOid)
+	{
+		/* Handles extension version upgrades */
+		bool missingOk = true;
+		Oid rumAmId = RumIndexAmId();
+		Cache.BsonRumUniquePathOperatorFamily = get_opfamily_oid(
+			rumAmId, list_make2(makeString(ApiInternalSchemaNameV2), makeString(
+									"bson_rum_unique_shard_path_ops")),
+			missingOk);
+	}
+
+	return Cache.BsonRumUniquePathOperatorFamily;
+}
+
+
+Oid
+BsonRumHashPathOperatorFamily(void)
+{
+	InitializeDocumentDBApiExtensionCache();
+
+	if (Cache.BsonRumHashPathOperatorFamily == InvalidOid)
+	{
+		bool missingOk = false;
+		Oid rumAmId = RumIndexAmId();
+		Cache.BsonRumHashPathOperatorFamily = get_opfamily_oid(
+			rumAmId, list_make2(makeString(ApiCatalogSchemaName), makeString(
+									psprintf("%s_rum_hashed_ops",
+											 ExtensionObjectPrefix))),
+			missingOk);
+	}
+
+	return Cache.BsonRumHashPathOperatorFamily;
+}
+
+
 /*
  * OID of the operator class for BSON GIST spherical geometries
  */
@@ -5876,7 +6517,6 @@ BsonRumSinglePathOperatorFamily(void)
 
 	if (Cache.BsonRumSinglePathOperatorFamily == InvalidOid)
 	{
-		/* Handles extension version upgrades */
 		bool missingOk = false;
 		Oid rumAmId = RumIndexAmId();
 		Cache.BsonRumSinglePathOperatorFamily = get_opfamily_oid(
@@ -5934,31 +6574,6 @@ WebSearchToTsQueryWithRegConfigFunctionId(void)
 	}
 
 	return Cache.WebSearchToTsQueryWithRegConfigFunctionId;
-}
-
-
-/*
- * Returns the OID of the extract_tsvector function that the RUM extension
- * has for the default TSVector operator class
- */
-Oid
-RumExtractTsVectorFunctionId(void)
-{
-	InitializeDocumentDBApiExtensionCache();
-
-	if (Cache.RumExtractTsVectorFunctionId == InvalidOid)
-	{
-		List *functionNameList = list_make2(makeString(RUM_EXTENSION_SCHEMA),
-											makeString("rum_extract_tsvector"));
-		Oid paramOids[5] = {
-			TSVECTOROID, INTERNALOID, INTERNALOID, INTERNALOID, INTERNALOID
-		};
-		bool missingOK = false;
-		Cache.RumExtractTsVectorFunctionId =
-			LookupFuncName(functionNameList, 5, paramOids, missingOK);
-	}
-
-	return Cache.RumExtractTsVectorFunctionId;
 }
 
 
@@ -6350,6 +6965,61 @@ ApiCatalogCollectionIndexIdSequenceId(void)
 	}
 
 	return Cache.CollectionIndexIdSequenceId;
+}
+
+
+Oid
+IntegerOpsOpFamilyOid(void)
+{
+	InitializeDocumentDBApiExtensionCache();
+
+	if (Cache.IntegerOpsOpFamilyOid == InvalidOid)
+	{
+		bool missingOk = false;
+		Cache.IntegerOpsOpFamilyOid = get_opfamily_oid(
+			BTREE_AM_OID, list_make2(makeString("pg_catalog"), makeString(
+										 "integer_ops")),
+			missingOk);
+	}
+
+	return Cache.IntegerOpsOpFamilyOid;
+}
+
+
+Oid
+BsonBtreeOpFamilyOid(void)
+{
+	InitializeDocumentDBApiExtensionCache();
+
+	if (Cache.BsonBtreeOpFamilyOid == InvalidOid)
+	{
+		bool missingOk = false;
+		Cache.BsonBtreeOpFamilyOid = get_opfamily_oid(
+			BTREE_AM_OID, list_make2(makeString(CoreSchemaName), makeString(
+										 "bson_btree_ops")),
+			missingOk);
+	}
+
+	return Cache.BsonBtreeOpFamilyOid;
+}
+
+
+Oid
+BsonRumCompositeIndexOperatorFamily(void)
+{
+	InitializeDocumentDBApiExtensionCache();
+
+	if (Cache.BsonRumCompositeIndexOperatorFamily == InvalidOid)
+	{
+		/* To handle older versions pre-upgrade, we allow missing ok */
+		bool missingOk = true;
+		Cache.BsonRumCompositeIndexOperatorFamily = get_opfamily_oid(
+			RumIndexAmId(), list_make2(makeString(ApiInternalSchemaNameV2), makeString(
+										   "bson_rum_composite_path_ops")),
+			missingOk);
+	}
+
+	return Cache.BsonRumCompositeIndexOperatorFamily;
 }
 
 

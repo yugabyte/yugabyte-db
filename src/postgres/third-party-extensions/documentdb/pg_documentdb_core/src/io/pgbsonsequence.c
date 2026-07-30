@@ -1,12 +1,12 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/bson/io/bsonsequence_io.c
+ * src/io/bsonsequence_io.c
  *
  * Implementation of the BSON Sequence type input and output functions
  * and manipulating BSON Sequences.
  *
- * Note that BsonSequences are raw streams of bson used in I/O in native Mongo.
+ * Note that BsonSequences are raw streams of bson used in I/O in the native protocol.
  * See http://mongoc.org/libbson/current/bson_reader_t.html
  *
  *-------------------------------------------------------------------------
@@ -207,7 +207,7 @@ bson_to_bsonsequence(PG_FUNCTION_ARGS)
 						  currentValue.value.v_doc.data_len))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
-						errmsg("Failed to initialize single bson value")));
+						errmsg("Bson value initialization failed")));
 	}
 
 	bson_concat(doc, &currentDoc);
@@ -229,8 +229,8 @@ bson_to_bsonsequence(PG_FUNCTION_ARGS)
  * Creates a list of bson_value_t for the documents that are stored in
  * the bsonsequence.
  */
-List *
-PgbsonSequenceGetDocumentBsonValues(const pgbsonsequence *bsonSequence)
+pgbson_require_alignment() List *
+PgbsonSequenceGetDocumentBsonValues(const pgbsonsequence * bsonSequence)
 {
 	const uint8_t *data = (const uint8_t *) VARDATA_ANY(bsonSequence);
 	uint32_t dataSize = VARSIZE_ANY_EXHDR(bsonSequence);
@@ -239,8 +239,9 @@ PgbsonSequenceGetDocumentBsonValues(const pgbsonsequence *bsonSequence)
 	bson_reader_t *reader = bson_reader_new_from_data(data, dataSize);
 	while (true)
 	{
-		const bson_t *document = bson_reader_read(reader, NULL);
-		if (document == NULL)
+		bool reachedEOF = false;
+		const bson_t *document = bson_reader_read(reader, &reachedEOF);
+		if (document == NULL || reachedEOF)
 		{
 			break;
 		}
@@ -346,8 +347,9 @@ PgbsonSequenceInitFromJson(const char *jsonString)
 	if (element.bsonValue.value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-						errmsg("Json value for bsonsequence must be an array. got %s",
-							   BsonTypeName(element.bsonValue.value_type))));
+						errmsg(
+							"The JSON value for bsonsequence should be provided as an array, but received %s instead.",
+							BsonTypeName(element.bsonValue.value_type))));
 	}
 
 	bson_iter_t arrayIterator;
@@ -382,7 +384,8 @@ PgbsonSequenceInitFromJson(const char *jsonString)
 							  currentValue->value.v_doc.data_len))
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
-							errmsg("Could not initialize bson from value")));
+							errmsg(
+								"Failed to initialize bson object from provided value")));
 		}
 
 		if (!bson_concat(doc, &currentbson))

@@ -62,85 +62,93 @@ public class XClusterConfigUpdateMasterAddresses extends XClusterConfigTaskBase 
   public void run() {
     log.info("Running {}", getName());
 
-    checkUniverseVersion();
-    Universe targetUniverse = lockUniverse(-1 /* expectedUniverseVersion */);
-    try (YBClient client = ybService.getUniverseClient(targetUniverse)) {
-      GetMasterClusterConfigResponse getMasterClusterConfigResp = client.getMasterClusterConfig();
-      if (getMasterClusterConfigResp.hasError()) {
-        String errMsg =
-            String.format(
-                "Failed to update master addresses of XClusterConfigs for Universe(%s): "
-                    + "Failed to get cluster config: %s",
-                targetUniverse.getUniverseUUID(), getMasterClusterConfigResp.errorMessage());
-        throw new RuntimeException(errMsg);
-      }
-      Map<String, CdcConsumer.ProducerEntryPB> replicationGroups =
-          getMasterClusterConfigResp.getConfig().getConsumerRegistry().getProducerMapMap();
-
-      // Update all the xCluster configs whose source and target universes belong to this task.
-      for (String replicationGroupName : replicationGroups.keySet()) {
-        XClusterConfig xClusterConfig =
-            XClusterConfig.getByReplicationGroupNameTarget(
-                replicationGroupName, targetUniverse.getUniverseUUID());
-        if (xClusterConfig == null) {
-          // Skip replication for xcluster replications were created by yb-admin command and not
-          // existing in YBA.
-          continue;
-        }
-        UUID sourceUniverseUUID = xClusterConfig.getSourceUniverseUUID();
-        String xClusterConfigName = xClusterConfig.getName();
-        // Skip the replication configs whose source universe does not belong to this task.
-        if (!sourceUniverseUUID.equals(taskParams().sourceUniverseUuid)) {
-          continue;
-        }
-        // Get the master addresses from the source universe.
-        Universe sourceUniverse = Universe.getOrBadRequest(sourceUniverseUUID);
-        Set<CommonNet.HostPortPB> sourceMasterAddresses = new HashSet<>();
-        List<NodeDetails> sourceMasters = sourceUniverse.getMasters();
-        for (NodeDetails node : sourceMasters) {
-          CommonNet.HostPortPB hostPortPB =
-              CommonNet.HostPortPB.newBuilder()
-                  .setHost(node.cloudInfo.private_ip)
-                  .setPort(node.masterRpcPort)
-                  .build();
-          sourceMasterAddresses.add(hostPortPB);
-        }
-        // Update the replication config on the target universe with the new source master
-        // addresses.
-        AlterUniverseReplicationResponse resp =
-            client.alterUniverseReplicationSourceMasterAddresses(
-                replicationGroupName, sourceMasterAddresses);
-        if (resp.hasError()) {
+    try {
+      checkUniverseVersion();
+      Universe targetUniverse = lockUniverse(-1 /* expectedUniverseVersion */);
+      try (YBClient client = ybService.getUniverseClient(targetUniverse)) {
+        GetMasterClusterConfigResponse getMasterClusterConfigResp = client.getMasterClusterConfig();
+        if (getMasterClusterConfigResp.hasError()) {
           String errMsg =
               String.format(
-                  "Failed to update source master addresses for XClusterConfig(%s) "
-                      + "between source(%s) and target(%s) to %s: %s",
-                  xClusterConfigName,
-                  sourceUniverseUUID,
-                  taskParams().getUniverseUUID(),
-                  sourceUniverse.getMasterAddresses(),
-                  resp.errorMessage());
+                  "Failed to update master addresses of XClusterConfigs for Universe(%s): "
+                      + "Failed to get cluster config: %s",
+                  targetUniverse.getUniverseUUID(), getMasterClusterConfigResp.errorMessage());
           throw new RuntimeException(errMsg);
         }
-        log.info(
-            "Master addresses for XClusterConfig({}) between source({}) and target({}) "
-                + "updated to {}",
-            xClusterConfigName,
-            sourceUniverseUUID,
-            taskParams().getUniverseUUID(),
-            sourceUniverse.getMasterAddresses());
+        Map<String, CdcConsumer.ProducerEntryPB> replicationGroups =
+            getMasterClusterConfigResp.getConfig().getConsumerRegistry().getProducerMapMap();
 
-        if (HighAvailabilityConfig.get().isPresent()) {
-          getUniverse().incrementVersion();
+        // Update all the xCluster configs whose source and target universes belong to this task.
+        for (String replicationGroupName : replicationGroups.keySet()) {
+          XClusterConfig xClusterConfig =
+              XClusterConfig.getByReplicationGroupNameTarget(
+                  replicationGroupName, targetUniverse.getUniverseUUID());
+          if (xClusterConfig == null) {
+            // Skip replication for xcluster replications were created by yb-admin command and not
+            // existing in YBA.
+            continue;
+          }
+          UUID sourceUniverseUUID = xClusterConfig.getSourceUniverseUUID();
+          String xClusterConfigName = xClusterConfig.getName();
+          // Skip the replication configs whose source universe does not belong to this task.
+          if (!sourceUniverseUUID.equals(taskParams().sourceUniverseUuid)) {
+            continue;
+          }
+          // Get the master addresses from the source universe.
+          Universe sourceUniverse = Universe.getOrBadRequest(sourceUniverseUUID);
+          Set<CommonNet.HostPortPB> sourceMasterAddresses = new HashSet<>();
+          List<NodeDetails> sourceMasters = sourceUniverse.getMasters();
+          for (NodeDetails node : sourceMasters) {
+            CommonNet.HostPortPB hostPortPB =
+                CommonNet.HostPortPB.newBuilder()
+                    .setHost(node.cloudInfo.private_ip)
+                    .setPort(node.masterRpcPort)
+                    .build();
+            sourceMasterAddresses.add(hostPortPB);
+          }
+          // Update the replication config on the target universe with the new source master
+          // addresses.
+          AlterUniverseReplicationResponse resp =
+              client.alterUniverseReplicationSourceMasterAddresses(
+                  replicationGroupName, sourceMasterAddresses);
+          if (resp.hasError()) {
+            String errMsg =
+                String.format(
+                    "Failed to update source master addresses for XClusterConfig(%s) "
+                        + "between source(%s) and target(%s) to %s: %s",
+                    xClusterConfigName,
+                    sourceUniverseUUID,
+                    taskParams().getUniverseUUID(),
+                    sourceUniverse.getMasterAddresses(),
+                    resp.errorMessage());
+            throw new RuntimeException(errMsg);
+          }
+          log.info(
+              "Master addresses for XClusterConfig({}) between source({}) and target({}) "
+                  + "updated to {}",
+              xClusterConfigName,
+              sourceUniverseUUID,
+              taskParams().getUniverseUUID(),
+              sourceUniverse.getMasterAddresses());
+
+          if (HighAvailabilityConfig.get().isPresent()) {
+            getUniverse().incrementVersion();
+          }
         }
+      } finally {
+        unlockUniverseForUpdate();
       }
-    } catch (Exception e) {
-      log.error("{} hit error : {}", getName(), e.getMessage());
-      throw new RuntimeException(e);
-    } finally {
-      unlockUniverseForUpdate();
-    }
 
-    log.info("Completed {}", getName());
+      log.info("Completed {}", getName());
+    } catch (Exception e) {
+      log.warn(
+          "Error while updating xCluster master addresses for sourceUniverse={} and "
+              + "targetUniverse={}: {}; Ignoring error as background task "
+              + "syncMasterAddressesForConfig will update the master addresses",
+          taskParams().sourceUniverseUuid,
+          taskParams().getUniverseUUID(),
+          e.getMessage(),
+          e);
+    }
   }
 }

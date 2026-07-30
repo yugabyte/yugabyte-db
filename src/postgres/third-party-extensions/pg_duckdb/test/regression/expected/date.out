@@ -1,0 +1,54 @@
+-- Test +/- inf values
+CREATE TABLE t(a DATE, b TEXT);
+INSERT INTO t VALUES('Infinity','Positive INF'), ('-Infinity','Negative INF');
+-- PG Execution
+SELECT * from t;
+     a     |      b       
+-----------+--------------
+ infinity  | Positive INF
+ -infinity | Negative INF
+(2 rows)
+
+SELECT isfinite(a),b FROM t;
+ isfinite |      b       
+----------+--------------
+ f        | Positive INF
+ f        | Negative INF
+(2 rows)
+
+set duckdb.force_execution = true;
+-- DuckDB execution
+SELECT * from t;
+     a     |      b       
+-----------+--------------
+ infinity  | Positive INF
+ -infinity | Negative INF
+(2 rows)
+
+SELECT isfinite(a),b FROM t;
+ isfinite |      b       
+----------+--------------
+ f        | Positive INF
+ f        | Negative INF
+(2 rows)
+
+-- Cleanup
+set duckdb.force_execution = false;
+DROP TABLE t;
+-- Check upper and lower limits of date range
+SELECT * FROM duckdb.query($$ SELECT  '4714-11-24 (BC)'::date as date $$);
+     date      
+---------------
+ 11-24-4714 BC
+(1 row)
+
+SELECT * FROM duckdb.query($$ SELECT  '4714-11-23 (BC)'::date as date $$);  -- out of range
+ERROR:  (PGDuckDB/Duckdb_ExecCustomScan_Cpp) Out of Range Error: The value should be between min and max value (4714-11-24 (BC) <-> 5874897-12-31)
+SELECT * FROM duckdb.query($$ SELECT  '5874897-12-31'::date as date $$);
+     date      
+---------------
+ 12-31-5874897
+(1 row)
+
+SELECT * FROM duckdb.query($$ SELECT  '5874898-01-01'::date as date $$);  -- out of range
+ERROR:  (PGDuckDB/Duckdb_ExecCustomScan_Cpp) Out of Range Error: The value should be between min and max value (4714-11-24 (BC) <-> 5874897-12-31)

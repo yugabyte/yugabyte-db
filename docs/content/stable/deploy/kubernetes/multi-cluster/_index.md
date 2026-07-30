@@ -20,6 +20,6 @@ type: indexpage
     title="Google Kubernetes Engine (GKE)"
     body="Multi-cluster deployment on GKE."
     href="gke/helm-chart/"
-    icon="/images/section_icons/deploy/gke.png">}}
+    icon="fa-brands fa-google">}}
 
 {{</index/block>}}

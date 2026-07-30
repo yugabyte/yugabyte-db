@@ -40,7 +40,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -90,7 +89,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
   @Before
   public void setUp() {
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
-    RuntimeConfigEntry.upsertGlobal("yb.kubernetes.operator.wait_for_gflag_sync_sec", "0");
+    factory.globalRuntimeConf().setValue("yb.kubernetes.operator.wait_for_gflag_sync_sec", "0");
   }
 
   private void setupUniverseMultiAZ(
@@ -387,12 +386,15 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.WaitForServer,
           TaskType.WaitForTServerHeartBeats,
           TaskType.SwamperTargetsFileUpdate,
-          TaskType.CreateAlertDefinitions,
           TaskType.CreateTable,
           TaskType.CreateTable,
           TaskType.UpdateConsistencyCheck,
           TaskType.PodDisruptionBudgetPolicy,
-          TaskType.UniverseUpdateSucceeded);
+          TaskType.UniverseUpdateSucceeded,
+          // CreateAlertDefinitions now runs AFTER UniverseUpdateSucceeded so alert definitions
+          // are only produced for universes whose initial creation actually succeeded (the
+          // preceding subtask flips creationSucceeded=true which the alert service gates on).
+          TaskType.CreateAlertDefinitions);
 
   private static final ImmutableMap<String, String> EXPECTED_RESULT_FOR_CREATE_TABLE_TASK =
       ImmutableMap.of("tableType", "REDIS_TABLE_TYPE", "tableName", "redis");
@@ -416,8 +418,8 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("removeFile", false)),
-        Json.toJson(ImmutableMap.of()),
         Json.toJson(EXPECTED_RESULT_FOR_CREATE_TABLE_TASK),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),

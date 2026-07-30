@@ -38,9 +38,7 @@ export const ConfigurePitrStep = ({ isFormDisabled }: ConfigureAlertStepProps) =
   const pitrRetentionPeriodUnit = watch('pitrRetentionPeriodUnit')?.value;
 
   useEffect(() => {
-    // Changing the retention period unit might clear an error on
-    // `pitrRetentionPeriodValue`. Ex. `pitrRetentionPeriodValue` = 6 does not pass validation when
-    // the unit is seconds, but it does pass validation when the unit is minutes.
+    // Changing the retention period unit might require revalidation of the value.
     if (pitrRetentionPeriodUnit !== undefined) {
       trigger('pitrRetentionPeriodValue');
     }

@@ -43,7 +43,6 @@
 #include <vector>
 
 #include <gtest/gtest_prod.h>
-#include <rapidjson/document.h>
 
 #include "yb/common/entity_ids_types.h"
 
@@ -68,7 +67,6 @@
 
 #include "yb/util/curl_util.h"
 #include "yb/util/env.h"
-#include "yb/util/jsonreader.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
@@ -79,7 +77,6 @@
 
 namespace yb {
 
-using rapidjson::Value;
 using strings::Substitute;
 
 class ExternalDaemon;
@@ -150,6 +147,13 @@ struct ExternalMiniClusterOptions {
   bool enable_ysql_auth = false;
   bool enable_ysql_conn_mgr = false;
   bool wait_for_tservers_to_accept_ysql_connections = true;
+
+  bool IsYsqlConnMgrEnabled() const {
+    if (!enable_ysql) return false;
+    if (enable_ysql_conn_mgr) return true;
+    const char* env = getenv("YB_ENABLE_YSQL_CONN_MGR_IN_TESTS");
+    return env && strcasecmp(env, "true") == 0;
+  }
 
   // Directory in which to store data.
   // Default: "", which auto-generates a unique path for this cluster.
@@ -332,6 +336,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   Result<size_t> GetFirstNonLeaderMasterIndex();
 
   Result<size_t> GetTabletLeaderIndex(const yb::TabletId& tablet_id, bool require_lease = false);
+
+  Result<std::vector<size_t>> GetTabletFollowerIndexes(const yb::TabletId& tablet_id);
 
   // The comma separated string of the master adresses host/ports from current list of masters.
   std::string GetMasterAddresses() const override;
@@ -624,8 +630,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   // Create a PG connection to the given database. If node_index is not set, a random node is
   // chosen.
   Result<pgwrapper::PGConn> ConnectToDB(
-      const std::string& db_name = "yugabyte", std::optional<size_t> tserver_index = std::nullopt,
-      bool simple_query_protocol = false, const std::string& user = "postgres");
+      std::string_view db_name = "yugabyte", std::optional<size_t> tserver_index = std::nullopt,
+      bool simple_query_protocol = false, std::string_view user = "postgres");
 
   Result<pgwrapper::PGConn> ConnectToDB(ExternalClusterPGConnectionOptions&& options);
 
@@ -729,11 +735,20 @@ YB_STRONGLY_TYPED_BOOL(SafeShutdown);
 // Utility class for waiting for logging events. There can only be one LogWaiter at a time.
 class LogWaiter : public ExternalDaemon::StringListener {
  public:
-  LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait);
-  LogWaiter(std::vector<ExternalDaemon*> daemons, const std::string& string_to_wait);
+  LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait)
+      : LogWaiter(std::vector{daemon}, std::vector{string_to_wait}) {}
+
+  LogWaiter(std::vector<ExternalDaemon*> daemons, const std::string& string_to_wait)
+      : LogWaiter(daemons, std::vector{string_to_wait}) {}
+
+  LogWaiter(ExternalDaemon* daemon, std::vector<std::string> string_to_wait)
+      : LogWaiter(std::vector{daemon}, std::vector{string_to_wait}) {}
+
+  LogWaiter(std::vector<ExternalDaemon*> daemons, std::vector<std::string> string_to_wait);
 
   Status WaitFor(MonoDelta timeout);
   bool IsEventOccurred() { return event_occurred_; }
+  std::string matched_log_line() const;
 
   ~LogWaiter();
 
@@ -742,7 +757,10 @@ class LogWaiter : public ExternalDaemon::StringListener {
 
   std::vector<ExternalDaemon*> daemons_;
   std::atomic<bool> event_occurred_{false};
-  const std::string string_to_wait_;
+  const std::vector<std::string> strings_to_wait_;
+
+  mutable std::mutex mutex_;
+  std::string matched_log_line_ GUARDED_BY(mutex_);
 };
 
 // Resumes a daemon that was stopped with ExteranlDaemon::Pause() upon
@@ -957,5 +975,12 @@ void StartSecure(
 Status WaitForTableIntentsApplied(
     ExternalMiniCluster* cluster, const TableId& table_id,
     MonoDelta timeout = MonoDelta::FromSeconds(30));
+
+// Logs, for every live tserver, the number of tablet replicas it hosts broken down by table.
+// Intended for diagnosing load-balancing test failures.
+// When running_only is true (the default), replicas that are not in the RUNNING state (e.g.
+// tombstoned replicas left behind after the load balancer moved a peer elsewhere) are excluded, so
+// the counts reflect the committed placement rather than transient over-replication.
+void DumpTabletDistribution(ExternalMiniCluster* cluster, bool running_only = true);
 
 }  // namespace yb

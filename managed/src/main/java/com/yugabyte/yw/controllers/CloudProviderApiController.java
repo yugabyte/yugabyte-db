@@ -22,7 +22,6 @@ import com.yugabyte.yw.common.CloudProviderHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
 import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
@@ -74,7 +73,6 @@ public class CloudProviderApiController extends AuthenticatedController {
 
   @Inject private CloudProviderHandler cloudProviderHandler;
   @Inject private CloudProviderHelper cloudProviderHelper;
-  @Inject private RuntimeConfigFactory runtimeConfigFactory;
   @Inject private ConfigHelper configHelper;
 
   @ApiOperation(

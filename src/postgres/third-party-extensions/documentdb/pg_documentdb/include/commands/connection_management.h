@@ -25,4 +25,13 @@ void ConnMgrTryCancelActiveConnection(void);
 void ConnMgrResetActiveConnection(PGconn *conn);
 void ConnMgrForgetActiveConnection(void);
 
+/*
+ * Functions used to manage a PG connection's state and report possible errors.
+ */
+bool PGConnXactIsActive(PGconn *conn);
+bool PGConnTryCancel(PGconn *conn);
+
+void PGConnReportError(PGconn *conn, PGresult *result, int elevel);
+void PGConnFinishConnectionEstablishment(PGconn *conn);
+
 #endif

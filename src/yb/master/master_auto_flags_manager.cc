@@ -20,6 +20,7 @@
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/tablet/operations/change_auto_flags_config_operation.h"
+#include "yb/util/enum_parse.h"
 #include "yb/util/scope_exit.h"
 
 DEFINE_NON_RUNTIME_int32(limit_auto_flag_promote_for_new_universe,

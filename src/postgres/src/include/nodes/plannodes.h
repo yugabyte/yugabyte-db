@@ -29,7 +29,7 @@
 
 
 /*
- * YB: info used by YbSaopMergeInfo.
+ * YB: info used by YbMergeScanInfo.
  */
 typedef struct
 {
@@ -44,14 +44,14 @@ typedef struct
 /*
  * YB: info used by IndexScan and IndexOnlyScan nodes.
  *
- * Holds info used for scalar array operation merge index [only] scans.
+ * Holds info used for merge scans.
  */
 typedef struct
 {
 	NodeTag		type;
-	List	   *saop_cols;		/* List of YbSaopMergeSaopColInfo */
+	List	   *saop_cols;		/* List of YbMergeScanSaopColInfo */
 	YbSortInfo *sort_cols;
-} YbSaopMergeInfo;
+} YbMergeScanInfo;
 
 /* ----------------------------------------------------------------
  *						node definitions
@@ -126,6 +126,8 @@ typedef struct PlannedStmt
 	 * constraint exclusion and partition pruning.
 	 */
 	int			yb_num_referenced_relations;
+
+	uint64		ybPlanId;		/* plan id */
 } PlannedStmt;
 
 /* macro for fetching the Plan associated with a SubPlan node */
@@ -218,6 +220,9 @@ typedef struct Plan
 
 	/* YB: Is this node forced using a UID? */
 	bool		ybHasHintedUid;
+
+	/* YB: Is this node able (and allowed) to apply read ahead optimization? */
+	bool		ybReadAheadCapable;
 } Plan;
 
 /* ----------------
@@ -540,6 +545,9 @@ typedef struct Scan
 {
 	Plan		plan;
 	Index		scanrelid;		/* relid is index into the range table */
+
+	/* YB */
+	char	   *ybScannedObjectName;
 } Scan;
 
 /* ----------------
@@ -634,7 +642,7 @@ typedef struct IndexScan
 	YbPushdownExprs yb_rel_pushdown;
 	YbPlanInfo	yb_plan_info;
 	int			yb_distinct_prefixlen;	/* distinct index scan prefix */
-	YbSaopMergeInfo *yb_saop_merge_info;
+	YbMergeScanInfo *yb_merge_scan_info;
 	YbLockMechanism yb_lock_mechanism;	/* locks possible as part of the scan */
 } IndexScan;
 
@@ -683,7 +691,8 @@ typedef struct IndexOnlyScan
 	YbPushdownExprs yb_pushdown;
 	YbPlanInfo	yb_plan_info;
 	int			yb_distinct_prefixlen;	/* distinct index scan prefix */
-	YbSaopMergeInfo *yb_saop_merge_info;
+	YbMergeScanInfo *yb_merge_scan_info;
+	int			yb_num_decoded_pk_cols;	/* number of decoded pk columns in index */
 } IndexOnlyScan;
 
 /* ----------------
@@ -1333,6 +1342,9 @@ typedef struct Hash
 	bool		skewInherit;	/* is outer join rel an inheritance tree? */
 	/* all other info is in the parent HashJoin node */
 	Cardinality rows_total;		/* estimate total rows if parallel_aware */
+
+	/* YB specific fields */
+	char	   *ybSkewTableName;
 } Hash;
 
 /* ----------------

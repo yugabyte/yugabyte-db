@@ -1436,7 +1436,7 @@ class InMemoryHandler : public WriteBatch::Handler {
     row_ << LDBCommand::StringToHex(key.ToBuffer()) << " ";
   }
 
-  Status Frontiers(const UserFrontiers& range) override {
+  Status Frontiers(const yb::storage::UserFrontiers& range) override {
     row_ << " MARGIN_RANGE : " << range.ToString() << " ";
     return Status::OK();
   }

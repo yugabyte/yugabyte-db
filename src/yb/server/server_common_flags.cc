@@ -32,12 +32,10 @@ DEFINE_NON_RUNTIME_bool(enable_pg_cron, false,
     "Enables the pg_cron extension. Jobs will be run on a single tserver node. The node should be "
     "assumed to be selected randomly.");
 
-DEFINE_RUNTIME_AUTO_PG_FLAG(
-    bool, yb_allow_replication_slot_lsn_types, kLocalPersisted, false, true,
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_allow_replication_slot_lsn_types, kLocalPersisted, false, true,
     "Enable LSN types to be specified while creating replication slots.");
 
-DEFINE_RUNTIME_PG_PREVIEW_FLAG(
-    bool, yb_allow_replication_slot_ordering_modes, false,
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_allow_replication_slot_ordering_modes, false,
     "Enable ordering modes to be specified while creating replication slots.");
 
 // This autoflag was introduced in commit 80def06f8c19ad7cbc52f41b4be48d158157a418, but it had some
@@ -66,9 +64,6 @@ DEFINE_validator(ysql_conn_mgr_max_client_connections, FLAG_GT_VALUE_VALIDATOR(1
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_upgrade_to_pg15_completed, kLocalPersisted, false, true,
     "Indicates the state of YSQL major upgrade to PostgreSQL version 15. Do not modify this "
     "manually.");
-
-DEFINE_RUNTIME_AUTO_bool(ysql_enable_auto_analyze_infra, kLocalPersisted, false, true,
-    "Enable the infra required for Auto Analyze");
 
 namespace yb {
 

@@ -40,6 +40,7 @@
 #include "pg_yb_utils.h"
 #include "utils/uuid.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb_internal_conn.h"
 
 #define UINT32_ACCESS_ONCE(var)		 ((uint32)(*((volatile uint32 *)&(var))))
 
@@ -653,9 +654,6 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 
 	YbcPgSessionTxnInfo *txn_infos = NULL;
 
-	YbcReplicationSlotDescriptor *yb_replication_slots = NULL;
-	size_t		yb_numreplicationslots = 0;
-
 	if (YBIsEnabledInPostgresEnvVar() && yb_enable_pg_locks)
 	{
 		txn_infos = (YbcPgSessionTxnInfo *)
@@ -672,9 +670,6 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 		yb_txn_rpc_timestamp = GetCurrentTimestamp();
 		HandleYBStatus(YBCPgActiveTransactions(txn_infos, num_backends));
 	}
-
-	if (IsYugaByteEnabled())
-		YBCListReplicationSlots(&yb_replication_slots, &yb_numreplicationslots);
 
 	/* 1-based index */
 	for (curr_backend = 1; curr_backend <= num_backends; curr_backend++)
@@ -747,23 +742,6 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 		else
 			nulls[16] = true;
 
-		if (IsYugaByteEnabled())
-		{
-			int			slotno;
-
-			for (slotno = 0; slotno < yb_numreplicationslots; slotno++)
-			{
-				YbcReplicationSlotDescriptor *slot = &yb_replication_slots[slotno];
-
-				if (slot->active_pid == beentry->st_procpid)
-				{
-					values[16] = slot->xmin;
-					nulls[16] = false;
-					break;
-				}
-			}
-		}
-
 		/* Values only available to role member or pg_read_all_stats */
 		if (HAS_PGSTAT_PERMISSIONS(beentry->st_userid))
 		{
@@ -805,8 +783,9 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 			proc = BackendPidGetProc(beentry->st_procpid);
 
 			if (proc == NULL && (beentry->st_backendType != B_BACKEND &&
-								 beentry->st_backendType != YB_AUTO_ANALYZE_BACKEND &&
-								 beentry->st_backendType != YB_YSQL_CONN_MGR))
+								 beentry->st_backendType != YB_YSQL_CONN_MGR &&
+								 beentry->st_backendType != YB_YSQL_CONN_MGR_CTRL &&
+								 !YbIsInternalConnBackendType(beentry->st_backendType)))
 			{
 				/*
 				 * For an auxiliary process, retrieve process info from

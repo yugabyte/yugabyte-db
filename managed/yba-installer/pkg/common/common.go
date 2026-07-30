@@ -200,8 +200,15 @@ func CheckDataVersionFile() error {
 // Copies over necessary files for all services from yba_installer_full to the GetSoftwareRoot()
 func copyBits(vers string) error {
 	yugabundleBinary := "yugabundle-" + vers + "-centos-x86_64.tar.gz"
+	// Stash the PA collector tarball next to the other installer bits so that
+	// later toggle-enable flows (e.g. `yba-ctl reconfigure` flipping
+	// perfAdvisor.enabled from false to true) can locate it without requiring
+	// the user to be cd'd into the extracted bundle.
+	// The stashed copy lives under <software>/<version>/yba_installer/ and is
+	// cleaned up automatically with the rest of the version dir by
+	// PrunePastInstalls() on upgrade and by Uninstall() on full uninstall.
 	neededFiles := []string{GoBinaryName, VersionMetadataJSON, yugabundleBinary,
-		GetJavaPackagePath(), GetPostgresPackagePath()}
+		GetJavaPackagePath(), GetPostgresPackagePath(), bundlePACollectorPackagePath()}
 
 	for _, file := range neededFiles {
 		fp := AbsoluteBundlePath(file)
@@ -499,9 +506,27 @@ func FixConfigValues() error {
 		InitViper()
 	}
 
+	if len(viper.GetString("perfAdvisor.paSecret")) == 0 {
+		log.Debug("Generating default app secret for perf advisor")
+		if err := SetYamlValue(InputFile(), "perfAdvisor.paSecret",
+			GenerateRandomStringURLSafe(64)); err != nil {
+			return err
+		}
+		InitViper()
+	}
+
 	if len(viper.GetString("platform.keyStorePassword")) == 0 {
 		log.Debug("Generating default app secret for platform")
 		if err := SetYamlValue(InputFile(), "platform.keyStorePassword",
+			GenerateRandomStringURLSafe(32)); err != nil {
+			return err
+		}
+		InitViper()
+	}
+
+	if len(viper.GetString("perfAdvisor.tls.keystorePassword")) == 0 {
+		log.Debug("Generating default keystore password for perf advisor")
+		if err := SetYamlValue(InputFile(), "perfAdvisor.tls.keystorePassword",
 			GenerateRandomStringURLSafe(32)); err != nil {
 			return err
 		}

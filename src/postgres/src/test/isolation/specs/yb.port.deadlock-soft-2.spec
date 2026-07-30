@@ -45,6 +45,6 @@ step s4c	{ COMMIT; }
 # detect step s1b as waiting before the deadlock detector runs and
 # releases s1 from its blocked state.  To ensure that happens even in
 # very slow (debug_discard_caches) cases, apply a (*) annotation.
-# In YB, s1b always ends up waiting and is only resumed after s3 & s4
-# get aborted. Hence we wouldn't need (*) for s1b.
-permutation s1a s2a s2b s3a s4a s1b s1c s2c s3c s4c
+# In YB, unlike PG, s3 and s4 deadlock. Enfore the order in which they
+# will be seen in the test output.
+permutation s1a s2a s2b s3a(s4a) s4a(s1b) s1b(*) s1c s2c s3c s4c

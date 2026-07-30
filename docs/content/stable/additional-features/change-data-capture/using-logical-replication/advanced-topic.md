@@ -80,7 +80,7 @@ This is illustrated in the following example. The client used for the example is
 
 ## Adding tables to publication
 
-The Publication's tables list can change in two ways. The first way is by adding a table to the publication by performing an alter publication.
+The publication's tables list can change in two ways. The first way is by adding a table to the publication by performing an `ALTER PUBLICATION`:
 
 ```sql
 CREATE TABLE test_table_1(id INT PRIMARY KEY, aa INT, bb INT);
@@ -97,7 +97,7 @@ CREATE TABLE test_table_3(id INT PRIMARY KEY, aa INT, bb INT);
 ALTER PUBLICATION ADD TABLE test_table_3;
 ```
 
-The second way is when a table is added to `ALL TABLES` publication upon creation.
+The second way is when a table is added to an `ALL TABLES` publication upon creation:
 
 ```sql
 CREATE TABLE test_table_1(id INT PRIMARY KEY, aa INT, bb INT);
@@ -107,32 +107,59 @@ CREATE PUBLICATION PUB FOR ALL TABLES;
 -- Start consumption through a replication slot.
 
 CREATE TABLE test_table_2(id INT PRIMARY KEY, aa INT, bb INT);
--- Since the publication was created for ALL TABLES, alter publication is not requirred.
 ```
 
-### YugabyteDB semantics
+As the publication was created for ALL TABLES, ALTER PUBLICATION is not required.
 
-Unlike PostgreSQL, any changes made to the publication's tables list are not applied immediately in YugabyteDB. Instead the publication's tables list is periodically refreshed, and changes (if any) are applied. The refresh interval is managed using the [cdcsdk_publication_list_refresh_interval_secs](../../../../reference/configuration/yb-tserver/#cdcsdk-publication-list-refresh-interval-secs) flag. The default is 15 minutes (900 seconds). This means that any changes made to the publication's tables list will be applied after `cdcsdk_publication_list_refresh_interval_secs` in the worst case.
+### Implicit publication
 
-Consider an example where the `cdcsdk_publication_list_refresh_interval_secs` flag is set to 900 seconds (15 minutes) and the publication's tables list is being refreshed every 15 minutes at 8:00 am, 8:15 am, 8:30 am, and so on.
+Available in v2026.1 and later.
 
-A change made to the publication's tables list at 8:01 am will be applied at 8:15 am. Equally, a change made to the publication's tables list at 8:14 am will also be applied at 8:15 am.
+When implicit publication is enabled (the default), changes to a publication are reflected in the logical replication polling tables list at the correct commit time. No events from newly added tables are missed. This behavior matches PostgreSQL. (Implicit publication applies only to the logical replication model of CDC.)
 
-You can change the value of this flag at run time, but the change becomes effective only after some time. For example, suppose you change the `cdcsdk_publication_list_refresh_interval_secs` flag from 900 seconds (15 minutes) to 300 seconds (5 minutes) at 8:01 am.
+Regardless of lag, a logical replication stream detects publication changes at the correct point in time and streams all events from the altered publication from that point forward.
 
-This change will only be applied after 8:15 am. That is, the publication's tables list will next be refreshed at 8:15 am. Then the next refresh will happen at 8:20 am, and subsequent refreshes will take place every 5 minutes.
+For example:
 
-### Required settings
+```sql
+-- Assuming a replication slot is using the publication pub
+ALTER PUBLICATION pub ADD TABLE employees;
+INSERT INTO employees VALUES (1342, 'John Doe'); -- This will be captured by CDC
 
-To enable dynamic table addition, perform the following steps:
+ALTER PUBLICATION pub DROP TABLE employees;
+INSERT INTO employees VALUES (1343, 'Jane Doe'); -- This will NOT be captured by CDC
+```
 
-1. Set the [cdcsdk_publication_list_refresh_interval_secs](../../../../reference/configuration/yb-tserver/#cdcsdk-publication-list-refresh-interval-secs) flag to a lower value, such as 60 or 120 seconds. Note that the effect of this setting takes place after the upcoming publication refresh is performed.
+For architectural details, see [Publication change detection](../../../../architecture/docdb-replication/cdc-logical-replication/#publication-change-detection) in the logical replication architecture documentation.
+
+Implicit publication is controlled by the following flags. Set them on both YB-Master and YB-TServer.
+
+| Flag | Details |
+| :--- | :--- |
+| [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) | When set to `true` (default), modifications to a publication are reflected implicitly, providing PostgreSQL-like semantics for dynamic tables. When set to `false`, the publication's tables list is [periodically refreshed](#periodoc-publication). |
+| cdc_enable_dynamic_schema_changes | Auto flag that guards feature deployment. This flag is automatically promoted as part of the upgrade process. The feature can be used only after this flag has been promoted. |
+
+### Periodoc publication
+
+If [ysql_yb_enable_implicit_dynamic_tables_logical_replication](../../../../reference/configuration/yb-tserver/#ysql-yb-enable-implicit-dynamic-tables-logical-replication) is set to `false`, YugabyteDB does not apply publication changes immediately. (This is also the behavior in versions earlier than v2026.1.) Instead, the publication's tables list is periodically refreshed, and changes (if any) are applied. This behavior differs from PostgreSQL.
+
+You manage the refresh interval using the [cdcsdk_publication_list_refresh_interval_secs](../../../../reference/configuration/yb-tserver/#cdcsdk-publication-list-refresh-interval-secs) flag. This means that any changes made to the publication's tables list will be applied after `cdcsdk_publication_list_refresh_interval_secs` in the worst case. The default is 15 minutes (900 seconds).
+
+To illustrate how this works, suppose `cdcsdk_publication_list_refresh_interval_secs` is set to 900 seconds (15 minutes) and the publication's tables list is being refreshed every 15 minutes at 8:00 am, 8:15 am, 8:30 am, and so on. A change made to the publication's tables list at 8:01 am will be applied at 8:15 am. Equally, a change made to the publication's tables list at 8:14 am will also be applied at 8:15 am.
+
+You can change the refresh interval at run time, but the change becomes effective only after some time. For example, suppose you change `cdcsdk_publication_list_refresh_interval_secs` from 900 seconds (15 minutes) to 300 seconds (5 minutes) at 8:01 am. This change is only applied after 8:15 am. That is, the publication's tables list will next be refreshed at 8:15 am. Then the next refresh will happen at 8:20 am, and subsequent refreshes will take place every 5 minutes.
+
+To enable dynamic table addition with minimal delay, perform the following steps:
+
+1. Set the [cdcsdk_publication_list_refresh_interval_secs](../../../../reference/configuration/yb-tserver/#cdcsdk-publication-list-refresh-interval-secs) flag to a lower value, such as 60 or 120 seconds.
 
     ```sh
     ./yb-ts-cli --server_address=<tserverIpAddress:tserverPort> set_flag cdcsdk_publication_list_refresh_interval_secs 120
     ```
 
-1. After you start receiving records from the newly added table in the publication, reset the  `cdcsdk_publication_list_refresh_interval_secs` flag back to its original value (i.e 900 seconds).
+    The new setting only takes place after the next publication refresh is performed.
+
+1. After you start receiving records from the newly added table in the publication, reset `cdcsdk_publication_list_refresh_interval_secs` to its original value (that is, 900 seconds).
 
     ```sh
     ./yb-ts-cli --server_address=<tserverIpAddress:tserverPort> set_flag cdcsdk_publication_list_refresh_interval_secs 900
@@ -141,6 +168,27 @@ To enable dynamic table addition, perform the following steps:
 {{< note title="Important" >}}
 If you lower the value of `cdcsdk_publication_list_refresh_interval_secs`, you should set the value of the flag back to its original value after you start receiving changes from the new table, as every refresh incurs overhead.
 {{< /note >}}
+
+## Streaming DDLs causing table rewrite
+
+By default (v2026.1 and later), you can perform DDL on _non-colocated_ tables in a database with active logical replication without dropping replication slots. When a DDL causes a table rewrite, logical replication detects it, sends a DDL event to the client, and transitions to streaming changes from the re-written table's tablets after finishing data from the older tablets.
+
+For more details, see [Table rewrite and DROP TABLE handling](../../../../architecture/docdb-replication/cdc-logical-replication/#table-rewrite-and-drop-table-handling).
+
+This feature is controlled by the following flag. Set the flag on both YB-Master and YB-TServer.
+
+| Flag | Details |
+| :--- | :--- |
+| [enable_table_rewrite_for_cdcsdk_table](../../../../reference/configuration/yb-tserver/#enable-table-rewrite-for-cdcsdk-table) | When set to `true` (the default), CDC does not block DDLs that cause table rewrites. Records from the re-written tablets are streamed after CDC finishes streaming data from the older tablets. When set to `false`, any DDL that causes a table rewrite (for example, [ALTER TYPE](../../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-type-with-table-rewrite)) is blocked when CDC is active on the database (this is also the behavior in versions earlier than v2026.1); to perform such a DDL, you have to drop replication slots, run the DDL, and recreate the slots, potentially requiring a new CDC snapshot. |
+
+<!-- This is an auto-flag, so commenting it out
+cdc_enable_dynamic_schema_changes | Auto flag that guards feature deployment. This flag is automatically promoted as part of the upgrade process. The feature can be used only after this flag has been promoted. -->
+
+### Unsupported scenarios
+
+- When you truncate a table that is being replicated by CDC, CDC does not send a truncate record to the client. Tracked in {{<issue 29674>}}.
+- When a DDL causes a table rewrite, existing data is re-written to new tablets. CDC re-sends this existing data again after the table rewrite. Tracked in {{<issue 31636>}}.
+- Streaming DDLs that cause table rewrites is not supported for _colocated_ tables when CDC is enabled. Tracked in {{<issue 31908>}}.
 
 ## Initial snapshot
 
@@ -242,3 +290,80 @@ With this setup, the command to be executed by the application user as part of t
 CALL set_yb_read_time('<consistent_point commit time> ht');
 CALL disable_catalog_version_check();
 ```
+
+## Replication origins
+
+{{<tags/feature/ea idea="2525">}}Replication origins provide a mechanism to track the origin of changes in logical replication, which is essential for implementing bi-directional replication setups and preventing replication loops.
+
+Replication origins are intended to make it easier to implement logical replication solutions on top of logical decoding. Using a replication origin, you can change replication behavior based on the origin of a row. This is particularly useful for preventing loops in bi-directional replication setups, where changes replicated from a remote node should not be replicated back to that same node.
+
+In a bi-directional replication setup where two databases replicate changes to each other, replication origins help prevent infinite loops as follows:
+
+1. When changes are applied on Database A that originated from Database B, those changes are tagged with Database B's replication origin.
+
+1. When Database A streams changes to Database B, the output plugin can filter out changes that have Database B's replication origin, preventing those changes from being sent back to Database B.
+
+This ensures that changes only flow in one direction.
+
+The YugabyteDB implementation of replication origins mimics that of PostgreSQL; refer to [Replication Progress Tracking](https://www.postgresql.org/docs/15/replication-origins.html) in the PostgreSQL documentation.
+
+### Properties
+
+Replication origins have two properties:
+
+| Property | Description |
+| :--- | :--- |
+| Name | Free-form text identifier that should be used to refer to the origin across systems. It should be used in a way that makes conflicts between replication origins created by different replication solutions unlikely (for example, by prefixing the replication solution's name to it). |
+| ID | Internal identifier used to avoid having to store the long name in situations where space efficiency is important. The ID should never be shared across systems. |
+
+### Create and manage replication origins
+
+Create, drop, and query replication origins using the following functions:
+
+- Create a replication origin:
+
+    ```sql
+    SELECT pg_replication_origin_create('origin_name');
+    ```
+
+    This function creates a new replication origin with the specified name and returns the assigned origin ID.
+
+- Drop a replication origin:
+
+    ```sql
+    SELECT pg_replication_origin_drop('origin_name');
+    ```
+
+- View replication origins:
+
+    Replication origins can be viewed in the `pg_replication_origin` [system catalog](../../../../architecture/system-catalog/):
+
+    ```sql
+    SELECT * FROM pg_replication_origin;
+    ```
+
+### Setting up replication origin for a session
+
+To mark a session as replaying from a remote node, use the `pg_replication_origin_session_setup()` function:
+
+```sql
+SELECT pg_replication_origin_session_setup('origin_name');
+```
+
+When a replication origin is set up for a session, every change and transaction passed to output plugin callbacks generated by that session is tagged with the replication origin of the generating session. This allows output plugins to treat changes differently based on their origin, for example, by ignoring all but locally-originating rows.
+
+To reset the replication origin for a session, use the following function:
+
+```sql
+SELECT pg_replication_origin_session_reset();
+```
+
+### How it works with the logical replication protocol
+
+The PostgreSQL logical replication protocol streams transactions with origin information by including an optional meta message for each transaction if it has an origin set. This allows clients consuming the replication stream to:
+
+- Identify the origin of each transaction
+- Filter out transactions that originated from a specific remote node to prevent replication loops
+- Implement different processing logic based on the transaction origin
+
+When a session has a replication origin configured using `pg_replication_origin_session_setup()`, the origin information is included in the WAL records and streamed as part of the logical replication protocol. This enables output plugins and replication clients to detect the origin of events and avoid loops in bi-directional replication setups.

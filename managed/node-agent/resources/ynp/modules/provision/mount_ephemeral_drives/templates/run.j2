@@ -115,10 +115,20 @@ get_ephemeral_drives() {
   declare -i exit_code=0
 
   # Take into account xvdb or sdb
-  root_drive=$(lsblk | awk '$7 == "/" {print $1}' | tr -cd '[:alnum:]/')
-  root_parent=$(lsblk -ndo pkname "/dev/${root_drive}")
-  if [[ -z "${root_parent}" ]]; then
-    root_parent=root_drive
+  # Handle LVM root volumes (common on OCI) by checking TYPE column
+  root_line=$(lsblk -o NAME,TYPE,MOUNTPOINT | awk '$3 == "/" {print $1, $2}')
+  root_drive=$(echo "$root_line" | awk '{print $1}' | tr -cd '[:alnum:]/')
+  root_type=$(echo "$root_line" | awk '{print $2}')
+
+  # For LVM root, find the underlying physical device
+  if [[ "$root_type" == "lvm" ]]; then
+    echo "Detected LVM root volume: $root_drive"
+    root_parent=$(pvs --noheadings -o pv_name 2>/dev/null | head -1 | xargs basename 2>/dev/null || echo "sda")
+  else
+    root_parent=$(lsblk -ndo pkname "/dev/${root_drive}" 2>/dev/null || echo "")
+    if [[ -z "${root_parent}" ]]; then
+      root_parent=$root_drive
+    fi
   fi
   if [[ "$root_parent" =~ .*xvd.* ]]; then
     echo "Detected 'xvd' drive naming scheme (root: $root_parent)"

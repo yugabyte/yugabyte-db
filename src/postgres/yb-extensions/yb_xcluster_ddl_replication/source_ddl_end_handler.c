@@ -17,6 +17,7 @@
 
 #include "postgres.h"
 
+#include "catalog/namespace.h"
 #include "catalog/partition.h"
 #include "catalog/pg_am_d.h"
 #include "catalog/pg_amop_d.h"
@@ -37,8 +38,13 @@
 #include "catalog/pg_opfamily_d.h"
 #include "catalog/pg_policy_d.h"
 #include "catalog/pg_proc_d.h"
+#include "catalog/pg_publication_d.h"
+#include "catalog/pg_publication_namespace_d.h"
+#include "catalog/pg_publication_rel_d.h"
 #include "catalog/pg_rewrite_d.h"
 #include "catalog/pg_statistic_ext.h"
+#include "catalog/pg_subscription_d.h"
+#include "catalog/pg_subscription_rel_d.h"
 #include "catalog/pg_trigger_d.h"
 #include "catalog/pg_ts_config_d.h"
 #include "catalog/pg_ts_config_map_d.h"
@@ -54,6 +60,7 @@
 #include "pg_yb_utils.h"
 #include "source_ddl_end_handler.h"
 #include "tcop/cmdtag.h"
+#include "utils/builtins.h"
 #include "utils/jsonb.h"
 #include "utils/lsyscache.h"
 #include "utils/palloc.h"
@@ -75,6 +82,15 @@
 #define TABLE_REWRITE_OBJID_COLUMN_ID 1
 
 static List *rewritten_table_oid_list = NIL;
+
+/* DDLs ignored for replication. */
+#define IGNORED_DDL_LIST \
+	X(CMDTAG_ALTER_PUBLICATION) \
+	X(CMDTAG_ALTER_SUBSCRIPTION) \
+	X(CMDTAG_CREATE_PUBLICATION) \
+	X(CMDTAG_CREATE_SUBSCRIPTION) \
+	X(CMDTAG_DROP_PUBLICATION) \
+	X(CMDTAG_DROP_SUBSCRIPTION)
 
 #define ALLOWED_DDL_LIST \
 	X(CMDTAG_COMMENT) \
@@ -209,6 +225,21 @@ IsPassThroughDdlCommandSupported(CommandTag command_tag)
 	{
 #define X(CMD_TAG_VALUE) case CMD_TAG_VALUE: return true;
 			ALLOWED_DDL_LIST
+#undef X
+		default:
+			return false;
+	}
+
+	return false;
+}
+
+static bool
+IsIgnoredDdlCommand(CommandTag command_tag)
+{
+	switch (command_tag)
+	{
+#define X(CMD_TAG_VALUE) case CMD_TAG_VALUE: return true;
+			IGNORED_DDL_LIST
 #undef X
 		default:
 			return false;
@@ -432,8 +463,8 @@ HandleAlterColumnAddIndex(AlterTableCmd *subcmd, Oid rel_oid,
 }
 
 void
-CheckAlterColumnTypeDDL(Oid rel_oid, CollectedCommand *cmd, List **new_rel_list,
-						bool is_table_rewrite, bool is_temporary_object)
+ProcessAlterTableSubcommands(Oid rel_oid, CollectedCommand *cmd, List **new_rel_list,
+							 bool is_temporary_object)
 {
 	/* Ignore temp objects. */
 	if (is_temporary_object)
@@ -454,6 +485,21 @@ CheckAlterColumnTypeDDL(Oid rel_oid, CollectedCommand *cmd, List **new_rel_list,
 				case AT_ReAddIndex:
 					{
 						HandleAlterColumnAddIndex(subcmd, rel_oid, new_rel_list);
+						break;
+					}
+				case AT_AttachPartition:
+					{
+						/*
+						 * ATTACH PARTITION may create matching child indexes on the
+						 * attached partition, so collect it and its indexes.
+						 */
+						PartitionCmd *partition_cmd = castNode(PartitionCmd, subcmd->def);
+						Oid			partition_oid =
+							RangeVarGetRelid(partition_cmd->name, NoLock,
+											 /* missing_ok= */ false);
+
+						ShouldReplicateNewRelation(partition_oid, new_rel_list,
+												   /* is_table_rewrite= */ false);
 						break;
 					}
 				default:
@@ -481,8 +527,9 @@ ProcessRewrittenIndexes(Oid rel_oid, const char *schema_name, List **new_rel_lis
 	appendStringInfo(&query_buf,
 					 "SELECT c.oid FROM pg_class c "
 					 "JOIN pg_indexes i ON c.relname = i.indexname "
-					 "WHERE i.tablename = '%s' AND i.schemaname = '%s';",
-					 rewritten_table_name, schema_name);
+					 "WHERE i.tablename = %s AND i.schemaname = %s;",
+					 quote_literal_cstr(rewritten_table_name),
+					 quote_literal_cstr(schema_name));
 
 	/*
 	 * Preserve current state of SPI_processed and SPI_tuptable because they
@@ -770,6 +817,36 @@ PushNameToOidMap(JsonbParseState *state, char *map_key,
 	(void) pushJsonbValue(&state, WJB_END_ARRAY, NULL);
 }
 
+void
+PushVariable(JsonbParseState *state, char *guc_name)
+{
+	char *value = GetConfigOptionByName(guc_name, NULL, false);
+	if (!value)
+		return;
+
+	AddStringJsonEntry(state, guc_name, value);
+}
+
+void
+PushVariableMap(JsonbParseState *state)
+{
+	AddJsonKey(state, "variables");
+	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
+
+	/*----------
+	 * To maximize safety, we always record the session variables.
+	 *
+	 * This protects us against the source and target clusters having
+	 * different defaults and changes of which DDLs use these variables.
+	 *----------
+	 */
+#define X(name) PushVariable(state, name);
+#include "xcluster_ddl_replication_gucs.def"
+#undef X
+
+	(void) pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+}
+
 bool
 ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 {
@@ -830,7 +907,16 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		{
 			if (type_is_enum(obj_id))
 				GetEnumLabels(obj_id, &enum_label_list);
-			AddTypeInfo(obj_id, schema, &type_info_list);
+
+			/*
+			 * ALTER TYPE allocates no new pg_type OID, so it needs no
+			 * type_info entry.  This is helpful because the ddl_command_end
+			 * trigger does not always provide the pg_type OID for it, but
+			 * rather sometimes a composite type's relation's pg_class OID.
+			 */
+			if (command_tag == CMDTAG_CREATE_TYPE)
+				AddTypeInfo(obj_id, schema, &type_info_list);
+
 			should_replicate_ddl |= true;
 		}
 		else if (command_tag == CMDTAG_CREATE_SEQUENCE ||
@@ -881,9 +967,8 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 			/* Perform additional checks on subcommands. */
 			CollectedCommand *cmd = info->command;
 
-			CheckAlterColumnTypeDDL(obj_id, cmd, &new_rel_list,
-									 /* is_table_rewrite */ false,
-									is_temporary_object);
+			ProcessAlterTableSubcommands(obj_id, cmd, &new_rel_list,
+										 is_temporary_object);
 
 			should_replicate_ddl |= ShouldReplicateAlterReplication(obj_id);
 		}
@@ -905,6 +990,10 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 		else if (IsPassThroughDdlSupported(command_tag_name))
 		{
 			should_replicate_ddl = !is_temporary_object;
+		}
+		else if (IsIgnoredDdlCommand(command_tag))
+		{
+			continue;
 		}
 		else
 		{
@@ -934,6 +1023,12 @@ ProcessSourceEventTriggerDDLCommands(JsonbParseState *state)
 	PushEnumLabelMap(state, "enum_label_info", enum_label_list);
 	PushNameToOidMap(state, "sequence_info", sequence_info_list);
 	PushNameToOidMap(state, "type_info", type_info_list);
+
+	/*
+	 * Record session variables that are known to meaningfully affect the DDL
+	 * execution.
+	 */
+	PushVariableMap(state);
 
 	return should_replicate_ddl;
 }
@@ -1048,6 +1143,17 @@ ProcessSourceEventTriggerDroppedObjects(CommandTag tag)
 			case UserMappingRelationId:
 				should_replicate_ddl = true;
 				break;
+			/*
+			 * Ignore logical replication objects (not replicated via xCluster).
+			 * Note: Schema-level publications (PublicationNamespaceRelationId)
+			 * and SUBSCRIPTION are not supported yet in YB.
+			 */
+			case PublicationRelationId:
+			case PublicationRelRelationId:
+			case PublicationNamespaceRelationId:
+			case SubscriptionRelationId:
+			case SubscriptionRelRelationId:
+				continue;
 			default:
 				{
 					const char *object_type = SPI_GetText(spi_tuple,

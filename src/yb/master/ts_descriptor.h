@@ -120,7 +120,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   static Result<std::pair<TSDescriptorPtr, TSDescriptor::WriteLock>> CreateNew(
       const NodeInstancePB& instance,
       const TSRegistrationPB& registration,
-      CloudInfoPB&& local_cloud_info,
+      CloudInfoPB&& local_master_cloud_info,
       rpc::ProxyCache* proxy_cache,
       // What the source of this registration request is. TServers can be registered by heartbeating
       // to the master.
@@ -161,11 +161,13 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   int64_t latest_seqno() const;
   int32_t latest_report_seqno() const;
+  uint64_t start_time_us() const;
 
   bool has_tablet_report() const;
   void set_has_tablet_report(bool has_report);
+  void set_has_tablet_report_unlocked(bool has_report) REQUIRES(mutex_);
 
-  int32_t receiving_full_report_seq_no() const;
+  std::optional<int32_t> receiving_full_report_seq_no() const;
   void set_receiving_full_report_seq_no(int32_t value);
 
   bool has_faulty_drive() const;
@@ -238,6 +240,18 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
     return leader_count_;
   }
 
+  void inc_pending_leader_drain_notification() {
+    pending_leader_drain_notification_++;
+  }
+
+  bool pending_leader_drain_notification() const {
+    return pending_leader_drain_notification_;
+  }
+
+  bool exchg_pending_leader_drain_notification(uint32_t old_value, uint32_t new_value) {
+    return pending_leader_drain_notification_.compare_exchange_strong(old_value, new_value);
+  }
+
   MicrosTime physical_time() const {
     SharedLock<decltype(mutex_)> l(mutex_);
     return physical_time_;
@@ -296,6 +310,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   struct TSPathMetrics {
     uint64_t used_space = 0;
     uint64_t total_space = 0;
+    std::string storage_tier;
   };
 
   std::unordered_map<std::string, TSPathMetrics> path_metrics() {
@@ -405,7 +420,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   struct TSMetrics ts_metrics_ GUARDED_BY(mutex_);
 
   // The cloud info of the master.
-  CloudInfoPB local_cloud_info_ GUARDED_BY(mutex_);
+  CloudInfoPB local_master_cloud_info_ GUARDED_BY(mutex_);
   rpc::ProxyCache* proxy_cache_ GUARDED_BY(mutex_);
   int64_t latest_seqno_ GUARDED_BY(mutex_);
 
@@ -432,7 +447,7 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   // Set to true once this instance has reported all of its tablets.
   bool has_tablet_report_ GUARDED_BY(mutex_) = false;
 
-  int32_t receiving_full_report_seq_no_ GUARDED_BY(mutex_) = 0;
+  std::optional<int32_t> receiving_full_report_seq_no_ GUARDED_BY(mutex_);
 
   // Tablet server has at least one faulty drive.
   bool has_faulty_drive_ GUARDED_BY(mutex_);
@@ -447,6 +462,10 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
 
   // The number of tablets for which this ts is a leader.
   int leader_count_ GUARDED_BY(mutex_);
+
+  // State reflecting that the tserver might be unaware of the leader rebalancing
+  // due to leader blacklist.
+  std::atomic<uint32> pending_leader_drain_notification_{0};
 
   std::string placement_id_ GUARDED_BY(mutex_);
 

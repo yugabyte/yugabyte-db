@@ -159,9 +159,6 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bo
 
 	if (YBIsDBCatalogVersionMode())
 		YbCreateMasterDBCatalogVersionTableEntry(dboid);
-
-	if (YBIsDBLogicalClientVersionMode())
-		YbCreateMasterDBLogicalClientVersionTableEntry(dboid);
 }
 
 static void
@@ -206,9 +203,6 @@ YBCDropDatabase(Oid dboid, const char *dbname)
 
 	if (YBIsDBCatalogVersionMode())
 		YbDeleteMasterDBCatalogVersionTableEntry(dboid);
-
-	if (YBIsDBLogicalClientVersionMode())
-		YbDeleteMasterDBLogicalClientVersionTableEntry(dboid);
 }
 
 void
@@ -599,10 +593,14 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 		return;					/* Nothing to do. */
 	}
 
+	YbMaybeDisableSkipIntentsForCDCSDK(MyDatabaseId);
+
 	YbcPgStatement handle = NULL;
 	ListCell   *listptr;
 	bool		is_shared_relation = tablespaceId == GLOBALTABLESPACE_OID;
-	Oid			databaseId = YBCGetDatabaseOidFromShared(is_shared_relation);
+	Oid			databaseId =
+		YBCGetDatabaseOidFromShared(is_shared_relation,
+									/* belongs_to_yb_system_db= */ false);
 	bool		is_matview = relkind == RELKIND_MATVIEW;
 	bool		is_colocated_tables_with_tablespace_enabled =
 		*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
@@ -786,6 +784,11 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 				 is_colocated_tables_with_tablespace_enabled &&
 				 OidIsValid(binary_upgrade_next_tablegroup_oid))
 		{
+			Oid			preserved_tablegroup_oid = binary_upgrade_next_tablegroup_oid;
+			bool		is_default = binary_upgrade_next_tablegroup_default;
+
+			binary_upgrade_next_tablegroup_default = false;
+
 			/*
 			 * In yb_binary_restore if tablespaceId is not valid but
 			 * binary_upgrade_next_tablegroup_oid is valid, that implies either:
@@ -795,13 +798,24 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 			 * while maintaining the colocation properties, and tablegroup's name
 			 * will be colocation_restore_tablegroupId, while default tablegroup's
 			 * name would still be default.
+			 *
+			 * The implicit tablegroup may already exist from an earlier restore
+			 * step using the colocation_<tablespace_oid> name. Look up by OID
+			 * before falling back to the restore name.
 			 */
-			tablegroup_name =
-				(binary_upgrade_next_tablegroup_default ?
-				 DEFAULT_TABLEGROUP_NAME :
-				 get_restore_tablegroup_name(binary_upgrade_next_tablegroup_oid));
-			binary_upgrade_next_tablegroup_default = false;
-			tablegroupId = get_tablegroup_oid(tablegroup_name, true);
+			tablegroup_name = get_tablegroup_name(preserved_tablegroup_oid);
+			if (tablegroup_name != NULL)
+			{
+				tablegroupId = preserved_tablegroup_oid;
+				binary_upgrade_next_tablegroup_oid = InvalidOid;
+			}
+			else
+			{
+				tablegroup_name = (is_default ?
+								 DEFAULT_TABLEGROUP_NAME :
+								 get_restore_tablegroup_name(preserved_tablegroup_oid));
+				tablegroupId = get_tablegroup_oid(tablegroup_name, true);
+			}
 		}
 		else
 		{
@@ -858,6 +872,7 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 	}
 
 	YbOptSplit *split_options = stmt->split_options;
+
 	bool		is_sys_catalog_table = YbIsSysCatalogTabletRelationByIds(relationId,
 																		 namespaceId,
 																		 schema_name);
@@ -1308,7 +1323,8 @@ static List *
 YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 						int *col, bool *needsYBAlter,
 						YbcPgStatement *rollbackHandle,
-						bool isPartitionOfAlteredTable)
+						bool isPartitionOfAlteredTable,
+						LOCKMODE lockmode)
 {
 	Oid			relationId = RelationGetRelid(rel);
 	Oid			relfileNodeId = YbGetRelfileNodeId(rel);
@@ -1384,6 +1400,17 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 
 				YbcPgExpr	missing_value = NULL;
 				Node	   *default_expr = ybFetchDefaultConstraintExpr(colDef, rel);
+
+				/*
+				 * Vector missing_value lacks a VectorId, which breaks reverse mapping.
+				 * Reject ADD COLUMN ... DEFAULT for vector.
+				 */
+				if (typeOid == VECTOROID && default_expr != NULL)
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("cannot add a vector column with a default value"),
+							 errdetail("ALTER TABLE ADD COLUMN with DEFAULT is not supported for type vector."),
+							 errhint("Add the column without a DEFAULT, then UPDATE existing rows if needed, or recreate the table with the column included.")));
 
 				if (default_expr && yb_enable_add_column_missing_default)
 				{
@@ -1567,10 +1594,10 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 					cmd->subtype == AT_DetachPartition)
 				{
 					RangeVar   *partition_rv = ((PartitionCmd *) cmd->def)->name;
-					Relation	r = relation_openrv(partition_rv, AccessExclusiveLock);
+					Relation	r = relation_openrv(partition_rv, lockmode);
 					char		relkind = r->rd_rel->relkind;
 
-					relation_close(r, AccessExclusiveLock);
+					relation_close(r, lockmode);
 					/*
 					 * If alter is performed on an index as opposed to a table
 					 * skip schema version increment.
@@ -1584,7 +1611,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 					List	   *affectedPartitions = NIL;
 
 					affectedPartitions = lappend(affectedPartitions,
-												 table_openrv(partition_rv, AccessExclusiveLock));
+												 table_openrv(partition_rv, lockmode));
 
 					/*
 					 * While attaching a partition to the parent partitioned table,
@@ -1600,7 +1627,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 
 						if (OidIsValid(defaultOid))
 						{
-							Relation	defaultPartition = table_open(defaultOid, AccessExclusiveLock);
+							Relation	defaultPartition = table_open(defaultOid, lockmode);
 
 							affectedPartitions = lappend(affectedPartitions, defaultPartition);
 						}
@@ -1619,7 +1646,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 						if (!IsYBBackedRelation(partition) ||
 							partition->rd_rel->relkind == RELKIND_FOREIGN_TABLE)
 						{
-							table_close(partition, AccessExclusiveLock);
+							table_close(partition, lockmode);
 							continue;
 						}
 						dependent_rels = lappend(dependent_rels, partition);
@@ -1634,7 +1661,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 				{
 					dependent_rels = lappend(dependent_rels,
 											 table_openrv(((Constraint *) cmd->def)->pktable,
-														  AccessExclusiveLock));
+														  lockmode));
 				}
 				/*
 				 * For drop foreign key case, assigning the primary key table
@@ -1676,7 +1703,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 						relationId != con->confrelid)
 					{
 						dependent_rels = lappend(dependent_rels,
-												 table_open(con->confrelid, AccessExclusiveLock));
+												 table_open(con->confrelid, lockmode));
 					}
 				}
 				/*
@@ -1699,7 +1726,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 										" not yet supported")));
 					}
 					dependent_rels = lappend(dependent_rels,
-											 table_openrv(index->relation, AccessExclusiveLock));
+											 table_openrv(index->relation, lockmode));
 				}
 
 				/*
@@ -1749,7 +1776,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 					HandleYBStatus(YBCPgAlterTableIncrementSchemaVersion(alter_cmd_handle));
 					handles = lappend(handles, alter_cmd_handle);
 					YbTrackAlteredTableId(relationId);
-					table_close(dependent_rel, AccessExclusiveLock);
+					table_close(dependent_rel, lockmode);
 				}
 				*needsYBAlter = true;
 				break;
@@ -1783,9 +1810,31 @@ YBCPrepareAlterTableCmd(AlterTableCmd *cmd, Relation rel, List *handles,
 
 		case AT_SetRelOptions:
 		case AT_ResetRelOptions:
-			*needsYBAlter = false;
-			ereport(NOTICE,
-					(errmsg("storage parameters are currently ignored in YugabyteDB")));
+			{
+				*needsYBAlter = false;
+				/*
+				 * Emit one NOTICE per unsupported parameter so the user
+				 * knows exactly which option(s) have no effect.
+				 */
+				ListCell   *lc;
+
+				foreach(lc, (List *) cmd->def)
+				{
+					DefElem    *def = (DefElem *) lfirst(lc);
+
+					if (strncmp(def->defname, "yb_auto_analyze_",
+								strlen("yb_auto_analyze_")) == 0)
+						continue;
+
+					if (strcmp(def->defname, "yb_presplit") == 0)
+						continue;
+
+					ereport(NOTICE,
+							(errmsg("storage parameter %s is currently ignored "
+									"for ALTER TABLE in YugabyteDB",
+									def->defname)));
+				}
+			}
 			break;
 
 		case AT_AddOf:
@@ -1823,7 +1872,8 @@ YBCPrepareAlterTable(List **subcmds,
 					 int subcmds_size,
 					 Oid relationId,
 					 YbcPgStatement *rollbackHandle,
-					 bool isPartitionOfAlteredTable)
+					 bool isPartitionOfAlteredTable,
+					 LOCKMODE lockmode)
 {
 	/* Appropriate lock was already taken */
 	Relation	rel = relation_open(relationId, NoLock);
@@ -1854,7 +1904,8 @@ YBCPrepareAlterTable(List **subcmds,
 			handles = YBCPrepareAlterTableCmd((AlterTableCmd *) lfirst(lcmd),
 											  rel, handles, &col,
 											  &subcmd_needs_yb_alter, rollbackHandle,
-											  isPartitionOfAlteredTable);
+											  isPartitionOfAlteredTable,
+											  lockmode);
 			needs_yb_alter |= subcmd_needs_yb_alter;
 		}
 	}
@@ -1965,7 +2016,23 @@ YBCDropIndex(Relation index)
 	 */
 	bool not_found = false;
 
-	if (yb_props->is_colocated)
+	/*
+	 * Copartitioned indexes (currently ybhnsw) store their rows in a
+	 * separate per-tablet LSM, not in the colocated tablet's DocDB. The
+	 * PGSQL_TRUNCATE_COLOCATED RPC is a no-op for them at the DocDB layer
+	 * (PgsqlWriteOperation::Apply early-returns), but issuing it for each
+	 * child of a partitioned vector-index drop still produces sibling
+	 * transactional writes against the same colocated tablet. The first
+	 * such write carries the txn's isolation metadata, and because the
+	 * apply emits no write_pairs, the transaction is never registered with
+	 * the participant. Subsequent sibling writes (which the YBClient
+	 * batcher strips of isolation metadata after the first request) then
+	 * fail conflict resolution with "Transaction not found" — see
+	 * GH#30640. Skipping the truncate altogether for copartitioned indexes
+	 * avoids the empty-batch + isolation race; the actual storage is
+	 * cleaned up by the DROP_INDEX master RPC below.
+	 */
+	if (yb_props->is_colocated && !index->rd_indam->yb_amiscopartitioned)
 	{
 		YbcPgStatement handle = YbNewTruncateColocatedIgnoreNotFound(index, YB_TRANSACTIONAL);
 		if (handle)
@@ -1977,6 +2044,12 @@ YBCDropIndex(Relation index)
 										 &not_found);
 		}
 	}
+
+	/*
+	 * Reset not_found so that a NotFound from the colocated truncate above
+	 * does not cause us to skip the actual drop-index RPC below.
+	 */
+	not_found = false;
 
 	/* Drop the index table */
 	{
@@ -2147,7 +2220,8 @@ YBCCreateReplicationSlot(const char *slot_name,
 						 CRSSnapshotAction snapshot_action,
 						 uint64_t *consistent_snapshot_time,
 						 YbCRSLsnType lsn_type,
-						 YbCRSOrderingMode yb_ordering_mode)
+						 YbCRSOrderingMode yb_ordering_mode,
+						 Oid database_oid)
 {
 	YbcPgStatement handle;
 
@@ -2183,7 +2257,7 @@ YBCCreateReplicationSlot(const char *slot_name,
 
 	HandleYBStatus(YBCPgNewCreateReplicationSlot(slot_name,
 												 plugin_name,
-												 MyDatabaseId,
+												 database_oid,
 												 repl_slot_snapshot_action,
 												 repl_slot_lsn_type,
 												 repl_slot_ordering_mode,
@@ -2213,6 +2287,13 @@ YBCCreateReplicationSlot(const char *slot_name,
 }
 
 void
+YBCListSlotEntries(YbcSlotEntryDescriptor **slot_entries,
+				   size_t *num_slot_entries)
+{
+	HandleYBStatus(YBCPgListSlotEntries(slot_entries, num_slot_entries));
+}
+
+void
 YBCListReplicationSlots(YbcReplicationSlotDescriptor **replication_slots,
 						size_t *numreplicationslots)
 {
@@ -2220,33 +2301,51 @@ YBCListReplicationSlots(YbcReplicationSlotDescriptor **replication_slots,
 											 numreplicationslots));
 }
 
-void
+bool
 YBCGetReplicationSlot(const char *slot_name,
-					  YbcReplicationSlotDescriptor **replication_slot)
+					  YbcReplicationSlotDescriptor **replication_slot,
+					  bool if_exists)
 {
+	YbcStatus status = YBCPgGetReplicationSlot(slot_name, replication_slot);
+
+	if (if_exists && YBCStatusIsNotFound(status))
+	{
+		elog(LOG, "replication slot \"%s\" not found", slot_name);
+		YBCFreeStatus(status);
+		return false;
+	}
+
 	char		error_message[NAMEDATALEN + 64] = "";
 
 	snprintf(error_message, sizeof(error_message),
 			 "replication slot \"%s\" does not exist", slot_name);
 
-	HandleYBStatusWithCustomErrorForNotFound(YBCPgGetReplicationSlot(slot_name,
-																	 replication_slot),
-											 error_message);
+	HandleYBStatusWithCustomErrorForNotFound(status, error_message);
+	return true;
 }
 
 void
-YBCDropReplicationSlot(const char *slot_name)
+YBCDropReplicationSlot(const char *slot_name, bool if_exists)
 {
 	YbcPgStatement handle;
+	HandleYBStatus(YBCPgNewDropReplicationSlot(slot_name, &handle));
+
+	YbcStatus status = YBCPgExecDropReplicationSlot(handle);
+
+	if (if_exists && YBCStatusIsNotFound(status))
+	{
+		elog(LOG, "replication slot \"%s\" does not exist, skipping drop",
+			 slot_name);
+		YBCFreeStatus(status);
+		return;
+	}
+
 	char		error_message[NAMEDATALEN + 64] = "";
 
 	snprintf(error_message, sizeof(error_message),
 			 "replication slot \"%s\" does not exist", slot_name);
 
-	HandleYBStatus(YBCPgNewDropReplicationSlot(slot_name,
-											   &handle));
-	HandleYBStatusWithCustomErrorForNotFound(YBCPgExecDropReplicationSlot(handle),
-											 error_message);
+	HandleYBStatusWithCustomErrorForNotFound(status, error_message);
 }
 
 /*

@@ -1,3 +1,5 @@
+import { OnPremNodeState } from '../helpers/dtos';
+
 export interface RunTimeConfigData {
   configID: number;
   configKey: string;
@@ -277,8 +279,10 @@ export interface ProviderNode {
   inUse: boolean;
   instanceName: string;
   instanceTypeCode: string;
+  manuallyDecommissioned?: boolean;
   nodeName: string;
   nodeUuid: string;
+  state?: OnPremNodeState;
   zoneUuid: string;
 }
 
@@ -293,6 +297,8 @@ export interface MetadataFields {
   apiToken: string;
   platformUrl: string;
   metricsUrl: string;
+  metricsUsername: string;
+  metricsPassword: string;
   metricsScrapePeriodSec: number;
   dataMountPoints: string[];
   otherMountPoints: string[];

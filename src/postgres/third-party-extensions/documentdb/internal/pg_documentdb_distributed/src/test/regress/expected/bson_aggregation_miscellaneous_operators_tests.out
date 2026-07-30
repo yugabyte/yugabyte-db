@@ -23,19 +23,19 @@ $$
 LANGUAGE plpgsql;
 -- $rand error cases where the value of $rand non - object / non empty
 SELECT generate_random_values('{"a": 1}', '{ "b" : { "$rand": 5 } }');
-ERROR:  invalid parameter: expected an object ($rand)
+ERROR:  Expected 'array' or 'document' type for $rand but found 'int' type
 CONTEXT:  SQL statement "SELECT (bson_expression_get(p_doc, p_rand_spec)->>'field')::float8"
 PL/pgSQL function generate_random_values(bson,bson) line 7 at SQL statement
 SELECT generate_random_values('{"a": 1}', '{ "b" : { "$rand": false } }');
-ERROR:  invalid parameter: expected an object ($rand)
+ERROR:  Expected 'array' or 'document' type for $rand but found 'bool' type
 CONTEXT:  SQL statement "SELECT (bson_expression_get(p_doc, p_rand_spec)->>'field')::float8"
 PL/pgSQL function generate_random_values(bson,bson) line 7 at SQL statement
 SELECT generate_random_values('{"a": 1}', '{ "b" : { "$rand": [5] } }');
-ERROR:  $rand does not currently accept arguments
+ERROR:  Expected 0 arguments to be present for $rand
 CONTEXT:  SQL statement "SELECT (bson_expression_get(p_doc, p_rand_spec)->>'field')::float8"
 PL/pgSQL function generate_random_values(bson,bson) line 7 at SQL statement
 SELECT generate_random_values('{"a": 1}', '{ "b" : { "$rand": {"value": 5} } }');
-ERROR:  $rand does not currently accept arguments
+ERROR:  Expected 0 arguments to be present for $rand
 CONTEXT:  SQL statement "SELECT (bson_expression_get(p_doc, p_rand_spec)->>'field')::float8"
 PL/pgSQL function generate_random_values(bson,bson) line 7 at SQL statement
 -- $rand valid empty params

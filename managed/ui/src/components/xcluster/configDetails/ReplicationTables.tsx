@@ -32,12 +32,15 @@ import {
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { XClusterTableStatusLabel } from '../XClusterTableStatusLabel';
 import {
-  getTableName,
+  compareTotalStorageBytesForSort,
   getIsTableInfoMissing,
-  getIsXClusterReplicationTable
+  getIsXClusterReplicationTable,
+  getTableName,
+  getXClusterReplicationTableTotalStorageBytes
 } from '../../../utils/tableUtils';
 import { getAlertConfigurations } from '../../../actions/universe';
 
+import { SortOrder } from '../../../redesign/helpers/constants';
 import {
   MetricsQueryParams,
   TableType,
@@ -75,9 +78,8 @@ const TABLE_MIN_PAGE_SIZE = 10;
 
 export function ReplicationTables(props: ReplicationTablesProps) {
   const { xClusterConfig, isTableInfoIncludedInConfig, isActive = true } = props;
-  const [openTableLagGraphDetails, setOpenTableLagGraphDetails] = useState<
-    XClusterReplicationTable
-  >();
+  const [openTableLagGraphDetails, setOpenTableLagGraphDetails] =
+    useState<XClusterReplicationTable>();
   const [searchTokens, setSearchTokens] = useState<SearchToken[]>([]);
 
   const dispatch = useDispatch();
@@ -183,7 +185,10 @@ export function ReplicationTables(props: ReplicationTablesProps) {
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="pgSchemaName"
-            dataFormat={(pgSchemaName: string, xClusterTable: YBTable | XClusterReplicationTable) =>
+            dataFormat={(
+              pgSchemaName: string,
+              xClusterTable: YBTable | XClusterReplicationTable
+            ) =>
               getIsXClusterReplicationTable(xClusterTable) && getIsTableInfoMissing(xClusterTable)
                 ? '-'
                 : formatSchemaName(xClusterTable.tableType, pgSchemaName)
@@ -210,8 +215,21 @@ export function ReplicationTables(props: ReplicationTablesProps) {
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="sizeBytes"
-            dataFormat={(size) => formatBytes(size)}
+            dataFormat={(_size, xClusterTable: XClusterReplicationTable) =>
+              formatBytes(getXClusterReplicationTableTotalStorageBytes(xClusterTable))
+            }
             dataSort
+            sortFunc={(
+              a: XClusterReplicationTable,
+              b: XClusterReplicationTable,
+              order: SortOrder
+            ) =>
+              compareTotalStorageBytesForSort(
+                getXClusterReplicationTableTotalStorageBytes(a),
+                getXClusterReplicationTableTotalStorageBytes(b),
+                order
+              )
+            }
           >
             Size
           </TableHeaderColumn>
@@ -324,16 +342,29 @@ const isTableMatchedBySearchTokens = (
   table: XClusterReplicationTable,
   searchTokens: SearchToken[]
 ) => {
+  const totalStorageBytes = getXClusterReplicationTableTotalStorageBytes(table);
   const candidate = {
     ...(!getIsTableInfoMissing(table) && {
-      database: { value: table.keySpace, type: FieldType.STRING },
-      schema: { value: table.pgSchemaName, type: FieldType.STRING },
-      sizeBytes: { value: table.sizeBytes, type: FieldType.NUMBER },
-      status: { value: table.statusLabel, type: FieldType.STRING },
-      replicationLagMs: { value: table.replicationLag, type: FieldType.NUMBER }
+      ...(table.keySpace && {
+        database: { value: table.keySpace, type: FieldType.STRING }
+      }),
+      ...(table.pgSchemaName && {
+        schema: { value: table.pgSchemaName, type: FieldType.STRING }
+      }),
+      ...(totalStorageBytes !== undefined && {
+        sizeBytes: { value: totalStorageBytes, type: FieldType.NUMBER }
+      }),
+      ...(table.statusSearchValues.length > 0 && {
+        status: { value: table.statusSearchValues, type: FieldType.STRING_ARRAY }
+      }),
     }),
+    ...(table.replicationLag !== undefined &&
+      table.replicationLag !== null &&
+      table.replicationLag !== XCLUSTER_UNDEFINED_LAG_NUMERIC_REPRESENTATION && {
+        replicationLagMs: { value: table.replicationLag, type: FieldType.NUMBER }
+      }),
     table: {
-      value: getIsTableInfoMissing(table) ? table.tableUUID : table.tableName,
+      value: getIsTableInfoMissing(table) ? table.tableUUID : getTableName(table),
       type: FieldType.STRING
     }
   };

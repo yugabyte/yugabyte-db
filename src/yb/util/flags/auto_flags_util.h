@@ -15,7 +15,7 @@
 
 #include <unordered_map>
 #include "yb/util/flags/auto_flags.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_string.h"
 
 namespace yb {

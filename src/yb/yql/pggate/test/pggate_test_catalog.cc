@@ -77,8 +77,8 @@ TEST_F(PggateTestCatalog, TestDml) {
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
-      kDefaultDatabaseOid, tab_oid, kDefaultTableLocality, &pg_stmt,
-      YbcPgTransactionSetting::YB_TRANSACTIONAL));
+      kDefaultDatabaseOid, tab_oid, kDefaultTableLocality,
+      YbcPgTransactionSetting::YB_TRANSACTIONAL, false /* skip_intents_write */, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -132,7 +132,8 @@ TEST_F(PggateTestCatalog, TestDml) {
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITH RANGE values";
   CHECK_YBC_STATUS(YBCPgNewSelect(
-      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
+      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
+      false /* skip_intents_read */,  &pg_stmt));
 
   // Specify the selected expressions.
   YbcPgExpr colref;
@@ -200,7 +201,8 @@ TEST_F(PggateTestCatalog, TestDml) {
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITHOUT RANGE values";
   CHECK_YBC_STATUS(YBCPgNewSelect(
-      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
+      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
+      false /* skip_intents_read */, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
@@ -258,7 +260,8 @@ TEST_F(PggateTestCatalog, TestDml) {
   // UPDATE ----------------------------------------------------------------------------------------
   // Allocate new update.
   CHECK_YBC_STATUS(YBCPgNewUpdate(
-      kDefaultDatabaseOid, tab_oid, kDefaultTableLocality, &pg_stmt, YB_TRANSACTIONAL));
+      kDefaultDatabaseOid, tab_oid, kDefaultTableLocality, YB_TRANSACTIONAL,
+      false /* skip_intents_write */, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -273,7 +276,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   CHECK_YBC_STATUS(YBCTestNewConstantText(pg_stmt, job.c_str(), false, &expr_job));
 
   attr_num = 0;
-  // Specify the row we want to update by binding primary columns.
+  // Specify the row we want to update by binding key columns.
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_compid));
   CHECK_YBC_STATUS(YBCPgDmlBindColumn(pg_stmt, ++attr_num, expr_empid));
 
@@ -312,7 +315,8 @@ TEST_F(PggateTestCatalog, TestDml) {
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table";
   CHECK_YBC_STATUS(YBCPgNewSelect(
-      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
+      kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
+      false /* skip_intents_read */, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
@@ -421,8 +425,8 @@ TEST_F(PggateTestCatalog, TestCopydb) {
   pg_stmt = nullptr;
 
   CHECK_YBC_STATUS(YBCPgNewInsert(
-      kDefaultDatabaseOid, tab_oid, kDefaultTableLocality, &pg_stmt,
-      YbcPgTransactionSetting::YB_TRANSACTIONAL));
+      kDefaultDatabaseOid, tab_oid, kDefaultTableLocality,
+      YbcPgTransactionSetting::YB_TRANSACTIONAL, false /* skip_intents_write */, &pg_stmt));
 
   YbcPgExpr expr_key;
   YbcPgExpr expr_value;
@@ -459,7 +463,8 @@ TEST_F(PggateTestCatalog, TestCopydb) {
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Select from from test table in the new database";
   CHECK_YBC_STATUS(YBCPgNewSelect(
-      copy_db_oid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality, &pg_stmt));
+      copy_db_oid, tab_oid, NULL /* prepare_params */, kDefaultTableLocality,
+      false /* skip_intents_read */,  &pg_stmt));
 
   // Specify the selected expressions.
   YbcPgExpr colref;

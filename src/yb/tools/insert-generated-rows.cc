@@ -110,7 +110,7 @@ static int WriteRandomDataToTable(int argc, char** argv) {
 
   LOG(INFO) << "Inserting random rows...";
   for (uint64_t record_id = 0; true; ++record_id) {
-    auto insert = table.NewInsertOp();
+    auto insert = table.NewInsertOp(session->arena());
     auto req = insert->mutable_request();
     GenerateDataForRow(schema, record_id, &random, req);
 

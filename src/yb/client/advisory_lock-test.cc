@@ -28,6 +28,7 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_defaults.h"
 
 #include "yb/rpc/sidecars.h"
@@ -327,7 +328,7 @@ TEST_F(AdvisoryLockTest, UnlockAllAdvisoryLocks) {
 
   // Release all locks.
   ASSERT_OK(session->TEST_ApplyAndFlush(
-      ASSERT_RESULT(advisory_locks_table_->MakeUnlockAllOp(kDBOid))));
+      ASSERT_RESULT(advisory_locks_table_->MakeUnlockAllOps(kDBOid))));
   // Should be just txn metadata left unremoved.
   CheckNumIntents(cluster_.get(), 1, table_->id());
 

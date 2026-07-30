@@ -44,8 +44,8 @@ public class TestYbServersMetrics extends BasePgSQLTest {
     "cpu_usage_user", "cpu_usage_system"));
 
   @Override
-  public ConnectionBuilder getConnectionBuilder() {
-    ConnectionBuilder cb = new ConnectionBuilder(miniCluster);
+  protected ConnectionBuilder getConnectionBuilder() {
+    ConnectionBuilder cb = super.getConnectionBuilder();
     cb.setLoadBalance(true);
     return cb;
   }

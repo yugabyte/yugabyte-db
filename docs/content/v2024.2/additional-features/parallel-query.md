@@ -14,15 +14,16 @@ type: docs
 
 YugabyteDB supports the use of [PostgreSQL parallel queries](https://www.postgresql.org/docs/15/parallel-query.html). Using parallel queries, the [query planner](../../architecture/query-layer/planner-optimizer/) can devise plans that leverage multiple CPUs to answer queries faster.
 
-Currently, YugabyteDB supports parallel queries for [colocated tables](../colocation/); support for hash- and range-sharded tables is planned.
+Currently, YugabyteDB supports parallel queries for [colocated tables](../colocation/); support for [hash- and range-sharded](../../architecture/docdb-sharding/sharding/) tables is planned.
 
-To enable and configure parallel queries, set the following configuration parameters.
+To configure parallel queries, set the following configuration parameters.
 
 | Parameter | Description | Default |
 | :--- | :--- | :--- |
-| yb_enable_parallel_append | Enables the planner's use of parallel append plans. To enable parallel query, set this to true. | false |
-| yb_parallel_range_rows | The number of rows to plan per parallel worker. To enable parallel query, set this to a value other than 0. (Recommended: 10000) | 0 |
-| yb_parallel_range_size | Approximate size of parallel range for DocDB relation scans. | 1MB |
+| yb_enable_parallel_append | Enables the planner's use of parallel append plans in YugabyteDB. | `false` |
+| enable_parallel_append | PostgreSQL parameter for enabling the planner's use of parallel append plans. For more information, refer to [Parallel Append](https://www.postgresql.org/docs/15/parallel-plans.html#PARALLEL-APPEND) in the PostgreSQL documentation. | `true` |
+| yb_parallel_range_rows | The number of rows to plan per parallel worker. | `0` |
+| yb_parallel_range_size | Approximate size of parallel range for DocDB relation scans. Numeric with memory unit (B, kB, MB, or GB). | `1MB` |
 
 In addition, you can use the following PostgreSQL configuration parameters to configure parallel queries:
 
@@ -37,3 +38,11 @@ In addition, you can use the following PostgreSQL configuration parameters to co
   - [enable_parallel_hash](https://www.postgresql.org/docs/15/runtime-config-query.html#RUNTIME-CONFIG-QUERY-ENABLE)
 
 For more information, refer to [How Parallel Query Works](https://www.postgresql.org/docs/15/how-parallel-query-works.html) in the PostgreSQL documentation.
+
+## Enable parallel query
+
+To enable parallel query, set the following parameters:
+
+- yb_enable_parallel_append: `true`.
+- enable_parallel_append: `true` (the default).
+- yb_parallel_range_rows: a value other than 0 (10000 recommended).

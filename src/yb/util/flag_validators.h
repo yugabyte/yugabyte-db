@@ -12,6 +12,7 @@
 //
 #pragma once
 
+#include <concepts>
 #include <functional>
 #include <type_traits>
 #include <utility>
@@ -98,7 +99,7 @@
 // DEFINE_validator(my_flag, FLAG_IN_SET_VALIDATOR("foo", "bar"));
 // - Validates my_flag is either "foo", or "bar".
 //
-namespace yb {
+namespace yb::flags_internal {
 
 #define FLAG_COND_VALIDATOR_HELPER(_cond, _message, _delayed) \
     [](const char* _flag_name, auto _value) -> bool { \
@@ -137,14 +138,46 @@ namespace yb {
     FLAG_CMP_FLAG_VALIDATOR_HELPER(other_flag, std::equal_to{}, "equal to")
 #define FLAG_NE_FLAG_VALIDATOR(other_flag) \
     FLAG_CMP_FLAG_VALIDATOR_HELPER(other_flag, std::not_equal_to{}, "not equal to")
+
+bool compare_less(std::integral auto x, std::integral auto y) {
+  return std::cmp_less(x, y);
+}
+bool compare_less(std::floating_point auto x, std::floating_point auto y) {
+  return x < y;
+}
+
+bool compare_less_equal(std::integral auto x, std::integral auto y) {
+  return std::cmp_less_equal(x, y);
+}
+bool compare_less_equal(std::floating_point auto x, std::floating_point auto y) {
+  return x <= y;
+}
+
+bool compare_greater(std::integral auto x, std::integral auto y) {
+  return std::cmp_greater(x, y);
+}
+bool compare_greater(std::floating_point auto x, std::floating_point auto y) {
+  return x > y;
+}
+
+bool compare_greater_equal(std::integral auto x, std::integral auto y) {
+  return std::cmp_greater_equal(x, y);
+}
+bool compare_greater_equal(std::floating_point auto x, std::floating_point auto y) {
+  return x >= y;
+}
+
 #define FLAG_LT_FLAG_VALIDATOR(other_flag) \
-    FLAG_CMP_FLAG_VALIDATOR_HELPER(other_flag, std::cmp_less, "less than")
+    FLAG_CMP_FLAG_VALIDATOR_HELPER(other_flag, ::yb::flags_internal::compare_less, "less than")
 #define FLAG_LE_FLAG_VALIDATOR(other_flag) \
-    FLAG_CMP_FLAG_VALIDATOR_HELPER(other_flag, std::cmp_less_equal, "less than or equal to")
+    FLAG_CMP_FLAG_VALIDATOR_HELPER( \
+        other_flag, ::yb::flags_internal::compare_less_equal, "less than or equal to")
 #define FLAG_GT_FLAG_VALIDATOR(other_flag) \
-    FLAG_CMP_FLAG_VALIDATOR_HELPER(other_flag, std::cmp_greater, "greater than")
+    FLAG_CMP_FLAG_VALIDATOR_HELPER( \
+        other_flag, ::yb::flags_internal::compare_greater, "greater than")
 #define FLAG_GE_FLAG_VALIDATOR(other_flag) \
-    FLAG_CMP_FLAG_VALIDATOR_HELPER(other_flag, std::cmp_greater_equal, "greater than or equal to")
+    FLAG_CMP_FLAG_VALIDATOR_HELPER( \
+        other_flag, ::yb::flags_internal::compare_greater_equal, "greater than or equal to")
 
 #define FLAG_REQUIRES_FLAG_VALIDATOR(required_flag) \
     FLAG_DELAYED_COND_VALIDATOR( \
@@ -174,13 +207,16 @@ namespace yb {
 #define FLAG_NE_VALUE_VALIDATOR(cmp_value) \
     FLAG_CMP_VALUE_VALIDATOR_HELPER(cmp_value, std::not_equal_to{}, "not equal to")
 #define FLAG_LT_VALUE_VALIDATOR(cmp_value) \
-    FLAG_CMP_VALUE_VALIDATOR_HELPER(cmp_value, std::cmp_less, "less than")
+    FLAG_CMP_VALUE_VALIDATOR_HELPER(cmp_value, ::yb::flags_internal::compare_less, "less than")
 #define FLAG_LE_VALUE_VALIDATOR(cmp_value) \
-    FLAG_CMP_VALUE_VALIDATOR_HELPER(cmp_value, std::cmp_less_equal, "less than or equal to")
+    FLAG_CMP_VALUE_VALIDATOR_HELPER( \
+        cmp_value, ::yb::flags_internal::compare_less_equal, "less than or equal to")
 #define FLAG_GT_VALUE_VALIDATOR(cmp_value) \
-    FLAG_CMP_VALUE_VALIDATOR_HELPER(cmp_value, std::cmp_greater, "greater than")
+    FLAG_CMP_VALUE_VALIDATOR_HELPER( \
+        cmp_value, ::yb::flags_internal::compare_greater, "greater than")
 #define FLAG_GE_VALUE_VALIDATOR(cmp_value) \
-    FLAG_CMP_VALUE_VALIDATOR_HELPER(cmp_value, std::cmp_greater_equal, "greater than or equal to")
+    FLAG_CMP_VALUE_VALIDATOR_HELPER( \
+        cmp_value, ::yb::flags_internal::compare_greater_equal, "greater than or equal to")
 
 #define VALIDATOR_OR_EQ_HELPER(r, value, v) || ((value) == (v))
 #define VALIDATOR_COMMA_HELPER(r, unused, i, v) BOOST_PP_IF(i, ", ", ) BOOST_PP_STRINGIZE(v)
@@ -194,8 +230,8 @@ namespace yb {
 
 #define FLAG_RANGE_VALIDATOR(min_value_inclusive, max_value_inclusive) \
     FLAG_COND_VALIDATOR( \
-        std::cmp_less_equal((min_value_inclusive), _value) && \
-            std::cmp_less_equal(_value, (max_value_inclusive)), \
+        ::yb::flags_internal::compare_less_equal((min_value_inclusive), _value) && \
+            ::yb::flags_internal::compare_less_equal(_value, (max_value_inclusive)), \
         "Must be in the range [" #min_value_inclusive "-" #max_value_inclusive "]")
 
-} // namespace yb
+} // namespace yb::flags_internal

@@ -1,6 +1,6 @@
 DROP FUNCTION IF EXISTS __API_CATALOG_SCHEMA__.bson_aggregation_distinct;
 
--- This function is the Mongo distinct query function.
+-- This function is the `distinct` query function.
 -- It is a wrapper function that passes the aggregation pipeline from the GW to the backend
 -- such that the planner phase can replace the parameterized value in the planning phase.
 CREATE OR REPLACE FUNCTION __API_CATALOG_SCHEMA__.bson_aggregation_distinct(

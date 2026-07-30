@@ -15,9 +15,17 @@
 
 #include "yb/hnsw/hnsw_fwd.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/tostring.h"
 
 #include "yb/vector_index/vector_index_fwd.h"
+
+namespace hnswlib {
+
+template <typename dist_t, typename label_t>
+class HierarchicalNSW;
+
+}
 
 namespace unum::usearch {
 
@@ -30,6 +38,9 @@ namespace yb::hnsw {
 
 using VectorNo = uint32_t;
 using UsearchIndexDense = unum::usearch::index_dense_gt<vector_index::VectorId, uint32_t>;
+
+template <class DistanceResult>
+using HnswlibIndex = hnswlib::HierarchicalNSW<DistanceResult, vector_index::VectorId>;
 
 struct Config {
   Config() = default;
@@ -54,6 +65,8 @@ struct LayerInfo {
   }
 };
 
+class YbHnswIndexAdapter;
+
 struct Header {
   size_t dimensions;
   size_t vector_data_size;
@@ -67,12 +80,31 @@ struct Header {
   size_t vector_data_amount_per_block;
   std::vector<LayerInfo> layers;
 
-  void Init(const UsearchIndexDense& index);
-
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         dimensions, vector_data_size, entry, max_level, config, max_block_size,
         max_vectors_per_non_base_block, vector_data_block, vector_data_amount_per_block, layers);
+  }
+};
+
+struct DataBlock {
+  std::unique_ptr<std::byte[]> data;
+  size_t size = 0;
+
+  DataBlock() = default;
+
+  explicit DataBlock(size_t size) {
+    Allocate(size);
+  }
+
+  void Allocate(size_t sz) {
+    DCHECK(!data);
+    data.reset(new std::byte[sz]);
+    size = sz;
+  }
+
+  Slice AsSlice() const {
+    return Slice(data.get(), size);
   }
 };
 

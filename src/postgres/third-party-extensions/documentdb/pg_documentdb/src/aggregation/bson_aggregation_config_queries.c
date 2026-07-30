@@ -93,7 +93,7 @@ GenerateVersionQuery(AggregationPipelineBuildContext *context)
 
 	query->rtable = NIL;
 
-	/* Create an empty jointree */
+	/* Create an empty jointree structure */
 	query->jointree = makeNode(FromExpr);
 
 	/* Create the projector. We only project the NULL::bson in this type of query */
@@ -163,7 +163,7 @@ GenerateDatabasesQuery(AggregationPipelineBuildContext *context)
 	query->jointree = makeFromExpr(list_make1(rtr), (Node *) nullTest);
 
 	/* Add a row_get_bson to make it a single bson document */
-	Var *rowExpr = makeVar(1, 0, MongoCatalogCollectionsTypeOid(), -1, InvalidOid, 0);
+	Var *rowExpr = makeVar(1, 0, ApiCatalogCollectionsTypeOid(), -1, InvalidOid, 0);
 	FuncExpr *funcExpr = makeFuncExpr(RowGetBsonFunctionOid(), BsonTypeId(),
 									  list_make1(rowExpr), InvalidOid, InvalidOid,
 									  COERCE_EXPLICIT_CALL);
@@ -253,7 +253,7 @@ GenerateCollectionsQuery(AggregationPipelineBuildContext *context)
 	query->jointree = makeFromExpr(list_make1(rtr), (Node *) nullTest);
 
 	/* Add a row_get_bson to make it a single bson document */
-	Var *rowExpr = makeVar(1, 0, MongoCatalogCollectionsTypeOid(), -1, InvalidOid, 0);
+	Var *rowExpr = makeVar(1, 0, ApiCatalogCollectionsTypeOid(), -1, InvalidOid, 0);
 	FuncExpr *funcExpr = makeFuncExpr(RowGetBsonFunctionOid(), BsonTypeId(),
 									  list_make1(rowExpr), InvalidOid, InvalidOid,
 									  COERCE_EXPLICIT_CALL);
@@ -348,7 +348,7 @@ GenerateChunksQuery(AggregationPipelineBuildContext *context)
 	query->jointree = makeFromExpr(list_make1(rtr), (Node *) nullTest);
 
 	/* Add a row_get_bson to make it a single bson document */
-	Var *rowExpr = makeVar(1, 0, MongoCatalogCollectionsTypeOid(), -1, InvalidOid, 0);
+	Var *rowExpr = makeVar(1, 0, ApiCatalogCollectionsTypeOid(), -1, InvalidOid, 0);
 	FuncExpr *funcExpr = makeFuncExpr(RowGetBsonFunctionOid(), BsonTypeId(),
 									  list_make1(rowExpr), InvalidOid, InvalidOid,
 									  COERCE_EXPLICIT_CALL);
@@ -410,7 +410,7 @@ GenerateShardsQuery(AggregationPipelineBuildContext *context)
 
 	query->rtable = NIL;
 
-	/* Create an empty jointree */
+	/* Create an empty jointree structure */
 	query->jointree = makeNode(FromExpr);
 
 	/* Create the projector. We only project the NULL::bson in this type of query */

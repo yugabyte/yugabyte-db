@@ -501,8 +501,9 @@ ResourceOwnerRelease(ResourceOwner owner,
 
 	/* YB Note: Assert that local lock table is empty on txn finish */
 #ifdef USE_ASSERT_CHECKING
-	if (isTopLevel && phase == RESOURCE_RELEASE_LOCKS)
-		Assert(hash_get_num_entries(GetLockMethodLocalHash()) == 0);
+	if (isTopLevel && phase == RESOURCE_RELEASE_LOCKS &&
+		YBGetObjectLockMode() == YB_OBJECT_LOCK_ENABLED)
+		Assert(YbGetNumTxnLocks() == 0);
 #endif
 }
 

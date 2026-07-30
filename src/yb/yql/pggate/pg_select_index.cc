@@ -24,16 +24,20 @@
 
 namespace yb::pggate {
 
-PgSelectIndex::PgSelectIndex(const PgSession::ScopedRefPtr& pg_session)
+PgSelectIndex::PgSelectIndex(const PgSessionPtr& pg_session)
     : PgSelect(pg_session) {
 }
 
 Status PgSelectIndex::PrepareSubquery(
-    const PgObjectId& index_id, std::shared_ptr<LWPgsqlReadRequestPB>&& read_req) {
+    const PgObjectId& index_id, bool skip_intents_read,
+    std::shared_ptr<LWPgsqlReadRequestPB>&& read_req) {
   // Setup target and bind descriptor.
   target_ = bind_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(index_id)));
 
   read_req_ = std::move(read_req);
+  if (read_req_ && skip_intents_read) {
+    read_req_->set_skip_intents_read(skip_intents_read);
+  }
   read_req_->dup_table_id(index_id.GetYbTableId()); // TODO(LW_PERFORM)
 
   // Prepare index key columns.
@@ -43,25 +47,25 @@ Status PgSelectIndex::PrepareSubquery(
 }
 
 Result<std::optional<YbctidBatch>> PgSelectIndex::FetchYbctidBatch() {
-  ybctids_.clear();
+  ybctids_.Clear();
+  auto& ybctids = ybctids_.values;
   if (!VERIFY_RESULT(doc_op_->ResultStream().ProcessNextYbctids(
-          [this](Slice ybctid) {
-            ybctids_.push_back(ybctid);
-          }))) {
+          [&ybctids](Slice ybctid) { ybctids.push_back(ybctid); }, &ybctids_.retention))) {
     return std::nullopt;
   }
   AtomicFlagSleepMs(&FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms);
-  return YbctidBatch{ybctids_, read_req_->has_is_forward_scan()};
+  return YbctidBatch{ybctids, read_req_->has_is_forward_scan()};
 }
 
 Result<std::unique_ptr<PgSelectIndex>> PgSelectIndex::Make(
-    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& index_id,
+    const PgSessionPtr& pg_session, const PgObjectId& index_id,
     const YbcPgTableLocalityInfo& locality_info,
+    bool skip_intents_read,
     std::shared_ptr<LWPgsqlReadRequestPB>&& read_req) {
   std::unique_ptr<PgSelectIndex> result{new PgSelectIndex{pg_session}};
   RETURN_NOT_OK(read_req
-      ? result->PrepareSubquery(index_id, std::move(read_req))
-      : result->Prepare(index_id, locality_info));
+      ? result->PrepareSubquery(index_id, skip_intents_read, std::move(read_req))
+      : result->Prepare(index_id, locality_info, skip_intents_read));
   return result;
 }
 

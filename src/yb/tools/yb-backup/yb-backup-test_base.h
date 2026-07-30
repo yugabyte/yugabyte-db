@@ -77,29 +77,18 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase, public YBBackupTestBas
   void LogTabletsInfo(const std::vector<yb::master::TabletLocationsPB>& tablets);
 
   Status WaitForTabletPostSplitCompacted(size_t tserver_idx, const TabletId& tablet_id);
-  void RestartClusterWithCatalogVersionMode(bool db_catalog_version_mode);
   void DoTestYEDISBackup(helpers::TableOp tableOp);
   void DoTestYSQLKeyspaceBackup();
   void DoTestYSQLMultiSchemaKeyspaceBackup();
   void DoTestYSQLKeyspaceWithHyphenBackupRestore(
       const string& backup_db, const string& restore_db);
-  void DoTestYSQLRestoreBackup(std::optional<bool> db_catalog_version_mode);
+  void DoTestYSQLRestoreBackup();
 
   void TestColocatedDBBackupRestore();
 
   client::TableHandle table_;
   std::unique_ptr<TestAdminClient> test_admin_client_;
   std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
-};
-
-class YBBackupTestWithReadCommittedDisabled : public YBBackupTest {
- protected:
-  YBBackupTestWithReadCommittedDisabled() : YBBackupTest() {}
-
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    YBBackupTest::UpdateMiniClusterOptions(options);
-    options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=false");
-  }
 };
 
 }  // namespace tools

@@ -11,6 +11,7 @@ import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import AwsStorageConfiguration from './AwsStorageConfiguration';
 import GcsStorageConfiguration from './GcsStorageConfiguration';
+import AzureStorageConfiguration from './AzureStorageConfiguration';
 import { BackupList } from './BackupList';
 import { BackupConfigField } from './BackupConfigField';
 import { storageConfigTypes } from './ConfigType';
@@ -25,7 +26,32 @@ import {
   fetchRunTimeConfigs,
   fetchRunTimeConfigsResponse
 } from '../../../actions/customers';
-import { isPathStyleAccess, isSigningRegionEnabled } from '../../backupv2/common/BackupUtils';
+import {
+  isPathStyleAccess,
+  isChunkedEncodingEnabled,
+  isSigningRegionEnabled,
+  isS3BackupProxyEnabled
+} from '../../backupv2/common/BackupUtils';
+
+const storageToggleTrue = (v) => v === true || v === 'true';
+
+const initialS3StorageBooleanFromRowData = (rowData, fieldKey, defaultWhenMissing) => {
+  const v = rowData?.[fieldKey];
+  if (v === undefined || v === null) {
+    return defaultWhenMissing;
+  }
+  return storageToggleTrue(v);
+};
+
+const coerceS3StorageBooleanFields = (dataPayload) => {
+  ['PATH_STYLE_ACCESS', 'USE_CHUNKED_ENCODING'].forEach((key) => {
+    if (!(key in dataPayload) || dataPayload[key] === undefined) return;
+    const v = dataPayload[key];
+    if (typeof v === 'boolean') return;
+    if (v === 'true') dataPayload[key] = true;
+    else if (v === 'false') dataPayload[key] = false;
+  });
+};
 
 const getTabTitle = (configName) => {
   switch (configName) {
@@ -68,6 +94,7 @@ class StorageConfiguration extends Component {
       },
       iamRoleEnabled: false,
       useGcpIam: false,
+      useAzureIam: false,
       listView: {
         s3: true,
         nfs: true,
@@ -151,9 +178,21 @@ class StorageConfiguration extends Component {
       }
 
       case 'az': {
-        configName = dataPayload['AZ_CONFIGURATION_NAME'];
-        dataPayload['BACKUP_LOCATION'] = dataPayload['AZ_BACKUP_LOCATION'];
-        dataPayload = _.pick(dataPayload, ['BACKUP_LOCATION', 'AZURE_STORAGE_SAS_TOKEN']);
+        let FIELDS;
+        if (values['USE_AZURE_IAM']) {
+          configName = dataPayload['AZ_CONFIGURATION_NAME'];
+          dataPayload['BACKUP_LOCATION'] = dataPayload['AZ_BACKUP_LOCATION'];
+          dataPayload['USE_AZURE_IAM'] = dataPayload['USE_AZURE_IAM'].toString();
+          FIELDS = ['BACKUP_LOCATION', 'USE_AZURE_IAM', 'IMMUTABLE_STORAGE'];
+          if (values['AZURE_CLIENT_ID']) {
+            FIELDS.push('AZURE_CLIENT_ID');
+          }
+        } else {
+          configName = dataPayload['AZ_CONFIGURATION_NAME'];
+          dataPayload['BACKUP_LOCATION'] = dataPayload['AZ_BACKUP_LOCATION'];
+          FIELDS = ['BACKUP_LOCATION', 'AZURE_STORAGE_SAS_TOKEN', 'IMMUTABLE_STORAGE'];
+        }
+        dataPayload = _.pick(dataPayload, FIELDS);
         break;
       }
 
@@ -173,6 +212,7 @@ class StorageConfiguration extends Component {
             'BACKUP_LOCATION',
             'AWS_HOST_BASE',
             'PATH_STYLE_ACCESS',
+            'USE_CHUNKED_ENCODING',
             'SIGNING_REGION'
           ];
         }
@@ -182,6 +222,9 @@ class StorageConfiguration extends Component {
           FIELDS.push('PROXY_SETTINGS.PROXY_USERNAME');
           if (dataPayload?.PROXY_SETTINGS?.PROXY_PASSWORD)
             FIELDS.push('PROXY_SETTINGS.PROXY_PASSWORD');
+        }
+        if (!values['IAM_INSTANCE_PROFILE']) {
+          coerceS3StorageBooleanFields(dataPayload);
         }
         dataPayload = _.pick(dataPayload, FIELDS);
 
@@ -296,7 +339,14 @@ class StorageConfiguration extends Component {
           configUUID: row?.configUUID,
           [`${tab}_BACKUP_LOCATION`]: row.data?.BACKUP_LOCATION,
           [`${tab}_CONFIGURATION_NAME`]: row?.configName,
-          AZURE_STORAGE_SAS_TOKEN: row.data?.AZURE_STORAGE_SAS_TOKEN
+          USE_AZURE_IAM: row.data?.USE_AZURE_IAM,
+          AZURE_CLIENT_ID: row.data?.AZURE_CLIENT_ID,
+          AZURE_STORAGE_SAS_TOKEN: row.data?.AZURE_STORAGE_SAS_TOKEN,
+          IMMUTABLE_STORAGE: initialS3StorageBooleanFromRowData(
+            row?.data,
+            'IMMUTABLE_STORAGE',
+            false /* defaultWhenMissing */
+          )
         };
         break;
 
@@ -311,8 +361,16 @@ class StorageConfiguration extends Component {
           [`${tab}_CONFIGURATION_NAME`]: row?.configName,
           AWS_HOST_BASE: row.data?.AWS_HOST_BASE
         };
-        if (row?.data?.PATH_STYLE_ACCESS)
-          initialVal['PATH_STYLE_ACCESS'] = row?.data?.PATH_STYLE_ACCESS;
+        initialVal['PATH_STYLE_ACCESS'] = initialS3StorageBooleanFromRowData(
+          row?.data,
+          'PATH_STYLE_ACCESS',
+          false /* defaultWhenMissing */
+        );
+        initialVal['USE_CHUNKED_ENCODING'] = initialS3StorageBooleanFromRowData(
+          row?.data,
+          'USE_CHUNKED_ENCODING',
+          true /* defaultWhenMissing */
+        );
         if (row?.data?.SIGNING_REGION) initialVal['SIGNING_REGION'] = row?.data?.SIGNING_REGION;
         if (row?.data?.PROXY_SETTINGS?.PROXY_HOST)
           initialVal['PROXY_SETTINGS'] = row?.data?.PROXY_SETTINGS;
@@ -326,6 +384,7 @@ class StorageConfiguration extends Component {
       },
       iamRoleEnabled: row.data['IAM_INSTANCE_PROFILE'] || false,
       useGcpIam: row.data['USE_GCP_IAM'] || false,
+      useAzureIam: row.data['USE_AZURE_IAM'] || false,
       listView: {
         ...this.state.listView,
         [activeTab]: false
@@ -339,8 +398,16 @@ class StorageConfiguration extends Component {
    * @param {string} activeTab It's a respective active tab.
    */
   createBackupConfig = (activeTab) => {
-    if (this.props.enablePathStyleAccess)
-      this.props.setInitialValues({ PATH_STYLE_ACCESS: 'true' });
+    const initialValues = {};
+    if (this.props.enablePathStyleAccess) {
+      initialValues.PATH_STYLE_ACCESS = true;
+    }
+    if (this.props.enableChunkedEncoding) {
+      initialValues.USE_CHUNKED_ENCODING = true;
+    }
+    if (Object.keys(initialValues).length > 0) {
+      this.props.setInitialValues(initialValues);
+    }
     this.setState({
       listView: {
         ...this.state.listView,
@@ -363,6 +430,7 @@ class StorageConfiguration extends Component {
       },
       iamRoleEnabled: false,
       useGcpIam: false,
+      useAzureIam: false,
       listView: {
         ...this.state.listView,
         [activeTab]: true
@@ -384,16 +452,21 @@ class StorageConfiguration extends Component {
     this.setState({ useGcpIam: event.target.checked });
   };
 
+  azureIamToggle = (event) => {
+    this.setState({ useAzureIam: event.target.checked });
+  };
+
   render() {
     const {
       handleSubmit,
       customerConfigs,
       initialValues,
       enablePathStyleAccess,
+      enableChunkedEncoding,
       enableSigningRegion,
       enableS3BackupProxy
     } = this.props;
-    const { iamRoleEnabled, useGcpIam, editView, listView } = this.state;
+    const { iamRoleEnabled, useGcpIam, useAzureIam, editView, listView } = this.state;
     const activeTab = this.props.activeTab || Object.keys(storageConfigTypes)[0].toLowerCase();
 
     if (getPromiseState(customerConfigs).isLoading()) {
@@ -423,6 +496,7 @@ class StorageConfiguration extends Component {
               iamInstanceToggle={this.iamInstanceToggle}
               isEdited={editView[activeTab]}
               enablePathStyleAccess={enablePathStyleAccess}
+              enableChunkedEncoding={enableChunkedEncoding}
               enableSigningRegion={enableSigningRegion}
               enableS3BackupProxy={enableS3BackupProxy}
             />
@@ -434,6 +508,16 @@ class StorageConfiguration extends Component {
               useGcpIam={useGcpIam}
               gcpIamToggle={this.gcpIamToggle}
               isEdited={editView[activeTab]}
+            />
+          )}
+        </Tab>,
+        <Tab eventKey={'az'} title={getTabTitle('AZ')} key={'az-tab'} unmountOnExit={true}>
+          {!listView.az && (
+            <AzureStorageConfiguration
+              useAzureIam={useAzureIam}
+              azureIamToggle={this.azureIamToggle}
+              isEdited={editView[activeTab]}
+              customerConfigs={customerConfigs}
             />
           )}
         </Tab>
@@ -507,16 +591,16 @@ const mapDispatchToProps = (dispatch) => {
 };
 
 function mapStateToProps(state) {
-  const {
-    featureFlags: { test, released },
-    customer: { runtimeConfigs }
-  } = state;
+  const { customer: { runtimeConfigs } } = state;
   const enablePathStyleAccess = isPathStyleAccess(runtimeConfigs?.data);
+  const enableChunkedEncoding = isChunkedEncodingEnabled(runtimeConfigs?.data);
   const enableSigningRegion = isSigningRegionEnabled(runtimeConfigs?.data);
+  const enableS3BackupProxy = isS3BackupProxyEnabled(runtimeConfigs?.data);
   return {
-    enablePathStyleAccess: enablePathStyleAccess,
-    enableSigningRegion: enableSigningRegion,
-    enableS3BackupProxy: test.enableS3BackupProxy || released.enableS3BackupProxy
+    enablePathStyleAccess,
+    enableChunkedEncoding,
+    enableSigningRegion,
+    enableS3BackupProxy
   };
 }
 

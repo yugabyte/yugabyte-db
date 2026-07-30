@@ -59,6 +59,9 @@ class PgStatActivityTest : public LibPqTestBase {
     // AllBackendsTransaction test than just the queries launched by the test.
     // So disable table locks for these tests.
     options->extra_tserver_flags.push_back("--enable_object_locking_for_table_locks=false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
+    options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
     LibPqTestBase::UpdateMiniClusterOptions(options);
   }
 
@@ -67,9 +70,9 @@ class PgStatActivityTest : public LibPqTestBase {
   }
 
   static Result<TxnInfo> GetTransactionInfo(PGConn* conn) {
-    auto opt_txn_id =
-        VERIFY_RESULT(conn->FetchRow<std::optional<Uuid>>("SELECT yb_get_current_transaction()"));
-    return TxnInfo{PQbackendPID(conn->get()), opt_txn_id.value_or(Uuid::Nil())};
+    auto [pid, txn] = VERIFY_RESULT((conn->FetchRow<int32_t, std::optional<Uuid>>(
+        "SELECT pg_backend_pid(), yb_get_current_transaction()")));
+    return TxnInfo{pid, txn.value_or(Uuid::Nil())};
   }
 
   static Result<Uuid> GetTransactionId(PGConn* conn) {

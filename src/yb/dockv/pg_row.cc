@@ -29,6 +29,8 @@
 
 #include "yb/util/decimal.h"
 #include "yb/util/fast_varint.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
@@ -166,6 +168,10 @@ struct VisitDoDecodeValueV2 {
   }
 
   Status Vector() const {
+    return Binary();
+  }
+
+  Status Bson() const {
     return Binary();
   }
 
@@ -357,6 +363,10 @@ struct EncoderProvider {
   PgWireEncoder Vector() const {
     return EncodeVector<kLast>;
   }
+
+  PgWireEncoder Bson() const {
+    return EncodeBinary<kLast>;
+  }
 };
 
 Result<const char*> StripHybridTime(const char* begin, const char* end) {
@@ -475,13 +485,18 @@ struct PrimitiveValueDecoder<bool> {
   }
 };
 
-template <bool kAppendZero, char kValueType>
+template <char... kValueTypes>
+bool MatchesValueType(char c) {
+  return ((c == kValueTypes) || ...);
+}
+
+template <bool kAppendZero, char... kValueTypes>
 struct BinaryValueDecoder {
   bool V1(PgTableRow* row, size_t projection_index, const char* begin, const char* end) const {
     if (PREDICT_FALSE(begin == end)) {
       return false;
     }
-    if (PREDICT_FALSE(*begin != kValueType)) {
+    if (PREDICT_FALSE(!MatchesValueType<kValueTypes...>(*begin))) {
       return false;
     }
     row->SetBinary(projection_index, Slice(++begin, end), kAppendZero);
@@ -590,6 +605,11 @@ struct GetPackedColumnDecoderVisitorV2 {
   }
 
   PackedColumnDecoderV2 Vector() const {
+    return Apply<BinaryValueDecoder<
+        false, ValueEntryTypeAsChar::kString, ValueEntryTypeAsChar::kVector>>();
+  }
+
+  PackedColumnDecoderV2 Bson() const {
     return Binary();
   }
 
@@ -620,6 +640,11 @@ struct GetPackedColumnDecoderVisitorV1 {
   }
 
   PackedColumnDecoderV1 Vector() const {
+    return Apply<BinaryValueDecoder<
+        false, ValueEntryTypeAsChar::kString, ValueEntryTypeAsChar::kVector>>();
+  }
+
+  PackedColumnDecoderV1 Bson() const {
     return Binary();
   }
 
@@ -765,7 +790,11 @@ QLValuePB PgValue::ToQLValuePB(DataType data_type) const {
     case DataType::INT64:
       result.set_int64_value(int64_value());
       return result;
-    case DataType::DECIMAL: FALLTHROUGH_INTENDED;
+    case DataType::DECIMAL: {
+      auto data = string_value();
+      result.set_decimal_value(data.cdata(), data.size());
+      return result;
+    }
     case DataType::STRING: {
       auto data = string_value();
       result.set_string_value(data.cdata(), data.size());
@@ -927,6 +956,9 @@ Status PgTableRow::SetValue(ColumnId column_id, const LWQLValuePB& value) {
 }
 
 Status PgTableRow::SetValueByColumnIdx(size_t idx, const QLValuePB& value) {
+  if (projection_->columns[idx].data_type == DataType::VECTOR) {
+    return DoSetValueByColumnIdx(idx, VERIFY_RESULT(DecodeVectorSchemaMissingValueForPgRow(value)));
+  }
   return DoSetValueByColumnIdx(idx, value);
 }
 

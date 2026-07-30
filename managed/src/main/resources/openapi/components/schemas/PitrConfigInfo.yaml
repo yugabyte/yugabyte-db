@@ -1,0 +1,70 @@
+title: PitrConfigInfo
+description: |
+  System-generated PITR configuration metadata.
+  Includes identifiers, master-derived snapshot schedule state, and recovery bounds.
+type: object
+required:
+  - max_recover_time_in_millis
+  - min_recover_time_in_millis
+  - state
+properties:
+  uuid:
+    description: PITR config UUID
+    type: string
+    format: uuid
+    example: f33e3c9b-75ab-4c30-80ad-cba85646ea39
+    readOnly: true
+  customer_uuid:
+    description: Customer UUID of this config
+    type: string
+    format: uuid
+    example: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+    readOnly: true
+  min_recover_time_in_millis:
+    description: Earliest point in time (UTC epoch millis) that can be restored to.
+    type: integer
+    format: int64
+    readOnly: true
+  max_recover_time_in_millis:
+    description: Latest point in time (UTC epoch millis) that can be restored to.
+    type: integer
+    format: int64
+    readOnly: true
+  state:
+    description: Snapshot schedule state from the universe master.
+    type: string
+    enum:
+      - UNKNOWN
+      - CREATING
+      - COMPLETE
+      - DELETING
+      - DELETED
+      - FAILED
+      - CANCELLED
+      - RESTORING
+      - RESTORED
+    readOnly: true
+  create_time:
+    description: Time when the PITR config was created.
+    type: string
+    format: date-time
+    example: '2022-12-12T13:07:18Z'
+    readOnly: true
+  update_time:
+    description: Time when the PITR config was last updated.
+    type: string
+    format: date-time
+    example: '2024-07-25T13:07:18Z'
+    readOnly: true
+  created_for_dr:
+    description: Whether this PITR config was created for disaster recovery.
+    type: boolean
+    readOnly: true
+  used_for_x_cluster:
+    description: Whether this PITR config is used by transactional xCluster replication.
+    type: boolean
+    readOnly: true
+  disabled:
+    description: Whether the PITR config is disabled.
+    type: boolean
+    readOnly: true

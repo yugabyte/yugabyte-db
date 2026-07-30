@@ -1194,10 +1194,10 @@ SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "abc",
 
 -- without sortBy field
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
-ERROR:  $linearFill must be specified with a top level sortBy expression with exactly one element
+ERROR:  $linearFill requires specifying a top-level sortBy expression that contains exactly one element
 -- sortBy is not numeric or date
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "a": 1 }, "output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
-ERROR:  sortBy value must be numeric or a date, but found string
+ERROR:  The sortBy parameter must contain either a numeric value or a date, but instead received string
 SELECT documentdb_api.drop_collection('db','setWindowFields');
  drop_collection 
 ---------------------------------------------------------------------
@@ -1230,7 +1230,7 @@ SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "abc",
 (1 row)
 
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "a": 1 }, "output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
-ERROR:  sortBy value must be numeric or a date, but found string
+ERROR:  The sortBy parameter must contain either a numeric value or a date, but instead received string
 -- mixed numeric and date type in sortBy
 SELECT documentdb_api.drop_collection('db','setWindowFields');
  drop_collection 
@@ -1264,7 +1264,7 @@ SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "abc",
 (1 row)
 
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"sortBy": { "date": 1 }, "output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
-ERROR:  The sortBy field must be either numeric or a date, but not both
+ERROR:  The sortBy field should contain either numeric values or dates, but cannot include both types simultaneously
 -- sortBy with repeated value in one partition
 SELECT documentdb_api.drop_collection('db','setWindowFields');
  drop_collection 
@@ -1310,7 +1310,7 @@ SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 6, "test": 11,
 (1 row)
 
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"sortBy": { "test": 1 }, "output": {"val": { "$linearFill": "$val"}}}}]}');
-ERROR:  There can be no repeated values in the sort field
+ERROR:  The sort field must not contain any duplicate values
 -- fill non-numeric field
 SELECT documentdb_api.drop_collection('db','setWindowFields');
  drop_collection 
@@ -1344,7 +1344,7 @@ SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 3, "a": "abc",
 (1 row)
 
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 }, "output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
-ERROR:   Value to be filled must be numeric or nullish
+ERROR:   The value provided must be either a numeric type or explicitly null
 SELECT documentdb_api.drop_collection('db','setWindowFields');
  drop_collection 
 ---------------------------------------------------------------------
@@ -1383,7 +1383,7 @@ SELECT documentdb_api.insert_one('db','setWindowFields','{ "_id": 5, "a": "abc",
 (1 row)
 
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 }, "output": {"quantity": { "$linearFill": "$quantity"}}}}]}');
-ERROR:   Value to be filled must be numeric or nullish
+ERROR:   The value provided must be either a numeric type or explicitly null
 -- window fields existed in the input document
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db','{ "aggregate": "setWindowFields", "pipeline":  [{"$setWindowFields": {"partitionBy": "$a", "sortBy": { "date": 1 }, "output": {"quantity": { "$linearFill": "$quantity", "window":{ "documents": ["unbounded", "unbounded"]}}}}}]}');
 ERROR:  'window' field is not allowed in $linearFill

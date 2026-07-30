@@ -24,10 +24,10 @@ YB_DEFINE_ENUM(PackingMode, (kNone)(kV1)(kV2));
 class PgPackedInsertTest : public PgMiniTestBase,
                            public testing::WithParamInterface<PackingMode>  {
   void SetUp() override {
-    FLAGS_ysql_pack_inserted_value = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pack_inserted_value) = true;
     auto param = GetParam();
-    FLAGS_ysql_enable_packed_row = param != PackingMode::kNone;
-    FLAGS_ysql_use_packed_row_v2 = param == PackingMode::kV2;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = param != PackingMode::kNone;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) = param == PackingMode::kV2;
     PgMiniTestBase::SetUp();
   }
 };

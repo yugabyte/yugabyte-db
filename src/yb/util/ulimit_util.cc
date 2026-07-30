@@ -47,23 +47,25 @@ using std::stringstream;
 using yb::operator""_KB;
 using yb::operator""_MB;
 
-// These flags allow operators to define process resource soft limits at runtime. Note that on some
-// systems, RLIM_INFINITY is defined as -1, and setting these flags to that value will result in an
-// attempt to set these resource limits to infinity. All other negative values are ignored.
-DEFINE_UNKNOWN_int64(rlimit_data, RLIM_INFINITY, "Data file size limit: bytes.");
+// These flags allow operators to define process resource soft limits without having to change the
+// system ulimits. The values are applied once during process startup via setrlimit(); changing
+// them after startup has no effect. Note that on some systems, RLIM_INFINITY is defined as -1, and
+// setting these flags to that value will result in an attempt to set these resource limits to
+// infinity. All other negative values are ignored.
+DEFINE_NON_RUNTIME_int64(rlimit_data, RLIM_INFINITY, "Data file size limit: bytes.");
 #if defined(__APPLE__)
 // Note that we've chosen 10240 as the default value here since this is the default system limit
 // for this resource on *macOS* as defined by OPEN_MAX in <sys/syslimits.h>
-DEFINE_UNKNOWN_int64(rlimit_nofile, 10240, "Open files limit.");
+DEFINE_NON_RUNTIME_int64(rlimit_nofile, 10240, "Open files limit.");
 #else
-DEFINE_UNKNOWN_int64(rlimit_nofile, 1048576, "Open files limit.");
+DEFINE_NON_RUNTIME_int64(rlimit_nofile, 1048576, "Open files limit.");
 #endif
-DEFINE_UNKNOWN_int64(rlimit_fsize, RLIM_INFINITY, "File size limit: blocks.");
-DEFINE_UNKNOWN_int64(rlimit_memlock, 64_KB, "Locked memory limit: bytes.");
-DEFINE_UNKNOWN_int64(rlimit_as, RLIM_INFINITY, "Memory size limit: bytes.");
-DEFINE_UNKNOWN_int64(rlimit_stack, 8_MB, "Stack size limit: bytes.");
-DEFINE_UNKNOWN_int64(rlimit_cpu, RLIM_INFINITY, "CPU time limit: seconds.");
-DEFINE_UNKNOWN_int64(rlimit_nproc, 12000, "User process limit.");
+DEFINE_NON_RUNTIME_int64(rlimit_fsize, RLIM_INFINITY, "File size limit: blocks.");
+DEFINE_NON_RUNTIME_int64(rlimit_memlock, 64_KB, "Locked memory limit: bytes.");
+DEFINE_NON_RUNTIME_int64(rlimit_as, RLIM_INFINITY, "Memory size limit: bytes.");
+DEFINE_NON_RUNTIME_int64(rlimit_stack, 8_MB, "Stack size limit: bytes.");
+DEFINE_NON_RUNTIME_int64(rlimit_cpu, RLIM_INFINITY, "CPU time limit: seconds.");
+DEFINE_NON_RUNTIME_int64(rlimit_nproc, 12000, "User process limit.");
 
 // Note: we've observed it can take a while to dump full cores, esp. on systems like kubernetes or
 // consumer laptops. In order to avoid causing more usability issues, we disable this flag for now

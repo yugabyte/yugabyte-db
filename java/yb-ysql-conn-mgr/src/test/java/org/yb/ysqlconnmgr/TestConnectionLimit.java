@@ -14,7 +14,6 @@
 package org.yb.ysqlconnmgr;
 
 import static org.yb.AssertionWrappers.assertFalse;
-import static org.yb.AssertionWrappers.fail;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -23,11 +22,14 @@ import java.util.HashMap;
 import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.AutoCommit;
 import org.yb.pgsql.ConnectionEndpoint;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestConnectionLimit extends BaseYsqlConnMgr {
   // Idea is to test whether Ysql Connection Manager is able to handle multiple connections at a
   // time, as of now 16 (hard coded) `worker` threads are used by Ysql Connection Manager. Thus
@@ -62,10 +64,12 @@ public class TestConnectionLimit extends BaseYsqlConnMgr {
   @Test
   public void testLogicalConnectionLimit() throws Exception {
     // Create the test table.
-    getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.DEFAULT)
-                          .connect()
-                          .createStatement()
-                          .execute("CREATE TABLE T1 (c1 int NOT NULL PRIMARY KEY, c2 text)");
+    try (Connection conn = getConnectionBuilder()
+            .withConnectionEndpoint(ConnectionEndpoint.DEFAULT)
+            .connect()) {
+      conn.createStatement()
+          .execute("CREATE TABLE T1 (c1 int NOT NULL PRIMARY KEY, c2 text)");
+    }
 
     // Try making '2 * MAX_PHYSICAL_CONNECTION' connections to the Ysql Connection Manager.
     final int numThreads = 2 * MAX_PHYSICAL_CONNECTION;
@@ -86,6 +90,9 @@ public class TestConnectionLimit extends BaseYsqlConnMgr {
     // Start the threads.
     for (Thread thread : threads) {
       thread.start();
+      // Add small delay to avoid race condition while creating/close auth backends
+      // and transactional backends.
+      Thread.sleep(500);
     }
 
     // Wait for the threads to finish.

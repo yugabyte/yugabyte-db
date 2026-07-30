@@ -11,7 +11,6 @@ import static org.junit.Assert.assertTrue;
 
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.TaskInfo;
@@ -23,11 +22,6 @@ import org.junit.Test;
 
 @Slf4j
 public class UpdateConsistencyLocalTest extends LocalProviderUniverseTestBase {
-
-  @Override
-  protected Pair<Integer, Integer> getIpRange() {
-    return new Pair<>(120, 150);
-  }
 
   @Test
   public void testUpdateStale() throws InterruptedException {

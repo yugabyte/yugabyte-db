@@ -1,6 +1,7 @@
 package com.yugabyte.yw.forms;
 
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.common.YbaApi;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import play.data.validation.Constraints;
@@ -23,6 +24,15 @@ public class UserProfileFormData {
 
   @ApiModelProperty(value = "User timezone", example = "America/Toronto")
   private String timezone;
+
+  @ApiModelProperty(value = "YbaApi Internal. Used to turn off new UI feature for particular user")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
+  private Boolean newUniverseUiEnabled = true;
+
+  @ApiModelProperty(
+      value = "YbaApi Internal. Whether the new UI tour was completed by particular user")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.31.0.0")
+  private Boolean newUniverseUiTourCompleted;
 
   public String getPassword() {
     return password;
@@ -54,5 +64,21 @@ public class UserProfileFormData {
 
   public void setTimezone(String timezone) {
     this.timezone = timezone;
+  }
+
+  public Boolean getNewUniverseUiEnabled() {
+    return newUniverseUiEnabled;
+  }
+
+  public void setNewUniverseUiEnabled(Boolean newUniverseUiEnabled) {
+    this.newUniverseUiEnabled = newUniverseUiEnabled;
+  }
+
+  public Boolean getNewUniverseUiTourCompleted() {
+    return newUniverseUiTourCompleted;
+  }
+
+  public void setNewUniverseUiTourCompleted(Boolean newUniverseUiTourCompleted) {
+    this.newUniverseUiTourCompleted = newUniverseUiTourCompleted;
   }
 }

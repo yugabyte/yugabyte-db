@@ -17,6 +17,7 @@
 #include "yb/common/read_hybrid_time.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/iter_util.h"
 #include "yb/docdb/transaction_status_cache.h"
 
@@ -64,7 +65,8 @@ struct EncodedReadHybridTime {
   EncodedDocHybridTime in_txn_limit;
   bool local_limit_gt_read;
 
-  explicit EncodedReadHybridTime(const ReadHybridTime& read_time);
+  explicit EncodedReadHybridTime(
+      const ReadHybridTime& read_time, IntraTxnWriteId write_id = kMaxWriteId);
 
   // The encoded hybrid time to use to filter records in regular RocksDB. This is the maximum of
   // read_time and local_limit (in terms of hybrid time comparison), and this slice points to
@@ -153,9 +155,11 @@ class IntentAwareIterator final {
   // Utility function to execute Next and retrieve result via Fetch in one call.
   Result<const FetchedEntry&> FetchNext();
 
-  // Directly fetch value from underlying iterator for specified key. Returns empty slice
-  // when entry not found.
-  Result<Slice> FetchValue(Slice key);
+  // Directly fetches the value from the underlying iterator for the specified key. Returns an
+  // empty slice when the entry is not found. If `update_filter_key` is true, the key must remain
+  // alive until the next filter-key update is performed. The latter only makes sense if the
+  // iterator was created with a variable bloom filter.
+  Result<Slice> FetchValue(Slice key, UpdateFilterKey update_filter_key = UpdateFilterKey::kFalse);
 
   const ReadHybridTime& read_time() const {
     return read_time_;
@@ -163,8 +167,18 @@ class IntentAwareIterator final {
 
   Result<ReadRestartData> GetReadRestartData() const;
 
-  MaxSeenHtData ObtainMaxSeenHtCheckpoint();
-  void RollbackMaxSeenHt(MaxSeenHtData checkpoint);
+  // Checkpoint stores only the HT; the offending key need not be snapshotted.
+  // We don't promise a specific key on read restart; any observation that causes
+  // read restart is good enough. UpdateMaxSeenHt records the first such key and
+  // the empty-guard freezes it.
+  //   - checkpoint HT > read_time: a key was already frozen before the
+  //     snapshot, so the iterator's current key equals the snapshot-time key;
+  //     nothing to restore.
+  //   - checkpoint HT <= read_time: no key existed at snapshot time, so any
+  //     key recorded since is for an observation we're undoing.
+  //     RollbackMaxSeenHt clears it.
+  EncodedDocHybridTime ObtainMaxSeenHtCheckpoint();
+  void RollbackMaxSeenHt(const EncodedDocHybridTime& checkpoint);
 
   HybridTime TEST_MaxSeenHt() const;
 
@@ -187,11 +201,12 @@ class IntentAwareIterator final {
       Slice* result_value = nullptr);
 
   // Finds the oldest record for a particular key that is larger than the
-  // specified min_hybrid_time, returns the overwrite time.
+  // specified min_hybrid_time, returns the overwrite time as a DocHybridTime
+  // (including write_id).
   // This record may not be a full record, but instead a merge record (e.g. a
   // TTL row).
-  // Returns HybridTime::kInvalid if no such record was found.
-  Result<HybridTime> FindOldestRecord(Slice key_without_ht, HybridTime min_hybrid_time);
+  // Returns DocHybridTime::kInvalid if no such record was found.
+  Result<DocHybridTime> FindOldestRecord(Slice key_without_ht, HybridTime min_hybrid_time);
 
   void UpdateFilterKey(Slice user_key_for_filter, Slice seek_key = Slice());
 
@@ -363,7 +378,7 @@ class IntentAwareIterator final {
 #endif
   }
 
-  void UpdateMaxSeenHt(EncodedDocHybridTime seen_ht, Slice key);
+  void UpdateMaxSeenHt(const EncodedDocHybridTime& seen_ht, Slice key);
 
   const ReadHybridTime read_time_;
   const EncodedReadHybridTime encoded_read_time_;

@@ -40,8 +40,8 @@ public class TestLoadBalance extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgEncryption.class);
 
   @Override
-  public ConnectionBuilder getConnectionBuilder() {
-    ConnectionBuilder cb = new ConnectionBuilder(miniCluster);
+  protected ConnectionBuilder getConnectionBuilder() {
+    ConnectionBuilder cb = super.getConnectionBuilder();
     cb.setLoadBalance(true);
     return cb;
   }

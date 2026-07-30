@@ -113,6 +113,7 @@ set(UTIL_SRCS
   bloom_filter.cc
   bytes_formatter.cc
   cache_metrics.cc
+  cgroups.cc
   coding.cc
   concurrent_value.cc
   condition_variable.cc
@@ -121,6 +122,7 @@ set(UTIL_SRCS
   crc.cc
   cross_thread_mutex.cc
   crypt.cc
+  csv_util.cc
   curl_util.cc
   date_time.cc
   debug-util.cc
@@ -134,6 +136,7 @@ set(UTIL_SRCS
   debug/trace_event_synthetic_delay.cc
   decimal.cc
   delayer.cc
+  dist_trace.cc
   enums.cc
   env.cc
   env_posix.cc
@@ -152,7 +155,8 @@ set(UTIL_SRCS
   flags/flags_callback.cc
   hdr_histogram.cc
   hexdump.cc
-  jsonreader.cc
+  html_print_helper.cc
+  json_document.cc
   jsonwriter.cc
   jwt_util.cc
   jwtcpp_util.cc
@@ -202,6 +206,7 @@ set(UTIL_SRCS
   rw_semaphore.cc
   rwc_lock.cc
   shared_mem.cc
+  shutdown_controller.cc
   signal_util.cc
   slice.cc
   slice_parts.cc
@@ -234,6 +239,8 @@ set(UTIL_SRCS
   timestamp.cc
   tostring.cc
   trace.cc
+  tsan_util.cc
+  two_group_mutex.cc
   ulimit.cc
   ulimit_util.cc
   url-coding.cc
@@ -242,13 +249,20 @@ set(UTIL_SRCS
   varint.cc
   write_buffer.cc
   yb_partition.cc
-  ysql_binary_runner.cc
   zlib.cc
   callsite_profiling.cc
   thread_holder.cc
   )
 
+set(OPENTELEMETRY_LIBRARIES
+  opentelemetry_trace
+  opentelemetry_exporter_otlp_http
+  opentelemetry_resources
+  opentelemetry_common
+  opentelemetry_proto)
+
 set(UTIL_LIBS
+  absl
   boost_system
   boost_thread
   boost_atomic
@@ -263,22 +277,25 @@ set(UTIL_LIBS
   libev
   pb_util_proto
   protobuf
+  unwind
   zlib
   ${OPENSSL_CRYPTO_LIBRARY}
-  ${OPENSSL_SSL_LIBRARY})
+  ${OPENSSL_SSL_LIBRARY}
+  ${OPENTELEMETRY_LIBRARIES})
 
 if(NOT APPLE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DROCKSDB_FALLOCATE_PRESENT")
   set(UTIL_LIBS
     ${UTIL_LIBS}
-    absl
     rt
     libbacktrace)
 endif()
 
 # We used to add tcmalloc as a dependency of yb_util here, but in D20382 we started linking tcmalloc
 # as a static library directy into each executable, to ensure that it is initialized earlier than
-# any shared library.
+# any shared library. On macOS tcmalloc is instead a shared library (it installs a malloc zone at
+# load time), and yb_util/yb_test_util link it explicitly below so their references to the tcmalloc
+# API (MallocExtension/MallocHook/HeapProfiler/ProfilerStart) resolve at link time.
 
 # We need libdl for accessing library load addresses.
 list(APPEND UTIL_LIBS curl dl)
@@ -323,6 +340,13 @@ ADD_YB_TEST_LIBRARY(
        multi_drive_test_env.cc
   DEPS gflags glog gmock gtest yb_util yb_util_shmem)
 
+if(APPLE AND "${YB_TCMALLOC_ENABLED}" STREQUAL "1")
+  # See the comment above ADD_YB_LIBRARY(yb_util): on macOS tcmalloc/profiler are shared libraries
+  # linked here so the tcmalloc API symbols these libraries reference resolve at link time.
+  target_link_libraries(yb_util tcmalloc profiler)
+  target_link_libraries(yb_test_util tcmalloc profiler)
+endif()
+
 #######################################
 # yb_test_main
 #######################################
@@ -350,6 +374,10 @@ ADD_YB_TEST(blocking_queue-test)
 ADD_YB_TEST(bloom_filter-test)
 ADD_YB_TEST(byte_buffer-test)
 ADD_YB_TEST(bytes_formatter-test)
+if (NOT APPLE)
+  # We disable this test when running on Apple platform as it does not support cgroups.
+  ADD_YB_TEST(cgroups-test)
+endif()
 ADD_YB_TEST(callback_bind-test)
 ADD_YB_TEST(countdown_latch-test)
 ADD_YB_TEST(crash_point-test)
@@ -372,7 +400,7 @@ ADD_YB_TEST(format-test RUN_SERIAL true)
 ADD_YB_TEST(hash_util-test)
 ADD_YB_TEST(hdr_histogram-test)
 ADD_YB_TEST(inline_slice-test)
-ADD_YB_TEST(jsonreader-test)
+ADD_YB_TEST(json_document-test)
 ADD_YB_TEST(jwt_util-test)
 ADD_YB_TEST(jwtcpp_util-test)
 ADD_YB_TEST(lockfree-test)
@@ -445,6 +473,7 @@ ADD_YB_TEST(thread_pool-test)
 ADD_YB_TEST(threadpool-test)
 ADD_YB_TEST(tostring-test)
 ADD_YB_TEST(trace-test)
+ADD_YB_TEST(two_group_mutex-test)
 ADD_YB_TEST(url-coding-test)
 ADD_YB_TEST(user-test)
 ADD_YB_TEST(uuid-test)

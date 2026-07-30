@@ -26,7 +26,7 @@
 #include <stdint.h>
 #include <string>
 #include "yb/util/slice.h"
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/table.h"
 
@@ -83,6 +83,10 @@ class BlockHandle {
 
   bool IsSet() const {
     return offset_ != kUint64FieldNotSet && size_ != kUint64FieldNotSet;
+  }
+
+  bool operator==(const BlockHandle& other) const {
+    return offset_ == other.offset_ && size_ == other.size_;
   }
 
   static const BlockHandle& NullBlockHandle() {
@@ -210,7 +214,7 @@ static const size_t kBlockTrailerSize = 5;
 class TrackedAllocation {
  public:
   TrackedAllocation();
-  TrackedAllocation(std::unique_ptr<char[]>&& data, size_t size,
+  TrackedAllocation(std::unique_ptr<const char[]>&& data, size_t size,
                     std::shared_ptr<yb::MemTracker> mem_tracker);
   TrackedAllocation(TrackedAllocation&& other) = default;
 
@@ -218,11 +222,11 @@ class TrackedAllocation {
 
   ~TrackedAllocation();
 
-  char* get() const {
+  const char* get() const {
     return holder_.get();
   }
  private:
-  std::unique_ptr<char[]> holder_;
+  std::unique_ptr<const char[]> holder_;
   size_t size_;
   std::shared_ptr<yb::MemTracker> mem_tracker_;
 };

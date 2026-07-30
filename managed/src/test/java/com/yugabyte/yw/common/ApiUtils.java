@@ -65,6 +65,14 @@ public class ApiUtils {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
         UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
         userIntent.providerType = cloudType;
+        if (cloudType != null) {
+          Customer c = Customer.get(universe.getCustomerId());
+          List<Provider> providerList = Provider.get(c.getUuid(), cloudType);
+          if (providerList.size() > 0) {
+            userIntent.provider = providerList.get(0).getUuid().toString();
+          }
+        }
+
         userIntent.accessKeyCode = DEFAULT_ACCESS_KEY_CODE;
         // Add a desired number of nodes.
         userIntent.numNodes = userIntent.replicationFactor;
@@ -170,6 +178,11 @@ public class ApiUtils {
         universeDetails.upsertPrimaryCluster(userIntent, null, placementInfo);
         universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.updateInProgress = updateInProgress;
+        // Test universes are treated as fully created ones for legacy behavior parity - health
+        // checks and alert definitions should cover them just like they did before the
+        // creationSucceeded flag existed. Tests that specifically exercise the "creation failed"
+        // path should override this on the resulting universe.
+        universeDetails.creationSucceeded = true;
         universeDetails.setEnableYbc(enableYbc);
         universeDetails.setYbcInstalled(enableYbc);
         List<UUID> azUUIDList = null;
@@ -196,6 +209,9 @@ public class ApiUtils {
           if (azUUIDList != null) {
             int azIndex = (idx - 1) % azUUIDList.size();
             node.azUuid = azUUIDList.get(azIndex);
+            AvailabilityZone az = AvailabilityZone.getOrBadRequest(node.azUuid);
+            node.cloudInfo.region = az.getRegion().getCode();
+            node.cloudInfo.az = az.getName();
           }
           if (userIntent.dedicatedNodes) {
             node.dedicatedTo = UniverseTaskBase.ServerType.TSERVER;
@@ -213,6 +229,9 @@ public class ApiUtils {
             if (azUUIDList != null) {
               int azIndex = (idx - 1) % azUUIDList.size();
               node.azUuid = azUUIDList.get(azIndex);
+              AvailabilityZone az = AvailabilityZone.getOrBadRequest(node.azUuid);
+              node.cloudInfo.region = az.getRegion().getCode();
+              node.cloudInfo.az = az.getName();
             }
             universeDetails.nodeDetailsSet.add(node);
           }
@@ -259,6 +278,9 @@ public class ApiUtils {
         universeDetails.upsertPrimaryCluster(userIntent, null, placementInfo);
         universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.updateInProgress = updateInProgress;
+        // See the note on mockUniverseUpdater about creationSucceeded - k8s helper follows
+        // the same convention.
+        universeDetails.creationSucceeded = true;
         PlacementCloud placementCloud = placementInfo.cloudList.get(0);
         for (PlacementRegion rp : placementCloud.regionList) {
           for (PlacementAZ az : rp.azList) {
@@ -419,13 +441,17 @@ public class ApiUtils {
     };
   }
 
+  public static void configureDedicatedMasterFields(UserIntent userIntent) {
+    userIntent.dedicatedNodes = true;
+    userIntent.masterInstanceType = userIntent.instanceType;
+    userIntent.masterDeviceInfo = userIntent.deviceInfo.clone();
+  }
+
   public static Universe.UniverseUpdater mockUniverseUpdaterSetDedicated() {
     return universe -> {
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
       UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-      userIntent.dedicatedNodes = true;
-      userIntent.masterInstanceType = userIntent.instanceType;
-      userIntent.masterDeviceInfo = userIntent.deviceInfo.clone();
+      configureDedicatedMasterFields(userIntent);
       universe
           .getUniverseDetails()
           .nodeDetailsSet
@@ -500,6 +526,16 @@ public class ApiUtils {
         universeDetails.nodeDetailsSet = new HashSet<>();
         userIntent.numNodes = userIntent.replicationFactor;
         UUID primaryClusterUUID = universeDetails.getPrimaryCluster().uuid;
+        List<UUID> azUuids =
+            userIntent.regionList == null
+                ? Collections.emptyList()
+                : userIntent.regionList.stream()
+                    .flatMap(
+                        uuid ->
+                            Region.getOrBadRequest(uuid).getAllZones().stream()
+                                .filter(AvailabilityZone::isActive))
+                    .map(az -> az.getUuid())
+                    .toList();
         for (int idx = 1; idx <= userIntent.numNodes; idx++) {
           NodeDetails node =
               getDummyNodeDetails(
@@ -510,10 +546,10 @@ public class ApiUtils {
           universeDetails.nodeDetailsSet.add(node);
         }
         universeDetails.upsertPrimaryCluster(userIntent, null, null);
-
         NodeDetails node =
             getDummyNodeDetails(userIntent.numNodes + 1, NodeDetails.NodeState.Removed);
         node.placementUuid = primaryClusterUUID;
+
         universeDetails.nodeDetailsSet.add(node);
         universeDetails.nodePrefix = "host";
 
@@ -522,11 +558,18 @@ public class ApiUtils {
             getDummyNodeDetailSet(readonlyClusterUUID, 0, readOnlyNodes);
         for (NodeDetails roNode : readReplicaNodesSet) {
           roNode.state = NodeState.Live;
+          roNode.cloudInfo.cloud = userIntent.providerType.name();
         }
 
         universeDetails.nodeDetailsSet.addAll(readReplicaNodesSet);
         universeDetails.upsertCluster(userIntent, null, null, readonlyClusterUUID);
-
+        int azIdx = 0;
+        for (NodeDetails nodeDetails : universeDetails.nodeDetailsSet) {
+          if (azUuids.size() > azIdx) {
+            nodeDetails.azUuid = azUuids.get(azIdx);
+            azIdx = (azIdx + 1) % azUuids.size();
+          }
+        }
         universe.setUniverseDetails(universeDetails);
       }
     };
@@ -603,7 +646,7 @@ public class ApiUtils {
   }
 
   public static UserIntent getTestUserIntent(Region r, Provider p, InstanceType i, int numNodes) {
-    return getTestUserIntent(r, p, i, numNodes, 100, 50);
+    return getTestUserIntent(r, p, i, numNodes, 100, 0);
   }
 
   public static UserIntent getTestUserIntent(
@@ -617,6 +660,7 @@ public class ApiUtils {
       ui.instanceType = i.getInstanceTypeCode();
     }
     ui.deviceInfo = getDummyDeviceInfo(1, tserverDiskSize);
+    // masterDeviceInfo can only be set when dedicatedNodes is true.
     if (masterDiskSize > 0) {
       ui.masterDeviceInfo = getDummyDeviceInfo(1, masterDiskSize);
     }
@@ -711,7 +755,12 @@ public class ApiUtils {
       boolean isMultiAz) {
     NodeDetails node =
         KubernetesUtil.getKubernetesNodeName(
-            partition, zone, isMaster ? ServerType.MASTER : ServerType.TSERVER, isMultiAz, false);
+            partition,
+            zone,
+            isMaster ? ServerType.MASTER : ServerType.TSERVER,
+            isMultiAz,
+            false,
+            0);
     node.nodeUuid = UUID.randomUUID();
     node.cloudInfo = new CloudSpecificInfo();
     node.cloudInfo.cloud = cloud;

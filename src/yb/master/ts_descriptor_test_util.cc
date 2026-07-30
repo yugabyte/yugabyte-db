@@ -17,10 +17,10 @@ namespace yb::master {
 
 Result<TSDescriptorPtr> TSDescriptorTestUtil::RegisterNew(
     const NodeInstancePB& instance, const TSRegistrationPB& registration,
-    CloudInfoPB local_cloud_info, rpc::ProxyCache* proxy_cache,
+    CloudInfoPB local_master_cloud_info, rpc::ProxyCache* proxy_cache,
     RegisteredThroughHeartbeat registered_through_heartbeat) {
   auto [ts_descriptor, write_lock] = VERIFY_RESULT(TSDescriptor::CreateNew(
-      instance, registration, std::move(local_cloud_info), proxy_cache,
+      instance, registration, std::move(local_master_cloud_info), proxy_cache,
       registered_through_heartbeat));
   write_lock.Commit();
   return ts_descriptor;

@@ -1,0 +1,15 @@
+title: RunScriptResponse
+description: Response from running a script on database nodes
+x-yba-api-visibility: internal
+type: object
+properties:
+  summary:
+    $ref: "./ExecutionSummary.yaml"
+  results:
+    description: Map of node name to execution result
+    type: object
+    additionalProperties:
+      $ref: "./NodeScriptResult.yaml"
+required:
+  - summary
+  - results

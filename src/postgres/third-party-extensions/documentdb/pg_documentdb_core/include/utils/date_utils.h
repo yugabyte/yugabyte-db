@@ -4,7 +4,7 @@
  *
  * include/utils/date_utils.h
  *
- * Definitions for utilities related to dates and Mongo Date types.
+ * Definitions for utilities related to dates and date types.
  *
  *-------------------------------------------------------------------------
  */
@@ -22,7 +22,7 @@ static const char *dateUnitStr[9] = {
 	"year", "quarter", "month", "week", "day", "hour", "minute", "second", "millisecond"
 };
 
-/* Enum which defines the possible units which mongo supports for BSON date types */
+/* Enum which defines the possible units for BSON date types */
 typedef enum DateUnit
 {
 	DateUnit_Invalid = 0,
@@ -162,7 +162,9 @@ GetPgTimestampFromUnixEpoch(int64_t epochInMs)
 		seconds >= (float8) SECS_PER_DAY * (TIMESTAMP_END_JULIAN - UNIX_EPOCH_JDATE))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_OVERFLOW),
-						errmsg("Invalid conversion to date time.")));
+						errmsg(
+							"value %lld (milliseconds) is out of range for timestamps.",
+							(long long) epochInMs)));
 	}
 
 	return DirectFunctionCall1(

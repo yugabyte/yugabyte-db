@@ -21,12 +21,12 @@ import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.StorageUtilFactory;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
@@ -96,6 +96,25 @@ public class CreateBackup extends UniverseTaskBase {
   }
 
   @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    Universe universe = Universe.getOrBadRequest(params().getUniverseUUID());
+    boolean ybcBackup =
+        !BackupCategory.YB_BACKUP_SCRIPT.equals(params().backupCategory)
+            && universe.isYbcEnabled()
+            && !params().backupType.equals(TableType.REDIS_TABLE_TYPE);
+    // Validate the storage config against the universe here, in the pre-check, so that an unusable
+    // config fails the task before run() creates the Backup row. The BackupPreflightValidate
+    // subtask runs only after the row is persisted, so relying on it would leave behind an orphaned
+    // Backup row that the garbage collector cannot delete (it re-validates the same invalid config
+    // and skips deletion), leaking Backup entries over time. See PLAT-20585.
+    if (ybcBackup) {
+      backupHelper.validateStorageConfigForBackupOnUniverse(
+          params().storageConfigUUID, params().customerUUID, universe);
+    }
+  }
+
+  @Override
   public void run() {
     Set<String> tablesToBackup = new HashSet<>();
     Universe universe = Universe.getOrBadRequest(params().getUniverseUUID());
@@ -138,12 +157,7 @@ public class CreateBackup extends UniverseTaskBase {
             if (!StringUtils.equals(
                 universe.getUniverseDetails().getYbcSoftwareVersion(),
                 ybcManager.getStableYbcVersion())) {
-              if (universe
-                  .getUniverseDetails()
-                  .getPrimaryCluster()
-                  .userIntent
-                  .providerType
-                  .equals(Common.CloudType.kubernetes)) {
+              if (Util.isKubernetesBasedUniverse(universe)) {
                 createUpgradeYbcTaskOnK8s(
                         params().getUniverseUUID(), ybcManager.getStableYbcVersion())
                     .setSubTaskGroupType(SubTaskGroupType.UpgradingYbc);

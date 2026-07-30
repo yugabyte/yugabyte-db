@@ -26,6 +26,7 @@
 
 #include "yb/util/bitmap.h"
 #include "yb/util/operation_counter.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace tablet {
@@ -150,7 +151,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   // Whether this transactions is currently applying intents.
   bool ProcessingApply() const;
 
-  void UpdateTransactionStatusLocation(const TabletId& new_status_tablet);
+  void UpdateTransactionPromoting(const TabletId& new_status_tablet);
 
   std::string LogPrefix() const;
 

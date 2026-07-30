@@ -9,7 +9,16 @@ interface FaultToleranceTypeFieldProps<T extends FieldValues> {
   name: Path<T>;
   label: string;
   t: TFunction;
+  sx?: React.CSSProperties;
+  isK8s?: boolean;
 }
+
+const faultToleranceTitleKey = (value: string, isK8s: boolean) =>
+  isK8s && value === FaultToleranceType.NODE_LEVEL ? `${value}.titlePod` : `${value}.title`;
+
+const faultToleranceSubTextKey = (value: string, isK8s: boolean) =>
+  isK8s && value === FaultToleranceType.NODE_LEVEL ? `${value}.subTextPod` : `${value}.subText`;
+
 
 const StyledMenuItem = styled(MenuItem)(({ theme }) => ({
   padding: '8px 16px !important',
@@ -32,9 +41,11 @@ const StyledMenuItem = styled(MenuItem)(({ theme }) => ({
 export const FaultToleranceTypeField = <T extends FieldValues>({
   name,
   t,
-  label
+  label,
+  sx = {},
+  isK8s = false
 }: FaultToleranceTypeFieldProps<T>) => {
-  const { control, getValues, setValue } = useFormContext<T>();
+  const { control } = useFormContext<T>();
   return (
     <Controller
       name={name}
@@ -45,7 +56,8 @@ export const FaultToleranceTypeField = <T extends FieldValues>({
             value={field.value}
             onChange={(e) => field.onChange(e.target.value)}
             sx={{
-              width: '320px'
+              width: '320px',
+              ...sx
             }}
             menuProps={{
               anchorOrigin: {
@@ -55,10 +67,13 @@ export const FaultToleranceTypeField = <T extends FieldValues>({
               transformOrigin: {
                 vertical: 'top',
                 horizontal: 'left'
+              },
+              MenuListProps: {
+                sx: { paddingTop: 0, paddingBottom: 0 }
               }
             }}
             renderValue={(value) => {
-              return t(`${value}.title`);
+              return t(faultToleranceTitleKey(String(value), isK8s));
             }}
             label={label}
             dataTestId="fault-tolerance-type-field"
@@ -67,8 +82,8 @@ export const FaultToleranceTypeField = <T extends FieldValues>({
               const value = FaultToleranceType[key as keyof typeof FaultToleranceType];
               return (
                 <StyledMenuItem key={value} value={value}>
-                  <span>{t(`${value}.title`)}</span>
-                  <span className="subText">{t(`${value}.subText`)}</span>
+                  <span>{t(faultToleranceTitleKey(value, isK8s))}</span>
+                  <span className="subText">{t(faultToleranceSubTextKey(value, isK8s))}</span>
                 </StyledMenuItem>
               );
             })}

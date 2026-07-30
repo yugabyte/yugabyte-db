@@ -240,6 +240,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
+    boolean taskSucceeded = false;
     try {
       // Lock the target universe.
       lockAndFreezeUniverseForUpdate(
@@ -299,6 +300,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
         getRunnableTask().runSubTasks();
+        taskSucceeded = true;
       } catch (Exception e) {
         log.error("{} hit error : {}", getName(), e.getMessage());
         xClusterConfig.refresh();
@@ -341,7 +343,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       if (xClusterConfig.isUsedForDr()) {
         DrConfig drConfig = xClusterConfig.getDrConfig();
         drConfig.refresh();
-        kubernetesStatus.updateDrConfigStatus(drConfig, getName(), getUserTaskUUID());
+        String message = taskSucceeded ? "Task Succeeded" : "Task Failed";
+        kubernetesStatus.updateDrConfigStatus(drConfig, message, getUserTaskUUID());
       }
     }
 
@@ -898,8 +901,12 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
               .setShouldRunPredicate(bootstrapRequiredPredicate);
         }
 
-        // Recreate the PITR config for txn xCluster.
-        if (xClusterConfig.getType() != ConfigType.Basic) {
+        // Recreate the PITR config for txn xCluster (skip when snapshot schedules are disabled).
+        boolean skipSnapshotSchedules =
+            xClusterConfig.isAutomaticDdlMode()
+                && confGetter.getConfForScope(
+                    targetUniverse, UniverseConfKeys.skipXClusterSnapshotSchedules);
+        if (xClusterConfig.getType() != ConfigType.Basic && !skipSnapshotSchedules) {
           if (pitrConfigOnTargetOptional.isPresent()) {
             PitrConfig pitrConfig = pitrConfigOnTargetOptional.get();
             // Create the PITR config on the target if the predicate is true which means the

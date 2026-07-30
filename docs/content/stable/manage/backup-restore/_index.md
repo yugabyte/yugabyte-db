@@ -36,17 +36,14 @@ Unlike traditional single-instance databases, YugabyteDB is designed for fault t
 - Perform full backups before performing a large operation, such as a DDL change.
 - Performing a backup or restore incurs a load on the cluster. Perform backup operations when the cluster isn't experiencing heavy traffic. Backing up during times of heavy traffic can temporarily degrade application performance and increase the length of time of the backup.
 - Avoid running a backup during or before a scheduled maintenance.
-
-{{< warning title="Backups and high DDL activity" >}}
-In some circumstances, a backup can fail during high DDL activity. Avoid performing major DDL operations during scheduled backups or while a backup is in progress.
-{{< /warning >}}
+- In v2025.2.1 and later, taking YSQL backups during DDL operations is supported by default, and backups succeed even in case of concurrent DDLs. In versions earlier than v2025.1.1, backups can fail during high DDL activity. Avoid performing major DDL operations during scheduled backups or while a backup is in progress.
 
 {{<index/block>}}
 
   {{<index/item
     title="Export and import"
     body="Export and import data using SQL or CQL scripts."
-    href="export-import-data/"
+    href="export-import-data-ysql/"
     icon="fa-thin fa-file-import">}}
 
   {{<index/item

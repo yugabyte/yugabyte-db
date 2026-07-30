@@ -16,11 +16,9 @@ rightNav:
 
 The [YugabyteDB Anywhere Command Line Interface](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/) (CLI) is an open source tool that enables you to interact with YugabyteDB Anywhere using commands from your shell. With minimal configuration, you can start running commands from the command line that implement functionality equivalent to that provided by the browser-based YugabyteDB Anywhere interface.
 
-Reference documentation for yba CLI commands and their flags is available in the [Docs folder](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/docs/yba.md) of the GitHub repository.
+## Install CLI
 
 The CLI can only be used with YugabyteDB Anywhere v2024.1 or later.
-
-## Install CLI
 
 You can install and use the YugabyteDB Anywhere CLI in two ways.
 
@@ -148,6 +146,10 @@ Print the version of the CLI:
 ```sh
 yba --version
 ```
+
+### Command reference
+
+Reference documentation for yba CLI commands and their flags is available in the [Docs folder](https://github.com/yugabyte/yugabyte-db/blob/master/managed/yba-cli/docs/yba.md) of the GitHub repository.
 
 ### Global flags
 

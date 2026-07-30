@@ -1,5 +1,5 @@
 /*
- * __API_SCHEMA_V2__.create_user processes a Mongo wire protocol createUser command.
+ * __API_SCHEMA_V2__.create_user processes a wire protocol createUser command.
  */
 CREATE OR REPLACE FUNCTION __API_SCHEMA_V2__.create_user(
     p_spec __CORE_SCHEMA_V2__.bson)

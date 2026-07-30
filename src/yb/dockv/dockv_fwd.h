@@ -62,6 +62,7 @@ enum class YBHashSchema;
 // Automatically decode keys that are stored in string-typed PrimitiveValues when converting a
 // PrimitiveValue to string. This is useful when displaying write batches for secondary indexes.
 YB_STRONGLY_TYPED_BOOL(AutoDecodeKeys);
+YB_STRONGLY_TYPED_BOOL(IncludeWriteTime);
 YB_STRONGLY_TYPED_BOOL(PartialRangeKeyIntents);
 YB_STRONGLY_TYPED_BOOL(UseHash);
 
@@ -102,5 +103,10 @@ YB_DEFINE_ENUM(IntentType,
 );
 
 using IntentTypeSet = EnumBitSet<IntentType>;
+
+// Controls the ValueEntryType prefix byte used when encoding vector column values.
+//   kLegacy: uses kString ('S') - compatible with all existing data.
+//   kTyped:  uses kVector ('R') - used when owns_vector_reverse_mapping is true.
+YB_DEFINE_ENUM(VectorValueFormat, (kLegacy)(kTyped));
 
 }  // namespace yb::dockv

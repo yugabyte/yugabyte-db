@@ -3,32 +3,32 @@ SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documen
 SET citus.next_shard_id TO 1033000;
 SET documentdb.next_collection_id TO 10330;
 SET documentdb.next_collection_index_id TO 10330;
-SELECT documentdb_api.insert_one('db','testPercentileAndMedian',' { "_id" : 1, "group": 1, "dataVal": 36, "dataVal2": 36, "dataVal3": {"$numberDecimal": "36"}, "dataVal4": 36, "dataVal5": NaN }', NULL);
+SELECT documentdb_api.insert_one('db','testPercentileAndMedian',' { "_id" : 1, "group": 1, "dataVal": 111, "dataVal2": 111, "dataVal3": {"$numberDecimal": "111"}, "dataVal4": 111, "dataVal5": NaN }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','testPercentileAndMedian',' { "_id" : 2, "group": 1, "dataVal": 22, "dataVal2": 22, "dataVal3": {"$numberDecimal": "22"}, "dataVal4": 22, "dataVal5": Infinity }', NULL);
+SELECT documentdb_api.insert_one('db','testPercentileAndMedian',' { "_id" : 2, "group": 1, "dataVal": 11, "dataVal2": 11, "dataVal3": {"$numberDecimal": "11"}, "dataVal4": 11, "dataVal5": Infinity }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','testPercentileAndMedian',' { "_id" : 3, "group": 1, "dataVal": 67, "dataVal2": "string", "dataVal3": {"$numberDecimal": "67"}, "dataVal4": {"$numberDecimal": "2E+310"}, "dataVal5": Infinity }', NULL);
+SELECT documentdb_api.insert_one('db','testPercentileAndMedian',' { "_id" : 3, "group": 1, "dataVal": 11111, "dataVal2": "string", "dataVal3": {"$numberDecimal": "11111"}, "dataVal4": {"$numberDecimal": "2E+310"}, "dataVal5": Infinity }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','testPercentileAndMedian',' { "_id" : 4, "group": 1, "dataVal": 3, "dataVal2": 3, "dataVal3": {"$numberDecimal": "3"}, "dataVal4": 3, "dataVal5": -Infinity }', NULL);
+SELECT documentdb_api.insert_one('db','testPercentileAndMedian',' { "_id" : 4, "group": 1, "dataVal": 1, "dataVal2": 1, "dataVal3": {"$numberDecimal": "1"}, "dataVal4": 1, "dataVal5": -Infinity }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','testPercentileAndMedian',' { "_id" : 5, "group": 1, "dataVal": 55, "dataVal2": 55, "dataVal3": {"$numberDecimal": "55"}, "dataVal4": 55, "dataVal5": NaN }', NULL);
+SELECT documentdb_api.insert_one('db','testPercentileAndMedian',' { "_id" : 5, "group": 1, "dataVal": 1111, "dataVal2": 1111, "dataVal3": {"$numberDecimal": "1111"}, "dataVal4": 1111, "dataVal5": NaN }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
@@ -36,15 +36,15 @@ SELECT documentdb_api.insert_one('db','testPercentileAndMedian',' { "_id" : 5, "
 
 -- positive test case for percentile
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "percentileVal": { "$percentile": { "input": "$dataVal", "p": [ 0.95 ], "method": "approximate" } } } } ] }');
-                                        document                                        
+                                         document                                          
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "percentileVal" : [ { "$numberDouble" : "67.0" } ] }
+ { "_id" : { "$numberInt" : "1" }, "percentileVal" : [ { "$numberDouble" : "11111.0" } ] }
 (1 row)
 
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "percentileVal": { "$percentile": { "input": "$dataVal", "p": [ 0.95, 0.5 ], "method": "approximate" } } } } ] }');
-                                                       document                                                       
+                                                         document                                                         
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "percentileVal" : [ { "$numberDouble" : "67.0" }, { "$numberDouble" : "36.0" } ] }
+ { "_id" : { "$numberInt" : "1" }, "percentileVal" : [ { "$numberDouble" : "11111.0" }, { "$numberDouble" : "111.0" } ] }
 (1 row)
 
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "percentileVal": { "$percentile": { "input": null, "p": [ 0.95 ], "method": "approximate" } } } } ] }');
@@ -55,28 +55,28 @@ SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "
 
 -- contain non-numeric value
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "percentileVal": { "$percentile": { "input": "$dataVal2", "p": [ 0.95 ], "method": "approximate" } } } } ] }');
-                                        document                                        
+                                         document                                         
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "percentileVal" : [ { "$numberDouble" : "55.0" } ] }
+ { "_id" : { "$numberInt" : "1" }, "percentileVal" : [ { "$numberDouble" : "1111.0" } ] }
 (1 row)
 
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "percentileVal": { "$percentile": { "input": "$dataVal2", "p": [ 0.95, 0.5 ], "method": "approximate" } } } } ] }');
-                                                       document                                                       
+                                                        document                                                        
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "percentileVal" : [ { "$numberDouble" : "55.0" }, { "$numberDouble" : "22.0" } ] }
+ { "_id" : { "$numberInt" : "1" }, "percentileVal" : [ { "$numberDouble" : "1111.0" }, { "$numberDouble" : "11.0" } ] }
 (1 row)
 
 -- contain decimal value
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "percentileVal": { "$percentile": { "input": "$dataVal3", "p": [ 0.95 ], "method": "approximate" } } } } ] }');
-                                        document                                        
+                                         document                                          
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "percentileVal" : [ { "$numberDouble" : "67.0" } ] }
+ { "_id" : { "$numberInt" : "1" }, "percentileVal" : [ { "$numberDouble" : "11111.0" } ] }
 (1 row)
 
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "percentileVal": { "$percentile": { "input": "$dataVal3", "p": [ 0.95, 0.5 ], "method": "approximate" } } } } ] }');
-                                                       document                                                       
+                                                         document                                                         
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "percentileVal" : [ { "$numberDouble" : "67.0" }, { "$numberDouble" : "36.0" } ] }
+ { "_id" : { "$numberInt" : "1" }, "percentileVal" : [ { "$numberDouble" : "11111.0" }, { "$numberDouble" : "111.0" } ] }
 (1 row)
 
 -- data value exceeds double range taken as infinity
@@ -95,16 +95,16 @@ SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "
 
 -- with $let
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [{"$group": {"_id": null,"percentileVal": {"$percentile": {"p": "$$ps", "input": "$dataVal","method": "approximate"}}}}], "let": {"ps": [0.95, 0.5]}}');
-                                              document                                              
+                                                document                                                
 ---------------------------------------------------------------------
- { "_id" : null, "percentileVal" : [ { "$numberDouble" : "67.0" }, { "$numberDouble" : "36.0" } ] }
+ { "_id" : null, "percentileVal" : [ { "$numberDouble" : "11111.0" }, { "$numberDouble" : "111.0" } ] }
 (1 row)
 
 -- positive test case for median
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "medianVal": { "$median": { "input": "$dataVal", "method": "approximate" } } } } ] }');
-                                    document                                    
+                                    document                                     
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "medianVal" : { "$numberDouble" : "36.0" } }
+ { "_id" : { "$numberInt" : "1" }, "medianVal" : { "$numberDouble" : "111.0" } }
 (1 row)
 
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "medianVal": { "$median": { "input": null, "method": "approximate" } } } } ] }');
@@ -117,21 +117,21 @@ SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "medianVal": { "$median": { "input": "$dataVal2", "method": "approximate" } } } } ] }');
                                     document                                    
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "medianVal" : { "$numberDouble" : "22.0" } }
+ { "_id" : { "$numberInt" : "1" }, "medianVal" : { "$numberDouble" : "11.0" } }
 (1 row)
 
 -- contain decimal value
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "medianVal": { "$median": { "input": "$dataVal3", "method": "approximate" } } } } ] }');
-                                    document                                    
+                                    document                                     
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "medianVal" : { "$numberDouble" : "36.0" } }
+ { "_id" : { "$numberInt" : "1" }, "medianVal" : { "$numberDouble" : "111.0" } }
 (1 row)
 
 -- data value exceeds double range taken as infinity
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "medianVal": { "$median": { "input": "$dataVal4", "method": "approximate" } } } } ] }');
-                                    document                                    
+                                    document                                     
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "medianVal" : { "$numberDouble" : "36.0" } }
+ { "_id" : { "$numberInt" : "1" }, "medianVal" : { "$numberDouble" : "111.0" } }
 (1 row)
 
 -- handle NaN and Infinity values
@@ -151,47 +151,47 @@ SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "
 -- negative test case for percentile
 -- invalid input document
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "percentileVal": { "$percentile": 1 } } } ] }');
-ERROR:  specification must be an object; found $percentile type: int
+ERROR:  Specification must be an object type, but instead received $percentile with type: int
 -- unkonwn field in input document
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "percentileVal": { "$percentile": { "input": "$dataVal", "p": [ 0.95 ], "method": "approximate", "unknownField": "unknownValue" } } } } ] }');
-ERROR:  BSON field '$$percentile.unknownField' is an unknown field.
+ERROR:  The BSON field named with operators '$$percentile.unknownField' is not recognized.
 -- p value not an array
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "percentileVal": { "$percentile": { "input": "$dataVal", "p": 1.5, "method": "approximate" } } } } ] }');
-ERROR:  The $percentile 'p' field must be an array of numbers from [0.0, 1.0], but found: 1.5
+ERROR:  Expected an array containing numbers from 0.0 to 1.0, but instead received: 1.5
 -- p value is an empty array
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "percentileVal": { "$percentile": { "input": "$dataVal", "p": [], "method": "approximate" } } } } ] }');
-ERROR:  The $percentile 'p' field must be an array of numbers from [0.0, 1.0], but found: [  ]
+ERROR:  Expected an array containing numbers from 0.0 to 1.0, but instead received: [  ]
 -- p value is an array with invalid value
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "percentileVal": { "$percentile": { "input": "$dataVal", "p": [ 1.5 ], "method": "approximate" } } } } ] }');
-ERROR:  The $percentile 'p' field must be an array of numbers from [0.0, 1.0], but found: 1.500000
+ERROR:  Expected an array containing numbers from 0.0 to 1.0, but instead received: 1.500000
 -- invalid method
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "percentileVal": { "$percentile": { "input": "$dataVal", "p": [ 0.95 ], "method": "invalid" } } } } ] }');
 ERROR:  Currently only 'approximate' can be used as percentile 'method'
 -- missing input field
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "percentileVal": { "$percentile": { "p": [ 0.95 ], "method": "approximate" } } } } ] }');
-ERROR:  BSON field '$$percentile.input' is missing but is a required field
+ERROR:  The BSON field '$$percentile.input' is required but is currently missing from the data structure
 -- missing p field
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "percentileVal": { "$percentile": { "input": "$dataVal", "method": "approximate" } } } } ] }');
-ERROR:  BSON field '$$percentile.p' is missing but is a required field
+ERROR:  The BSON field '$$percentile.p' is required but is currently missing from the data structure
 -- missing method field
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "percentileVal": { "$percentile": { "input": "$dataVal", "p": [ 0.95 ] } } } } ] }');
-ERROR:  BSON field '$$percentile.method' is missing but is a required field
+ERROR:  The BSON field '$$percentile.method' is required but is currently missing from the data structure
 -- negative test case for median
 -- invalid input document
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "medianVal": { "$median": 1 } } } ] }');
-ERROR:  specification must be an object; found $median type: int
+ERROR:  Specification must be an object type, but instead received $median with type: int
 -- unkonwn field in input document
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "medianVal": { "$median": { "input": "$dataVal", "method": "approximate", "unknownField": "unknownValue" } } } } ] }');
-ERROR:  BSON field '$$median.unknownField' is an unknown field.
+ERROR:  The BSON field named with operators '$$median.unknownField' is not recognized.
 -- invalid method
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "medianVal": { "$median": { "input": "$dataVal", "method": "invalid" } } } } ] }');
 ERROR:  Currently only 'approximate' can be used as percentile 'method'
 -- missing input field
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "medianVal": { "$median": { "method": "approximate" } } } } ] }');
-ERROR:  BSON field '$$median.input' is missing but is a required field
+ERROR:  The BSON field '$$median.input' is required but is currently missing from the data structure
 -- missing method field
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "medianVal": { "$median": { "input": "$dataVal" } } } } ] }');
-ERROR:  BSON field '$$median.method' is missing but is a required field
+ERROR:  The BSON field '$$median.method' is required but is currently missing from the data structure
 /* shard collection */
 SELECT documentdb_api.shard_collection('db', 'testPercentileAndMedian', '{ "_id": "hashed" }', false);
  shard_collection 
@@ -201,15 +201,15 @@ SELECT documentdb_api.shard_collection('db', 'testPercentileAndMedian', '{ "_id"
 
 -- percentile
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "percentileVal": { "$percentile": { "input": "$dataVal", "p": [ 0.95, 0.5 ], "method": "approximate" } } } } ] }');
-                                                       document                                                       
+                                                         document                                                         
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "percentileVal" : [ { "$numberDouble" : "67.0" }, { "$numberDouble" : "36.0" } ] }
+ { "_id" : { "$numberInt" : "1" }, "percentileVal" : [ { "$numberDouble" : "11111.0" }, { "$numberDouble" : "111.0" } ] }
 (1 row)
 
 -- median
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "medianVal": { "$median": { "input": "$dataVal", "method": "approximate" } } } } ] }');
-                                    document                                    
+                                    document                                     
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "medianVal" : { "$numberDouble" : "36.0" } }
+ { "_id" : { "$numberInt" : "1" }, "medianVal" : { "$numberDouble" : "111.0" } }
 (1 row)
 

@@ -45,18 +45,18 @@ struct od_client {
 
 	kiwi_be_startup_t startup;
 	/*
-	 * All GUC settings sent in startup packet other than
-	 * user, database & replication
+	 * YB: All GUC settings sent in startup packet other than
+	 * user, database & replication. This includes GUC settings
+	 * set via the `options` arg in the startup packet - these
+	 * are stored as a raw string, without parsing.
+	 * Because of this, GUC lookups should not be done against
+	 * yb_startup_settings.
 	 */
 	kiwi_vars_t yb_startup_settings;
 
-	/*
-	 * YB: For auth passthrough, only yb_vars_session is used
-	 * and it stores all vars
-	 */
-	/* vars set through startup packet */
+	/* YB: vars set through startup packet */
 	kiwi_vars_t yb_vars_startup;
-	/* vars set through SET statements */
+	/* YB: vars set through SET statements */
 	kiwi_vars_t yb_vars_session;
 	kiwi_key_t key;
 
@@ -100,10 +100,11 @@ struct od_client {
 	 */
 	od_client_t *yb_external_client;
 
-	/* logical client version of the client. This field is populated 
-	 * after successful authentication via auth backend.
+	/* 
+	 * YB: logical client version of the client. This field is populated 
+	 * after successful authentication via auth backend or passthrough
 	 */
-	int64_t logical_client_version;
+	int64_t yb_logical_client_version;
 
 	/*
 	 * This stores the last unnamed prepared statement.
@@ -170,7 +171,7 @@ static inline void od_client_init(od_client_t *client)
 
 	client->yb_is_authenticating = false;
 	client->yb_external_client = NULL;
-	client->logical_client_version = 0;
+	client->yb_logical_client_version = 0;
 	yb_prepared_statement_init(&client->yb_unnamed_prep_stmt);
 }
 

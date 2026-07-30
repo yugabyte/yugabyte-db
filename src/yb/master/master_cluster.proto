@@ -49,6 +49,7 @@ message ListTabletServersResponsePB {
     optional YSQLLeaseInfoPB lease_info = 6;
   }
   repeated Entry servers = 2;
+  optional string master_uuid = 3;
 }
 
 message ListLiveTabletServersRequestPB {

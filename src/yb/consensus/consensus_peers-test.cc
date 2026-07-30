@@ -131,6 +131,7 @@ class ConsensusPeersTest : public YBTest {
     message_queue_->SetLeaderMode(OpId::Min(),
                                   OpId().term,
                                   OpId::Min(),
+                                  OpId(),
                                   BuildRaftConfigPBForTests(3));
   }
 

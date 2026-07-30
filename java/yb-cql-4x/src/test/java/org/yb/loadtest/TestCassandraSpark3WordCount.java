@@ -28,9 +28,11 @@ import java.util.stream.Collectors;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.minicluster.BaseMiniClusterTest;
-import org.yb.util.YBTestRunnerNonMac;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 
-@RunWith(value = YBTestRunnerNonMac.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestCassandraSpark3WordCount extends BaseMiniClusterTest {
   private CassandraSparkWordCount app = new CassandraSparkWordCount();
 

@@ -210,6 +210,7 @@ message CloneTabletRequestPB {
 
   optional string target_table_id = 7;
   optional string target_namespace_name = 8;
+  optional string target_namespace_id = 17;
 
   optional uint32 clone_request_seq_no = 9;
 

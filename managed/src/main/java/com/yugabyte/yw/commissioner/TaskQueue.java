@@ -373,7 +373,7 @@ public class TaskQueue {
         if (queue != null) {
           while (queue.size() > 0) {
             Node head = queue.peek();
-            if (head.taskRunnable.hasTaskCompleted()) {
+            if (head.taskRunnable.hasTaskTerminated()) {
               log.debug("Removing completed task {}", head.taskRunnable.getTaskType());
               queue.remove(head);
             } else {

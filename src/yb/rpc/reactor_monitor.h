@@ -17,6 +17,8 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/util/monotime.h"
+
 namespace yb::rpc {
 
 class ReactorMonitor {

@@ -36,6 +36,7 @@
 #include "yb/tablet/restore_util.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_vector_indexes.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/debug-util.h"
@@ -69,6 +70,10 @@ DEFINE_test_flag(int32, delay_tablet_export_metadata_ms, 0,
 
 DEFINE_test_flag(double, delay_create_snapshot_probability, 0.0,
     "The probability to delay creating snapshot by 1 second");
+
+DEFINE_test_flag(bool, pause_create_checkpoint, false,
+    "If true, pause after acquiring checkpoint lock in CreateCheckpoint "
+    "until the flag is reset.");
 
 namespace yb::tablet {
 
@@ -202,7 +207,7 @@ Status TabletSnapshots::Create(const CreateSnapshotData& data) {
   Status s;
   {
     SCOPED_WAIT_STATUS(Snapshot_WaitingForFlush);
-    s = regular_db().Flush(rocksdb::FlushOptions());
+    s = regular_db().Flush(rocksdb::FlushOptions(rocksdb::FlushReason::kSnapshotCreation));
   }
 
   if (PREDICT_FALSE(!s.ok())) {
@@ -399,7 +404,7 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
       operation->op_id());
   VLOG_WITH_PREFIX(1) << "Complete checkpoint restoring with result " << s << " in folder: "
                       << metadata().rocksdb_dir();
-  int32 delay_time_secs = GetAtomicFlag(&FLAGS_TEST_delay_tablet_split_metadata_restore_secs);
+  int32 delay_time_secs = FLAGS_TEST_delay_tablet_split_metadata_restore_secs;
   if (delay_time_secs > 0) {
     SleepFor(MonoDelta::FromSeconds(delay_time_secs));
   }
@@ -683,13 +688,19 @@ Status TabletSnapshots::Delete(const SnapshotOperation& operation) {
 }
 
 Status TabletSnapshots::CreateCheckpoint(
-    const std::string& dir, const CreateCheckpointIn create_checkpoint_in) {
+    const std::string& dir, CreateCheckpointIn create_checkpoint_in,
+    TabletSnapshots::UseTryLock use_try_lock) {
   ScopedRWOperation scoped_read_operation(&pending_op_counter_blocking_rocksdb_shutdown_start());
   RETURN_NOT_OK(scoped_read_operation);
 
   Status status;
   {
-    std::lock_guard lock(create_checkpoint_lock());
+    std::unique_lock lock(create_checkpoint_lock(), std::defer_lock);
+    if (!use_try_lock) {
+      lock.lock();
+    } else if (!lock.try_lock()) {
+        return STATUS(InternalError, "Unable to acquire checkpoint lock");
+    }
 
     if (!has_regular_db()) {
       LOG_WITH_PREFIX(INFO) << "Skipped creating checkpoint in " << dir;
@@ -700,6 +711,8 @@ Status TabletSnapshots::CreateCheckpoint(
     auto parent_dir = DirName(dir);
     RETURN_NOT_OK_PREPEND(metadata().fs_manager()->CreateDirIfMissing(parent_dir),
                           Format("Unable to create checkpoints directory $0", parent_dir));
+
+    TEST_PAUSE_IF_FLAG(TEST_pause_create_checkpoint);
 
     // Order does not matter because we flush both DBs and does not have parallel writes.
     status = DoCreateCheckpoint(dir, create_checkpoint_in);
@@ -725,7 +738,7 @@ Status TabletSnapshots::DoCreateCheckpoint(
 
   // Vector indexes checkpoint must be created after rocksdb checkpoint
   // to be in sync with the flushed data.
-  if (auto vector_indexes = VectorIndexesList(); vector_indexes != nullptr) {
+  if (auto vector_indexes = VectorIndexesList()) {
     for (const auto& vector_index : *vector_indexes) {
       const auto storage_name = docdb::GetVectorIndexStorageName(vector_index->options());
       const auto checkpoint_dir = create_checkpoint_in == CreateCheckpointIn::kSubDir
@@ -859,7 +872,7 @@ Status TabletRestorePatch::Finish() {
     }
     // Insert this kv into the write batch.
     if (value_to_insert.last_value) {
-      QLValuePB value_pb;
+      LWQLValuePB value_pb(nullptr);
       value_pb.set_int64_value(*(value_to_insert.last_value));
       VLOG_WITH_FUNC(3) << doc_key_and_value.first << ": " << *(value_to_insert.last_value);
       auto column_id = VERIFY_RESULT(table_info_->schema().ColumnIdByName("last_value"));
@@ -870,7 +883,7 @@ Status TabletRestorePatch::Finish() {
       IncrementTicker(RestoreTicker::kInserts);
     }
     if (value_to_insert.is_called) {
-      QLValuePB value_pb;
+      LWQLValuePB value_pb(nullptr);
       value_pb.set_bool_value(*(value_to_insert.is_called));
       VLOG_WITH_FUNC(3) << doc_key_and_value.first << ": " << *(value_to_insert.is_called);
       auto column_id = VERIFY_RESULT(table_info_->schema().ColumnIdByName("is_called"));

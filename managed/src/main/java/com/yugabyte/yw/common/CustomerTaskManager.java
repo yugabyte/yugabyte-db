@@ -16,6 +16,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderEdit;
+import com.yugabyte.yw.commissioner.tasks.DeletePitrConfig;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
@@ -30,6 +31,9 @@ import com.yugabyte.yw.common.YsqlQueryExecutor.ConsistencyInfoResp;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.rollback.RollbackContext;
+import com.yugabyte.yw.common.rollback.RollbackSubmission;
+import com.yugabyte.yw.common.rollback.TaskRollbackComputer;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.AbstractTaskParams;
@@ -37,17 +41,21 @@ import com.yugabyte.yw.forms.AuditLogConfigParams;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CertsRotateParams;
+import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.DrConfigTaskParams;
+import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
 import com.yugabyte.yw.forms.MetricsExportConfigParams;
+import com.yugabyte.yw.forms.ProvisionUniverseNodesParams;
 import com.yugabyte.yw.forms.QueryLogConfigParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
+import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
 import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
@@ -56,6 +64,7 @@ import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.forms.UpdatePitrConfigParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
@@ -75,7 +84,6 @@ import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
-import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.YBAError;
@@ -123,6 +131,7 @@ public class CustomerTaskManager {
   private final FileDataService fileDataService;
   private final ReleaseManager releaseManager;
   private final SoftwareUpgradeHelper softwareUpgradeHelper;
+  private final Map<TaskType, TaskRollbackComputer> taskRollbackComputers;
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskManager.class);
   private static final List<TaskType> LOAD_BALANCER_TASK_TYPES =
@@ -142,7 +151,8 @@ public class CustomerTaskManager {
       RuntimeConfGetter confGetter,
       FileDataService fileDataService,
       ReleaseManager releaseManager,
-      SoftwareUpgradeHelper softwareUpgradeHelper) {
+      SoftwareUpgradeHelper softwareUpgradeHelper,
+      Map<TaskType, TaskRollbackComputer> taskRollbackComputers) {
     this.ybService = ybService;
     this.commissioner = commissioner;
     this.ybcManager = ybcManager;
@@ -151,6 +161,7 @@ public class CustomerTaskManager {
     this.fileDataService = fileDataService;
     this.releaseManager = releaseManager;
     this.softwareUpgradeHelper = softwareUpgradeHelper;
+    this.taskRollbackComputers = taskRollbackComputers;
   }
 
   // Invoked if the task is in incomplete state.
@@ -387,6 +398,7 @@ public class CustomerTaskManager {
           "SELECT ti.uuid AS task_uuid, ct.id AS customer_task_id "
               + "FROM task_info ti, customer_task ct "
               + "WHERE ti.uuid = ct.task_uuid "
+              + "AND ti.task_state != 'Paused' "
               + "AND (ct.completion_time IS NULL "
               + "OR ti.task_state IN ('"
               + incompleteStates
@@ -429,6 +441,7 @@ public class CustomerTaskManager {
     Path restoreCustomerTaskFilePath =
         Paths.get(AppConfigHelper.getStoragePath(), RESTORE_BACKUP_CUSTOMER_TASK_FILE);
     if (Files.exists(restoreCustomerTaskFilePath) && Files.exists(restoreFilePath)) {
+      finalizeRestoredYbaBackupTask();
       try {
         TaskInfo restoreTaskInfo =
             Json.mapper().readValue(restoreFilePath.toFile(), TaskInfo.class);
@@ -465,6 +478,48 @@ public class CustomerTaskManager {
   }
 
   /**
+   * YBA backup tasks (CreateContinuousBackup/CreateYbaBackup) dump the YBA DB while they are still
+   * running, so a restored backup always contains its own creator task in an incomplete state. This
+   * must run before handleAllPendingTasks as that marks incomplete as "Platform restarted."
+   */
+  @VisibleForTesting
+  void finalizeRestoredYbaBackupTask() {
+    try {
+      TaskInfo taskInfo =
+          TaskInfo.find
+              .query()
+              .where()
+              .in("task_type", TaskType.CreateContinuousBackup, TaskType.CreateYbaBackup)
+              .in("task_state", TaskInfo.INCOMPLETE_STATES)
+              .orderBy()
+              .desc("createTime")
+              .setMaxRows(1)
+              .findOne();
+      if (taskInfo == null) {
+        return;
+      }
+      UUID taskUUID = taskInfo.getUuid();
+      log.info(
+          "Marking YBA backup task {} ({}) that created the restored backup as succeeded",
+          taskUUID,
+          taskInfo.getTaskType());
+      taskInfo.setTaskState(TaskInfo.State.Success);
+      taskInfo.save();
+      ScheduleTask scheduleTask = ScheduleTask.fetchByTaskUUID(taskUUID);
+      if (scheduleTask != null) {
+        // Unblock the scheduler, which skips runs while the last schedule task is incomplete.
+        scheduleTask.markCompleted();
+      }
+      CustomerTask customerTask = CustomerTask.findByTaskUUID(taskUUID);
+      if (customerTask != null) {
+        customerTask.markAsCompleted();
+      }
+    } catch (Exception e) {
+      log.error("Error finalizing the YBA backup task that created the restored backup", e);
+    }
+  }
+
+  /**
    * Updates the state of the universe in the event that the most recent task performed on it was an
    * upgrade task that failed or was aborted which is called on YBA startup.
    */
@@ -478,6 +533,16 @@ public class CustomerTaskManager {
       if (placementModificationTaskUuid != null) {
         CustomerTask placementModificationTask =
             CustomerTask.getOrBadRequest(customer.getUuid(), placementModificationTaskUuid);
+        Optional<TaskInfo> taskInfo = TaskInfo.maybeGet(placementModificationTask.getTaskUUID());
+        if (taskInfo.isPresent()) {
+          TaskInfo lastTaskInfo = taskInfo.get();
+          if (lastTaskInfo.getTaskState().equals(TaskInfo.State.Failure)
+              || lastTaskInfo.getTaskState().equals(TaskInfo.State.Aborted)) {
+            if (isSoftwareUpgradeTaskForAzProgress(lastTaskInfo.getTaskType())) {
+              markSoftwareUpgradeAzInProgressAsFailedInPrevConfig(uuid);
+            }
+          }
+        }
         SoftwareUpgradeState state =
             getUniverseSoftwareUpgradeStateBasedOnTask(universe, placementModificationTask);
         if (!UniverseDefinitionTaskParams.IN_PROGRESS_UNIV_SOFTWARE_UPGRADE_STATES.contains(
@@ -489,6 +554,28 @@ public class CustomerTaskManager {
         }
       }
     }
+  }
+
+  private static boolean isSoftwareUpgradeTaskForAzProgress(TaskType taskType) {
+    return Arrays.asList(
+            TaskType.SoftwareUpgrade,
+            TaskType.SoftwareUpgradeYB,
+            TaskType.SoftwareKubernetesUpgrade,
+            TaskType.SoftwareKubernetesUpgradeYB)
+        .contains(taskType);
+  }
+
+  private void markSoftwareUpgradeAzInProgressAsFailedInPrevConfig(UUID universeUuid) {
+    Universe.saveDetails(
+        universeUuid,
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          if (details.prevYBSoftwareConfig != null) {
+            details.prevYBSoftwareConfig.markInProgressAzUpgradeStatusesAsFailed();
+          }
+          universe.setUniverseDetails(details);
+        },
+        false);
   }
 
   private SoftwareUpgradeState getUniverseSoftwareUpgradeStateBasedOnTask(
@@ -723,33 +810,9 @@ public class CustomerTaskManager {
       String errMsg = String.format("Invalid task: Task %s cannot be rolled back", taskUUID);
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
-    AbstractTaskParams taskParams;
-    CustomerTask.TaskType customerTaskType;
-    if (Objects.requireNonNull(taskType) == TaskType.SwitchoverDrConfig) {
-      taskParams = Json.fromJson(oldTaskParams, DrConfigTaskParams.class);
-      DrConfigTaskParams drConfigTaskParams = (DrConfigTaskParams) taskParams;
-      drConfigTaskParams.refreshIfExists();
-      taskType = TaskType.SwitchoverDrConfigRollback;
-      customerTaskType = CustomerTask.TaskType.SwitchoverRollback;
 
-      // Roll back cannot be done if the old xCluster config is partially or fully deleted.
-      XClusterConfig currentXClusterConfig = drConfigTaskParams.getOldXClusterConfig();
-      if (Objects.isNull(currentXClusterConfig)
-          || !currentXClusterConfig.getTables().stream()
-              .allMatch(XClusterTableConfig::isReplicationSetupDone)) {
-        // At this point, the replication group on the new primary is deleted and it is
-        // possible that the user has written data to the new primary, so setting up
-        // replication from the new primary to the old primary is not safe and might need
-        // bootstrapping which cannot be done in the rollback of the switchover.
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            "The old xCluster config or its associated replication group is deleted and cannot do a"
-                + " roll back; At this point the user is able to write to the new primary universe."
-                + " You may retry the switchover task. If your intention is make the new primary"
-                + " universe the dr universe again, you can run another switchover task.");
-      }
-      log.debug("Rolling back switchover task with old xCluster config: {}", currentXClusterConfig);
-    } else {
+    TaskRollbackComputer computer = taskRollbackComputers.get(taskType);
+    if (computer == null) {
       String errMsg =
           String.format(
               "Invalid task type: %s cannot be rolled back, the task is annotated to be able to"
@@ -757,14 +820,21 @@ public class CustomerTaskManager {
               taskType);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, errMsg);
     }
-    if (Objects.isNull(customerTaskType)) {
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "CustomerTaskType is null");
-    }
+
+    RollbackSubmission submission =
+        computer.compute(new RollbackContext(customer, customerTask, taskInfo, oldTaskParams));
+
+    AbstractTaskParams taskParams = submission.getParams();
+    CustomerTask.TaskType customerTaskType = submission.getCustomerTaskType();
 
     // Reset the error string.
     taskParams.setErrorString(null);
-    taskParams.setPreviousTaskUUID(taskUUID);
-    UUID newTaskUUID = commissioner.submit(taskType, taskParams);
+    if (submission.isSetPreviousTaskUUID()) {
+      // Set previousTaskUUID only when rollback continues the same failed task (inherit
+      // runtimeInfo / retry semantics). Leave unset for a fresh rollback TaskType.
+      taskParams.setPreviousTaskUUID(taskUUID);
+    }
+    UUID newTaskUUID = commissioner.submit(submission.getRollbackTaskType(), taskParams);
     log.info(
         "Submitted rollback task for target {}:{}, task uuid = {}.",
         customerTask.getTargetUUID(),
@@ -880,6 +950,9 @@ public class CustomerTaskManager {
       case SystemdUpgrade:
         taskParams = Json.fromJson(oldTaskParams, SystemdUpgradeParams.class);
         break;
+      case ProvisionUniverseNodes:
+        taskParams = Json.fromJson(oldTaskParams, ProvisionUniverseNodesParams.class);
+        break;
       case KubernetesToggleImmutableYbc:
         taskParams = Json.fromJson(oldTaskParams, KubernetesToggleImmutableYbcParams.class);
         break;
@@ -917,57 +990,40 @@ public class CustomerTaskManager {
       case ModifyMetricsExportConfig:
         taskParams = Json.fromJson(oldTaskParams, MetricsExportConfigParams.class);
         break;
+      case ConfigureExportTelemetryConfig:
+        taskParams = Json.fromJson(oldTaskParams, ExportTelemetryConfigParams.class);
+        break;
       case AddNodeToUniverse:
       case RemoveNodeFromUniverse:
       case DeleteNodeFromUniverse:
       case ReleaseInstanceFromUniverse:
-      case RebootNodeInUniverse:
       case StartNodeInUniverse:
       case StopNodeInUniverse:
       case StartMasterOnNode:
       case ReprovisionNode:
       case MasterFailover:
-        String nodeName = oldTaskParams.get("nodeName").textValue();
-        String universeUUIDStr = oldTaskParams.get("universeUUID").textValue();
-        UUID universeUUID = UUID.fromString(universeUUIDStr);
-        // Build node task params for node actions.
-        NodeTaskParams nodeTaskParams = new NodeTaskParams();
-        if (taskType == TaskType.RebootNodeInUniverse) {
-          nodeTaskParams = new RebootNodeInUniverse.Params();
-          ((RebootNodeInUniverse.Params) nodeTaskParams).isHardReboot =
-              oldTaskParams.get("isHardReboot").asBoolean();
-        }
-        nodeTaskParams.nodeName = nodeName;
-        nodeTaskParams.setUniverseUUID(universeUUID);
-
+      case ReplaceNodeInUniverse:
+      case DecommissionNode:
+        NodeTaskParams nodeTaskParams = Json.fromJson(oldTaskParams, NodeTaskParams.class);
         // Populate the user intent for software upgrades like gFlag upgrades.
-        Universe universe = Universe.getOrBadRequest(universeUUID, customer);
-        nodeTaskParams.clusters.addAll(universe.getUniverseDetails().clusters);
-
-        nodeTaskParams.expectedUniverseVersion = -1;
-        if (oldTaskParams.has("rootCA")) {
-          nodeTaskParams.rootCA = UUID.fromString(oldTaskParams.get("rootCA").textValue());
-        }
+        Universe universe = Universe.getOrBadRequest(nodeTaskParams.getUniverseUUID(), customer);
         if (universe.isYbcEnabled()) {
           nodeTaskParams.setEnableYbc(true);
           nodeTaskParams.setYbcInstalled(true);
           nodeTaskParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
         }
-        if (taskType == TaskType.MasterFailover) {
-          nodeTaskParams.azUuid = UUID.fromString(oldTaskParams.get("azUuid").textValue());
-        }
+        nodeTaskParams.expectedUniverseVersion = -1;
         taskParams = nodeTaskParams;
         break;
-      case ReplaceNodeInUniverse:
-        nodeTaskParams = Json.fromJson(oldTaskParams, NodeTaskParams.class);
-        nodeName = oldTaskParams.get("nodeName").textValue();
-        nodeTaskParams.nodeName = nodeName;
+      case RebootNodeInUniverse:
+        nodeTaskParams = Json.fromJson(oldTaskParams, RebootNodeInUniverse.Params.class);
+        nodeTaskParams.expectedUniverseVersion = -1;
         taskParams = nodeTaskParams;
         break;
       case BackupUniverse:
         // V1 Restore Task
-        universeUUIDStr = oldTaskParams.get("universeUUID").textValue();
-        universeUUID = UUID.fromString(universeUUIDStr);
+        String universeUUIDStr = oldTaskParams.get("universeUUID").textValue();
+        UUID universeUUID = UUID.fromString(universeUUIDStr);
         // Build restore V1 task params for restore task.
         BackupTableParams backupTableParams = new BackupTableParams();
         backupTableParams.setUniverseUUID(universeUUID);
@@ -1100,6 +1156,18 @@ public class CustomerTaskManager {
         break;
       case ResumeUniverse:
         taskParams = Json.fromJson(oldTaskParams, ResumeUniverse.Params.class);
+        break;
+      case RestoreSnapshotSchedule:
+        taskParams = Json.fromJson(oldTaskParams, RestoreSnapshotScheduleParams.class);
+        break;
+      case DeletePitrConfig:
+        taskParams = Json.fromJson(oldTaskParams, DeletePitrConfig.Params.class);
+        break;
+      case CreatePitrConfig:
+        taskParams = Json.fromJson(oldTaskParams, CreatePitrConfigParams.class);
+        break;
+      case UpdatePitrConfig:
+        taskParams = Json.fromJson(oldTaskParams, UpdatePitrConfigParams.class);
         break;
       default:
         String errMsg =

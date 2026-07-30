@@ -13,10 +13,11 @@ package com.yugabyte.yw.forms;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.AllowedTasks;
+import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -24,6 +25,7 @@ import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.DrConfig;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
@@ -37,6 +39,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -66,12 +69,16 @@ public class UniverseResp {
     if (batchRollEnabled) {
       rollMaxBatchSize = UpgradeTaskBase.getMaxNodesToRoll(universe);
     }
+    String ybaSoftwareVersion = currentYbaSoftwareVersion();
+    String localInstanceAddress = HighAvailabilityConfig.getLocalInstanceAddress().orElse(null);
     return new UniverseResp(
         universe,
         taskUUID,
         resourceDetails,
         allowedTasks.get(universe.getUniverseUUID()),
-        rollMaxBatchSize);
+        rollMaxBatchSize,
+        ybaSoftwareVersion,
+        localInstanceAddress);
   }
 
   public static List<UniverseResp> create(
@@ -91,6 +98,8 @@ public class UniverseResp {
           }
         });
 
+    String ybaSoftwareVersion = currentYbaSoftwareVersion();
+    String localInstanceAddress = HighAvailabilityConfig.getLocalInstanceAddress().orElse(null);
     return universeList.stream()
         .map(
             universe ->
@@ -98,13 +107,40 @@ public class UniverseResp {
                     universe,
                     null,
                     customer,
-                    context.getProvider(
-                        UUID.fromString(
-                            universe.getUniverseDetails().getPrimaryCluster().userIntent.provider)),
+                    context.getProvider(getProviderUUID(universe)),
                     UniverseResourceDetails.create(universe.getUniverseDetails(), context),
                     allowedTasks.get(universe.getUniverseUUID()),
-                    suggests.get(universe.getUniverseUUID())))
+                    suggests.get(universe.getUniverseUUID()),
+                    ybaSoftwareVersion,
+                    localInstanceAddress))
         .collect(Collectors.toList());
+  }
+
+  /**
+   * YBA release to be injected to API responses for the sake of backwards compatibility of removed
+   * platformVersion field.
+   */
+  private static String currentYbaSoftwareVersion() {
+    try {
+      ConfigHelper configHelper = StaticInjectorHolder.injector().instanceOf(ConfigHelper.class);
+      Object v = configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion).get("version");
+      return v == null ? null : Objects.toString(v, null);
+    } catch (RuntimeException e) {
+      log.warn("Could not read YBA software version for UniverseResp: ", e);
+      return null;
+    }
+  }
+
+  private static UUID getProviderUUID(Universe universe) {
+    return universe
+        .getUniverseDetails()
+        .getPrimaryCluster()
+        .userIntent
+        .getAllProviderUUIDs()
+        .stream()
+        .sorted()
+        .findFirst()
+        .get();
   }
 
   private static void fillRegions(Collection<Universe> universes) {
@@ -203,12 +239,29 @@ public class UniverseResp {
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2024.1.0.0")
   public final RollMaxBatchSize rollMaxBatchSize;
 
+  @ApiModelProperty(value = "YugabyteDB Anywhere platform software version for this YBA instance")
+  public final String platformVersion;
+
   public UniverseResp(Universe entity) {
-    this(entity, null, null, null, null);
+    this(
+        entity,
+        null,
+        null,
+        null,
+        null,
+        currentYbaSoftwareVersion(),
+        HighAvailabilityConfig.getLocalInstanceAddress().orElse(null));
   }
 
   public UniverseResp(Universe entity, UUID taskUUID) {
-    this(entity, taskUUID, null, null, null);
+    this(
+        entity,
+        taskUUID,
+        null,
+        null,
+        null,
+        currentYbaSoftwareVersion(),
+        HighAvailabilityConfig.getLocalInstanceAddress().orElse(null));
   }
 
   public UniverseResp(
@@ -220,12 +273,31 @@ public class UniverseResp {
     this(
         entity,
         taskUUID,
-        Customer.get(entity.getCustomerId()),
-        Provider.getOrBadRequest(
-            UUID.fromString(entity.getUniverseDetails().getPrimaryCluster().userIntent.provider)),
         resources,
         allowedTasks,
-        rollMaxBatchSize);
+        rollMaxBatchSize,
+        currentYbaSoftwareVersion(),
+        HighAvailabilityConfig.getLocalInstanceAddress().orElse(null));
+  }
+
+  public UniverseResp(
+      Universe entity,
+      UUID taskUUID,
+      UniverseResourceDetails resources,
+      AllowedTasks allowedTasks,
+      RollMaxBatchSize rollMaxBatchSize,
+      String platformVersion,
+      String localInstanceAddress) {
+    this(
+        entity,
+        taskUUID,
+        Customer.get(entity.getCustomerId()),
+        Provider.getOrBadRequest(getProviderUUID(entity)),
+        resources,
+        allowedTasks,
+        rollMaxBatchSize,
+        platformVersion,
+        localInstanceAddress);
   }
 
   public UniverseResp(
@@ -235,13 +307,17 @@ public class UniverseResp {
       Provider provider,
       UniverseResourceDetails resources,
       AllowedTasks allowedTasks,
-      RollMaxBatchSize rollMaxBatchSize) {
+      RollMaxBatchSize rollMaxBatchSize,
+      String platformVersion,
+      String localInstanceAddress) {
     universeUUID = entity.getUniverseUUID();
     name = entity.getName();
     creationDate = entity.getCreationDate().toString();
     version = entity.getVersion();
     dnsName = getDnsName(customer, provider);
-    universeDetails = new UniverseDefinitionTaskParamsResp(entity.getUniverseDetails(), entity);
+    universeDetails =
+        new UniverseDefinitionTaskParamsResp(
+            entity.getUniverseDetails(), entity, localInstanceAddress);
     this.taskUUID = taskUUID;
     this.resources = resources;
     universeConfig = entity.getConfig();
@@ -257,6 +333,7 @@ public class UniverseResp {
     this.allowedTasks = allowedTasks == null ? null : new AllowedUniverseTasksResp(allowedTasks);
 
     this.rollMaxBatchSize = rollMaxBatchSize;
+    this.platformVersion = platformVersion;
   }
 
   // TODO(UI folks): Remove this. This is redundant as it is already available in resources
@@ -284,18 +361,12 @@ public class UniverseResp {
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getPrimaryCluster();
     String sampleAppCommand;
-    if (cluster.userIntent.providerType == null) {
-      return null;
-    }
-    boolean isKubernetesProvider =
-        cluster.userIntent.providerType.equals(Common.CloudType.kubernetes);
+    boolean isKubernetesProvider = Util.isKubernetesBasedUniverse(universe.getUniverseDetails());
     // Building --nodes param value of the command
     nodeDetailsSet.stream()
         .filter(
             nodeDetails ->
-                (nodeDetails.isTserver
-                    && nodeDetails.state != null
-                    && nodeDetails.state.name().equals("Live")))
+                (nodeDetails.isTserver && nodeDetails.state == NodeDetails.NodeState.Live))
         .forEach(
             nodeDetails ->
                 nodeBuilder.append(

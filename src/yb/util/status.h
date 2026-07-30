@@ -27,13 +27,20 @@
 #pragma once
 
 #include <atomic>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <iosfwd>
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include <boost/intrusive_ptr.hpp>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/stringize.hpp>
 
+#include "yb/gutil/port.h"
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/util/slice.h"
@@ -69,6 +76,10 @@
 #define RETURN_NOT_OK_PREPEND   YB_RETURN_NOT_OK_PREPEND
 #define RETURN_NOT_OK_RET       YB_RETURN_NOT_OK_RET
 #define RETURN_NOT_OK_SET_CODE  YB_RETURN_NOT_OK_SET_CODE
+
+// Return the given status if it is not OK, but first clone it and prepend the caller name.
+// This macro helps to identify the exact place of failure for the widely used expression.
+#define RETURN_NOT_OK_PREPEND_FUNC(s) RETURN_NOT_OK_PREPEND((s), __func__)
 
 extern "C" {
 
@@ -309,5 +320,3 @@ class StatusHolder {
       } \
     } while (0)
 
-#include "yb/util/status_format.h"
-#include "yb/util/status_log.h"

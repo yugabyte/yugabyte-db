@@ -83,7 +83,7 @@ public class AddOnClusterDelete extends UniverseDefinitionTaskBase {
       createDestroyServerTasks(
               universe,
               nodesToBeRemoved,
-              params().isForceDelete,
+              node -> params().isForceDelete,
               true /* deleteNodeFromDB */,
               true /* deleteRootVolumes */,
               false /* skipDestroyPrecheck */)

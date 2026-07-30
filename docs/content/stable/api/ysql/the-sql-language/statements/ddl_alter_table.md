@@ -118,13 +118,13 @@ Currently the *UNLOGGED* option is ignored. It's handled as *LOGGED* default per
 
 Change the specified storage parameter into the provided value.
 
-Storage parameters, [as defined by PostgreSQL](https://www.postgresql.org/docs/15/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), are ignored and only present for compatibility with PostgreSQL.
+Note that [PostgreSQL storage parameters](https://www.postgresql.org/docs/15/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS) are ignored and only present for compatibility with PostgreSQL.
 
 #### RESET ( *param_name* )
 
 Reset the specified storage parameter.
 
-Storage parameters, [as defined by PostgreSQL](https://www.postgresql.org/docs/15/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS), are ignored and only present for compatibility with PostgreSQL.
+Note that [PostgreSQL storage parameters](https://www.postgresql.org/docs/15/sql-createtable.html#SQL-CREATETABLE-STORAGE-PARAMETERS) are ignored and only present for compatibility with PostgreSQL.
 
 #### DROP [ COLUMN ] [ IF EXISTS ] *column_name* [ RESTRICT | CASCADE ]
 
@@ -245,7 +245,7 @@ Add the specified [constraint](#constraints) to the table.
 
 Adding a `PRIMARY KEY` constraint results in a full table rewrite of the main table and all associated indexes, which can be a potentially expensive operation. For more details about table rewrites, see [Alter table operations that involve a table rewrite](#alter-table-operations-that-involve-a-table-rewrite).
 
-The table rewrite is needed because of how YugabyteDB stores rows and indexes. In YugabyteDB, data is distributed based on the primary key; when a table does not have an explicit primary key assigned, YugabyteDB automatically creates an internal row ID to use as the table's primary key. As a result, these rows need to be rewritten to use the newly added primary key column. For more information, refer to [Primary keys](/stable/develop/data-modeling/primary-keys-ysql).
+The table rewrite is needed because of how YugabyteDB stores rows and indexes. In YugabyteDB, data is distributed based on the primary key; when a table does not have an explicit primary key assigned, YugabyteDB automatically creates an internal row ID to use as the table's primary key. As a result, these rows need to be rewritten to use the newly added primary key column. For more information, refer to [Primary keys](/stable/develop/data-modeling/primary-keys-ysql/).
 
 #### ALTER [ COLUMN ] *column_name* [ SET DATA ] TYPE *data_type* [ COLLATE *collation* ] [ USING *expression* ]
 
@@ -257,7 +257,7 @@ Change the type of an existing column. The following semantics apply:
 - Alter type is not supported for partitioned tables. See {{<issue 16980>}}.
 - Alter type is not supported for tables with rules (limitation inherited from PostgreSQL).
 - Alter type is not supported for tables with CDC streams if a table rewrite is required. See {{<issue 27766>}}.
-- Alter type is not supported for tables under xCluster replication if a table rewrite is required. This will be supported by automatic mode in a future release. See {{<issue 27796>}}.
+- Alter type is not supported for tables under xCluster replication if a table rewrite is required, except when using [automatic mode](../../../../../architecture/docdb-replication/async-replication/#transactional-replication).
 
 ##### Table rewrites
 
@@ -332,6 +332,30 @@ Create a table with a constraint and rename the constraint:
 CREATE TABLE test(id BIGSERIAL PRIMARY KEY, a TEXT);
 ALTER TABLE test ADD constraint vague_name unique (a);
 ALTER TABLE test RENAME CONSTRAINT vague_name TO unique_a_constraint;
+```
+
+#### ALTER CONSTRAINT *constraint_name* [ DEFERRABLE | NOT DEFERRABLE ] [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ]
+
+Modify the deferral properties of an existing constraint. This is currently only supported for foreign key constraints.
+
+- `DEFERRABLE` — The constraint can be deferred until the end of the transaction.
+- `NOT DEFERRABLE` — The constraint is always checked immediately after each row in a statement (the default).
+- `INITIALLY DEFERRED` — The constraint is deferred by default unless explicitly checked during the transaction.
+- `INITIALLY IMMEDIATE` — The constraint is checked immediately by default (the default).
+
+##### Example
+
+Alter a foreign key constraint to be deferrable:
+
+```sql
+CREATE TABLE parent(id int PRIMARY KEY);
+CREATE TABLE child(id int, parent_id int,
+  CONSTRAINT fk_parent FOREIGN KEY(parent_id) REFERENCES parent(id)
+);
+
+-- Make the constraint deferrable and initially deferred
+ALTER TABLE child ALTER CONSTRAINT fk_parent
+  DEFERRABLE INITIALLY DEFERRED;
 ```
 
 #### ENABLE / DISABLE ROW LEVEL SECURITY

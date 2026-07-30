@@ -103,13 +103,13 @@ For example, you can override the base directory when starting the yugabyted nod
 ./bin/yugabyted start --base_dir /home/user/node1
 ```
 
- If you change the base directory, you _must_ specify the base directory using the `--base-dir` flag when running subsequent commands on the universe. For example, to obtain the status of the universe, you would enter the following:
+ If you change the base directory, you _must_ specify the base directory using the `--base_dir` flag when running subsequent commands on the universe. For example, to obtain the status of the universe, you would enter the following:
 
 ```sh
 ./bin/yugabyted status --base_dir  /home/user/node1
 ```
 
-When simulating running a multi-node universe on your desktop machine (for testing and development, and running examples), you must specify a different base directory for each node (see [Create a local multi-node universe](#create-a-local-multi-node-universe) for an example). When running subsequent commands on local multi-node universes, you must also specify the `--base-dir` flag.
+When simulating running a multi-node universe on your desktop machine (for testing and development, and running examples), you must specify a different base directory for each node (see [Create a local multi-node universe](#create-a-local-multi-node-universe) for an example). When running subsequent commands on local multi-node universes, you must also specify the `--base_dir` flag.
 
 ## Commands
 
@@ -571,7 +571,7 @@ Use the `yugabyted connect ycql` sub-command to connect to YugabyteDB with [ycql
 
 ### demo
 
-Use the `yugabyted demo` command to use the demo [Northwind sample dataset](../../../sample-data/northwind/) with YugabyteDB.
+Use the `yugabyted demo` command to use the demo [Northwind sample dataset](/stable/develop/sample-data/northwind/) with YugabyteDB.
 
 #### Syntax
 
@@ -588,7 +588,7 @@ The following sub-commands are available for the `yugabyted demo` command:
 
 #### connect
 
-Use the `yugabyted demo connect` sub-command to load the  [Northwind sample dataset](../../../sample-data/northwind/) into a new `yb_demo_northwind` SQL database, and then open the ysqlsh prompt for the same database.
+Use the `yugabyted demo connect` sub-command to load the [Northwind sample dataset](/stable/develop/sample-data/northwind/) into a new `yb_demo_northwind` SQL database, and then open the ysqlsh prompt for the same database.
 
 #### destroy
 
@@ -726,7 +726,7 @@ Determine the status of a restore task:
 
 ### start
 
-Use the `yugabyted start` command to start a one-node YugabyteDB cluster for running [YSQL](../../../api/ysql) and [YCQL](../../../api/ycql) workloads in your local environment.
+Use the `yugabyted start` command to start a one-node YugabyteDB cluster for running [YSQL](../../../api/ysql/) and [YCQL](../../../api/ycql/) workloads in your local environment.
 
 To use encryption in transit, OpenSSL must be installed on the nodes.
 
@@ -1431,7 +1431,7 @@ The following steps assume that you have a running YugabyteDB universe deployed 
       --fault_tolerance=zone
     ```
 
-1. Repeat the previous step on all the nodes of the universe, one node at a time. If you are deploying the universe on your local computer, specify the [base directory](#base-directory) for each node using the `--base-dir` flag.
+1. Repeat the previous step on all the nodes of the universe, one node at a time. If you are deploying the universe on your local computer, specify the [base directory](#base-directory) for each node using the `--base_dir` flag.
 
 1. After starting all nodes, specify the data placement constraint on the universe using the following command:
 

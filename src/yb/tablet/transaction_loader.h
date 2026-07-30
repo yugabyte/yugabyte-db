@@ -23,6 +23,8 @@
 
 #include "yb/docdb/docdb.h"
 
+#include "yb/util/status_format.h"
+
 namespace yb {
 
 class OneWayBitmap;

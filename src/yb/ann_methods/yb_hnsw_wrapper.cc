@@ -17,6 +17,7 @@
 
 #include "yb/util/lockfree.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 
 #include "yb/vector_index/index_wrapper_base.h"
 
@@ -80,10 +81,15 @@ class YbHnswIndex :
     }
   }
 
-  template <class... Args>
   Status Import(
       const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path) {
     VLOG_WITH_FUNC(3) << "index: " << index.size() << ", path: " << path;
+    return index_.Import(index, path);
+  }
+
+  Status Import(
+      const hnsw::HnswlibIndex<DistanceResult>& index, const std::string& path) {
+    VLOG_WITH_FUNC(3) << "index: " << index.cur_element_count << ", path: " << path;
     return index_.Import(index, path);
   }
 
@@ -110,6 +116,13 @@ class YbHnswIndex :
 
   size_t Dimensions() const override {
     return index_.header().dimensions;
+  }
+
+  // YbHnsw is a read-only, file-backed format that does not allocate per-vector heap memory in
+  // the same way as the in-memory hnswlib/usearch indexes. We don't size new chunks against it,
+  // so this estimate is unused in practice.
+  size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
+    return 0;
   }
 
   DistanceResult Distance(const Vector& lhs, const Vector& rhs) const override {
@@ -168,7 +181,18 @@ template <class Vector, class DistanceResult>
 Result<vector_index::VectorIndexIfPtr<Vector, DistanceResult>> ImportYbHnsw(
     const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path,
     const hnsw::BlockCachePtr& block_cache) {
-  auto result = std::make_shared<YbHnswIndex<Vector, DistanceResult>>(index.metric(), block_cache);
+  auto result = std::make_shared<YbHnswIndex<Vector, DistanceResult>>(
+      std::make_unique<hnsw::UsearchMetric>(index.metric()), block_cache);
+  RETURN_NOT_OK(result->Import(index, path));
+  return result;
+}
+
+template <class Vector, class DistanceResult>
+Result<vector_index::VectorIndexIfPtr<Vector, DistanceResult>> ImportYbHnsw(
+    const hnsw::HnswlibIndex<DistanceResult>& index, const std::string& path,
+    const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options) {
+  auto result = std::make_shared<YbHnswIndex<Vector, DistanceResult>>(
+      std::make_unique<hnsw::UsearchMetric>(options.CreateMetric<Vector>()), block_cache);
   RETURN_NOT_OK(result->Import(index, path));
   return result;
 }
@@ -178,11 +202,16 @@ Result<vector_index::VectorIndexIfPtr<FloatVector, float>> ImportYbHnsw<FloatVec
     const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path,
     const hnsw::BlockCachePtr& block_cache);
 
+template
+Result<vector_index::VectorIndexIfPtr<FloatVector, float>> ImportYbHnsw<FloatVector, float>(
+    const hnsw::HnswlibIndex<float>& index, const std::string& path,
+    const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options);
+
 template <class Vector, class DistanceResult>
 vector_index::VectorIndexIfPtr<Vector, DistanceResult> CreateYbHnsw(
     const hnsw::BlockCachePtr& block_cache, const vector_index::HNSWOptions& options) {
   return std::make_shared<YbHnswIndex<Vector, DistanceResult>>(
-      options.CreateMetric<Vector>(), block_cache);
+      std::make_unique<hnsw::UsearchMetric>(options.CreateMetric<Vector>()), block_cache);
 }
 
 template

@@ -7,7 +7,7 @@ menu:
   v2.20_api:
     identifier: cursors
     parent: api-ysql
-    weight: 50
+    weight: 60
 type: docs
 ---
 

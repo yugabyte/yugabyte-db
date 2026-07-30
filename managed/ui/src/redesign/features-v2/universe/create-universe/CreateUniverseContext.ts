@@ -18,17 +18,24 @@ import {
 import { NodeAvailabilityProps } from './steps/nodes-availability/dtos';
 import { InstanceSettingProps } from './steps/hardware-settings/dtos';
 import { DatabaseSettingsProps } from './steps/database-settings/dtos';
-import { SecuritySettingsProps } from './steps/security-settings/dtos';
+import { CertType, SecuritySettingsProps } from './steps/security-settings/dtos';
 import { OtherAdvancedProps, ProxyAdvancedProps } from './steps/advanced-settings/dtos';
 import {
   FAULT_TOLERANCE_TYPE,
   NODE_COUNT,
   REGIONS_FIELD,
-  REPLICATION_FACTOR,
+  RESILIENCE_FACTOR,
   RESILIENCE_FORM_MODE,
   RESILIENCE_TYPE
 } from './fields/FieldNames';
 import { ArchitectureType } from '@app/components/configRedesign/providerRedesign/constants';
+import { CloudType } from '@app/redesign/helpers/dtos';
+import { DEFAULT_COMMUNICATION_PORTS } from './helpers/constants';
+import {
+  applyConnectionPoolingPortsToAdvanced,
+  applyConnectionPoolingPortsToDatabase,
+  DEFAULT_CONNECTION_POOLING_PORTS
+} from './helpers/syncConnectionPoolingPorts';
 
 export enum CreateUniverseSteps {
   GENERAL_SETTINGS = 1,
@@ -61,13 +68,12 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
     [RESILIENCE_TYPE]: ResilienceType.REGULAR,
     [RESILIENCE_FORM_MODE]: ResilienceFormMode.GUIDED,
     [REGIONS_FIELD]: [],
-    [REPLICATION_FACTOR]: 3,
+    [RESILIENCE_FACTOR]: 1,
     [FAULT_TOLERANCE_TYPE]: FaultToleranceType.AZ_LEVEL,
     [NODE_COUNT]: 1
   },
   nodesAvailabilitySettings: {
     availabilityZones: {},
-    nodeCountPerAz: 1,
     useDedicatedNodes: false
   },
   databaseSettings: {
@@ -83,23 +89,30 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
     },
     gFlags: [],
     enableConnectionPooling: false,
+    overrideCPPorts: false,
+    ...DEFAULT_CONNECTION_POOLING_PORTS,
     enablePGCompatibitilty: false
   },
   instanceSettings: {
     arch: ArchitectureType.X86_64,
     imageBundleUUID: '',
-    useSpotInstance: true,
+    useSpotInstance: false,
     instanceType: null,
     masterInstanceType: null,
     deviceInfo: null,
     masterDeviceInfo: null,
     tserverK8SNodeResourceSpec: null,
     masterK8SNodeResourceSpec: null,
-    keepMasterTserverSame: true
+    keepMasterTserverSame: false,
+    enableEbsVolumeEncryption: false,
+    ebsKmsConfigUUID: null
   },
   securitySettings: {
-    enableClientToNodeEncryption: false,
-    enableNodeToNodeEncryption: false
+    enableClientToNodeEncryption: true,
+    enableNodeToNodeEncryption: true,
+    enableIPV6: false,
+    enableExposingService: false,
+    assignPublicIP: false
   },
   resilienceType: ResilienceType.REGULAR,
   proxySettings: {
@@ -108,8 +121,19 @@ export const initialCreateUniverseFormState: createUniverseFormProps = {
     secureWebProxyServer: '',
     secureWebProxyPort: undefined,
     webProxy: false,
+    webProxyServer: '',
+    webProxyPort: undefined,
     byPassProxyList: false,
     byPassProxyListValues: []
+  },
+  otherAdvancedSettings: {
+    ...DEFAULT_COMMUNICATION_PORTS as any,
+    instanceTags: [],
+    awsArnString: '',
+    useSystemd: true,
+    accessKeyCode: '',
+    universeOverrides: '',
+    azOverrides: {}
   }
 };
 
@@ -146,10 +170,30 @@ export const createUniverseFormMethods = (context: createUniverseFormProps) => (
     ...context,
     instanceSettings: data
   }),
-  saveDatabaseSettings: (data: DatabaseSettingsProps) => ({
-    ...context,
-    databaseSettings: data
-  }),
+  saveDatabaseSettings: (data: DatabaseSettingsProps) => {
+    const shouldApplyCpPorts = !!(data.enableConnectionPooling && data.overrideCPPorts);
+    let otherAdvancedSettings = context.otherAdvancedSettings;
+
+    if (shouldApplyCpPorts) {
+      // Sync CP ports into Advanced deployment ports only when CP + override are enabled.
+      otherAdvancedSettings = applyConnectionPoolingPortsToAdvanced(otherAdvancedSettings, {
+        ysqlServerRpcPort: data.ysqlServerRpcPort,
+        internalYsqlServerRpcPort: data.internalYsqlServerRpcPort
+      });
+    } else if (otherAdvancedSettings) {
+      // When CP or override is off, Internal YSQL Port must stay at the default.
+      otherAdvancedSettings = {
+        ...otherAdvancedSettings,
+        internalYsqlServerRpcPort: DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
+      };
+    }
+
+    return {
+      ...context,
+      databaseSettings: data,
+      otherAdvancedSettings
+    };
+  },
   saveSecuritySettings: (data: SecuritySettingsProps) => ({
     ...context,
     securitySettings: data
@@ -158,10 +202,30 @@ export const createUniverseFormMethods = (context: createUniverseFormProps) => (
     ...context,
     proxySettings: data
   }),
-  saveOtherAdvancedSettings: (data: OtherAdvancedProps) => ({
-    ...context,
-    otherAdvancedSettings: data
-  }),
+  saveOtherAdvancedSettings: (data: OtherAdvancedProps) => {
+    const shouldApplyCpPorts = !!(
+      context.databaseSettings?.enableConnectionPooling &&
+      context.databaseSettings?.overrideCPPorts
+    );
+    const otherAdvancedSettings = shouldApplyCpPorts
+      ? data
+      : {
+          ...data,
+          internalYsqlServerRpcPort: DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
+        };
+
+    return {
+      ...context,
+      otherAdvancedSettings,
+      // Sync Advanced deployment ports back to Database CP fields only when CP + override are enabled.
+      databaseSettings: shouldApplyCpPorts
+        ? applyConnectionPoolingPortsToDatabase(context.databaseSettings, {
+            ysqlServerRpcPort: data.ysqlServerRpcPort,
+            internalYsqlServerRpcPort: data.internalYsqlServerRpcPort
+          })
+        : context.databaseSettings
+    };
+  },
   setResilienceType: (resilienceType: ResilienceType) => ({
     ...context,
     resilienceType
@@ -173,8 +237,9 @@ export type CreateUniverseContextMethods = [
   ReturnType<typeof createUniverseFormMethods>
 ];
 
-// Navigate between pages
+// Navigate between pages. Nodes step resolves `true` when validation passed and submit ran; `false` when invalid.
 export type StepsRef = {
-  onNext: () => Promise<void>;
+  onNext: () => void | Promise<boolean | void>;
   onPrev: () => void;
+  setValue?: (name: string, value: unknown) => void;
 };

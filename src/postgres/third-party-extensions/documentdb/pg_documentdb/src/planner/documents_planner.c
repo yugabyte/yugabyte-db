@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/planner/planner.c
+ * src/planner/documents_planner.c
  *
  * Implementation of the documentdb_api planner hook.
  *
@@ -16,9 +16,11 @@
 
 #include <catalog/pg_am.h>
 #include <catalog/pg_class.h>
+#include <catalog/pg_opfamily.h>
 #include <storage/lmgr.h>
 #include <optimizer/planner.h>
 #include "optimizer/pathnode.h"
+#include <optimizer/cost.h>
 #include <nodes/nodes.h>
 #include <nodes/makefuncs.h>
 #include <nodes/nodeFuncs.h>
@@ -49,67 +51,139 @@
 #include "api_hooks.h"
 #include "query/bson_compare.h"
 #include "planner/documents_custom_planner.h"
+#include "index_am/index_am_utils.h"
 
 
-typedef enum MongoQueryFlag
+typedef enum DocumentDbQueryFlag
 {
 	HAS_QUERY_OPERATOR = 1 << 0,
-	HAS_MONGO_COLLECTION_RTE = 1 << 2,
+	HAS_DOCUMENTDB_COLLECTION_RTE = 1 << 2,
 	HAS_CURSOR_STATE_PARAM = 1 << 3,
 	HAS_CURSOR_FUNC = 1 << 4,
 	HAS_AGGREGATION_FUNCTION = 1 << 5,
 	HAS_NESTED_AGGREGATION_FUNCTION = 1 << 6,
 	HAS_QUERY_MATCH_FUNCTION = 1 << 7
-} MongoQueryFlag;
+} DocumentDbQueryFlag;
 
-typedef struct ReplaceMongoCollectionContext
+
+typedef enum IndexPriorityOrdering
+{
+	IndexPriorityOrdering_PrimaryKey = 0,
+	IndexPriorityOrdering_Composite = 1,
+	IndexPriorityOrdering_Composite_Wildcard = 2,
+	IndexPriorityOrdering_Regular = 3,
+	IndexPriorityOrdering_Wildcard = 4,
+	IndexPriorityOrdering_Other = 5
+} IndexPriorityOrdering;
+
+typedef struct ReplaceDocumentDbCollectionContext
 {
 	/* whether or not the collection is non-existent function */
 	bool isNonExistentCollection;
 
-	/* the bound parameters associated with the request */
+	/* the bound parameters for the given request context */
 	ParamListInfo boundParams;
 
 	/* The query associated with this context */
 	Query *query;
-} ReplaceMongoCollectionContext;
+} ReplaceDocumentDbCollectionContext;
 
 /*
- * State that tracks the MongoQueryFlags walker
+ * State that tracks the DocumentDbQueryFlags walker
  */
-typedef struct MongoQueryFlagsState
+typedef struct DocumentDbQueryFlagsState
 {
 	/* Output: The set of flags encountered */
-	int mongoQueryFlags;
+	int documentDbQueryFlags;
 
 	/* The current depth (intermediate state during walking) */
 	int queryDepth;
-} MongoQueryFlagsState;
+} DocumentDbQueryFlagsState;
 
-static bool MongoQueryFlagsWalker(Node *node, MongoQueryFlagsState *queryFlags);
-static int MongoQueryFlags(Query *query);
+static bool DocumentDbQueryFlagsWalker(Node *node, DocumentDbQueryFlagsState *queryFlags);
+static int DocumentDbQueryFlags(Query *query);
 static bool IsReadWriteCommand(Query *query);
-static Query * ReplaceMongoCollectionFunction(Query *query, ParamListInfo boundParams,
-											  bool *isNonExistentCollection);
-static bool ReplaceMongoCollectionFunctionWalker(Node *node,
-												 ReplaceMongoCollectionContext *context);
+static Query * ReplaceDocumentDbCollectionFunction(Query *query, ParamListInfo
+												   boundParams,
+												   bool *isNonExistentCollection);
+static bool ReplaceDocumentDbCollectionFunctionWalker(Node *node,
+													  ReplaceDocumentDbCollectionContext *
+													  context);
 static bool HasUnresolvedExternParamsWalker(Node *expression, ParamListInfo boundParams);
-static bool IsRTEShardForMongoCollection(RangeTblEntry *rte, bool *isMongoDataNamespace,
-										 uint64 *collectionId);
+static bool IsRTEShardForDocumentDbCollection(RangeTblEntry *rte,
+											  bool *isDocumentDbDataNamespace,
+											  uint64 *collectionId);
 static bool ProcessWorkerWriteQueryPath(PlannerInfo *root, RelOptInfo *rel, Index rti,
 										RangeTblEntry *rte);
-static inline bool IsAMergeOuterQuery(PlannerInfo *root, RelOptInfo *rel);
 static Query * ExpandAggregationFunction(Query *node, ParamListInfo boundParams,
 										 PlannedStmt **plan);
 static Query * ExpandNestedAggregationFunction(Query *node, ParamListInfo boundParams);
 
+static void ForceExcludeNonIndexPaths(PlannerInfo *root, RelOptInfo *rel,
+									  Index rti, RangeTblEntry *rte);
+static void ExtensionRelPathlistHookCoreNew(PlannerInfo *root, RelOptInfo *rel, Index rti,
+											RangeTblEntry *rte, uint64 collectionId, bool
+											isShardQuery);
+
 extern bool ForceRUMIndexScanToBitmapHeapScan;
-extern bool AllowNestedAggregationFunctionInQueries;
+extern bool EnableCollation;
 extern bool EnableLetAndCollationForQueryMatch;
+extern bool EnableVariablesSupportForWriteCommands;
+extern bool EnableIndexOrderbyPushdown;
+extern bool ForceDisableSeqScan;
+extern bool EnableExtendedExplainPlans;
+extern bool EnableIndexPriorityOrdering;
+extern bool EnableLogRelationIndexesOrder;
+extern bool ForceBitmapScanForLookup;
+extern bool EnableIndexOnlyScan;
+extern bool EnableCursorsOnAggregationQueryRewrite;
+extern bool EnableIdIndexCustomCostFunction;
+extern bool EnableCompositeParallelIndexScan;
+extern bool ForceParallelScanIfAvailable;
 
 planner_hook_type ExtensionPreviousPlannerHook = NULL;
 set_rel_pathlist_hook_type ExtensionPreviousSetRelPathlistHook = NULL;
 explain_get_index_name_hook_type ExtensionPreviousIndexNameHook = NULL;
+get_relation_info_hook_type ExtensionPreviousGetRelationInfoHook = NULL;
+
+
+/*
+ * Checks if for the given query we need to consider bitmap heap conversion.
+ * Few places where we do not consider bitmap heap conversion:
+ * - If the query is a $merge outer query.
+ * - If the query is a $lookup query and has join RTEs.
+ */
+static inline bool
+IsBitmapHeapConversionSupported(PlannerInfo *root, RelOptInfo *rel)
+{
+	if (!ForceRUMIndexScanToBitmapHeapScan)
+	{
+		return false;
+	}
+
+	if (EnableIndexOrderbyPushdown || EnableIndexOnlyScan)
+	{
+		return false;
+	}
+
+	/*
+	 * Determine if the current relation is the outer query of a $merge stage.
+	 * We do not push this relation to the bitmap index.
+	 * For the outer relation, the relid will always be 1 since $merge is the last stage of the pipeline.
+	 */
+	if (root->parse->commandType == CMD_MERGE && rel->relid == 1)
+	{
+		return false;
+	}
+
+	/* Not supported for lookup, check if no JOIN RTEs */
+	if (!ForceBitmapScanForLookup && root->hasJoinRTEs)
+	{
+		return false;
+	}
+
+	return true;
+}
 
 
 /*
@@ -133,7 +207,7 @@ DocumentDBApiPlanner(Query *parse, const char *queryString, int cursorOptions,
 
 		if (parse->commandType != CMD_INSERT)
 		{
-			queryFlags = MongoQueryFlags(parse);
+			queryFlags = DocumentDbQueryFlags(parse);
 		}
 
 		if (queryFlags & HAS_AGGREGATION_FUNCTION)
@@ -145,15 +219,14 @@ DocumentDBApiPlanner(Query *parse, const char *queryString, int cursorOptions,
 			}
 		}
 
-		if (AllowNestedAggregationFunctionInQueries &&
-			queryFlags & HAS_NESTED_AGGREGATION_FUNCTION)
+		if (queryFlags & HAS_NESTED_AGGREGATION_FUNCTION)
 		{
 			parse = (Query *) ExpandNestedAggregationFunction(parse, boundParams);
 		}
 
 		/* replace the @@ operators and inject shard_key_value filters */
 		if (queryFlags & HAS_QUERY_OPERATOR ||
-			queryFlags & HAS_MONGO_COLLECTION_RTE ||
+			queryFlags & HAS_DOCUMENTDB_COLLECTION_RTE ||
 			queryFlags & HAS_QUERY_MATCH_FUNCTION)
 		{
 			parse = (Query *) ReplaceBsonQueryOperators(parse, boundParams);
@@ -162,11 +235,10 @@ DocumentDBApiPlanner(Query *parse, const char *queryString, int cursorOptions,
 		/* the collection replace needs to happen *after* the query rewrite. */
 		/* this is to handle cases where there's an invalid query against a collection */
 		/* that doesn't exist. We need to error out from the invalid query first */
-		/* (see count11.js) */
-		if (queryFlags & HAS_MONGO_COLLECTION_RTE)
+		if (queryFlags & HAS_DOCUMENTDB_COLLECTION_RTE)
 		{
-			parse = ReplaceMongoCollectionFunction(parse, boundParams,
-												   &isNonExistentCollection);
+			parse = ReplaceDocumentDbCollectionFunction(parse, boundParams,
+														&isNonExistentCollection);
 		}
 
 		/* replace parameters in cursor_state calls, we need the values during planning */
@@ -304,7 +376,7 @@ TryExtractObjectIdDataFormFuncExprRestrictInfo(RestrictInfo *rinfo, Oid funcOid,
 }
 
 
-static bool
+bool
 InMatchIsEquvalentTo(ScalarArrayOpExpr *opExpr, const bson_value_t *arrayValue)
 {
 	if (opExpr == NULL || arrayValue->value_type != BSON_TYPE_ARRAY)
@@ -366,282 +438,18 @@ InMatchIsEquvalentTo(ScalarArrayOpExpr *opExpr, const bson_value_t *arrayValue)
 }
 
 
-/*
- * Given a primary key lookup query, trims the restrictInfo based on the lookup
- */
-static void
-TrimPrimaryKeyQuals(List *restrictInfo, IndexPath *primaryKeyPath)
-{
-	RestrictInfo *objectIdFilter = NULL;
-	ScalarArrayOpExpr *objectIdInFilter = NULL;
-	AttrNumber objectAttr = InvalidAttrNumber;
-	Const *rightConst = NULL;
-	Oid opNo = InvalidOid;
-	pgbsonelement queryElement = { 0 };
-	bson_value_t objectIdColumnFilter = { 0 };
-
-	ListCell *cell;
-	foreach(cell, primaryKeyPath->indexclauses)
-	{
-		IndexClause *iclause = lfirst_node(IndexClause, cell);
-		if (iclause->indexcol == 1 && list_length(iclause->indexquals) > 0)
-		{
-			ListCell *filterCell;
-			foreach(filterCell, iclause->indexquals)
-			{
-				objectIdFilter = lfirst(filterCell);
-
-				if (TryExtractDataFromRestrictInfo(objectIdFilter, &objectAttr, &opNo,
-												   &rightConst) &&
-					opNo == BsonEqualOperatorId() &&
-					TryGetSinglePgbsonElementFromPgbson(DatumGetPgBsonPacked(
-															rightConst->constvalue),
-														&queryElement))
-				{
-					objectIdColumnFilter = queryElement.bsonValue;
-					break;
-				}
-				else if (IsA(objectIdFilter->clause, ScalarArrayOpExpr))
-				{
-					ScalarArrayOpExpr *arrayOpExpr =
-						(ScalarArrayOpExpr *) objectIdFilter->clause;
-					if (arrayOpExpr->useOr)
-					{
-						objectIdInFilter = arrayOpExpr;
-						break;
-					}
-				}
-			}
-		}
-	}
-
-	/* Deterministically pick the primary key for $in/$eq similar to the path below */
-	if (opNo == BsonEqualOperatorId() || IsA(objectIdFilter->clause, ScalarArrayOpExpr))
-	{
-		primaryKeyPath->path.startup_cost = 0;
-		primaryKeyPath->path.total_cost = 0;
-	}
-
-	if (objectIdColumnFilter.value_type == BSON_TYPE_EOD && objectIdInFilter == NULL)
-	{
-		return;
-	}
-
-	foreach(cell, restrictInfo)
-	{
-		RestrictInfo *rinfo = lfirst_node(RestrictInfo, cell);
-		if (TryExtractDataFromRestrictInfo(rinfo, &objectAttr, &opNo, &rightConst) &&
-			objectAttr == DOCUMENT_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER)
-		{
-			if (objectIdColumnFilter.value_type != BSON_TYPE_EOD &&
-				opNo == BsonEqualMatchRuntimeOperatorId() &&
-				TryGetSinglePgbsonElementFromPgbson(DatumGetPgBsonPacked(
-														rightConst->constvalue),
-													&queryElement) &&
-				queryElement.pathLength == 3 && strcmp(queryElement.path, "_id") == 0 &&
-				BsonValueEquals(&objectIdColumnFilter, &queryElement.bsonValue))
-			{
-				cell->ptr_value = objectIdFilter;
-				return;
-			}
-		}
-		else if (objectIdInFilter != NULL &&
-				 TryExtractObjectIdDataFormFuncExprRestrictInfo(rinfo,
-																BsonInMatchFunctionId(),
-																&queryElement.bsonValue)
-				 &&
-				 InMatchIsEquvalentTo(objectIdInFilter, &queryElement.bsonValue))
-		{
-			cell->ptr_value = objectIdFilter;
-			return;
-		}
-	}
-}
-
-
-/*
- * Given that our RUM index cost is 0, currently, the planner may prefer putting in
- * the RUM index over other indexes that may be available. This is bad for primary key
- * lookup scenarios. Consequently, in cases where we have the primary key available
- * force-add a btree lookup.
- * TODO: Remove once we have proper statistics and costs for RUM index.
- */
-static void
-AddPointLookupQuery(List *restrictInfo, PlannerInfo *root, RelOptInfo *rel)
-{
-	RestrictInfo *shardKeyFilter = NULL;
-	RestrictInfo *objectIdFilter = NULL;
-	int32_t docObjectIdFilterEqualsIndex = -1;
-	int32_t docObjectIdFilterInIndex = -1;
-	bson_value_t docObjectIdFilter = { 0 };
-	bson_value_t docObjectIdInFilter = { 0 };
-	bson_value_t objectIdColumnFilter = { 0 };
-	AttrNumber objectAttr = InvalidAttrNumber;
-	Const *rightConst = NULL;
-	Oid opNo = InvalidOid;
-	pgbsonelement queryElement = { 0 };
-
-	ListCell *cell;
-	foreach(cell, restrictInfo)
-	{
-		RestrictInfo *rinfo = lfirst_node(RestrictInfo, cell);
-		if (IsA(rinfo->clause, OpExpr))
-		{
-			if (!TryExtractDataFromRestrictInfo(rinfo, &objectAttr, &opNo, &rightConst))
-			{
-				continue;
-			}
-
-			if (objectAttr == DOCUMENT_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER &&
-				opNo == BigintEqualOperatorId())
-			{
-				shardKeyFilter = rinfo;
-				continue;
-			}
-
-			if (objectAttr == DOCUMENT_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER &&
-				opNo == BsonEqualOperatorId())
-			{
-				objectIdFilter = rinfo;
-				if (TryGetSinglePgbsonElementFromPgbson(DatumGetPgBsonPacked(
-															rightConst->constvalue),
-														&queryElement))
-				{
-					objectIdColumnFilter = queryElement.bsonValue;
-				}
-
-				continue;
-			}
-
-			if (objectAttr == DOCUMENT_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER &&
-				opNo == BsonEqualMatchRuntimeOperatorId() &&
-				TryGetSinglePgbsonElementFromPgbson(DatumGetPgBsonPacked(
-														rightConst->constvalue),
-													&queryElement) &&
-				queryElement.pathLength == 3 && strcmp(queryElement.path, "_id") == 0)
-			{
-				docObjectIdFilterEqualsIndex = list_cell_number(restrictInfo, cell);
-				docObjectIdFilter = queryElement.bsonValue;
-			}
-		}
-		else if (IsA(rinfo->clause, FuncExpr) &&
-				 TryExtractObjectIdDataFormFuncExprRestrictInfo(rinfo,
-																BsonInMatchFunctionId(),
-																&docObjectIdInFilter))
-		{
-			docObjectIdFilterInIndex = list_cell_number(restrictInfo, cell);
-		}
-		else if (IsA(rinfo->clause, ScalarArrayOpExpr))
-		{
-			/* Object_id IN fields */
-			ScalarArrayOpExpr *arrayExpr = (ScalarArrayOpExpr *) rinfo->clause;
-			if (!arrayExpr->useOr)
-			{
-				continue;
-			}
-
-			if (list_length(arrayExpr->args) != 2)
-			{
-				continue;
-			}
-
-			Expr *leftExpr = linitial(arrayExpr->args);
-			if (!IsA(leftExpr, Var))
-			{
-				continue;
-			}
-
-			Var *leftVar = (Var *) leftExpr;
-			if (leftVar->varattno == DOCUMENT_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER &&
-				arrayExpr->opno == BsonEqualOperatorId())
-			{
-				objectIdFilter = rinfo;
-			}
-		}
-	}
-
-	if (shardKeyFilter != NULL && objectIdFilter != NULL && rel->indexlist != NIL)
-	{
-		ListCell *index;
-		foreach(index, rel->indexlist)
-		{
-			IndexOptInfo *indexInfo = lfirst(index);
-			if (IsBtreePrimaryKeyIndex(indexInfo))
-			{
-				IndexClause *shardKeyClause = makeNode(IndexClause);
-				shardKeyClause->rinfo = shardKeyFilter;
-				shardKeyClause->indexquals = list_make1(shardKeyFilter);
-				shardKeyClause->lossy = false;
-				shardKeyClause->indexcol = 0;
-				shardKeyClause->indexcols = NIL;
-
-				IndexClause *objectIdClause = makeNode(IndexClause);
-				objectIdClause->rinfo = objectIdFilter;
-				objectIdClause->indexquals = list_make1(objectIdFilter);
-				objectIdClause->lossy = false;
-				objectIdClause->indexcol = 1;
-				objectIdClause->indexcols = NIL;
-
-				List *clauses = list_make2(shardKeyClause, objectIdClause);
-				List *orderbys = NIL;
-				List *orderbyCols = NIL;
-				List *pathKeys = NIL;
-				bool indexOnly = false;
-				Relids outerRelids = NULL;
-				double loopCount = 1;
-				bool partialPath = false;
-				IndexPath *path = create_index_path(root, indexInfo, clauses,
-													NIL,	/* YB:
-															 * yb_bitmap_idx_pushdowns */
-													orderbys,
-													orderbyCols, pathKeys,
-													ForwardScanDirection, indexOnly,
-													outerRelids,
-													loopCount, partialPath,
-													NULL);	/* yb_saop_merge_append_saop_cols */
-				path->indextotalcost = 0;
-				path->path.startup_cost = 0;
-				path->path.total_cost = 0;
-				add_path(rel, (Path *) path);
-
-				if (objectIdColumnFilter.value_type != BSON_TYPE_EOD &&
-					docObjectIdFilter.value_type != BSON_TYPE_EOD &&
-					BsonValueEquals(&objectIdColumnFilter, &docObjectIdFilter) &&
-					docObjectIdFilterEqualsIndex >= 0)
-				{
-					/* We can swap out the docId with the objectId */
-					list_nth_cell(restrictInfo, docObjectIdFilterEqualsIndex)->ptr_value =
-						objectIdFilter;
-				}
-				else if (docObjectIdFilterInIndex >= 0 &&
-						 IsA(objectIdFilter->clause, ScalarArrayOpExpr) &&
-						 InMatchIsEquvalentTo(
-							 (ScalarArrayOpExpr *) objectIdFilter->clause,
-							 &docObjectIdInFilter))
-				{
-					list_nth_cell(restrictInfo, docObjectIdFilterInIndex)->ptr_value =
-						objectIdFilter;
-				}
-
-				return;
-			}
-		}
-	}
-}
-
-
 static void
 ExtensionRelPathlistHookCore(PlannerInfo *root, RelOptInfo *rel, Index rti,
 							 RangeTblEntry *rte)
 {
-	bool isMongoDataNamespace = false;
+	bool isDocumentDbDataNamespace = false;
 	uint64 collectionId = 0;
-	bool isShardQuery = IsRTEShardForMongoCollection(rte, &isMongoDataNamespace,
-													 &collectionId);
+	bool isShardQuery = IsRTEShardForDocumentDbCollection(rte, &isDocumentDbDataNamespace,
+														  &collectionId);
 
-	if (!isMongoDataNamespace)
+	if (!isDocumentDbDataNamespace)
 	{
-		/* Skip looking for queries not pertaining to mongo data tables */
+		/* Skip looking for queries not pertaining to documentdb data tables */
 		return;
 	}
 
@@ -655,13 +463,24 @@ ExtensionRelPathlistHookCore(PlannerInfo *root, RelOptInfo *rel, Index rti,
 		return;
 	}
 
+	ExtensionRelPathlistHookCoreNew(root, rel, rti, rte, collectionId, isShardQuery);
+}
+
+
+static void
+ExtensionRelPathlistHookCoreNew(PlannerInfo *root, RelOptInfo *rel, Index rti,
+								RangeTblEntry *rte, uint64 collectionId, bool
+								isShardQuery)
+{
 	ReplaceExtensionFunctionContext indexContext = {
 		.queryDataForVectorSearch = { 0 },
 		.hasVectorSearchQuery = false,
+		.hasStreamingContinuationScan = false,
 		.primaryKeyLookupPath = NULL,
 		.inputData = {
 			.collectionId = collectionId,
-			.isShardQuery = isShardQuery
+			.isShardQuery = isShardQuery,
+			.rteIndex = rti
 		},
 		.forceIndexQueryOpData = {
 			.type = ForceIndexOpType_None,
@@ -670,6 +489,31 @@ ExtensionRelPathlistHookCore(PlannerInfo *root, RelOptInfo *rel, Index rti,
 		}
 	};
 
+	if (ForceDisableSeqScan)
+	{
+		ForceExcludeNonIndexPaths(root, rel, rti, rte);
+	}
+
+	/*
+	 * Before determining anything further, detect any force pushdown scenarios by walking
+	 * the restriction paths.
+	 */
+	WalkPathsForIndexOperations(rel->pathlist, &indexContext);
+	WalkRestrictionPathsForIndexOperations(rel->baserestrictinfo, rel->joininfo,
+										   &indexContext);
+
+	/* Before we *replace* function operators in restriction paths, we should apply the force pushdown
+	 * logic while we still have the FuncExprs available.
+	 */
+	if (indexContext.forceIndexQueryOpData.type != ForceIndexOpType_None)
+	{
+		ForceIndexForQueryOperators(root, rel, &indexContext);
+	}
+
+	rel->baserestrictinfo =
+		ReplaceExtensionFunctionOperatorsInRestrictionPaths(rel->baserestrictinfo,
+															&indexContext);
+
 	/*
 	 * Replace all function operators that haven't been transformed in indexed
 	 * paths into OpExpr clauses.
@@ -677,39 +521,42 @@ ExtensionRelPathlistHookCore(PlannerInfo *root, RelOptInfo *rel, Index rti,
 	ReplaceExtensionFunctionOperatorsInPaths(root, rel, rel->pathlist, PARENTTYPE_NONE,
 											 &indexContext);
 
-	/* If the query is operating on the shard of a distributed table
-	 * (or a normal non mongo-table), then we swap this out with the operators
-	 */
-	if (indexContext.primaryKeyLookupPath != NULL)
+	if (EnableIndexOrderbyPushdown)
 	{
-		TrimPrimaryKeyQuals(rel->baserestrictinfo, indexContext.primaryKeyLookupPath);
-	}
-	else
-	{
-		AddPointLookupQuery(rel->baserestrictinfo, root, rel);
+		ConsiderIndexOrderByPushdownForId(root, rel, rte, rti, &indexContext);
 	}
 
-	rel->baserestrictinfo =
-		ReplaceExtensionFunctionOperatorsInRestrictionPaths(rel->baserestrictinfo,
-															&indexContext);
-
-	ForceIndexForQueryOperators(root, rel, &indexContext);
-
-	/* Now before modifying any paths, walk to check for raw path optimizations */
-	UpdatePathsWithOptimizedExtensionCustomPlans(root, rel, rte);
+	if (EnableIndexOnlyScan)
+	{
+		ConsiderIndexOnlyScan(root, rel, rte, rti, &indexContext);
+	}
 
 	/*
 	 * Update any paths with custom scans as appropriate.
 	 */
-	bool updatedPaths = UpdatePathsWithExtensionCustomPlans(root, rel, rte);
+	bool updatedPaths = false;
+	if (indexContext.hasStreamingContinuationScan)
+	{
+		updatedPaths = UpdatePathsWithExtensionStreamingCursorPlans(root, rel, rte,
+																	&indexContext);
+	}
+
+	/* Not a streaming cursor scenario.
+	 * Streaming cursors auto convert into Bitmap Paths.
+	 * Handle force conversion of bitmap paths.
+	 */
 	if (!updatedPaths)
 	{
-		/* Not a streaming cursor scenario.
-		 * Streaming cursors auto convert into Bitmap Paths.
-		 * Handle force conversion of bitmap paths.
-		 */
-		if (ForceRUMIndexScanToBitmapHeapScan && !IsAMergeOuterQuery(root, rel))
+		if (IsBitmapHeapConversionSupported(root, rel))
 		{
+			UpdatePathsToForceRumIndexScanToBitmapHeapScan(root, rel);
+		}
+		else if (indexContext.forceIndexQueryOpData.type == ForceIndexOpType_Text)
+		{
+			/* Text indexes require bitmap paths since we leverage bitmapquals
+			 * to run the meta_qual.
+			 * TODO support indexscan if available.
+			 */
 			UpdatePathsToForceRumIndexScanToBitmapHeapScan(root, rel);
 		}
 	}
@@ -730,6 +577,22 @@ ExtensionRelPathlistHookCore(PlannerInfo *root, RelOptInfo *rel, Index rti,
 			textIndexData->query != (Datum) 0)
 		{
 			AddExtensionQueryScanForTextQuery(root, rel, rte, textIndexData);
+		}
+	}
+
+	if (EnableExtendedExplainPlans)
+	{
+		/* Finally: Add the custom scan wrapper for explain plans */
+		AddExplainCustomScanWrapper(root, rel, rte);
+	}
+
+	if (ForceParallelScanIfAvailable)
+	{
+		ListCell *cell;
+		foreach(cell, rel->pathlist)
+		{
+			Path *path = lfirst(cell);
+			path->total_cost += disable_cost;
 		}
 	}
 }
@@ -756,17 +619,249 @@ ExtensionRelPathlistHook(PlannerInfo *root, RelOptInfo *rel, Index rti,
 
 
 /*
- * MongoQueryFlags determines whether the given query tree contains
+ * GetIndexOptInfoSortOrder determines the sort order for IndexOptInfo based on
+ * the index type and properties. This is used to prioritize indexes in the
+ * relation.
+ *
+ * 0 - Primary key indexes (Btree)
+ * 1 - Composite indexes
+ * 2 - Regular BSON indexes
+ * 3 - Wildcard indexes
+ * 4 - Other index access methods
+ */
+static int
+GetIndexOptInfoSortOrder(const IndexOptInfo *info, int *pathCount)
+{
+	Oid amOid = info->relam;
+	*pathCount = info->ncolumns;
+	if (amOid == BTREE_AM_OID)
+	{
+		return IndexPriorityOrdering_PrimaryKey;
+	}
+
+	/* If the index is not a regular BSON index, we give it the lowest priority. */
+	if (info->ncolumns <= 0 || !IsBsonRegularIndexAm(amOid))
+	{
+		return IndexPriorityOrdering_Other;
+	}
+
+	Oid firstOpClassOid = info->opfamily[0];
+
+	/* If it is composite op class it's the next priority. Since composite indexes have a single column, we just get the first column for the opclass. */
+	if (IsCompositeOpFamilyOid(amOid, firstOpClassOid))
+	{
+		/* Weight single path composite before wildcard */
+		BsonGinCompositePathOptions *options =
+			(BsonGinCompositePathOptions *) info->opclassoptions[0];
+		*pathCount = GetCompositeOpClassPathCount(options);
+		return options->wildcardPathIndex >= 0 ?
+			   IndexPriorityOrdering_Composite_Wildcard : IndexPriorityOrdering_Composite;
+	}
+
+	/* Wildcard indexes should go after exact path indexes. */
+	for (int i = 0; i < info->ncolumns && info->opclassoptions != NULL; i++)
+	{
+		BsonGinIndexOptionsBase *options =
+			(BsonGinIndexOptionsBase *) info->opclassoptions[i];
+
+		if (options == NULL)
+		{
+			continue;
+		}
+
+		if (options->type == IndexOptionsType_Wildcard)
+		{
+			return IndexPriorityOrdering_Wildcard;
+		}
+
+		if (options->type == IndexOptionsType_SinglePath)
+		{
+			BsonGinSinglePathOptions *singlePathOptions =
+				(BsonGinSinglePathOptions *) options;
+
+			if (singlePathOptions->isWildcard)
+			{
+				return IndexPriorityOrdering_Wildcard;
+			}
+		}
+	}
+
+	return IndexPriorityOrdering_Regular;
+}
+
+
+/*
+ * CompareIndexOptionsFunc is a comparison function for sorting IndexOptInfo
+ * based on their sort order. It is used to prioritize indexes in the relation.
+ * The sort order is determined by the index type and its properties.
+ */
+static int
+CompareIndexOptionsFunc(const ListCell *a, const ListCell *b)
+{
+	IndexOptInfo *infoA = (IndexOptInfo *) lfirst(a);
+	IndexOptInfo *infoB = (IndexOptInfo *) lfirst(b);
+
+	int32_t pathCountA, pathCountB;
+	int sortOrderA = GetIndexOptInfoSortOrder(infoA, &pathCountA);
+	int sortOrderB = GetIndexOptInfoSortOrder(infoB, &pathCountB);
+
+	if (sortOrderA != sortOrderB)
+	{
+		return sortOrderA - sortOrderB;
+	}
+
+	/* Prefer smaller indexes that match (pathCount 2 is better than pathCount 3)*/
+	return pathCountA - pathCountB;
+}
+
+
+/*
+ * LogRelationIndexesOrder logs the order of indexes in the relation.
+ * This is useful for debugging and understanding how indexes are prioritized.
+ */
+static void
+LogRelationIndexesOrder(const RelOptInfo *rel)
+{
+	if (rel->indexlist != NIL)
+	{
+		ListCell *cell;
+		foreach(cell, rel->indexlist)
+		{
+			IndexOptInfo *info = (IndexOptInfo *) lfirst(cell);
+			char *indexName = "(unknown)";
+
+			HeapTuple idxTup = SearchSysCache1(RELOID, ObjectIdGetDatum(info->indexoid));
+			if (HeapTupleIsValid(idxTup))
+			{
+				Form_pg_class idxForm = (Form_pg_class) GETSTRUCT(idxTup);
+				indexName = NameStr(idxForm->relname);
+				ReleaseSysCache(idxTup);
+			}
+
+			char *amName = "(unknown)";
+			HeapTuple amTup = SearchSysCache1(AMOID, ObjectIdGetDatum(info->relam));
+			if (HeapTupleIsValid(amTup))
+			{
+				Form_pg_am amForm = (Form_pg_am) GETSTRUCT(amTup);
+				amName = NameStr(amForm->amname);
+				ReleaseSysCache(amTup);
+			}
+
+			char *opfamilyName = "(unknown)";
+
+			int numPaths = info->ncolumns;
+			if (info->ncolumns > 0)
+			{
+				Oid opfamilyOid = info->opfamily[0];
+				HeapTuple ofTup = SearchSysCache1(OPFAMILYOID, ObjectIdGetDatum(
+													  opfamilyOid));
+				if (HeapTupleIsValid(ofTup))
+				{
+					Form_pg_opfamily ofForm = (Form_pg_opfamily) GETSTRUCT(ofTup);
+					opfamilyName = NameStr(ofForm->opfname);
+					ReleaseSysCache(ofTup);
+				}
+
+				if (IsCompositeOpFamilyOid(info->relam, opfamilyOid))
+				{
+					numPaths = GetCompositeOpClassPathCount(info->opclassoptions[0]);
+				}
+			}
+
+			ereport(LOG, errmsg(
+						"Name: %s, access method: %s, 1st opfamily: %s, numPaths %d",
+						indexName, amName, opfamilyName, numPaths));
+		}
+	}
+}
+
+
+/*
+ * ExtensionGetRelationInfoHookCore is the core implementation of the get_relation_info
+ * hook for the DocumentDB API extension. It modifies the relation info based on the
+ * extension's requirements.
+ *
+ * First it sorts the relation index list if enabled, based on the index priorities to be considered by the planner if their cost is the same or similar.
+ * 1. Primary key indexes are given the highest priority.
+ * 2. Composite indexes are given the next priority.
+ * 3. Regular BSON indexes are given the next priority.
+ * 4. Any other index access method is given the lowest priority.
+ *
+ */
+static void
+ExtensionGetRelationInfoHookCore(PlannerInfo *root, Oid relationObjectId,
+								 bool inhparent, RelOptInfo *rel)
+{
+	Oid namespaceId = get_rel_namespace(relationObjectId);
+	if (namespaceId != ApiDataNamespaceOid())
+	{
+		/* Not a documentdb data namespace, skip */
+		return;
+	}
+
+	if (EnableIndexPriorityOrdering && rel->indexlist != NIL)
+	{
+		list_sort(rel->indexlist, CompareIndexOptionsFunc);
+	}
+
+	/* In this path btree will be first if any */
+	if (list_length(rel->indexlist) > 0)
+	{
+		ListCell *cell;
+		foreach(cell, rel->indexlist)
+		{
+			IndexOptInfo *firstIndex = lfirst(cell);
+			if (EnableIdIndexCustomCostFunction && firstIndex->relam == BTREE_AM_OID)
+			{
+				firstIndex->amcostestimate = documentdb_btcostestimate;
+			}
+			else if (firstIndex->ncolumns == 1 &&
+					 IsCompositeOpFamilyOidWithParallelSupport(firstIndex->relam,
+															   firstIndex->opfamily[0]))
+			{
+				firstIndex->amcanparallel = EnableCompositeParallelIndexScan;
+			}
+		}
+	}
+
+	if (EnableLogRelationIndexesOrder)
+	{
+		LogRelationIndexesOrder(rel);
+	}
+}
+
+
+/* Implementation for the get_relation_info hook. Calls our hook if the extension is active and then calls the previous info hook if any was defined before we registered ours. */
+void
+ExtensionGetRelationInfoHook(PlannerInfo *root,
+							 Oid relationObjectId,
+							 bool inhparent,
+							 RelOptInfo *rel)
+{
+	if (IsDocumentDBApiExtensionActive())
+	{
+		ExtensionGetRelationInfoHookCore(root, relationObjectId, inhparent, rel);
+	}
+
+	if (ExtensionPreviousGetRelationInfoHook != NULL)
+	{
+		ExtensionPreviousGetRelationInfoHook(root, relationObjectId, inhparent, rel);
+	}
+}
+
+
+/*
+ * DocumentDbQueryFlags determines whether the given query tree contains
  * extension-specific constructs that are relevant to the planner.
  */
 static int
-MongoQueryFlags(Query *query)
+DocumentDbQueryFlags(Query *query)
 {
-	MongoQueryFlagsState queryFlags = { 0 };
+	DocumentDbQueryFlagsState queryFlags = { 0 };
 
-	MongoQueryFlagsWalker((Node *) query, &queryFlags);
+	DocumentDbQueryFlagsWalker((Node *) query, &queryFlags);
 
-	return queryFlags.mongoQueryFlags;
+	return queryFlags.documentDbQueryFlags;
 }
 
 
@@ -776,16 +871,17 @@ IsAggregationFunction(Oid funcId)
 	return funcId == ApiCatalogAggregationPipelineFunctionId() ||
 		   funcId == ApiCatalogAggregationFindFunctionId() ||
 		   funcId == ApiCatalogAggregationCountFunctionId() ||
-		   funcId == ApiCatalogAggregationDistinctFunctionId();
+		   funcId == ApiCatalogAggregationDistinctFunctionId() ||
+		   funcId == ApiCatalogAggregationGetMoreFunctionId();
 }
 
 
 /*
- * MongoQueryFlagsWalker determines whether the given expression tree contains
+ * DocumentDbQueryFlagsWalker determines whether the given expression tree contains
  * extension-specific constructs that are relevant to the planner.
  */
 static bool
-MongoQueryFlagsWalker(Node *node, MongoQueryFlagsState *queryFlags)
+DocumentDbQueryFlagsWalker(Node *node, DocumentDbQueryFlagsState *queryFlags)
 {
 	CHECK_FOR_INTERRUPTS();
 
@@ -798,9 +894,9 @@ MongoQueryFlagsWalker(Node *node, MongoQueryFlagsState *queryFlags)
 	{
 		RangeTblEntry *rte = (RangeTblEntry *) node;
 
-		if (IsMongoCollectionBasedRTE(rte))
+		if (IsDocumentDbCollectionBasedRTE(rte))
 		{
-			queryFlags->mongoQueryFlags |= HAS_MONGO_COLLECTION_RTE;
+			queryFlags->documentDbQueryFlags |= HAS_DOCUMENTDB_COLLECTION_RTE;
 		}
 		else if (rte->rtekind == RTE_FUNCTION &&
 				 list_length(rte->functions) == 1)
@@ -814,7 +910,8 @@ MongoQueryFlagsWalker(Node *node, MongoQueryFlagsState *queryFlags)
 			FuncExpr *funcExpr = (FuncExpr *) rangeTblFunc->funcexpr;
 
 			/* Defer the func check until we really have to */
-			if (list_length(funcExpr->args) != 2)
+			if (list_length(funcExpr->args) != 2 &&
+				list_length(funcExpr->args) != 3)
 			{
 				return false;
 			}
@@ -827,13 +924,13 @@ MongoQueryFlagsWalker(Node *node, MongoQueryFlagsState *queryFlags)
 
 			if (IsAggregationFunction(funcExpr->funcid))
 			{
-				if (queryFlags->queryDepth > 1 && AllowNestedAggregationFunctionInQueries)
+				if (queryFlags->queryDepth > 1)
 				{
-					queryFlags->mongoQueryFlags |= HAS_NESTED_AGGREGATION_FUNCTION;
+					queryFlags->documentDbQueryFlags |= HAS_NESTED_AGGREGATION_FUNCTION;
 				}
 				else
 				{
-					queryFlags->mongoQueryFlags |= HAS_AGGREGATION_FUNCTION;
+					queryFlags->documentDbQueryFlags |= HAS_AGGREGATION_FUNCTION;
 				}
 
 				return true;
@@ -848,7 +945,7 @@ MongoQueryFlagsWalker(Node *node, MongoQueryFlagsState *queryFlags)
 
 		if (opExpr->opno == BsonQueryOperatorId())
 		{
-			queryFlags->mongoQueryFlags |= HAS_QUERY_OPERATOR;
+			queryFlags->documentDbQueryFlags |= HAS_QUERY_OPERATOR;
 		}
 
 		return false;
@@ -859,19 +956,22 @@ MongoQueryFlagsWalker(Node *node, MongoQueryFlagsState *queryFlags)
 
 		if (funcExpr->funcid == ApiCursorStateFunctionId())
 		{
-			queryFlags->mongoQueryFlags |= HAS_CURSOR_FUNC;
+			queryFlags->documentDbQueryFlags |= HAS_CURSOR_FUNC;
 
 			Node *queryNode = lsecond(funcExpr->args);
 			if (IsA(queryNode, Param))
 			{
-				queryFlags->mongoQueryFlags |= HAS_CURSOR_STATE_PARAM;
+				queryFlags->documentDbQueryFlags |= HAS_CURSOR_STATE_PARAM;
 			}
 		}
 
-		if (EnableLetAndCollationForQueryMatch &&
+		bool useQueryMatchWithLetAndCollation = EnableCollation ||
+												EnableLetAndCollationForQueryMatch ||
+												EnableVariablesSupportForWriteCommands;
+		if (useQueryMatchWithLetAndCollation &&
 			funcExpr->funcid == BsonQueryMatchWithLetAndCollationFunctionId())
 		{
-			queryFlags->mongoQueryFlags |= HAS_QUERY_MATCH_FUNCTION;
+			queryFlags->documentDbQueryFlags |= HAS_QUERY_MATCH_FUNCTION;
 		}
 
 		return false;
@@ -879,13 +979,13 @@ MongoQueryFlagsWalker(Node *node, MongoQueryFlagsState *queryFlags)
 	else if (IsA(node, Query))
 	{
 		queryFlags->queryDepth++;
-		bool result = query_tree_walker((Query *) node, MongoQueryFlagsWalker,
+		bool result = query_tree_walker((Query *) node, DocumentDbQueryFlagsWalker,
 										queryFlags, QTW_EXAMINE_RTES_BEFORE);
 		queryFlags->queryDepth--;
 		return result;
 	}
 
-	return expression_tree_walker(node, MongoQueryFlagsWalker, queryFlags);
+	return expression_tree_walker(node, DocumentDbQueryFlagsWalker, queryFlags);
 }
 
 
@@ -941,37 +1041,38 @@ IsReadWriteCommand(Query *query)
 
 
 /*
- * ReplaceMongoCollectionFunction replaces all occurences of the
+ * ReplaceDocumentDbCollectionFunction replaces all occurences of the
  * ApiSchema.collection() function call with the corresponding
  * table.
  */
 static Query *
-ReplaceMongoCollectionFunction(Query *query, ParamListInfo boundParams,
-							   bool *isNonExistentCollection)
+ReplaceDocumentDbCollectionFunction(Query *query, ParamListInfo boundParams,
+									bool *isNonExistentCollection)
 {
 	/*
 	 * We will change a function RTE into a relation RTE so we can use
 	 * a regular walker that does not copy the whole query tree.
 	 */
-	ReplaceMongoCollectionContext context =
+	ReplaceDocumentDbCollectionContext context =
 	{
 		.boundParams = boundParams,
 		.isNonExistentCollection = false,
 		.query = query
 	};
-	ReplaceMongoCollectionFunctionWalker((Node *) query, &context);
+	ReplaceDocumentDbCollectionFunctionWalker((Node *) query, &context);
 	*isNonExistentCollection = context.isNonExistentCollection;
 	return query;
 }
 
 
 /*
- * ReplaceMongoCollectionFunctionWalker recurses into the input to replace
+ * ReplaceDocumentDbCollectionFunctionWalker recurses into the input to replace
  * all occurences of the ApiSchema.collection() function call with the corresponding
  * table.
  */
 static bool
-ReplaceMongoCollectionFunctionWalker(Node *node, ReplaceMongoCollectionContext *context)
+ReplaceDocumentDbCollectionFunctionWalker(Node *node,
+										  ReplaceDocumentDbCollectionContext *context)
 {
 	CHECK_FOR_INTERRUPTS();
 
@@ -984,7 +1085,7 @@ ReplaceMongoCollectionFunctionWalker(Node *node, ReplaceMongoCollectionContext *
 	{
 		RangeTblEntry *rte = (RangeTblEntry *) node;
 
-		if (IsResolvableMongoCollectionBasedRTE(rte, context->boundParams))
+		if (IsResolvableDocumentDbCollectionBasedRTE(rte, context->boundParams))
 		{
 			/* extract common arguments for collection-based RTE of the form ApiSchema.*collection*(db, coll, ..) */
 			RangeTblFunction *rangeTableFunc = linitial(rte->functions);
@@ -1004,10 +1105,10 @@ ReplaceMongoCollectionFunctionWalker(Node *node, ReplaceMongoCollectionContext *
 			if (collection == NULL)
 			{
 				/*
-				 * MongoDB treats non-existent collections as empty.
+				 * non-existent collections should be treated as empty.
 				 * Here we replace the ApiSchema.collection() function call
 				 * empty_data_table() which returns an response mimicking SELECT
-				 * from an empty mongo data collection.
+				 * from an empty documentdb data collection.
 				 */
 				funcExpr->funcid = BsonEmptyDataTableFunctionId();
 				funcExpr->args = NIL;
@@ -1041,13 +1142,13 @@ ReplaceMongoCollectionFunctionWalker(Node *node, ReplaceMongoCollectionContext *
 		Query *originalQuery = context->query;
 		context->query = (Query *) node;
 		bool result = query_tree_walker((Query *) node,
-										ReplaceMongoCollectionFunctionWalker,
+										ReplaceDocumentDbCollectionFunctionWalker,
 										context, QTW_EXAMINE_RTES_BEFORE);
 		context->query = originalQuery;
 		return result;
 	}
 
-	return expression_tree_walker(node, ReplaceMongoCollectionFunctionWalker,
+	return expression_tree_walker(node, ReplaceDocumentDbCollectionFunctionWalker,
 								  context);
 }
 
@@ -1069,16 +1170,16 @@ GetConstParamValue(Node *param, ParamListInfo boundParams)
 
 
 /*
- * IsResolvableMongoCollectionBasedRTE returns whether the given node is a function RTE
+ * IsResolvableDocumentDbCollectionBasedRTE returns whether the given node is a function RTE
  * of the form ApiSchema.*collection*('db', 'coll', ...).
  *
  * Otherwise, we return false, thereby allowing the RTE_FUNCTION to be called directly, and not
  * changing it to a RTE_RELATION.
  */
 bool
-IsResolvableMongoCollectionBasedRTE(RangeTblEntry *rte, ParamListInfo boundParams)
+IsResolvableDocumentDbCollectionBasedRTE(RangeTblEntry *rte, ParamListInfo boundParams)
 {
-	if (!IsMongoCollectionBasedRTE(rte))
+	if (!IsDocumentDbCollectionBasedRTE(rte))
 	{
 		return false;
 	}
@@ -1118,11 +1219,11 @@ IsResolvableMongoCollectionBasedRTE(RangeTblEntry *rte, ParamListInfo boundParam
 
 
 /*
- * IsMongoCollectionBasedRTE returns whether the given node is a
+ * IsDocumentDbCollectionBasedRTE returns whether the given node is a
  * collection() RTE.
  */
 bool
-IsMongoCollectionBasedRTE(RangeTblEntry *rte)
+IsDocumentDbCollectionBasedRTE(RangeTblEntry *rte)
 {
 	if (rte->rtekind != RTE_FUNCTION)
 	{
@@ -1184,10 +1285,11 @@ ExtensionExplainGetIndexName(Oid indexId)
 	if (IsDocumentDBApiExtensionActive())
 	{
 		bool useLibPQ = true;
-		const char *mongoIndexName = ExtensionIndexOidGetIndexName(indexId, useLibPQ);
-		if (mongoIndexName != NULL)
+		const char *documentDbIndexName = ExtensionIndexOidGetIndexName(indexId,
+																		useLibPQ);
+		if (documentDbIndexName != NULL)
 		{
-			return mongoIndexName;
+			return documentDbIndexName;
 		}
 	}
 
@@ -1201,7 +1303,7 @@ ExtensionExplainGetIndexName(Oid indexId)
 
 
 /*
- * Given a postgres index name, returns the corresponding mongo index name if available.
+ * Given a postgres index name, returns the corresponding documentdb index name if available.
  */
 const char *
 GetDocumentDBIndexNameFromPostgresIndex(const char *pgIndexName, bool useLibPq)
@@ -1212,25 +1314,36 @@ GetDocumentDBIndexNameFromPostgresIndex(const char *pgIndexName, bool useLibPq)
 	{
 		int64 indexIdValue = atoll(pgIndexName + prefixLength);
 		StringInfo indexNameQuery = makeStringInfo();
-		appendStringInfo(indexNameQuery,
-						 "SELECT (index_spec).index_name FROM %s.collection_indexes WHERE index_id = %ld",
-						 ApiCatalogSchemaName, indexIdValue);
-
 		const char *indexName = NULL;
 		if (useLibPq)
 		{
+			appendStringInfo(indexNameQuery,
+							 "SELECT (index_spec).index_name FROM %s.collection_indexes WHERE index_id = %ld",
+							 ApiCatalogSchemaName, indexIdValue);
+
 			indexName = ExtensionExecuteQueryOnLocalhostViaLibPQ(indexNameQuery->data);
 		}
 		else
 		{
+			appendStringInfo(indexNameQuery,
+							 "SELECT (index_spec).index_name FROM %s.collection_indexes WHERE index_id = $1",
+							 ApiCatalogSchemaName);
+
 			bool readOnly = true;
-			bool isNull;
-			Datum resultDatum = ExtensionExecuteQueryViaSPI(indexNameQuery->data,
-															readOnly,
-															SPI_OK_SELECT, &isNull);
-			if (!isNull)
+			bool isNull[1] = { true };
+			Datum resultDatum[1] = { 0 };
+
+			Datum args[1] = { Int64GetDatum(indexIdValue) };
+			Oid argTypes[1] = { INT8OID };
+			char argNulls[1] = { ' ' };
+
+			RunMultiValueQueryWithNestedDistribution(indexNameQuery->data, 1, argTypes,
+													 args, argNulls, readOnly,
+													 SPI_OK_SELECT, resultDatum, isNull,
+													 1);
+			if (!isNull[0])
 			{
-				indexName = TextDatumGetCString(resultDatum);
+				indexName = TextDatumGetCString(resultDatum[0]);
 			}
 		}
 
@@ -1239,7 +1352,7 @@ GetDocumentDBIndexNameFromPostgresIndex(const char *pgIndexName, bool useLibPq)
 	else if (strncmp(pgIndexName, DOCUMENT_DATA_PRIMARY_KEY_FORMAT_PREFIX,
 					 strlen(DOCUMENT_DATA_PRIMARY_KEY_FORMAT_PREFIX)) == 0)
 	{
-		/* this is the _id index on mongo */
+		/* this is the _id index */
 		return ID_INDEX_NAME;
 	}
 
@@ -1248,7 +1361,7 @@ GetDocumentDBIndexNameFromPostgresIndex(const char *pgIndexName, bool useLibPq)
 
 
 /*
- * Retrieves the "mongo" index name for a given indexId.
+ * Retrieves the "documentdb" index name for a given indexId.
  * This is retrieved by using the collection_indexes table
  * every time. Introduces an option to use libPQ or SPI.
  *
@@ -1303,7 +1416,7 @@ HasUnresolvedExternParamsWalker(Node *expression, ParamListInfo boundParams)
 			return false;
 		}
 
-		/* check whether parameter is available */
+		/* Verify if the parameter is valid */
 		if (boundParams && paramId > 0 && paramId <= boundParams->numParams)
 		{
 			return false;
@@ -1346,7 +1459,7 @@ CheckRelNameValidity(const char *relName, uint64_t *collectionId)
 	 */
 	char *numEndPointer = NULL;
 	uint64 parsedCollectionId = strtoull(&relName[10], &numEndPointer, 10);
-	if (IsShardTableForMongoTable(relName, numEndPointer))
+	if (IsShardTableForDocumentDbTable(relName, numEndPointer))
 	{
 		*collectionId = parsedCollectionId;
 		return true;
@@ -1358,7 +1471,7 @@ CheckRelNameValidity(const char *relName, uint64_t *collectionId)
 
 /*
  * Returns true if the relation of RTE pointed to
- * is a Mongo table base collection. e.g.
+ * is a DocumentDB table base collection. e.g.
  * for ApiDataSchemaName.documents_1 -> false (if sharding is enabled)
  * but
  * ApiDataSchemaName.documents_1_1034 -> true
@@ -1372,8 +1485,8 @@ CheckRelNameValidity(const char *relName, uint64_t *collectionId)
  * For more details see bson_query_index_selection_sharded_tests.sql
  */
 static bool
-IsRTEShardForMongoCollection(RangeTblEntry *rte, bool *isMongoDataNamespace,
-							 uint64 *collectionId)
+IsRTEShardForDocumentDbCollection(RangeTblEntry *rte, bool *isDocumentDbDataNamespace,
+								  uint64 *collectionId)
 {
 	if (rte->rtekind != RTE_RELATION ||
 		rte->relkind != RELKIND_RELATION)
@@ -1384,8 +1497,8 @@ IsRTEShardForMongoCollection(RangeTblEntry *rte, bool *isMongoDataNamespace,
 	Oid tableOid = rte->relid;
 	Oid relNamespace = get_rel_namespace(tableOid);
 
-	*isMongoDataNamespace = relNamespace == ApiDataNamespaceOid();
-	if (!*isMongoDataNamespace)
+	*isDocumentDbDataNamespace = relNamespace == ApiDataNamespaceOid();
+	if (!*isDocumentDbDataNamespace)
 	{
 		return false;
 	}
@@ -1452,7 +1565,8 @@ ProcessWorkerWriteQueryPath(PlannerInfo *root, RelOptInfo *rel, Index rti,
 
 	if (!(funcExpr->funcid == UpdateWorkerFunctionOid() ||
 		  funcExpr->funcid == InsertWorkerFunctionOid() ||
-		  funcExpr->funcid == DeleteWorkerFunctionOid()))
+		  funcExpr->funcid == DeleteWorkerFunctionOid() ||
+		  funcExpr->funcid == CommandNodeWorkerFunctionOid()))
 	{
 		return false;
 	}
@@ -1482,18 +1596,6 @@ ProcessWorkerWriteQueryPath(PlannerInfo *root, RelOptInfo *rel, Index rti,
 	rte->perminfoindex = 0;
 #endif
 	return true;
-}
-
-
-/*
- * Determine if the current relation is the outer query of a $merge stage.
- * We do not push this relation to the bitmap index.
- * For the outer relation, the relid will always be 1 since $merge is the last stage of the pipeline.
- */
-static inline bool
-IsAMergeOuterQuery(PlannerInfo *root, RelOptInfo *rel)
-{
-	return root->parse->commandType == CMD_MERGE && rel->relid == 1;
 }
 
 
@@ -1626,7 +1728,7 @@ ExpandAggregationFunction(Query *query, ParamListInfo boundParams, PlannedStmt *
 	if (rte->rtekind != RTE_FUNCTION || list_length(rte->functions) != 1)
 	{
 		ereport(ERROR, (errmsg(
-							"Aggregation pipeline node should select from the Mongo aggregation function kind %d. This is unexpected",
+							"Aggregation pipeline node should select from the aggregation function kind %d. This is unexpected",
 							rte->rtekind)));
 	}
 
@@ -1639,14 +1741,16 @@ ExpandAggregationFunction(Query *query, ParamListInfo boundParams, PlannedStmt *
 
 	FuncExpr *aggregationFunc = (FuncExpr *) rangeTblFunc->funcexpr;
 
-	if (list_length(aggregationFunc->args) != 2)
+	if (list_length(aggregationFunc->args) != 2 &&
+		list_length(aggregationFunc->args) != 3)
 	{
 		ereport(ERROR, (errmsg(
-							"Aggregation pipeline node should have 2 args. This is unexpected")));
+							"Aggregation pipeline node should have 2 or 3 args. This is unexpected")));
 	}
 
 	Node *databaseArg = linitial(aggregationFunc->args);
 	Node *secondArg = lsecond(aggregationFunc->args);
+	Node *thirdArg = NULL;
 
 	if (!IsA(secondArg, Const) || !IsA(databaseArg, Const))
 	{
@@ -1662,6 +1766,23 @@ ExpandAggregationFunction(Query *query, ParamListInfo boundParams, PlannedStmt *
 		return query;
 	}
 
+	if (list_length(aggregationFunc->args) == 3)
+	{
+		thirdArg = lthird(aggregationFunc->args);
+		if (!IsA(thirdArg, Const))
+		{
+			thirdArg = EvaluateBoundParameters(thirdArg, boundParams);
+		}
+
+		if (!IsA(thirdArg, Const))
+		{
+			/* Let the runtime deal with this (This will either go to the runtime function and fail,
+			 * or noop due to prepared and come back here
+			 * to be evaluated during the EXECUTE)*/
+			return query;
+		}
+	}
+
 	Const *databaseConst = (Const *) databaseArg;
 	Const *aggregationConst = (Const *) secondArg;
 	if (databaseConst->constisnull || aggregationConst->constisnull)
@@ -1672,31 +1793,49 @@ ExpandAggregationFunction(Query *query, ParamListInfo boundParams, PlannedStmt *
 
 	pgbson *pipeline = DatumGetPgBson(aggregationConst->constvalue);
 
-	QueryData queryData = { 0 };
-	queryData.batchSize = 101;
+	QueryData queryData = GenerateFirstPageQueryData();
 	bool enableCursorParam = false;
 	bool setStatementTimeout = false;
 	Query *finalQuery;
 	if (aggregationFunc->funcid == ApiCatalogAggregationPipelineFunctionId())
 	{
-		finalQuery = GenerateAggregationQuery(databaseConst->constvalue, pipeline,
+		finalQuery = GenerateAggregationQuery(DatumGetTextPP(databaseConst->constvalue),
+											  pipeline,
 											  &queryData,
 											  enableCursorParam, setStatementTimeout);
 	}
 	else if (aggregationFunc->funcid == ApiCatalogAggregationFindFunctionId())
 	{
-		finalQuery = GenerateFindQuery(databaseConst->constvalue, pipeline, &queryData,
+		finalQuery = GenerateFindQuery(DatumGetTextPP(databaseConst->constvalue),
+									   pipeline, &queryData,
 									   enableCursorParam, setStatementTimeout);
 	}
 	else if (aggregationFunc->funcid == ApiCatalogAggregationCountFunctionId())
 	{
-		finalQuery = GenerateCountQuery(databaseConst->constvalue, pipeline,
+		finalQuery = GenerateCountQuery(DatumGetTextPP(databaseConst->constvalue),
+										pipeline,
 										setStatementTimeout);
 	}
 	else if (aggregationFunc->funcid == ApiCatalogAggregationDistinctFunctionId())
 	{
-		finalQuery = GenerateDistinctQuery(databaseConst->constvalue, pipeline,
+		finalQuery = GenerateDistinctQuery(DatumGetTextPP(databaseConst->constvalue),
+										   pipeline,
 										   setStatementTimeout);
+	}
+	else if (aggregationFunc->funcid == ApiCatalogAggregationGetMoreFunctionId())
+	{
+		Const *thirdConst = (Const *) thirdArg;
+		if (thirdConst->constisnull)
+		{
+			ereport(ERROR, (errmsg(
+								"Aggregation pipeline arguments should not be null. This is unexpected")));
+		}
+
+		finalQuery = GenerateGetMoreQuery(DatumGetTextPP(databaseConst->constvalue),
+										  pipeline, DatumGetPgBson(
+											  thirdConst->constvalue),
+										  &queryData, enableCursorParam,
+										  setStatementTimeout);
 	}
 	else
 	{
@@ -1707,11 +1846,12 @@ ExpandAggregationFunction(Query *query, ParamListInfo boundParams, PlannedStmt *
 	if (queryData.cursorKind == QueryCursorType_PointRead)
 	{
 		/* Assert we're a shard query */
-		bool isMongoDataNamespace;
+		bool isDocumentDbDataNamespace;
 		uint64_t collectionId;
-		bool isShardQuery = IsRTEShardForMongoCollection(linitial(finalQuery->rtable),
-														 &isMongoDataNamespace,
-														 &collectionId);
+		bool isShardQuery = IsRTEShardForDocumentDbCollection(linitial(
+																  finalQuery->rtable),
+															  &isDocumentDbDataNamespace,
+															  &collectionId);
 
 		if (!isShardQuery)
 		{
@@ -1724,5 +1864,110 @@ ExpandAggregationFunction(Query *query, ParamListInfo boundParams, PlannedStmt *
 		*plan = TryCreatePointReadPlan(finalQuery);
 	}
 
+	if (EnableCursorsOnAggregationQueryRewrite)
+	{
+		ereport(DEBUG1, (errmsg("Aggregation cursorKind is %d", queryData.cursorKind)));
+	}
+
 	return finalQuery;
+}
+
+
+static bool
+IsPrimaryKeyScanOnJustShardKey(Path *path)
+{
+	if (path->pathtype != T_IndexScan)
+	{
+		return false;
+	}
+
+	IndexPath *indexPath = (IndexPath *) path;
+	if (indexPath->indexinfo->relam == BTREE_AM_OID)
+	{
+		if (list_length(indexPath->indexclauses) == 1)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+
+static List *
+TrimPathListForSeqTypeScans(List *pathList)
+{
+	ListCell *cell;
+	foreach(cell, pathList)
+	{
+		Path *path = (Path *) lfirst(cell);
+
+		if (path->pathtype != T_IndexScan &&
+			path->pathtype != T_BitmapHeapScan)
+		{
+			elog(DEBUG1, "Excluding path non-index path %d for scan",
+				 path->pathtype);
+			pathList = foreach_delete_current(pathList, cell);
+			continue;
+		}
+
+		/*
+		 * Now validate it's not just a scan on the primary key
+		 * with the shard key value.
+		 */
+		if (IsPrimaryKeyScanOnJustShardKey(path))
+		{
+			elog(DEBUG1, "Excluding primary key scan on just shard key %d for scan",
+				 path->pathtype);
+			pathList = foreach_delete_current(pathList, cell);
+			continue;
+		}
+		if (path->pathtype == T_BitmapHeapScan)
+		{
+			BitmapHeapPath *bitmapHeapPath = (BitmapHeapPath *) path;
+			if (bitmapHeapPath->bitmapqual != NULL &&
+				IsPrimaryKeyScanOnJustShardKey(bitmapHeapPath->bitmapqual))
+			{
+				elog(DEBUG1, "Excluding bitmap heap scan on just shard key %d for scan",
+					 path->pathtype);
+				pathList = foreach_delete_current(pathList, cell);
+				continue;
+			}
+		}
+	}
+
+	return pathList;
+}
+
+
+static void
+ForceExcludeNonIndexPaths(PlannerInfo *root, RelOptInfo *rel,
+						  Index rti, RangeTblEntry *rte)
+{
+	if (rel->pathlist == NIL)
+	{
+		return;
+	}
+
+	rel->pathlist = TrimPathListForSeqTypeScans(rel->pathlist);
+	rel->partial_pathlist = TrimPathListForSeqTypeScans(rel->partial_pathlist);
+
+	if (rel->pathlist == NIL)
+	{
+		/* Try a round of planning with no sequential paths and another round of trimming
+		 * before failing.
+		 */
+		create_index_paths(root, rel);
+
+		rel->pathlist = TrimPathListForSeqTypeScans(rel->pathlist);
+		rel->partial_pathlist = TrimPathListForSeqTypeScans(rel->partial_pathlist);
+
+
+		if (rel->pathlist == NIL)
+		{
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDOPTIONS),
+							errmsg(
+								"Could not find any valid index to push down for query")));
+		}
+	}
 }

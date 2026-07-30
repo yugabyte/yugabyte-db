@@ -48,6 +48,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -69,10 +70,16 @@ TAG_FLAG(rpc_acceptor_listen_backlog, advanced);
 
 namespace yb::rpc {
 
-Acceptor::Acceptor(const scoped_refptr<MetricEntity>& metric_entity, NewSocketHandler handler)
+Acceptor::Acceptor(
+    const scoped_refptr<MetricEntity>& metric_entity, NewSocketHandler handler, Cgroup* cgroup)
     : handler_(std::move(handler)),
       rpc_connections_accepted_(METRIC_rpc_connections_accepted.Instantiate(metric_entity)),
-      loop_(kDefaultLibEvFlags) {
+      loop_(kDefaultLibEvFlags)
+#ifdef __linux__
+      , cgroup_(cgroup)
+#endif
+{
+  (void)cgroup;
 }
 
 Acceptor::~Acceptor() {
@@ -214,6 +221,12 @@ void Acceptor::AsyncHandler(ev::async& async, int events) {
 }
 
 void Acceptor::RunThread() {
+#ifdef __linux__
+  if (cgroup_) {
+    WARN_NOT_OK(cgroup_->MoveCurrentThreadToGroup(),
+                "Failed to move acceptor thread to cgroup");
+  }
+#endif
   loop_.run();
   VLOG(1) << "Acceptor shutting down.";
 }

@@ -33,7 +33,7 @@
 #include "yb/rocksdb/db/compaction.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/util/mutable_cf_options.h"
 
 
@@ -207,6 +207,7 @@ class CompactionPicker {
   std::set<Compaction*> level0_compactions_in_progress_;
 
   const InternalKeyComparator* const icmp_;
+  yb::MemTrackerPtr mem_tracker_;
 };
 
 class LevelCompactionPicker : public CompactionPicker {
@@ -308,6 +309,7 @@ class UniversalCompactionPicker : public CompactionPicker {
   // Pick a path ID to place a newly generated file, with its estimated file
   // size.
   static uint32_t GetPathId(const ImmutableCFOptions& ioptions,
+                            const MutableCFOptions& mutable_cf_options,
                             uint64_t file_size);
 };
 

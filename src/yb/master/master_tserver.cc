@@ -55,11 +55,14 @@ DEFINE_RUNTIME_int32(update_min_cdc_indices_master_interval_secs, 300 /* 5 minut
   "How often to read cdc_state table on master and move the retention barriers for the sys "
   "catalog tablet.");
 
+DEFINE_RUNTIME_bool(enable_update_local_peer_min_index_master, false,
+    "When false, the master leader updates retention barriers on all master peers (including "
+    "followers) for the sys catalog tablet, instead of each peer updating its own.");
+
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
 using consensus::StartRemoteBootstrapRequestPB;
 
@@ -95,6 +98,10 @@ class MasterCDCServiceContextImpl : public cdc::CDCServiceContext {
 
   Result<HostPort> GetDesiredHostPortForLocal() const override {
     return STATUS(NotSupported, "GetDesiredHostPortForLocal not supported on master");
+  }
+
+  bool ShouldLocalPeerUpdateOwnBarriers() const override {
+    return FLAGS_enable_update_local_peer_min_index_master;
   }
 
  private:
@@ -164,14 +171,14 @@ Status MasterTabletServer::StartRemoteBootstrap(const StartRemoteBootstrapReques
   return STATUS(NotSupported, "Remote bootstrap not supported by master tserver");
 }
 
-void MasterTabletServer::get_ysql_catalog_version(uint64_t* current_version,
-                                                  uint64_t* last_breaking_version) const {
-  get_ysql_db_catalog_version(kPgInvalidOid, current_version, last_breaking_version);
+void MasterTabletServer::get_ysql_catalog_version(
+    uint64_t* current_version, uint64_t* last_breaking_version, bool use_cache) const {
+  get_ysql_db_catalog_version(kPgInvalidOid, current_version, last_breaking_version, use_cache);
 }
 
-void MasterTabletServer::get_ysql_db_catalog_version(uint32_t db_oid,
-                                                     uint64_t* current_version,
-                                                     uint64_t* last_breaking_version) const {
+void MasterTabletServer::get_ysql_db_catalog_version(
+    uint32_t db_oid, uint64_t* current_version, uint64_t* last_breaking_version,
+    bool use_cache) const {
   auto fill_vers = [current_version, last_breaking_version](){
     /*
      * This should never happen, but if it does then we cannot guarantee that user requests
@@ -196,10 +203,11 @@ void MasterTabletServer::get_ysql_db_catalog_version(uint32_t db_oid,
     }
   }
 
-  Status s = db_oid == kPgInvalidOid ?
-    master_->catalog_manager()->GetYsqlCatalogVersion(current_version, last_breaking_version) :
-    master_->catalog_manager()->GetYsqlDBCatalogVersion(
-        db_oid, current_version, last_breaking_version);
+  Status s = db_oid == kPgInvalidOid
+                 ? master_->catalog_manager()->GetYsqlCatalogVersion(
+                       current_version, last_breaking_version, use_cache)
+                 : master_->catalog_manager()->GetYsqlDBCatalogVersion(
+                       db_oid, current_version, last_breaking_version, use_cache);
   if (!s.ok()) {
     LOG(WARNING) << "Could not get YSQL catalog version for master's tserver API: " << s;
     fill_vers();
@@ -229,11 +237,12 @@ Status MasterTabletServer::SetTserverCatalogMessageList(
                                                new_catalog_version, message_list);
 }
 
-Status MasterTabletServer::TriggerRelcacheInitConnection(
+void MasterTabletServer::TriggerRelcacheInitConnection(
     const tserver::TriggerRelcacheInitConnectionRequestPB& req,
-    tserver::TriggerRelcacheInitConnectionResponsePB *resp) {
-  return master_->TriggerRelcacheInitConnection(req, resp);
+    StdStatusCallback callback) {
+  master_->TriggerRelcacheInitConnection(req, std::move(callback));
 }
+
 const std::shared_future<client::YBClient*>& MasterTabletServer::client_future() const {
   return master_->client_future();
 }
@@ -302,7 +311,9 @@ Result<std::vector<TserverMetricsInfoPB>> MasterTabletServer::GetMetrics() const
 }
 
 Result<pgwrapper::PGConn> MasterTabletServer::CreateInternalPGConn(
-    const std::string& database_name, const std::optional<CoarseTimePoint>& deadline) {
+    const std::string& database_name, std::string_view user, bool simple_query_protocol,
+    const std::optional<CoarseTimePoint>& deadline,
+    std::string_view yb_internal_conn_kind) {
   LOG(DFATAL) << "Unexpected call of CreateInternalPGConn()";
   return STATUS_FORMAT(InternalError, "Unexpected call of CreateInternalPGConn()");
 }
@@ -336,7 +347,7 @@ rpc::ServiceIfPtr MasterTabletServer::CreateCDCService(
   cdc_service_ = std::make_shared<cdc::CDCServiceImpl>(
       std::make_unique<MasterCDCServiceContextImpl>(this), metric_entity, metric_registry,
       FLAGS_master_xrepl_get_changes_concurrency, client_future,
-      []() { return FLAGS_update_min_cdc_indices_master_interval_secs; });
+      []() { return FLAGS_update_min_cdc_indices_master_interval_secs; }, true /* is_master */);
 
   return std::static_pointer_cast<rpc::ServiceIf>(cdc_service_);
 }
@@ -351,5 +362,26 @@ void MasterTabletServer::EnableCDCService() {
   LOG(INFO) << "CDC service enabled on master";
 }
 
-} // namespace master
-} // namespace yb
+tserver::ConnectivityStateResponsePB MasterTabletServer::ConnectivityState() {
+  return tserver::ConnectivityStateResponsePB{};
+}
+
+ReplicationInfoPB MasterTabletServer::GetClusterReplicationInfo() const {
+  auto config = master_->catalog_manager()->GetClusterConfig();
+  if (!config.ok()) {
+    LOG(WARNING) << "Failed to get cluster config for replication info: " << config.status();
+    return {};
+  }
+  return config->replication_info();
+}
+
+int32_t MasterTabletServer::cluster_config_version() const {
+  auto config = master_->catalog_manager()->GetClusterConfig();
+  if (!config.ok()) {
+    LOG(WARNING) << "Failed to get cluster config version: " << config.status();
+    return -1;
+  }
+  return config->version();
+}
+
+} // namespace yb::master

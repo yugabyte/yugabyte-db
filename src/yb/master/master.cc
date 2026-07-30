@@ -50,24 +50,26 @@
 #include "yb/master/clone/clone_state_manager.h"
 #include "yb/master/flush_manager.h"
 #include "yb/master/master_auto_flags_manager.h"
-#include "yb/master/master-path-handlers.h"
 #include "yb/master/master_backup.service.h"
-#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_cluster_handler.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_service.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_tablet_service.h"
 #include "yb/master/master_util.h"
+#include "yb/master/master-path-handlers.h"
+#include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/test_async_rpc_manager.h"
 #include "yb/master/ts_manager.h"
+#include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/master/ysql_backends_manager.h"
 
 #include "yb/rpc/messenger.h"
-#include "yb/rpc/secure.h"
 #include "yb/rpc/secure_stream.h"
+#include "yb/rpc/secure.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/service_pool.h"
 #include "yb/rpc/yb_rpc.h"
@@ -91,6 +93,7 @@
 #include "yb/util/ntp_clock.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/tsan_util.h"
 
@@ -107,6 +110,7 @@ TAG_FLAG(master_backup_svc_queue_length, advanced);
 
 DECLARE_bool(master_join_existing_universe);
 DECLARE_bool(TEST_running_test);
+DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 
 METRIC_DEFINE_entity(cluster);
 
@@ -124,19 +128,19 @@ DEPRECATE_FLAG(int32, master_svc_num_threads, "02_2024");
 DEPRECATE_FLAG(int32, master_consensus_svc_num_threads, "02_2024");
 DEPRECATE_FLAG(int32, master_remote_bootstrap_svc_num_threads, "02_2024");
 
-DEFINE_UNKNOWN_int32(master_tserver_svc_queue_length, 1000,
+DEFINE_NON_RUNTIME_int32(master_tserver_svc_queue_length, 1000,
              "RPC queue length for master tserver service");
 TAG_FLAG(master_tserver_svc_queue_length, advanced);
 
-DEFINE_UNKNOWN_int32(master_svc_queue_length, 1000,
+DEFINE_NON_RUNTIME_int32(master_svc_queue_length, 1000,
              "RPC queue length for master service");
 TAG_FLAG(master_svc_queue_length, advanced);
 
-DEFINE_UNKNOWN_int32(master_consensus_svc_queue_length, 1000,
+DEFINE_NON_RUNTIME_int32(master_consensus_svc_queue_length, 1000,
              "RPC queue length for master consensus service");
 TAG_FLAG(master_consensus_svc_queue_length, advanced);
 
-DEFINE_UNKNOWN_int32(master_remote_bootstrap_svc_queue_length, 50,
+DEFINE_NON_RUNTIME_int32(master_remote_bootstrap_svc_queue_length, 50,
              "RPC queue length for master remote bootstrap service");
 TAG_FLAG(master_remote_bootstrap_svc_queue_length, advanced);
 
@@ -150,8 +154,6 @@ DEFINE_test_flag(string, master_extra_list_host_port, "",
 DECLARE_int64(inbound_rpc_memory_limit);
 
 DECLARE_int32(master_ts_rpc_timeout_ms);
-
-DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 
@@ -168,7 +170,8 @@ Master::Master(const MasterOptions& opts)
       ts_manager_(new TSManager(*sys_catalog_)),
       catalog_manager_(new CatalogManager(this, sys_catalog_.get())),
       auto_flags_manager_(new MasterAutoFlagsManager(*this)),
-      ysql_backends_manager_(new YsqlBackendsManager(this, catalog_manager_->AsyncTaskPool())),
+      ysql_backends_manager_(new YsqlBackendsManager(
+          this, catalog_manager_->object_lock_info_manager(), catalog_manager_->AsyncTaskPool())),
       path_handlers_(new MasterPathHandlers(this)),
       flush_manager_(new FlushManager(this, catalog_manager())),
       tablet_health_manager_(new TabletHealthManager(this, catalog_manager())),
@@ -183,7 +186,7 @@ Master::Master(const MasterOptions& opts)
       opts_(opts),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
-      GetAtomicFlag(&FLAGS_inbound_rpc_memory_limit), mem_tracker()));
+      FLAGS_inbound_rpc_memory_limit, mem_tracker()));
 
   // Set higher timeout to avoid test flakiness.
   if (FLAGS_TEST_running_test) {
@@ -672,15 +675,19 @@ const std::shared_future<client::YBClient*>& Master::cdc_state_client_future() c
 Status Master::get_ysql_db_oid_to_cat_version_info_map(
     const tserver::GetTserverCatalogVersionInfoRequestPB& req,
     tserver::GetTserverCatalogVersionInfoResponsePB *resp) const {
-  DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
   // This function can only be called during initdb time.
   DbOidToCatalogVersionMap versions;
-  // We do not use cache/fingerprint which is only used for filling heartbeat
-  // response. The heartbeat mechanism is already subject to a heartbeat delay.
-  // In other situation where we are not already subject to any delay, we want
-  // the latest reading from the table pg_yb_catalog_version.
-  RETURN_NOT_OK(catalog_manager_->GetYsqlAllDBCatalogVersions(
-      false /* use_cache */, &versions, nullptr /* fingerprint */));
+  // During initdb, pg_yb_catalog_version may not yet be created when this is invoked.
+  // Treat that as "no per-db versions yet" - empty response - instead of returning an
+  // error to the caller. Steady-state callers of GetYsqlAllDBCatalogVersions assume the
+  // table exists and read directly.
+  auto table_id =
+      VERIFY_RESULT(ysql_manager().GetVersionSpecificCatalogTableId(kPgYbCatalogVersionTableId));
+  if (catalog_manager_->GetTableInfo(table_id) != nullptr) {
+    RETURN_NOT_OK(catalog_manager_->GetYsqlAllDBCatalogVersions(
+        FLAGS_enable_heartbeat_pg_catalog_versions_cache /* use_cache */, &versions,
+        nullptr /* fingerprint */));
+  }
   if (req.size_only()) {
     resp->set_num_entries(narrow_cast<uint32_t>(versions.size()));
   } else {
@@ -731,10 +738,10 @@ Status Master::SetTserverCatalogMessageList(
   return Status::OK();
 }
 
-Status Master::TriggerRelcacheInitConnection(
+void Master::TriggerRelcacheInitConnection(
     const tserver::TriggerRelcacheInitConnectionRequestPB& req,
-    tserver::TriggerRelcacheInitConnectionResponsePB *resp) {
-  return STATUS_FORMAT(NotSupported, "Unexpected call of $0", __FUNCTION__);
+    StdStatusCallback callback) {
+  callback(STATUS_FORMAT(NotSupported, "Unexpected call of $0", __FUNCTION__));
 }
 
 void Master::EnableCDCService() {

@@ -46,6 +46,11 @@ properties:
     type: string
     example: yba.dev.company.com
     readOnly: true
+  platform_version:
+    description: YugabyteDB Anywhere platform software version for this YBA instance
+    type: string
+    example: 2.29.0.0-b0
+    readOnly: true
   node_prefix:
     description: A globally unique name generated as a combination of the customer id and the universe name. This is used as the prefix of node names in the universe. Can be configured at the time of universe creation.
     type: string
@@ -104,6 +109,7 @@ properties:
       - FinalizeFailed
       - RollingBack
       - RollbackFailed
+      - Paused
     readOnly: true
   is_software_rollback_allowed:
     description: Whether a rollback of the last YugabyteDB upgrade operation is allowed

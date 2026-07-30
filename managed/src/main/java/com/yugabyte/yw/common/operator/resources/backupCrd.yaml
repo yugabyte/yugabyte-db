@@ -76,6 +76,20 @@ spec:
                     Base backup Custom Resource name. Operator will add an incremental backup
                     to the existing chain of backups at the last.
                   type: string
+                useTablespaces:
+                  description: Include tablespace information in the backup.
+                  type: boolean
+                  default: false
+                useRoles:
+                  description: Backup global YSQL roles.
+                  type: boolean
+                  default: false
+                usePrivileges:
+                  description: >
+                    Backup privileges for roles.
+                    If false, --no-privileges will be added to the backup command.
+                  type: boolean
+                  default: true
               required:
               - keyspace
               - backupType

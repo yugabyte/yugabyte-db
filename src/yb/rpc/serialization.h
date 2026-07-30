@@ -37,6 +37,8 @@
 
 #include <string>
 
+#include <boost/range/iterator_range.hpp>
+
 #include <google/protobuf/message.h>
 #include <google/protobuf/repeated_field.h>
 
@@ -76,6 +78,7 @@ struct ParsedRequestHeader {
   uint32_t timeout_ms = 0;
   boost::iterator_range<const uint32_t*> sidecar_offsets;
   Slice metadata;
+  ThreadPoolTag pool_tag = 0;
   std::optional<uint32_t> crc;
 
   std::string RemoteMethodAsString() const;

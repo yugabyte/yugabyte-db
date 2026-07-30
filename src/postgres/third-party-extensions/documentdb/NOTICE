@@ -1,0 +1,37 @@
+This product includes third-party components distributed under various licenses. Full license texts and notices for these components are provided in the 'licenses/' directory.
+
+- RUM Extension for PostgreSQL (https://github.com/postgrespro/rum)
+  Licensed under the PostgreSQL License
+  Copyright (c) PostgreSQL Global Development Group
+
+- libbson – https://github.com/mongodb/mongo-c-driver
+  Licensed under the Apache License 2.0
+  (See licenses/LICENSE_libbson.txt for bundled third‑party NOTICE details)
+
+- Intel Decimal Floating Point Math Library (https://git.launchpad.net/ubuntu/+source/intelrdfpmath)
+  Licensed under the Intel Simplified Software License
+  Copyright (c) Intel Corporation
+
+- PCRE2 (https://github.com/PCRE2Project/pcre2)
+  Licensed under the BSD 3-Clause License
+  Copyright (c) University of Cambridge
+
+- PostgreSQL (https://github.com/postgres/postgres)
+  Licensed under the PostgreSQL License
+  Copyright (c) PostgreSQL Global Development Group
+
+- pg_cron (https://github.com/citusdata/pg_cron)
+  Licensed under the PostgreSQL License
+  Copyright (c) Citus Data
+
+- pgvector (https://github.com/pgvector/pgvector)
+  Licensed under the PostgreSQL License
+  Copyright (c) pgvector contributors
+
+- PostGIS (https://download.osgeo.org/postgis/source/postgis-3.1.9.tar.gz and 3.5.2.tar.gz)
+  Licensed under the GNU General Public License, version 2 or later (GPL-2.0+)
+  Copyright (c) Refractions Research, Paul Ramsey, and others
+
+- CRoaring (https://github.com/RoaringBitmap/CRoaring)
+  Licensed under the MIT license
+  Copyright 2016-2022 The CRoaring authors

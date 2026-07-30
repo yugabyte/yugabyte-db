@@ -7,7 +7,7 @@ xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xs
   <description>YB Anywhere Dependent Modules</description>
   <groupId>org.yb</groupId>
   <artifactId>yb-anywhere-modules</artifactId>
-  <version>${revision}</version>
+  <version>0.0.1-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <!-- Properties Management -->
@@ -22,7 +22,6 @@ xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xs
     <!-- Default version -->
     <source.version>1.8</source.version>
     <target.version>1.8</target.version>
-    <revision>0.0.1-SNAPSHOT</revision>
     <protobuf-java.version>4.33.0</protobuf-java.version>
     <org.codehaus.mojo.version>3.0.0</org.codehaus.mojo.version>
     <maven-compiler-plugin.version>3.8.1</maven-compiler-plugin.version>

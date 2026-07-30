@@ -25,6 +25,11 @@
 #include <optimizer/paths.h>
 #include <access/ginblock.h>
 
+#if PG_VERSION_NUM >= 180000
+#include <commands/explain_format.h>
+#include <executor/executor.h>
+#endif
+
 #include "io/bson_core.h"
 #include "customscan/bson_custom_query_scan.h"
 #include "customscan/custom_scan_registrations.h"
@@ -191,26 +196,17 @@ AddExtensionQueryScanForVectorQuery(PlannerInfo *root, RelOptInfo *rel,
 	inputState->querySearchData = *searchQueryData;
 	inputState->hasVectorSearchData = true;
 
-	if (EnableVectorPreFilter)
-	{
-		bool failIfNotFound = true;
-		rel->pathlist = AddCustomPathForVectorCore(root, rel->pathlist, rel, inputState,
-												   failIfNotFound);
+	bool failIfNotFound = true;
+	rel->pathlist = AddCustomPathForVectorCore(root, rel->pathlist, rel, inputState,
+											   failIfNotFound);
 
-		if (rel->partial_pathlist != NIL)
-		{
-			failIfNotFound = false;
-			rel->partial_pathlist = AddCustomPathForVectorCore(root,
-															   rel->partial_pathlist, rel,
-															   inputState,
-															   failIfNotFound);
-		}
-	}
-	else
+	if (rel->partial_pathlist != NIL)
 	{
-		TrySetDefaultSearchParamForCustomScan(&(inputState->querySearchData));
-		rel->pathlist = AddCustomPathCore(rel->pathlist, inputState);
-		rel->partial_pathlist = AddCustomPathCore(rel->partial_pathlist, inputState);
+		failIfNotFound = false;
+		rel->partial_pathlist = AddCustomPathForVectorCore(root,
+														   rel->partial_pathlist, rel,
+														   inputState,
+														   failIfNotFound);
 	}
 }
 
@@ -284,7 +280,7 @@ AddCustomPathCore(List *pathList, InputQueryState *queryState)
 		customPath->flags = CUSTOMPATH_SUPPORT_PROJECTION;
 #endif
 
-		/* store the continuation data */
+		/* Save the continuation data into storage */
 		queryState->extensible.type = T_ExtensibleNode;
 		queryState->extensible.extnodename = InputContinuationNodeName;
 
@@ -351,14 +347,14 @@ AddCustomPathForVectorCore(PlannerInfo *planner, List *pathList, RelOptInfo *rel
 		searchBson = DatumGetPgBson(queryState->querySearchData.SearchParamBson);
 	}
 
-	if (searchBson == NULL || IsPgbsonEmptyDocument(searchBson))
-	{
-		IndexPath *indexPath = (IndexPath *) vectorSearchPath;
-
-		pgbson *defaultSearchParam = CalculateSearchParamBsonForIndexPath(indexPath);
-
-		queryState->querySearchData.SearchParamBson = PointerGetDatum(defaultSearchParam);
-	}
+	/* For normal vector search, if the search param is not specified, searchBson will be NULL
+	 * For filtering vector search, if the search param is not specified, searchBson contains the iterative param
+	 * We let index specific handler to decide if the default search param is needed or not
+	 */
+	IndexPath *indexPath = (IndexPath *) vectorSearchPath;
+	pgbson *defaultSearchParam = CalculateSearchParamBsonForIndexPath(indexPath,
+																	  searchBson);
+	queryState->querySearchData.SearchParamBson = PointerGetDatum(defaultSearchParam);
 
 	/* wrap the path in a custom path */
 	CustomPath *customPath = makeNode(CustomPath);
@@ -395,7 +391,7 @@ AddCustomPathForVectorCore(PlannerInfo *planner, List *pathList, RelOptInfo *rel
 	customPath->flags = CUSTOMPATH_SUPPORT_PROJECTION;
 #endif
 
-	/* store the continuation data */
+	/* Save the continuation data into storage */
 	queryState->extensible.type = T_ExtensibleNode;
 	queryState->extensible.extnodename = InputContinuationNodeName;
 
@@ -432,7 +428,7 @@ ExtensionQueryScanPlanCustomPath(PlannerInfo *root,
 	cscan->custom_private = best_path->custom_private;
 	cscan->custom_plans = custom_plans;
 
-	/* There should only be 1 plan here */
+	/* Only one plan is allowed here */
 	Assert(list_length(custom_plans) == 1);
 
 	/* The main plan comes in first */
@@ -504,7 +500,7 @@ static void
 ExtensionQueryScanBeginCustomScan(CustomScanState *node, EState *estate,
 								  int eflags)
 {
-	/* Initialize the actual state of the plan */
+	/* Initialize the current state of the plan */
 	ExtensionQueryScanState *queryScanState = (ExtensionQueryScanState *) node;
 
 	/* Add any custom per query level stuff here (Setting probes, details for $project)
@@ -517,7 +513,7 @@ ExtensionQueryScanBeginCustomScan(CustomScanState *node, EState *estate,
 
 	if (queryScanState->inputState->hasVectorSearchData)
 	{
-		pgbson *searchParamBson = (pgbson *) DatumGetPointer(
+		pgbson *searchParamBson = DatumGetPgBson_MAYBE_NULL(
 			queryScanState->inputState->querySearchData.SearchParamBson);
 
 		if (searchParamBson != NULL)

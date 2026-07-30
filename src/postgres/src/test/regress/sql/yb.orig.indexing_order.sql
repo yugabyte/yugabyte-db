@@ -230,4 +230,3 @@ SET yb_use_hash_splitting_by_default = false;
 
 CREATE TABLE like_hash_table (like hash_table including all) TABLEGROUP postgres_ordering;
 
-DROP FUNCTION get_table_indexes(text);

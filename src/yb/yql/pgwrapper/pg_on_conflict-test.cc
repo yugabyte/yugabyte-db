@@ -480,5 +480,81 @@ TEST_F_EX(PgOnConflictTest, EarlyAbortSingleStatementReadCommittedTxn, PgFailOnC
   thread_holder.Wait(30s * kTimeMultiplier);
 }
 
+// Main thread: Dist write + fast path write
+// Issue #30551: fast path write may miss the dist write before it.
+// Case: INSERT --> UPDATE
+TEST_F(PgOnConflictTest, InconsistentFastPathUpdate) {
+  constexpr auto kTimeout = 300s;
+  constexpr int kBatchSize = 5000;
+  constexpr int kDeleterBatchThreshold = 2;
+
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute(
+      "CREATE TABLE monitor_probe ("
+      "  batch_id       BIGINT NOT NULL,"
+      "  sequence_num   BIGINT NOT NULL,"
+      "  update_payload TEXT,"
+      "  PRIMARY KEY ((batch_id, sequence_num) HASH)"
+      ")"));
+
+  TestThreadHolder thread_holder;
+  std::atomic<int64_t> completed_batches{0};
+  std::atomic<int64_t> deleter_last_deleted_batch{-1};
+
+  // Writer: INSERT + UPDATE each row (5000 rows/batch), tracks completed batches.
+  thread_holder.AddThreadFunctor(
+      [this, &stop = thread_holder.stop_flag(), &completed_batches] {
+    auto conn = ASSERT_RESULT(Connect());
+    int64_t batch_id = 0;
+    while (!stop.load()) {
+      for (int seq = 0; seq < kBatchSize && !stop.load(); ++seq) {
+        ASSERT_OK(conn.ExecuteFormat(
+            "INSERT INTO monitor_probe (batch_id, sequence_num, update_payload) "
+            "VALUES ($0, $1, 'inserted') ON CONFLICT (batch_id, sequence_num) DO NOTHING",
+            batch_id, seq));
+        auto res = ASSERT_RESULT(conn.FetchRows<std::string>(Format(
+            "UPDATE monitor_probe SET update_payload = 'updated' "
+            "WHERE batch_id = $0 AND sequence_num = $1 RETURNING update_payload",
+            batch_id, seq)));
+        ASSERT_EQ(res.size(), 1)
+            << "UPDATE affected 0 rows (row disappeared): batch=" << batch_id
+            << " seq=" << seq;
+      }
+      completed_batches.store(batch_id + 1);
+      LOG(INFO) << "Writer completed batch " << batch_id;
+      ++batch_id;
+    }
+  });
+
+  // Deleter: removes entire batches once writer is 2+ batches ahead.
+  thread_holder.AddThreadFunctor(
+      [this, &stop = thread_holder.stop_flag(),
+       &completed_batches, &deleter_last_deleted_batch] {
+    auto conn = ASSERT_RESULT(Connect());
+    while (!stop.load()) {
+      auto completed = completed_batches.load();
+      auto last_deleted = deleter_last_deleted_batch.load();
+      auto batch_to_delete = last_deleted + 1;
+      if (batch_to_delete < completed &&
+          (completed - 1 - last_deleted) >= kDeleterBatchThreshold) {
+        // Do not ASSERT that the DELETE is successful.
+        // DELETE may fail due to the issue described in #30563.
+        auto s = conn.ExecuteFormat(
+            "DELETE FROM monitor_probe WHERE batch_id = $0", batch_to_delete);
+        if (!s.ok()) {
+          LOG(WARNING) << "Delete of batch " << batch_to_delete << " failed: " << s;
+          continue;
+        }
+        deleter_last_deleted_batch.store(batch_to_delete);
+        LOG(INFO) << "Deleter completed batch " << batch_to_delete;
+      } else {
+        SleepFor(10ms);
+      }
+    }
+  });
+
+  thread_holder.WaitAndStop(kTimeout);
+}
+
 } // namespace pgwrapper
 } // namespace yb

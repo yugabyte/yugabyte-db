@@ -57,21 +57,18 @@ mkdir -p $DESTINSTALLDIR/lib/intelmathlib
 echo "Moving to $MATH_LIB_WITH_VERSION/lib/intelmathlib"
 cd $MATH_LIB_WITH_VERSION/lib/intelmathlib
 
-# see https://netlib.org/misc/intel/ pointed to from https://www.intel.com/content/www/us/en/developer/articles/tool/intel-decimal-floating-point-math-library.html
-curl https://netlib.org/misc/intel/$MATH_LIB_WITH_VERSION.tar.gz -o ./$MATH_LIB_WITH_VERSION.tar.gz
+git init
+# This repo is based on Intel Decimal Floating-Point Math Library, with patches applied to support more architecture types
+git remote add origin https://git.launchpad.net/ubuntu/+source/intelrdfpmath
 
-tar -xf ./$MATH_LIB_WITH_VERSION.tar.gz --strip-components 1
-
-# Remove the tar file
-rm -rf $MATH_LIB_WITH_VERSION.tar.gz
+git fetch --depth 1 origin "$MATH_LIB_VERSION"
+git checkout FETCH_HEAD
 
 # Build the library with -fPIC so that it is linked properly and also other variables are defined to configure the library
 cd LIBRARY
 make -sj$(cat /proc/cpuinfo | grep -c "processor") _CFLAGS_OPT=-fPIC CC=gcc CALL_BY_REF=0 GLOBAL_RND=0 GLOBAL_FLAGS=0 UNCHANGED_BINARY_FLAGS=0
 
 # Create a package config file to easily locate the lib
-
-
 cd $INSTALL_DEPENDENCIES_ROOT/$MATH_LIB_WITH_VERSION
 touch intelmathlib.pc
 echo "prefix=$DESTINSTALLDIR/lib/intelmathlib" >> intelmathlib.pc

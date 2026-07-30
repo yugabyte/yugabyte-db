@@ -1,51 +1,115 @@
-import { forwardRef, useContext, useImperativeHandle } from 'react';
+import { forwardRef, useContext, useImperativeHandle, useState } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
+import { useUpdateEffect } from 'react-use';
+import { FormProvider, useForm } from 'react-hook-form';
+import { yupResolver } from '@hookform/resolvers/yup';
+import { mui, YBAccordion, YBAlert, AlertVariant } from '@yugabyte-ui-library/core';
+import { YCQField, YSQLField, ConnectionPoolingField, PGCompatibiltyField } from '../../fields';
+import { StyledPanel, StyledHeader, StyledContent } from '../../components/DefaultComponents';
+import { GFlagsFieldNew } from '../../../../../features/universe/universe-form/form/fields/GflagsField/GflagsFieldNew';
+import { DatabaseValidationSchema } from './ValidationSchema';
 import {
   CreateUniverseContext,
   CreateUniverseContextMethods,
   StepsRef
 } from '../../CreateUniverseContext';
-import { FormProvider, useForm } from 'react-hook-form';
-import { yupResolver } from '@hookform/resolvers/yup';
-import { useTranslation } from 'react-i18next';
-import { mui, YBAccordion } from '@yugabyte-ui-library/core';
-import { FormHelperText } from '@material-ui/core';
+import { usePersistStepFormValues } from '../../helpers/persistStepFormValues';
 import { DatabaseSettingsProps } from './dtos';
-import { YCQField, YSQLField, ConnectionPoolingField, PGCompatibiltyField } from '../../fields';
-import { StyledPanel, StyledHeader, StyledContent } from '../../components/DefaultComponents';
-import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
-import { GFlagsFieldNew } from '../../../../../features/universe/universe-form/form/fields/GflagsField/GflagsFieldNew';
-import { DatabaseValidationSchema } from './ValidationSchema';
+import { getConnectionPoolingPortsFromAdvanced } from '../../helpers/syncConnectionPoolingPorts';
+import {
+  YSQL_FIELD,
+  YCQL_FIELD,
+  YSQL_AUTH_FIELD,
+  YCQL_AUTH_FIELD,
+  YSQL_CONFIRM_PWD,
+  YCQL_CONFIRM_PWD,
+  GFLAGS_FIELD
+} from '../../fields/FieldNames';
 
-const { Box } = mui;
+//icons
+import ErrorIcon from '../../../../../assets/error-new.svg';
+
+const { Box, styled, Typography } = mui;
+
+export const StyledError = styled(Typography)(({ theme }) => ({
+  fontSize: 11.5,
+  color: theme.palette.error[500],
+  fontWeight: 400,
+  lineHeight: '16px'
+}));
 
 export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
   const [
-    { databaseSettings, generalSettings },
+    { databaseSettings, generalSettings, otherAdvancedSettings },
     { moveToNextPage, moveToPreviousPage, saveDatabaseSettings }
-  ] = (useContext(CreateUniverseContext) as unknown) as CreateUniverseContextMethods;
+  ] = useContext(CreateUniverseContext) as unknown as CreateUniverseContextMethods;
 
   const { t } = useTranslation('translation', {
-    keyPrefix: 'createUniverseV2.databaseSettings'
+    keyPrefix: 'createUniverseV2'
   });
 
+  // Prefer Advanced ports when remounting only if CP + override ports are enabled.
+  const shouldSyncCpPorts =
+    !!databaseSettings?.enableConnectionPooling && !!databaseSettings?.overrideCPPorts;
+  const syncedCpPorts = shouldSyncCpPorts
+    ? getConnectionPoolingPortsFromAdvanced(otherAdvancedSettings)
+    : {};
   const methods = useForm<DatabaseSettingsProps>({
     resolver: yupResolver(DatabaseValidationSchema()),
     defaultValues: {
-      ysqlServerRpcPort: DEFAULT_COMMUNICATION_PORTS.ysqlServerRpcPort,
-      internalYsqlServerRpcPort: DEFAULT_COMMUNICATION_PORTS.internalYsqlServerRpcPort,
-      ...databaseSettings
+      overrideCPPorts: false,
+      ...databaseSettings,
+      ...syncedCpPorts
     },
     mode: 'onChange'
   });
 
-  const { control } = methods;
+  usePersistStepFormValues(methods.watch, methods.getValues, saveDatabaseSettings);
+
+  const [showErrorsAfterSubmit, setShowErrorsAfterSubmit] = useState(false);
+  const { trigger, formState, watch, control, setError, clearErrors } = methods;
+  const { errors } = formState;
+  const hasErrors = Object.keys(errors).length > 0;
+
+  const enableYSQLVal = watch(YSQL_FIELD);
+  const enableYCQLVal = watch(YCQL_FIELD);
+  const enableYSQLAuth = watch(YSQL_AUTH_FIELD);
+  const enableYCQLAuth = watch(YCQL_AUTH_FIELD);
+  const ysqlConfirmPwd = watch(YSQL_CONFIRM_PWD);
+  const ycqlConfirmPwd = watch(YCQL_CONFIRM_PWD);
+  const gflagVal = watch(GFLAGS_FIELD);
+
+  useUpdateEffect(() => {
+    if (!enableYCQLVal && !enableYSQLVal) {
+      setError(YSQL_FIELD, {
+        type: 'custom',
+        message: 'You must select at least one API interface.'
+      });
+    } else clearErrors(YSQL_FIELD);
+  }, [enableYSQLVal, enableYCQLVal]);
+
+  useUpdateEffect(() => {
+    if (!showErrorsAfterSubmit) return;
+    trigger().then((isValid) => {
+      if (isValid) setShowErrorsAfterSubmit(false);
+    });
+  }, [
+    showErrorsAfterSubmit,
+    enableYSQLVal,
+    enableYCQLVal,
+    ysqlConfirmPwd,
+    ycqlConfirmPwd,
+    enableYSQLAuth,
+    enableYCQLAuth,
+    trigger
+  ]);
 
   useImperativeHandle(
     forwardRef,
     () => ({
       onNext: () => {
-        return methods.handleSubmit((data) => {
-          saveDatabaseSettings(data);
+        setShowErrorsAfterSubmit(true);
+        return methods.handleSubmit(() => {
           moveToNextPage();
         })();
       },
@@ -58,43 +122,59 @@ export const DatabaseSettings = forwardRef<StepsRef>((_, forwardRef) => {
 
   return (
     <FormProvider {...methods}>
-      <StyledPanel>
-        <StyledHeader>{t('interface')}</StyledHeader>
-        <StyledContent>
-          <YSQLField />
-          <YCQField />
-          {methods?.formState.errors?.ysql?.enable && (
-            <FormHelperText error>{methods.formState.errors.ysql.enable.message}</FormHelperText>
-          )}
-        </StyledContent>
-      </StyledPanel>
-      <Box sx={{ mt: 3 }}></Box>
-      <StyledPanel>
-        <StyledHeader>{t('features')}</StyledHeader>
-        <StyledContent>
-          <ConnectionPoolingField
-            disabled={false}
+      <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '24px' }}>
+        <StyledPanel>
+          <StyledHeader>{t('databaseSettings.interface')}</StyledHeader>
+          <StyledContent sx={{ gap: '16px' }}>
+            {errors?.ysql?.enable?.message && showErrorsAfterSubmit && (
+              <StyledError>
+                <ErrorIcon />
+                &nbsp;{errors?.ysql?.enable?.message}
+              </StyledError>
+            )}
+            <YSQLField />
+            <YCQField />
+          </StyledContent>
+        </StyledPanel>
+        <StyledPanel>
+          <StyledHeader>{t('databaseSettings.features')}</StyledHeader>
+          <StyledContent sx={{ gap: '16px' }}>
+            <ConnectionPoolingField
+              disabled={false}
+              dbVersion={generalSettings?.databaseVersion ?? ''}
+            />
+            <PGCompatibiltyField
+              disabled={false}
+              dbVersion={generalSettings?.databaseVersion ?? ''}
+            />
+          </StyledContent>
+        </StyledPanel>
+        <YBAccordion
+          titleContent={t('databaseSettings.advFlags')}
+          sx={{ width: '100%' }}
+          defaultExpanded={gflagVal?.length > 0 ? true : false}
+        >
+          <GFlagsFieldNew
+            control={control}
+            fieldPath={GFLAGS_FIELD}
             dbVersion={generalSettings?.databaseVersion ?? ''}
+            isReadReplica={false}
+            editMode={false}
+            isGFlagMultilineConfEnabled={false}
+            isPGSupported={false}
+            isReadOnly={false}
           />
-          <PGCompatibiltyField
-            disabled={false}
-            dbVersion={generalSettings?.databaseVersion ?? ''}
+        </YBAccordion>
+      </Box>
+      {showErrorsAfterSubmit && hasErrors && (
+        <Box>
+          <YBAlert
+            open
+            variant={AlertVariant.Error}
+            text={<Trans t={t}>{t('validation.alertMsg')}</Trans>}
           />
-        </StyledContent>
-      </StyledPanel>
-      <Box sx={{ mt: 3 }}></Box>
-      <YBAccordion titleContent={t('advFlags')} sx={{ width: '100%' }}>
-        <GFlagsFieldNew
-          control={control}
-          fieldPath={'gFlags'}
-          dbVersion={generalSettings?.databaseVersion ?? ''}
-          isReadReplica={false}
-          editMode={false}
-          isGFlagMultilineConfEnabled={false}
-          isPGSupported={false}
-          isReadOnly={false}
-        />
-      </YBAccordion>
+        </Box>
+      )}
     </FormProvider>
   );
 });

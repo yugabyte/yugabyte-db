@@ -59,6 +59,7 @@
 namespace yb {
 template<class T>
 class AtomicGauge;
+class Cgroup;
 class MemTracker;
 class MetricEntity;
 class ThreadPoolToken;
@@ -232,7 +233,11 @@ class PeerMessageQueue {
   virtual void SetLeaderMode(const OpId& committed_op_id,
                              int64_t current_term,
                              const OpId& last_applied_op_id,
+                             const OpId& pending_config_op_id,
                              const RaftConfigPB& active_config);
+
+  void SetPendingConfigOpId(const OpId& pending_config_op_id);
+  void ClearPendingConfigOpId();
 
   // Changes the queue to non-leader mode. Currently tracked peers will still be tracked so that the
   // cache is only evicted when the peers no longer need the operations but the queue will no longer
@@ -300,7 +305,7 @@ class PeerMessageQueue {
 
   // Scans the peers_map_ and returns a pointer to the closest peer for the passed remote peer.
   // Reutrns NULL if all tracked peers in the peers_map_ don't have CloudInfoPB specified.
-  const TrackedPeer* FindClosestPeerForBootstrap(const TrackedPeer* remote_tracked_peer)
+  Result<const TrackedPeer*> FindClosestPeerForBootstrap(const TrackedPeer* remote_tracked_peer)
       REQUIRES(queue_lock_);
 
   // Increment failed_bootstrap_attempts_from_non_leader for the given peer. The method should only
@@ -429,10 +434,13 @@ class PeerMessageQueue {
 
   std::vector<FollowerCommunicationTime> GetFollowerCommunicationTimes() const;
 
+  void SetNotificationStrandCgroup(Cgroup* cgroup);
+
  private:
   FRIEND_TEST(ConsensusQueueTest, TestQueueAdvancesCommittedIndex);
   FRIEND_TEST(ConsensusQueueTest, TestReadReplicatedMessagesForCDC);
   FRIEND_TEST(ConsensusQueueDelayedCommitTest, TestReadReplicatedMessagesForXCluster);
+  FRIEND_TEST(ConsensusQueuePeerGotAllOpsTest, PeerGotAllOpsRequiresAllAppendedOps);
 
   // Mode specifies how the queue currently behaves:
   //
@@ -500,6 +508,9 @@ class PeerMessageQueue {
 
     // The currently-active raft config. Only set if in LEADER mode.
     std::unique_ptr<RaftConfigPB> active_config;
+
+    // The op ID of the pending Raft config, if any. Only set if in LEADER mode.
+    OpId pending_config_op_id = OpId();
 
     std::string ToString() const;
   };
@@ -584,17 +595,18 @@ class PeerMessageQueue {
   Result<ReadOpsResult> ReadFromLogCache(
       int64_t after_index, int64_t to_index, size_t max_batch_size, const std::string& peer_uuid,
       log::ObeyMemoryLimit obey_memory_limit,
-      const CoarseTimePoint deadline = CoarseTimePoint::max(), bool fetch_single_entry = false);
+      const CoarseTimePoint deadline = CoarseTimePoint::max(), bool fetch_single_entry = false,
+      const OpId* known_preceding_op = nullptr);
 
   // May return status Busy if obey_memory_limit is true and reading even one operation would exceed
   // the log reader memory tracker limit.
   Result<ReadOpsResult> ReadFromLogCacheForXRepl(
-      int64_t last_op_id_index, int64_t to_index, log::ObeyMemoryLimit obey_memory_limit,
+      const yb::OpId& last_op_id, int64_t to_index, log::ObeyMemoryLimit obey_memory_limit,
       CoarseTimePoint deadline = CoarseTimePoint::max(), bool fetch_single_entry = false);
 
   std::pair<int64_t, int64_t> GetCommittedAndMajorityReplicatedIndex();
 
-  int64_t GetStartOpIdIndex(int64_t start_index);
+  Result<int64_t> GetStartOpIdIndex(int64_t start_index);
 
   void TEST_WaitForNotificationToFinish();
 

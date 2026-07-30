@@ -49,6 +49,8 @@ TAG_FLAG(create_initial_sys_catalog_snapshot, hidden);
 DEFINE_test_flag(bool, fail_initdb_after_snapshot_restore, false,
                  "Kill the master process after successfully restoring the sys catalog snapshot.");
 
+DECLARE_bool(enable_ysql);
+
 using yb::tserver::TabletSnapshotOpResponsePB;
 using yb::tablet::SnapshotOperation;
 using yb::pb_util::ReadPBContainerFromPath;
@@ -80,7 +82,8 @@ void InitialSysCatalogSnapshotWriter::AddMetadataChange(
 Status InitialSysCatalogSnapshotWriter::WriteSnapshot(
     tablet::Tablet* sys_catalog_tablet,
     const std::string& dest_path) {
-  RETURN_NOT_OK(sys_catalog_tablet->Flush(yb::tablet::FlushMode::kSync));
+  RETURN_NOT_OK(sys_catalog_tablet->Flush(
+      yb::tablet::FlushMode::kSync, rocksdb::FlushReason::kSysCatalogFlush));
   RETURN_NOT_OK(Env::Default()->CreateDir(dest_path));
   RETURN_NOT_OK(sys_catalog_tablet->snapshots().CreateCheckpoint(
       JoinPathSegments(dest_path, kSysCatalogSnapshotRocksDbSubDir)));

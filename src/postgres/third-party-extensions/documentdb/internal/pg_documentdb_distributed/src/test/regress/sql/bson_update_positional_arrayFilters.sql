@@ -4,122 +4,122 @@ SET documentdb.next_collection_id TO 2200;
 SET documentdb.next_collection_index_id TO 2200;
 
 -- arrayFilters with aggregation pipeline
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{"_id": 1 }','{ "": [ { "$addFields": { "c.d": 1 } }]}', '{}', '{ "": [] }');
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{"_id": 1 }','{ "": [ { "$addFields": { "c.d": 1 } }]}', '{}', NULL);
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{"_id": 1 }','{ "": [ { "$addFields": { "c.d": 1 } }]}', '{}', '{ "": [ { "foo": 2 }]}');
+SELECT documentdb_api_internal.update_bson_document(
+    '{"_id": 1 }','{ "": [ { "$addFields": { "fieldA.fieldB": 10 } }]}', '{}', NULL::documentdb_core.bson, NULL::documentdb_core.bson, NULL::TEXT);
+SELECT documentdb_api_internal.update_bson_document(
+    '{"_id": 1 }','{ "": [ { "$addFields": { "fieldA.fieldB": 10 } }]}', '{}', NULL::documentdb_core.bson, NULL::documentdb_core.bson, NULL::TEXT);
+SELECT documentdb_api_internal.update_bson_document(
+    '{"_id": 1 }','{ "": [ { "$addFields": { "fieldA.fieldB": 10 } }]}', '{}', '{ "": [ { "filterX": 30 }]}', NULL::documentdb_core.bson, NULL::TEXT);
 
 -- arrayFilters ignored on replace
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{"_id": 1 }','{ "": { "a": 2 } }', '{}', '{ "": [ { "foo": 2 }]}');
+SELECT documentdb_api_internal.update_bson_document(
+    '{"_id": 1 }','{ "": { "fieldC": 40 } }', '{}', '{ "": [ { "filterX": 50 }]}', NULL::documentdb_core.bson, NULL::TEXT);
 
 -- arrayFilters with update fails - missing array filter
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{"_id": 1 }','{ "": { "$set": { "a.$[a]": 2 }}}', '{}', '{ "": [] }');
+SELECT documentdb_api_internal.update_bson_document(
+    '{"_id": 1 }','{ "": { "$set": { "arrayA.$[itemA]": 60 }}}', '{}', '{ "": [] }', NULL::documentdb_core.bson, NULL::TEXT);
 
 -- arrayFilters with update fails - invalid array filters
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{"_id": 1 }','{ "": { "$set": { "a.$[a]": 2 }}}', '{}', '{ "": [ 1 ] }');
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{"_id": 1 }','{ "": { "$set": { "a.$[a]": 2 }}}', '{}', '{ "": [ {} ] }');
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{"_id": 1 }','{ "": { "$set": { "a.$[a]": 2 }}}', '{}', '{ "": [ { "": 1} ] }');
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{"_id": 1 }','{ "": { "$set": { "a.$[a]": 2 }}}', '{}', '{ "": [ { "a": 1, "b.c": 1 } ] }');
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{"_id": 1 }','{ "": { "$set": { "a.$[a]": 2 }}}', '{}', '{ "": [ { "a": 1 }, { "a": 2 } ] }');
+SELECT documentdb_api_internal.update_bson_document(
+    '{"_id": 1 }','{ "": { "$set": { "arrayA.$[itemA]": 70 }}}', '{}', '{ "": [ 2 ] }', NULL::documentdb_core.bson, NULL::TEXT);
+SELECT documentdb_api_internal.update_bson_document(
+    '{"_id": 1 }','{ "": { "$set": { "arrayA.$[itemA]": 70 }}}', '{}', '{ "": [ {} ] }', NULL::documentdb_core.bson, NULL::TEXT);
+SELECT documentdb_api_internal.update_bson_document(
+    '{"_id": 1 }','{ "": { "$set": { "arrayA.$[itemA]": 70 }}}', '{}', '{ "": [ { "": 3} ] }', NULL::documentdb_core.bson, NULL::TEXT);
+SELECT documentdb_api_internal.update_bson_document(
+    '{"_id": 1 }','{ "": { "$set": { "arrayA.$[itemA]": 70 }}}', '{}', '{ "": [ { "itemA": 4, "itemB.itemC": 5 } ] }', NULL::documentdb_core.bson, NULL::TEXT);
+SELECT documentdb_api_internal.update_bson_document(
+    '{"_id": 1 }','{ "": { "$set": { "arrayA.$[itemA]": 70 }}}', '{}', '{ "": [ { "itemA": 6 }, { "itemA": 7 } ] }', NULL::documentdb_core.bson, NULL::TEXT);
 
 -- simple array update on equality
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{"_id": 1, "myArray": [ 0, 1 ] }','{ "": { "$set": { "myArray.$[element]": 2 }}}', '{}', '{ "": [{ "element": 0 }] }');
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{}','{ "": { "$set": { "myArray.$[element]": 2 }}}', '{"_id": 1, "myArray": [ 0, 1 ] }', '{ "": [{ "element": 0 }] }');
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{"_id": 1 }','{ "": { "$set": { "myArray.$[element]": 2 }}}', '{}', '{ "": [{ "element": 0 }] }');
+SELECT documentdb_api_internal.update_bson_document(
+    '{"_id": 1, "numbers": [ 100, 200 ] }','{ "": { "$set": { "numbers.$[numElem]": 300 }}}', '{}', '{ "": [{ "numElem": 100 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+SELECT documentdb_api_internal.update_bson_document(
+    '{}','{ "": { "$set": { "numbers.$[numElem]": 300 }}}', '{"_id": 1, "numbers": [ 100, 200 ] }', '{ "": [{ "numElem": 100 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+SELECT documentdb_api_internal.update_bson_document(
+    '{"_id": 1 }','{ "": { "$set": { "numbers.$[numElem]": 300 }}}', '{}', '{ "": [{ "numElem": 100 }] }', NULL::documentdb_core.bson, NULL::TEXT);
 
 -- updates on $gte condition
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{ "_id" : 1, "grades" : [ 95, 92, 90 ] }','{ "": { "$set": { "grades.$[element]": 100 }}}', '{}', '{ "": [{ "element": { "$gte": 100 } }] }');
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{ "_id" : 3, "grades" : [ 95, 110, 100, 98, 102 ] }','{ "": { "$set": { "grades.$[element]": 100 }}}', '{}', '{ "": [{ "element": { "$gte": 100 } }] }');
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "scores" : [ 150, 120, 110 ], "age": 15 }','{ "": { "$set": { "scores.$[scoreElem]": 200 }}}', '{}', '{ "": [{ "scoreElem": { "$gte": 200 } }] }', NULL::documentdb_core.bson, NULL::TEXT);
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 3, "scores" : [ 150, 210, 200, 180, 202 ], "age": 16 }','{ "": { "$set": { "scores.$[scoreElem]": 200 }}}', '{}', '{ "": [{ "scoreElem": { "$gte": 200 } }] }', NULL::documentdb_core.bson, NULL::TEXT);
 
 -- nested arrayFilters.
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{ "_id" : 3, "grades" : [ { "grade": 80, "mean": 75, "std": 6}, { "grade": 85, "mean": 90, "std": 4 }, { "grade": 87, "mean": 85, "std": 6 } ] }',
-    '{ "": { "$set": { "grades.$[elem].mean": 100 }}}', '{}', '{ "": [{ "elem.grade": { "$gte": 85 } }] }');
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{ "_id" : 3, "grades" : [ { "grade": 80, "mean": 75, "std": 6}, { "grade": 85, "mean": 90, "std": 4 }, { "grade": 87, "mean": 85, "std": 6 } ] }',
-    '{ "": { "$inc": { "grades.$[elem].std": -50 }}}', '{}', '{ "": [{ "elem.grade": { "$gte": 85 }, "elem.std": { "$gte": 5 } }] }');
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{ "_id" : 3, "grades" : [ { "grade": 80, "mean": 75, "std": 6}, { "grade": 85, "mean": 90, "std": 4 }, { "grade": 87, "mean": 85, "std": 6 } ] }',
-    '{ "": { "$inc": { "grades.$[elem].std": -50 }}}', '{}', '{ "": [{ "elem.grade": { "$gte": 85 }, "elem.std": { "$gte": 4 } }] }');
-
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 3, "metrics" : [ { "value": 58, "max": 136, "avg": 66, "dev": 88}, { "value": 96, "max": 176, "avg": 99, "dev": 75}, { "value": 68, "max":168, "avg": 86, "dev": 83 } ] }',
+    '{ "": { "$set": { "metrics.$[metricElem].avg": 100 }}}', '{}', '{ "": [{ "metricElem.value": { "$gte": 60 } }] }', NULL::documentdb_core.bson, NULL::TEXT);
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 3, "metrics" : [ { "value": 58, "max": 136, "avg": 66, "dev": 88}, { "value": 96, "max": 176, "avg": 99, "dev": 75 }, { "value": 68, "max":168, "avg": 86, "dev": 83 } ] }',
+    '{ "": { "$inc": { "metrics.$[metricElem].dev": -50 }}}', '{}', '{ "": [{ "metricElem.value": { "$gte": 60 }, "metricElem.dev": { "$gte": 80 } }] }', NULL::documentdb_core.bson, NULL::TEXT);
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 3, "metrics" : [ { "value": 58, "max": 136, "avg": 66, "dev": 88}, { "value": 96, "max": 176, "avg": 99, "dev": 75 }, { "value": 68, "max":168, "avg": 86, "dev": 83 } ] }',
+    '{ "": { "$inc": { "metrics.$[metricElem].dev": -50 }}}', '{}', '{ "": [{ "metricElem.value": { "$gte": 60 }, "metricElem.dev": { "$gte": 75 } }] }', NULL::documentdb_core.bson, NULL::TEXT);
 
 -- negation operators
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{ "_id" : 1, "degrees" : [ { "level": "Master" }, { "level": "Bachelor" } ] }',
-    '{ "": { "$set" : { "degrees.$[degree].gradcampaign" : 1 }} }', '{}', '{ "": [{ "degree.level": { "$ne": "Bachelor" } }] }');
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "degreesList" : [ { "level": "PhD", "age": 28}, { "level": "Bachelor", "age": 22} ] }',
+    '{ "": { "$set" : { "degreesList.$[deg].gradYear" : 2020 }} }', '{}', '{ "": [{ "deg.level": { "$ne": "Bachelor" } }] }', NULL::documentdb_core.bson, NULL::TEXT);
 
 -- multiple positional operators
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{ "_id" : 1, "grades" : [ { "type": "quiz", "questions": [ 10, 8, 5 ] }, { "type": "quiz", "questions": [ 8, 9, 6 ] }, { "type": "hw", "questions": [ 5, 4, 3 ] }, { "type": "exam", "questions": [ 25, 10, 23, 0 ] }] }',
-    '{ "": { "$inc": { "grades.$[t].questions.$[score]": 90 }} }', '{}', '{ "": [{ "t.type": "quiz" }, { "score": { "$gte": 8 } }] }');
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{ "_id" : 1, "grades" : [ { "type": "quiz", "questions": [ 10, 8, 5 ] }, { "type": "quiz", "questions": [ 8, 9, 6 ] }, { "type": "hw", "questions": [ 5, 4, 3 ] }, { "type": "exam", "questions": [ 25, 10, 23, 0 ] }] }',
-    '{ "": { "$inc": { "grades.$[].questions.$[score]": 90 }} }', '{}', '{ "": [{ "score": { "$gte": 8 } }] }');
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{ "_id" : 1, "grades" : [ { "type": "quiz", "questions": [ 10, 8, 5 ] }, { "type": "quiz", "questions": [ 8, 9, 6 ] }, { "type": "hw", "questions": [ 5, 4, 3 ] }, { "type": "exam", "questions": [ 25, 10, 23, 0 ] }] }',
-    '{ "": { "$inc": { "grades.$[t].questions.$[]": 90 }} }', '{}', '{ "": [{ "t.type": "quiz" }] }');
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "results" : [ { "type": "quiz", "answers": [ 20, 18, 15 ] }, { "type": "quiz", "answers": [ 18, 19, 16 ] }, { "type": "hw", "answers": [ 15, 14, 13 ] }, { "type": "exam", "answers": [ 35, 20, 33, 10 ] }] }',
+    '{ "": { "$inc": { "results.$[typeElem].answers.$[ansScore]": 190 }} }', '{}', '{ "": [{ "typeElem.type": "quiz" }, { "ansScore": { "$gte": 18 } }] }', NULL::documentdb_core.bson, NULL::TEXT);
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "results" : [ { "type": "quiz", "answers": [ 20, 18, 15 ] }, { "type": "quiz", "answers": [ 18, 19, 16 ] }, { "type": "hw", "answers": [ 15, 14, 13 ] }, { "type": "exam", "answers": [ 35, 20, 33, 10 ] }] }',
+    '{ "": { "$inc": { "results.$[].answers.$[ansScore]": 190 }} }', '{}', '{ "": [{ "ansScore": { "$gte": 18 } }] }', NULL::documentdb_core.bson, NULL::TEXT);
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "results" : [ { "type": "quiz", "answers": [ 20, 18, 15 ] }, { "type": "quiz", "answers": [ 18, 19, 16 ] }, { "type": "hw", "answers": [ 15, 14, 13 ] }, { "type": "exam", "answers": [ 35, 20, 33, 10 ] }] }',
+        '{ "": { "$inc": { "results.$[typeElem].answers.$[]": 190 }} }', '{}',  '{ "": [{ "typeElem.type": "quiz" }] }', NULL::documentdb_core.bson, NULL::TEXT);
 
 -- arrayFilters for all Update operators should recurse if for a single level nested array
 -- array update operators
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{ "_id" : 1, "array" : [ [0], [1] ] }',
-    '{ "": { "$addToSet": { "array.$[i]": 2 }} }', '{}', '{ "": [{ "i": 0 }] }');
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{ "_id" : 1, "array" : [ [0, 1], [1, 2] ] }',
-    '{ "": { "$pop": { "array.$[i]": 1 }} }', '{}', '{ "": [{ "i": 0 }] }');
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{ "_id" : 1, "array" : [ [0, 1], [1, 2] ] }',
-    '{ "": { "$pull": { "array.$[i]": 1 }} }', '{}', '{ "": [{ "i": 2 }] }');
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{ "_id" : 1, "array" : [ [0, 1], [1, 2] ] }',
-    '{ "": { "$pull": { "array.$[i]": 1 }} }', '{}', '{ "": [{ "i": 2 }] }');
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{ "_id" : 1, "array" : [ [0, 1], [2, 3] ] }',
-    '{ "": { "$push": { "array.$[i]": 1 }} }', '{}', '{ "": [{ "i": 1 }] }');
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [0], [1] ] }',
+    '{ "": { "$addToSet": { "matrix.$[row]": 2 }} }', '{}', '{ "": [{ "row": 0 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [0, 1], [1, 2] ] }',
+    '{ "": { "$pop": { "matrix.$[row]": 1 }} }', '{}', '{ "": [{ "row": 0 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [0, 1], [1, 2] ] }',
+    '{ "": { "$pull": { "matrix.$[row]": 1 }} }', '{}', '{ "": [{ "row": 2 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [0, 1], [1, 2] ] }',
+    '{ "": { "$pull": { "matrix.$[row]": 1 }} }', '{}', '{ "": [{ "row": 2 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [0, 1], [2, 3] ] }',
+    '{ "": { "$push": { "matrix.$[row]": 1 }} }', '{}', '{ "": [{ "row": 1 }] }', NULL::documentdb_core.bson, NULL::TEXT);
 
 -- field update operators, should be able to match but apply update based on the type requirement
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{ "_id" : 1, "array" : [ [0], [1] ] }',
-    '{ "": { "$inc": { "array.$[i]": 10 }} }', '{}', '{ "": [{ "i": 0 }] }');
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{ "_id" : 1, "array" : [ [0], [1] ] }',
-    '{ "": { "$min": { "array.$[i]": 10 }} }', '{}', '{ "": [{ "i": 0 }] }');
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{ "_id" : 1, "array" : [ [0], [1] ] }',
-    '{ "": { "$max": { "array.$[i]": 10 }} }', '{}', '{ "": [{ "i": 0 }] }');
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{ "_id" : 1, "array" : [ [0], [1] ] }',
-    '{ "": { "$mul": { "array.$[i]": 2 }} }', '{}', '{ "": [{ "i": 0 }] }');
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{ "_id" : 1, "array" : [ [0], [1] ] }',
-    '{ "": { "$rename": { "array.$[i]": "a.3" }} }', '{}', '{ "": [{ "i": 0 }] }');
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{ "_id" : 1, "array" : [ [0], [1] ] }',
-    '{ "": { "$set": { "array.$[i]": "newValue" }} }', '{}', '{ "": [{ "i": 0 }] }');
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [0], [1] ] }',
+    '{ "": { "$inc": { "matrix.$[row]": 10 }} }', '{}', '{ "": [{ "row": 0 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [0], [1] ] }',
+    '{ "": { "$min": { "matrix.$[row]": 10 }} }', '{}', '{ "": [{ "row": 0 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [0], [1] ] }',
+    '{ "": { "$max": { "matrix.$[row]": 10 }} }', '{}', '{ "": [{ "row": 0 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [0], [1] ] }',
+    '{ "": { "$mul": { "matrix.$[row]": 2 }} }', '{}', '{ "": [{ "row": 0 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [0], [1] ] }',
+    '{ "": { "$rename": { "matrix.$[row]": "arrayA.3" }} }', '{}', '{ "": [{ "row": 0 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [0], [1] ] }',
+    '{ "": { "$set": { "matrix.$[row]": "updatedValue" }} }', '{}', '{ "": [{ "row": 0 }] }', NULL::documentdb_core.bson, NULL::TEXT);
 
 -- bit operator
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{ "_id" : 1, "array" : [ [0], [1] ] }',
-    '{ "": { "$bit": { "array.$[i]": {"or": 5} }} }', '{}', '{ "": [{ "i": 0 }] }');
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [0], [1] ] }',
+    '{ "": { "$bit": { "matrix.$[row]": {"or": 5} }} }', '{}', '{ "": [{ "row": 0 }] }', NULL::documentdb_core.bson, NULL::TEXT);
 
 -- Check array value should also match in arrayFilters
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{ "_id" : 1, "array" : [ [1,2,3], [4,5,6] ] }',
-    '{ "": { "$set": { "array.$[i]": [11,12,13] }} }', '{}', '{ "": [{ "i": [1,2,3] }] }');
-SELECT newDocument as bson_update_document FROM documentdb_api_internal.bson_update_document(
-    '{ "_id" : 1, "array" : [ [1,2,3], [4,5,6] ] }',
-    '{ "": { "$set": { "array.$[i]": 3 }} }', '{}', '{ "": [{ "i": {"$size": 3} }] }');
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [11,12,13], [14,15,16] ] }',
+    '{ "": { "$set": { "matrix.$[row]": [21,22,23] }} }', '{}', '{ "": [{ "row": [11,12,13] }] }', NULL::documentdb_core.bson, NULL::TEXT);
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [11,12,13], [14,15,16] ] }',
+    '{ "": { "$set": { "matrix.$[row]": 33 }} }', '{}', '{ "": [{ "row": {"$size": 3} }] }', NULL::documentdb_core.bson, NULL::TEXT);
+

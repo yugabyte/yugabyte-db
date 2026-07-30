@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import {
   OptionProps,
   RadioGroupOrientation,
+  YBButton as YBRedesignedButton,
   YBInput,
   YBInputField,
   YBRadioGroupField,
@@ -67,7 +68,6 @@ import {
   getIsFormDisabled,
   readFileAsText
 } from '../utils';
-import { YBButton as YBRedesignedButton } from '../../../../../redesign/components';
 import { QuickValidationErrorKeys } from './AWSProviderCreateForm';
 import { getInvalidFields, useValidationStyles } from './utils';
 import { DeleteRegionModal } from '../../components/DeleteRegionModal';
@@ -76,8 +76,7 @@ import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { YBBanner, YBBannerVariant } from '../../../../common/descriptors';
 import { RuntimeConfigKey, YBAHost } from '../../../../../redesign/helpers/constants';
 import { isAxiosError, isYBPBeanValidationError } from '../../../../../utils/errorHandlingUtils';
-import { CloudType } from '../../../../../redesign/helpers/dtos';
-import { YBPError, YBPStructuredError } from '../../../../../redesign/helpers/dtos';
+import { CloudType, YBPError, YBPStructuredError } from '../../../../../redesign/helpers/dtos';
 import { AWSProviderCredentialType, VPC_SETUP_OPTIONS } from './constants';
 import { VersionWarningBanner } from '../components/VersionWarningBanner';
 import { NTP_SERVER_REGEX } from '../constants';
@@ -273,7 +272,7 @@ export const AWSProviderEditForm = ({
       error.response?.data.error
     ) {
       // Handle YBBeanValidationError
-      const { errorSource, ...validationErrors } = error.response?.data.error;
+      const { errorSource, ...validationErrors } = error.response?.data.error ?? {};
       const invalidFields = validationErrors ? getInvalidFields(validationErrors) : [];
       if (invalidFields) {
         setQuickValidationErrors(validationErrors ?? null);

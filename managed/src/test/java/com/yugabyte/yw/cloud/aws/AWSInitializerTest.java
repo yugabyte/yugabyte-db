@@ -1,5 +1,6 @@
 package com.yugabyte.yw.cloud.aws;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -14,7 +15,6 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.ProviderDetails.CloudInfo;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import java.util.Arrays;
 import lombok.extern.slf4j.Slf4j;
@@ -53,14 +53,22 @@ public class AWSInitializerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testParseCompactStorageDetails() {
+    assertArrayEquals(
+        new String[] {"1", "x", "1900", "GB", "NVMe", "SSD"},
+        AWSInitializer.parseStorageDetails("1x1900 GB NVMe SSD"));
+  }
+
+  @Test
   public void testAWSInitializerAllInstanceTypes() {
 
     assertTrue(
         UniverseDefinitionTaskParams.hasEphemeralStorage(CloudType.aws, "x2gd.12xlarge", null));
     assertTrue(
         UniverseDefinitionTaskParams.hasEphemeralStorage(CloudType.aws, "i3en.2xlarge", null));
-
-    RuntimeConfigEntry.upsertGlobal("yb.internal.allow_unsupported_instances", "true");
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.internal.allow_unsupported_instances", "true");
     awsInitializer = app.injector().instanceOf(AWSInitializer.class);
     awsInitializer.initialize(customer.getUuid(), defaultProvider.getUuid());
 
@@ -87,7 +95,9 @@ public class AWSInitializerTest extends FakeDBApplication {
 
   @Test
   public void testAWSInitializerAllowedInstanceTypes() {
-    RuntimeConfigEntry.upsertGlobal("yb.internal.allow_unsupported_instances", "false");
+    mutableConfigFactory
+        .globalRuntimeConf()
+        .setValue("yb.internal.allow_unsupported_instances", "false");
     awsInitializer = app.injector().instanceOf(AWSInitializer.class);
     awsInitializer.initialize(customer.getUuid(), defaultProvider.getUuid());
 

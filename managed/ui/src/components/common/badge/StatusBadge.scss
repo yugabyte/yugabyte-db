@@ -36,7 +36,8 @@
   }
 
   &.QueuedForDeletion,
-  &.Stopping {
+  &.Stopping,
+  &.Paused {
     background: #ffeec8;
     color: #9d6c00;
   }

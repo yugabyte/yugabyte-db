@@ -26,9 +26,18 @@ struct od_server {
 	od_relay_t relay;
 	int is_allocated;
 	int is_transaction;
-	/* Copy stmt state */
-	uint64_t done_fail_response_received;
-	uint64_t in_out_response_received;
+	/*
+	 * YB: With CopyInResponse, sync is ignored till CopyDone/CopyFail is received
+	 * from client whereas in CopyOutResponse backend is responsible for sending
+	 * CopyDone/CopyFail packet followed by CopyOutResponse packet which works same
+	 * as any other acknowledgement packets send by postgres.
+	 * Therefore, handling for CopyInResponse is different from CopyOutResponse in conn mgr
+	 * hence using separate counters for them as well as corresponding done/fail packets.
+	 */
+	uint64_t yb_done_fail_for_copy_in_response;
+	uint64_t yb_done_fail_for_copy_out_response;
+	uint64_t yb_in_response_received;
+	uint64_t yb_out_response_received;
 	/**/
 	int deploy_sync;
 	od_stat_state_t stats_state;
@@ -40,7 +49,10 @@ struct od_server {
 
 	kiwi_key_t key;
 	kiwi_key_t key_client;
-	kiwi_vars_t vars;
+	/* vars set through SET statements */
+	kiwi_vars_t yb_vars_session;
+	/* YB: vars set as default, overriding the backend default */
+	kiwi_vars_t yb_vars_default;
 
 	machine_msg_t *error_connect;
 	/* od_client_t */
@@ -53,6 +65,18 @@ struct od_server {
 
 	/* allocated prepared statements ids */
 	od_hashmap_t *prep_stmts;
+	/* YB: LRU list and count of prep stmts */
+	od_list_t yb_prep_stmt_lru;
+	int yb_prep_stmt_count;
+
+	/*
+	 * YB: Stores prepared statements that were deallocated on backend,
+	 * but deferred eviction from server's prepared statement cache.
+	 */
+	od_hashmap_t *yb_close_prep_stmts;
+
+	/* YB: Outstanding parse queue for tracking unacknowledged parse operations */
+	yb_od_parse_queue_t parse_queue;
 
 	od_global_t *global;
 	int offline;
@@ -64,19 +88,29 @@ struct od_server {
 	/* YB */
 	bool yb_sticky_connection;
 	bool yb_replication_connection;
+	/* YB: true if this server has claimed a backend slot in yb_backends_in_use */
+	bool yb_slot_claimed;
 	bool reset_timeout;
 	/* is this an auth-backend? */
 	bool yb_auth_backend;
 
-	/* logical client version of the server. This field is populated 
+	/*
+	 * YB: logical client version of the server. This field is populated 
 	 * after backend is spawned.
 	 */
-	int64_t logical_client_version;
+	int64_t yb_logical_client_version;
 
-	/* If true, this server is marked for expiration to be
+	/*
+	 * YB: If true, this server is marked for expiration to be
 	 * eventually cleaned by cron job
 	 */
-	bool marked_for_close;
+	bool yb_marked_for_close;
+
+	/*
+	 * YB: Expiry time for the server in microseconds. The cron thread will
+	 * cleanup the server object if idle at or after this time
+	 */
+	uint64_t yb_expiry_time_us;
 
 	/*
 	 * The ID of the logical client that has sent parse message to the backend
@@ -84,6 +118,17 @@ struct od_server {
 	 * This would be cleared after server gets detached.
 	*/
 	od_id_t yb_unnamed_prep_stmt_client_id;
+
+	/*
+	 * YB: If this is true, it means that some packets have been sent to the
+	 * server after the last Sync packet. This means that we can't detach from
+	 * the server.
+	 *
+	 * This is helpful in case of pipelining when a client might've sent a Sync
+	 * immediately followed by more packets. In that case, simply checking that
+	 * number of RFQ == number of Sync is not sufficient for detaching.
+	 */
+	bool yb_has_unsynced_pending_packets;
 };
 
 static const size_t OD_SERVER_DEFAULT_HASHMAP_SZ = 420;
@@ -98,8 +143,10 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 	server->idle_time = 0;
 	server->is_allocated = 0;
 	server->is_transaction = 0;
-	server->done_fail_response_received = 0;
-	server->in_out_response_received = 0;
+	server->yb_done_fail_for_copy_in_response = 0;
+	server->yb_done_fail_for_copy_out_response = 0;
+	server->yb_in_response_received = 0;
+	server->yb_out_response_received = 0;
 	server->deploy_sync = 0;
 	server->sync_request = 0;
 	server->sync_reply = 0;
@@ -111,10 +158,13 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 	od_stat_state_init(&server->stats_state);
 	server->yb_sticky_connection = false;
 	server->yb_replication_connection = false;
+	server->yb_slot_claimed = false;
 	server->reset_timeout = false;
 	server->yb_auth_backend = false;
-	server->logical_client_version = 0;
-	server->marked_for_close = false;
+	server->yb_logical_client_version = UINT64_MAX;
+	server->yb_marked_for_close = false;
+	server->yb_expiry_time_us = UINT64_MAX;
+	server->yb_has_unsynced_pending_packets = false;
 
 #ifdef USE_SCRAM
 	od_scram_state_init(&server->scram_state);
@@ -122,7 +172,9 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 
 	kiwi_key_init(&server->key);
 	kiwi_key_init(&server->key_client);
-	kiwi_vars_init(&server->vars, true);
+	/* YB: The second param of init is same as corresponding lists in client */
+	kiwi_vars_init(&server->yb_vars_default, false);
+	kiwi_vars_init(&server->yb_vars_session, true);
 
 	od_io_init(&server->io);
 	od_relay_init(&server->relay, &server->io);
@@ -131,11 +183,19 @@ static inline void od_server_init(od_server_t *server, int reserve_prep_stmts)
 	memset(&server->yb_unnamed_prep_stmt_client_id, 0,
 	       sizeof(server->yb_unnamed_prep_stmt_client_id));
 
+	od_list_init(&server->yb_prep_stmt_lru);
+	server->yb_prep_stmt_count = 0;
+
+	yb_od_parse_queue_init(&server->parse_queue);
+
 	if (reserve_prep_stmts) {
 		server->prep_stmts =
 			od_hashmap_create(OD_SERVER_DEFAULT_HASHMAP_SZ);
+		server->yb_close_prep_stmts =
+			od_hashmap_create(OD_SERVER_DEFAULT_HASHMAP_SZ);
 	} else {
 		server->prep_stmts = NULL;
+		server->yb_close_prep_stmts = NULL;
 	}
 }
 
@@ -154,13 +214,15 @@ static inline void od_server_free(od_server_t *server)
 	if (server->is_allocated) {
 		od_relay_free(&server->relay);
 		od_io_free(&server->io);
+		yb_od_parse_queue_free(&server->parse_queue);
 		if (server->prep_stmts) {
 			od_hashmap_free(server->prep_stmts);
 		}
-		if (server->vars.vars != NULL) {
-			free(server->vars.vars);
-			server->vars.vars = NULL;
+		if (server->yb_close_prep_stmts) {
+			od_hashmap_free(server->yb_close_prep_stmts);
 		}
+		yb_kiwi_vars_free(&server->yb_vars_default);
+		yb_kiwi_vars_free(&server->yb_vars_session);
 		free(server);
 	}
 }
@@ -168,6 +230,8 @@ static inline void od_server_free(od_server_t *server)
 static inline void od_server_sync_request(od_server_t *server, uint64_t count)
 {
 	server->sync_request += count;
+	/* YB: A sync is sent, there are no unsynced packets now */
+	server->yb_has_unsynced_pending_packets = false;
 }
 
 static inline void od_server_sync_reply(od_server_t *server)
@@ -182,7 +246,26 @@ static inline int od_server_in_deploy(od_server_t *server)
 
 static inline int od_server_synchronized(od_server_t *server)
 {
-	return server->sync_request == server->sync_reply;
+	/*
+	 * YB: We are not synchronized as long as there have been packets
+	 * sent after the last sync
+	 */
+	return server->sync_request == server->sync_reply &&
+	       !server->yb_has_unsynced_pending_packets;
+}
+
+static inline bool yb_is_server_in_copy_mode(od_server_t *server)
+{
+	uint64_t total_in_out_response_received = server->yb_in_response_received +
+			server->yb_out_response_received;
+	uint64_t total_done_fail_received = server->yb_done_fail_for_copy_in_response +
+			server->yb_done_fail_for_copy_out_response;
+	return total_in_out_response_received != total_done_fail_received;
+}
+
+static inline bool yb_is_server_in_copy_in_mode(od_server_t *server)
+{
+	return server->yb_in_response_received > server->yb_done_fail_for_copy_in_response;
 }
 
 static inline int od_server_grac_shutdown(od_server_t *server)

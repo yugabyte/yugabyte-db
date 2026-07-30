@@ -81,7 +81,7 @@ Status CreateCheckpoint(DB* db, const std::string& checkpoint_dir) {
   s = db->DisableFileDeletions();
   if (s.ok()) {
     // this will return live_files prefixed with "/"
-    s = db->GetLiveFiles(live_files, &manifest_file_size, true);
+    s = db->GetLiveFiles(live_files, &manifest_file_size, true, FlushReason::kCheckpointCreation);
   }
   // if we have more than one column family, we need to also get WAL files
   if (s.ok()) {
@@ -135,7 +135,7 @@ Status CreateCheckpoint(DB* db, const std::string& checkpoint_dir) {
       VLOG(1) << "Copying " << src_fname.c_str();
       std::string dest_name = full_private_path + src_fname;
       s = CopyFile(db->GetCheckpointEnv(), db->GetName() + src_fname, dest_name,
-                   type == kDescriptorFile ? manifest_file_size : 0);
+                   type == kDescriptorFile ? manifest_file_size : 0, CopyFileSync::kTrue);
     }
   }
   VLOG(1) << "Number of log files " << live_wal_files.size();
@@ -150,7 +150,7 @@ Status CreateCheckpoint(DB* db, const std::string& checkpoint_dir) {
         s = CopyFile(db->GetCheckpointEnv(),
                      db->GetOptions().wal_dir + live_wal_files[i]->PathName(),
                      full_private_path + live_wal_files[i]->PathName(),
-                     live_wal_files[i]->SizeFileBytes());
+                     live_wal_files[i]->SizeFileBytes(), CopyFileSync::kTrue);
         break;
       }
       if (same_fs) {
@@ -168,7 +168,7 @@ Status CreateCheckpoint(DB* db, const std::string& checkpoint_dir) {
         VLOG(1) << "Copying " << live_wal_files[i]->PathName().c_str();
         s = CopyFile(db->GetCheckpointEnv(),
                      db->GetOptions().wal_dir + live_wal_files[i]->PathName(),
-                     full_private_path + live_wal_files[i]->PathName(), 0);
+                     full_private_path + live_wal_files[i]->PathName(), 0, CopyFileSync::kTrue);
       }
     }
   }

@@ -24,7 +24,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/write_query.h"
 
-#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver.messages.h"
 
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -68,14 +68,19 @@ Status LocalTabletWriter::WriteBatch(Batch* batch) {
   }
   req_->mutable_ql_write_batch()->Swap(batch);
 
+  auto arena = SharedThreadSafeArena();
+  auto resp = arena->NewArenaObject<tserver::LWWriteResponsePB>();
+
   auto query = std::make_unique<WriteQuery>(
       OpId::kUnknownTerm, CoarseTimePoint::max() /* deadline */, this,
-      tablet_, nullptr, resp_.get());
-  query->set_client_request(*req_);
+      tablet_, /* rpc_context= */ nullptr, resp);
+  query->set_client_request(*arena->NewArenaObject<tserver::LWWriteRequestPB>(*req_));
   write_promise_ = std::promise<Status>();
   tablet_->AcquireLocksAndPerformDocOperations(std::move(query));
 
-  return write_promise_.get_future().get();
+  RETURN_NOT_OK(write_promise_.get_future().get());
+  resp->ToGoogleProtobuf(resp_.get());
+  return Status::OK();
 }
 
 void LocalTabletWriter::Submit(std::unique_ptr<Operation> operation, int64_t term) {
@@ -88,7 +93,7 @@ void LocalTabletWriter::Submit(std::unique_ptr<Operation> operation, int64_t ter
   // Create a "fake" OpId and set it in the Operation for anchoring.
   state->set_op_id(op_id);
 
-  CHECK_OK(tablet_->ApplyRowOperations(state));
+  CHECK_OK(tablet_->ApplyRowOperations(state, docdb::StorageSet::All()));
 
   tablet_->mvcc_manager()->Replicated(hybrid_time, op_id);
 

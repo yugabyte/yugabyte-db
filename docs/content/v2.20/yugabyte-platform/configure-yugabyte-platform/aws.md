@@ -103,6 +103,8 @@ Enter a Provider name. The Provider name is an internal tag used for organizing 
 
 **Use AWS Route 53 DNS Server**. Choose whether to use the cloud DNS Server / load balancer for universes deployed using this provider. Generally, SQL clients should prefer to use [smart client drivers](/stable/develop/drivers-orms/smart-drivers/) to connect to cluster nodes, rather than load balancers. However, in some cases (for example, if no smart driver is available in the language), you may use a DNS Server or load-balancer. The DNS Server acts as a load-balancer that routes clients to various nodes in the database universe. YBA integrates with [Amazon Route53](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/Welcome.html) to provide managed Canonical Name (CNAME) entries for your YugabyteDB universes, and automatically updates the DNS entry as nodes get created, removed, or undergo maintenance.
 
+To configure instances so that the [Instance Metadata Service](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html) _requires_ IMDSv2, select the **Use IMDSv2** option (recommended). If **Use IMDSv2** is not selected, the service accepts both IMDSv1 and IMDSv2 requests.
+
 ### Regions
 
 You can customize your network, including the virtual network, as follows:

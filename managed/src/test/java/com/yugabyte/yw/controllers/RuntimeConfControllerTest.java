@@ -48,6 +48,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigChangeListener;
 import com.yugabyte.yw.common.config.RuntimeConfigChangeNotifier;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -452,7 +453,17 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     RuntimeConfigFactory runtimeConfigFactory =
         app.injector().instanceOf(RuntimeConfigFactory.class);
     assertFalse(runtimeConfigFactory.forUniverse(defaultUniverse).getBoolean(key));
+    SettableRuntimeConfigFactory settableFactory =
+        (SettableRuntimeConfigFactory) runtimeConfigFactory;
+    assertFalse(settableFactory.getCachedConfigs().isEmpty());
     setCloudEnabled();
+    // Setting runtime config using API also fetches a runtime config value needed by redaction.
+    // Thus, that value invokes caching at global level. So we should assert that the narrow scope
+    // runtime config caches (non-global) are cleared after the setKey is called.
+    boolean hasNonGlobalKeys =
+        settableFactory.getCachedConfigs().keySet().stream()
+            .anyMatch(uuid -> !uuid.equals(GLOBAL_SCOPE_UUID));
+    assertFalse("Stale scopes should be evicted after update", hasNonGlobalKeys);
     assertTrue(runtimeConfigFactory.forUniverse(defaultUniverse).getBoolean(key));
   }
 
@@ -571,7 +582,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
             "yb.ha.ws",
             "yb.query_stats.live_queries.ws",
             "yb.metrics.ws",
-            "yb.troubleshooting.ws",
+            "yb.pa.ws",
             "yb.perf_advisor",
             // TODO (PLAT-7110)
             "yb.releases.path",

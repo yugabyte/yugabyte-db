@@ -71,7 +71,6 @@
 
 namespace rocksdb {
 
-class FileLock;
 class Logger;
 class Directory;
 struct DBOptions;
@@ -454,6 +453,7 @@ class Directory {
 
 enum InfoLogLevel : unsigned char {
   DEBUG_LEVEL = 0,
+  DETAIL_LEVEL,
   INFO_LEVEL,
   WARN_LEVEL,
   ERROR_LEVEL,
@@ -461,6 +461,24 @@ enum InfoLogLevel : unsigned char {
   HEADER_LEVEL,
   NUM_INFO_LOG_LEVELS,
 };
+
+// Returns true if a message at `message_level` should be logged given a logger
+// configured at `logger_level`. DETAIL_LEVEL is treated as equivalent to
+// INFO_LEVEL for filtering: a logger at INFO will show DETAIL messages and
+// vice versa.
+inline bool ShouldLog(InfoLogLevel message_level, InfoLogLevel logger_level) {
+  if (message_level >= logger_level) {
+    return true;
+  }
+
+  // Special handling for DETAIL_LEVEL.
+  if (message_level == InfoLogLevel::DETAIL_LEVEL && logger_level == InfoLogLevel::INFO_LEVEL) {
+    return true;
+  }
+
+  // Nothing to log in accordance with log levels.
+  return false;
+}
 
 // An interface for writing log messages.
 class Logger {
@@ -521,16 +539,6 @@ class Logger {
 };
 
 
-// Identifies a locked file.
-class FileLock {
- public:
-  FileLock() { }
-  virtual ~FileLock();
- private:
-  // No copying allowed
-  FileLock(const FileLock&);
-  void operator=(const FileLock&);
-};
 
 extern void LogFlush(const std::shared_ptr<Logger>& info_log);
 

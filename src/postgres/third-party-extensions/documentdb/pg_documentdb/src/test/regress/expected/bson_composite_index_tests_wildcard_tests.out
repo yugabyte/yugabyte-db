@@ -1,0 +1,1238 @@
+SET search_path TO documentdb_api,documentdb_core,documentdb_api_catalog;
+SET documentdb.next_collection_id TO 5400;
+SET documentdb.next_collection_index_id TO 5400;
+CREATE OR REPLACE FUNCTION documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms(document documentdb_core.bson, pathSpec text, termLimit int4, addMetadata bool, wildcardIndex int4)
+    RETURNS SETOF documentdb_core.bson LANGUAGE C IMMUTABLE PARALLEL SAFE STRICT AS '$libdir/pg_documentdb',
+$$gin_bson_get_composite_path_generated_terms$$;
+SELECT documentdb_api.create_collection('compdb', 'compwildcard');
+NOTICE:  creating collection
+ create_collection 
+-------------------
+ t
+(1 row)
+
+-- Simple failure paths:
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "a.$**": 1 }, "name": "a_1", "enableOrderedIndex": true }]}', TRUE);
+ERROR:  Error in specification { "key" : { "a.$**" : 1 }, "name" : "a_1", "enableOrderedIndex" : true }:enableOrderedIndex is not supported with wildcard indexes.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "$**": 1 }, "name": "$**_1", "enableOrderedIndex": true }]}', TRUE);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "$**_1", "enableOrderedIndex" : true }:enableOrderedIndex is not supported with wildcard indexes.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "$**": -1 }, "name": "$**_-1", "enableOrderedIndex": true }]}', TRUE);
+ERROR:  Error in specification { "key" : { "$**" : -1 }, "name" : "$**_-1", "enableOrderedIndex" : true }:A numeric value in a $** index key pattern must be positive.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "a.$**": -1 }, "name": "a_-1", "enableOrderedIndex": true }]}', TRUE);
+ERROR:  Error in specification { "key" : { "a.$**" : -1 }, "name" : "a_-1", "enableOrderedIndex" : true }:A numeric value in a $** index key pattern must be positive.
+-- with unique
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "a.$**": 1 }, "name": "a_1", "enableOrderedIndex": true, "unique": true }]}', TRUE);
+ERROR:  Error in specification { "key" : { "a.$**" : 1 }, "name" : "a_1", "enableOrderedIndex" : true, "unique" : true }:enableOrderedIndex is not supported with wildcard indexes.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "$**": 1 }, "name": "$**_1", "enableOrderedIndex": true, "unique": true }]}', TRUE);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "$**_1", "enableOrderedIndex" : true, "unique" : true }:enableOrderedIndex is not supported with wildcard indexes.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "$**": -1 }, "name": "$**_-1", "enableOrderedIndex": true, "unique": true }]}', TRUE);
+ERROR:  Error in specification { "key" : { "$**" : -1 }, "name" : "$**_-1", "enableOrderedIndex" : true, "unique" : true }:A numeric value in a $** index key pattern must be positive.
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "a.$**": -1 }, "name": "a_-1", "enableOrderedIndex": true, "unique": true }]}', TRUE);
+ERROR:  Error in specification { "key" : { "a.$**" : -1 }, "name" : "a_-1", "enableOrderedIndex" : true, "unique" : true }:A numeric value in a $** index key pattern must be positive.
+-- with composite
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "a.$**": 1, "b": 1 }, "name": "a_1", "enableOrderedIndex": true }]}', TRUE);
+ERROR:  Error in specification { "key" : { "a.$**" : 1, "b" : 1 }, "name" : "a_1", "enableOrderedIndex" : true }:wildcard indexes do not allow compounding
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "a.$**": 1, "b.$**": 1 }, "name": "a_1", "enableOrderedIndex": true }]}', TRUE);
+ERROR:  Error in specification { "key" : { "a.$**" : 1, "b.$**" : 1 }, "name" : "a_1", "enableOrderedIndex" : true }:wildcard indexes do not allow compounding
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "$**": 1, "b": 1 }, "name": "a_1", "enableOrderedIndex": true }]}', TRUE);
+ERROR:  Error in specification { "key" : { "$**" : 1, "b" : 1 }, "name" : "a_1", "enableOrderedIndex" : true }:wildcard indexes do not allow compounding
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "$**": 1, "b.$**": 1 }, "name": "a_1", "enableOrderedIndex": true }]}', TRUE);
+ERROR:  Error in specification { "key" : { "$**" : 1, "b.$**" : 1 }, "name" : "a_1", "enableOrderedIndex" : true }:wildcard indexes do not allow compounding
+set documentdb.enableCompositeWildcardIndex to on;
+set documentdb.enableExtendedExplainPlans to on;
+-- now we can create the ones that are valid - invalid cases still fail
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "a.$**": 1 }, "name": "a_1", "enableOrderedIndex": true }]}', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "$**": 1 }, "name": "$**_1", "enableOrderedIndex": true }]}', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "$**": -1 }, "name": "$**_-1", "enableOrderedIndex": true }]}', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "a.$**": -1 }, "name": "a_-1", "enableOrderedIndex": true }]}', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "4" }, "numIndexesAfter" : { "$numberInt" : "5" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- with unique (still fails)
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "a.$**": 1 }, "name": "a_1", "enableOrderedIndex": true, "unique": true }]}', TRUE);
+ERROR:  Error in specification { "key" : { "a.$**" : 1 }, "name" : "a_1", "enableOrderedIndex" : true, "unique" : true }:Index type 'wildcard' does not support the unique option
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "$**": 1 }, "name": "$**_1", "enableOrderedIndex": true, "unique": true }]}', TRUE);
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "$**_1", "enableOrderedIndex" : true, "unique" : true }:Index type 'wildcard' does not support the unique option
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "$**": -1 }, "name": "$**_-1", "enableOrderedIndex": true, "unique": true }]}', TRUE);
+ERROR:  Error in specification { "key" : { "$**" : -1 }, "name" : "$**_-1", "enableOrderedIndex" : true, "unique" : true }:Index type 'wildcard' does not support the unique option
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "a.$**": -1 }, "name": "a_-1", "enableOrderedIndex": true, "unique": true }]}', TRUE);
+ERROR:  Error in specification { "key" : { "a.$**" : -1 }, "name" : "a_-1", "enableOrderedIndex" : true, "unique" : true }:Index type 'wildcard' does not support the unique option
+-- with composite (still fails)
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "a.$**": 1, "b": 1 }, "name": "a_1", "enableOrderedIndex": true }]}', TRUE);
+ERROR:  Error in specification { "key" : { "a.$**" : 1, "b" : 1 }, "name" : "a_1", "enableOrderedIndex" : true }:wildcard indexes do not allow compounding
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "a.$**": 1, "b.$**": 1 }, "name": "a_1", "enableOrderedIndex": true }]}', TRUE);
+ERROR:  Error in specification { "key" : { "a.$**" : 1, "b.$**" : 1 }, "name" : "a_1", "enableOrderedIndex" : true }:wildcard indexes do not allow compounding
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "$**": 1, "b": 1 }, "name": "a_1", "enableOrderedIndex": true }]}', TRUE);
+ERROR:  Error in specification { "key" : { "$**" : 1, "b" : 1 }, "name" : "a_1", "enableOrderedIndex" : true }:wildcard indexes do not allow compounding
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "$**": 1, "b.$**": 1 }, "name": "a_1", "enableOrderedIndex": true }]}', TRUE);
+ERROR:  Error in specification { "key" : { "$**" : 1, "b.$**" : 1 }, "name" : "a_1", "enableOrderedIndex" : true }:wildcard indexes do not allow compounding
+-- check the table def
+\d documentdb_data.documents_5401
+          Table "documentdb_data.documents_5401"
+     Column      |  Type  | Collation | Nullable | Default 
+-----------------+--------+-----------+----------+---------
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
+Indexes:
+    "collection_pk_5401" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_5402" documentdb_rum (document documentdb_api_internal.bson_rum_composite_path_ops (pathspec='[ "a" ]', tl='2691', wki='0', wkl='200'))
+    "documents_rum_index_5403" documentdb_rum (document documentdb_api_internal.bson_rum_composite_path_ops (pathspec='[ "" ]', tl='2691', wki='0', wkl='200'))
+    "documents_rum_index_5404" documentdb_rum (document documentdb_api_internal.bson_rum_composite_path_ops (pathspec='[ { "" : -1 } ]', tl='2691', wki='0', wkl='200'))
+    "documents_rum_index_5405" documentdb_rum (document documentdb_api_internal.bson_rum_composite_path_ops (pathspec='[ { "a" : -1 } ]', tl='2691', wki='0', wkl='200'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '5401'::bigint)
+
+CALL documentdb_api.drop_indexes('compdb', '{ "dropIndexes": "compwildcard", "index": "$**_-1" }');
+                          retval                          
+----------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "5" } }
+(1 row)
+
+CALL documentdb_api.drop_indexes('compdb', '{ "dropIndexes": "compwildcard", "index": "a_-1" }');
+                          retval                          
+----------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "4" } }
+(1 row)
+
+CALL documentdb_api.drop_indexes('compdb', '{ "dropIndexes": "compwildcard", "index": "$**_1" }');
+                          retval                          
+----------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "3" } }
+(1 row)
+
+-- start testing term generation: Path with wildcard
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "a": 1, "b": 1 }', '[ "a" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "$" : { "$numberInt" : "1" }, "t" : false }
+(1 row)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "a": null, "b": "foo" }', '[ "a" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "$" : null, "t" : false }
+(1 row)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "b": "foo" }', '[ "a" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+(0 rows)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "a": [1, 2, 3 ], "b": "foo" }', '[ "a" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "$" : { "$numberInt" : "1" }, "t" : false }
+ { "$" : { "$numberInt" : "2" }, "t" : false }
+ { "$" : { "$numberInt" : "3" }, "t" : false }
+ { "" : [  ], "t" : false }
+(4 rows)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "a": { "b": 1 }, "b": "foo" }', '[ "a" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "$.b" : { "$numberInt" : "1" }, "t" : false }
+(1 row)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "a": { "b": [ 1, 2, 3 ]}, "b": "foo" }', '[ "a" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "$.b" : { "$numberInt" : "1" }, "t" : false }
+ { "$.b" : { "$numberInt" : "2" }, "t" : false }
+ { "$.b" : { "$numberInt" : "3" }, "t" : false }
+ { "" : [  ], "t" : false }
+(4 rows)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "a": { }, "b": "foo" }', '[ "a" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "$" : {  }, "t" : false }
+(1 row)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "a": [ ], "b": "foo" }', '[ "a" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "$" : { "$undefined" : true }, "t" : false }
+(1 row)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "a": { "c": { "d": 1 } }, "b": "foo" }', '[ "a" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "$.c.d" : { "$numberInt" : "1" }, "t" : false }
+(1 row)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "a": { "c": [ { "d": 1 }, { "e": 2 } ] }, "b": "foo" }', '[ "a" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "$.c.d" : { "$numberInt" : "1" }, "t" : false }
+ { "$.c.e" : { "$numberInt" : "2" }, "t" : false }
+ { "" : [  ], "t" : false }
+(3 rows)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "a": [ { "c": { "d": 1, "e": 1 } }, { "f": 1 }], "b": "foo" }', '[ "a" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "$.c.d" : { "$numberInt" : "1" }, "t" : false }
+ { "$.c.e" : { "$numberInt" : "1" }, "t" : false }
+ { "$.f" : { "$numberInt" : "1" }, "t" : false }
+ { "" : [  ], "t" : false }
+(4 rows)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "a": [ { "c": { "d": [], "e": {} } }, { "f": 1 }], "b": "foo" }', '[ "a" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "$.c.d" : { "$undefined" : true }, "t" : false }
+ { "$.c.e" : {  }, "t" : false }
+ { "$.f" : { "$numberInt" : "1" }, "t" : false }
+ { "" : [  ], "t" : false }
+(4 rows)
+
+-- start testing term generation: root wildcard
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "a": 1, "b": 1 }', '[ "" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "a" : { "$numberInt" : "1" }, "t" : false }
+ { "b" : { "$numberInt" : "1" }, "t" : false }
+(2 rows)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{  }', '[ "" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+(0 rows)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "a": [1, 2, 3 ], "b": "foo" }', '[ "" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "a" : { "$numberInt" : "1" }, "t" : false }
+ { "a" : { "$numberInt" : "2" }, "t" : false }
+ { "a" : { "$numberInt" : "3" }, "t" : false }
+ { "b" : "foo", "t" : false }
+ { "" : [  ], "t" : false }
+(5 rows)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "a": "foo", "b": [ 1, 2, 3 ] }', '[ "" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "a" : "foo", "t" : false }
+ { "b" : { "$numberInt" : "1" }, "t" : false }
+ { "b" : { "$numberInt" : "2" }, "t" : false }
+ { "b" : { "$numberInt" : "3" }, "t" : false }
+ { "" : [  ], "t" : false }
+(5 rows)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "a": [ 1, 2, 3 ], "b": [ 1, 2, 3 ] }', '[ "" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "a" : { "$numberInt" : "1" }, "t" : false }
+ { "a" : { "$numberInt" : "2" }, "t" : false }
+ { "a" : { "$numberInt" : "3" }, "t" : false }
+ { "b" : { "$numberInt" : "1" }, "t" : false }
+ { "b" : { "$numberInt" : "2" }, "t" : false }
+ { "b" : { "$numberInt" : "3" }, "t" : false }
+ { "" : [  ], "t" : false }
+(7 rows)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "a": { "c": 1 }, "b": { "c": 1 } }', '[ "" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "a.c" : { "$numberInt" : "1" }, "t" : false }
+ { "b.c" : { "$numberInt" : "1" }, "t" : false }
+(2 rows)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "a": { "c": [ 1, 2 ] }, "b": { "c": [ 1, 2 ] } }', '[ "" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "a.c" : { "$numberInt" : "1" }, "t" : false }
+ { "a.c" : { "$numberInt" : "2" }, "t" : false }
+ { "b.c" : { "$numberInt" : "1" }, "t" : false }
+ { "b.c" : { "$numberInt" : "2" }, "t" : false }
+ { "" : [  ], "t" : false }
+(5 rows)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "a": {  }, "b": {  } }', '[ "" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "a" : {  }, "t" : false }
+ { "b" : {  }, "t" : false }
+(2 rows)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "a": [ ], "b": [ ] }', '[ "" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "a" : { "$undefined" : true }, "t" : false }
+ { "b" : { "$undefined" : true }, "t" : false }
+(2 rows)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "a": { "c": { "d": 1 } }, "b": { "c": { "d": 1 } } }', '[ "" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "a.c.d" : { "$numberInt" : "1" }, "t" : false }
+ { "b.c.d" : { "$numberInt" : "1" }, "t" : false }
+(2 rows)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "a": { "c": [ { "d": 1 }, { "e": 2 } ] }, "b": "foo" }', '[ "" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "a.c.d" : { "$numberInt" : "1" }, "t" : false }
+ { "a.c.e" : { "$numberInt" : "2" }, "t" : false }
+ { "b" : "foo", "t" : false }
+ { "" : [  ], "t" : false }
+(4 rows)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "a": [ { "c": { "d": 1, "e": 1 } }, { "f": 1 }], "b": "foo" }', '[ "" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "a.c.d" : { "$numberInt" : "1" }, "t" : false }
+ { "a.c.e" : { "$numberInt" : "1" }, "t" : false }
+ { "a.f" : { "$numberInt" : "1" }, "t" : false }
+ { "b" : "foo", "t" : false }
+ { "" : [  ], "t" : false }
+(5 rows)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "a": [ { "c": { "d": [], "e": {} } }, { "f": 1 }], "b": "foo" }', '[ "a" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "$.c.d" : { "$undefined" : true }, "t" : false }
+ { "$.c.e" : {  }, "t" : false }
+ { "$.f" : { "$numberInt" : "1" }, "t" : false }
+ { "" : [  ], "t" : false }
+(4 rows)
+
+-- now insert into the table the documents above
+SELECT documentdb_api.insert_one('compdb', 'compwildcard', '{ "_id": 1, "a": 1, "b": 1 }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb', 'compwildcard', '{ "_id": 2, "a": null, "b": "foo" }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb', 'compwildcard', '{ "_id": 3, "b": "foo" }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb', 'compwildcard', '{ "_id": 4, "a": [1, 2, 3 ], "b": "foo" }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb', 'compwildcard', '{ "_id": 5, "a": { "b": 1 }, "b": "foo" }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb', 'compwildcard', '{ "_id": 6, "a": { "b": [ 1, 2, 3 ]}, "b": "foo" }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb', 'compwildcard', '{ "_id": 7, "a": { }, "b": "foo" }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb', 'compwildcard', '{ "_id": 8, "a": [ ], "b": "foo" }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb', 'compwildcard', '{ "_id": 9, "a": { "c": { "d": 1 } }, "b": "foo" }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb', 'compwildcard', '{ "_id": 10, "a": { "c": [ { "d": 1 }, { "e": 2 } ] }, "b": "foo" }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb', 'compwildcard', '{ "_id": 11, "a": [ { "c": { "d": 1, "e": 1 } }, { "f": 1 }], "b": "foo" }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb', 'compwildcard', '{ "_id": 12, "a": [ { "c": { "d": [], "e": {} } }, { "f": 1 }], "b": "foo" }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb', 'compwildcard', '{ "_id": 13, "a": { "b": 1 } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- test queries are not pushed to the wildcard index.
+\d documentdb_data.documents_5401
+          Table "documentdb_data.documents_5401"
+     Column      |  Type  | Collation | Nullable | Default 
+-----------------+--------+-----------+----------+---------
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
+Indexes:
+    "collection_pk_5401" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_5402" documentdb_rum (document documentdb_api_internal.bson_rum_composite_path_ops (pathspec='[ "a" ]', tl='2691', wki='0', wkl='200'))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '5401'::bigint)
+
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$
+    EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "b": 1 }}') $cmd$);
+                       run_explain_and_trim                       
+------------------------------------------------------------------
+ Bitmap Heap Scan on documents_5401 collection
+   Recheck Cond: (shard_key_value = '5401'::bigint)
+   Filter: (document @= '{ "b" : { "$numberInt" : "1" } }'::bson)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (shard_key_value = '5401'::bigint)
+(5 rows)
+
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$
+    EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "ab": 1 }}') $cmd$);
+                       run_explain_and_trim                        
+-------------------------------------------------------------------
+ Bitmap Heap Scan on documents_5401 collection
+   Recheck Cond: (shard_key_value = '5401'::bigint)
+   Filter: (document @= '{ "ab" : { "$numberInt" : "1" } }'::bson)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (shard_key_value = '5401'::bigint)
+(5 rows)
+
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$
+    EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a/b": 1 }}') $cmd$);
+                        run_explain_and_trim                        
+--------------------------------------------------------------------
+ Bitmap Heap Scan on documents_5401 collection
+   Recheck Cond: (shard_key_value = '5401'::bigint)
+   Filter: (document @= '{ "a/b" : { "$numberInt" : "1" } }'::bson)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (shard_key_value = '5401'::bigint)
+(5 rows)
+
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$
+    EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "aa": 1 }}') $cmd$);
+                       run_explain_and_trim                        
+-------------------------------------------------------------------
+ Bitmap Heap Scan on documents_5401 collection
+   Recheck Cond: (shard_key_value = '5401'::bigint)
+   Filter: (document @= '{ "aa" : { "$numberInt" : "1" } }'::bson)
+   ->  Bitmap Index Scan on _id_
+         Index Cond: (shard_key_value = '5401'::bigint)
+(5 rows)
+
+set documentdb.forceDisableSeqScan to on;
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "b": 1 }}');
+ERROR:  Could not find any valid index to push down for query
+-- these queries get pushed to the wildcard index.
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": 1 }}');
+                                                             document                                                              
+-----------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : "foo" }
+(2 rows)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": 1 }}');
+                                                                  document                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "1" } }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "13" }, "a" : { "b" : { "$numberInt" : "1" } } }
+(3 rows)
+
+-- queries on arrays don't get pushed for negation
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$gt": 1 } }}');
+                                                             document                                                              
+-----------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : "foo" }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$in": [ 1, 3 ] } }}');
+                                                             document                                                              
+-----------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : "foo" }
+(2 rows)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$in": [ 1, 3 ] } }}');
+                                                                  document                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "1" } }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "13" }, "a" : { "b" : { "$numberInt" : "1" } } }
+(3 rows)
+
+-- shows documents and arrays
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$exists": true } }}');
+                                                                                document                                                                                
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : null, "b" : "foo" }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : "foo" }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "1" } }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "7" }, "a" : {  }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "8" }, "a" : [  ], "b" : "foo" }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "c" : { "d" : { "$numberInt" : "1" } } }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "c" : [ { "d" : { "$numberInt" : "1" } }, { "e" : { "$numberInt" : "2" } } ] }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "11" }, "a" : [ { "c" : { "d" : { "$numberInt" : "1" }, "e" : { "$numberInt" : "1" } } }, { "f" : { "$numberInt" : "1" } } ], "b" : "foo" }
+ { "_id" : { "$numberInt" : "12" }, "a" : [ { "c" : { "d" : [  ], "e" : {  } } }, { "f" : { "$numberInt" : "1" } } ], "b" : "foo" }
+ { "_id" : { "$numberInt" : "13" }, "a" : { "b" : { "$numberInt" : "1" } } }
+(12 rows)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$exists": true } }}');
+                                                                  document                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "1" } }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "13" }, "a" : { "b" : { "$numberInt" : "1" } } }
+(3 rows)
+
+-- cannot push down
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$eq": { "b": 1 } } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$gt": { "b": 1 } } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$exists": false } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$in": [ 1, null ] } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$in": [ 1, { "b": 1 } ] } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$eq": { "b": 1 } } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$gt": { "b": 1 } } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$exists": false } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$in": [ 1, null ] } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$in": [ 1, { "b": 1 } ] } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$
+    EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, BUFFERS OFF, TIMING OFF) SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$exists": true } }}') $cmd$);
+                             run_explain_and_trim                             
+------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=12 loops=1)
+   indexName: a_1
+   indexKey: {"a.$**": 1}
+   isMultiKey: true
+   indexBounds: ["a": [ { "$": MinKey } ,  { "$": MaxKey } ]]
+   ->  Bitmap Heap Scan on documents_5401 collection (actual rows=12 loops=1)
+         Recheck Cond: (document @>= '{ "a" : { "$minKey" : 1 } }'::bson)
+         Heap Blocks: exact=1
+         ->  Bitmap Index Scan on a_1 (actual rows=12 loops=1)
+               Index Cond: (document @>= '{ "a" : { "$minKey" : 1 } }'::bson)
+(10 rows)
+
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$
+    EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, BUFFERS OFF, TIMING OFF) SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$exists": true } }}') $cmd$);
+                              run_explain_and_trim                              
+--------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=3 loops=1)
+   indexName: a_1
+   indexKey: {"a.$**": 1}
+   isMultiKey: true
+   indexBounds: ["a.b": [ { "$.b": MinKey } ,  { "$.b": MaxKey } ]]
+   ->  Bitmap Heap Scan on documents_5401 collection (actual rows=3 loops=1)
+         Recheck Cond: (document @>= '{ "a.b" : { "$minKey" : 1 } }'::bson)
+         Heap Blocks: exact=1
+         ->  Bitmap Index Scan on a_1 (actual rows=3 loops=1)
+               Index Cond: (document @>= '{ "a.b" : { "$minKey" : 1 } }'::bson)
+(10 rows)
+
+-- operator validation: $eq
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$eq": 1 } }}');
+                                                             document                                                              
+-----------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : "foo" }
+(2 rows)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$eq": 2 } }}');
+                                                             document                                                              
+-----------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : "foo" }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$eq": 1 } }}');
+                                                                  document                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "1" } }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "13" }, "a" : { "b" : { "$numberInt" : "1" } } }
+(3 rows)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$eq": 2 } }}');
+                                                                  document                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "b" : "foo" }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.c.d": { "$eq": 1 } }}');
+                                                                                document                                                                                
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "a" : { "c" : { "d" : { "$numberInt" : "1" } } }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "c" : [ { "d" : { "$numberInt" : "1" } }, { "e" : { "$numberInt" : "2" } } ] }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "11" }, "a" : [ { "c" : { "d" : { "$numberInt" : "1" }, "e" : { "$numberInt" : "1" } } }, { "f" : { "$numberInt" : "1" } } ], "b" : "foo" }
+(3 rows)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.c.e": { "$eq": 2 } }}');
+                                                                 document                                                                 
+------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" }, "a" : { "c" : [ { "d" : { "$numberInt" : "1" } }, { "e" : { "$numberInt" : "2" } } ] }, "b" : "foo" }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.f": { "$eq": 1 } }}');
+                                                                                document                                                                                
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "a" : [ { "c" : { "d" : { "$numberInt" : "1" }, "e" : { "$numberInt" : "1" } } }, { "f" : { "$numberInt" : "1" } } ], "b" : "foo" }
+ { "_id" : { "$numberInt" : "12" }, "a" : [ { "c" : { "d" : [  ], "e" : {  } } }, { "f" : { "$numberInt" : "1" } } ], "b" : "foo" }
+(2 rows)
+
+-- pushes down with runtime recheck (becomes "a": { "$eq": 1 } )
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$eq": [1, 2, 3 ] } }}');
+                                                             document                                                              
+-----------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : "foo" }
+(1 row)
+
+-- pushes down with runtime recheck (becomes "a.b": { "$eq": 1 } )
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$eq": [ 1, 2, 3 ] } }}');
+                                                                  document                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "b" : "foo" }
+(1 row)
+
+-- this one won't push down since we don't index documents.
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$eq": [{ "b": 1 }, 2, 3 ] } }}');
+ERROR:  Could not find any valid index to push down for query
+-- can't push down
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$eq": null } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.0": { "$eq": 1 } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.0.b": { "$eq": 1 } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b.0": { "$eq": 1 } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.c": { "$eq": { "d": 1 } } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.c": { "$eq": [ { "d": 1 }, { "e": 1 }] } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "b": { "$eq": "foo" } }}');
+ERROR:  Could not find any valid index to push down for query
+-- similar to the above, but for $in
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$in": [ 1, 2 ] } }}');
+                                                             document                                                              
+-----------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : "foo" }
+(2 rows)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$in": [ 1, 2 ] } }}');
+                                                                  document                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "1" } }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "13" }, "a" : { "b" : { "$numberInt" : "1" } } }
+(3 rows)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.c.d": { "$in": [ 1, 5 ] } }}');
+                                                                                document                                                                                
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "a" : { "c" : { "d" : { "$numberInt" : "1" } } }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "c" : [ { "d" : { "$numberInt" : "1" } }, { "e" : { "$numberInt" : "2" } } ] }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "11" }, "a" : [ { "c" : { "d" : { "$numberInt" : "1" }, "e" : { "$numberInt" : "1" } } }, { "f" : { "$numberInt" : "1" } } ], "b" : "foo" }
+(3 rows)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.c.e": { "$in": [ 2, 6 ] } }}');
+                                                                 document                                                                 
+------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" }, "a" : { "c" : [ { "d" : { "$numberInt" : "1" } }, { "e" : { "$numberInt" : "2" } } ] }, "b" : "foo" }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.f": { "$in": [ 1, -1 ] } }}');
+                                                                                document                                                                                
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "a" : [ { "c" : { "d" : { "$numberInt" : "1" }, "e" : { "$numberInt" : "1" } } }, { "f" : { "$numberInt" : "1" } } ], "b" : "foo" }
+ { "_id" : { "$numberInt" : "12" }, "a" : [ { "c" : { "d" : [  ], "e" : {  } } }, { "f" : { "$numberInt" : "1" } } ], "b" : "foo" }
+(2 rows)
+
+-- these are valid
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$in": [ [1, 2, 3 ], 99 ] } }}');
+                                                             document                                                              
+-----------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : "foo" }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$in": [ [1, 2, 3 ], 99 ] } }}');
+                                                                  document                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "b" : "foo" }
+(1 row)
+
+-- this is not valid
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$in": [ [{ "b": 1 }, 2, 3 ], 99 ] } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$in": [ null, 2 ] } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.0": { "$in": [ 1, 2 ] } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.0.b": { "$in": [ 1, 2 ] } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b.0": { "$in": [ 1, 3 ] } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.c": { "$in": [ { "d": 1 }, { "e": 1 } ] } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.c": { "$in": [ [ { "d": 1 }, { "e": 1 }], 2 ]} }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "b": { "$in": [ "foo", "bar" ] } }}');
+ERROR:  Could not find any valid index to push down for query
+-- repeat these for root wildcard
+CALL documentdb_api.drop_indexes('compdb', '{ "dropIndexes": "compwildcard", "index": "a_1" }');
+                          retval                          
+----------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard", "indexes": [ { "key": { "$**": 1 }, "name": "$**_1", "enableOrderedIndex": true }]}', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- can push this down now:
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "b": 1 }}');
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": 1 }}');
+                                                             document                                                              
+-----------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : "foo" }
+(2 rows)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": 1 }}');
+                                                                  document                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "1" } }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "13" }, "a" : { "b" : { "$numberInt" : "1" } } }
+(3 rows)
+
+-- queries on arrays don't get pushed for negation
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$gt": 1 } }}');
+                                                             document                                                              
+-----------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : "foo" }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$in": [ 1, 3 ] } }}');
+                                                             document                                                              
+-----------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : "foo" }
+(2 rows)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$in": [ 1, 3 ] } }}');
+                                                                  document                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "1" } }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "13" }, "a" : { "b" : { "$numberInt" : "1" } } }
+(3 rows)
+
+-- shows documents and arrays
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$exists": true } }}');
+                                                                                document                                                                                
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : null, "b" : "foo" }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : "foo" }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "1" } }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "7" }, "a" : {  }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "8" }, "a" : [  ], "b" : "foo" }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "c" : { "d" : { "$numberInt" : "1" } } }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "c" : [ { "d" : { "$numberInt" : "1" } }, { "e" : { "$numberInt" : "2" } } ] }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "11" }, "a" : [ { "c" : { "d" : { "$numberInt" : "1" }, "e" : { "$numberInt" : "1" } } }, { "f" : { "$numberInt" : "1" } } ], "b" : "foo" }
+ { "_id" : { "$numberInt" : "12" }, "a" : [ { "c" : { "d" : [  ], "e" : {  } } }, { "f" : { "$numberInt" : "1" } } ], "b" : "foo" }
+ { "_id" : { "$numberInt" : "13" }, "a" : { "b" : { "$numberInt" : "1" } } }
+(12 rows)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$exists": true } }}');
+                                                                  document                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "1" } }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "13" }, "a" : { "b" : { "$numberInt" : "1" } } }
+(3 rows)
+
+-- cannot push down
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$eq": { "b": 1 } } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$gt": { "b": 1 } } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$exists": false } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$in": [ 1, null ] } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$in": [ 1, { "b": 1 } ] } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$eq": { "b": 1 } } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$gt": { "b": 1 } } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$exists": false } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$in": [ 1, null ] } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$in": [ 1, { "b": 1 } ] } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$
+    EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, BUFFERS OFF, TIMING OFF) SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$exists": true } }}') $cmd$);
+                                 run_explain_and_trim                                 
+--------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=12 loops=1)
+   indexName: $**_1
+   indexKey: {"$**": 1}
+   isMultiKey: true
+   indexBounds: ["a": [ { "a": MinKey } ,  { "a": MaxKey } ]]
+   ->  Index Scan using "$**_1" on documents_5401 collection (actual rows=12 loops=1)
+         Index Cond: (document @>= '{ "a" : { "$minKey" : 1 } }'::bson)
+(7 rows)
+
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$
+    EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, BUFFERS OFF, TIMING OFF) SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$exists": true } }}') $cmd$);
+                                run_explain_and_trim                                 
+-------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=3 loops=1)
+   indexName: $**_1
+   indexKey: {"$**": 1}
+   isMultiKey: true
+   indexBounds: ["a.b": [ { "a.b": MinKey } ,  { "a.b": MaxKey } ]]
+   ->  Index Scan using "$**_1" on documents_5401 collection (actual rows=3 loops=1)
+         Index Cond: (document @>= '{ "a.b" : { "$minKey" : 1 } }'::bson)
+(7 rows)
+
+-- operator validation: $eq
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$eq": 1 } }}');
+                                                             document                                                              
+-----------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : "foo" }
+(2 rows)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$eq": 2 } }}');
+                                                             document                                                              
+-----------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : "foo" }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$eq": 1 } }}');
+                                                                  document                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "1" } }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "13" }, "a" : { "b" : { "$numberInt" : "1" } } }
+(3 rows)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$eq": 2 } }}');
+                                                                  document                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "b" : "foo" }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.c.d": { "$eq": 1 } }}');
+                                                                                document                                                                                
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "a" : { "c" : { "d" : { "$numberInt" : "1" } } }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "c" : [ { "d" : { "$numberInt" : "1" } }, { "e" : { "$numberInt" : "2" } } ] }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "11" }, "a" : [ { "c" : { "d" : { "$numberInt" : "1" }, "e" : { "$numberInt" : "1" } } }, { "f" : { "$numberInt" : "1" } } ], "b" : "foo" }
+(3 rows)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.c.e": { "$eq": 2 } }}');
+                                                                 document                                                                 
+------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" }, "a" : { "c" : [ { "d" : { "$numberInt" : "1" } }, { "e" : { "$numberInt" : "2" } } ] }, "b" : "foo" }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.f": { "$eq": 1 } }}');
+                                                                                document                                                                                
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "a" : [ { "c" : { "d" : { "$numberInt" : "1" }, "e" : { "$numberInt" : "1" } } }, { "f" : { "$numberInt" : "1" } } ], "b" : "foo" }
+ { "_id" : { "$numberInt" : "12" }, "a" : [ { "c" : { "d" : [  ], "e" : {  } } }, { "f" : { "$numberInt" : "1" } } ], "b" : "foo" }
+(2 rows)
+
+-- pushes down with runtime recheck (becomes "a": { "$eq": 1 } )
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$eq": [1, 2, 3 ] } }}');
+                                                             document                                                              
+-----------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : "foo" }
+(1 row)
+
+-- pushes down with runtime recheck (becomes "a.b": { "$eq": 1 } )
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$eq": [ 1, 2, 3 ] } }}');
+                                                                  document                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "b" : "foo" }
+(1 row)
+
+-- this one won't push down since we don't index documents.
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$eq": [{ "b": 1 }, 2, 3 ] } }}');
+ERROR:  Could not find any valid index to push down for query
+-- can't push down
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$eq": null } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.0": { "$eq": 1 } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.0.b": { "$eq": 1 } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b.0": { "$eq": 1 } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.c": { "$eq": { "d": 1 } } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.c": { "$eq": [ { "d": 1 }, { "e": 1 }] } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "b": { "$eq": "foo" } }}');
+                                                                                document                                                                                
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : null, "b" : "foo" }
+ { "_id" : { "$numberInt" : "3" }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : "foo" }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "1" } }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "7" }, "a" : {  }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "8" }, "a" : [  ], "b" : "foo" }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "c" : { "d" : { "$numberInt" : "1" } } }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "c" : [ { "d" : { "$numberInt" : "1" } }, { "e" : { "$numberInt" : "2" } } ] }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "11" }, "a" : [ { "c" : { "d" : { "$numberInt" : "1" }, "e" : { "$numberInt" : "1" } } }, { "f" : { "$numberInt" : "1" } } ], "b" : "foo" }
+ { "_id" : { "$numberInt" : "12" }, "a" : [ { "c" : { "d" : [  ], "e" : {  } } }, { "f" : { "$numberInt" : "1" } } ], "b" : "foo" }
+(11 rows)
+
+-- similar to the above, but for $in
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$in": [ 1, 2 ] } }}');
+                                                             document                                                              
+-----------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : "foo" }
+(2 rows)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$in": [ 1, 2 ] } }}');
+                                                                  document                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "1" } }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "13" }, "a" : { "b" : { "$numberInt" : "1" } } }
+(3 rows)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.c.d": { "$in": [ 1, 5 ] } }}');
+                                                                                document                                                                                
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "9" }, "a" : { "c" : { "d" : { "$numberInt" : "1" } } }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "c" : [ { "d" : { "$numberInt" : "1" } }, { "e" : { "$numberInt" : "2" } } ] }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "11" }, "a" : [ { "c" : { "d" : { "$numberInt" : "1" }, "e" : { "$numberInt" : "1" } } }, { "f" : { "$numberInt" : "1" } } ], "b" : "foo" }
+(3 rows)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.c.e": { "$in": [ 2, 6 ] } }}');
+                                                                 document                                                                 
+------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" }, "a" : { "c" : [ { "d" : { "$numberInt" : "1" } }, { "e" : { "$numberInt" : "2" } } ] }, "b" : "foo" }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.f": { "$in": [ 1, -1 ] } }}');
+                                                                                document                                                                                
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "11" }, "a" : [ { "c" : { "d" : { "$numberInt" : "1" }, "e" : { "$numberInt" : "1" } } }, { "f" : { "$numberInt" : "1" } } ], "b" : "foo" }
+ { "_id" : { "$numberInt" : "12" }, "a" : [ { "c" : { "d" : [  ], "e" : {  } } }, { "f" : { "$numberInt" : "1" } } ], "b" : "foo" }
+(2 rows)
+
+-- these are valid
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$in": [ [1, 2, 3 ], 99 ] } }}');
+                                                             document                                                              
+-----------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : "foo" }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b": { "$in": [ [1, 2, 3 ], 99 ] } }}');
+                                                                  document                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "b" : "foo" }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "b": { "$in": [ "foo", "bar" ] } }}');
+                                                                                document                                                                                
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : null, "b" : "foo" }
+ { "_id" : { "$numberInt" : "3" }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "b" : "foo" }
+ { "_id" : { "$numberInt" : "5" }, "a" : { "b" : { "$numberInt" : "1" } }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "b" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "7" }, "a" : {  }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "8" }, "a" : [  ], "b" : "foo" }
+ { "_id" : { "$numberInt" : "9" }, "a" : { "c" : { "d" : { "$numberInt" : "1" } } }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "10" }, "a" : { "c" : [ { "d" : { "$numberInt" : "1" } }, { "e" : { "$numberInt" : "2" } } ] }, "b" : "foo" }
+ { "_id" : { "$numberInt" : "11" }, "a" : [ { "c" : { "d" : { "$numberInt" : "1" }, "e" : { "$numberInt" : "1" } } }, { "f" : { "$numberInt" : "1" } } ], "b" : "foo" }
+ { "_id" : { "$numberInt" : "12" }, "a" : [ { "c" : { "d" : [  ], "e" : {  } } }, { "f" : { "$numberInt" : "1" } } ], "b" : "foo" }
+(11 rows)
+
+-- this is not valid
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$in": [ [{ "b": 1 }, 2, 3 ], 99 ] } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a": { "$in": [ null, 2 ] } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.0": { "$in": [ 1, 2 ] } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.0.b": { "$in": [ 1, 2 ] } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.b.0": { "$in": [ 1, 3 ] } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.c": { "$in": [ { "d": 1 }, { "e": 1 } ] } }}');
+ERROR:  Could not find any valid index to push down for query
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "a.c": { "$in": [ [ { "d": 1 }, { "e": 1 }], 2 ]} }}');
+ERROR:  Could not find any valid index to push down for query
+-- with a root wildcard, generate a term that *only* has sub-terms (this only generates a.b.c = 1)
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "h": { "b": { "c": 1 } } }', '[ "" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "h.b.c" : { "$numberInt" : "1" }, "t" : false }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb', 'compwildcard', '{ "_id": 14, "h": { "b": { "c": 1 } } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb', 'compwildcard', '{ "_id": 15, "h": { "c": { "c": 1 } } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb', 'compwildcard', '{ "_id": 16, "h": { "c": { "e": 1 } } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb', 'compwildcard', '{ "_id": 17, "i": { "c": { "e": 1 } } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "h": { "$exists": true } }}');
+                                       document                                        
+---------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "14" }, "h" : { "b" : { "c" : { "$numberInt" : "1" } } } }
+ { "_id" : { "$numberInt" : "15" }, "h" : { "c" : { "c" : { "$numberInt" : "1" } } } }
+ { "_id" : { "$numberInt" : "16" }, "h" : { "c" : { "e" : { "$numberInt" : "1" } } } }
+(3 rows)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "h.b": { "$exists": true } }}');
+                                       document                                        
+---------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "14" }, "h" : { "b" : { "c" : { "$numberInt" : "1" } } } }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "h.b.c": { "$exists": true } }}');
+                                       document                                        
+---------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "14" }, "h" : { "b" : { "c" : { "$numberInt" : "1" } } } }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "h": { "$gt": { "$minKey": 1 } } }}');
+                                       document                                        
+---------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "14" }, "h" : { "b" : { "c" : { "$numberInt" : "1" } } } }
+ { "_id" : { "$numberInt" : "15" }, "h" : { "c" : { "c" : { "$numberInt" : "1" } } } }
+ { "_id" : { "$numberInt" : "16" }, "h" : { "c" : { "e" : { "$numberInt" : "1" } } } }
+(3 rows)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "h.b": { "$gt": { "$minKey": 1 } } }}');
+                                       document                                        
+---------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "14" }, "h" : { "b" : { "c" : { "$numberInt" : "1" } } } }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "h.b.c": { "$gt": { "$minKey": 1 } } }}');
+                                       document                                        
+---------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "14" }, "h" : { "b" : { "c" : { "$numberInt" : "1" } } } }
+(1 row)
+
+-- but this doesn't apply for inequality operators
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "h.b": { "$gte": 1 } }}');
+ document 
+----------
+(0 rows)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "h.b.c": { "$gte": 0 } }}');
+                                       document                                        
+---------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "14" }, "h" : { "b" : { "c" : { "$numberInt" : "1" } } } }
+(1 row)
+
+-- since the index orders by path "string" - inserting a path that comes before the dotted path shouldn't stop traversal.
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$
+    EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, BUFFERS OFF, TIMING OFF) SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "h.b": { "$exists": true } }}') $cmd$);
+                                run_explain_and_trim                                 
+-------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=1 loops=1)
+   indexName: $**_1
+   indexKey: {"$**": 1}
+   isMultiKey: true
+   indexBounds: ["h.b": [ { "h.b": MinKey } ,  { "h.b": MaxKey } ]]
+   ->  Index Scan using "$**_1" on documents_5401 collection (actual rows=1 loops=1)
+         Index Cond: (document @>= '{ "h.b" : { "$minKey" : 1 } }'::bson)
+(7 rows)
+
+SELECT documentdb_api.insert_one('compdb', 'compwildcard', '{ "_id": 18, "h": { "b!c": 1 } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb', 'compwildcard', '{ "_id": 19, "h": { "b": { "d": 1 } } }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "h": { "$exists": true } }}');
+                                       document                                        
+---------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "14" }, "h" : { "b" : { "c" : { "$numberInt" : "1" } } } }
+ { "_id" : { "$numberInt" : "15" }, "h" : { "c" : { "c" : { "$numberInt" : "1" } } } }
+ { "_id" : { "$numberInt" : "16" }, "h" : { "c" : { "e" : { "$numberInt" : "1" } } } }
+ { "_id" : { "$numberInt" : "18" }, "h" : { "b!c" : { "$numberInt" : "1" } } }
+ { "_id" : { "$numberInt" : "19" }, "h" : { "b" : { "d" : { "$numberInt" : "1" } } } }
+(5 rows)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "h.b": { "$exists": true } }}');
+                                       document                                        
+---------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "14" }, "h" : { "b" : { "c" : { "$numberInt" : "1" } } } }
+ { "_id" : { "$numberInt" : "19" }, "h" : { "b" : { "d" : { "$numberInt" : "1" } } } }
+(2 rows)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "h.b.c": { "$exists": true } }}');
+                                       document                                        
+---------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "14" }, "h" : { "b" : { "c" : { "$numberInt" : "1" } } } }
+(1 row)
+
+SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard", "filter": { "h.b": { "$lte": { "$maxKey": 1 } } }}');
+                                       document                                        
+---------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "14" }, "h" : { "b" : { "c" : { "$numberInt" : "1" } } } }
+ { "_id" : { "$numberInt" : "19" }, "h" : { "b" : { "d" : { "$numberInt" : "1" } } } }
+(2 rows)
+
+-- testing non-array merge of paths
+SELECT documentdb_api.insert_one('compdb', 'compwildcard2', '{ "a": { "b": 1, "c": 5 }}');
+NOTICE:  creating collection
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb', 'compwildcard2', '{ "a": { "b": 1, "c": 6 }}');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb', 'compwildcard2', '{ "a": { "b": 2, "c": 6 }}');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb', 'compwildcard2', '{ "a": { "b": 2, "c": 7 }}');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb', 'compwildcard2', '{ "a": { "b": 3, "c": 7 }}');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "compwildcard2", "indexes": [ { "key": { "$**": 1 }, "name": "$**_1", "enableOrderedIndex": true }]}', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM documentdb_test_helpers.gin_bson_get_composite_path_wildcard_generated_terms('{ "a": { "b": 1, "c": 5 }}', '[ "" ]', 2600, true, 0);
+ gin_bson_get_composite_path_wildcard_generated_terms 
+------------------------------------------------------
+ { "a.b" : { "$numberInt" : "1" }, "t" : false }
+ { "a.c" : { "$numberInt" : "5" }, "t" : false }
+(2 rows)
+
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$
+   EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, BUFFERS OFF, TIMING OFF) SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard2", "filter": { "a.b": { "$gte": 2, "$lt": 4 }, "a.c": { "$lt": 9 } }}') $cmd$);
+                                                                                           run_explain_and_trim                                                                                            
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=3 loops=1)
+   indexName: $**_1
+   indexKey: {"$**": 1}
+   isMultiKey: false
+   indexBounds: ["a.b": [ { "a.b": 2 } ,  { "a.b": 4 } )], ["a.c": [ { "a.c": -Infinity } ,  { "a.c": 9 } )]
+   ->  Index Scan using "$**_1" on documents_5402 collection (actual rows=3 loops=1)
+         Index Cond: ((document @>= '{ "a.b" : { "$numberInt" : "2" } }'::bson) AND (document @< '{ "a.b" : { "$numberInt" : "4" } }'::bson) AND (document @< '{ "a.c" : { "$numberInt" : "9" } }'::bson))
+(7 rows)
+
+SELECT documentdb_test_helpers.run_explain_and_trim($cmd$
+   EXPLAIN (COSTS OFF, ANALYZE ON, SUMMARY OFF, BUFFERS OFF, TIMING OFF) SELECT document FROM bson_aggregation_find('compdb', '{ "find": "compwildcard2", "filter": { "a.b": { "$gte": 2, "$lt": 4 } }}') $cmd$);
+                                                             run_explain_and_trim                                                             
+----------------------------------------------------------------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiExplainQueryScan) (actual rows=3 loops=1)
+   indexName: $**_1
+   indexKey: {"$**": 1}
+   isMultiKey: false
+   indexBounds: ["a.b": [ { "a.b": 2 } ,  { "a.b": 4 } )]
+   ->  Index Scan using "$**_1" on documents_5402 collection (actual rows=3 loops=1)
+         Index Cond: ((document @>= '{ "a.b" : { "$numberInt" : "2" } }'::bson) AND (document @< '{ "a.b" : { "$numberInt" : "4" } }'::bson))
+(7 rows)
+

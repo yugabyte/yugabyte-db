@@ -167,6 +167,8 @@ export const EditGFlagsConf: FC<EditGFlagConfProps> = ({
     let message = CONST_VALUES.EMPTY_STRING;
     if (flagName === MultilineGFlags.YSQL_IDENT_CONF_CSV) {
       return 'universeForm.gFlags.identConfLocal';
+    } else if (flagName === MultilineGFlags.YCQL_IDENT_CONF_CSV) {
+      return 'universeForm.gFlags.ycqlIdentConfLocal';
     } else if (flagName === MultilineGFlags.YSQL_PG_CONF_CSV) {
       return message;
     }

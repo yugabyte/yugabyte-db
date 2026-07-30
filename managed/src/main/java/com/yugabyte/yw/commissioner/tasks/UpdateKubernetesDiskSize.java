@@ -9,20 +9,24 @@ https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL
 */
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.nimbusds.oauth2.sdk.util.MapUtils;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import java.util.Map;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -72,7 +76,7 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
           KubernetesUtil.isNonRestartGflagsUpgradeSupported(
               universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
       for (UniverseDefinitionTaskParams.Cluster cluster : taskParams().clusters) {
-        Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+        Provider provider = Util.getSingleProvider(cluster);
         boolean isReadOnlyCluster =
             cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC;
         KubernetesPlacement placement =
@@ -90,25 +94,27 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
         UserIntent curIntent =
             universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
         // Update disk size if there is a change
-        boolean tserverDiskSizeChanged =
-            !curIntent.deviceInfo.volumeSize.equals(newIntent.deviceInfo.volumeSize);
-        boolean masterDiskSizeChanged =
-            !(curIntent.masterDeviceInfo == null)
-                && !curIntent.masterDeviceInfo.volumeSize.equals(newIntent.deviceInfo.volumeSize);
+        Map<UUID, Pair<Boolean, Boolean>> azToDiskSizeChangeMap =
+            canResizeDisk(placement, placement, newIntent, curIntent, taskParams().nodeDetailsSet);
         // run the disk resize tasks for each AZ in the Cluster
-        createResizeDiskTask(
-            universe.getName(),
-            placement,
-            cluster.uuid,
-            masterAddresses,
-            newIntent,
-            isReadOnlyCluster,
-            taskParams().useNewHelmNamingStyle,
-            universe.isYbcEnabled(),
-            confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion),
-            tserverDiskSizeChanged,
-            masterDiskSizeChanged,
-            usePreviousGflagsChecksum);
+        if (MapUtils.isNotEmpty(azToDiskSizeChangeMap)) {
+          createResizeDiskTask(
+              universe.getName(),
+              placement,
+              cluster.uuid,
+              masterAddresses,
+              newIntent,
+              isReadOnlyCluster,
+              taskParams().useNewHelmNamingStyle,
+              universe.isYbcEnabled(),
+              confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion),
+              azToDiskSizeChangeMap,
+              usePreviousGflagsChecksum,
+              null /* skipMasterAZs */,
+              null /* skipTserverAZs */);
+        } else {
+          log.warn("Skipping disk resize as there are no AZs which can undergo disk resize!");
+        }
       }
 
       // Marks update of this universe as a success only if all the tasks before it

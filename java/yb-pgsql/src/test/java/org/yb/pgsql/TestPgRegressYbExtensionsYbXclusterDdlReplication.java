@@ -32,6 +32,13 @@ public class TestPgRegressYbExtensionsYbXclusterDdlReplication extends BasePgReg
   }
 
   @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_suppress_unsafe_alter_notice", "true");
+    return flagMap;
+  }
+
+  @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
   }

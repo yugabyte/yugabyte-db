@@ -10,6 +10,21 @@ to_lower() {
 
 readonly build_arch=$(to_lower "$(uname -m)")
 
+find_yb_user_home() {
+  if id -u "yugabyte" >/dev/null 2>&1; then
+    yb_user_home=$(getent passwd yugabyte | cut -d: -f6 2>&1)
+    if [[ -z "$yb_user_home" ]]; then
+      echo "FATAL: Could not find home directory for user yugabyte"
+      exit 1
+    else
+      echo "$yb_user_home"
+    fi
+  else
+    echo "FATAL: User yugabyte does not exist"
+    exit 1
+  fi
+}
+
 main() {
   echo "* Installing Earlyoom Service"
   if [ "$SUDO_ACCESS" = "true" ]; then
@@ -24,7 +39,8 @@ main() {
     fi
   fi
 
-  SYSTEMD_DIR="${YB_HOME_DIR}/.config/systemd/user"
+  YB_USER_HOME=$(find_yb_user_home)
+  SYSTEMD_DIR="${YB_USER_HOME}/.config/systemd/user"
   SERVICE_FILE="${SYSTEMD_DIR}/earlyoom.service"
   TMP_DIR="/tmp"
   TMP_FILE="${TMP_DIR}/earlyoom.service.tmp"
@@ -66,14 +82,17 @@ EOF
   SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
   ARTIFACT="earlyoom-linux-amd64.tar.gz"
-  if [ "$build_arch" = "arm64" ]; then
+  if [ "$build_arch" = "aarch64" ]; then
       ARTIFACT="earlyoom-linux-arm64.tar.gz"
   fi
   mkdir -p "${TMP_DIR}/earlyoom"
 
-  THIRDPARTY_DIR="${SCRIPT_DIR}/thirdparty"
+  # node-agent/thirdparty directory.
+  THIRDPARTY_DIR="${SCRIPT_DIR}/../thirdparty"
   if [ ! -d "$THIRDPARTY_DIR" ]; then
-      THIRDPARTY_DIR="${SCRIPT_DIR}/../thirdparty"
+    # For backward compatibility when backported.
+    # Remove me later.
+    THIRDPARTY_DIR="${SCRIPT_DIR}/thirdparty"
   fi
   tar -xzf "${THIRDPARTY_DIR}/${ARTIFACT}" -C "${TMP_DIR}/earlyoom/" --no-same-owner
   EXTRACTED_DIR=$(ls -d ${TMP_DIR}/earlyoom/*/ | head -n 1)
@@ -104,7 +123,8 @@ EOF
   fi
 
   if [ "$SUDO_ACCESS" = "true" ]; then\
-    su - yugabyte -c "$BIN_DIR/configure_earlyoom_service.sh -a $ACTION -c \"$EARLYOOM_ARGS\""
+    su - yugabyte -c "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u yugabyte)/bus \
+       $BIN_DIR/configure_earlyoom_service.sh -a $ACTION -c \"$EARLYOOM_ARGS\""
   else
     $BIN_DIR/configure_earlyoom_service.sh -a $ACTION -c "$EARLYOOM_ARGS"
   fi
@@ -118,7 +138,7 @@ Usage: ${0##*/} [<options>]
 
 Options:
   --enable (OPTIONAL) Whether to enable by default.
-  --yb_home_dir (REQUIRED) Home directory for user.
+  --yb_home_dir (REQUIRED) Home directory for the software installation.
   --earlyoom_args (OPTIONAL) Args for earlyoom service.
   -h, --help
     Show usage.

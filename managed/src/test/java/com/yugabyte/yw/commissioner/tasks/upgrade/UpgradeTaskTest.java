@@ -24,6 +24,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.MockUpgrade;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
@@ -47,7 +48,6 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
@@ -69,6 +69,7 @@ import org.yb.client.GetAutoFlagsConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.IsServerReadyResponse;
+import org.yb.client.ListMasterRaftPeersResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.RollbackAutoFlagsResponse;
 import org.yb.client.YBClient;
@@ -76,6 +77,7 @@ import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterClusterOuterClass.GetAutoFlagsConfigResponsePB;
 import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
 import org.yb.master.MasterClusterOuterClass.RollbackAutoFlagsResponsePB;
+import org.yb.util.PeerInfo;
 
 @Slf4j
 public abstract class UpgradeTaskTest extends CommissionerBaseTest {
@@ -179,9 +181,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     userIntent.regionList = ImmutableList.of(region.getUuid());
     userIntent.providerType = Common.CloudType.valueOf(defaultProvider.getCode());
     userIntent.provider = defaultProvider.getUuid().toString();
-    userIntent.deviceInfo = new DeviceInfo();
-    userIntent.deviceInfo.volumeSize = 100;
-    userIntent.deviceInfo.numVolumes = 2;
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
     userIntent.useSystemd = true;
 
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId(), certUUID);
@@ -191,7 +191,6 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
         placementInfo.cloudList.get(0).regionList.get(0).azList.stream()
             .mapToInt(p -> p.numNodesInAZ)
             .sum();
-
     defaultUniverse =
         Universe.saveDetails(
             defaultUniverse.getUniverseUUID(),
@@ -220,6 +219,12 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
       when(mockClient.waitForServer(any(HostAndPort.class), anyLong())).thenReturn(true);
       when(mockClient.getLeaderMasterHostAndPort())
           .thenReturn(HostAndPort.fromString("10.0.0.2").withDefaultPort(11));
+      ListMasterRaftPeersResponse listMastersResponse = mock(ListMasterRaftPeersResponse.class);
+      PeerInfo peerInfo = new PeerInfo();
+      peerInfo.setLastKnownPrivateIps(List.of(HostAndPort.fromParts("10.0.0.2", 11)));
+      peerInfo.setMemberType(PeerInfo.MemberType.VOTER);
+      lenient().when(listMastersResponse.getPeersList()).thenReturn(List.of(peerInfo));
+      lenient().when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);
       IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
       when(mockClient.isServerReady(any(HostAndPort.class), anyBoolean())).thenReturn(okReadyResp);
       GetAutoFlagsConfigResponse resp =
@@ -442,7 +447,9 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
     userIntent.regionList = ImmutableList.of(region.getUuid());
     userIntent.enableYSQL = enableYSQL;
     userIntent.provider = defaultProvider.getUuid().toString();
-
+    userIntent.regionList = ImmutableList.of(region.getUuid());
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    userIntent.providerType = CloudType.valueOf(defaultProvider.getCode());
     PlacementInfo pi = new PlacementInfo();
     List<UUID> azUUIDs = Arrays.asList(az1.getUuid(), az2.getUuid(), az3.getUuid());
     int idx = 0;

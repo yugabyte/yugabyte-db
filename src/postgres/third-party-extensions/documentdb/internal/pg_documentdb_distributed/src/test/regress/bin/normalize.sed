@@ -22,3 +22,11 @@ s/Type oid not supported \d+/Type oid not supported ddd/g
 # Replace the values of the $$NOW time system variable with a constant
 s/\"now\" : \{ \"\$date\" : \{ \"\$numberLong\" : \"[0-9]*\" \} \}/\"now\" : NOW_SYS_VARIABLE/g
 s/\"sn\" : \{ \"\$date\" : \{ \"\$numberLong\" : \"[0-9]*\" \} \}/\"sn\" : NOW_SYS_VARIABLE/g
+s/documentdb_api_catalog.shard_key_and_document/shard_key_and_document/g
+s/documentdb_api_internal.generate_unique_shard_document/generate_unique_shard_document/g
+s/documentdb_core.bson/bson/g
+s/TTL job elapsed time: [+-]?[0-9]*\.?[0-9]+([eE][+-]?[0-9]+)?ms,/TTL job elapsed time:<redacted>/g
+s/expiry_cutoff=[0-9]*,/expiry_cutoff=<redacted>/g
+s/coord_combine_agg\('[0-9]+'/coord_combine_agg\('xxxx'/g
+s/worker_partial_agg\('[0-9]+'/coord_combine_agg\('xxxx'/g
+s/Node: host=localhost port=[0-9]+ dbname=[a-zA-Z]+/Node: host=localhost port=xxx dbname=yyy/g

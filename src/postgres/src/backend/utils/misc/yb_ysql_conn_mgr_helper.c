@@ -36,6 +36,7 @@
 #include "catalog/pg_yb_role_profile.h"
 #include "commands/dbcommands.h"
 #include "common/ip.h"
+#include "common/pg_yb_param_status_flags.h"
 #include "libpq/libpq-be.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
@@ -84,11 +85,13 @@ YbIsClientYsqlConnMgr()
 	return IsYugaByteEnabled() && yb_is_client_ysqlconnmgr;
 }
 
+bool		yb_conn_mgr_is_auth_passthrough_backend = false;
+
 bool
 YbIsAuthPassthroughInProgress(struct Port *port)
 {
-	return YbIsClientYsqlConnMgr() && port != NULL &&
-		   port->yb_is_auth_passthrough_req;
+	return YbIsClientYsqlConnMgr() && YbIsAuthPassthroughControlBackend() &&
+		   port != NULL && port->yb_is_auth_passthrough_req;
 }
 
 /*
@@ -874,7 +877,7 @@ YbCreateClientId(void)
 
 	YbCheckMyDatabase(MyProcPort->database_name, is_superuser, false, database);
 
-	if (MyProcPort->yb_has_auth_passthrough_failed)
+	if (MyProcPort->yb_has_auth_passthrough_finished)
 		return -1;
 
 	return YbSendDbRoleOidsAndSetupSharedMemory(database, user, is_superuser);
@@ -960,12 +963,15 @@ yb_is_client_ysqlconnmgr_assign_hook(bool newval, void *extras)
 {
 	yb_is_client_ysqlconnmgr = newval;
 
-	if (MyBackendType != YB_YSQL_CONN_MGR && YbIsClientYsqlConnMgr())
+	if (MyBackendType != YB_YSQL_CONN_MGR &&
+		MyBackendType != YB_YSQL_CONN_MGR_CTRL
+		&& YbIsClientYsqlConnMgr())
 	{
 		if (MyBackendType == B_WAL_SENDER)
 			MyBackendType = YB_YSQL_CONN_MGR_WAL_SENDER;
 		else
 			MyBackendType = YB_YSQL_CONN_MGR;
+		/* YB: YB_YSQL_CONN_MGR_CTRL is being set while processing startup packet */
 	}
 
 	/*
@@ -981,7 +987,7 @@ yb_is_client_ysqlconnmgr_assign_hook(bool newval, void *extras)
 	{
 		send_oid_info('d', get_database_oid(MyProcPort->database_name, false));
 		send_oid_info('u', get_role_oid(MyProcPort->user_name, false));
-		SendLogicalClientCacheVersionToFrontend();
+		YbSendLogicalClientCacheVersionToFrontend();
 	}
 }
 
@@ -1084,7 +1090,7 @@ YbSendParameterStatusForConnectionManager(const char *name, const char *value)
 	pq_beginmessage(&msgbuf, 'r');
 	pq_sendstring(&msgbuf, name);
 	pq_sendstring(&msgbuf, value);
-	pq_sendbyte(&msgbuf, 0);	/* flags */
+	pq_sendbyte(&msgbuf, YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_SESSION);
 	pq_endmessage(&msgbuf);
 
 	pq_flush();

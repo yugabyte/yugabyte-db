@@ -5,6 +5,7 @@ import { getPrimaryCluster } from '../../../../../utils/universeUtilsTyped';
 
 import { Certificate } from '../../universe-form/utils/dto';
 import { UniverseDetails } from '../../../../helpers/dtos';
+import { EncryptionInTransitSpec } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 
 //styles
 export const useEITStyles = makeStyles((theme: Theme) => ({
@@ -115,6 +116,7 @@ export enum CertTypes {
 }
 
 export const FORM_RESET_VALUES = {
+  enableUniverseEncryption: false,
   enableClientToNodeEncrypt: false,
   enableNodeToNodeEncrypt: false,
   rootCA: null,
@@ -165,7 +167,48 @@ export const getInitialFormValues = (
   };
 };
 
+export const getV2InitialFormValues = (
+  eitSpec: EncryptionInTransitSpec,
+  isItKubernetesUniverse: boolean
+) => {
+  const isRootClientCASame =
+    eitSpec?.enable_node_to_node_encrypt &&
+    eitSpec?.enable_client_to_node_encrypt &&
+    eitSpec?.client_root_ca === eitSpec?.root_ca
+      ? true
+      : false;
+  return {
+    enableUniverseEncryption: !!(
+      eitSpec?.enable_node_to_node_encrypt || eitSpec?.enable_client_to_node_encrypt
+    ),
+    enableNodeToNodeEncrypt: eitSpec?.enable_node_to_node_encrypt,
+    enableClientToNodeEncrypt: eitSpec?.enable_client_to_node_encrypt,
+    rootCA: eitSpec?.root_ca ?? null,
+    clientRootCA: eitSpec?.client_root_ca
+      ? eitSpec?.client_root_ca
+      : isRootClientCASame
+      ? eitSpec?.root_ca
+      : null,
+    rootAndClientRootCASame: isRootClientCASame,
+    rollingUpgrade: true,
+    upgradeDelay: 240,
+    upgradeOption: UpgradeOptions.NonRestart,
+    ...(isItKubernetesUniverse &&
+      (eitSpec?.enable_node_to_node_encrypt || eitSpec?.enable_client_to_node_encrypt) && {
+        k8sEncryptionType:
+          !!eitSpec?.enable_node_to_node_encrypt && !!eitSpec?.enable_client_to_node_encrypt
+            ? K8sEncryptionOption.EnableBoth
+            : eitSpec?.enable_client_to_node_encrypt
+            ? K8sEncryptionOption.ClienToNode
+            : K8sEncryptionOption.NodeToNode
+      })
+  };
+};
+
 const getCertificateType = (certificate: Certificate) => certificate.certType;
 
 export const isSelfSignedCert = (certificate: Certificate) =>
   getCertificateType(certificate) === 'SelfSigned';
+
+export const isCertManagerCert = (certificate: Certificate) =>
+  getCertificateType(certificate) === 'K8SCertManager';

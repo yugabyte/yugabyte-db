@@ -3,7 +3,7 @@ import {
   FAULT_TOLERANCE_TYPE,
   NODE_COUNT,
   REGIONS_FIELD,
-  REPLICATION_FACTOR,
+  RESILIENCE_FACTOR,
   RESILIENCE_FORM_MODE,
   RESILIENCE_TYPE,
   SINGLE_AVAILABILITY_ZONE
@@ -15,7 +15,7 @@ export enum ResilienceType {
 }
 export enum ResilienceFormMode {
   GUIDED = 'Guided',
-  FREE_FORM = 'FreeForm'
+  EXPERT_MODE = 'Expert Mode'
 }
 
 export enum FaultToleranceType {
@@ -29,7 +29,7 @@ export interface ResilienceAndRegionsProps {
   [RESILIENCE_TYPE]: ResilienceType;
   [RESILIENCE_FORM_MODE]: ResilienceFormMode;
   [REGIONS_FIELD]: Region[];
-  [REPLICATION_FACTOR]: number;
+  [RESILIENCE_FACTOR]: number;
   [FAULT_TOLERANCE_TYPE]: FaultToleranceType;
   [NODE_COUNT]: number;
   [SINGLE_AVAILABILITY_ZONE]?: string;

@@ -59,6 +59,7 @@
 #include "yb/util/operation_counter.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
@@ -308,7 +309,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
       CoarseTimePoint locking_deadline = GetWaitForRelockUnblockedKeysDeadline()) EXCLUDES(mutex_) {
     ADOPT_WAIT_STATE(wait_state);
     SCOPED_WAIT_STATUS(OnCpu_Active);
-    // ASH: This may later be set to ResolveConficts for another thread to pick up
+    // ASH: This may later be set to ResolveConflicts for another thread to pick up
     // working on the wait-state.
     ASH_ENABLE_CONCURRENT_UPDATES_FOR(wait_state);
     TRACE_FUNC();
@@ -385,7 +386,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
     if (CoarseMonoClock::Now() > deadline_) {
       return true;
     }
-    auto refresh_waiter_timeout = GetAtomicFlag(&FLAGS_refresh_waiter_timeout_ms) * 1ms;
+    auto refresh_waiter_timeout = FLAGS_refresh_waiter_timeout_ms * 1ms;
     if (IsSingleShard()) {
       if (refresh_waiter_timeout.count() > 0) {
         refresh_waiter_timeout = std::min(refresh_waiter_timeout, GetMaxSingleShardWaitDuration());
@@ -1801,7 +1802,7 @@ class WaitQueue::Impl {
   }
 
   void SignalCommitted(const TransactionId& id, HybridTime commit_ht) {
-    if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_drop_participant_signal))) {
+    if (PREDICT_FALSE(FLAGS_TEST_drop_participant_signal)) {
       LOG_WITH_PREFIX_AND_FUNC(INFO) << "Dropping commit signal " << id;
       return;
     }
@@ -1811,7 +1812,7 @@ class WaitQueue::Impl {
   }
 
   void SignalAborted(const TransactionId& id) {
-    if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_drop_participant_signal))) {
+    if (PREDICT_FALSE(FLAGS_TEST_drop_participant_signal)) {
       LOG_WITH_PREFIX_AND_FUNC(INFO) << "Dropping abort signal " << id;
       return;
     }

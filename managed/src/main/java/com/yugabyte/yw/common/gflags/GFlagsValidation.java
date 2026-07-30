@@ -16,11 +16,13 @@ import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -86,6 +88,8 @@ public class GFlagsValidation {
   private static final String GLIBC_VERSION_FIELD_NAME = "glibc_v";
 
   private static final String YSQL_MAJOR_VERSION_FIELD_NAME = "ysql_major_version";
+
+  private final KeyLock<String> versionKeyLock = new KeyLock<>();
 
   // Skip these test auto flags while computing auto flags in YBA.
   public static final Set<String> TEST_AUTO_FLAGS =
@@ -179,6 +183,7 @@ public class GFlagsValidation {
       xmlModule.setDefaultUseWrapper(false);
       XmlMapper xmlMapper = new XmlMapper(xmlModule);
       AllGFlags data = xmlMapper.readValue(flagStream, AllGFlags.class);
+      setRestartInfo(data.flags);
       if (mostUsedGFlags) {
         InputStream inputStream =
             environment.resourceAsStream("gflags_metadata/most_used_gflags.json");
@@ -350,7 +355,7 @@ public class GFlagsValidation {
         ybdbVersion);
   }
 
-  public synchronized void fetchGFlagFilesFromTarGZipInputStream(
+  public void fetchGFlagFilesFromTarGZipInputStream(
       InputStream inputStream,
       String dbVersion,
       List<String> requiredGFlagFileList,
@@ -359,80 +364,86 @@ public class GFlagsValidation {
     if (requiredGFlagFileList.isEmpty()) {
       return;
     }
-    List<String> missingRequiredGFlagFileList =
-        requiredGFlagFileList.stream()
-            .filter(
-                file ->
-                    !(new File(String.format("%s/%s/%s", releasesPath, dbVersion, file))).exists())
-            .collect(Collectors.toList());
-    if (missingRequiredGFlagFileList.isEmpty()) {
-      return;
-    }
-    LOG.info("Adding {} files for DB version {}", missingRequiredGFlagFileList, dbVersion);
-    YsqlMigrationFilesList migrationFilesList = new YsqlMigrationFilesList();
-    try (TarArchiveInputStream tarInput =
-        new TarArchiveInputStream(new GzipCompressorInputStream(inputStream))) {
-      TarArchiveEntry currentEntry;
-      while ((currentEntry = tarInput.getNextEntry()) != null) {
-        if (isYSQLMigrationFile(currentEntry.getName())) {
-          String migrationFileName = getYsqlMigrationFiles(currentEntry.getName());
-          migrationFilesList.ysqlMigrationsFilesList.add(migrationFileName);
-          continue;
-        }
+    versionKeyLock.acquireLock(dbVersion);
+    try {
+      List<String> missingRequiredGFlagFileList =
+          requiredGFlagFileList.stream()
+              .filter(
+                  file ->
+                      !(new File(String.format("%s/%s/%s", releasesPath, dbVersion, file)))
+                          .exists())
+              .collect(Collectors.toList());
+      if (missingRequiredGFlagFileList.isEmpty()) {
+        return;
+      }
+      LOG.info("Adding {} files for DB version {}", missingRequiredGFlagFileList, dbVersion);
+      YsqlMigrationFilesList migrationFilesList = new YsqlMigrationFilesList();
+      try (TarArchiveInputStream tarInput =
+          new TarArchiveInputStream(new GzipCompressorInputStream(inputStream))) {
+        TarArchiveEntry currentEntry;
+        while ((currentEntry = tarInput.getNextEntry()) != null) {
+          if (isYSQLMigrationFile(currentEntry.getName())) {
+            String migrationFileName = getYsqlMigrationFiles(currentEntry.getName());
+            migrationFilesList.ysqlMigrationsFilesList.add(migrationFileName);
+            continue;
+          }
 
-        // Ignore all non-flag xml and auto flags files.
-        if (!currentEntry.isFile() || !isFlagFile(currentEntry.getName())) {
-          continue;
-        }
-        // Generally, we get the currentEntry variable value for the
-        // gFlag file like `dbVersion/master_flags.xml`
-        List<String> tarGFlagFilePathList = Arrays.asList(currentEntry.getName().split("/"));
-        if (tarGFlagFilePathList.size() == 0) {
-          continue;
-        }
-        String gFlagFileName = tarGFlagFilePathList.get(tarGFlagFilePathList.size() - 1);
-        // Don't modify/re-write existing gFlags files, only add missing ones.
-        if (!missingRequiredGFlagFileList.contains(gFlagFileName)) {
-          continue;
-        }
-        String absoluteGFlagFileName =
-            String.format("%s/%s/%s", releasesPath, dbVersion, gFlagFileName);
-        File gFlagOutputFile = new File(absoluteGFlagFileName);
-        if (!gFlagOutputFile.exists()) {
-          gFlagOutputFile.getParentFile().mkdirs();
-          gFlagOutputFile.createNewFile();
-          BufferedInputStream in = new BufferedInputStream(tarInput);
-          ByteArrayOutputStream out = new ByteArrayOutputStream();
-          IOUtils.copy(in, out);
-          try (OutputStream outputStream = new FileOutputStream(gFlagOutputFile)) {
-            out.writeTo(outputStream);
-          } catch (IOException e) {
-            LOG.error(
-                "Caught an error while adding {} for DB version{}: {}",
-                gFlagFileName,
-                dbVersion,
-                e);
-            throw e;
+          // Ignore all non-flag xml and auto flags files.
+          if (!currentEntry.isFile() || !isFlagFile(currentEntry.getName())) {
+            continue;
+          }
+          // Generally, we get the currentEntry variable value for the
+          // gFlag file like `dbVersion/master_flags.xml`
+          List<String> tarGFlagFilePathList = Arrays.asList(currentEntry.getName().split("/"));
+          if (tarGFlagFilePathList.size() == 0) {
+            continue;
+          }
+          String gFlagFileName = tarGFlagFilePathList.get(tarGFlagFilePathList.size() - 1);
+          // Don't modify/re-write existing gFlags files, only add missing ones.
+          if (!missingRequiredGFlagFileList.contains(gFlagFileName)) {
+            continue;
+          }
+          String absoluteGFlagFileName =
+              String.format("%s/%s/%s", releasesPath, dbVersion, gFlagFileName);
+          File gFlagOutputFile = new File(absoluteGFlagFileName);
+          if (!gFlagOutputFile.exists()) {
+            gFlagOutputFile.getParentFile().mkdirs();
+            gFlagOutputFile.createNewFile();
+            BufferedInputStream in = new BufferedInputStream(tarInput);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            IOUtils.copy(in, out);
+            try (OutputStream outputStream = new FileOutputStream(gFlagOutputFile)) {
+              out.writeTo(outputStream);
+            } catch (IOException e) {
+              LOG.error(
+                  "Caught an error while adding {} for DB version{}: {}",
+                  gFlagFileName,
+                  dbVersion,
+                  e);
+              throw e;
+            }
           }
         }
-      }
-      if (missingRequiredGFlagFileList.contains(YSQL_MIGRATION_FILES_LIST_FILE_NAME)) {
-        File ysqlMigrationFileListFile =
-            new File(
-                String.format(
-                    "%s/%s/%s", releasesPath, dbVersion, YSQL_MIGRATION_FILES_LIST_FILE_NAME));
-        if (!Files.exists(Paths.get(ysqlMigrationFileListFile.getAbsolutePath()))) {
-          ysqlMigrationFileListFile.getParentFile().mkdirs();
-          ysqlMigrationFileListFile.createNewFile();
-          ObjectMapper mapper = new ObjectMapper();
-          FileUtils.writeJsonFile(
-              ysqlMigrationFileListFile.getAbsolutePath(),
-              (JsonNode) mapper.valueToTree(migrationFilesList));
+        if (missingRequiredGFlagFileList.contains(YSQL_MIGRATION_FILES_LIST_FILE_NAME)) {
+          File ysqlMigrationFileListFile =
+              new File(
+                  String.format(
+                      "%s/%s/%s", releasesPath, dbVersion, YSQL_MIGRATION_FILES_LIST_FILE_NAME));
+          if (!Files.exists(Paths.get(ysqlMigrationFileListFile.getAbsolutePath()))) {
+            ysqlMigrationFileListFile.getParentFile().mkdirs();
+            ysqlMigrationFileListFile.createNewFile();
+            ObjectMapper mapper = new ObjectMapper();
+            FileUtils.writeJsonFile(
+                ysqlMigrationFileListFile.getAbsolutePath(),
+                (JsonNode) mapper.valueToTree(migrationFilesList));
+          }
         }
+      } catch (IOException e) {
+        LOG.error("Caught an error while adding DB metadata for version: {}", dbVersion, e);
+        throw e;
       }
-    } catch (IOException e) {
-      LOG.error("Caught an error while adding DB metadata for version: {}", dbVersion, e);
-      throw e;
+    } finally {
+      versionKeyLock.releaseLock(dbVersion);
     }
   }
 
@@ -537,12 +548,17 @@ public class GFlagsValidation {
     Map<String, GFlagDetails> allGFlagsMap =
         extractGFlags(version, serverType.name(), false).stream()
             .collect(Collectors.toMap(flagDetails -> flagDetails.name, Function.identity()));
+    Set<String> undefokGFlags = GFlagsUtil.extractUndefokFlags(flags);
     for (Map.Entry<String, String> entry : flags.entrySet()) {
       String flag = entry.getKey();
-      if (!allGFlagsMap.containsKey(flag)) {
+      if (!undefokGFlags.contains(flag) && !allGFlagsMap.containsKey(flag)) {
         throw new PlatformServiceException(BAD_REQUEST, flag + " is not present in metadata.");
       }
       GFlagDetails flagDetail = allGFlagsMap.get(flag);
+      // flag details can be null for undefok flags
+      if (undefokGFlags.contains(flag) && flagDetail == null) {
+        continue;
+      }
       if (isAutoFlag(flagDetail) && !flagDetail.initial.equals(entry.getValue())) {
         filteredList.put(entry.getKey(), entry.getValue());
       }
@@ -555,6 +571,23 @@ public class GFlagsValidation {
       return new HashSet<>();
     }
     return new HashSet<>(Arrays.asList(StringUtils.splitPreserveAllTokens(flagDetails.tags, ",")));
+  }
+
+  /**
+   * Sets requiresRestart on each flag from its tags. In YugabyteDB metadata, the "runtime" tag
+   * means the flag can be changed at runtime (no process restart); absence of "runtime" means the
+   * flag is read only at startup, so a restart (or rolling restart) is required for changes to take
+   * effect.
+   */
+  private void setRestartInfo(List<GFlagDetails> flags) {
+    if (flags == null) {
+      return;
+    }
+    for (GFlagDetails flag : flags) {
+      boolean isRuntime =
+          getFlagsTagSet(flag).stream().anyMatch(t -> "runtime".equalsIgnoreCase(t.trim()));
+      flag.requiresRestart = !isRuntime;
+    }
   }
 
   public boolean isAutoFlag(GFlagDetails flag) {
@@ -648,6 +681,22 @@ public class GFlagsValidation {
     return file;
   }
 
+  public void fetchAllGFlagMetaFiles(String version) {
+    List<String> missingFiles = getMissingFlagFiles(version);
+    if (missingFiles.size() == 0) {
+      return;
+    }
+    LOG.info("Adding {} files for version: {}", missingFiles, version);
+    String releasesPath = confGetter.getStaticConf().getString(Util.YB_RELEASES_PATH);
+    try (InputStream inputStream = releaseManager.getTarGZipDBPackageInputStream(version)) {
+      fetchGFlagFilesFromTarGZipInputStream(inputStream, version, missingFiles, releasesPath);
+    } catch (Exception e) {
+      LOG.error("Error in fetching GFlags metadata: ", e);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Error in adding DB metadata files for DB version " + version);
+    }
+  }
+
   public boolean ysqlMajorVersionUpgrade(String oldVersion, String newVersion) {
     try {
       Optional<Integer> newVersionYsqlVersion = getYsqlMajorVersion(newVersion);
@@ -675,29 +724,37 @@ public class GFlagsValidation {
     }
   }
 
-  public Map<String, String> validateGFlags(
-      YBClient client, Map<String, String> mergedGFlags, ServerType serverType) {
-    Map<String, String> serverGFlagsValidationErrors = new HashMap<String, String>();
-    for (Map.Entry<String, String> entry : mergedGFlags.entrySet()) {
-      String flagName = entry.getKey();
-      String flagValue = entry.getValue();
-      try {
-        ValidateFlagValueResponse resp = client.validateFlagValue(flagName, flagValue);
-        // Success: no exception means valid flag.
-      } catch (Exception e) {
-        serverGFlagsValidationErrors.put(
-            flagName,
-            "On server type: "
-                + serverType.toString()
-                + ", Error validating flag "
-                + flagName
-                + " with value: "
-                + flagValue
-                + " "
-                + e);
-      }
+  /**
+   * Validates all flags in a single batch RPC sent directly to the given server process.
+   *
+   * <p>This method never throws on validation failures, errors are returned in the map. An
+   * exception is only thrown for RPC-level failures (e.g. the server is unreachable).
+   *
+   * @param client an open YBClient
+   * @param hp host and port of the target server — tserver (9100) or master (7100)
+   * @param flags all flags to validate
+   * @param serverType used only for labelling errors in the returned map
+   * @return map of flag name → error message; empty map means all flags passed
+   */
+  public Map<String, String> validateGFlagsViaRpc(
+      YBClient client, HostAndPort hp, Map<String, String> flags, ServerType serverType)
+      throws Exception {
+    ValidateFlagValueResponse response = client.validateFlagValues(hp, flags);
+    if (!response.hasErrors()) {
+      return new HashMap<>();
     }
-    return serverGFlagsValidationErrors;
+    Map<String, String> errors = new HashMap<>();
+    for (Map.Entry<String, String> entry : response.getErrors().entrySet()) {
+      errors.put(
+          entry.getKey(),
+          "On server type: "
+              + serverType.toString()
+              + ", Error validating flag "
+              + entry.getKey()
+              + ": "
+              + entry.getValue());
+    }
+    return errors;
   }
 
   /** Structure to capture GFlags metadata from xml file. */
@@ -767,11 +824,12 @@ public class GFlagsValidation {
       sb.append(", clusterUuid=").append(clusterUuid);
 
       if (masterGFlagsErrors != null && !masterGFlagsErrors.isEmpty()) {
-        sb.append(", masterGFlagsErrors=").append(masterGFlagsErrors);
+        sb.append(", masterGFlagsErrors=").append(masterGFlagsErrors.toString().replace("\n", " "));
       }
 
       if (tserverGFlagsErrors != null && !tserverGFlagsErrors.isEmpty()) {
-        sb.append(", tserverGFlagsErrors=").append(tserverGFlagsErrors);
+        sb.append(", tserverGFlagsErrors=")
+            .append(tserverGFlagsErrors.toString().replace("\n", " "));
       }
 
       sb.append("}");

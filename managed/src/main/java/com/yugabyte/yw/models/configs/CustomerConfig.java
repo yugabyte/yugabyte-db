@@ -5,10 +5,13 @@ package com.yugabyte.yw.models.configs;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_AZURE;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_GCS;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_NFS;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_OCI;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_S3;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import api.v2.handlers.HandlerPagingSupport;
+import api.v2.utils.NormalizedPaginationSpec;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -24,11 +27,15 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageOCIData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data.ProxySetting;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
+import io.ebean.PagedList;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Encrypted;
 import io.ebean.annotation.EnumValue;
@@ -69,6 +76,10 @@ public class CustomerConfig extends Model {
   public static final String SMTP_INFO = "smtp info";
   public static final String PASSWORD_POLICY = "password policy";
   public static final String CALLHOME_PREFERENCES = "callhome level";
+
+  // Maps array field name → the identity key within each element used to match originals on update.
+  public static final Map<String, String> ARRAY_IDENTITY_FIELDS =
+      CustomerConfigConsts.STORAGE_CONFIG_ARRAY_MERGE_FIELDS;
 
   public enum ConfigType {
     @EnumValue("STORAGE")
@@ -162,8 +173,16 @@ public class CustomerConfig extends Model {
     this.save();
   }
 
-  public static final Finder<UUID, CustomerConfig> find =
-      new Finder<UUID, CustomerConfig>(CustomerConfig.class) {};
+  public static final Finder<UUID, CustomerConfig> find = new Finder<>(CustomerConfig.class) {};
+
+  public static PagedList<CustomerConfig> getPagedList(
+      UUID customerUUID, NormalizedPaginationSpec normalized) {
+    ExpressionList<CustomerConfig> expr =
+        CustomerConfig.find.query().where().eq("customer_uuid", customerUUID);
+    String order = normalized.order();
+    String orderBy = String.format("coalesce(lower(name), '') %s, config_uuid %s", order, order);
+    return HandlerPagingSupport.getPagedList(expr, normalized, orderBy);
+  }
 
   public Map<String, String> dataAsMap() {
     ObjectMapper mapper = new ObjectMapper();
@@ -197,7 +216,7 @@ public class CustomerConfig extends Model {
   }
 
   public CustomerConfig unmaskAndSetData(ObjectNode data) {
-    this.setData(CommonUtils.unmaskJsonObject(this.getData(), data));
+    this.setData(CommonUtils.unmaskJsonObject(this.getData(), data, ARRAY_IDENTITY_FIELDS));
     return this;
   }
 
@@ -420,6 +439,8 @@ public class CustomerConfig extends Model {
         return CustomerConfigStorageAzureData.class;
       } else if (NAME_NFS.equals(name)) {
         return CustomerConfigStorageNFSData.class;
+      } else if (NAME_OCI.equals(name)) {
+        return CustomerConfigStorageOCIData.class;
       }
     } else if (type == ConfigType.ALERTS) {
       if (ALERTS_PREFERENCES.equals(name)) {

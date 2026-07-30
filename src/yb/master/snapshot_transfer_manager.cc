@@ -17,8 +17,7 @@
 #include "yb/client/client.h"
 #include "yb/util/trace.h"
 
-DEFINE_test_flag(
-    bool, xcluster_fail_snapshot_transfer, false,
+DEFINE_test_flag(bool, xcluster_fail_snapshot_transfer, false,
     "In the SetupReplicationWithBootstrap flow, test failure to transfer snapshot on consumer.");
 
 namespace yb {

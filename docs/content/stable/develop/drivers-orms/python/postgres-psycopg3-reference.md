@@ -1,8 +1,8 @@
 ---
-title: PostgreSQL Psycopg3 driver
+title: PostgreSQL Psycopg 3 driver
 headerTitle: Python drivers
 linkTitle: Python drivers
-description: PostgreSQL Psycopg3 Python Driver for YSQL
+description: PostgreSQL Psycopg 3 Python Driver for YSQL
 tags:
   other: ysql
 menu:
@@ -17,33 +17,39 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
     <li >
     <a href="../yugabyte-psycopg2-reference/" class="nav-link ">
-      <img src="/icons/yugabyte.svg"></i>
-      Yugabyte Psycopg2
+      <img src="/icons/yugabyte.svg">
+      YB Psycopg 2
+    </a>
+  </li>
+  <li >
+    <a href="../yugabyte-psycopg3-reference/" class="nav-link">
+      <img src="/icons/yugabyte.svg">
+      YB Psycopg 3
     </a>
   </li>
   <li >
     <a href="../postgres-psycopg2-reference/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PG Psycopg2
+      PG Psycopg 2
     </a>
   </li>
   <li >
     <a href="../postgres-psycopg3-reference/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      PG Psycopg3
+      PG Psycopg 3
     </a>
   </li>
 </ul>
 
 Psycopg 3 is the newest implementation of the most popular adapter for Python.
 
-For details on using psycopg3, see [Psycopg3 documentation](https://www.psycopg.org/psycopg3/docs/).
+For details on using Psycopg 3, see [Psycopg 3 documentation](https://www.psycopg.org/psycopg3/docs/).
 
 For a tutorial on building a sample Python application that uses psycopg3, see [Connect an application](../postgres-psycopg3/).
 
 ## Fundamentals
 
-Learn how to perform common tasks required for Python application development using the PostgreSQL Psycopg3 driver.
+Learn how to perform common tasks required for Python application development using the PostgreSQL Psycopg 3 driver.
 
 ### Download the driver dependency
 

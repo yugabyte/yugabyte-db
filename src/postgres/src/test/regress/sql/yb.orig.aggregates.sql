@@ -92,7 +92,7 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
 \set query 'SELECT COUNT(*) FROM ybaggtest WHERE int_8 = 9223372036854775807 AND int_2 = 32767'
 :run_ss_ios_bs;
 
--- In case preliminary check might happen, pushdown should be avoided.
+-- In case YB recheck might happen, pushdown should be avoided.
 \set query 'SELECT MAX(a.int_4) FROM ybaggtest AS a LEFT JOIN ybaggtest AS b ON a.id = b.id WHERE a.int_4 = 1 AND a.int_4 BETWEEN 7 AND 14'
 :explain :query; :query;
 
@@ -361,6 +361,17 @@ ORDER BY v1;
 
 DROP TABLE ptest;
 DROP TABLE nlptest;
+
+--
+-- #32403 Test pushdown aggregates with NULL values.
+--
+CREATE TABLE null_test (k int primary key, v1 int, v2 int);
+INSERT INTO null_test SELECT i, NULL, NULL FROM generate_series(1,6) i;
+\set query 'SELECT AVG(v1), COUNT(v1), MIN(v1), MAX(v1), SUM(v1), AVG(v2), COUNT(v2), MIN(v2), MAX(v2), SUM(v2) FROM null_test'
+:explain :query; :query;
+\set query 'SELECT SUM(v2), MAX(v2), MIN(v2), COUNT(v2), AVG(v2), SUM(v1), MAX(v1), MIN(v1), COUNT(v1), AVG(v1) FROM null_test'
+:explain :query; :query;
+DROP TABLE null_test;
 
 --
 -- Colocation.

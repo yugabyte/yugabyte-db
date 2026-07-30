@@ -14,7 +14,7 @@
 #include "yb/tools/tools_test_utils.h"
 
 #include "yb/integration-tests/mini_cluster_base.h"
-#include "yb/util/jsonreader.h"
+#include "yb/util/json_document.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
@@ -78,22 +78,20 @@ Status RunBackupCommand(
   RETURN_NOT_OK(Subprocess::Call(args, &output));
   LOG(INFO) << "Tool output: " << output;
 
-  JsonReader r(output);
-  RETURN_NOT_OK(r.Init());
+  JsonDocument doc;
+  auto root = VERIFY_RESULT(doc.Parse(output));
   string error;
-  Status s = r.ExtractString(r.root(), "error", &error);
-  if (s.ok()) {
-    LOG(ERROR) << "yb_backup.py error: " << error;
-    return STATUS(RuntimeError, "yb_backup.py error", error);
+  Result<std::string> res = root["error"].GetString();
+  if (res.ok()) {
+    LOG(ERROR) << "yb_backup.py error: " << *res;
+    return STATUS(RuntimeError, "yb_backup.py error", *res);
   }
 
   if (backup_cmd == "create") {
-    string url;
-    RETURN_NOT_OK(r.ExtractString(r.root(), "snapshot_url", &url));
+    auto url = VERIFY_RESULT(root["snapshot_url"].GetString());
     LOG(INFO) << "Backup-create operation result - snapshot url: " << url;
   } else if (backup_cmd == "restore") {
-    bool result_ok = false;
-    RETURN_NOT_OK(r.ExtractBool(r.root(), "success", &result_ok));
+    auto result_ok = VERIFY_RESULT(root["success"].GetBool());
     LOG(INFO) << "Backup-restore operation result: " << result_ok;
     if (!result_ok) {
       return STATUS(RuntimeError, "Failed backup restore operation");

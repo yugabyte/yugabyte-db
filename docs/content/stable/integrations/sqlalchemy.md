@@ -43,7 +43,7 @@ This document describes how to use [SQLAlchemy](https://www.sqlalchemy.org/), a 
     sqlalchemy.version
     ```
 
-- Psycopg2, the PostgreSQL database adapter for Python, which you can install using pip by executing the following command:
+- Psycopg 2, the PostgreSQL database adapter for Python, which you can install using pip by executing the following command:
 
   ```shell
   pip3 install psycopg2

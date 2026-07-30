@@ -74,30 +74,30 @@ select 1 from documentdb_api.insert_one('db', 'removeme', '{"a":10,"_id":10}');
 select documentdb_api.delete('db', NULL);
 ERROR:  delete document cannot be NULL
 select documentdb_api.delete(NULL, '{"delete":"removeme", "deletes":[{"q":{},"limit":0}]}');
-ERROR:  database name cannot be NULL
+ERROR:  Database name must not be NULL value
 select documentdb_api.delete('db', '{"deletes":[{"q":{},"limit":0}]}');
-ERROR:  BSON field 'delete.delete' is missing but a required field
+ERROR:  The required BSON field 'delete.delete' is not present in the data.
 select documentdb_api.delete('db', '{"delete":"removeme"}');
-ERROR:  BSON field 'delete.deletes' is missing but a required field
+ERROR:  The required BSON field 'delete.deletes' is not present in the data.
 select documentdb_api.delete('db', '{"delete":["removeme"], "deletes":[{"q":{},"limit":0}]}');
-ERROR:  collection name has invalid type array
+ERROR:  Collection name contains an invalid data type array
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":{"q":{},"limit":0}}');
-ERROR:  BSON field 'delete.deletes' is the wrong type 'object', expected type 'array'
+ERROR:  The BSON field 'delete.deletes' has an incorrect type 'object'; it should be of type 'array'.
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":0}], "extra":1}');
-ERROR:  BSON field 'delete.extra' is an unknown field
+ERROR:  The BSON field 'delete.extra' is not recognized as a valid field name.
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{}}]}');
-ERROR:  BSON field 'delete.deletes.limit' is missing but a required field
+ERROR:  The BSON field 'delete.deletes.limit' is not present, but it is required
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"limit":0}]}');
-ERROR:  BSON field 'delete.deletes.q' is missing but a required field
+ERROR:  The BSON field 'delete.deletes.q' is not present, but it is required
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":[],"limit":0}]}');
-ERROR:  BSON field 'delete.deletes.q' is the wrong type 'array', expected type 'object'
+ERROR:  The BSON field 'delete.deletes.q' has an incorrect type 'array'; it should be of type 'object'.
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":0,"extra":1}]}');
-ERROR:  BSON field 'delete.deletes.extra' is an unknown field
+ERROR:  The BSON field 'delete.deletes.extra' is not recognized as a valid field.
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":0}],"ordered":1}');
-ERROR:  BSON field 'delete.ordered' is the wrong type 'int', expected type 'bool'
+ERROR:  The BSON field 'delete.ordered' has an incorrect type 'int'; it should be of type 'bool'.
 -- Disallow writes to system.views
 select documentdb_api.delete('db', '{"delete":"system.views", "deletes":[{"q":{},"limit":0}]}');
-ERROR:  cannot write to db.system.views
+ERROR:  Unable to write data to specified location db.system.views
 -- delete all
 begin;
 SET LOCAL search_path TO '';
@@ -154,8 +154,8 @@ select documentdb_api.delete('db', '{"delete":"notexists", "deletes":[{"q":{},"l
 -- query syntax errors are added the response
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$ltr":5}},"limit":0}]}');
                                                                                                                      delete                                                                                                                      
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""16777245"" }, ""errmsg"" : ""unknown operator: $ltr"" } ] }",f)
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""16777245"" }, ""errmsg"" : ""Unrecognized operator specified: $ltr"" } ] }",f)
 (1 row)
 
 -- when ordered, expect only first delete to be executed
@@ -621,7 +621,7 @@ rollback;
 -- deletes with both specs specified 
 begin;
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes": [{"q":{"a":{"$eq":5}},"limit":1}] }', '{ "":[{"q":{"a":{"$eq":5}},"limit":1}] }');
-ERROR:  Unexpected additional deletes
+ERROR:  Unexpected extra delete operations
 rollback;
 select documentdb_api.drop_collection('db','removeme');
  drop_collection 

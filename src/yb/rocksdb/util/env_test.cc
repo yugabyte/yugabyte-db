@@ -49,6 +49,7 @@
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_util.h"
 
@@ -935,6 +936,27 @@ TEST_F(EnvPosixTest, LogBufferMaxSizeTest) {
   }
 }
 
+TEST_F(EnvPosixTest, LogBufferDetailTest) {
+  TestLogger test_logger;
+  test_logger.SetInfoLogLevel(InfoLogLevel::INFO_LEVEL);
+  test_logger.log_count = 0;
+  test_logger.char_x_count = 0;
+  test_logger.char_0_count = 0;
+
+  LogBuffer log_buffer(InfoLogLevel::INFO_LEVEL, &test_logger);
+
+  // Mix DETAIL and regular INFO entries. DETAIL should pass at INFO level.
+  LOG_TO_BUFFER(&log_buffer, "x%sx", "info1");
+  LOG_TO_BUFFER_DETAIL(&log_buffer, "x%sx", "detail1");
+  LOG_TO_BUFFER(&log_buffer, "x%sx", "info2");
+
+  ASSERT_EQ(0, test_logger.log_count);
+  log_buffer.FlushBufferToLog();
+  ASSERT_EQ(3, test_logger.log_count);
+  ASSERT_EQ(3, test_logger.char_0_count);
+  ASSERT_EQ(6, test_logger.char_x_count);
+}
+
 TEST_F(EnvPosixTest, Preallocation) {
   const std::string src = test::TmpDir() + "/" + "testfile";
   unique_ptr<WritableFile> srcfile;
@@ -1022,11 +1044,11 @@ TEST_F(EnvPosixTest, WritableFileWrapper) {
     Status Append(const Slice& data) override { inc(1); return Status::OK(); }
     Status Truncate(uint64_t size) override { return Status::OK(); }
     Status Close() override { inc(2); return Status::OK(); }
-    Status Flush() override { inc(3); return Status::OK(); }
+    Status Flush(FlushMode mode) override { inc(3); return Status::OK(); }
     Status Sync() override { inc(4); return Status::OK(); }
     Status Fsync() override { inc(5); return Status::OK(); }
     void SetIOPriority(yb::IOPriority pri) override { inc(6); }
-    uint64_t GetFileSize() override { inc(7); return 0; }
+    uint64_t Size() const override { inc(7); return 0; }
     void GetPreallocationStatus(size_t* block_size,
                                 size_t* last_allocated_block) override {
       inc(8);

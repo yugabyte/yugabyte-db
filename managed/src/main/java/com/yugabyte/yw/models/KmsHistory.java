@@ -379,14 +379,7 @@ public class KmsHistory extends Model {
   }
 
   public static boolean configHasHistory(UUID configUUID, KmsHistoryId.TargetType type) {
-    return KmsHistory.find
-            .query()
-            .where()
-            .eq("config_uuid", configUUID)
-            .eq("type", type)
-            .findList()
-            .size()
-        != 0;
+    return KmsHistory.find.query().where().eq("config_uuid", configUUID).eq("type", type).exists();
   }
 
   public static Set<Universe> getUniverses(UUID configUUID, KmsHistoryId.TargetType type) {
@@ -398,7 +391,7 @@ public class KmsHistory extends Model {
         .eq("type", type)
         .findList()
         .forEach(n -> universeUUIDs.add(n.getUuid().targetUuid));
-    return Universe.getAllPresent(universeUUIDs);
+    return Universe.getAllWithoutResources(universeUUIDs);
   }
 
   public static Set<UUID> getDistinctKmsConfigUUIDs(UUID targetUUID) {

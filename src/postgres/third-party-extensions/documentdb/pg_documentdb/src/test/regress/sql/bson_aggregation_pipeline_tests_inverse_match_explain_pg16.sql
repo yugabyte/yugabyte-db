@@ -1,2 +1,1 @@
-SET search_path TO documentdb_api,documentdb_core,documentdb_api_catalog;
 \i sql/bson_aggregation_pipeline_tests_inverse_match_explain_core.sql

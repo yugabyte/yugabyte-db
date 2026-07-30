@@ -52,9 +52,9 @@ export const DataCenterConfiguration = (props: any) => {
     (config: any) =>
       config.key === RuntimeConfigKey.PROVIDER_REDESIGN_UI_FEATURE_FLAG && config.value === 'true'
   );
-  const isPerfAdvisorEnabled = runtimeConfigEntries.some(
+  const isPACollectorEnabled = runtimeConfigEntries.some(
     (config: any) =>
-      config.key === RuntimeConfigKey.ENABLE_TROUBLESHOOTING && config.value === 'true'
+      config.key === RuntimeConfigKey.ENABLE_PA_COLLECTOR && config.value === 'true'
   );
 
   return (
@@ -63,7 +63,7 @@ export const DataCenterConfiguration = (props: any) => {
         <>
           <Suspense fallback={YBLoadingCircleIcon}>
             <DataCenterConfigRedesignComponent
-              isPerfAdvisorEnabled={isPerfAdvisorEnabled}
+              isPACollectorEnabled={isPACollectorEnabled}
               {...props}
             />
           </Suspense>

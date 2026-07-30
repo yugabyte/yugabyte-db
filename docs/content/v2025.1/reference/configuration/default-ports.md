@@ -76,7 +76,6 @@ The following common ports are required for firewall rules:
 | HTTP for YugabyteDB Anywhere  | 80 |
 | HTTP for YugabyteDB Anywhere (alternate) | 8080 |
 | HTTPS for YugabyteDB Anywhere  | 443 |
-| HTTP for Replicated | 8800 |
 | Custom SSH port for universe nodes | 54422 |
 
 ### Firewall changes for CIS hardened images

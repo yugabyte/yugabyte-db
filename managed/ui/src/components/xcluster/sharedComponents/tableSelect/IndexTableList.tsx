@@ -50,7 +50,7 @@ export const IndexTableList = ({
 }: IndexTableListProps) => {
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
   const [activePage, setActivePage] = useState(1);
-  const [sortField, setSortField] = useState<keyof MainTableReplicationCandidate>('tableName');
+  const [sortField, setSortField] = useState<keyof IndexTableReplicationCandidate>('tableName');
   const [sortOrder, setSortOrder] = useState<ReactBSTableSortOrder>(SortOrder.ASCENDING);
 
   const tableOptions: Options = {
@@ -58,14 +58,14 @@ export const IndexTableList = ({
     sortOrder: sortOrder,
     onSortChange: (sortName: string | number | symbol, sortOrder: ReactBSTableSortOrder) => {
       // Each row of the table is of type XClusterTableCandidate.
-      setSortField(sortName as keyof MainTableReplicationCandidate);
+      setSortField(sortName as keyof IndexTableReplicationCandidate);
       setSortOrder(sortOrder);
     }
   };
 
   const indexTableRows =
     mainTableReplicationCandidate.indexTables?.sort((a, b) =>
-      tableSort<MainTableReplicationCandidate>(a, b, sortField, sortOrder, 'tableName')
+      tableSort<IndexTableReplicationCandidate>(a, b, sortField, sortOrder, 'tableName')
     ) ?? [];
   const isTransactionalAtomicityEnabled = getIsTransactionalAtomicityEnabled(xClusterConfigType);
   const untoggleableTableUuids = indexTableRows

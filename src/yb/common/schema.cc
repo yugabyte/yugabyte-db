@@ -55,16 +55,20 @@
 #include "yb/util/status_log.h"
 
 DEFINE_test_flag(int32, partitioning_version, -1,
-                 "When greater than -1, set partitioning_version during table creation.");
+    "When greater than -1, set partitioning_version during table creation.");
 
 namespace yb {
 
-using std::shared_ptr;
-using std::unordered_set;
 using std::string;
 using std::vector;
-using dockv::DocKey;
-using dockv::KeyEntryValue;
+
+namespace {
+
+// For TTL: values < 0 mean "no TTL used", 0 means "TTL reset", and values > 0 represent
+// an effective TTL applied to the corresponding entity.
+constexpr auto kNoDefaultTtl = -1;
+
+} // namespace
 
 // ------------------------------------------------------------------------------------------------
 // ColumnSchema
@@ -197,6 +201,7 @@ void TableProperties::ToTablePropertiesPB(TablePropertiesPB *pb) const {
   pb->set_is_ysql_catalog_table(is_ysql_catalog_table_);
   pb->set_retain_delete_markers(retain_delete_markers_);
   pb->set_partitioning_version(partitioning_version_);
+  pb->set_owns_vector_reverse_mapping(owns_vector_reverse_mapping_);
   if (HasReplicaIdentity()) {
     pb->set_ysql_replica_identity(*ysql_replica_identity_);
   }
@@ -233,6 +238,7 @@ TableProperties TableProperties::FromTablePropertiesPB(const TablePropertiesPB& 
   }
   table_properties.set_partitioning_version(
       pb.has_partitioning_version() ? pb.partitioning_version() : 0);
+  table_properties.owns_vector_reverse_mapping_ = pb.owns_vector_reverse_mapping();
   return table_properties;
 }
 
@@ -261,7 +267,14 @@ void TableProperties::AlterFromTablePropertiesPB(const TablePropertiesPB& pb) {
   if (pb.has_ysql_replica_identity()) {
     SetReplicaIdentity(pb.ysql_replica_identity());
   }
+
+  // TODO: partitioning_version is supposed to be immutable after table creation. This code
+  // and the setter should be removed (refer to owns_vector_reverse_mapping handling).
   set_partitioning_version(pb.has_partitioning_version() ? pb.partitioning_version() : 0);
+
+  // owns_vector_reverse_mapping is fixed at table creation (master CreateTable) and restored from
+  // backup metadata. It is intentionally not merged here so ALTER TABLE cannot change the value
+  // after table creation.
 }
 
 void TableProperties::Reset() {
@@ -277,22 +290,31 @@ void TableProperties::Reset() {
       PREDICT_TRUE(FLAGS_TEST_partitioning_version < 0) ? kCurrentPartitioningVersion
                                                         : FLAGS_TEST_partitioning_version;
   ysql_replica_identity_ = std::nullopt;
+  owns_vector_reverse_mapping_ = false;
+}
+
+bool TableProperties::IsValidTTL(int64_t ttl_msec) {
+  return ttl_msec >= 0;
+}
+
+bool TableProperties::IsEffectiveTTL(int64_t ttl_msec) {
+  return IsValidTTL(ttl_msec) && (ttl_msec > 0);
 }
 
 string TableProperties::ToString() const {
-  std::string result("{ ");
+  auto fields = YB_FIELDS_TO_STRING((BOOST_PP_IDENTITY(_)),
+      contain_counters, is_transactional, consistency_level, is_ysql_catalog_table,
+      partitioning_version, owns_vector_reverse_mapping) " ";
+
   if (HasDefaultTimeToLive()) {
-    result += Format("default_time_to_live: $0 ", default_time_to_live_);
+    fields += Format("default_time_to_live: $0 ", default_time_to_live_);
   }
-  result += Format("contain_counters: $0 is_transactional: $1 ",
-                   contain_counters_, is_transactional_);
-  result + Format(
-               "consistency_level: $0 is_ysql_catalog_table: $1 partitioning_version: $2 ",
-               consistency_level_, is_ysql_catalog_table_, partitioning_version_);
+
   if (HasReplicaIdentity()) {
-    result + Format("replica_identity: $0 }", *ysql_replica_identity_);
+    fields += Format("ysql_replica_identity: $0 ", *ysql_replica_identity_);
   }
-  return result;
+
+  return Format("{$0}", fields);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -628,6 +650,21 @@ Result<const ColumnSchema&> Schema::column_by_id(ColumnId id) const {
   return cols_[idx];
 }
 
+void Schema::UpdateMissingValuesFrom(
+    const google::protobuf::RepeatedPtrField<ColumnSchemaPB>& columns) {
+  for (int i = 0; i < static_cast<int>(cols_.size()); ++i) {
+    if (i >= columns.size()) {
+      LOG(INFO) << Format("More columns in restored schema ($0) than in schema from backup ($1). "
+                          "This can happen if columns were dropped or there was an ongoing schema "
+                          "change at the time of the backup.", cols_.size(), columns.size());
+      break;
+    }
+    if (columns[i].has_missing_value()) {
+      cols_[i].set_missing_value(columns[i].missing_value());
+    }
+  }
+}
+
 Result<const QLValuePB&> Schema::GetMissingValueByColumnId(ColumnId id) const {
   const auto& column_schema = VERIFY_RESULT_REF(column_by_id(id));
   return column_schema.missing_value();
@@ -689,7 +726,7 @@ void SchemaBuilder::Reset(const Schema& schema) {
   colocation_id_ = schema.colocation_id_;
 }
 
-Status SchemaBuilder::AddKeyColumn(const string& name, const shared_ptr<QLType>& type) {
+Status SchemaBuilder::AddKeyColumn(const string& name, const std::shared_ptr<QLType>& type) {
   return AddColumn(ColumnSchema(name, type, ColumnKind::RANGE_ASC_NULL_FIRST));
 }
 
@@ -697,7 +734,7 @@ Status SchemaBuilder::AddKeyColumn(const string& name, DataType type) {
   return AddColumn(ColumnSchema(name, QLType::Create(type), ColumnKind::RANGE_ASC_NULL_FIRST));
 }
 
-Status SchemaBuilder::AddHashKeyColumn(const string& name, const shared_ptr<QLType>& type) {
+Status SchemaBuilder::AddHashKeyColumn(const string& name, const std::shared_ptr<QLType>& type) {
   return AddColumn(ColumnSchema(name, type, ColumnKind::HASH));
 }
 
@@ -733,8 +770,8 @@ Status SchemaBuilder::AddNullableColumn(const std::string& name, DataType type) 
   return AddNullableColumn(name, QLType::Create(type));
 }
 
-Status SchemaBuilder::RemoveColumn(const string& name) {
-  unordered_set<string>::const_iterator it_names;
+Status SchemaBuilder::RemoveColumn(const std::string& name) {
+  std::unordered_set<std::string>::const_iterator it_names;
   if ((it_names = col_names_.find(name)) == col_names_.end()) {
     return STATUS(NotFound, "The specified column does not exist", name);
   }
@@ -755,8 +792,8 @@ Status SchemaBuilder::RemoveColumn(const string& name) {
   return STATUS(Corruption, "Unable to remove existing column");
 }
 
-Status SchemaBuilder::RenameColumn(const string& old_name, const string& new_name) {
-  unordered_set<string>::const_iterator it_names;
+Status SchemaBuilder::RenameColumn(const std::string& old_name, const std::string& new_name) {
+  std::unordered_set<string>::const_iterator it_names;
 
   // check if 'new_name' is already in use
   if ((it_names = col_names_.find(new_name)) != col_names_.end()) {

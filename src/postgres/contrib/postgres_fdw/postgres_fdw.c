@@ -52,6 +52,14 @@
 #include "utils/selfuncs.h"
 
 /* YB includes */
+#include "catalog/pg_authid.h"
+#include "commands/dbcommands.h"
+#include "pg_yb_utils.h"
+#include "utils/acl.h"
+#include "utils/palloc.h"
+#include "yb/yql/pggate/util/ybc_pgresult_util.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 #include "ybctid.h"
 
 PG_MODULE_MAGIC;
@@ -71,7 +79,8 @@ PG_MODULE_MAGIC;
 const char *yb_server_types[] = {
 	[PG_FDW_SERVER_UNKNOWN] = "unknown",
 	[PG_FDW_SERVER_POSTGRES] = "postgreSQL",
-	[PG_FDW_SERVER_YUGABYTEDB] = "yugabyteDB"
+	[PG_FDW_SERVER_YUGABYTEDB] = "yugabyteDB",
+	[PG_FDW_SERVER_FEDERATED_YUGABYTEDB] = "federatedYugabyteDB"
 };
 
 /*
@@ -94,7 +103,14 @@ enum FdwScanPrivateIndex
 	 * String describing join i.e. names of relations being joined and types
 	 * of join, added when the scan is join
 	 */
-	FdwScanPrivateRelations
+	FdwScanPrivateRelations,
+
+	/*
+	 * YB: UUID of the target tserver for per-tserver federated scans.
+	 * Present only when the scan targets a specific tserver in a global
+	 * views UNION ALL plan.
+	 */
+	YbFdwScanPrivateTserverUuid
 };
 
 /*
@@ -185,6 +201,10 @@ typedef struct PgFdwScanState
 	MemoryContext temp_cxt;		/* context for per-tuple temporary data */
 
 	int			fetch_size;		/* number of tuples per fetch */
+
+	/* YB: per-tserver global-view scan state (federatedYugabyteDB only) */
+	YbcPgGlobalViewRead yb_gvr;
+	char	   *yb_tserver_uuid;
 } PgFdwScanState;
 
 /*
@@ -567,7 +587,30 @@ static YbPgFdwServerType yb_get_server_type(const char *server_type);
 static YbPgFdwServerType yb_get_server_type_from_ftrelid(Oid relid);
 static const char *yb_get_tuple_identifier_colname(YbPgFdwServerType server_type);
 static AttrNumber yb_get_min_attr_from_server_type(YbPgFdwServerType server_type);
+static PGresult *YbGlobalViewReadExecScan(YbcPgGlobalViewRead yb_gvr,
+										  const char *database_name,
+										  const char *query,
+										  const char *tserver_uuid);
 
+static const char *
+yb_get_current_db_name(void)
+{
+	static const char *yb_cached_current_db_name = NULL;
+
+	if (!yb_cached_current_db_name)
+	{
+		/*
+		 * get_database_name pallocs the string, and we store it in TopMemoryContext
+		 * since that is destroyed only when the backend is terminated, and the
+		 * database cannot be changed without terminating the backend.
+		 */
+		MemoryContext old = MemoryContextSwitchTo(TopMemoryContext);
+		yb_cached_current_db_name = get_database_name(MyDatabaseId);
+		MemoryContextSwitchTo(old);
+	}
+
+	return yb_cached_current_db_name;
+}
 
 /*
  * Foreign-data wrapper handler function: return a struct with pointers
@@ -680,6 +723,19 @@ postgresGetForeignRelSize(PlannerInfo *root,
 
 	apply_server_options(fpinfo);
 	apply_table_options(fpinfo);
+
+	/*
+	 * For per-tserver children of a federated foreign table,
+	 * yb_expand_federated_rtentry() recorded the target tserver UUID in
+	 * PlannerInfo->yb_tserver_uuids.  Pick it up now.  Returns NULL for
+	 * everything else (including an unexpanded federated parent and
+	 * non-federated foreign tables).
+	 */
+	if (fpinfo->yb_server_type == PG_FDW_SERVER_FEDERATED_YUGABYTEDB)
+		fpinfo->yb_tserver_uuid = (char *)
+			YbGetFederatedPartitionTserverUuid(root, baserel->relid);
+	else
+		fpinfo->yb_tserver_uuid = NULL;
 
 	/*
 	 * If the table or the server is configured to use remote estimates,
@@ -1042,6 +1098,17 @@ postgresGetForeignPaths(PlannerInfo *root,
 	ListCell   *lc;
 
 	/*
+	 * YB: When yb_enable_global_views is on, the federated parent is expanded
+	 * into per-tserver children by yb_expand_federated_rtentry() before we
+	 * get here, so each child must carry a target tserver UUID.
+	 * postgresGetForeignPlan reads it from fpinfo and propagates it into the
+	 * ForeignScan's fdw_private.  When the GUC is off, the table is not
+	 * expanded and yb_tserver_uuid stays NULL.
+	 */
+	Assert(fpinfo->yb_server_type != PG_FDW_SERVER_FEDERATED_YUGABYTEDB ||
+		   !yb_enable_global_views || fpinfo->yb_tserver_uuid);
+
+	/*
 	 * Create simplest ForeignScan path node and add it to baserel.  This path
 	 * corresponds to SeqScan path of regular tables (though depending on what
 	 * baserestrict conditions we were able to send to remote, there might
@@ -1072,6 +1139,8 @@ postgresGetForeignPaths(PlannerInfo *root,
 	 */
 	if (!fpinfo->use_remote_estimate)
 		return;
+
+	Assert(fpinfo->yb_server_type != PG_FDW_SERVER_FEDERATED_YUGABYTEDB);
 
 	/*
 	 * Thumb through all join clauses for the rel to identify which outer
@@ -1440,6 +1509,24 @@ postgresGetForeignPlan(PlannerInfo *root,
 							  makeString(fpinfo->relation_name));
 
 	/*
+	 * YB: For per-tserver federated scans, propagate the target tserver UUID
+	 * from PgFdwRelationInfo into the plan's fdw_private at
+	 * YbFdwScanPrivateTserverUuid so the executor knows which tserver to
+	 * target.  Only base-relation children of a federated parent carry a
+	 * UUID; join/upper rels never do.  FdwScanPrivateRelations is only pushed
+	 * for join/upper rels above, so insert an empty-string placeholder for
+	 * base-relation federated scans to keep YbFdwScanPrivateTserverUuid at
+	 * its expected index.
+	 */
+	if (fpinfo->yb_tserver_uuid)
+	{
+		if (list_length(fdw_private) == FdwScanPrivateRelations)
+			fdw_private = lappend(fdw_private, makeString(""));
+		fdw_private = lappend(fdw_private,
+							  makeString(fpinfo->yb_tserver_uuid));
+	}
+
+	/*
 	 * Create the ForeignScan node for the given relation.
 	 *
 	 * Note that the remote parameter expressions are stored in the fdw_exprs
@@ -1547,21 +1634,69 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 	else
 		rtindex = bms_next_member(fsplan->fs_relids, -1);
 	rte = exec_rt_fetch(rtindex, estate);
+
+	YbPgFdwServerType yb_server_type = yb_get_server_type_from_ftrelid(rte->relid);
+
+	if (yb_server_type == PG_FDW_SERVER_FEDERATED_YUGABYTEDB)
+	{
+		if (!yb_enable_global_views)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("federatedYB queries are not supported"),
+					 errhint("Must enable the GUC yb_enable_global_views")));
+
+		if (!has_privs_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS))
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("permission denied for federated YugabyteDB query"),
+					 errhint("Must be a member of the pg_read_all_stats role.")));
+	}
+
 	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
 
 	/* Get info about foreign table. */
 	table = GetForeignTable(rte->relid);
-	user = GetUserMapping(userid, table->serverid);
 
 	/*
-	 * Get connection to the foreign server.  Connection manager will
-	 * establish new connection if necessary.
+	 * YB: For federatedYugabyteDB server types, the query is passed to the remote
+	 * tservers through RPCs. The remote tserver uses a unix socket connection to
+	 * execute the query.
 	 */
-	fsstate->conn = GetConnection(user, false, &fsstate->conn_state);
+	if (yb_server_type != PG_FDW_SERVER_FEDERATED_YUGABYTEDB)
+	{
+		user = GetUserMapping(userid, table->serverid);
+		/*
+		 * Get connection to the foreign server.  Connection manager will
+		 * establish new connection if necessary.
+		 */
+		fsstate->conn = GetConnection(user, false, &fsstate->conn_state);
 
-	/* Assign a unique ID for my cursor */
-	fsstate->cursor_number = GetCursorNumber(fsstate->conn);
+		/*
+		 * Assign a unique ID for my cursor
+		 * YB: Retrieval is capped at the rpc_max_message_size per tserver.
+		 * If this limit is exceeded, excess data is truncated, and a warning
+		 * is logged here.
+		 */
+		fsstate->cursor_number = GetCursorNumber(fsstate->conn);
+	}
+
+	/*
+	 * YB: For federatedYB tables (yb_gvr path), no SQL cursor is used.
+	 * Instead, create_cursor sets cursor_exists = true after binding
+	 * parameters via YBCPgGlobalViewReadSetParams.
+	 *
+	 * postgresIterateForeignScan checks this flag and calls create_cursor on
+	 * the first iterate when it is false.  Without this guard, create_cursor
+	 * would be called on every iterate, redundantly re-binding parameters.
+	 * postgresReScanForeignScan resets it to false for yb_gvr scans (which
+	 * cannot be rewound), so that the next iterate re-initializes the scan
+	 * with fresh parameters.  postgresEndForeignScan skips the close_cursor
+	 * call for yb_gvr scans entirely, destroying the YBCPg handle directly
+	 * instead.
+	 */
 	fsstate->cursor_exists = false;
+	fsstate->yb_gvr = NULL;
+	fsstate->yb_tserver_uuid = NULL;
 
 	/* Get private info created by planner functions. */
 	fsstate->query = strVal(list_nth(fsplan->fdw_private,
@@ -1570,6 +1705,17 @@ postgresBeginForeignScan(ForeignScanState *node, int eflags)
 												 FdwScanPrivateRetrievedAttrs);
 	fsstate->fetch_size = intVal(list_nth(fsplan->fdw_private,
 										  FdwScanPrivateFetchSize));
+
+	/*
+	 * YB: One foreign scan node is created per tserver, and one global view
+	 * scan handle is created per foreign scan node.
+	 */
+	if (yb_server_type == PG_FDW_SERVER_FEDERATED_YUGABYTEDB)
+	{
+		fsstate->yb_tserver_uuid = strVal(list_nth(fsplan->fdw_private,
+												   YbFdwScanPrivateTserverUuid));
+		HandleYBStatus(YBCPgNewGlobalViewRead(&fsstate->yb_gvr));
+	}
 
 	/* Create contexts for batches of tuples and per-tuple temp workspace. */
 	fsstate->batch_cxt = AllocSetContextCreate(estate->es_query_cxt,
@@ -1660,6 +1806,22 @@ postgresIterateForeignScan(ForeignScanState *node)
 }
 
 /*
+ * YbResetForeignScanControlState
+ *		Reset the tuple-fetching control state so the next iteration
+ *		starts fresh.  Used by both ReScan and the cursor-rewind paths.
+ */
+static void
+YbResetForeignScanControlState(PgFdwScanState *fsstate)
+{
+	/* Now force a fresh FETCH. */
+	fsstate->tuples = NULL;
+	fsstate->num_tuples = 0;
+	fsstate->next_tuple = 0;
+	fsstate->fetch_ct_2 = 0;
+	fsstate->eof_reached = false;
+}
+
+/*
  * postgresReScanForeignScan
  *		Restart the scan.
  */
@@ -1673,6 +1835,17 @@ postgresReScanForeignScan(ForeignScanState *node)
 	/* If we haven't created the cursor yet, nothing to do. */
 	if (!fsstate->cursor_exists)
 		return;
+
+	if (fsstate->yb_gvr)
+	{
+		YbResetForeignScanControlState(fsstate);
+		/*
+		 * YB: yb_gvr scans cannot be rewound, so force create_cursor on the
+		 * next iterate to re-evaluate parameters.
+		 */
+		fsstate->cursor_exists = false;
+		return;
+	}
 
 	/*
 	 * If the node is async-capable, and an asynchronous fetch for it has been
@@ -1729,12 +1902,7 @@ postgresReScanForeignScan(ForeignScanState *node)
 		pgfdw_report_error(ERROR, res, fsstate->conn, true, sql);
 	PQclear(res);
 
-	/* Now force a fresh FETCH. */
-	fsstate->tuples = NULL;
-	fsstate->num_tuples = 0;
-	fsstate->next_tuple = 0;
-	fsstate->fetch_ct_2 = 0;
-	fsstate->eof_reached = false;
+	YbResetForeignScanControlState(fsstate);
 }
 
 /*
@@ -1749,6 +1917,13 @@ postgresEndForeignScan(ForeignScanState *node)
 	/* if fsstate is NULL, we are in EXPLAIN; nothing to do */
 	if (fsstate == NULL)
 		return;
+
+	if (fsstate->yb_gvr)
+	{
+		YBCPgGlobalViewReadDestroy(fsstate->yb_gvr);
+		fsstate->yb_gvr = NULL;
+		return;
+	}
 
 	/* Close the cursor if open, to prevent accumulation of cursors */
 	if (fsstate->cursor_exists)
@@ -2871,6 +3046,7 @@ postgresExplainForeignScan(ForeignScanState *node, ExplainState *es)
 {
 	ForeignScan *plan = castNode(ForeignScan, node->ss.ps.plan);
 	List	   *fdw_private = plan->fdw_private;
+	bool		yb_is_join_or_upper;
 
 	/*
 	 * Identify foreign scans that are really joins or upper relations.  The
@@ -2878,8 +3054,15 @@ postgresExplainForeignScan(ForeignScanState *node, ExplainState *es)
 	 * digit string(s), which are RT indexes, with the correct relation names.
 	 * We do that here, not when the plan is created, because we can't know
 	 * what aliases ruleutils.c will assign at plan creation time.
+	 *
+	 * YB: For per-tserver federated base-relation scans, postgresGetForeignPlan
+	 * inserts an empty-string placeholder at FdwScanPrivateRelations so the
+	 * tserver UUID lands at the right index; treat that as "not a join".
 	 */
-	if (list_length(fdw_private) > FdwScanPrivateRelations)
+	yb_is_join_or_upper = (list_length(fdw_private) > FdwScanPrivateRelations &&
+						   strVal(list_nth(fdw_private,
+												FdwScanPrivateRelations))[0] != '\0');
+	if (yb_is_join_or_upper)
 	{
 		StringInfo	relations;
 		char	   *rawrelations;
@@ -2966,6 +3149,17 @@ postgresExplainForeignScan(ForeignScanState *node, ExplainState *es)
 
 		sql = strVal(list_nth(fdw_private, FdwScanPrivateSelectSql));
 		ExplainPropertyText("Remote SQL", sql, es);
+	}
+
+	/* YB: Show the target tablet server for per-tserver federated scans */
+	if (!yb_explain_hide_non_deterministic_fields &&
+		list_length(fdw_private) > YbFdwScanPrivateTserverUuid)
+	{
+		char	   *uuid = strVal(list_nth(fdw_private,
+										   YbFdwScanPrivateTserverUuid));
+
+		if (uuid[0] != '\0')
+			ExplainPropertyText("Tablet Server", uuid, es);
 	}
 }
 
@@ -3771,7 +3965,7 @@ create_cursor(ForeignScanState *node)
 	PGresult   *res;
 
 	/* First, process a pending asynchronous request, if any. */
-	if (fsstate->conn_state->pendingAreq)
+	if (!fsstate->yb_gvr && fsstate->conn_state->pendingAreq)
 		process_pending_request(fsstate->conn_state->pendingAreq);
 
 	/*
@@ -3791,6 +3985,14 @@ create_cursor(ForeignScanState *node)
 							 values);
 
 		MemoryContextSwitchTo(oldcontext);
+	}
+
+	if (fsstate->yb_gvr)
+	{
+		if (numParams > 0)
+			YBCPgGlobalViewReadSetParams(fsstate->yb_gvr, numParams, values);
+		fsstate->cursor_exists = true;
+		return;
 	}
 
 	/* Construct the DECLARE CURSOR command */
@@ -3873,6 +4075,11 @@ fetch_more_data(ForeignScanState *node)
 			/* Reset per-connection state */
 			fsstate->conn_state->pendingAreq = NULL;
 		}
+		else if (fsstate->yb_gvr)
+			res = YbGlobalViewReadExecScan(fsstate->yb_gvr,
+										   yb_get_current_db_name(),
+										   fsstate->query,
+										   fsstate->yb_tserver_uuid);
 		else
 		{
 			char		sql[64];
@@ -3882,10 +4089,14 @@ fetch_more_data(ForeignScanState *node)
 					 fsstate->fetch_size, fsstate->cursor_number);
 
 			res = pgfdw_exec_query(conn, sql, fsstate->conn_state);
-			/* On error, report the original query, not the FETCH. */
-			if (PQresultStatus(res) != PGRES_TUPLES_OK)
-				pgfdw_report_error(ERROR, res, conn, false, fsstate->query);
 		}
+
+		/*
+		 * On error, report the original query, not the FETCH.
+		 * YB: This code is common for all server types.
+		 */
+		if (PQresultStatus(res) != PGRES_TUPLES_OK)
+			pgfdw_report_error(ERROR, res, conn, false, fsstate->query);
 
 		/* Convert the data into HeapTuples */
 		numrows = PQntuples(res);
@@ -3911,7 +4122,11 @@ fetch_more_data(ForeignScanState *node)
 			fsstate->fetch_ct_2++;
 
 		/* Must be EOF if we didn't get as many tuples as we asked for. */
-		fsstate->eof_reached = (numrows < fsstate->fetch_size);
+		if (fsstate->yb_gvr)
+			/* TODO(#30843): Update when pagination support is added. */
+			fsstate->eof_reached = true;
+		else
+			fsstate->eof_reached = (numrows < fsstate->fetch_size);
 	}
 	PG_FINALLY();
 	{
@@ -6259,6 +6474,8 @@ postgresGetForeignJoinPaths(PlannerInfo *root,
 	/* Add generated path into joinrel by add_path(). */
 	add_path(joinrel, (Path *) joinpath);
 
+	Assert(fpinfo->yb_server_type != PG_FDW_SERVER_FEDERATED_YUGABYTEDB);
+
 	/* Consider pathkeys for the join relation */
 	add_paths_with_pathkeys_for_rel(root, joinrel, epq_path);
 
@@ -7775,6 +7992,10 @@ yb_get_server_type(const char *server_type)
 							yb_server_types[PG_FDW_SERVER_YUGABYTEDB],
 							strlen(yb_server_types[PG_FDW_SERVER_YUGABYTEDB])) == 0)
 		return PG_FDW_SERVER_YUGABYTEDB;
+	else if (pg_strncasecmp(server_type,
+							yb_server_types[PG_FDW_SERVER_FEDERATED_YUGABYTEDB],
+							strlen(yb_server_types[PG_FDW_SERVER_FEDERATED_YUGABYTEDB])) == 0)
+		return PG_FDW_SERVER_FEDERATED_YUGABYTEDB;
 
 	return PG_FDW_SERVER_UNKNOWN;
 }
@@ -7812,6 +8033,7 @@ yb_get_min_attr_from_server_type(YbPgFdwServerType server_type)
 		case PG_FDW_SERVER_UNKNOWN:
 			return FirstLowInvalidHeapAttributeNumber;
 		case PG_FDW_SERVER_YUGABYTEDB:
+		case PG_FDW_SERVER_FEDERATED_YUGABYTEDB:
 			return YBFirstLowInvalidAttributeNumber;
 		default:
 			elog(ERROR, "Unsupported server type: %d", server_type);
@@ -7835,10 +8057,29 @@ yb_get_tuple_identifier_colname(YbPgFdwServerType server_type)
 		case PG_FDW_SERVER_UNKNOWN:
 			return "ctid";
 		case PG_FDW_SERVER_YUGABYTEDB:
+		case PG_FDW_SERVER_FEDERATED_YUGABYTEDB:
 			return "ybctid";
 		default:
 			elog(ERROR, "Unsupported server type: %d", server_type);
 	}
 
 	return NULL;				/* keep compiler happy */
+}
+
+static PGresult *
+YbGlobalViewReadExecScan(YbcPgGlobalViewRead yb_gvr, const char *database_name,
+						 const char *query, const char *tserver_uuid)
+{
+	YbcRemotePgExecResult yb_result =
+		YBCPgGlobalViewReadExecScan(yb_gvr, database_name, query, tserver_uuid);
+	PGresult *res = YBCPgResultFromPB(yb_result.pgresult, yb_result.pgresult_size);
+	if (!res)
+	{
+		if (yb_result.error_message)
+			ereport(WARNING,
+					(errmsg("global view: skipping tserver %s: %s",
+							tserver_uuid, yb_result.error_message)));
+		res = PQmakeEmptyPGresult(NULL, PGRES_TUPLES_OK);
+	}
+	return res;
 }

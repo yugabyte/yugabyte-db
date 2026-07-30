@@ -13,10 +13,14 @@
 
 #include "yb/tablet/kv_formatter.h"
 
+#include <boost/algorithm/string/predicate.hpp>
+
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_debug.h"
 
 #include "yb/rocksdb/db/dbformat.h"
+
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 
@@ -81,9 +85,10 @@ Result<TableInfoPtr> SchemaPackingProviderFromSuperblock::GetTableInfo(
 }
 
 std::string KVFormatter::Format(
-    const Slice& key, const Slice& value, docdb::StorageDbType type) const {
+    Slice user_key, Slice value, docdb::StorageDbType type,
+    const std::string& key_suffix, docdb::AllowEmptyValue allow_empty_value) const {
   return docdb::EntryToString(
-      rocksdb::ExtractUserKey(key), value, schema_packing_provider_.get(), type);
+      user_key, value, schema_packing_provider_.get(), type, key_suffix, allow_empty_value);
 }
 
 Status KVFormatter::ProcessArgument(const std::string& argument) {

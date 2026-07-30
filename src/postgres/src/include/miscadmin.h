@@ -300,6 +300,11 @@ extern PGDLLIMPORT int64 VacuumPageDirty;
 extern PGDLLIMPORT int VacuumCostBalance;
 extern PGDLLIMPORT bool VacuumCostActive;
 
+extern PGDLLIMPORT char *YbSystemDbName;
+extern PGDLLIMPORT char *PgYbNotificationsTableName;
+extern PGDLLIMPORT char *PgYbNotificationsPublicationName;
+extern PGDLLIMPORT char *YbNotificationsSlotPrefix;
+
 
 /* in tcop/postgres.c */
 
@@ -362,7 +367,12 @@ typedef enum BackendType
 	B_LOGGER,
 	YB_YSQL_CONN_MGR,
 	YB_YSQL_CONN_MGR_WAL_SENDER,
+	YB_YSQL_CONN_MGR_CTRL,
 	YB_AUTO_ANALYZE_BACKEND,
+	YB_INDEX_BACKFILL_DDL,
+	YB_MATVIEW_REFRESH_DDL,
+	YB_RELCACHE_INIT_BACKEND,
+	YB_GLOBAL_VIEW_BACKEND,
 } BackendType;
 
 extern PGDLLIMPORT BackendType MyBackendType;
@@ -502,6 +512,8 @@ extern void YbInitPostgres(const char *in_dbname, Oid dboid,
 						   char *out_dbname,
 						   const YbcPgInitPostgresInfo *yb_info);
 extern long YbGetAuthorizedConnections();
+extern void YbLogAuthPassthroughConnReceived(struct Port *port);
+extern void YbLogAuthPassthroughConnAuthenticated(struct Port *port);
 
 extern void BaseInit(void);
 

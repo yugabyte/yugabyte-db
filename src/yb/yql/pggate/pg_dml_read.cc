@@ -34,6 +34,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/checked_narrow_cast.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 #include "yb/util/range.h"
@@ -81,26 +82,12 @@ Result<dockv::DocKey> BuildDocKey(
   FATAL_INVALID_ENUM_VALUE(SortingType, sorting_type);
 }
 
+Result<uint16_t> GetHashCodeValue(PgExpr* expr) {
+  auto hash_code = VERIFY_RESULT(expr->Eval());
+  return checked_narrow_cast<uint16_t>(hash_code->int32_value());
+}
+
 using LWQLValuePBContainer = boost::container::small_vector<LWQLValuePB*, 16>;
-
-Result<dockv::KeyEntryValue> GetKeyValue(
-    const PgColumn& col, PgExpr* expr,
-    LWQLValuePB** ql_value_dest, std::optional<dockv::KeyEntryType> null_type = {}) {
-  if (!expr) {
-    RSTATUS_DCHECK(null_type, IllegalState, "Null expression is not expected");
-    *ql_value_dest = nullptr;
-    return dockv::KeyEntryValue(*null_type);
-  }
-  *ql_value_dest = VERIFY_RESULT(expr->Eval());
-  return dockv::KeyEntryValue::FromQLValuePB(**ql_value_dest, col.desc().sorting_type());
-}
-
-auto GetKeyValue(
-    const PgColumn& col, PgExpr* expr, std::optional<dockv::KeyEntryType> null_type = {}) {
-  LWQLValuePB* tmp = nullptr;
-  return GetKeyValue(col, expr, &tmp, null_type);
-}
-
 using Slices = std::vector<Slice>;
 
 class SimpleYbctidProvider : public YbctidProvider {
@@ -170,7 +157,7 @@ class InOperatorYbctidsGenerator {
 
 } // namespace
 
-PgDmlRead::PgDmlRead(const PgSession::ScopedRefPtr& pg_session)
+PgDmlRead::PgDmlRead(const PgSessionPtr& pg_session)
     : PgDml(pg_session) {
 }
 
@@ -181,7 +168,7 @@ void PgDmlRead::PrepareBinds() {
   }
 
   for (auto& col : bind_.columns()) {
-    col.AllocPrimaryBindPB(read_req_.get());
+    col.AllocKeyBindPB(read_req_.get());
   }
 }
 
@@ -271,7 +258,7 @@ void PgDmlRead::SetColumnRefs() {
 // Postgres may bind the key to any of the following: scalar value (equality condition),
 // tuple of values (IN condition), tuple of tuples (ROW IN condition).
 // DocDB supports only scalar value, so other variants need to be transformed.
-// There are two available transformations for the primary binds.
+// There are two available transformations for the key binds.
 // One is to move the condition into condition_expr as an operand of the top level AND operator.
 // Other is to build permutations: if there're multiple IN and equality conditions like these:
 //   k1 IN (a, b, c)
@@ -288,7 +275,7 @@ void PgDmlRead::SetColumnRefs() {
 // original condition.
 // The permutations transformation is currently used if there are IN conditions on the hash columns
 // and for merge sort. While the permutations transformation occurs later in the execution process,
-// the PgDmlRead::ProcessEmptyPrimaryBinds must keep relevant original conditions in
+// the PgDmlRead::ProcessEmptyKeyBinds must keep relevant original conditions in
 // partition_column_values and range_column_values to set up the permutations transformation.
 // Irrelevant condition must be moved into condition_expr regardless.
 // TODO revisit to find out if we can combine the parts of such split logic.
@@ -298,7 +285,7 @@ void PgDmlRead::SetColumnRefs() {
 // DocDB takes values in the range_column_values as the prefix of the range key columns, no null
 // values allowed. So if one of the key columns are not bound, all conditions on following columns
 // must be moved to the condition_expr, even if they are simple scalars.
-Status PgDmlRead::ProcessEmptyPrimaryBinds() {
+Status PgDmlRead::ProcessEmptyKeyBinds() {
   if (!bind_) {
     // This query does not have any binds.
     read_req_->mutable_partition_column_values()->clear();
@@ -360,7 +347,6 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
     auto expr = col.bind_pb();
     auto merge_sort_col_type = IsMergeSortColumn(index);
     if (merge_sort_col_type == MergeSortColumnType::kStreamKey) {
-      DCHECK(expr && (expr->has_value() || IsForInOperator(*expr)));
       preceding_key_column_missed = true;
       ++range_column_values_it;
       continue;
@@ -457,6 +443,51 @@ Status PgDmlRead::HnswSetReadOptions(int ef_search) {
   return Status::OK();
 }
 
+InPermutationGenerator PgDmlRead::MergeStreamPermutations() {
+  DCHECK(merge_sort_keys_);
+  DCHECK(bind_);
+  InPermutationBuilder builder(bind_);
+  auto sortkey_it = merge_sort_keys_->cbegin();
+  size_t c_idx = 0;
+  // All partition_column_values are expected to have merge stream conditions
+  for (const auto& col_expr : read_req_->partition_column_values()) {
+    DCHECK_LT(c_idx, sortkey_it->att_idx) << "Can't merge sort by a hash column";
+    DCHECK_NE(col_expr.expr_case(), PgsqlExpressionPB::EXPR_NOT_SET)
+        << "Missing condition on a merge stream column at " << c_idx;
+    VLOG_WITH_FUNC(4) << "Merge stream condition found on a hash column at index " << c_idx;
+    builder.AddExpression(c_idx, &col_expr);
+    ++c_idx;
+  }
+  // range_column_values preceding any of the sort columns are expected to have
+  // merge stream conditions
+  auto col_expr_it = read_req_->range_column_values().cbegin();
+  for (; c_idx < bind_->num_key_columns(); ++c_idx) {
+    if (c_idx == sortkey_it->att_idx) { // sort column
+      VLOG_WITH_FUNC(4) << "Sort column at index " << c_idx
+                        << ", target value at " << sortkey_it->value_idx;
+      // no expressions should be after the last sort column
+      if (++sortkey_it == merge_sort_keys_->cend()) {
+        DCHECK(col_expr_it == read_req_->range_column_values().cend())
+            << "Found an expression after all sort columns at " << c_idx;
+        break;
+      }
+    } else { // merge stream column
+      DCHECK(col_expr_it != read_req_->range_column_values().cend())
+          << "Missing condition on a merge stream column at " << c_idx;
+      DCHECK_LT(c_idx, sortkey_it->att_idx) << "Merge sort key is out of order";
+      if (col_expr_it->expr_case() != PgsqlExpressionPB::EXPR_NOT_SET) {
+        VLOG_WITH_FUNC(4) << "Merge stream expression on a range column at index " << c_idx;
+        builder.AddExpression(c_idx, &*col_expr_it);
+      }
+      ++col_expr_it;
+    }
+  }
+  DCHECK(sortkey_it == merge_sort_keys_->cend())
+      << "Sort key is not an index key: " << sortkey_it->att_idx;
+
+  return builder.Build();
+}
+
 Status PgDmlRead::Exec(const YbcPgExecParameters* exec_params) {
   RSTATUS_DCHECK(
       !pg_exec_params_ || pg_exec_params_ == exec_params,
@@ -469,12 +500,23 @@ Status PgDmlRead::Exec(const YbcPgExecParameters* exec_params) {
 
   SetColumnRefs();
 
-  if (doc_op_ && !ybctid_provider() && IsAllPrimaryKeysBound()) {
-    RETURN_NOT_OK(SubstitutePrimaryBindsWithYbctids());
-  } else if (!primary_binds_processed_) {
-    RETURN_NOT_OK(ProcessEmptyPrimaryBinds());
-    primary_binds_processed_ = true;
+  if (doc_op_ && !ybctid_provider() && IsAllKeyColumnsBound()) {
+    RETURN_NOT_OK(SubstituteKeyBindsWithYbctids());
+  } else if (!key_binds_processed_) {
+    RETURN_NOT_OK(ProcessEmptyKeyBinds());
+    key_binds_processed_ = true;
   }
+
+  VLOG_WITH_FUNC(3)
+      << "Request before the scan range is applied: " << read_req_->ShortDebugString();
+  if (scan_range_) {
+    if (!scan_range_->ApplyBounds(*read_req_)) {
+      VLOG_WITH_FUNC(3) << "Scan range is empty";
+      return Status::OK();
+    }
+  }
+  VLOG_WITH_FUNC(3)
+      << "Request after the scan range is applied: " << read_req_->ShortDebugString();
 
   if (!doc_op_) {
     return Status::OK();
@@ -489,15 +531,34 @@ Status PgDmlRead::Exec(const YbcPgExecParameters* exec_params) {
   if (targets_) {
     doc_op_->SetFetchedTargets(targets_);
   }
-  if (merge_sort_keys_) {
-    // Create requests for the merge streams
-    if (!VERIFY_RESULT(doc_op_->PopulateMergeStreams(merge_sort_keys_))) {
-      doc_op_->AbandonExecution();
-      return Status::OK();
-    }
-  }
 
+  // If secondary index is defined, it is executed here.
+  // Even if the secondary index does not have its own DocOp, the execution would normalize the
+  // binds, which is critical to properly capture the permutations.
   const auto has_ybctid = VERIFY_RESULT(ProcessProvidedYbctids());
+  if (merge_sort_keys_) {
+    auto* secondary_index = SecondaryIndexQuery();
+    if (!secondary_index) {
+      // No secondary index means the buckets are on the primary key.
+      // Also this PgDmlRead may be the secondary index to other PgDmlRead.
+      if (!VERIFY_RESULT(doc_op_->PopulateMergeStreamRequests(
+          merge_sort_keys_, bind_, MergeStreamPermutations()))) {
+        doc_op_->AbandonExecution();
+        return Status::OK();
+      }
+    } else if (!secondary_index->doc_op_) {
+      // Secondary index without a DocOp is an embedded index. The secondary index query still has
+      // the key bindings we need to create the permutations, but the merge stream requests are
+      // created in the local DocOp.
+      if (!VERIFY_RESULT(doc_op_->PopulateMergeStreamRequests(
+          merge_sort_keys_, secondary_index->bind_, secondary_index->MergeStreamPermutations()))) {
+        doc_op_->AbandonExecution();
+        return Status::OK();
+      }
+    }
+    // else here is a regular secondary index already executed by the ProcessProvidedYbctids().
+    // It is going to provide the ybctids in the right order.
+  }
 
   if (!has_ybctid && ybctid_provider()) {
     // No ybctids are provided. Instruct "doc_op_" to abandon the execution and not querying
@@ -554,12 +615,10 @@ Status PgDmlRead::BindColumnCondBetween(
       RETURN_NOT_OK(attr_value->EvalTo(op2_pb));
       RETURN_NOT_OK(attr_value_end->EvalTo(op3_pb));
 
-      if (yb_pushdown_strict_inequality) {
-        auto* op4_pb = condition_pb->add_operands();
-        auto* op5_pb = condition_pb->add_operands();
-        op4_pb->mutable_value()->set_bool_value(start_inclusive);
-        op5_pb->mutable_value()->set_bool_value(end_inclusive);
-      }
+      auto* op4_pb = condition_pb->add_operands();
+      auto* op5_pb = condition_pb->add_operands();
+      op4_pb->mutable_value()->set_bool_value(start_inclusive);
+      op5_pb->mutable_value()->set_bool_value(end_inclusive);
     } else {
       condition_pb->set_op(start_inclusive ? QL_OP_GREATER_THAN_EQUAL : QL_OP_GREATER_THAN);
 
@@ -622,8 +681,8 @@ Status PgDmlRead::BindColumnCondIn(PgExpr* lhs, int n_attr_values, PgExpr** attr
   }
 
   for (const PgColumn& curr_col : cols) {
-    // Check primary column bindings
-    if (curr_col.is_primary() && curr_col.ValueBound()) {
+    // Check key column bindings
+    if (curr_col.is_key() && curr_col.ValueBound()) {
       LOG(DFATAL) << Format("Column $0 is already bound to another value", curr_col.attr_num());
     }
   }
@@ -633,9 +692,9 @@ Status PgDmlRead::BindColumnCondIn(PgExpr* lhs, int n_attr_values, PgExpr** attr
   // we only bind this condition to the first column in the IN. The nature of that
   // column (hash or range) will decide how this tuple IN condition will be processed.
   PgColumn& col = cols.front();
-  bool col_is_primary = col.is_primary();
+  bool col_is_key = col.is_key();
 
-  if (col_is_primary) {
+  if (col_is_key) {
     // Alloc the protobuf.
     auto* bind_pb = col.bind_pb();
     if (!bind_pb) {
@@ -664,7 +723,7 @@ Status PgDmlRead::BindColumnCondIn(PgExpr* lhs, int n_attr_values, PgExpr** attr
       // Note that except for constants and place_holders, all other expressions can be setup
       // just one time during prepare.
       // Examples:
-      // - Bind values for primary columns in where clause.
+      // - Bind values for key columns in where clause.
       //     WHERE hash = ?
       // - Bind values for a column in INSERT statement.
       //     INSERT INTO a_table(hash, key, col) VALUES(?, ?, ?)
@@ -698,68 +757,33 @@ Status PgDmlRead::BindColumnCondIsNotNull(int attr_num) {
   return Status::OK();
 }
 
-Result<dockv::DocKey> PgDmlRead::EncodeRowKeyForBound(
-    YbcPgStatement handle, size_t n_col_values, PgExpr** col_values, bool for_lower_bound) {
-  const auto num_hash_key_columns = bind_->num_hash_key_columns();
-  dockv::KeyEntryValues hashed_components;
-  hashed_components.reserve(num_hash_key_columns);
-  LWQLValuePBContainer hashed_values(num_hash_key_columns);
-  size_t i = 0;
-  for (; i < num_hash_key_columns; ++i) {
-    hashed_components.push_back(VERIFY_RESULT(GetKeyValue(
-        bind_.ColumnForIndex(i), col_values[i], &hashed_values[i])));
+Status PgDmlRead::AddRowBound(std::span<PgExpr*> col_values, bool is_inclusive, bool is_lower) {
+  auto& scan_range = GetScanRange();
+  if (bind_->num_hash_key_columns() > 0) {
+    DCHECK_GT(col_values.size(), 1);  // the hash code and at least one value
+    auto hash_code = VERIFY_RESULT(GetHashCodeValue(col_values[0]));
+    return scan_range.SetHashAndRangeValuesBound(
+        hash_code, col_values.subspan(1), is_inclusive, is_lower);
   }
-
-  dockv::KeyEntryValues range_components;
-  n_col_values = std::max(std::min(n_col_values, bind_->num_key_columns()), num_hash_key_columns);
-  range_components.reserve(n_col_values - num_hash_key_columns);
-  const auto null_type = for_lower_bound
-      ? dockv::KeyEntryType::kLowest : dockv::KeyEntryType::kHighest;
-  for (; i < n_col_values; ++i) {
-    range_components.push_back(VERIFY_RESULT(GetKeyValue(
-        bind_.ColumnForIndex(i), col_values[i], null_type)));
-  }
-
-  return BuildDocKey(
-      bind_->partition_schema(), std::move(hashed_components), hashed_values.data(),
-      std::move(range_components));
-}
-
-Status PgDmlRead::AddRowUpperBound(
-    YbcPgStatement handle, int n_col_values, PgExpr **col_values, bool is_inclusive) {
-  if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
-    return secondary_index->AddRowUpperBound(handle, n_col_values, col_values, is_inclusive);
-  }
-
-  auto dockey = VERIFY_RESULT(EncodeRowKeyForBound(handle, n_col_values, col_values, false));
-  ApplyUpperBound(*read_req_, dockey.Encode().AsSlice(), is_inclusive);
-  return Status::OK();
-}
-
-Status PgDmlRead::AddRowLowerBound(
-    YbcPgStatement handle, int n_col_values, PgExpr **col_values, bool is_inclusive) {
-
-  if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
-    return secondary_index->AddRowLowerBound(handle, n_col_values, col_values, is_inclusive);
-  }
-
-  auto dockey = VERIFY_RESULT(EncodeRowKeyForBound(handle, n_col_values, col_values, true));
-  ApplyLowerBound(*read_req_, dockey.Encode().AsSlice(), is_inclusive);
-  return Status::OK();
+  return scan_range.SetRangeValuesBound(col_values, is_inclusive, is_lower);
 }
 
 Status PgDmlRead::SetMergeSortKeys(int num_keys, const YbcSortKey* sort_keys) {
+  DCHECK(!merge_sort_keys_) << "Merge sort keys are already set";
   if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
-    return secondary_index->SetMergeSortKeys(num_keys, sort_keys);
+    RETURN_NOT_OK(secondary_index->SetMergeSortKeys(num_keys, sort_keys));
+    if (!secondary_index->doc_op_) {
+      merge_sort_keys_ = secondary_index->merge_sort_keys_;
+    }
+  } else {
+    merge_sort_keys_ = std::make_shared<MergeSortKeys>(sort_keys, sort_keys + num_keys);
   }
 
-  DCHECK(!merge_sort_keys_) << "Merge sort keys are already set";
-  merge_sort_keys_ = std::make_shared<MergeSortKeys>(sort_keys, sort_keys + num_keys);
   return Status::OK();
 }
 
-Status PgDmlRead::SubstitutePrimaryBindsWithYbctids() {
-  SetYbctidProvider(VERIFY_RESULT(BuildYbctidsFromPrimaryBinds()));
+Status PgDmlRead::SubstituteKeyBindsWithYbctids() {
+  SetYbctidProvider(VERIFY_RESULT(BuildYbctidsFromKeyBinds()));
   for (auto& col : bind_.columns()) {
     col.UnbindValue();
   }
@@ -768,10 +792,10 @@ Status PgDmlRead::SubstitutePrimaryBindsWithYbctids() {
   return Status::OK();
 }
 
-// Function builds vector of ybctids from primary key binds.
+// Function builds vector of ybctids from key column binds.
 // Required precondition that not more than one range key component has the IN operator and all
 // other key components are set must be checked by caller code.
-Result<std::unique_ptr<YbctidProvider>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
+Result<std::unique_ptr<YbctidProvider>> PgDmlRead::BuildYbctidsFromKeyBinds() {
   auto num_hash_key_columns = bind_->num_hash_key_columns();
   LWQLValuePBContainer hashed_values(num_hash_key_columns);
   dockv::KeyEntryValues hashed_components;
@@ -833,7 +857,7 @@ Result<std::unique_ptr<YbctidProvider>> PgDmlRead::BuildYbctidsFromPrimaryBinds(
 
 // Returns true in case not more than one range key component has the IN operator
 // and all other key components are set.
-bool PgDmlRead::IsAllPrimaryKeysBound() const {
+bool PgDmlRead::IsAllKeyColumnsBound() const {
   if (!bind_) {
     return false;
   }
@@ -857,26 +881,21 @@ bool PgDmlRead::IsAllPrimaryKeysBound() const {
   return true;
 }
 
-void PgDmlRead::BindHashCode(const std::optional<Bound>& start, const std::optional<Bound>& end) {
-  if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
-    secondary_index->BindHashCode(start, end);
-    return;
-  }
-
-  if (start) {
-    const auto bound = HashCodeToDocKeyBound(
-        bind_->schema(), start->value, start->is_inclusive, /* is_lower = */ true);
-    ApplyLowerBound(*read_req_, bound, /* is_inclusive = */ false);
-  }
-
-  if (end) {
-    const auto bound = HashCodeToDocKeyBound(
-        bind_->schema(), end->value, end->is_inclusive, /* is_lower = */ false);
-    ApplyUpperBound(*read_req_, bound, /* is_inclusive = */ false);
-  }
-}
-
-Status PgDmlRead::BindRange(
+//--------------------------------------------------------------------------------------------------
+// Read range binding functions.
+// The PgDmlRead::ApplyParallelRange function differs from other request boundary limiting
+// functions (BindBounds, BindHashCode) as it applies the bounds directly to the template
+// request, overwriting any previous values. That's because this function is used to reset the read
+// for the next parallel range, which is supposed to overwrite the previous parallel range.
+// The function performs relevant clean up and sets the new bounds into the template request's
+// fields.
+// The other request boundary limiting functions store the bounds with the statement.
+// Multiple calls to those functions are allowed, and update the stored bounds, potentially
+// narrowing the range.
+// The resulting bounds are applied, or re-applied in the parallel case, during the execution.
+// If the resulting request range is empty, the execution is going to be skipped.
+//--------------------------------------------------------------------------------------------------
+Status PgDmlRead::ApplyParallelRange(
     Slice lower_bound, bool lower_bound_inclusive, Slice upper_bound, bool upper_bound_inclusive) {
   // Clean up operations remaining from the previous range's scan
   if (doc_op_) {
@@ -887,16 +906,25 @@ Status PgDmlRead::BindRange(
   }
   if (auto* secondary_index = SecondaryIndex(); secondary_index) {
     secondary_index->RequireReExecution();
-    return secondary_index->query().BindRange(
+    return secondary_index->query().ApplyParallelRange(
         lower_bound, lower_bound_inclusive, upper_bound, upper_bound_inclusive);
   }
+
   // Override the lower bound
-  read_req_->clear_lower_bound();
-  ApplyLowerBound(*read_req_, lower_bound, lower_bound_inclusive);
+  if (lower_bound.empty()) {
+    read_req_->clear_lower_bound();
+  } else {
+    read_req_->mutable_lower_bound()->dup_key(lower_bound);
+    read_req_->mutable_lower_bound()->set_is_inclusive(lower_bound_inclusive);
+  }
 
   // Override the upper bound
-  read_req_->clear_upper_bound();
-  ApplyUpperBound(*read_req_, upper_bound, upper_bound_inclusive);
+  if (upper_bound.empty()) {
+    read_req_->clear_upper_bound();
+  } else {
+    read_req_->mutable_upper_bound()->dup_key(upper_bound);
+    read_req_->mutable_upper_bound()->set_is_inclusive(upper_bound_inclusive);
+  }
 
   return Status::OK();
 }
@@ -908,8 +936,46 @@ void PgDmlRead::BindBounds(
     return secondary_index->BindBounds(
         lower_bound, lower_bound_inclusive, upper_bound, upper_bound_inclusive);
   }
-  ApplyBounds(*read_req_, lower_bound, lower_bound_inclusive, upper_bound, upper_bound_inclusive);
+  if (!lower_bound.empty()) {
+    GetScanRange().SetDocKeyBound(lower_bound, lower_bound_inclusive, true /* is_lower_bound */);
+  }
+  if (!upper_bound.empty()) {
+    GetScanRange().SetDocKeyBound(upper_bound, upper_bound_inclusive, false /* is_lower_bound */);
+  }
 }
+
+void PgDmlRead::BindHashCode(const std::optional<Bound>& start, const std::optional<Bound>& end) {
+  if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
+    secondary_index->BindHashCode(start, end);
+    return;
+  }
+
+  if (start) {
+    GetScanRange().SetHashCodeBound(start->value, start->is_inclusive, true /* is_lower_bound */);
+  }
+
+  if (end) {
+    GetScanRange().SetHashCodeBound(end->value, end->is_inclusive, false /* is_lower_bound */);
+  }
+}
+
+Status PgDmlRead::AddRowLowerBound(std::span<PgExpr*> col_values, bool is_inclusive) {
+
+  if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
+    return secondary_index->AddRowLowerBound(col_values, is_inclusive);
+  }
+
+  return AddRowBound(col_values, is_inclusive, /* is_lower= */ true);
+}
+
+Status PgDmlRead::AddRowUpperBound(std::span<PgExpr*> col_values, bool is_inclusive) {
+  if (auto* secondary_index = SecondaryIndexQuery(); secondary_index) {
+    return secondary_index->AddRowUpperBound(col_values, is_inclusive);
+  }
+
+  return AddRowBound(col_values, is_inclusive, /* is_lower= */ false);
+}
+//--------------------------------------------------------------------------------------------------
 
 void PgDmlRead::UpgradeDocOp(PgDocOp::SharedPtr doc_op) {
   CHECK(!original_doc_op_) << "DocOp can be upgraded only once";
@@ -927,7 +993,7 @@ bool PgDmlRead::IsReadFromYsqlCatalog() const {
 
 bool PgDmlRead::IsIndexOrderedScan() const {
   auto* secondary_index = SecondaryIndexQuery();
-  return secondary_index && !secondary_index->IsAllPrimaryKeysBound();
+  return secondary_index && !secondary_index->IsAllKeyColumnsBound();
 }
 
 bool PgDmlRead::ActualValueForIsForSecondaryIndexArg(bool is_for_secondary_index) const {

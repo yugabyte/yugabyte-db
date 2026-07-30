@@ -532,7 +532,7 @@ func UnmarshalResponse(ctx context.Context, successTarget any, res *http.Respons
 		util.FileLogger().Error(ctx, err.Error())
 		return nil, err
 	}
-	if res.StatusCode != 200 {
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		util.FileLogger().Errorf(ctx,
 			"API returned an error %s with %d status code",
 			string(body),

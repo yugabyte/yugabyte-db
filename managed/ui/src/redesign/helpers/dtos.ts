@@ -5,7 +5,10 @@ import {
   TimeAggregation
 } from '../../components/metrics/dtos';
 import { MetricName } from '../../components/xcluster/constants';
-import { AuditLogConfig } from '../features/universe/universe-tabs/db-audit-logs/utils/types';
+import {
+  AuditLogConfig,
+  QueryLogConfig
+} from '../features/universe/universe-tabs/db-audit-logs/utils/types';
 import { YBTableRelationType } from './constants';
 import { DeepPartial } from './types';
 
@@ -71,6 +74,7 @@ export enum CloudType {
   aws = 'aws',
   gcp = 'gcp',
   azu = 'azu',
+  oci = 'oci',
   docker = 'docker',
   onprem = 'onprem',
   kubernetes = 'kubernetes',
@@ -97,7 +101,7 @@ export interface DeviceInfo {
   numVolumes: number;
   diskIops: number | null;
   throughput: number | null;
-  storageClass: 'standard'; // hardcoded in DeviceInfo.java
+  storageClass: string;
   mountPoints: string | null;
   storageType: StorageType | null;
 }
@@ -150,6 +154,7 @@ export interface UserIntent {
   instanceTags: FlagsObject | FlagsArray;
   imageBundleUUID: string;
   auditLogConfig?: AuditLogConfig;
+  queryLogConfig?: QueryLogConfig;
   metricsExportConfig?: {
     scrapeIntervalSeconds: number;
     scrapeTimeoutSeconds: number;
@@ -223,7 +228,9 @@ export enum NodeState {
   Removed = 'Removed',
   Adding = 'Adding',
   BeingDecommissioned = 'BeingDecommissioned',
-  Decommissioned = 'Decommissioned'
+  Decommissioned = 'Decommissioned',
+  InstanceStopping = 'InstanceStopping',
+  InstanceStopped = 'InstanceStopped'
 }
 
 // NodeDetails.java
@@ -611,4 +618,9 @@ export interface YBPBeanValidationError extends YBPStructuredError {
   success: false;
 }
 
+export enum AppName {
+  YBA = 'YBA',
+  YBM = 'YBM',
+  YBD = 'YBD'
+}
 // ---------------------------------------------------------------------------

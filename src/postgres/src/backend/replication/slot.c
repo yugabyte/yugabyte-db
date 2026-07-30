@@ -53,9 +53,12 @@
 
 /* YB includes */
 #include "commands/yb_cmds.h"
+#include "common/hashfn.h"
 #include "pg_yb_utils.h"
 #include "replication/walsender.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_gflags.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 /*
  * Replication slot on-disk data structure.
@@ -110,6 +113,13 @@ int			max_replication_slots = 0;	/* the maximum number of replication
 const char *YB_OUTPUT_PLUGIN = "yboutput";
 const char *PG_OUTPUT_PLUGIN = "pgoutput";
 
+/*
+ * YB: Sentinel value accepted in place of an output plugin name to mark a
+ * replication slot as a gRPC stream slot at creation time. gRPC streams do
+ * not use an output plugin, so this value is never loaded as one.
+ */
+const char *YB_GRPC_STREAM_INDICATOR = "yb_grpc";
+
 /* YB: Constants for replication slot LSN types */
 const char *LSN_TYPE_SEQUENCE = "SEQUENCE";
 const char *LSN_TYPE_HYBRID_TIME = "HYBRID_TIME";
@@ -126,6 +136,72 @@ static void ReplicationSlotDropPtr(ReplicationSlot *slot);
 static void RestoreSlotFromDisk(const char *name);
 static void CreateSlotOnDisk(ReplicationSlot *slot);
 static void SaveSlotToPath(ReplicationSlot *slot, const char *path, int elevel);
+
+/* YB: LOCKTAG of the slot advisory lock held by this backend, or zero if none. */
+static LOCKTAG yb_slot_locktag = {0};
+
+/*
+ * YB: Build the advisory-lock tag used to guard the named replication slot.
+ *
+ * objsubid = 2 picks the (int4, int4) advisory-lock key form, where the two
+ * int4s are the classid (ADVISORY_LOCK_CLASSID_REPL_SLOT) and the 32-bit
+ * hash of the slot name.
+ */
+static void
+YbBuildReplicationSlotLockTag(const char *slot_name, LOCKTAG *tag)
+{
+	uint32		name_hash;
+
+	name_hash = hash_bytes((const unsigned char *) slot_name,
+						   strlen(slot_name));
+
+	SET_LOCKTAG_ADVISORY(*tag,
+						 YB_INTERNAL_ADVISORY_LOCK_DB_OID,
+						 ADVISORY_LOCK_CLASSID_REPL_SLOT,
+						 name_hash,
+						 /* objsubid= */ 2);
+}
+
+/*
+ * YB: Try to acquire an exclusive session-level advisory lock for the
+ * named replication slot.  Returns false if it is already held.
+ *
+ * The locktag is built in a local first and only published to the
+ * static yb_slot_locktag on successful acquisition, so that the
+ * ReplicationSlotShmemExit() sentinel never sees a stale "lock held"
+ * value when the acquire failed.
+ */
+static bool
+YbTryAcquireReplicationSlotLock(const char *slot_name, bool wait)
+{
+	LOCKTAG		tag;
+	YbcStatus	status;
+
+	YbBuildReplicationSlotLockTag(slot_name, &tag);
+
+	status = YBCAcquireAdvisoryLock(GetYBAdvisoryLockId(tag),
+									YB_ADVISORY_LOCK_EXCLUSIVE,
+									wait,
+									/* session= */ true);
+	if (!HandleStatusIgnoreSkipLocking(status))
+		return false;
+
+	/* YB: Mark the connection sticky since this is a session-level lock. */
+	if (YbIsClientYsqlConnMgr())
+		yb_ysql_conn_mgr_sticky_locks = true;
+
+	yb_slot_locktag = tag;
+	return true;
+}
+
+/* YB: Release the slot advisory lock and clear the sentinel. */
+static void
+YbReleaseReplicationSlotLock(void)
+{
+	HandleYBStatus(YBCReleaseAdvisoryLock(GetYBAdvisoryLockId(yb_slot_locktag),
+										  YB_ADVISORY_LOCK_EXCLUSIVE));
+	MemSet(&yb_slot_locktag, 0, sizeof(yb_slot_locktag));
+}
 
 /*
  * Report shared-memory space needed by ReplicationSlotsShmemInit.
@@ -199,6 +275,15 @@ ReplicationSlotShmemExit(int code, Datum arg)
 	if (MyReplicationSlot != NULL)
 		ReplicationSlotRelease();
 
+	/*
+	 * YB: It can happen that there is a failure after acquiring the advisory
+	 * lock but before MyReplicationSlot is set.  In such cases, the function
+	 * ReplicationSlotRelease will not be called above.  So call
+	 * YbReleaseReplicationSlotLock to handle such cases.
+	 */
+	if (IsYugaByteEnabled() && yb_slot_locktag.locktag_type != 0)
+		YbReleaseReplicationSlotLock();
+
 	/* Also cleanup all the temporary slots. */
 	ReplicationSlotCleanup();
 }
@@ -248,6 +333,19 @@ ReplicationSlotValidateName(const char *name, int elevel)
 			return false;
 		}
 	}
+
+	if (IsYugaByteEnabled() &&
+		strncmp(name, YbNotificationsSlotPrefix, strlen(YbNotificationsSlotPrefix)) == 0)
+	{
+		ereport(elevel,
+				(errcode(ERRCODE_INVALID_NAME),
+				 errmsg("replication slot name \"%s\" uses a reserved prefix",
+						name),
+				 errhint("Replication slot name prefix \"%s\" is reserved for internal use.",
+						 YbNotificationsSlotPrefix)));
+		return false;
+	}
+
 	return true;
 }
 
@@ -287,50 +385,11 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 	 * consuming replication slots via Walsender.
 	 */
 	if (IsYugaByteEnabled())
-	{
-		int32_t		max_clock_skew;
-
-		/* TODO(#24025): This must be removed once we support two_phase. */
-		if (two_phase)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("two_phase is not supported")));
-
-		YBCCreateReplicationSlot(name, yb_plugin_name, yb_snapshot_action,
-								 yb_consistent_snapshot_time, lsn_type,
-								 yb_ordering_mode);
-
-		/*
-		 * The creation of a replication slot establishes a boundry between the
-		 * snapshot and change records. This is represented as a hybrid time.
-		 * This hybrid time can be chosen up to max_clock_skew us in the future.
-		 * We do not want to return the control back to the client before this
-		 * time passes otherwise the below scenario can cause confusion.
-		 *
-		 * T1: Slot creation (snapshot time chosen as Tsnap)
-		 *  ... command returns to the client before Tsnap is in the past.
-		 * T2: Insert operation where T2 < Tsnap
-		 *
-		 * The user would expect the insert operation to be part of the change
-		 * operations as it was done after the slot creation but it'll be
-		 * treated as snapshot operation. Sleeping here prevents that.
-		 *
-		 * Another scenario faced by the PG Debezium connector is that it
-		 * attempts to set the yb_read_time to the consistent snapshot time as
-		 * soon as the slot is created. Since this time is in the future
-		 * (without the sleep), such an attempt to set the yb_read_time to a
-		 * future time value can fail.
-		 *
-		 * It is fine to sleep like this because slot creation is not expected
-		 * to be a frequent operation.
-		 */
-		max_clock_skew = YBGetMaxClockSkewUsec();
-		elog(DEBUG1,
-			 "Sleeping for %d us after the slot creation to handle clock skew.",
-			 max_clock_skew);
-		pg_usleep(max_clock_skew);
-		return;
-	}
+		return YbReplicationSlotCreateForDB(name, two_phase, yb_plugin_name,
+											yb_snapshot_action,
+											yb_consistent_snapshot_time,
+											lsn_type, yb_ordering_mode,
+											MyDatabaseId);
 
 	/*
 	 * If some other backend ran this code concurrently with us, we'd likely
@@ -438,6 +497,66 @@ ReplicationSlotCreate(const char *name, bool db_specific,
 	ConditionVariableBroadcast(&slot->active_cv);
 }
 
+void
+YbReplicationSlotCreateForDB(const char *name, bool two_phase,
+							 const char *yb_plugin_name,
+							 CRSSnapshotAction yb_snapshot_action,
+							 uint64_t *yb_consistent_snapshot_time,
+							 YbCRSLsnType lsn_type,
+							 YbCRSOrderingMode yb_ordering_mode,
+							 Oid database_oid)
+{
+	int32_t		max_clock_skew;
+
+	/* TODO(#24025): This must be removed once we support two_phase. */
+	if (two_phase)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("two_phase is not supported")));
+
+	YBCCreateReplicationSlot(name, yb_plugin_name, yb_snapshot_action,
+							 yb_consistent_snapshot_time, lsn_type,
+							 yb_ordering_mode, database_oid);
+
+	/*
+	 * While creating replication slot, the master chooses a snapshot hybrid
+	 * time that establishes a boundary between the snapshot and change records.
+	 * The time difference between this snapshot hybrid time and the hybrid time
+	 * (HT) on the backend's node can be up to (2 * max_clock_skew). Consider
+	 * the following scenario:
+	 * - backend initiating the slot creation is on node1 whose HT == 100
+	 * - master leader is on node2 whose HT == 100 + maxclockskew
+	 * - snapshot hybrid time == HT on master leader node + maxclockskew == (100 + 2 * maxclockskew)
+	 *
+	 * We do not want to return the control back to the client before the HT on
+	 * the backend's node surpasses the snapshot HT, otherwise the below scenario can
+	 * cause confusion.
+	 *
+	 * T1: Slot creation (snapshot time chosen as Tsnap)
+	 *  ... command returns to the client before Tsnap is in the past.
+	 * T2: Insert operation where T2 < Tsnap
+	 *
+	 * The user would expect the insert operation to be part of the change
+	 * operations as it was done after the slot creation but it'll be
+	 * treated as snapshot operation. Sleeping here prevents that.
+	 *
+	 * Another scenario faced by the PG Debezium connector is that it
+	 * attempts to set the yb_read_time to the consistent snapshot time as
+	 * soon as the slot is created. Since this time is in the future
+	 * (without the sleep), such an attempt to set the yb_read_time to a
+	 * future time value can fail.
+	 *
+	 * It is fine to sleep like this because slot creation is not expected
+	 * to be a frequent operation.
+	 */
+	max_clock_skew = YBGetMaxClockSkewUsec();
+	elog(DEBUG1,
+			"Sleeping for %d us after the slot creation to handle clock skew.",
+			max_clock_skew);
+	pg_usleep(2 * max_clock_skew + 1);
+	return;
+}
+
 /*
  * Search for the named replication slot.
  *
@@ -532,8 +651,6 @@ retry:
 
 	/*
 	 * Fetch the replication slot metadata from yb-master.
-	 * TODO(#20755): Support acquiring a replication slot exclusively in
-	 * yb-master.
 	 */
 	if (IsYugaByteEnabled())
 	{
@@ -542,7 +659,24 @@ retry:
 		HTAB	   *replica_identities;
 		HASHCTL		ctl;
 
-		YBCGetReplicationSlot(name, &yb_replication_slot);
+		/*
+		 * Acquire an exclusive cluster-wide advisory lock so only one
+		 * consumer can use the slot at a time.  Uses the internal namespace
+		 * YB_INTERNAL_ADVISORY_LOCK_DB_OID (cannot collide with user advisory
+		 * locks).  Released by ReplicationSlotRelease(), or by
+		 * ReplicationSlotShmemExit() if we error out before MyReplicationSlot
+		 * is set.
+		 */
+		if (yb_enable_replication_slot_exclusive_lock &&
+			!YbTryAcquireReplicationSlotLock(name, /* wait = */ !nowait))
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_IN_USE),
+					 errmsg("could not acquire replication slot \"%s\"",
+							name),
+					 errdetail("Ensure the slot is not active in another"
+							   " session and try again.")));
+
+		YBCGetReplicationSlot(name, &yb_replication_slot, /* if_exists */ false);
 
 		s = palloc(sizeof(ReplicationSlot));
 		namestrcpy(&s->data.name, yb_replication_slot->slot_name);
@@ -579,6 +713,9 @@ retry:
 
 		s->data.yb_allow_tables_without_primary_key =
 			yb_replication_slot->allow_tables_without_primary_key;
+
+		s->data.yb_detect_publication_changes_implicitly =
+			yb_replication_slot->detect_publication_changes_implicitly;
 
 		MyReplicationSlot = s;
 
@@ -787,8 +924,14 @@ ReplicationSlotRelease(void)
 		ConditionVariableBroadcast(&slot->active_cv);
 	}
 
-	if (IsYugaByteEnabled() && MyReplicationSlot->data.yb_replica_identities)
-		hash_destroy(MyReplicationSlot->data.yb_replica_identities);
+	if (IsYugaByteEnabled())
+	{
+		if (MyReplicationSlot->data.yb_replica_identities)
+			hash_destroy(MyReplicationSlot->data.yb_replica_identities);
+		/* Release the advisory lock if we are holding one. */
+		if (yb_slot_locktag.locktag_type != 0)
+			YbReleaseReplicationSlotLock();
+	}
 
 	MyReplicationSlot = NULL;
 
@@ -849,7 +992,7 @@ restart:
  * Permanently drop replication slot identified by the passed in name.
  */
 void
-ReplicationSlotDrop(const char *name, bool nowait)
+ReplicationSlotDrop(const char *name, bool nowait, bool yb_force, bool yb_if_exists)
 {
 	Assert(MyReplicationSlot == NULL);
 
@@ -860,24 +1003,50 @@ ReplicationSlotDrop(const char *name, bool nowait)
 	 */
 	if (IsYugaByteEnabled())
 	{
-		YbcReplicationSlotDescriptor *yb_replication_slot;
+		/*
+		 * YB: Take the advisory lock before dropping so no other consumer can
+		 * use the slot while we drop it. ReplicationSlotAcquire takes the lock
+		 * and then checks existence, so the check happens under the lock.
+		 * yb_force callers (e.g. the LISTEN/NOTIFY poller cleanup) drop without
+		 * the lock so they never block on a lock held by another consumer.
+		 */
+		if (yb_force)
+			YBCDropReplicationSlot(name, yb_if_exists);
+		else if (yb_enable_replication_slot_exclusive_lock)
+		{
+			ReplicationSlotAcquire(name, nowait);
+			YBCDropReplicationSlot(name, yb_if_exists);
+		}
+		else
+		{
+			YbcReplicationSlotDescriptor *yb_replication_slot;
 
-		YBCGetReplicationSlot(name, &yb_replication_slot);
+			if (!YBCGetReplicationSlot(name, &yb_replication_slot, yb_if_exists))
+				return;
 
-		if (yb_replication_slot->active)
-			ereport(ERROR,
-					(errcode(ERRCODE_OBJECT_IN_USE),
-					 errmsg("replication slot \"%s\" is active", name)));
+			if (yb_replication_slot->active)
+				ereport(ERROR,
+						(errcode(ERRCODE_OBJECT_IN_USE),
+						 errmsg("replication slot \"%s\" is active", name)));
 
-		YBCDropReplicationSlot(name);
+			YBCDropReplicationSlot(name, yb_if_exists);
+		}
 
 		ReplicationSlot *slot_for_array = SearchNamedReplicationSlot(name, false);
 
 		if (slot_for_array)
 		{
+			pgstat_drop_replslot(slot_for_array);
 			slot_for_array->in_use = false;
 			memset(&slot_for_array->data, 0, sizeof(ReplicationSlotPersistentData));
 		}
+
+		/*
+		 * Release only after the cleanup, so no other session can acquire the
+		 * slot while we are still dropping and cleaning it up.
+		 */
+		if (MyReplicationSlot != NULL)
+			ReplicationSlotRelease();
 
 		return;
 	}

@@ -132,7 +132,7 @@ typedef struct BsonElemMatchSimpleNestedFilterState
 /* Forward declaration */
 /* --------------------------------------------------------- */
 
-static List * ExtractSubExpressionsFromElemMatchQuery(pgbson *elemMatchQuery,
+static List * ExtractSubExpressionsFromElemMatchQuery(pgbsonelement *singleElement,
 													  bytea *options);
 static bool ExtractElemMatchSubExpressionWalker(List *expressions,
 												BsonElemMatchBoolFilterState *state,
@@ -142,7 +142,6 @@ static bool ProcessFuncExprForIndexPushdown(FuncExpr *function,
 											BsonElemMatchBoolFilterState *parent,
 											List **elemMatchContextEntries,
 											bytea *indexOptions);
-static bool PathHasArrayIndexElements(const StringView *path);
 static Datum * GinBsonExtractQueryElemMatchForExpression(BsonExtractQueryArgs *args);
 static Datum * GinBsonExtractQueryElemMatchForNestedFilters(List *nestedExpressions,
 															BsonExtractQueryArgs *args);
@@ -162,13 +161,12 @@ static bool GetElemMatchQualConsistentResult(BsonElemMatchBoolFilterState *root,
 Datum *
 GinBsonExtractQueryElemMatch(BsonExtractQueryArgs *args)
 {
-	pgbson *query = args->query;
-
 	/* For $elemMatch, the first step we try is to see if we can
 	 * extract sub-expressions from the $elemMatch as top level
 	 * expressions
 	 */
-	List *expressions = ExtractSubExpressionsFromElemMatchQuery(query, args->options);
+	List *expressions = ExtractSubExpressionsFromElemMatchQuery(&args->filterElement,
+																args->options);
 	if (expressions == NIL || list_length(expressions) == 0)
 	{
 		/* If the nested expression cannot be evaluated against the index
@@ -273,19 +271,16 @@ GinBsonElemMatchConsistent(bool *checkArray, Pointer *extraData, int32_t numKeys
 static Datum *
 GinBsonExtractQueryElemMatchForExpression(BsonExtractQueryArgs *args)
 {
-	pgbson *query = args->query;
 	int32 *nentries = args->nentries;
 	bool **partialmatch = args->partialmatch;
 	Pointer **extra_data = args->extra_data;
-	pgbsonelement documentElement;
+	pgbsonelement documentElement = args->filterElement;
 	pgbson_writer bsonWriter;
 
 	*nentries = 1;
 	Datum *entries = (Datum *) palloc(sizeof(Datum) * 2);
 	*partialmatch = (bool *) palloc(sizeof(bool) * 2);
 	*extra_data = (Pointer *) palloc(sizeof(Pointer) * 2);
-
-	PgbsonToSinglePgbsonElement(query, &documentElement);
 
 	/* now create a bson for that path which has the min value for the field */
 	/* we map this to an empty array since that's the smallest value we'll encounter */
@@ -391,12 +386,9 @@ MakeElemMatchBoolExprState(bool isAndExpr, BsonElemMatchBoolFilterState *root)
  * returns NIL.
  */
 static List *
-ExtractSubExpressionsFromElemMatchQuery(pgbson *elemMatchQuery, bytea *options)
+ExtractSubExpressionsFromElemMatchQuery(pgbsonelement *singleElement, bytea *options)
 {
-	pgbsonelement singleElement;
-	PgbsonToSinglePgbsonElement(elemMatchQuery, &singleElement);
-
-	if (IsBsonValueEmptyDocument(&singleElement.bsonValue))
+	if (IsBsonValueEmptyDocument(&singleElement->bsonValue))
 	{
 		/* Empty query defaults to expression evaluation */
 		return NIL;
@@ -406,8 +398,8 @@ ExtractSubExpressionsFromElemMatchQuery(pgbson *elemMatchQuery, bytea *options)
 	BsonQueryOperatorContextCommonBuilder(&context);
 
 	/* Convert the pgbson query into a query AST that processes bson */
-	Expr *expr = CreateQualForBsonExpression(&singleElement.bsonValue,
-											 singleElement.path, &context);
+	Expr *expr = CreateQualForBsonExpression(&singleElement->bsonValue,
+											 singleElement->path, &context);
 
 	/* Get the underlying list of expressions that are AND-ed */
 	List *clauses = make_ands_implicit(expr);
@@ -631,7 +623,8 @@ ProcessFuncExprForIndexPushdown(FuncExpr *function,
 	consistentState->indexClassOptions = indexOptions;
 	BsonExtractQueryArgs args =
 	{
-		.query = bsonVal,
+		.filterElement = valueElement,
+		.collationString = NULL, /* TODO: Index collation support */
 		.nentries = &consistentState->numKeys,
 		.partialmatch = &partialMatch,
 		.extra_data = &consistentState->extra_data,
@@ -683,13 +676,15 @@ GetElemMatchQualConsistentResult(BsonElemMatchBoolFilterState *expression,
 		{
 			BsonElemMatchConsistentState *state = lfirst(cell);
 			bool recheckIgnore;
+			bool isPreconsistent = false;
 			bool res = GinBsonConsistentCore(state->strategy,
 											 &checkArray[state->baseTermIndex],
 											 state->extra_data,
 											 state->numKeys,
 											 &recheckIgnore,
 											 state->queryKeys,
-											 state->indexClassOptions);
+											 state->indexClassOptions,
+											 isPreconsistent);
 			if (!res)
 			{
 				return false;
@@ -716,13 +711,15 @@ GetElemMatchQualConsistentResult(BsonElemMatchBoolFilterState *expression,
 		{
 			BsonElemMatchConsistentState *state = lfirst(cell);
 			bool recheckIgnore;
+			bool isPreconsistent = false;
 			bool res = GinBsonConsistentCore(state->strategy,
 											 &checkArray[state->baseTermIndex],
 											 state->extra_data,
 											 state->numKeys,
 											 &recheckIgnore,
 											 state->queryKeys,
-											 state->indexClassOptions);
+											 state->indexClassOptions,
+											 isPreconsistent);
 			if (res)
 			{
 				return true;
@@ -745,24 +742,13 @@ GetElemMatchQualConsistentResult(BsonElemMatchBoolFilterState *expression,
 }
 
 
-/*
- * Walks a dotted path specified by 'a.b.c.d' and checks if any
- * component is an array index (or deals with array index paths).
- * This is defined as any path that can be an integer type.
- */
-static bool
-PathHasArrayIndexElements(const StringView *path)
+bool
+SubPathHasArrayIndexElements(const StringView *path, StringView subPath)
 {
-	StringView subPath = StringViewFindPrefix(path, '.');
-	if (subPath.length == 0)
-	{
-		/* not a dotted path - top level field */
-		return false;
-	}
-
 	StringView newPath = *path;
 
-	do {
+	while (subPath.length > 0)
+	{
 		if (isdigit(subPath.string[0]))
 		{
 			char *endptr;
@@ -776,7 +762,7 @@ PathHasArrayIndexElements(const StringView *path)
 
 		newPath = StringViewSubstring(&newPath, subPath.length + 1);
 		subPath = StringViewFindPrefix(&newPath, '.');
-	} while (subPath.length > 0);
+	}
 
 	if (newPath.length > 0)
 	{
@@ -793,4 +779,23 @@ PathHasArrayIndexElements(const StringView *path)
 	}
 
 	return false;
+}
+
+
+/*
+ * Walks a dotted path specified by 'a.b.c.d' and checks if any
+ * component is an array index (or deals with array index paths).
+ * This is defined as any path that can be an integer type.
+ */
+bool
+PathHasArrayIndexElements(const StringView *path)
+{
+	StringView subPath = StringViewFindPrefix(path, '.');
+	if (subPath.length == 0)
+	{
+		/* not a dotted path - top level field */
+		return false;
+	}
+
+	return SubPathHasArrayIndexElements(path, subPath);
 }

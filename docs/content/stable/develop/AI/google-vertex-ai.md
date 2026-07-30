@@ -3,7 +3,6 @@ title: Similarity search using Google Vertex AI
 headerTitle: Similarity search using Google Vertex AI
 linkTitle: Similarity search - Google Vertex
 description: Build scalable generative AI applications with Google Vertex AI and YugabyteDB
-image: /images/tutorials/google/icons/Google-Vertex-AI-Icon.svg
 headcontent: Use YugabyteDB as the database backend for Google Vertex AI applications
 aliases:
   - /tutorials/google/google-vertex-ai/
@@ -27,7 +26,7 @@ The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-google
 
 - A Google Cloud account with appropriate permissions
 - [gcloud CLI](https://cloud.google.com/sdk/docs/install)
-- A YugabyteDB cluster running [v2025.1](https://download.yugabyte.com/) or later
+- A YugabyteDB cluster running [v2025.2](https://download.yugabyte.com/) or later
 - [Node.js](https://github.com/nodejs/release#release-schedule) v18 or later
 - The latest version of [Docker](https://docs.docker.com/desktop/)
 - [ysqlsh](../../../api/ysqlsh/) or [psql](https://www.postgresql.org/docs/15/app-psql.html)

@@ -8,7 +8,7 @@ AS 'MODULE_PATHNAME', $function$bson_gist_geometry_2d_options$function$;
 -- GIST compress support function for 2d index, this internally uses Postgis GIST compress support function
 -- geometry_gist_compress_2d.
 -- It extract the geomtery from a `bson` document and compresses it into the box2df type for storage. It also
--- apply additional mongo db validations on geometries e.g. bound checks.
+-- apply additional validations on geometries e.g. bound checks.
 CREATE OR REPLACE FUNCTION __API_CATALOG_SCHEMA__.bson_gist_geometry_2d_compress(internal)
  RETURNS INTERNAL
  LANGUAGE C

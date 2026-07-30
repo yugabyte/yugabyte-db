@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/bson/bsonvalue_utils.h
+ * include/io/bsonvalue_utils.h
  *
  * Core helper function declarations for bsonValues.
  *
@@ -63,11 +63,14 @@ bool MultiplyWithFactorAndUpdate(bson_value_t *state, const bson_value_t *mf,
 void InitBsonValueAsEmptyArray(bson_value_t *outValue);
 bool BsonValueHoldsNumberArray(const bson_value_t *value, int32_t *numElements);
 
+List * BsonValueDocumentDecomposeFields(const bson_value_t *document);
+
 bool TryGetTypeFromInt64(int64_t typeCode, bson_type_t *output);
 bson_type_t BsonTypeFromName(const char *name);
 
 /* also see inlined method: BsonIterTypeName */
 char * BsonTypeName(bson_type_t type);
+char * BsonTypeNameExtended(bson_type_t type);
 
 bool BsonIterSearchKeyRecursive(bson_iter_t *iter, const char *key);
 int64 BsonValueHash(const bson_value_t *value, int64 seed);
@@ -92,7 +95,7 @@ BsonValueIsNumber(const bson_value_t *value)
 }
 
 
-static inline bool
+static pg_attribute_no_sanitize_alignment() inline bool
 BsonValueIsNumberOrBool(const bson_value_t *value)
 {
 	return BsonTypeIsNumberOrBool(value->value_type);
@@ -148,6 +151,15 @@ inline static bool
 bson_iter_find_string_view(bson_iter_t *iter, const StringView *view)
 {
 	return bson_iter_find_w_len(iter, view->string, view->length);
+}
+
+
+inline static bson_value_t *
+CreateBsonValueCopy(const bson_value_t *other)
+{
+	bson_value_t *value = palloc(sizeof(bson_value_t));
+	*value = *other;
+	return value;
 }
 
 

@@ -17,9 +17,13 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.yb.util.YBTestRunnerNonTsanAsan;
+import org.yb.YBTestRunner;
+import org.yb.util.SkipOnASAN;
+import org.yb.util.SkipOnTSAN;
 
-@RunWith(value=YBTestRunnerNonTsanAsan.class)
+@SkipOnTSAN
+@SkipOnASAN
+@RunWith(value=YBTestRunner.class)
 public class TestBigNumShards extends BaseCQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestBigNumShards.class);
 

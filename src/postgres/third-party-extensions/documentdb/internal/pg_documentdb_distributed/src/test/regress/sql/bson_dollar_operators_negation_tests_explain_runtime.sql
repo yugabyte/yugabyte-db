@@ -5,8 +5,8 @@ SET documentdb.next_collection_id TO 5130;
 SET documentdb.next_collection_index_id TO 5130;
 
 SET client_min_messages=WARNING;
-SELECT documentdb_api.drop_collection('db', 'negation_tests_explain');
-SELECT documentdb_api.create_collection('db', 'negation_tests_explain');
+SELECT documentdb_api.drop_collection('db', 'simple_negation_tests_explain');
+SELECT documentdb_api.create_collection('db', 'simple_negation_tests_explain');
 
 
 BEGIN;

@@ -40,7 +40,10 @@ struct XClusterDDLQueryInfo {
   std::string query;
   int version = 0;
   std::string command_tag;
-  std::string schema;
+  // The source session's current_schema() at DDL time (i.e. the first usable schema in
+  // search_path). Not to be confused with RelationInfo::relation_pgschema_name, which is the
+  // actual PG schema of a specific relation.
+  std::string search_path_schema;
   std::string user;
   std::string json_for_oid_assignment;
   bool is_manual_execution = false;
@@ -57,11 +60,12 @@ struct XClusterDDLQueryInfo {
     }
   };
   std::vector<RelationInfo> relation_map;
+  std::map<std::string, std::string> variables;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
-        query, ddl_end_time, query_id, version, command_tag, schema, user, json_for_oid_assignment,
-        is_manual_execution, relation_map);
+        query, ddl_end_time, query_id, version, command_tag, search_path_schema, user,
+        json_for_oid_assignment, is_manual_execution, relation_map, variables);
   }
 };
 
@@ -108,7 +112,12 @@ class XClusterDDLQueueHandler {
   // Executes DDLs at the commit_times in safe_time_batch_ if we have a valid batch.
   Status ExecuteCommittedDDLs();
 
-  Status RunAndLogQuery(const std::string& query);
+  // Processes all DDL queries for a single commit time, wrapping multiple DDLs in a transaction.
+  Status ProcessQueriesForCommitTime(const HybridTime& commit_time);
+
+  bool ShouldUseTransactionalDDL(const std::vector<XClusterDDLQueryInfo>& queries) const;
+
+  virtual Status RunAndLogQuery(const std::string& query);
 
   // Run the DDL query with the appropriate flags set.
   virtual Status ProcessDDLQuery(const XClusterDDLQueryInfo& query_info);
@@ -177,7 +186,7 @@ class XClusterDDLQueueHandler {
   // Keep track of how many times we've repeatedly failed a DDL.
   int num_fails_for_this_ddl_ = 0;
   std::optional<QueryIdentifier> last_failed_query_;
-  Status last_failed_status_;
+  Status original_failed_status_;
 
   // Cache of the DDL batch in replicated_ddl table. This only set when we are certain that it is up
   // to date with the persisted state. It is set to nullopt in all other cases and needs to be

@@ -25,8 +25,7 @@
 
 namespace yb::ann_methods {
 
-YB_DEFINE_ENUM(
-    ANNMethodKind,
+YB_DEFINE_ENUM(ANNMethodKind,
     (kUsearch)
     (kHnswlib));
 
@@ -48,7 +47,7 @@ template<>
 struct ANNMethodTraits<ANNMethodKind::kHnswlib> {
   template<vector_index::IndexableVectorType Vector,
            vector_index::ValidDistanceResultType DistanceResult>
-  using FactoryType = HnswlibIndexFactory<Vector, DistanceResult>;
+  using FactoryType = SimplifiedHnswlibIndexFactory<Vector, DistanceResult>;
 };
 
 }  // namespace yb::ann_methods

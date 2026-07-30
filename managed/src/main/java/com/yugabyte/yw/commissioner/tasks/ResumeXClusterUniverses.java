@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.DrConfigStates;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.Customer;
@@ -66,6 +67,16 @@ public class ResumeXClusterUniverses extends XClusterConfigTaskBase {
             u -> {});
 
         createSetReplicationPausedTask(xClusterConfig, false /* pause */);
+
+        if (xClusterConfig.isUsedForDr()) {
+          createSetDrStatesTask(
+              xClusterConfig,
+              DrConfigStates.State.Replicating,
+              DrConfigStates.SourceUniverseState.ReplicatingData,
+              DrConfigStates.TargetUniverseState.ReceivingData,
+              null /* keyspacePending */);
+        }
+
         createWaitForReplicationDrainTask(xClusterConfig);
 
         // Used in createUpdateWalRetentionTasks.

@@ -171,6 +171,6 @@ public class TestHealthChecks extends BaseYBClientTest {
     addNewTServers(1);
     TestUtils.waitFor(() -> {
       return getHealthValue("most_recent_uptime").getAsInt() < 3 * HEARTBEAT_SEC;
-    }, HEARTBEAT_SEC * 3);
+    }, HEARTBEAT_SEC * 3 * 1000);
   }
 }

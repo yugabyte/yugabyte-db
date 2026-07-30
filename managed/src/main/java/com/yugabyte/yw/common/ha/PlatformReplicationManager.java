@@ -27,10 +27,14 @@ import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.operator.OperatorResourceRestorer;
+import com.yugabyte.yw.common.pa.EmbeddedCollectorInitializer;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
+import com.yugabyte.yw.models.PlatformInstance.State;
 import io.ebean.DB;
 import io.ebean.annotation.Transactional;
 import io.prometheus.metrics.core.metrics.Gauge;
@@ -41,6 +45,9 @@ import java.net.URL;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
@@ -51,6 +58,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -66,6 +75,16 @@ public class PlatformReplicationManager {
   @VisibleForTesting
   public static final String NO_LOCAL_INSTANCE_MSG = "NO LOCAL INSTANCE! Won't sync";
 
+  private static final String INSTANCE_ADDRESS_LABEL = "instance_address";
+
+  // Format is backup_26-02-05-20-42.tgz.
+  private static final Pattern BACKUP_FILE_PATTERN =
+      Pattern.compile("([a-zA-Z]+_)(\\d{2}-\\d{2}-\\d{2}-\\d{2}-\\d{2})(\\..*)");
+
+  // The date time format is always in UTC.
+  private static final DateTimeFormatter DATE_TIME_FORMATTER =
+      DateTimeFormatter.ofPattern("yy-MM-dd-HH-mm").withZone(ZoneId.of("UTC"));
+
   private final AtomicReference<Cancellable> schedule;
 
   private final PlatformScheduler platformScheduler;
@@ -80,7 +99,9 @@ public class PlatformReplicationManager {
 
   private final RuntimeConfGetter confGetter;
 
-  private static final String INSTANCE_ADDRESS_LABEL = "instance_address";
+  private final OperatorResourceRestorer operatorResourceRestorer;
+
+  private final EmbeddedCollectorInitializer embeddedCollectorInitializer;
 
   public static final Gauge HA_LAST_BACKUP_TIME =
       Gauge.builder()
@@ -102,13 +123,17 @@ public class PlatformReplicationManager {
       FileDataService fileDataService,
       PrometheusConfigHelper prometheusConfigHelper,
       ConfigHelper configHelper,
-      RuntimeConfGetter confGetter) {
+      RuntimeConfGetter confGetter,
+      OperatorResourceRestorer operatorResourceRestorer,
+      EmbeddedCollectorInitializer embeddedCollectorInitializer) {
     this.platformScheduler = platformScheduler;
     this.replicationHelper = replicationHelper;
     this.fileDataService = fileDataService;
     this.prometheusConfigHelper = prometheusConfigHelper;
     this.configHelper = configHelper;
     this.confGetter = confGetter;
+    this.operatorResourceRestorer = operatorResourceRestorer;
+    this.embeddedCollectorInitializer = embeddedCollectorInitializer;
     this.schedule = new AtomicReference<>();
   }
 
@@ -243,7 +268,7 @@ public class PlatformReplicationManager {
         "Demoting local instance {} in favor of leader {}",
         localInstance.getAddress(),
         requestLeaderAddr);
-    if (!localInstance.getIsLocal()) {
+    if (!localInstance.isLocal()) {
       throw new RuntimeException("Cannot perform this action on a remote instance");
     }
     validateSwitchLeaderRequestForStaleness(config, requestLeaderAddr, requestLastFailover);
@@ -264,16 +289,27 @@ public class PlatformReplicationManager {
     // Stop the old backup schedule.
     stopAndDisable();
 
-    boolean wasLeader = localInstance.getIsLeader();
+    boolean wasLeader = localInstance.isLeader();
     // Demote the local instance to follower.
     localInstance.demote();
 
-    // Set the leader locally.
-    PlatformInstance.getByAddress(requestLeaderAddr)
-        .ifPresent(
+    // Set the existing leader to follower to avoid uniqueness violation.
+    config.getInstances().stream()
+        .sorted(Comparator.comparing(PlatformInstance::isLeader).reversed())
+        .forEach(
             i -> {
-              i.setIsLeader(true);
-              i.update();
+              boolean isNewLeader = i.getAddress().equals(requestLeaderAddr);
+              if (i.isLeader() != isNewLeader) {
+                // Update only when there is a difference.
+                log.debug(
+                    "Updating instance {}(uuid={},  isLeader={}) to isLeader={}",
+                    i.getAddress(),
+                    i.getUuid(),
+                    i.isLeader(),
+                    isNewLeader);
+                i.setState(isNewLeader ? State.LEADER : State.STAND_BY);
+                i.update();
+              }
             });
     // Any failure inside the condition rollbacks the DB updates.
     // This conditional check is just for optimization the prometheus mode switch.
@@ -300,17 +336,17 @@ public class PlatformReplicationManager {
         localConfig.isPresent() ? localConfig.get().getLocal().orElse(null) : null;
     if (localInstance != null) {
       config.getInstances().stream()
-          .sorted(Comparator.comparing(PlatformInstance::getIsLocal).reversed())
+          .sorted(Comparator.comparing(PlatformInstance::isLocal).reversed())
           .forEach(
               i -> {
                 log.debug(
                     "Updating instance {}(uuid={}, isLocal={}, isLeader={})",
                     i.getAddress(),
                     i.getUuid(),
-                    i.getIsLocal(),
-                    i.getIsLeader());
+                    i.isLocal(),
+                    i.isLeader());
                 boolean isLocal = i.getAddress().equals(localInstance.getAddress());
-                i.updateIsLocal(isLocal);
+                i.updateLocal(isLocal);
                 if (isLocal) {
                   updated.set(isLocal);
                 }
@@ -324,7 +360,7 @@ public class PlatformReplicationManager {
     HighAvailabilityConfig config = newLeader.getConfig();
     config.refresh();
     // Update is_local after the backup is restored.
-    if (!config.getLocal().isPresent() || !updateLocalInstanceAfterRestore(config)) {
+    if (!config.getLocal().isPresent()) {
       // It must update a local instance.
       throw new RuntimeException("No local instance associated with backup being restored");
     }
@@ -352,6 +388,10 @@ public class PlatformReplicationManager {
                 log.info("Cleaning up received backups from {}", instance.getAddress());
                 replicationHelper.cleanupReceivedBackups(Util.toURL(instance.getAddress()), 0);
               } catch (Exception ignored) {
+                log.warn(
+                    "Error cleaning up received backups from {} - {}",
+                    instance.getAddress(),
+                    ignored.getMessage());
               }
             });
   }
@@ -370,6 +410,16 @@ public class PlatformReplicationManager {
     // Finally, switch the prometheus configuration to read from swamper targets directly.
     switchPrometheusToStandalone();
     oneOffSync();
+    // Refresh the embedded PA collector state right after promotion so the local PA gets
+    // pointed at the local YBA URL and its customer_metadata.collection_enabled is flipped
+    // back to true before the recurring EmbeddedCollectorInitializer schedule fires (~1 min).
+    try {
+      for (Customer customer : Customer.getAll()) {
+        embeddedCollectorInitializer.initialize(customer);
+      }
+    } catch (Exception e) {
+      log.warn("Failed to eagerly refresh embedded PA collector after promotion", e);
+    }
   }
 
   /**
@@ -401,7 +451,7 @@ public class PlatformReplicationManager {
     // Get the leader instance. It must be present as the leader sends the request.
     PlatformInstance leaderInstance =
         newInstances.stream()
-            .filter(PlatformInstance::getIsLeader)
+            .filter(PlatformInstance::isLeader)
             .findFirst()
             .orElseThrow(
                 () ->
@@ -436,7 +486,7 @@ public class PlatformReplicationManager {
     Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get();
     if (config.isPresent()) {
       // Ensure the previous leader is marked as a follower to avoid uniqueness violation.
-      if (i.getIsLeader()) {
+      if (i.isLeader()) {
         Optional<PlatformInstance> existingLeader = config.get().getLeader();
         if (existingLeader.isPresent()
             && !existingLeader.get().getAddress().equals(i.getAddress())) {
@@ -448,11 +498,11 @@ public class PlatformReplicationManager {
         // Since we sync instances after sending backups, the leader instance has the source of
         // truth as to when the last backup has been successfully sent to followers.
         existingInstance.get().setLastBackup(i.getLastBackup());
-        existingInstance.get().setIsLeader(i.getIsLeader());
+        existingInstance.get().setState(i.isLeader() ? State.LEADER : State.STAND_BY);
         existingInstance.get().update();
         i = existingInstance.get();
       } else {
-        i.setIsLocal(false);
+        i.setLocal(false);
         i.setConfig(config.get());
         i.save();
       }
@@ -470,6 +520,30 @@ public class PlatformReplicationManager {
       log.error("Error testing connection to {}", address);
     }
     return result;
+  }
+
+  /* Validate the backup locally by checking the time against node agent upgrade time.
+   * This is a best effort that should work majority of the cases.
+   * TODO: This will become unnecessary once PLAT-16195 is done.
+   */
+  public boolean validateBackup(String backupName) {
+    Matcher matcher = BACKUP_FILE_PATTERN.matcher(backupName);
+    if (matcher.find()) {
+      String timePart = matcher.group(2);
+      Instant instant = Instant.from(DATE_TIME_FORMATTER.parse(timePart));
+      log.info("Checking backup time {} and instant {} locally", timePart, instant);
+      // Weird to have the backup validation depend on the node agent upgrade, but this is just a
+      // best effort until PLAT-16195 is done.
+      return replicationHelper.isLiveNodeAgentUpgradePendingAt(instant) == false;
+    }
+    log.error("Backup file name {} doesn't match expected pattern", backupName);
+    return false;
+  }
+
+  /* Makes a remote call to validate the backup. */
+  public boolean validateRemoteBackup(
+      HighAvailabilityConfig config, String remoteAddress, String backupName) {
+    return replicationHelper.validateRemoteBackup(config, remoteAddress, backupName);
   }
 
   @VisibleForTesting
@@ -498,6 +572,19 @@ public class PlatformReplicationManager {
   public void oneOffSync() {
     if (replicationHelper.isBackupScheduleEnabled()) {
       this.sync();
+    }
+  }
+
+  // When adding a new instance, do a sync for all instance and then demote the remote instance
+  // to ensure with "promote" as true, to ensure it gets restarted.
+  public void syncNewInstance(PlatformInstance newInstance) {
+    if (replicationHelper.isBackupScheduleEnabled()) {
+      this.sync();
+      if (!newInstance.isLeader()) {
+        replicationHelper.demoteRemoteInstance(newInstance, true);
+      } else {
+        log.debug("New instance {} is a leader, skipping demotion", newInstance.getAddress());
+      }
     }
   }
 
@@ -581,6 +668,14 @@ public class PlatformReplicationManager {
                               "Exception {} syncing config to remote instance {}",
                               e.getMessage(),
                               instance.getAddress());
+                        }
+                      });
+                  remoteInstances.forEach(
+                      instance -> {
+                        try {
+                          replicationHelper.syncToRemoteInstance(instance);
+                        } catch (Exception e) {
+                          log.warn("Error in final sync to instance {}", instance.getAddress(), e);
                         }
                       });
                   // Export metric on last backup.
@@ -716,17 +811,58 @@ public class PlatformReplicationManager {
     private final boolean excludePrometheus;
     // Whether to exclude the YB release binaries from the backup or not.
     private final boolean excludeReleases;
+    // Whether to exclude PA collector database from the backup or not.
+    private final boolean excludePADatabase;
+    // Whether to exclude PA collector collected data files from the backup or not.
+    private final boolean excludePAFiles;
+    // When true, dump only the whitelisted PA "configuration" tables (data-only). Mutually
+    // exclusive with excludePADatabase. Used only by the HA replication path so the standby
+    // PA sees the same customer / universe metadata and runtime config as the active PA
+    // without inheriting the active's metrics / anomalies / support-bundle data.
+    private final boolean includePaConfigOnly;
     // Where to output the platform backup
     private final String outputDirectory;
 
     public CreatePlatformBackupParams() {
-      this(true, true, replicationHelper.getBackupDir().toString());
+      // HA sync path: keep PA files excluded, but include PA config tables in
+      // --include_pa_config_only mode so the standby PA has the same customer_metadata /
+      // universe_metadata / runtime config as the active PA immediately after promotion.
+      this(
+          true /* excludePrometheus */,
+          true /* excludeReleases */,
+          false /* excludePADatabase */,
+          true /* excludePAFiles */,
+          true /* includePaConfigOnly */,
+          replicationHelper.getBackupDir().toString());
     }
 
     public CreatePlatformBackupParams(
-        boolean excludePrometheus, boolean excludeReleases, String outputDirectory) {
+        boolean excludePrometheus,
+        boolean excludeReleases,
+        boolean excludePADatabase,
+        boolean excludePAFiles,
+        String outputDirectory) {
+      this(
+          excludePrometheus,
+          excludeReleases,
+          excludePADatabase,
+          excludePAFiles,
+          false /* includePaConfigOnly */,
+          outputDirectory);
+    }
+
+    public CreatePlatformBackupParams(
+        boolean excludePrometheus,
+        boolean excludeReleases,
+        boolean excludePADatabase,
+        boolean excludePAFiles,
+        boolean includePaConfigOnly,
+        String outputDirectory) {
       this.excludePrometheus = excludePrometheus;
       this.excludeReleases = excludeReleases;
+      this.excludePADatabase = excludePADatabase;
+      this.excludePAFiles = excludePAFiles;
+      this.includePaConfigOnly = includePaConfigOnly;
       this.outputDirectory = outputDirectory;
     }
 
@@ -740,6 +876,15 @@ public class PlatformReplicationManager {
       }
       if (excludeReleases) {
         commandArgs.add("--exclude_releases");
+      }
+      if (excludePADatabase) {
+        commandArgs.add("--exclude_pa_database");
+      }
+      if (excludePAFiles) {
+        commandArgs.add("--exclude_pa_files");
+      }
+      if (includePaConfigOnly) {
+        commandArgs.add("--include_pa_config_only");
       }
       commandArgs.add("--disable_version_check");
 
@@ -763,12 +908,27 @@ public class PlatformReplicationManager {
     private final File input;
     private final boolean k8sRestoreYbaDbOnRestart;
     private final boolean skipOldFiles;
+    // Whether to exclude PA collector database from the restore or not.
+    private final boolean excludePADatabase;
+    // Whether to exclude PA collector collected data files from the restore or not.
+    private final boolean excludePAFiles;
 
     public RestorePlatformBackupParams(
         File input, boolean k8sRestoreYbaDbOnRestart, boolean skipOldFiles) {
+      this(input, k8sRestoreYbaDbOnRestart, skipOldFiles, true, true);
+    }
+
+    public RestorePlatformBackupParams(
+        File input,
+        boolean k8sRestoreYbaDbOnRestart,
+        boolean skipOldFiles,
+        boolean excludePADatabase,
+        boolean excludePAFiles) {
       this.input = input;
       this.k8sRestoreYbaDbOnRestart = k8sRestoreYbaDbOnRestart;
       this.skipOldFiles = skipOldFiles;
+      this.excludePADatabase = excludePADatabase;
+      this.excludePAFiles = excludePAFiles;
     }
 
     @Override
@@ -777,6 +937,12 @@ public class PlatformReplicationManager {
       commandArgs.add("restore");
       commandArgs.add("--input");
       commandArgs.add(input.getAbsolutePath());
+      if (excludePADatabase) {
+        commandArgs.add("--exclude_pa_database");
+      }
+      if (excludePAFiles) {
+        commandArgs.add("--exclude_pa_files");
+      }
       commandArgs.add("--disable_version_check");
       String installation = replicationHelper.getInstallationType();
       if (StringUtils.isNotBlank(installation) && installation.trim().equals("yba-installer")) {
@@ -792,7 +958,10 @@ public class PlatformReplicationManager {
       if (skipOldFiles) {
         commandArgs.add("--skip_old_files");
       }
-
+      if (!confGetter.getGlobalConf(GlobalConfKeys.disablePlatformHARestoreTransaction)) {
+        log.debug("Setting --single-transaction for platform HA restore");
+        commandArgs.add("--single_transaction");
+      }
       return commandArgs;
     }
   }
@@ -815,6 +984,46 @@ public class PlatformReplicationManager {
     return response.code == 0;
   }
 
+  public boolean restoreBackupOnStandby(HighAvailabilityConfig config, File input) {
+    // HA sync path: the archive contains a --include_pa_config_only PA dump (whitelisted tables,
+    // data-only). Pass excludePADatabase=false so the script picks it up; it will detect
+    // the pa_ts_config_only.marker file and use the config-only restore path automatically.
+    boolean succeeded =
+        restoreBackup(
+            input,
+            false /* k8sRestoreYbaDbOnRestart */,
+            false /* skipOldFiles */,
+            false /* excludePADatabase */,
+            true /* excludePAFiles */);
+    // Apply stored operator resources to Kubernetes whose persisted resourceVersion
+    // is strictly greater than the live Kubernetes version, or that are absent.
+    if (succeeded && confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)) {
+      try {
+        operatorResourceRestorer.restoreOperatorResources();
+      } catch (Exception e) {
+        log.error("Failed to restore operator resources to Kubernetes", e);
+        succeeded = false;
+      }
+    }
+    if (succeeded) {
+      // Refetch the latest HA config using the cluster key as UUID can get changed.
+      config =
+          HighAvailabilityConfig.getByClusterKey(config.getClusterKey())
+              .orElseThrow(() -> new IllegalStateException("HA config not found"));
+      // Fix the local instance after restore.
+      updateLocalInstanceAfterRestore(config);
+      // Keep the local instance as follower after restore.
+      config
+          .getLocal()
+          .orElseThrow(
+              () ->
+                  new PlatformServiceException(
+                      BAD_REQUEST, "Local instance not found after restore"))
+          .demote();
+    }
+    return succeeded;
+  }
+
   public boolean restoreBackup(File input, boolean k8sRestoreYbaDbOnRestart) {
     return restoreBackup(input, k8sRestoreYbaDbOnRestart, false);
   }
@@ -828,19 +1037,31 @@ public class PlatformReplicationManager {
    * @return the output/results of running the script
    */
   public boolean restoreBackup(File input, boolean k8sRestoreYbaDbOnRestart, boolean skipOldFiles) {
+    return restoreBackup(input, k8sRestoreYbaDbOnRestart, skipOldFiles, true, true);
+  }
+
+  public boolean restoreBackup(
+      File input,
+      boolean k8sRestoreYbaDbOnRestart,
+      boolean skipOldFiles,
+      boolean excludePADatabase,
+      boolean excludePAFiles) {
     log.info("Restoring platform backup...");
     ShellResponse response =
         replicationHelper.runCommand(
-            new RestorePlatformBackupParams(input, k8sRestoreYbaDbOnRestart, skipOldFiles));
+            new RestorePlatformBackupParams(
+                input, k8sRestoreYbaDbOnRestart, skipOldFiles, excludePADatabase, excludePAFiles));
     if (response.code != 0) {
       log.error("Restore failed: {}", response.message);
     } else {
       log.info("Platform backup restored successfully");
       DB.cacheManager().clearAll();
+      // Wait for DB connection to be available after restore.
+      // Restore wipes out tables, invalidating the underlying connections.
+      Util.waitForDBConnection(5);
       // Sync the files stored in DB to FS in case restore is successful.
       fileDataService.syncFileData(AppConfigHelper.getStoragePath(), true);
     }
-
     return response.code == 0;
   }
 

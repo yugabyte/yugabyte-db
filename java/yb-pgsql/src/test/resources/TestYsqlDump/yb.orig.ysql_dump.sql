@@ -353,3 +353,24 @@ ALTER TYPE underflow ADD VALUE 'C' BEFORE 'D';
 
 -- Test policy for role
 CREATE POLICY p4 ON rls_public FOR UPDATE TO rls_user USING ((v = CURRENT_USER));
+
+-- Test statistics
+CREATE TABLE range_test (
+    id SERIAL PRIMARY KEY,
+    num_range INT4RANGE
+);
+
+-- We vary the lengths and bounds to ensure the histograms are meaningful
+INSERT INTO range_test (num_range)
+VALUES 
+    ('[1, 10]'),   -- Length 9
+    ('[2, 5]'),    -- Length 3
+    ('[15, 20]'),  -- Length 5
+    ('[25, 25]'),  -- Empty range (if using '()') or point
+    ('empty'),     -- Explicitly empty range
+    ('[30, 100]'), -- Length 70
+    ('[50, 60]'),  -- Length 10
+    ('[70, 75]'),  -- Length 5
+    ('[80, 85]'),  -- Length 5
+    ('[90, 100]'); -- Length 10
+ANALYZE range_test;

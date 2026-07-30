@@ -31,12 +31,14 @@
 //
 
 #include "yb/tools/yb-admin_client.h"
+#include "yb/tools/yb-admin_util.h"
 
+#include <iomanip>
 #include <sstream>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
-#include <iomanip>
+#include <unordered_set>
 
 #include <boost/multi_index/composite_key.hpp>
 #include <boost/multi_index/global_fun.hpp>
@@ -89,9 +91,7 @@
 #include "yb/rpc/secure_stream.h"
 
 #include "yb/tools/tools_utils.h"
-#include "yb/tools/yb-admin_util.h"
 
-#include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/encryption/encryption_util.h"
@@ -153,9 +153,6 @@ using client::YBTableName;
 using rpc::RpcController;
 using pb_util::ParseFromSlice;
 using tserver::TabletServerServiceProxy;
-using tserver::TabletServerAdminServiceProxy;
-using tserver::UpgradeYsqlRequestPB;
-using tserver::UpgradeYsqlResponsePB;
 
 using consensus::ConsensusServiceProxy;
 using consensus::LeaderStepDownRequestPB;
@@ -604,6 +601,33 @@ Status ClusterAdminClient::DiscoverAllMasters(
 
   JoinStrings(addrs, ",", all_master_addrs);
   VLOG(0) << "Discovered full master list: " << *all_master_addrs;
+  return Status::OK();
+}
+
+Result<std::vector<HostPort>> ClusterAdminClient::HostPortsOfAllMasters() {
+  if (init_master_addr_.host().empty()) {
+    // if init_master_addr_ is not set, we need to re-discover all master addresses
+    auto first_addrs =
+        VERIFY_RESULT(HostPort::ParseStrings(master_addr_list_, master::kMasterDefaultPort));
+    SCHECK(!first_addrs.empty(), InvalidArgument, "No master address set in the client");
+    std::string all_master_addrs;
+    RETURN_NOT_OK(DiscoverAllMasters(first_addrs[0], &all_master_addrs));
+    return HostPort::ParseStrings(all_master_addrs, master::kMasterDefaultPort);
+  }
+  return HostPort::ParseStrings(master_addr_list_, master::kMasterDefaultPort);
+}
+
+Status ClusterAdminClient::InvokeRpcOnAllMasters(
+    const std::function<Status(const HostPort&)>& action,
+    const std::string& op_name) {
+  auto master_host_ports = VERIFY_RESULT(HostPortsOfAllMasters());
+  for (const auto& hp : master_host_ports) {
+    std::cout << op_name << ": Invoking on host " << hp.ToString() << std::endl;
+    // TODO: it might be good to have an option to continue and attempt the operation
+    // on other nodes, and just report the success/failure.
+    RETURN_NOT_OK(action(hp));
+    std::cout << op_name << ": Successful on host " << hp.ToString() << std::endl;
+  }
   return Status::OK();
 }
 
@@ -1325,6 +1349,7 @@ Result<HostPort> ClusterAdminClient::GetFirstRpcAddressForTS(const PeerId& uuid)
 Status ClusterAdminClient::ListAllTabletServers(bool exclude_dead) {
   RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
   RETURN_NOT_OK(ListTabletServers(&servers));
+  SortListTabletServerEntries(servers);
   char kSpaceSep = ' ';
 
   cout << RightPadToUuidWidth("Tablet Server UUID") << kSpaceSep
@@ -1446,6 +1471,9 @@ Status ClusterAdminClient::ListAllMasters() {
 Status ClusterAdminClient::ListTabletServersLogLocations() {
   RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
   RETURN_NOT_OK(ListTabletServers(&servers));
+  // Sort alive tservers first so unreachable (DEAD/unknown) nodes appear last,
+  // matching the ordering of list_all_tablet_servers.
+  SortListTabletServerEntries(servers);
 
   if (!servers.empty()) {
     cout << RightPadToUuidWidth("TS UUID") << kColumnSep
@@ -1455,17 +1483,38 @@ Status ClusterAdminClient::ListTabletServersLogLocations() {
   }
 
   for (const ListTabletServersResponsePB::Entry& server : servers) {
-    auto ts_uuid = server.instance_id().permanent_uuid();
+    const auto& ts_uuid = server.instance_id().permanent_uuid();
+    const auto ts_addr_str = FormatFirstHostPort(
+        server.registration().common().private_rpc_addresses());
 
-    HostPort ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS(ts_uuid));
+    // Skip RPCs to known-dead tservers and report them as unavailable so one
+    // unreachable node does not abort listing for the rest of the cluster.
+    if (server.has_alive() && !server.alive()) {
+      cout << ts_uuid << kColumnSep << ts_addr_str << kColumnSep << "N/A" << endl;
+      continue;
+    }
 
+    if (!server.has_registration() ||
+        server.registration().common().private_rpc_addresses().empty()) {
+      LOG(WARNING) << "Tablet server " << ts_uuid << " has no RPC address registered";
+      cout << ts_uuid << kColumnSep << ts_addr_str << kColumnSep << "N/A" << endl;
+      continue;
+    }
+
+    HostPort ts_addr = HostPortFromPB(server.registration().common().private_rpc_addresses(0));
     TabletServerServiceProxy ts_proxy(proxy_cache_.get(), ts_addr);
 
-    const auto resp = VERIFY_RESULT(InvokeRpc(
-        &TabletServerServiceProxy::GetLogLocation, ts_proxy, tserver::GetLogLocationRequestPB()));
+    auto resp = InvokeRpc(
+        &TabletServerServiceProxy::GetLogLocation, ts_proxy, tserver::GetLogLocationRequestPB());
+    if (!resp.ok()) {
+      LOG(WARNING) << "Unable to get log location from tablet server " << ts_uuid
+                   << " at " << ts_addr << ": " << resp.status();
+      cout << ts_uuid << kColumnSep << ts_addr_str << kColumnSep << "N/A" << endl;
+      continue;
+    }
     cout << ts_uuid << kColumnSep
-         << ts_addr << kColumnSep
-         << resp.log_location() << endl;
+         << ts_addr_str << kColumnSep
+         << resp->log_location() << endl;
   }
 
   return Status::OK();
@@ -2083,19 +2132,35 @@ Status ClusterAdminClient::CompactionStatus(const YBTableName& table_name, bool 
   return Status::OK();
 }
 
-Status ClusterAdminClient::FlushSysCatalog() {
+
+Status ClusterAdminClient::FlushSysCatalog(bool all_peers) {
   master::FlushSysCatalogRequestPB req;
-  auto res = InvokeRpc(
-      &master::MasterAdminProxy::FlushSysCatalog, *master_admin_proxy_, req);
-  return res.ok() ? Status::OK() : res.status();
+  auto invoke_flush_rpc = [this, &req](const HostPort& hp) {
+    master::MasterAdminProxy proxy(proxy_cache_.get(), hp);
+    auto res = InvokeRpc(
+        &master::MasterAdminProxy::FlushSysCatalog, proxy, req);
+    return res.ok() ? Status::OK() : res.status();
+  };
+  if (all_peers) {
+    return InvokeRpcOnAllMasters(invoke_flush_rpc, "flush_sys_catalog");
+  }
+  return invoke_flush_rpc(leader_addr_);
 }
 
-Status ClusterAdminClient::CompactSysCatalog() {
+Status ClusterAdminClient::CompactSysCatalog(bool all_peers) {
   master::CompactSysCatalogRequestPB req;
-  auto res = InvokeRpc(
-      &master::MasterAdminProxy::CompactSysCatalog, *master_admin_proxy_, req);
-  return res.ok() ? Status::OK() : res.status();
+  auto invoke_compact_rpc = [this, &req](const HostPort& hp) {
+    master::MasterAdminProxy proxy(proxy_cache_.get(), hp);
+    auto res = InvokeRpc(
+        &master::MasterAdminProxy::CompactSysCatalog, proxy, req);
+    return res.ok() ? Status::OK() : res.status();
+  };
+  if (all_peers) {
+    return InvokeRpcOnAllMasters(invoke_compact_rpc, "compact_sys_catalog");
+  }
+  return invoke_compact_rpc(leader_addr_);
 }
+
 
 Status ClusterAdminClient::WaitUntilMasterLeaderReady() {
   for (int iter = 0; iter < kNumberOfTryouts; ++iter) {
@@ -2463,33 +2528,11 @@ Status ClusterAdminClient::UpgradeYsql(bool use_single_connection) {
     // Otherwise, we can proceed.
   }
 
-  // Pick some alive TServer.
-  RepeatedPtrField<ListTabletServersResponsePB::Entry> servers;
-  RETURN_NOT_OK(ListTabletServers(&servers));
-  std::optional<HostPortPB> ts_rpc_addr;
-  for (const ListTabletServersResponsePB::Entry& server : servers) {
-    if (!server.has_alive() || !server.alive()) {
-      continue;
-    }
-
-    if (!server.has_registration() ||
-        server.registration().common().private_rpc_addresses().empty()) {
-      continue;
-    }
-
-    ts_rpc_addr.emplace(server.registration().common().private_rpc_addresses(0));
-    break;
-  }
-  if (!ts_rpc_addr.has_value()) {
-    return STATUS(IllegalState, "Couldn't find alive tablet server to connect to");
-  }
-
-  TabletServerAdminServiceProxy ts_admin_proxy(proxy_cache_.get(), HostPortFromPB(*ts_rpc_addr));
-
-  UpgradeYsqlRequestPB req;
+  // Ask the master to forward the upgrade to ensure that the closest tserver is used
+  master::ClientUpgradeYsqlRequestPB req;
   req.set_use_single_connection(use_single_connection);
-  const auto resp_result = InvokeRpc(&TabletServerAdminServiceProxy::UpgradeYsql,
-                                     ts_admin_proxy, req);
+  const auto resp_result = InvokeRpc(
+      &master::MasterAdminProxy::ClientUpgradeYsql, *master_admin_proxy_, req);
   if (!resp_result.ok()) {
     return resp_result.status();
   }
@@ -3768,8 +3811,12 @@ Status ClusterAdminClient::SetPreferredZones(const std::vector<string>& preferre
     cloud_info = current_list->add_zones();
 
     cloud_info->set_placement_cloud(tokens[0]);
-    cloud_info->set_placement_region(tokens[1]);
-    cloud_info->set_placement_zone(tokens[2]);
+    if (tokens[1] != TablespaceParser::kWildcardPlacement) {
+      cloud_info->set_placement_region(tokens[1]);
+      if (tokens[2] != TablespaceParser::kWildcardPlacement) {
+        cloud_info->set_placement_zone(tokens[2]);
+      }
+    }
 
     zones.emplace(zone);
 
@@ -3778,8 +3825,12 @@ Status ClusterAdminClient::SetPreferredZones(const std::vector<string>& preferre
       // member as multi_preferred_zones is already set.
       cloud_info = req.add_preferred_zones();
       cloud_info->set_placement_cloud(tokens[0]);
-      cloud_info->set_placement_region(tokens[1]);
-      cloud_info->set_placement_zone(tokens[2]);
+      if (tokens[1] != TablespaceParser::kWildcardPlacement) {
+        cloud_info->set_placement_region(tokens[1]);
+        if (tokens[2] != TablespaceParser::kWildcardPlacement) {
+          cloud_info->set_placement_zone(tokens[2]);
+        }
+      }
     }
   }
 
@@ -3972,7 +4023,8 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
     const TypedNamespaceName& ns, const std::string& checkpoint_type,
     const cdc::CDCRecordType record_type,
     const std::string& consistent_snapshot_option,
-    const bool& is_dynamic_tables_enabled) {
+    const bool& is_dynamic_tables_enabled,
+    const std::unordered_set<std::string>& bound_table_ids) {
   HostPort ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS());
   auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(proxy_cache_.get(), ts_addr);
 
@@ -4011,6 +4063,23 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
         CDCSDKDynamicTablesOption::DYNAMIC_TABLES_DISABLED);
   }
 
+  if (!bound_table_ids.empty()) {
+    if (ns.db_type != YQLDatabase::YQL_DATABASE_PGSQL) {
+      return STATUS(
+          InvalidArgument, "Bound table CDC streams are only supported for YSQL namespaces");
+    }
+
+    if (is_dynamic_tables_enabled) {
+      return STATUS(
+          InvalidArgument, "Bound table CDC streams cannot be created with dynamic tables enabled");
+    }
+
+    auto* bound = stream_create_options->mutable_bound_table_ids();
+    for (const auto& id : bound_table_ids) {
+      bound->add_table_ids(id);
+    }
+  }
+
   RpcController rpc;
   rpc.set_timeout(timeout_);
   RETURN_NOT_OK(cdc_proxy->CreateCDCStream(req, &resp, &rpc));
@@ -4021,6 +4090,8 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
   }
 
   cout << "CDC Stream ID: " << resp.db_stream_id() << endl;
+  cout << "WARNING: yb-admin create_change_data_stream is deprecated. "
+       << "Use pg_create_logical_replication_slot('<slot>', 'yb_grpc') instead." << endl;
   return Status::OK();
 }
 
@@ -4708,6 +4779,43 @@ Result<rapidjson::Document> ClusterAdminClient::GetXClusterSafeTime(bool include
   return document;
 }
 
+Status ClusterAdminClient::XClusterFailover(const std::string& replication_group_id) {
+  master::XClusterFailoverRequestPB req;
+  master::XClusterFailoverResponsePB resp;
+  req.set_replication_group_id(replication_group_id);
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_replication_proxy_->XClusterFailover(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return WaitForXClusterFailoverToFinish(replication_group_id);
+}
+
+Status ClusterAdminClient::WaitForXClusterFailoverToFinish(
+    const std::string& replication_group_id) {
+  master::IsXClusterFailoverDoneRequestPB req;
+  req.set_replication_group_id(replication_group_id);
+  for (;;) {
+    master::IsXClusterFailoverDoneResponsePB resp;
+    RpcController rpc;
+    rpc.set_timeout(timeout_);
+    Status s = master_replication_proxy_->IsXClusterFailoverDone(req, &resp, &rpc);
+
+    if (!s.ok() || resp.has_error()) {
+      LOG(WARNING) << "Encountered error while waiting for xcluster_failover to complete"
+                   << " : " << (!s.ok() ? s.ToString() : resp.error().status().message());
+    } else if (resp.has_done() && resp.done()) {
+      if (resp.has_failover_error()) {
+        return StatusFromPB(resp.failover_error());
+      }
+      return Status::OK();
+    }
+
+    std::this_thread::sleep_for(100ms);
+  }
+}
+
 Result<bool> ClusterAdminClient::IsXClusterBootstrapRequired(
     const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId namespace_id) {
   SCHECK(!replication_group_id.empty(), InvalidArgument, "Replication group id is empty");
@@ -4875,9 +4983,27 @@ Status ClusterAdminClient::WriteSysCatalogEntryAction(
   return Status::OK();
 }
 
-Status ClusterAdminClient::GetTableXorHash(const TableId& table_id, uint64_t read_ht) {
+namespace {
+// Returns true if a tablet covering partition keys [tablet_start, tablet_end) overlaps the
+// requested range [range_start, range_end). An empty bound is unbounded: -inf for a start, +inf
+// for an end.
+bool PartitionRangeOverlaps(
+    Slice tablet_start, Slice tablet_end, Slice range_start, Slice range_end) {
+  // tablet_start < range_end
+  const bool below_range_end =
+      range_end.empty() || tablet_start.empty() || tablet_start.compare(range_end) < 0;
+  // range_start < tablet_end
+  const bool above_range_start =
+      tablet_end.empty() || range_start.empty() || range_start.compare(tablet_end) < 0;
+  return below_range_end && above_range_start;
+}
+}  // namespace
+
+Status ClusterAdminClient::GetTableXorHash(
+    const TableId& table_id, uint64_t read_ht, Slice start_key, Slice end_key) {
   uint64_t xor_hash = 0;
   uint64_t row_count = 0;
+  const bool has_key_range = !start_key.empty() || !end_key.empty();
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablet_locations;
   RETURN_NOT_OK(yb_client_->GetTabletsFromTableId(table_id, /*max_tablets=*/0, &tablet_locations));
@@ -4893,6 +5019,16 @@ Status ClusterAdminClient::GetTableXorHash(const TableId& table_id, uint64_t rea
   std::cout << "Read HT: " << ht << std::endl;
 
   for (const auto& location : tablet_locations) {
+    // When a key range is requested, skip tablets that do not overlap it. Each cluster resolves the
+    // (logical) partition-key range to whatever tablets it happens to own, so this filtering is
+    // cluster-independent even when tablet boundaries differ across clusters.
+    if (has_key_range &&
+        !PartitionRangeOverlaps(
+            location.partition().partition_key_start(),
+            location.partition().partition_key_end(), start_key, end_key)) {
+      continue;
+    }
+
     auto leader_replica = std::find_if(
         location.replicas().begin(), location.replicas().end(),
         [](const auto& replica) { return replica.role() == PeerRole::LEADER; });
@@ -4909,6 +5045,15 @@ Status ClusterAdminClient::GetTableXorHash(const TableId& table_id, uint64_t rea
     rpc.set_timeout(timeout_);
     req.set_tablet_id(location.tablet_id());
     req.set_read_ht(ht.ToUint64());
+    req.set_table_id(table_id);
+    // The same global bounds are passed to every overlapping tablet unchanged: each tablet's scan
+    // only sees rows within its own partition, so the bounds effectively clamp to that tablet.
+    if (!start_key.empty()) {
+      req.set_start_key(start_key.cdata(), start_key.size());
+    }
+    if (!end_key.empty()) {
+      req.set_end_key(end_key.cdata(), end_key.size());
+    }
     RETURN_NOT_OK(tserver_proxy->DumpTabletData(req, &resp, &rpc));
     if (resp.has_error()) {
       return StatusFromPB(resp.error().status());

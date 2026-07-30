@@ -142,6 +142,7 @@
 /* YB includes */
 #include "access/xact.h"
 #include "arpa/inet.h"
+#include "commands/async.h"
 #include "common/pg_yb_common.h"
 #include "pg_yb_utils.h"
 #include "replication/slot.h"
@@ -149,11 +150,13 @@
 #include "storage/procarray.h"
 #include "storage/procsignal.h"
 #include "storage/sinvaladt.h"
+#include "utils/elog.h"
 #include "yb/util/debug/leak_annotations.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_shared_mem.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_ash.h"
+#include "yb_internal_conn.h"
 #include "yb_query_diagnostics.h"
 #include "yb_terminated_queries.h"
 
@@ -599,7 +602,7 @@ HANDLE		PostmasterHandle;
  * suppressing them in all occurrences of strdup.
  */
 char *
-postmaster_strdup(const char *in)
+yb_postmaster_strdup(const char *in)
 {
 	char	   *result = strdup(in);
 
@@ -759,11 +762,11 @@ PostmasterMain(int argc, char *argv[])
 				break;
 
 			case 'C':
-				output_config_variable = postmaster_strdup(optarg);
+				output_config_variable = yb_postmaster_strdup(optarg);
 				break;
 
 			case 'D':
-				userDoption = postmaster_strdup(optarg);
+				userDoption = yb_postmaster_strdup(optarg);
 				break;
 
 			case 'd':
@@ -1080,10 +1083,9 @@ PostmasterMain(int argc, char *argv[])
 	 * Register the apply launcher.  It's probably a good idea to call this
 	 * before any modules had a chance to take the background worker slots.
 	 *
-	 * Logical replication is not supported in YugaByte mode currently and the
-	 * registration is disabled.
+	 * In YugaByte mode, only register if pg_subscription support is enabled.
 	 */
-	if (!YBIsEnabledInPostgresEnvVar())
+	if (!YBIsEnabledInPostgresEnvVar() || yb_enable_pg_subscription)
 		ApplyLauncherRegister();
 
 	if (YBIsEnabledInPostgresEnvVar())
@@ -1093,6 +1095,12 @@ PostmasterMain(int argc, char *argv[])
 		 * any process that needs it is forked.
 		 */
 		YBCSetupSharedMemoryAddressSegment();
+
+		/*
+		 * Set up cgroups. This needs to be done before any fork calls, to ensure that all
+		 * subprocesses inherit the cgroup.
+		 */
+		YBCSetupCgroups();
 
 		/* Register ASH collector */
 		if (yb_enable_ash)
@@ -1492,7 +1500,7 @@ PostmasterMain(int argc, char *argv[])
 	/*
 	 * Load configuration files for client authentication.
 	 */
-	if (!load_hba())
+	if (!load_hba(NULL /* yb_validate_conf_file */ ))
 	{
 		/*
 		 * It makes no sense to continue if we fail to load the HBA file,
@@ -1501,7 +1509,7 @@ PostmasterMain(int argc, char *argv[])
 		ereport(FATAL,
 				(errmsg("could not load pg_hba.conf")));
 	}
-	if (!load_ident())
+	if (!load_ident(NULL, NULL /* yb_validate_conf_file */ ))
 	{
 		/*
 		 * We can start up without the IDENT file, although it means that you
@@ -2140,8 +2148,9 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 	char	   *yb_auth_backend_remote_host = NULL;
 	char		yb_logical_conn_type = 'U'; /* Unencrypted */
 	bool		yb_logical_conn_type_provided = false;
-	bool		yb_auto_analyze_backend = false;
+	YbInternalConnKind yb_internal_conn_kind = YB_INTERNAL_CONN_KIND_NONE;
 	bool		yb_is_auth_via_conn_mgr = false;
+	bool		yb_is_control_conn = false;
 
 	pq_startmsgread();
 
@@ -2345,8 +2354,18 @@ retry1:
 	 * running backend (even after PostmasterContext is destroyed).  We need
 	 * not worry about leaking this storage on failure, since we aren't in the
 	 * postmaster process anymore.
+	 *
+	 * YB: When in auth passthrough mode, we reuse this ProcessStartupPacket
+	 * func to handle client startup packets. The specific details of the client
+	 * are not required after authentication is over. Thus, there is no need to
+	 * store startup data in TopMemoryContext; and allocating in
+	 * TopMemoryContext here leads to a memory leak in this scenario (requiring
+	 * explicit pfree's elsewhere). So, we continue allocating in the txn
+	 * MemoryContext (currently active) spawned specifically for Auth
+	 * Passthrough auth attempts.
 	 */
-	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+	if (!YbIsAuthPassthroughInProgress(port))
+		oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 
 	/* Handle protocol version 3 startup packet */
 	{
@@ -2422,6 +2441,25 @@ retry1:
 				yb_is_client_ysqlconnmgr = yb_is_auth_backend;
 			}
 			else if (YBIsEnabledInPostgresEnvVar()
+					 && strcmp(nameptr, "yb_is_control_conn") == 0)
+			{
+				if (!parse_bool(valptr, &yb_is_control_conn))
+					ereport(FATAL,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("invalid value for parameter \"%s\": \"%s\"",
+									"yb_is_control_conn",
+									valptr),
+							 errhint("Valid values are: \"false\", 0, \"true\", 1.")));
+
+				/* Client needs to be connected on the unix domain socket */
+				if (port->raddr.addr.ss_family != AF_UNIX)
+					ereport(FATAL,
+							(errcode(ERRCODE_PROTOCOL_VIOLATION),
+							 errmsg("yb_is_control_conn can only be set "
+									"if the connection is made over unix domain "
+									"socket")));
+			}
+			else if (YBIsEnabledInPostgresEnvVar()
 					 && strcmp(nameptr, "yb_auth_remote_host") == 0)
 				yb_auth_backend_remote_host = pstrdup(valptr);
 			else if (YBIsEnabledInPostgresEnvVar()
@@ -2440,15 +2478,16 @@ retry1:
 				yb_logical_conn_type_provided = true;
 			}
 			else if (YBIsEnabledInPostgresEnvVar()
-					 && strcmp(nameptr, "yb_auto_analyze") == 0)
+					 && strcmp(nameptr, "yb_internal_conn_kind") == 0)
 			{
-				if (!parse_bool(valptr, &yb_auto_analyze_backend))
+				yb_internal_conn_kind = YbLookupInternalConnKindByName(valptr);
+				if (yb_internal_conn_kind == YB_INTERNAL_CONN_KIND_NONE)
 					ereport(FATAL,
 							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 							 errmsg("invalid value for parameter \"%s\": \"%s\"",
-									"yb_auto_analyze",
-									valptr),
-							 errhint("Valid values are: \"false\", 0, \"true\", 1.")));
+									"yb_internal_conn_kind", valptr),
+							 errhint("Value must be one of the registered "
+									 "YbInternalConnKind wire names.")));
 			}
 			else if (strncmp(nameptr, "_pq_.", 5) == 0)
 			{
@@ -2509,6 +2548,24 @@ retry1:
 	yb_is_auth_via_conn_mgr = yb_is_auth_backend ||
 		port->yb_is_auth_passthrough_req;
 
+	/*
+	 * YB: Connection Manager's auth-passthrough control backends are long-lived
+	 * pooled backends that authenticate external clients via the 'A' packet
+	 * flow. Both CM auth backends and CM auth-passthrough control backends use
+	 * the CM control pool (yb_is_control_conn=1), but auth backends are
+	 * one-shot and identified separately via yb_authonly=1. They are excluded
+	 * here so this flag only marks the reusable AP control backends.
+	 *
+	 * The `if` condition is required as incoming AP requests also parse the
+	 * startup packet via ProcessStartupPacket, thus this would unset this var
+	 * on control backends because those startup packets are forwarded "as-is"
+	 * without adding the yb_is_control_conn flag. So, the flag is made set-only
+	 * and is never unset on a control backend.
+	 */
+	if (!yb_conn_mgr_is_auth_passthrough_backend)
+		yb_conn_mgr_is_auth_passthrough_backend = yb_is_control_conn &&
+			!yb_is_auth_backend;
+
 	if (YBIsEnabledInPostgresEnvVar())
 	{
 		if (yb_auth_backend_remote_host != NULL)
@@ -2523,9 +2580,10 @@ retry1:
 			/*
 			 * HARD Code connection type between client and ysql_conn_mgr to
 			 * AF_INET which is the only supported connection type for
-			 * authentication.
+			 * authentication. Also set salen for ipv4 address.
 			 */
 			port->raddr.addr.ss_family = AF_INET;
+			port->raddr.salen = sizeof(struct sockaddr_in);
 			port->remote_host = yb_auth_backend_remote_host;
 
 			struct sockaddr_in *ip_address_1;
@@ -2587,8 +2645,11 @@ retry1:
 
 	if (am_walsender)
 		MyBackendType = B_WAL_SENDER;
-	else if (yb_auto_analyze_backend)
-		MyBackendType = YB_AUTO_ANALYZE_BACKEND;
+	else if (yb_internal_conn_kind != YB_INTERNAL_CONN_KIND_NONE)
+		MyBackendType =
+			YbInternalConnKindDescriptors[yb_internal_conn_kind].backend_type;
+	else if (YbIsAuthPassthroughControlBackend())
+		MyBackendType = YB_YSQL_CONN_MGR_CTRL;
 	else
 		MyBackendType = B_BACKEND;
 
@@ -2605,8 +2666,11 @@ retry1:
 
 	/*
 	 * Done putting stuff in TopMemoryContext.
+	 * YB: No context switch required if Auth Passthrough is in progress.
+	 * See above.
 	 */
-	MemoryContextSwitchTo(oldcontext);
+	if (!YbIsAuthPassthroughInProgress(port))
+		MemoryContextSwitchTo(oldcontext);
 
 	/*
 	 * If we're going to reject the connection due to database state, say so
@@ -3008,6 +3072,17 @@ SIGHUP_handler(SIGNAL_ARGS)
 		ereport(LOG,
 				(errmsg("received SIGHUP, reloading configuration files")));
 		ProcessConfigFile(PGC_SIGHUP);
+
+		/*
+		 * YB: Increment local SIGHUP LCV since PGC_BACKEND GUC(s) changed,
+		 * affecting only new backends
+		 */
+		if (yb_conn_mgr_sighup_had_backend_guc_change)
+		{
+			yb_conn_mgr_sighup_logical_client_version++;
+			yb_conn_mgr_sighup_had_backend_guc_change = false;
+		}
+
 		SignalChildren(SIGHUP);
 		if (StartupPID != 0)
 			signal_child(StartupPID, SIGHUP);
@@ -3027,12 +3102,12 @@ SIGHUP_handler(SIGNAL_ARGS)
 			signal_child(SysLoggerPID, SIGHUP);
 
 		/* Reload authentication config files too */
-		if (!load_hba())
+		if (!load_hba(NULL /* yb_validate_conf_file */ ))
 			ereport(LOG,
 			/* translator: %s is a configuration file */
 					(errmsg("%s was not reloaded", "pg_hba.conf")));
 
-		if (!load_ident())
+		if (!load_ident(NULL, NULL /* yb_validate_conf_file */ ))
 			ereport(LOG,
 					(errmsg("%s was not reloaded", "pg_ident.conf")));
 
@@ -3798,6 +3873,9 @@ CleanupKilledProcess(PGPROC *proc)
 
 		/* From SharedInvalBackendInit */
 		CleanupInvalidationStateForProc(proc);
+
+		/* From Exec_ListenPreCommit */
+		YbCleanupListenStateForProc(proc);
 	}
 
 	/* From ProcKill */
@@ -4849,7 +4927,7 @@ BackendInitialize(Port *port)
 	 * YB: Initialize custom vars to avoid issue in control/auth backend startup
 	 */
 	port->yb_is_auth_passthrough_req = false;
-	port->yb_has_auth_passthrough_failed = false;
+	port->yb_has_auth_passthrough_finished = false;
 	port->yb_is_tserver_auth_method = false;
 	port->yb_is_ssl_enabled_in_logical_conn = false;
 
@@ -4892,8 +4970,8 @@ BackendInitialize(Port *port)
 	 * Save remote_host and remote_port in port structure (after this, they
 	 * will appear in log_line_prefix data for log messages).
 	 */
-	port->remote_host = strdup(remote_host);
-	port->remote_port = strdup(remote_port);
+	port->remote_host = yb_postmaster_strdup(remote_host);
+	port->remote_port = yb_postmaster_strdup(remote_port);
 
 	/* And now we can issue the Log_connections message, if wanted */
 	if (Log_connections)
@@ -5002,12 +5080,21 @@ BackendInitialize(Port *port)
 		else
 			snprintf(remote_ps_data, sizeof(remote_ps_data), "%s(%s)", remote_host, remote_port);
 
-		YBC_LOG_INFO("Started %s backend with pid: %d, user_name: %s, "
+		const char *database_name = port->database_name ? port->database_name : "[unknown]";
+		const char *application_name = port->application_name ? port->application_name : "[unknown]";
+		const char *started_backend_str = get_backend_type_for_log();
+
+		if (yb_is_auth_backend)
+		{
+			started_backend_str = "auth backend";
+		}
+
+		YBC_LOG_INFO("Started %s with pid: %d, "
+					 "database_name: %s, application_name: %s, "
 					 "remote_ps_data: %s",
-					 (am_walsender ?
-					  "walsender" :
-					  (yb_is_auth_backend ? "auth" : "regular")),
-					 getpid(), port->user_name, remote_ps_data);
+					 started_backend_str,
+					 getpid(), database_name, application_name,
+					 remote_ps_data);
 	}
 }
 

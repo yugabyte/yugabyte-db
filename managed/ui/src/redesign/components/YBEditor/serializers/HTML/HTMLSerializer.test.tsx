@@ -7,19 +7,19 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { createRef } from "react";
+import { createRef } from "react";
+import { render } from '@testing-library/react';
+import { MuiThemeProvider } from "@material-ui/core";
+import { Transforms } from "slate";
+import { EditableProps } from "slate-react/dist/components/editable";
 import { HTMLSerializer } from "./HTMLSerializer";
 import { IYBEditor, LoadPlugins, toggleBlock, toggleMark } from "../../plugins";
-import { render } from "../../../../../test-utils";
-import { MuiThemeProvider } from "@material-ui/core";
 import { mainTheme } from '../../../../theme/mainTheme';
 import { YBEditor } from "../../YBEditor";
 import { fillAlertVariablesWithValue, findInvalidVariables, loadTemplateIntoEditor } from "../../../../features/alerts/TemplateComposer/composers/ComposerUtils";
-import { Transforms } from "slate";
 import { convertHTMLToText } from "../../transformers/HTMLToTextTransform";
-import { EditableProps } from "slate-react/dist/components/editable";
 
-jest.mock('react-i18next', () => ({
+vi.mock('react-i18next', () => ({
     // this mock makes sure any components using the translate hook can use it without a warning being shown
     useTranslation: () => {
         return {

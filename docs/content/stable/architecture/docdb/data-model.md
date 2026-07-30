@@ -216,7 +216,7 @@ T5: DELETE FROM msgs    // Delete entire row corresponding to msg_id 10
 ## Data expiration
 
 {{<warning>}}
-Data expiration is a [YCQL](../../../api/ycql)-only feature.
+Data expiration is a [YCQL](../../../api/ycql/)-only feature.
 {{</warning>}}
 
 YCQL supports expiration of rows. The expiration is specified as TTL (Time-to-live) value in a few ways.

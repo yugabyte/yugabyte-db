@@ -19,11 +19,6 @@ type: docs
   </li>
 
   <li>
-    <a href="../upgrade-yp-replicated/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>Replicated</a>
-  </li>
-
-  <li>
     <a href="../upgrade-yp-kubernetes/" class="nav-link active">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
   </li>
@@ -82,7 +77,8 @@ The [YugabyteDB Kubernetes Operator](../../anywhere-automation/yb-kubernetes-ope
 1. Run the following `helm upgrade` command to enable the YBA upgrade:
 
     ```sh
-    helm upgrade yba yugabytedb/yugaware --version 2024.1.0 --set kubernetesOperatorEnabled=true,kubernetesOperatorNamespace="yb-platform-test"
+    helm upgrade yba yugabytedb/yugaware --version {{< yb-version version="v2024.2" format="short">}} \
+      --set yugaware.kubernetesOperatorEnabled=true,yugaware.kubernetesOperatorNamespace=yb-platform-test
     ```
 
 1. Verify that YBA is up, and the Kubernetes Operator is installed successfully using the following commands:

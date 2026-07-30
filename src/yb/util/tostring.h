@@ -59,6 +59,12 @@ concept TypeWithFree_to_string = requires (const T& t) {
 
 namespace yb {
 
+// Forward-declare AsDebugHexString(Slice) so it's visible at the template-definition point
+// of the recursive AsDebugHexString<std::pair<...>> below; otherwise translation units that reach
+// tostring.h before slice.h fail lookup at instantiation.
+class Slice;
+std::string AsDebugHexString(Slice value);
+
 // If class has ToString member function - use it.
 template <class T>
 concept TypeWith_ToString = requires (const T& t) {

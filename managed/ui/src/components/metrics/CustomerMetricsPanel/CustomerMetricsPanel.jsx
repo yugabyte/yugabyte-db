@@ -97,11 +97,11 @@ const PanelBody = ({
   if (currentSelectedNodeType !== NodeType.ALL && origin !== MetricOrigin.TABLE) {
     currentSelectedNodeType === NodeType.MASTER
       ? invalidTabType.push(
-          MetricTypes.TSERVER,
-          MetricTypes.YSQL_OPS,
-          MetricTypes.YCQL_OPS,
-          MetricTypes.DISK_IO
-        )
+        MetricTypes.TSERVER,
+        MetricTypes.YSQL_OPS,
+        MetricTypes.YCQL_OPS,
+        MetricTypes.DISK_IO
+      )
       : invalidTabType.push(MetricTypes.MASTER, MetricTypes.MASTER_ADVANCED);
     defaultTabToDisplay =
       currentSelectedNodeType === NodeType.MASTER ? MetricTypes.MASTER : MetricTypes.TSERVER;
@@ -285,15 +285,15 @@ export default class CustomerMetricsPanel extends Component {
 
   componentDidMount() {
     const {
-      customer: { currentCustomer }
+      customer: { currentCustomer },
     } = this.props;
     showOrRedirect(currentCustomer.data.features, 'menu.metrics');
   }
 
   render() {
-    const { origin, printMode = false } = this.props;
+    const { origin, printMode = false, provider } = this.props;
     return (
-      <GraphPanelHeaderContainer origin={origin} printMode={printMode}>
+      <GraphPanelHeaderContainer origin={origin} printMode={printMode} provider={provider}>
         <PanelBody {...this.props} printMode={printMode} />
       </GraphPanelHeaderContainer>
     );

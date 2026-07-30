@@ -49,6 +49,7 @@
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_client.fwd.h"
+#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/sys_catalog_types.h"
 #include "yb/master/tasks_tracker.h"
@@ -151,11 +152,14 @@ struct TabletReplicaDriveInfo {
   uint64 uncompressed_sst_file_size = 0;
   bool may_have_orphaned_post_split_data = true;
   uint64 total_size = 0;
+  uint64 vector_index_size = 0;
+  bool has_active_vector_index_backfill = false;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         sst_files_size, wal_files_size, uncompressed_sst_file_size,
-        may_have_orphaned_post_split_data, total_size);
+        may_have_orphaned_post_split_data, total_size, vector_index_size,
+        has_active_vector_index_backfill);
   }
 };
 
@@ -197,8 +201,6 @@ struct TabletReplica {
   void UpdateDriveInfo(const TabletReplicaDriveInfo& info);
 
   void UpdateLeaderLeaseInfo(const TabletLeaderLeaseInfo& info);
-
-  bool IsStale() const;
 
   bool IsStarting() const;
 
@@ -775,9 +777,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // new_tablet's partition should be the remainder of old_tablet's original partition.
   // This should only be used for transaction status tables, where the partition ranges
   // are not actually used.
-  void AddStatusTabletViaSplitPartition(TabletInfoPtr old_tablet,
-                                        const dockv::Partition& partition,
-                                        const TabletInfoPtr& new_tablet);
+  Result<TabletInfo::WriteLock> AddStatusTabletViaSplitPartition(TabletInfoPtr old_tablet,
+                                                                 const dockv::Partition& partition,
+                                                                 const TabletInfoPtr& new_tablet);
 
   // Replace existing tablet with a new one.
   Status ReplaceTablet(const TabletInfoPtr& old_tablet, const TabletInfoPtr& new_tablet);
@@ -860,6 +862,15 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // (dirty copy is modified) and yet to be persisted.
   Result<bool> AreAllTabletsRunning(const std::set<TabletId>& new_running_tablets = {});
 
+  // Atomically claims the right to schedule the post tablet create task set for this table.
+  // Returns true only for the first caller, and subsequent callers get false until
+  // ClearPostTabletCreateTasksScheduled() is called.
+  bool TrySetPostTabletCreateTasksScheduled();
+
+  // Clears the post tablet create tasks scheduled atomic, allowing the next caller to
+  // schedule the post tablet create task.
+  void ClearPostTabletCreateTasksScheduled();
+
   // Returns true if the table is backfilling an index.
   bool IsBackfilling() const {
     SharedLock l(lock_);
@@ -873,6 +884,30 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
     is_backfilling_ = false;
   }
 
+  // Store/retrieve the DDL transaction from the PG backend that initiated the backfill.
+  // Stored when CatalogManager::BackfillIndex moves the index from WRITE_AND_DELETE to
+  // DO_BACKFILL; retrieved when StartBackfillingData actually creates the BackfillTable.
+  // schema_version must be the table version produced by the permission update (current + 1).
+  void SetPendingBackfillRequesterTransaction(
+      std::optional<TransactionMetadata> txn, uint32_t schema_version) {
+    std::lock_guard l(lock_);
+    pending_backfill_requester_transaction_ = std::move(txn);
+    pending_backfill_requester_transaction_version_ = schema_version;
+  }
+
+  // Returns the stored transaction and clears it, but only if schema_version matches the value
+  // passed to SetPendingBackfillRequesterTransaction.  Returns nullopt otherwise so that a stale
+  // transaction from an earlier backfill attempt is never used for a later one.
+  std::optional<TransactionMetadata> TakePendingBackfillRequesterTransaction(
+      uint32_t schema_version) {
+    std::lock_guard l(lock_);
+    if (!pending_backfill_requester_transaction_ ||
+        pending_backfill_requester_transaction_version_ != schema_version) {
+      return std::nullopt;
+    }
+    return std::exchange(pending_backfill_requester_transaction_, std::nullopt);
+  }
+
   // Returns true if an "Alter" operation is in-progress.
   Result<bool> IsAlterInProgress(uint32_t version) const;
 
@@ -884,7 +919,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Returns whether this is a type of table that will use tablespaces
   // for placement.
-  bool UsesTablespacesForPlacement() const;
+  bool TableTypeUsesTablespacesForPlacement() const;
 
   bool IsColocationParentTable() const;
   bool IsColocatedDbParentTable() const;
@@ -901,6 +936,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool IsSecondaryTable() const;
   bool IsSequencesSystemTable() const;
   bool IsSequencesSystemTable(const ReadLock& lock) const;
+  // YSQL tables backed by PG catalog have a pg schema name. DocDB-only tables such as
+  // system_postgres.sequences_data are excluded.
+  bool ShouldLookupPgSchemaName() const;
+  bool ShouldLookupPgSchemaName(const ReadLock& lock) const;
   bool IsXClusterDDLReplicationDDLQueueTable() const;
   bool IsXClusterDDLReplicationReplicatedDDLsTable() const;
   bool IsXClusterDDLReplicationTable() const {
@@ -928,6 +967,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   std::vector<TransactionId> EraseDdlTxnsWaitingForSchemaVersion(
       int schema_version) EXCLUDES(lock_);
 
+  std::vector<std::pair<int, TransactionId>> GetDdlTxnsWaitingForSchemaVersion() const;
+
   void AddDdlTxnForRollbackToSubTxnWaitingForSchemaVersion(
       int schema_version, const TransactionId& txn) EXCLUDES(lock_);
 
@@ -943,6 +984,16 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool IsUserTable(const ReadLock& lock) const;
   bool IsUserIndex(const ReadLock& lock) const;
   bool HasUserSpecifiedPrimaryKey(const ReadLock& lock) const;
+
+  void SetExcludeAbortingTransactionId(const TransactionId& txn_id) {
+    std::lock_guard l(lock_);
+    exclude_aborting_transaction_id_ = txn_id;
+  }
+
+  TransactionId GetExcludeAbortingTransactionId() const {
+    SharedLock l(lock_);
+    return exclude_aborting_transaction_id_;
+  }
 
  private:
   friend class RefCountedThreadSafe<TableInfo>;
@@ -981,6 +1032,17 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // In memory state set during backfill to prevent multiple backfill jobs.
   bool is_backfilling_ = false;
+
+  // In-memory guard ensuring the post-tablet-create task set is scheduled at most once per table.
+  std::atomic<bool> post_tablet_create_tasks_scheduled_{false};
+
+  TransactionId exclude_aborting_transaction_id_ GUARDED_BY(lock_) {TransactionId::Nil()};
+
+  // DDL transaction from the PG backend that initiated the backfill, and the table schema version
+  // at which it was stored. Set when BackfillIndex updates permissions (WRITE_AND_DELETE ->
+  // DO_BACKFILL) and cleared when StartBackfillingData creates the BackfillTable.
+  std::optional<TransactionMetadata> pending_backfill_requester_transaction_ GUARDED_BY(lock_);
+  uint32_t pending_backfill_requester_transaction_version_ GUARDED_BY(lock_) = 0;
 
   std::atomic<bool> is_system_{false};
 
@@ -1152,7 +1214,8 @@ class ObjectLockInfo : public MetadataCowWrapper<PersistentObjectLockInfo> {
   virtual const std::string& id() const override { return ts_uuid_; }
 
   Result<std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>>
-  RefreshYsqlOperationLease(const NodeInstancePB& instance, MonoDelta lease_ttl) EXCLUDES(mutex_);
+  RefreshYsqlOperationLease(const RefreshYsqlLeaseRequestPB& req, MonoDelta lease_ttl)
+      EXCLUDES(mutex_);
 
   virtual void Load(const SysObjectLockEntryPB& metadata) override;
 
@@ -1332,6 +1395,10 @@ struct PersistentCDCStreamInfo : public Persistent<SysCDCStreamEntryPB> {
     return pb.unqualified_table_id();
   }
 
+  const google::protobuf::RepeatedPtrField<std::string>& dropped_table_id() const {
+    return pb.dropped_table_id();
+  }
+
   const NamespaceId& namespace_id() const {
     return pb.namespace_id();
   }
@@ -1384,6 +1451,8 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
   bool IsDynamicTableAdditionDisabled() const;
 
   bool IsTablesWithoutPrimaryKeyAllowed() const;
+
+  bool DetectPublicationChangesImplicitly() const;
 
   std::string ToString() const override;
 

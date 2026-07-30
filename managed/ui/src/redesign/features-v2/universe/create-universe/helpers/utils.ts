@@ -2,6 +2,7 @@ import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 import { api, QUERY_KEY } from '@app/redesign/features/universe/universe-form/utils/api';
 import { RunTimeConfigEntry } from '@app/redesign/features/universe/universe-form/utils/dto';
+import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
 
 export const useRuntimeConfigValues = (providerUUID?: string) => {
   const currentCustomer = useSelector((state: any) => state.customer.currentCustomer);
@@ -30,6 +31,10 @@ export const useRuntimeConfigValues = (providerUUID?: string) => {
 
   const maxVolumeCount = Number(getConfigValue('yb.max_volume_count') ?? 0);
 
+  const ebsVolumeEnabled = getConfigValue('yb.universe.allow_cloud_volume_encryption') === 'true';
+
+  const enableAzOverridesK8s = getConfigValue(RuntimeConfigKey.ENABLE_AZ_OVERRIDES_K8S) === 'true';
+
   return {
     runtimeConfigs,
     providerRuntimeConfigs,
@@ -38,6 +43,8 @@ export const useRuntimeConfigValues = (providerUUID?: string) => {
     osPatchingEnabled,
     useK8CustomResources,
     maxVolumeCount,
-    canUseSpotInstance
+    canUseSpotInstance,
+    ebsVolumeEnabled,
+    enableAzOverridesK8s
   };
 };

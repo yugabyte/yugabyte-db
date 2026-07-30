@@ -51,15 +51,28 @@ func loadLegacyConfig() (*viper.Viper, error) {
 	viper.SetDefault("installRoot", "/opt/yugabyte")
 	viper.SetDefault("as_root", common.HasSudoAccess())
 
-	viper.SetDefault("perfAdvisor.enabled", false)
+	viper.SetDefault("perfAdvisor.enabled", true)
 	viper.SetDefault("perfAdvisor.port", 8443)
 	viper.SetDefault("perfAdvisor.restartSeconds", 10)
-	viper.SetDefault("perfAdvisor.enableHttps", false)
+	viper.SetDefault("perfAdvisor.callhome.enabled", true)
+	viper.SetDefault("perfAdvisor.callhome.environment", "dev")
+	viper.SetDefault("perfAdvisor.paSecret", "")
+	viper.SetDefault("perfAdvisor.tls.enabled", true)
+	viper.SetDefault("perfAdvisor.tls.sslProtocols", "")
+	viper.SetDefault("perfAdvisor.tls.hsts", true)
+	viper.SetDefault("perfAdvisor.tls.keystorePassword", "")
 
 	viper.SetDefault("prometheus.remoteWrite.enabled", false)
 	viper.SetDefault("prometheus.scrapeConfig.node.scheme", "http")
 	viper.SetDefault("prometheus.scrapeConfig.node-agent.scheme", "http")
 	viper.SetDefault("prometheus.scrapeConfig.yugabyte.scheme", "http")
+
+	viper.SetDefault("nodeExporter.enabled", true)
+	viper.SetDefault("nodeExporter.port", 9300)
+	viper.SetDefault("nodeExporter.scheme", "https")
+	viper.SetDefault("nodeExporter.enableAuth", false)
+	viper.SetDefault("nodeExporter.authUsername", "")
+	viper.SetDefault("nodeExporter.authPassword", "")
 	// Update the installRoot to home directory for non-root installs. Will honor custom install root.
 	if !common.HasSudoAccess() && viper.GetString("installRoot") == "/opt/yugabyte" {
 		viper.SetDefault("installRoot", filepath.Join(common.GetUserHomeDir(), "yugabyte"))
@@ -81,6 +94,9 @@ func legacyToRootConfig(legacy *viper.Viper) rootConfig {
 	}
 	if legacy.GetBool("perfAdvisor.enabled") {
 		services = append(services, ServicePerformanceAdvisor)
+	}
+	if legacy.GetBool("nodeExporter.enabled") {
+		services = append(services, ServiceNodeExporter)
 	}
 	var pgConfig postgresConfig
 	if legacy.GetBool("postgres.install.enabled") {
@@ -193,7 +209,24 @@ func legacyToRootConfig(legacy *viper.Viper) rootConfig {
 			Enabled:        legacy.GetBool("perfAdvisor.enabled"),
 			Port:           legacy.GetInt("perfAdvisor.port"),
 			RestartSeconds: legacy.GetInt("perfAdvisor.restartSeconds"),
-			EnableHttps:    legacy.GetBool("perfAdvisor.enableHttps"),
+			PaSecret:       legacy.GetString("perfAdvisor.paSecret"),
+			Callhome: callhomeConfig{
+				Enabled:     legacy.GetBool("perfAdvisor.callhome.enabled"),
+				Environment: legacy.GetString("perfAdvisor.callhome.environment"),
+			},
+			Tls: tlsConfig{
+				Enabled:      legacy.GetBool("perfAdvisor.tls.enabled"),
+				SSLProtocols: legacy.GetString("perfAdvisor.tls.sslProtocols"),
+				Hsts:         legacy.GetBool("perfAdvisor.tls.hsts"),
+			},
+		},
+		NodeExporter: nodeExporterConfig{
+			Enabled:      legacy.GetBool("nodeExporter.enabled"),
+			Port:         legacy.GetInt("nodeExporter.port"),
+			Scheme:       legacy.GetString("nodeExporter.scheme"),
+			EnableAuth:   legacy.GetBool("nodeExporter.enableAuth"),
+			AuthUsername: legacy.GetString("nodeExporter.authUsername"),
+			AuthPassword: legacy.GetString("nodeExporter.authPassword"),
 		},
 	}
 }

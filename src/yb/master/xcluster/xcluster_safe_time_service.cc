@@ -27,9 +27,10 @@
 #include "yb/common/xcluster_util.h"
 
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_replication.pb.h"
+#include "yb/master/master.h"
+#include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 
 #include "yb/rpc/messenger.h"
@@ -39,6 +40,8 @@
 #include "yb/util/atomic.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 
 using std::min;
@@ -84,7 +87,7 @@ XClusterSafeTimeService::XClusterSafeTimeService(
     poll_strand_.emplace(master->messenger()->io_service());
     poller_.Start(
         master->messenger()->scheduler(),
-        GetAtomicFlag(&FLAGS_xcluster_safe_time_update_interval_secs) * 1s);
+        FLAGS_xcluster_safe_time_update_interval_secs * 1s);
   }
 }
 
@@ -639,7 +642,8 @@ Status XClusterSafeTimeService::CleanupEntriesFromTable(
   auto session = ybclient->NewSession(ybclient->default_rpc_timeout());
 
   for (auto& tablet_info : entries_to_delete) {
-    const auto op = safe_time_table_->NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
+    const auto op = safe_time_table_->NewWriteOp(
+        session->arena(), QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
     QLAddStringHashValue(req, tablet_info.replication_group_id_column_value().ToString());
     QLAddStringHashValue(req, tablet_info.tablet_id_column_value());

@@ -21,6 +21,8 @@
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/testutil.h"
 
+#include "yb/storage/storage_test_util.h"
+
 #include "yb/util/test_macros.h"
 
 using std::string;
@@ -70,7 +72,7 @@ struct UserOpIdTestHandler : public WriteBatch::Handler {
     return Status::OK();
   }
 
-  Status Frontiers(const UserFrontiers& frontier) override {
+  Status Frontiers(const yb::storage::UserFrontiers& frontier) override {
     out_ << "frontiers=" << frontier.ToString() << std::endl;
     return Status::OK();
   }
@@ -117,7 +119,7 @@ class UserOpIdTest : public RocksDBTest {
     return b;
   }
 
-  test::TestUserFrontiers frontiers_{1, 123};
+  yb::storage::TestUserFrontiers frontiers_{1, 123};
 };
 
 TEST_F(UserOpIdTest, Empty) {
@@ -149,7 +151,7 @@ TEST_F(UserOpIdTest, SetUserSequenceNumber) {
   WriteBatch b;
 
   ASSERT_FALSE(b.Frontiers());
-  test::TestUserFrontiers range(1, 77701);
+  yb::storage::TestUserFrontiers range(1, 77701);
   b.SetFrontiers(&range);
   b.Put("k1", "v1");
   ASSERT_FALSE(!b.Frontiers());
@@ -173,7 +175,7 @@ TEST_F(UserOpIdTest, SetUserSequenceNumber) {
 
 TEST_F(UserOpIdTest, AppendBatchesWithUserSequenceNumbers) {
   WriteBatch dst;
-  test::TestUserFrontiers range(1, 1200);
+  yb::storage::TestUserFrontiers range(1, 1200);
   dst.SetFrontiers(&range);
   dst.Put("my_key", "my_value");
 
@@ -197,7 +199,7 @@ TEST_F(UserOpIdTest, SavePointTest) {
   WriteBatch batch;
   batch.SetSavePoint();
 
-  test::TestUserFrontiers range(1, 1000);
+  yb::storage::TestUserFrontiers range(1, 1000);
   batch.SetFrontiers(&range);
   batch.Put("A", "a");
   batch.Put("B", "b");
@@ -241,7 +243,7 @@ TEST_F(UserOpIdTest, SavePointTest) {
   ASSERT_TRUE(s.IsNotFound());
   ASSERT_EQ("", WriteBatchToString(batch));
 
-  test::TestUserFrontiers range2(1, 1001);
+  yb::storage::TestUserFrontiers range2(1, 1001);
   batch.SetFrontiers(&range2);
   batch.Put("D", "d");
   batch.Delete("A");
@@ -289,7 +291,7 @@ TEST_F(UserOpIdTest, SavePointTest2) {
   ASSERT_TRUE(s.IsNotFound());
   ASSERT_EQ("", WriteBatchToString(b));
 
-  test::TestUserFrontiers range2(1, 1002);
+  yb::storage::TestUserFrontiers range2(1, 1002);
   b.SetFrontiers(&range2);
   b.Delete("A");
   b.SetSavePoint();
@@ -304,7 +306,7 @@ TEST_F(UserOpIdTest, SavePointTest2) {
 
   b.SetSavePoint();
 
-  test::TestUserFrontiers range3(1, 1003);
+  yb::storage::TestUserFrontiers range3(1, 1003);
   b.SetFrontiers(&range3);
   b.Delete("B");
   ASSERT_EQ("frontiers={ smallest: { value: 1 } largest: { value: 1003 } }\nDeleteCF(key='B')\n",

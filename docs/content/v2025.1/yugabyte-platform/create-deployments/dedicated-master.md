@@ -37,7 +37,7 @@ A YugabyteDB universe requires a number of YB-Master servers equal to the [repli
 
 When creating a universe, you have the following two options for YB-Master process placement:
 
-- **Place Masters on the same nodes as T-Servers** (Shared): This is the default. In this mode, 15% of the total memory available on the node goes to YB-Master and 85% goes to YB-TServer. (You can override the memory allocation using the [--default_memory_limit_to_ram_ratio](../../../reference/configuration/yb-tserver/#default-memory-limit-to-ram-ratio) flag.)
+- **Place Masters on the same nodes as T-Servers** (Shared): This is the default. In this mode, 15% of the total memory available on the node goes to YB-Master and 85% goes to YB-TServer. (You can override the memory allocation using the [--default_memory_limit_to_ram_ratio](../../../reference/configuration/yb-tserver/#default-memory-limit-to-ram-ratio) flag for non-Kubernetes deployments. For Kubernetes deployments, memory limits are controlled via Kubernetes resource specifications in the Helm chart, and `--default_memory_limit_to_ram_ratio` does not apply.)
 
 - **Place Masters on dedicated nodes** (Dedicated Masters): In this mode, nodes dedicated to Master processes are selected when the universe is created (or equivalently, during the `/universe_configure` REST API call). Placing YB-Masters on dedicated nodes eliminates the need to configure or share memory.
 

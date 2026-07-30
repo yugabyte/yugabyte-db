@@ -1,6 +1,6 @@
 
 /*
- * __API_SCHEMA_V2__.find_and_modify processes a Mongo wire protocol findAndModify command.
+ * __API_SCHEMA_V2__.find_and_modify processes a mongo wire protocol findAndModify command.
  */
 CREATE OR REPLACE FUNCTION __API_SCHEMA_V2__.find_and_modify(
     p_database_name text,

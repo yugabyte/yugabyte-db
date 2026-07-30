@@ -37,21 +37,23 @@ YugabyteDB supports both x86 and ARM (aarch64) CPU architectures. Download packa
 
 Download and extract YugabyteDB as follows:
 
-{{< tabpane text=true >}}
+{{< tabpane text=true plain=true >}}
 
-  {{% tab header="x86" lang="x86" %}}
+  {{% tab header="<i class='fa-brands fa-linux' aria-hidden='true'></i> x86" lang="x86" %}}
 
 ```sh
 wget https://software.yugabyte.com/releases/{{< yb-version version="v2025.1">}}/yugabyte-{{< yb-version version="v2025.1" format="build">}}-linux-x86_64.tar.gz
+echo "$(curl -L https://software.yugabyte.com/releases/{{< yb-version version="v2025.1">}}/yugabyte-{{< yb-version version="v2025.1" format="build">}}-linux-x86_64-tar.gz.sha) *yugabyte-{{< yb-version version="v2025.1" format="build">}}-linux-x86_64.tar.gz" | shasum --check && \
 tar xvfz yugabyte-{{< yb-version version="v2025.1" format="build">}}-linux-x86_64.tar.gz && cd yugabyte-{{< yb-version version="v2025.1">}}/
 ```
 
   {{% /tab %}}
 
-  {{% tab header="aarch64" lang="aarch64" %}}
+  {{% tab header="<i class='fa-brands fa-linux' aria-hidden='true'></i> ARM" lang="aarch64" %}}
 
 ```sh
 wget https://software.yugabyte.com/releases/{{< yb-version version="v2025.1">}}/yugabyte-{{< yb-version version="v2025.1" format="build">}}-el8-aarch64.tar.gz
+echo "$(curl -L https://software.yugabyte.com/releases/{{< yb-version version="v2025.1">}}/yugabyte-{{< yb-version version="v2025.1" format="build">}}-el8-aarch64-tar.gz.sha) *yugabyte-{{< yb-version version="v2025.1" format="build">}}-el8-aarch64.tar.gz" | shasum --check && \
 tar xvfz yugabyte-{{< yb-version version="v2025.1" format="build">}}-el8-aarch64.tar.gz && cd yugabyte-{{< yb-version version="v2025.1">}}/
 ```
 

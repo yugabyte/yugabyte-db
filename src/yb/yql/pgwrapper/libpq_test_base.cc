@@ -17,8 +17,10 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/json_document.h"
 #include "yb/util/monotime.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 #include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
@@ -77,7 +79,7 @@ Result<PGConn> LibPqTestBase::ConnectToTsAsUser(
     const ExternalTabletServer& pg_ts, const string& user) {
   return PGConnBuilder({
     .host = pg_ts.bind_host(),
-    .port = pg_ts.pgsql_rpc_port(),
+    .port = pg_ts.ysql_port(),
     .user = user
   }).Connect(true);
 }
@@ -343,41 +345,39 @@ std::vector<YsqlMetric> LibPqTestBase::ParsePrometheusMetrics(const std::string&
 }
 
 // Parse metrics from the JSON output of the /metrics endpoint.
-// Ignores the "sum" field for each metric, as it is empty for the catcache metrics.
 std::vector<YsqlMetric> LibPqTestBase::ParseJsonMetrics(const std::string& metrics_output) {
   std::vector<YsqlMetric> parsed_metrics;
 
   // Parse the JSON string
-  rapidjson::Document document;
-  document.Parse(metrics_output.c_str());
+  JsonDocument doc;
+  auto document = EXPECT_RESULT(doc.Parse(metrics_output));
 
-  EXPECT_TRUE(document.IsArray() && document.Size() > 0);
-  const auto& server = document[0];
-  EXPECT_TRUE(server.HasMember("metrics") && server["metrics"].IsArray());
-  const auto& metrics = server["metrics"];
-  for (const auto& metric : metrics.GetArray()) {
+  EXPECT_TRUE(document.IsArray() && EXPECT_RESULT(document.size()) > 0);
+  for (const auto& metric : EXPECT_RESULT(document[0]["metrics"].GetArray())) {
     EXPECT_TRUE(
-        metric.HasMember("name") && metric.HasMember("count") && metric.HasMember("sum") &&
-        metric.HasMember("rows"));
+        metric["name"].IsValid() && metric["count"].IsValid() && metric["sum"].IsValid() &&
+        metric["rows"].IsValid());
+    auto metric_name = EXPECT_RESULT(metric["name"].GetString());
     std::unordered_map<std::string, std::string> labels;
-    if (metric.HasMember("table_name")) {
-      labels["table_name"] = metric["table_name"].GetString();
-    } else {
-      LOG(INFO) << "No table name found for metric: " << metric["name"].GetString();
+    if (metric["table_name"].IsValid()) {
+      labels["table_name"] = EXPECT_RESULT(metric["table_name"].GetString());
+    }
+    if (metric["db_oid"].IsValid()) {
+      labels["db_oid"] = EXPECT_RESULT(metric["db_oid"].GetString());
     }
 
     parsed_metrics.emplace_back(
-        metric["name"].GetString(), std::move(labels), metric["count"].GetInt64(),
-        0  // JSON doesn't include timestamp
-    );
+        metric_name, std::move(labels), EXPECT_RESULT(metric["count"].GetInt64()),
+        0,  // JSON doesn't include timestamp
+        "", "", EXPECT_RESULT(metric["sum"].GetInt64()));
   }
 
   return parsed_metrics;
 }
 
 // Helper function to get JSON metrics from the /metrics endpoint and parse them into YsqlMetrics.
-std::vector<YsqlMetric> LibPqTestBase::GetJsonMetrics() {
-  ExternalTabletServer* ts = cluster_->tablet_server(0);
+std::vector<YsqlMetric> LibPqTestBase::GetJsonMetrics(size_t ts_idx) {
+  ExternalTabletServer* ts = cluster_->tablet_server(ts_idx);
   auto hostport = Format("$0:$1", ts->bind_host(), ts->pgsql_http_port());
   EasyCurl c;
   faststring buf;
@@ -421,6 +421,49 @@ void LibPqTestBase::WaitForCatalogVersionToPropagate() {
   constexpr int kSleepSeconds = 2;
   LOG(INFO) << "Wait " << kSleepSeconds << " seconds for heartbeat to propagate catalog versions";
   std::this_thread::sleep_for(kSleepSeconds * kTimeMultiplier * 1s);
+}
+
+Result<int64_t> LibPqTestBase::GetCatCacheTableMissMetric(const std::string& table_name) {
+  auto metrics = GetJsonMetrics();
+  int64_t count = 0;
+  for (const auto& metric : metrics) {
+    if (metric.name.find("yb_ysqlserver_CatalogCacheTableMisses") != std::string::npos &&
+        metric.labels.count("table_name") &&
+        metric.labels.at("table_name") == table_name) {
+      count += metric.value;
+    }
+  }
+  // With the per-db catalog cache metrics, metrics that are 0 are not emitted.
+  // Return 0 instead of an error.
+  return count;
+}
+
+Result<int64_t> LibPqTestBase::GetCatCacheListMissMetric(const std::string& table_name) {
+  auto metrics = GetJsonMetrics();
+  int64_t count = 0;
+  for (const auto& metric : metrics) {
+    if (metric.name.find("yb_ysqlserver_CatalogCacheListMisses") != std::string::npos &&
+        metric.labels.count("table_name") &&
+        metric.labels.at("table_name") == table_name) {
+      count += metric.value;
+    }
+  }
+
+  return count;
+}
+
+Result<int64_t> LibPqTestBase::GetCatCacheNegMissMetric(const std::string& table_name) {
+  auto metrics = GetJsonMetrics();
+  int64_t count = 0;
+  for (const auto& metric : metrics) {
+    if (metric.name.find("yb_ysqlserver_CatalogCacheNegMisses") != std::string::npos &&
+        metric.labels.count("table_name") &&
+        metric.labels.at("table_name") == table_name) {
+      count += metric.value;
+    }
+  }
+
+  return count;
 }
 
 } // namespace pgwrapper

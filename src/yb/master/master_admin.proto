@@ -122,6 +122,14 @@ message IsInitDbDoneResponsePB {
   optional string initdb_error = 5;
 }
 
+message ClientUpgradeYsqlRequestPB {
+  optional bool use_single_connection = 1 [default = false];
+}
+
+message ClientUpgradeYsqlResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 message SplitTabletRequestPB {
   required bytes tablet_id = 1;
   optional int32 split_factor = 2;
@@ -331,6 +339,8 @@ service MasterAdmin {
 
   rpc IsInitDbDone(IsInitDbDoneRequestPB) returns (IsInitDbDoneResponsePB);
 
+  rpc ClientUpgradeYsql(ClientUpgradeYsqlRequestPB) returns (ClientUpgradeYsqlResponsePB);
+
   rpc SplitTablet(SplitTabletRequestPB) returns (SplitTabletResponsePB);
   rpc CreateTransactionStatusTable(CreateTransactionStatusTableRequestPB)
       returns (CreateTransactionStatusTableResponsePB);
@@ -368,7 +378,9 @@ service MasterAdmin {
   rpc AccessYsqlBackendsManagerTestRegister(AccessYsqlBackendsManagerTestRegisterRequestPB)
       returns (AccessYsqlBackendsManagerTestRegisterResponsePB);
   rpc WaitForYsqlBackendsCatalogVersion(WaitForYsqlBackendsCatalogVersionRequestPB)
-      returns (WaitForYsqlBackendsCatalogVersionResponsePB);
+      returns (WaitForYsqlBackendsCatalogVersionResponsePB) {
+        option (yb.rpc.send_metadata) = true;
+  }
 
   rpc DumpSysCatalogEntries(DumpSysCatalogEntriesRequestPB)
       returns (DumpSysCatalogEntriesResponsePB);

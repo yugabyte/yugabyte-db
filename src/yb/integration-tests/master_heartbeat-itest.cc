@@ -27,6 +27,7 @@
 
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
 #include "yb/master/catalog_entity_info.h"
@@ -35,7 +36,7 @@
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_cluster_client.h"
-#include "yb/master/master_fwd.h"
+#include "yb/master/master.h"
 #include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/master/ts_descriptor.h"
@@ -47,9 +48,11 @@
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/tostring.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -67,6 +70,8 @@ DECLARE_bool(persist_tserver_registry);
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
 DECLARE_int32(data_size_metric_updater_interval_sec);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+DECLARE_int32(tablet_report_limit);
+DECLARE_int32(replication_factor);
 
 namespace yb::integration_tests {
 
@@ -96,11 +101,15 @@ master::TabletReportPB MakeTabletReportPBWithNewLeader(
   report.set_sequence_number(report_seqno);
   auto* tablet_report = report.add_updated_tablets();
   tablet_report->set_tablet_id(tablet->id());
-  auto* consensus = tablet_report->mutable_committed_consensus_state();
-  *consensus = tablet->LockForRead()->pb.committed_consensus_state();
-  consensus->set_leader_uuid(ts->permanent_uuid());
-  consensus->set_current_term(consensus->current_term() + 1);
-  auto* new_peer = consensus->mutable_config()->add_peers();
+  auto* committed_state = tablet_report->mutable_committed_consensus_state();
+  *committed_state = tablet->LockForRead()->pb.committed_consensus_state();
+  const auto prev_term = committed_state->current_term();
+  committed_state->set_leader_uuid(ts->permanent_uuid());
+  committed_state->set_current_term(prev_term + 1);
+
+  auto& raft_config = *committed_state->mutable_config();
+  auto* new_peer = raft_config.add_peers();
+  raft_config.set_committed_op_index(raft_config.committed_op_index() + 1);
   new_peer->set_permanent_uuid(ts->permanent_uuid());
   new_peer->set_member_type(consensus::PeerMemberType::VOTER);
   auto ts_info = ts->GetTSInformationPB();
@@ -141,9 +150,12 @@ TEST_F(MasterHeartbeatITest, PreventHeartbeatWrongCluster) {
   // First ensure that if a tserver heartbeats to a different cluster, heartbeats fail and
   // eventually, master marks servers as dead. Mock a different cluster by setting the flag
   // TEST_master_universe_uuid.
+  const auto unresponsive_log_waiter_timeout = 20s * kTimeMultiplier;
+  StringWaiterLogSink unresponsive_log_waiter("as UNRESPONSIVE: no heartbeat received for");
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_master_universe_uuid) = Uuid::Generate().ToString();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 10 * 1000;
   ASSERT_OK(mini_cluster_->WaitForTabletServerCount(0, true /* live_only */));
+  ASSERT_OK(unresponsive_log_waiter.WaitFor(unresponsive_log_waiter_timeout));
 
   // When the flag is unset, ensure that master leader can register tservers.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_master_universe_uuid) = "";
@@ -403,6 +415,109 @@ TEST_F(MasterHeartbeatITest, PopulateHeartbeatResponseWhenRegistrationRequired) 
   ASSERT_TRUE(hb_resp.needs_reregister());
   ASSERT_GT(hb_resp.snapshots_info().schedules_size(), 0);
   ASSERT_EQ(hb_resp.snapshots_info().schedules(0).id(), resp.snapshot_schedule_id());
+}
+
+class MasterHeartbeatITestOneTServer : public YBMiniClusterTestBase<MiniCluster> {
+  void SetUp() override;
+};
+
+// This test verifies that re-registering a tserver (via UpdateRegistration) resets
+// receiving_full_report_seq_no_ so that continuations of a new full tablet report are not
+// incorrectly rejected. This is a regression test for #GH30169.
+TEST_F(MasterHeartbeatITestOneTServer, FullReportContinutation) {
+  // Shut down the tserver so it won't interfere with our fake heartbeats.
+  verify_cluster_before_next_tear_down_ = false;
+  ShutdownAllTServers(cluster_.get());
+  auto& catalog_mgr = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  auto cluster_config = ASSERT_RESULT(catalog_mgr.GetClusterConfig());
+  master::TSDescriptorVector ts_descs = catalog_mgr.GetAllLiveNotBlacklistedTServers();
+  ASSERT_EQ(ts_descs.size(), 1);
+  auto ts = ts_descs[0];
+  master::MasterHeartbeatProxy master_proxy(
+      &cluster_->proxy_cache(), cluster_->mini_master()->bound_rpc_addr());
+  // Step 1: Send the first chunk of a multi-chunk full report. This sets
+  // receiving_full_report_seq_no_ on the TSDescriptor.
+  constexpr int32_t kFirstFullReportSeqNo = 500;
+  {
+    master::TSHeartbeatRequestPB req;
+    *req.mutable_common() = MakeTSToMasterCommonPB(*ts, ts->latest_seqno());
+    req.set_universe_uuid(cluster_config.universe_uuid());
+    auto* report = req.mutable_tablet_report();
+    report->set_is_incremental(false);
+    report->set_sequence_number(kFirstFullReportSeqNo);
+    report->set_full_report_seq_no(kFirstFullReportSeqNo);
+    // remaining_tablet_count > 0 indicates more chunks are coming.
+    report->set_remaining_tablet_count(1);
+    master::TSHeartbeatResponsePB resp;
+    rpc::RpcController rpc;
+    ASSERT_OK(master_proxy.TSHeartbeat(req, &resp, &rpc));
+    ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
+    // receiving_full_report_seq_no_ should now be set.
+    ASSERT_EQ(ts->receiving_full_report_seq_no(), kFirstFullReportSeqNo);
+  }
+
+  // Step 2: Re-register the tserver (simulates the tserver restarting with a new instance seqno).
+  // This calls UpdateRegistration which resets has_tablet_report_ but (before the fix) did not
+  // reset receiving_full_report_seq_no_.
+  {
+    master::TSHeartbeatRequestPB req;
+    *req.mutable_common() = MakeTSToMasterCommonPB(*ts, ts->latest_seqno() + 1);
+    req.set_universe_uuid(cluster_config.universe_uuid());
+    *req.mutable_registration() = ts->GetTSRegistrationPB();
+    // Send an empty full report (0 tablets) to complete re-registration.
+    auto* report = req.mutable_tablet_report();
+    report->set_is_incremental(true);
+    report->set_sequence_number(0);
+    report->set_remaining_tablet_count(0);
+    master::TSHeartbeatResponsePB resp;
+    rpc::RpcController rpc;
+    ASSERT_OK(master_proxy.TSHeartbeat(req, &resp, &rpc));
+    ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
+    // The master should request a full tablet report from the restarted tserver.
+    ASSERT_TRUE(resp.needs_full_tablet_report());
+    // Verify the fix: receiving_full_report_seq_no_ should be reset.
+    ASSERT_EQ(ts->receiving_full_report_seq_no(), std::nullopt);
+  }
+
+  // Step 3: Send the first chunk of a *new* full report with a new sequence number.
+  constexpr int32_t kSecondFullReportSeqNo = 10;
+  {
+    master::TSHeartbeatRequestPB req;
+    *req.mutable_common() = MakeTSToMasterCommonPB(*ts, std::nullopt);
+    req.set_universe_uuid(cluster_config.universe_uuid());
+    auto* report = req.mutable_tablet_report();
+    report->set_is_incremental(false);
+    report->set_sequence_number(kSecondFullReportSeqNo);
+    report->set_full_report_seq_no(kSecondFullReportSeqNo);
+    report->set_remaining_tablet_count(3);
+    master::TSHeartbeatResponsePB resp;
+    rpc::RpcController rpc;
+    ASSERT_OK(master_proxy.TSHeartbeat(req, &resp, &rpc));
+    ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
+    // Now receiving_full_report_seq_no_ should be updated to the new report.
+    ASSERT_EQ(ts->receiving_full_report_seq_no(), kSecondFullReportSeqNo);
+    ASSERT_FALSE(resp.needs_full_tablet_report());
+  }
+
+  // Step 4: Send a continuation chunk of the new full report. Before the fix, this would be
+  // rejected because receiving_full_report_seq_no_ was stuck at the old value
+  // (kFirstFullReportSeqNo) and didn't match kSecondFullReportSeqNo.
+  {
+    master::TSHeartbeatRequestPB req;
+    *req.mutable_common() = MakeTSToMasterCommonPB(*ts, std::nullopt);
+    req.set_universe_uuid(cluster_config.universe_uuid());
+    auto* report = req.mutable_tablet_report();
+    report->set_is_incremental(false);
+    report->set_sequence_number(kSecondFullReportSeqNo + 1);
+    report->set_full_report_seq_no(kSecondFullReportSeqNo);
+    report->set_remaining_tablet_count(0);
+    master::TSHeartbeatResponsePB resp;
+    rpc::RpcController rpc;
+    ASSERT_OK(master_proxy.TSHeartbeat(req, &resp, &rpc));
+    ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
+    // The continuation should succeed and the full report should be complete.
+    ASSERT_FALSE(resp.needs_full_tablet_report());
+  }
 }
 
 TEST_F(MasterHeartbeatITest, TestRegistrationThroughRaftPersisted) {
@@ -737,22 +852,21 @@ TEST_F(GlobalTransactionTableCreationTest, CreateGlobalTransactionTableAfterFail
   // transaction table. After failover we fix the cluster config which unblocks the attempt to
   // create the global transaction able.
   ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
-  // Sanity check that we cannot create a table yet.
-  std::string stmt = "CREATE TABLE test_table (k INT PRIMARY KEY, v INT)";
-  auto pgconn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
-  ASSERT_NOK(pgconn.ExecuteFormat(stmt));
+  // Sanity check that YSQL is not ready yet - without system.transactions, postgres backend
+  // startup FATALs in YbInitPostgres and the libpq connect fails.
+  ASSERT_NOK(cluster_->ConnectToDB("yugabyte"));
   master::MasterClusterClient cluster_client(
       cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>());
   auto config = ASSERT_RESULT(cluster_client.GetMasterClusterConfig());
   config.mutable_replication_info()->mutable_live_replicas()->set_placement_uuid(placement_uuid_);
   ASSERT_OK(cluster_client.ChangeMasterClusterConfig(std::move(config)));
 
-  // Now try to create a table. Table creation through pg will fail unless the transaction table
-  // already exists.
-  ASSERT_OK(WaitFor([&pgconn, &stmt]() -> Result<bool> {
-        return pgconn.ExecuteFormat(stmt).ok();
-      },
-      MonoDelta::FromSeconds(60), "Could not create table"));
+  // Now that the cluster config carries the live placement UUID, the catalog manager's retry
+  // loop can create system.transactions and YSQL backends can come up.
+  ASSERT_OK(cluster_->WaitForTabletServersToAcceptYSQLConnection(
+      MonoTime::Now() + 60s * kTimeMultiplier));
+  auto pgconn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte"));
+  ASSERT_OK(pgconn.Execute("CREATE TABLE test_table (k INT PRIMARY KEY, v INT)"));
 }
 
 void GlobalTransactionTableCreationTest::SetUp() {
@@ -761,11 +875,21 @@ void GlobalTransactionTableCreationTest::SetUp() {
   opts.num_masters = 3;
   opts.num_tablet_servers = 3;
   opts.enable_ysql = true;
+  // The cluster is intentionally brought up in an inconsistent state - tservers carry a
+  // --placement_uuid that the master's cluster config doesn't yet have. This blocks
+  // system.transactions creation, which in turn makes postgres backend startup fail in
+  // YbInitPostgres. Defer the in-Start YSQL-ready wait so the cluster comes up; the test fixes
+  // the cluster config and then waits for YSQL explicitly.
+  opts.wait_for_tservers_to_accept_ysql_connections = false;
   opts.extra_tserver_flags = {
       Format("--placement_uuid=$0", placement_uuid_),
-      // TODO(#27854): We get stuck with object locking when there is no system.transactions
-      // table. Disabling it for now until we fix the underlying issue.
-      "--enable_object_locking_for_table_locks=false",
+      // Force object locking on so the postgres backend FATALs in YbInitPostgres when
+      // system.transactions is missing. The default for this flag is build-mode dependent
+      // (true in release, false in debug/fastdebug per common_flags.cc), which would make the
+      // ConnectToDB sanity check below pass in release but spuriously succeed in debug.
+      // enable_object_locking_for_table_locks requires ysql_yb_ddl_transaction_block_enabled.
+      "--ysql_yb_ddl_transaction_block_enabled=true",
+      "--enable_object_locking_for_table_locks=true",
   };
   cluster_ = std::make_unique<ExternalMiniCluster>(opts);
   ASSERT_OK(cluster_->Start());
@@ -773,6 +897,58 @@ void GlobalTransactionTableCreationTest::SetUp() {
 
 void GlobalTransactionTableCreationTest::TearDown() {
   cluster_->Shutdown();
+}
+
+TEST_F(MasterHeartbeatITest, Connectivity) {
+  using tserver::ServerType;
+  auto start_time = ASSERT_RESULT(WallClock()->Now()).time_point;
+  using NodeId = std::pair<ServerType, std::string>;
+  std::vector<NodeId> expected_nodes;
+  expected_nodes.emplace_back(
+      ServerType::MASTER, mini_cluster_->mini_master()->master()->permanent_uuid());
+  for (const auto& tserver : mini_cluster_->mini_tablet_servers()) {
+    expected_nodes.emplace_back(
+        ServerType::TABLET_SERVER, tserver->server()->permanent_uuid());
+  }
+  std::ranges::sort(expected_nodes);
+  for (const auto& tserver : mini_cluster_->mini_tablet_servers()) {
+    LOG(INFO) << AsString(tserver);
+    for (int i = 0;; ++i) {
+      tserver::TabletServerServiceProxy proxy(
+          proxy_cache_.get(), HostPort(tserver->bound_rpc_addr()));
+      tserver::ConnectivityStateRequestPB req;
+      tserver::ConnectivityStateResponsePB resp;
+      rpc::RpcController controller;
+      controller.set_timeout(10s);
+      ASSERT_OK(proxy.ConnectivityState(req, &resp, &controller));
+      LOG(INFO) << "Response: " << AsString(resp);
+      std::vector<NodeId> found_nodes;
+      found_nodes.emplace_back(ServerType::TABLET_SERVER, tserver->server()->permanent_uuid());
+      for (const auto& entry : resp.entries()) {
+        found_nodes.emplace_back(entry.server_type(), entry.uuid());
+        ASSERT_TRUE(entry.alive());
+        ASSERT_GE(entry.last_seen_us_since_epoch(), start_time);
+        ASSERT_GT(entry.ping_us(), 0);
+      }
+      if (found_nodes.size() >= expected_nodes.size()) {
+        std::ranges::sort(found_nodes);
+        ASSERT_EQ(found_nodes, expected_nodes);
+        break;
+      }
+      ASSERT_LT(i, 20) << "Timed out waiting for complete connectivity report";
+      std::this_thread::sleep_for(1s);
+    }
+  }
+}
+
+void MasterHeartbeatITestOneTServer::SetUp() {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_report_limit) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = 1;
+  MiniClusterOptions opts;
+  opts.num_tablet_servers = 1;
+  opts.num_masters = 1;
+  cluster_ = std::make_unique<MiniCluster>(opts);
+  ASSERT_OK(cluster_->Start());
 }
 
 }  // namespace yb::integration_tests

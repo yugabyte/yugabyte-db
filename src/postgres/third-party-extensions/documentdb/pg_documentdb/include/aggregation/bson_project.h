@@ -54,7 +54,7 @@ typedef struct BsonProjectionContext
 	pgbson *querySpec;
 
 	/* The variable spec for let scenarios if applicable */
-	pgbson *variableSpec;
+	const pgbson *variableSpec;
 
 	/* Collation string for comparison, if applicable */
 	const char *collationString;
@@ -123,19 +123,44 @@ typedef struct ProjectDocumentState
 	bool skipIntermediateArrayFields;
 } ProjectDocumentState;
 
+
+/*
+ * Cached state for ReplaceRoot and Redact.
+ */
+typedef struct BsonReplaceRootRedactState
+{
+	/* The aggregation expression data */
+	AggregationExpressionData *expressionData;
+
+	/* The variable context for let if any */
+	ExpressionVariableContext *variableContext;
+} BsonReplaceRootRedactState;
+
+
 const BsonProjectionQueryState * GetProjectionStateForBsonProject(
-	bson_iter_t *projectionSpecIter,
-	bool forceProjectId,
+	bson_iter_t *projectionSpecIter, bool forceProjectId,
 	bool
-	allowInclusionExclusion);
+	allowInclusionExclusion,
+	const pgbson *
+	variableSpec);
 
 const BsonProjectionQueryState * GetProjectionStateForBsonAddFields(
-	bson_iter_t *projectionSpecIter);
+	bson_iter_t *projectionSpecIter, const bson_value_t *variableSpec);
 const BsonProjectionQueryState * GetProjectionStateForBsonUnset(const bson_value_t *
 																unsetValue,
 																bool forceProjectId);
 void GetBsonValueForReplaceRoot(bson_iter_t *replaceRootIterator, bson_value_t *value);
 
+void ValidateReplaceRootElement(const bson_value_t *value);
+void PopulateReplaceRootExpressionDataFromSpec(BsonReplaceRootRedactState *state,
+											   const bson_value_t *pathSpec,
+											   pgbson *variableSpec,
+											   const char *collationString);
+
+
+void BuildRedactState(BsonReplaceRootRedactState *redactState, const
+					  bson_value_t *redactValue, pgbson *variableSpec, const
+					  char *collationString);
 
 pgbson * ProjectDocumentWithState(pgbson *sourceDocument,
 								  const BsonProjectionQueryState *state);

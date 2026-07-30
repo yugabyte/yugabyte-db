@@ -3,7 +3,6 @@ title: How to Develop Azure Functions with YugabyteDB
 headerTitle: Develop Azure Functions
 linkTitle: Azure Functions
 description: How to Develop Azure Functions with YugabyteDB
-image: /images/tutorials/azure/icons/Function-App-Icon.svg
 headcontent: Use YugabyteDB as the backend for Azure Functions
 menu:
   stable_develop:

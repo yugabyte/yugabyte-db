@@ -9,8 +9,10 @@ postgresqlInstallDir=""
 debug="false"
 cassert="false"
 help="false";
+withasan="false"
 pgVersion=""
-while getopts "d:hxcv:" opt; do
+withvalgrind="false"
+while getopts "d:hxcv:ag" opt; do
   case $opt in
     d) postgresqlInstallDir="$OPTARG"
     ;;
@@ -21,6 +23,10 @@ while getopts "d:hxcv:" opt; do
     h) help="true"
     ;;
     v) pgVersion="$OPTARG"
+    ;;
+    a) withasan="true"
+    ;;
+    g) withvalgrind="true"
     ;;
   esac
 
@@ -79,10 +85,23 @@ git checkout FETCH_HEAD
 
 echo "building and installing postgresql ref $POSTGRESQL_REF and installing to $postgresqlInstallDir..."
 
-if [ "$debug" == "true" ]; then
-  ./configure --enable-debug --enable-cassert --enable-tap-tests CFLAGS="-ggdb -Og -g3 -fno-omit-frame-pointer" --with-openssl --prefix="$postgresqlInstallDir" --with-icu
-elif [ "$cassert" == "true" ]; then
+EXTRA_CPP_FLAGS=" "
+if [ "$withvalgrind" == "true" ]; then
+  EXTRA_CPP_FLAGS=" -DUSE_VALGRIND -Og"
+fi
+
+if [ "$withasan" == "true" ]; then
+  export CPPFLAGS="-ggdb -Og -g3 -fsanitize=address -fsanitize=undefined -fno-sanitize-recover=all -fno-sanitize=nonnull-attribute -fstack-protector $EXTRA_CPP_FLAGS"
+  export LDFLAGS="-fsanitize=address -fsanitize=undefined -lstdc++ -static-libasan"
   ./configure --enable-debug --enable-cassert --enable-tap-tests --with-openssl --prefix="$postgresqlInstallDir" --with-icu
+elif [ "$debug" == "true" ]; then
+  ./configure --enable-debug --enable-cassert --enable-tap-tests CFLAGS="-ggdb -Og -g3 -fno-omit-frame-pointer $EXTRA_CPP_FLAGS" --with-openssl --prefix="$postgresqlInstallDir" --with-icu
+elif [ "$cassert" == "true" ]; then
+  export CPPFLAGS="$EXTRA_CPP_FLAGS"
+  ./configure --enable-debug --enable-cassert --enable-tap-tests --with-openssl --prefix="$postgresqlInstallDir" --with-icu
+elif [ "$withvalgrind" == "true" ]; then
+  export CPPFLAGS="$EXTRA_CPP_FLAGS"
+  ./configure --enable-debug --enable-tap-tests --with-openssl --prefix="$postgresqlInstallDir" --with-icu
 else
   ./configure --enable-debug --enable-tap-tests --with-openssl --prefix="$postgresqlInstallDir" --with-icu
 fi

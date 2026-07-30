@@ -33,7 +33,7 @@
 
 #include "yb/tools/bulk_load_utils.h"
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace tools {

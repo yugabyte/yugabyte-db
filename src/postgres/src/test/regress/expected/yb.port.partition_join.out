@@ -980,25 +980,25 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1_l WHERE prt1_l.b = 0) t1 
                      ->  Seq Scan on prt2_l_p1 prt2_l_1
                            Storage Filter: (a = 0)
          ->  Hash Full Join
-               Hash Cond: ((prt1_l_2.a = prt2_l_2.b) AND ((prt1_l_2.c)::text = (prt2_l_2.c)::text))
-               ->  Seq Scan on prt1_l_p2_p1 prt1_l_2
-                     Storage Filter: (b = 0)
-               ->  Hash
-                     ->  Seq Scan on prt2_l_p2_p1 prt2_l_2
-                           Storage Filter: (a = 0)
-         ->  Hash Full Join
                Hash Cond: ((prt1_l_3.a = prt2_l_3.b) AND ((prt1_l_3.c)::text = (prt2_l_3.c)::text))
-               ->  Seq Scan on prt1_l_p2_p2 prt1_l_3
+               ->  Seq Scan on prt1_l_p2_p1 prt1_l_3
                      Storage Filter: (b = 0)
                ->  Hash
-                     ->  Seq Scan on prt2_l_p2_p2 prt2_l_3
+                     ->  Seq Scan on prt2_l_p2_p1 prt2_l_3
                            Storage Filter: (a = 0)
          ->  Hash Full Join
                Hash Cond: ((prt1_l_4.a = prt2_l_4.b) AND ((prt1_l_4.c)::text = (prt2_l_4.c)::text))
-               ->  Seq Scan on prt1_l_p3_p1 prt1_l_4
+               ->  Seq Scan on prt1_l_p2_p2 prt1_l_4
                      Storage Filter: (b = 0)
                ->  Hash
-                     ->  Seq Scan on prt2_l_p3_p1 prt2_l_4
+                     ->  Seq Scan on prt2_l_p2_p2 prt2_l_4
+                           Storage Filter: (a = 0)
+         ->  Hash Full Join
+               Hash Cond: ((prt1_l_6.a = prt2_l_6.b) AND ((prt1_l_6.c)::text = (prt2_l_6.c)::text))
+               ->  Seq Scan on prt1_l_p3_p1 prt1_l_6
+                     Storage Filter: (b = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_l_p3_p1 prt2_l_6
                            Storage Filter: (a = 0)
 (31 rows)
 
@@ -1058,10 +1058,10 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1_l WHERE a = 1 AND a = 2) 
    Hash Cond: ((t2.b = a) AND (t2.a = b) AND ((t2.c)::text = (c)::text))
    ->  Append
          ->  Seq Scan on prt2_l_p1 t2_1
-         ->  Seq Scan on prt2_l_p2_p1 t2_2
-         ->  Seq Scan on prt2_l_p2_p2 t2_3
-         ->  Seq Scan on prt2_l_p3_p1 t2_4
-         ->  Seq Scan on prt2_l_p3_p2 t2_5
+         ->  Seq Scan on prt2_l_p2_p1 t2_3
+         ->  Seq Scan on prt2_l_p2_p2 t2_4
+         ->  Seq Scan on prt2_l_p3_p1 t2_6
+         ->  Seq Scan on prt2_l_p3_p2 t2_7
    ->  Hash
          ->  Result prt1_l
                One-Time Filter: false

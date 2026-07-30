@@ -122,6 +122,19 @@ SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.
 
 -- fails
 SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('list_metadata_db1', '{ "listIndexes": "list_metadata_view1_1" }') ORDER BY 1;
-ERROR:  Namespace list_metadata_db1.list_metadata_view1_1 is a view, not a collection
+ERROR:  The namespace list_metadata_db1.list_metadata_view1_1 refers to a view object rather than a collection
 SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('list_metadata_db1', '{ "listIndexes": "list_metadata_non_existent" }') ORDER BY 1;
-ERROR:  ns does not exist: list_metadata_db1.list_metadata_non_existent
+ERROR:  Namespace does not currently exist: list_metadata_db1.list_metadata_non_existent
+-- test with add distributed metadata when there's a view
+SELECT COUNT(*) FROM ( SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_collections_cursor_first_page('list_metadata_db1', '{ "listCollections": 1, "addDistributedMetadata": true }')) i;
+ count 
+---------------------------------------------------------------------
+     2
+(1 row)
+
+SELECT COUNT(*) FROM ( SELECT bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_collections_cursor_first_page('list_metadata_db2', '{ "listCollections": 1, "addDistributedMetadata": true }')) i;
+ count 
+---------------------------------------------------------------------
+     2
+(1 row)
+

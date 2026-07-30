@@ -76,12 +76,6 @@ class PgExportSnapshotTest : public LibPqTestBase {
     }
   }
 
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    constexpr auto kEnableSnapshotFlag = "ysql_enable_pg_export_snapshot"sv;
-    auto& tserver_flags = options->extra_tserver_flags;
-    tserver_flags.push_back(Format("--allowed_preview_flags_csv=$0", kEnableSnapshotFlag));
-    tserver_flags.push_back(Format("--$0=true", kEnableSnapshotFlag));
-  }
 
   template <class... Args>
   static auto FetchAllAsSet(PGConn& conn, std::string_view table) {

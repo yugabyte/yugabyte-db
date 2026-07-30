@@ -27,6 +27,7 @@
 #include "yb/yql/pgwrapper/pg_locks_test_base.h"
 
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_uint64(refresh_waiter_timeout_ms);
@@ -996,7 +997,9 @@ class PgGetLockStatusTestDisableObjectLocks : public PgLocksTestBase {
  protected:
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = false;
     PgLocksTestBase::SetUp();
   }
@@ -1189,7 +1192,8 @@ TEST_F(PgGetLockStatusTestRF3, PgLocksDuringTabletLeaderStepdown) {
       leader_ts = cluster_->mini_tablet_server((idx + 1) % cluster_->num_tablet_servers());
       TEST_PAUSE_IF_FLAG(TEST_pause_get_lock_status);
       LOG(INFO) << "Stepping down tablet " << leader_peer->tablet_id();
-      ASSERT_OK(StepDown(leader_peer, leader_ts->server()->permanent_uuid(), ForceStepDown::kTrue));
+      ASSERT_OK(TransferLeadership(
+          cluster_.get(), leader_peer->tablet_id(), leader_ts->server()->permanent_uuid()));
       LOG(INFO) << "Stepdown completed for tablet " << leader_peer->tablet_id();
     });
   }

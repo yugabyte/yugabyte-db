@@ -24,9 +24,9 @@ is_yb_file() {
     echo "Invalid arguments $*" >&2
     exit 1
   fi
-  if [[ "$1" =~ /yb[^/]+\.[ch]$ ||
-        "$1" =~ /pg_yb[^/]+\.[ch]$ ||
-        "$1" =~ /nodeYb[^/]+\.[ch]$ ||
+  if [[ "$1" =~ /yb[^/]+\.[ch](pp)?$ ||
+        "$1" =~ /pg_yb[^/]+\.[ch](pp)?$ ||
+        "$1" =~ /nodeYb[^/]+\.[ch](pp)?$ ||
         "$1" =~ /yb-extensions/ ]]; then
     return 0
   else
@@ -105,7 +105,8 @@ if is_yb_file "$1"; then
     fi
 
     prev_line=$line
-  done < <(grep -nB 100 '^#include' "$1" | grep -EA 100 '^[0-9]+[:-]#include')
+  # Match only .h/.hpp includes, not .def X-macro includes.
+  done < <(grep -nB 100 '^#include.*\.h' "$1" | grep -EA 100 '^[0-9]+[:-]#include')
 else
   diff_result=$("${BASH_SOURCE%/*}"/diff_file_with_upstream.py "$1")
   exit_code=$?

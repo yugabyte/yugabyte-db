@@ -5,11 +5,11 @@ SET citus.next_shard_id TO 1033000;
 SET documentdb.next_collection_id TO 10330;
 SET documentdb.next_collection_index_id TO 10330;
 
-SELECT documentdb_api.insert_one('db','testPercentileAndMedian',' { "_id" : 1, "group": 1, "dataVal": 36, "dataVal2": 36, "dataVal3": {"$numberDecimal": "36"}, "dataVal4": 36, "dataVal5": NaN }', NULL);
-SELECT documentdb_api.insert_one('db','testPercentileAndMedian',' { "_id" : 2, "group": 1, "dataVal": 22, "dataVal2": 22, "dataVal3": {"$numberDecimal": "22"}, "dataVal4": 22, "dataVal5": Infinity }', NULL);
-SELECT documentdb_api.insert_one('db','testPercentileAndMedian',' { "_id" : 3, "group": 1, "dataVal": 67, "dataVal2": "string", "dataVal3": {"$numberDecimal": "67"}, "dataVal4": {"$numberDecimal": "2E+310"}, "dataVal5": Infinity }', NULL);
-SELECT documentdb_api.insert_one('db','testPercentileAndMedian',' { "_id" : 4, "group": 1, "dataVal": 3, "dataVal2": 3, "dataVal3": {"$numberDecimal": "3"}, "dataVal4": 3, "dataVal5": -Infinity }', NULL);
-SELECT documentdb_api.insert_one('db','testPercentileAndMedian',' { "_id" : 5, "group": 1, "dataVal": 55, "dataVal2": 55, "dataVal3": {"$numberDecimal": "55"}, "dataVal4": 55, "dataVal5": NaN }', NULL);
+SELECT documentdb_api.insert_one('db','testPercentileAndMedian',' { "_id" : 1, "group": 1, "dataVal": 111, "dataVal2": 111, "dataVal3": {"$numberDecimal": "111"}, "dataVal4": 111, "dataVal5": NaN }', NULL);
+SELECT documentdb_api.insert_one('db','testPercentileAndMedian',' { "_id" : 2, "group": 1, "dataVal": 11, "dataVal2": 11, "dataVal3": {"$numberDecimal": "11"}, "dataVal4": 11, "dataVal5": Infinity }', NULL);
+SELECT documentdb_api.insert_one('db','testPercentileAndMedian',' { "_id" : 3, "group": 1, "dataVal": 11111, "dataVal2": "string", "dataVal3": {"$numberDecimal": "11111"}, "dataVal4": {"$numberDecimal": "2E+310"}, "dataVal5": Infinity }', NULL);
+SELECT documentdb_api.insert_one('db','testPercentileAndMedian',' { "_id" : 4, "group": 1, "dataVal": 1, "dataVal2": 1, "dataVal3": {"$numberDecimal": "1"}, "dataVal4": 1, "dataVal5": -Infinity }', NULL);
+SELECT documentdb_api.insert_one('db','testPercentileAndMedian',' { "_id" : 5, "group": 1, "dataVal": 1111, "dataVal2": 1111, "dataVal3": {"$numberDecimal": "1111"}, "dataVal4": 1111, "dataVal5": NaN }', NULL);
 
 -- positive test case for percentile
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "testPercentileAndMedian", "pipeline": [ { "$group": { "_id": "$group", "percentileVal": { "$percentile": { "input": "$dataVal", "p": [ 0.95 ], "method": "approximate" } } } } ] }');

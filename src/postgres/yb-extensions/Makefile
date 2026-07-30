@@ -1,4 +1,5 @@
 DIRS = \
+	pg_dist_rag \
 	yb_pg_metrics \
 	yb_test_extension \
 	yb_xcluster_ddl_replication \

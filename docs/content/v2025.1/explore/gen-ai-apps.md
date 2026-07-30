@@ -42,8 +42,6 @@ In AI, data is often represented as vectors (or embeddings). These are long list
 
 Vector-based similarity searches are commonly used in step 1 of the [RAG](#retrieval-augmented-generation) workflow. Specifically, they are used to generate an abbreviated context (consisting of only a handful of data excerpts). The alternative, using *all* data as context, is typically avoided because it's inefficient, costly, and often infeasible.
 
-Vector-based similarity searches are commonly used in step 1 of the [RAG](#retrieval-augmented-generation) workflow described in the preceding section. Specifically, they are used to generate an abbreviated context (consisting of only a handful of data excerpts). The alternative approach of using an un-abbreviated context – that is, using all data as context is typically avoided because it's inefficient, costly and often infeasible.
-
 ### Model Context Protocol (MCP)
 
 MCP is an industry standard that acts as a secure bridge between AI applications and your data sources. Whereas RAG enhances the _input_ to an LLM by adding context to the prompt, MCP enhances an LLM's runtime capabilities. MCP allows an LLM, during the course of generating a response, to actively access enterprise services like YugabyteDB to fetch the specific data it needs.

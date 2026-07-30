@@ -69,6 +69,9 @@ typedef struct rf_context
 								 * relation's row filter */
 	Oid			relid;			/* relid of the relation */
 	Oid			parentid;		/* relid of the parent relation */
+
+
+	AttrNumber	yb_minattr;		/* YB: offset used to build bms_replident */
 } rf_context;
 
 static List *OpenTableList(List *tables);
@@ -249,7 +252,8 @@ contain_invalid_rfcolumn_walker(Node *node, rf_context *context)
 			attnum = get_attnum(context->relid, colname);
 		}
 
-		if (!bms_is_member(attnum - FirstLowInvalidHeapAttributeNumber,
+		/* YB: use the same offset that was used to build bms_replident */
+		if (!bms_is_member(attnum - context->yb_minattr,
 						   context->bms_replident))
 			return true;
 	}
@@ -319,6 +323,9 @@ pub_rf_contains_invalid_column(Oid pubid, Relation relation, List *ancestors,
 		context.pubviaroot = pubviaroot;
 		context.parentid = publish_as_relid;
 		context.relid = relid;
+
+		if (IsYugaByteEnabled())
+			context.yb_minattr = YBGetFirstLowInvalidAttributeNumber(relation);
 
 		/* Remember columns that are part of the REPLICA IDENTITY */
 		bms = RelationGetIndexAttrBitmap(relation,
@@ -401,11 +408,14 @@ pub_collist_contains_invalid_column(Oid pubid, Relation relation, List *ancestor
 		 * does not use offset, so we can't do bms_is_subset(). Instead, we
 		 * have to loop over the idattrs and check all of them are in the
 		 * list.
+		 *
+		 * YB: Use the same offset that was used to build the bitmap.
 		 */
+		AttrNumber	yb_minattr = YBGetFirstLowInvalidAttributeNumber(relation);
 		x = -1;
 		while ((x = bms_next_member(idattrs, x)) >= 0)
 		{
-			AttrNumber	attnum = (x + FirstLowInvalidHeapAttributeNumber);
+			AttrNumber	attnum = (x + yb_minattr); /* YB */
 
 			/*
 			 * If pubviaroot is true, we are validating the column list of the
@@ -796,15 +806,6 @@ CreatePublication(ParseState *pstate, CreatePublicationStmt *stmt)
 							  &publish_via_partition_root_given,
 							  &publish_via_partition_root);
 
-	if (IsYugaByteEnabled() && !(pubactions.pubinsert && pubactions.pubupdate &&
-								 pubactions.pubdelete &&
-								 pubactions.pubtruncate))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("publishing only a subset of DML commands is not yet supported"),
-				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
-						 "19250. React with thumbs up to raise its priority.")));
-
 	puboid = GetNewOidWithIndex(rel, PublicationObjectIndexId,
 								Anum_pg_publication_oid);
 	values[Anum_pg_publication_oid - 1] = ObjectIdGetDatum(puboid);
@@ -1001,15 +1002,6 @@ AlterPublicationOptions(ParseState *pstate, AlterPublicationStmt *stmt,
 							   relname, "publish_via_partition_root")));
 		}
 	}
-
-	if (IsYugaByteEnabled() && !(pubactions.pubinsert && pubactions.pubupdate &&
-								 pubactions.pubdelete &&
-								 pubactions.pubtruncate))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("publishing only a subset of DML commands is not yet supported"),
-				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
-						 "19250. React with thumbs up to raise its priority.")));
 
 	/* Everything ok, form a new tuple. */
 	memset(values, 0, sizeof(values));

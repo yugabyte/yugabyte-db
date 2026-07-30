@@ -37,6 +37,10 @@ ybvectoroptions(Datum reloptions, bool validate)
 IndexBulkDeleteResult *
 ybvectorvacuumcleanup(IndexVacuumInfo *info, IndexBulkDeleteResult *stats)
 {
+	/* No-op in ANALYZE ONLY mode */
+	if (info->analyze_only)
+		return stats;
+
 	elog(WARNING, "Unexpected index cleanup via vacuum");
 	return NULL;
 }

@@ -50,8 +50,10 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -106,7 +108,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
       when(mockClient.listMasterRaftPeers()).thenReturn(listMastersResponse);
       mockClockSyncResponse(mockNodeUniverseManager);
       mockLocaleCheckResponse(mockNodeUniverseManager);
-
+      mockDbNodePortConnectivityResponse(mockNodeUniverseManager);
       when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
     } catch (Exception e) {
       fail();
@@ -206,6 +208,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.InstallNodeAgent,
           TaskType.SetNodeStatus, // to ServerSetup
           TaskType.RunHooks,
+          TaskType.CheckDbNodePortConnectivity,
           TaskType.CheckLocale,
           TaskType.CheckGlibc,
           TaskType.AnsibleConfigureServers, // Gflags - master
@@ -223,6 +226,72 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.UniverseUpdateSucceeded);
 
   private static final List<JsonNode> ADD_NODE_TASK_EXPECTED_RESULTS =
+      ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("state", "Adding")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()), // provisioned
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()), // CheckDbNodePortConnectivity
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("process", "tserver", "command", "start")),
+          Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", true)),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("state", "Live")),
+          Json.toJson(ImmutableMap.of()));
+
+  // On-prem skips CheckDbNodePortConnectivity when a live node exists in the AZ.
+  private static final List<TaskType> ADD_NODE_TASK_SEQUENCE_ON_PREM =
+      ImmutableList.of(
+          TaskType.InstanceExistCheck,
+          TaskType.CheckLeaderlessTablets,
+          TaskType.UpdateConsistencyCheck,
+          TaskType.FreezeUniverse,
+          TaskType.SetNodeState, // to Adding
+          TaskType.SetNodeStatus, // to Adding for 'To Be Added'
+          TaskType.AnsibleCreateServer,
+          TaskType.AnsibleUpdateNodeInfo,
+          TaskType.RunHooks,
+          TaskType.SetupYNP,
+          TaskType.YNPProvisioning,
+          TaskType.InstallNodeAgent,
+          TaskType.SetNodeStatus, // to ServerSetup
+          TaskType.RunHooks,
+          TaskType.CheckLocale,
+          TaskType.CheckGlibc,
+          TaskType.AnsibleConfigureServers, // Gflags - master
+          TaskType.AnsibleConfigureServers, // Gflags - tServer
+          TaskType.SetNodeStatus, // ToJoinCluster
+          TaskType.WaitForClockSync, // Ensure clock skew is low enough
+          TaskType.AnsibleClusterServerCtl, // start process
+          TaskType.UpdateNodeProcess,
+          TaskType.WaitForServer,
+          TaskType.WaitForServer, // wait for postgres to be up
+          TaskType.SwamperTargetsFileUpdate,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForTServerHeartBeats,
+          TaskType.SetNodeState,
+          TaskType.UniverseUpdateSucceeded);
+
+  private static final List<JsonNode> ADD_NODE_TASK_ON_PREM_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -334,6 +403,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.InstallNodeAgent,
           TaskType.SetNodeStatus, // provisioned
           TaskType.RunHooks,
+          TaskType.CheckDbNodePortConnectivity,
           TaskType.CheckLocale,
           TaskType.CheckGlibc,
           TaskType.AnsibleConfigureServers, // install software, under-replicated
@@ -382,6 +452,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()), // CheckDbNodePortConnectivity
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "master", "command", "start")),
           Json.toJson(ImmutableMap.of()),
@@ -405,7 +476,18 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
   private void assertAddNodeSequence(
       Map<Integer, List<TaskInfo>> subTasksByPosition,
       boolean isNodeDecomissioned,
-      boolean masterUnderReplicated) {
+      boolean masterUnderReplicated,
+      boolean isOnPrem) {
+    assertAddNodeSequence(
+        subTasksByPosition, isNodeDecomissioned, masterUnderReplicated, isOnPrem, true);
+  }
+
+  private void assertAddNodeSequence(
+      Map<Integer, List<TaskInfo>> subTasksByPosition,
+      boolean isNodeDecomissioned,
+      boolean masterUnderReplicated,
+      boolean isOnPrem,
+      boolean hasConnectivityCheck) {
     int position = 0;
     List<TaskType> expectedTaskSequence = ADD_NODE_TASK_SEQUENCE;
     List<JsonNode> taskExpectedResults = ADD_NODE_TASK_EXPECTED_RESULTS;
@@ -415,6 +497,21 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     } else if (masterUnderReplicated) {
       expectedTaskSequence = WITH_MASTER_UNDER_REPLICATED;
       taskExpectedResults = WITH_MASTER_UNDER_REPLICATED_RESULTS;
+    } else if (isOnPrem) {
+      expectedTaskSequence = ADD_NODE_TASK_SEQUENCE_ON_PREM;
+      taskExpectedResults = ADD_NODE_TASK_ON_PREM_EXPECTED_RESULTS;
+    }
+    if (!hasConnectivityCheck) {
+      List<TaskType> filtered = new ArrayList<>();
+      List<JsonNode> filteredResults = new ArrayList<>();
+      for (int i = 0; i < expectedTaskSequence.size(); i++) {
+        if (expectedTaskSequence.get(i) != TaskType.CheckDbNodePortConnectivity) {
+          filtered.add(expectedTaskSequence.get(i));
+          filteredResults.add(taskExpectedResults.get(i));
+        }
+      }
+      expectedTaskSequence = filtered;
+      taskExpectedResults = filteredResults;
     }
     for (TaskType expectedTaskType : expectedTaskSequence) {
       List<TaskInfo> tasks = subTasksByPosition.get(position);
@@ -466,11 +563,11 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     TaskInfo taskInfo = submitTask(defaultUniverse.getUniverseUUID(), DEFAULT_NODE_NAME, 3);
     assertEquals(Success, taskInfo.getTaskState());
 
-    verify(mockNodeManager, times(11)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertAddNodeSequence(subTasksByPosition, false, false);
+    assertAddNodeSequence(subTasksByPosition, false, false, false);
 
     if (isHAConfig) {
       // In HA config mode, we expect any save of universe details to result in
@@ -491,11 +588,11 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
         submitTask(onPremUniverse.getUniverseUUID(), onPremProvider, DEFAULT_NODE_NAME, 3);
     assertEquals(Success, taskInfo.getTaskState());
 
-    verify(mockNodeManager, times(11)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertAddNodeSequence(subTasksByPosition, false, false);
+    assertAddNodeSequence(subTasksByPosition, false, false, true);
   }
 
   @Test
@@ -506,11 +603,11 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
         submitTask(onPremUniverse.getUniverseUUID(), onPremProvider, DEFAULT_NODE_NAME, 4);
     assertEquals(Success, taskInfo.getTaskState());
 
-    verify(mockNodeManager, times(10)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(8)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertAddNodeSequence(subTasksByPosition, true, false);
+    assertAddNodeSequence(subTasksByPosition, true, false, false);
   }
 
   @Test
@@ -555,11 +652,11 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     assertEquals(Success, taskInfo.getTaskState());
 
     // 5 calls for setting up the server and then 6 calls for setting the conf files.
-    verify(mockNodeManager, times(19)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertAddNodeSequence(subTasksByPosition, false, true);
+    assertAddNodeSequence(subTasksByPosition, false, true, false);
     verifyMasterAddressUpdateAffectedNodes(subTasksByPosition, 3);
   }
 
@@ -576,6 +673,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
   @Test
   public void testAddNodeWithUnderReplicatedMaster_WithReadOnlyCluster_NodeFromPrimary() {
     Universe universe = createUniverse("Demo");
+    // No masters.
     universe =
         Universe.saveDetails(
             universe.getUniverseUUID(),
@@ -587,11 +685,12 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
     TaskInfo taskInfo = submitTask(universe.getUniverseUUID(), DEFAULT_NODE_NAME, 4);
     assertEquals(Failure, taskInfo.getTaskState());
-    verify(mockNodeManager, times(3)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertAddNodeSequence(subTasksByPosition, false, true /* Master start is expected */);
+    assertAddNodeSequence(
+        subTasksByPosition, false, true, false, false /* no AZ setup, skip connectivity check */);
   }
 
   @Test
@@ -613,12 +712,13 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     setDefaultNodeState(universe, NodeState.Removed, "yb-tserver-0");
 
     TaskInfo taskInfo = submitTask(universe.getUniverseUUID(), "yb-tserver-0", 5);
-    assertEquals(Failure, taskInfo.getTaskState());
-    verify(mockNodeManager, times(3)).nodeCommand(any(), any());
+    assertEquals(Success, taskInfo.getTaskState());
+    verify(mockNodeManager, times(9)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertAddNodeSequence(subTasksByPosition, false, false /* Master start is unexpected */);
+    assertAddNodeSequence(
+        subTasksByPosition, false, false, false, false /* no AZ setup, skip connectivity check */);
   }
 
   private void setDefaultGFlags(Universe universe) {
@@ -671,6 +771,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
     NodeTaskParams taskParams = new NodeTaskParams();
     taskParams.clusters.addAll(universe.getUniverseDetails().clusters);
+    taskParams.nodeDetailsSet = new HashSet<>(universe.getUniverseDetails().nodeDetailsSet);
     taskParams.expectedUniverseVersion = universe.getVersion();
     taskParams.nodeName = DEFAULT_NODE_NAME;
     taskParams.setUniverseUUID(universe.getUniverseUUID());

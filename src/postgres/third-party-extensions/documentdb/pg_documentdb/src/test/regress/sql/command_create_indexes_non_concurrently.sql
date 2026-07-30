@@ -270,9 +270,9 @@ BEGIN;
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "a": { "_id": 1 } }, "projection": { "a": 1 } }');
 
   -- cannot use idx_1
-  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "b.d": { "$eq": 1 } }, "projection": { "a": 1 } }');
-  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "b": { "$eq": {"d": 1} } }, "projection": { "a": 1 } }');
-  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "e": { "$eq": 1 } }, "projection": { "a": 1 } }');
+  SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "b.d": { "$eq": 1 } }, "projection": { "a": 1 } }') $cmd$);
+  SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "b": { "$eq": {"d": 1} } }, "projection": { "a": 1 } }') $cmd$);
+  SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "e": { "$eq": 1 } }, "projection": { "a": 1 } }') $cmd$);
 COMMIT;
 
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test',
@@ -296,16 +296,16 @@ BEGIN;
   set local enable_seqscan TO OFF;
 
   -- cannot use idx_1
-  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a.b": { "$eq": 1 } }, "projection": { "a": 1 } }');
-  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a": { "$eq": 1 } }, "projection": { "a": 1 } }');
-  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a": { "$eq": {"b": 1} } }, "projection": { "a": 1 } }');
-  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a": { "_id": 1 } }, "projection": { "a": 1 } }');
+  SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a.b": { "$eq": 1 } }, "projection": { "a": 1 } }') $cmd$);
+  SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a": { "$eq": 1 } }, "projection": { "a": 1 } }') $cmd$);
+  SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a": { "$eq": {"b": 1} } }, "projection": { "a": 1 } }') $cmd$);
+  SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a": { "_id": 1 } }, "projection": { "a": 1 } }') $cmd$);
 
   -- can use idx_1
-  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "b.d": { "$eq": 1 } }, "projection": { "a": 1 } }');
-  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "b": { "$eq": {"d": 1} } }, "projection": { "a": 1 } }');
-  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "e": { "$eq": 1 } }, "projection": { "a": 1 } }');
-  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "f.g": { "$eq": 1 } }, "projection": { "a": 1 } }');
+  SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "b.d": { "$eq": 1 } }, "projection": { "a": 1 } }') $cmd$);
+  SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "b": { "$eq": {"d": 1} } }, "projection": { "a": 1 } }') $cmd$);
+  SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "e": { "$eq": 1 } }, "projection": { "a": 1 } }') $cmd$);
+  SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "f.g": { "$eq": 1 } }, "projection": { "a": 1 } }') $cmd$);
 COMMIT;
 
 SELECT documentdb_api.insert_one('wp_test', 'ok_test_4', '{"b": {"d": 1}, "a": {"k": 1}}');
@@ -326,7 +326,7 @@ BEGIN;
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": {"b.d": {"$in": [1,2,3]}}, "projection": { "a": 1 } }');
 
   -- cannot use idx_1 due to filter on "a.z.r" in "$or"
-  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": {"$or": [{"b.d": {"$eq": [1,2,3]}}, {"a.z": {"r": {"$gte": 5}}}]}, "projection": { "a": 1 } }');
+  SELECT documentdb_test_helpers.run_explain_and_trim($cmd$ EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": {"$or": [{"b.d": {"$eq": [1,2,3]}}, {"a.z": {"r": {"$gte": 5}}}]}, "projection": { "a": 1 } }') $cmd$);
 
   -- can use idx_1 since none of the quals in "$or" are excluded
   EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": {"$or": [{"b.d": {"$eq": [1,2,3]}}, {"k": 5}]}, "projection": { "a": 1 } }');

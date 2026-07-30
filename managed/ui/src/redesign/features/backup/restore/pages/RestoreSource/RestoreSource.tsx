@@ -22,6 +22,8 @@ import { GetRestoreContext, prepareValidationPayload } from '../../RestoreUtils'
 import { createErrorMessage } from '../../../../universe/universe-form/utils/helpers';
 import { validateRestorableTables, ValidateRestoreApiReq } from '../../api/api';
 import { RestoreFormModel } from '../../models/RestoreFormModel';
+import { RestoreRolesOption } from '../RestoreTarget/RestoreRolesOption';
+import { TableType } from '@app/redesign/helpers/dtos';
 
 const useStyles = makeStyles(() => ({
   root: {
@@ -37,6 +39,8 @@ const RestoreSource = forwardRef<PageRef>((_, forwardRef) => {
     restoreContext,
     { moveToPage, setDisableSubmit, setSubmitLabel, setisSubmitting }
   ] = GetRestoreContext();
+
+  const [{ backupDetails }] = GetRestoreContext();
 
   const classes = useStyles();
 
@@ -96,7 +100,7 @@ const RestoreSource = forwardRef<PageRef>((_, forwardRef) => {
             });
         })();
       },
-      onPrev: () => { }
+      onPrev: () => {}
     }),
     [restoreContext]
   );
@@ -106,6 +110,11 @@ const RestoreSource = forwardRef<PageRef>((_, forwardRef) => {
       <SelectDBAndTables />
       <Divider orientation="horizontal" className={classes.divider} />
       <SelectTimeframe />
+      <Divider orientation="horizontal" className={classes.divider} />
+      {/* If backup taken does not include roles, then the restore roles option should be disabled. */}
+      {backupDetails?.backupType === TableType.PGSQL_TABLE_TYPE && (
+        <RestoreRolesOption disabled={!backupDetails?.useRoles} />
+      )}
     </div>
   );
 });

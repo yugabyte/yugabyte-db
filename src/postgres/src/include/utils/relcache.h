@@ -174,5 +174,9 @@ extern bool YbSharedRelationIdNeedsGlobalImpact(Oid relationId);
 extern Relation YbRelationIdCacheLookup(Oid relid);
 
 extern long YbGetRelCachePreloads(void);
+extern long YbGetRelCacheInitFileRevalidated(void);
+extern long YbGetRelCacheInitFileRevalidationFailed(void);
+
+extern void YbPrefetchRequiredData(bool preload_rel_cache);
 
 #endif							/* RELCACHE_H */

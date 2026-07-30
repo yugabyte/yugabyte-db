@@ -17,8 +17,12 @@ import static com.yugabyte.yw.common.AssertHelper.assertErrorResponse;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
 
@@ -29,8 +33,10 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.controllers.handlers.UniverseYbDbAdminHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.MultiTenancyConfig;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -349,6 +355,55 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
   }
 
   @Test
+  public void testConfigureYSQLValidateParamsOnly() {
+    Universe universe = createUniverse(customer.getId());
+    updateUniverseAPIDetails(universe, true, false, true, false);
+    ObjectNode bodyJson =
+        Json.newObject()
+            .put("enableYSQL", true)
+            .put("enableYSQLAuth", true)
+            .put("ysqlPassword", "Admin@123")
+            .put("validateParams", true);
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/configure/ysql";
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertOk(result);
+    JsonNode resultJson = Json.parse(contentAsString(result));
+    assertNull("No taskUUID expected when validateParams is true", resultJson.get("taskUUID"));
+    verify(mockCommissioner, never()).submit(any(), any());
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testConfigureYSQLRunOnlyPrechecks() {
+    Universe universe = createUniverse(customer.getId());
+    updateUniverseAPIDetails(universe, true, false, true, false);
+    ObjectNode bodyJson =
+        Json.newObject()
+            .put("enableYSQL", true)
+            .put("enableYSQLAuth", true)
+            .put("ysqlPassword", "Admin@123")
+            .put("runOnlyPrechecks", true);
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/configure/ysql";
+    UUID taskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.ConfigureDBApis);
+    when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertOk(result);
+    JsonNode resultJson = Json.parse(contentAsString(result));
+    assertNotNull("taskUUID expected when runOnlyPrechecks is true", resultJson.get("taskUUID"));
+    verify(mockCommissioner, times(1)).submit(any(), any());
+  }
+
+  @Test
   public void testConfigureYSQLWhenYsqlMajorVersionUpgradeInMonitoringPhase() {
     when(mockSoftwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(any())).thenReturn(true);
     Universe universe = createUniverse(customer.getId());
@@ -412,6 +467,189 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
         result,
         "Disabling YCQL is not allowed. Please set yb.configure_db_api.allow_disable to allow"
             + " disable DB API");
+  }
+
+  @Test
+  public void testConfigureYSQLEnableMultiTenancySkipsYcqlCheckWithRuntimeConf() {
+    // skipYcqlPrecheck=true allows enabling multi-tenancy even when YCQL is on.
+    Universe universe = createUniverse(customer.getId());
+    updateUniverseAPIDetails(universe, true, false, true, false);
+    prepareUniverseForMultiTenancy(universe);
+    when(mockRuntimeConfig.getBoolean(UniverseConfKeys.allowMultiTenancy.getKey()))
+        .thenReturn(true);
+    when(mockRuntimeConfig.getBoolean(UniverseConfKeys.multitenancySkipYcqlPrecheck.getKey()))
+        .thenReturn(true);
+
+    ObjectNode multiTenancyJson = Json.newObject().put("enableQos", true);
+    ObjectNode bodyJson =
+        Json.newObject()
+            .put("enableYSQL", true)
+            .put("enableYSQLAuth", false)
+            .set("multiTenancy", multiTenancyJson);
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/configure/ysql";
+    UUID taskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.ConfigureDBApis);
+    when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
+
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertOk(result);
+  }
+
+  @Test
+  public void testConfigureYSQLEnableMultiTenancyFailsWhenYcqlEnabledAndPrecheckNotSkipped() {
+    // Default skipYcqlPrecheck=false should reject enabling multi-tenancy if YCQL is on.
+    Universe universe = createUniverse(customer.getId());
+    updateUniverseAPIDetails(universe, true, false, true, false);
+    prepareUniverseForMultiTenancy(universe);
+    when(mockRuntimeConfig.getBoolean(UniverseConfKeys.allowMultiTenancy.getKey()))
+        .thenReturn(true);
+    when(mockRuntimeConfig.getBoolean(UniverseConfKeys.multitenancySkipYcqlPrecheck.getKey()))
+        .thenReturn(false);
+
+    ObjectNode multiTenancyJson = Json.newObject().put("enableQos", true);
+    ObjectNode bodyJson =
+        Json.newObject()
+            .put("enableYSQL", true)
+            .put("enableYSQLAuth", false)
+            .set("multiTenancy", multiTenancyJson);
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/configure/ysql";
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(
+        result,
+        String.format(
+            "Universe %s has YCQL endpoint enabled, cannot enable multi-tenancy",
+            universe.getName()));
+  }
+
+  @Test
+  public void testConfigureYCQLEnableBlockedByMultiTenancyPrecheck() {
+    // When YCQL is being enabled and skipYcqlPrecheck=false, the request must be rejected
+    // because of the multi-tenancy YCQL precheck. Setting skipYcqlPrecheck=true allows it.
+    Universe universe = createUniverse(customer.getId());
+    updateUniverseAPIDetails(universe, true, false, false, false);
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
+    userIntent.setMultiTenancy(new MultiTenancyConfig());
+    userIntent.getMultiTenancy().setEnableQos(true);
+    details.upsertPrimaryCluster(userIntent, null, null);
+    universe.setUniverseDetails(details);
+    universe.save();
+    when(mockRuntimeConfig.getBoolean(UniverseConfKeys.multitenancySkipYcqlPrecheck.getKey()))
+        .thenReturn(false);
+
+    ObjectNode bodyJson =
+        Json.newObject()
+            .put("enableYCQL", true)
+            .put("enableYCQLAuth", true)
+            .put("ycqlPassword", "Admin@123");
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/configure/ycql";
+
+    // skipYcqlPrecheck=false -> rejected.
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(
+        result,
+        String.format(
+            "Universe %s cannot enable YCQL endpoint as multi-tenancy is enabled.",
+            universe.getName()));
+
+    // Flip skipYcqlPrecheck=true -> allowed.
+    when(mockRuntimeConfig.getBoolean(UniverseConfKeys.multitenancySkipYcqlPrecheck.getKey()))
+        .thenReturn(true);
+    UUID taskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.ConfigureDBApis);
+    when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
+    result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertOk(result);
+  }
+
+  @Test
+  public void testConfigureYSQLDisableNotAllowedWhenMultiTenancyEnabled() {
+    // Universe currently has multi-tenancy enabled. Disabling YSQL while keeping
+    // multi-tenancy on must be rejected.
+    Universe universe = createUniverse(customer.getId());
+    updateUniverseAPIDetails(universe, true, false, true, false);
+    prepareUniverseForMultiTenancy(universe);
+    enableMultiTenancyOnUniverse(universe);
+    when(mockRuntimeConfig.getBoolean(UniverseConfKeys.allowMultiTenancy.getKey()))
+        .thenReturn(true);
+    when(mockRuntimeConfig.getBoolean(UniverseConfKeys.allowDisableDBApis.getKey()))
+        .thenReturn(true);
+    when(mockRuntimeConfig.getBoolean(UniverseConfKeys.multitenancySkipYcqlPrecheck.getKey()))
+        .thenReturn(true);
+
+    ObjectNode multiTenancyJson = Json.newObject().put("enableQos", true);
+    ObjectNode bodyJson =
+        Json.newObject()
+            .put("enableYSQL", false)
+            .put("enableYSQLAuth", false)
+            .set("multiTenancy", multiTenancyJson);
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/configure/ysql";
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(
+        result,
+        String.format(
+            "Universe %s will undergo disable YSQL, cannot enable multi-tenancy",
+            universe.getName()));
+  }
+
+  @Test
+  public void testConfigureYSQLEnableMultiTenancyRequiresYsqlEnabled() {
+    // Enabling multi-tenancy while YSQL is being disabled (or not enabled) in the same
+    // request must be rejected.
+    Universe universe = createUniverse(customer.getId());
+    updateUniverseAPIDetails(universe, true, false, true, false);
+    prepareUniverseForMultiTenancy(universe);
+    when(mockRuntimeConfig.getBoolean(UniverseConfKeys.allowMultiTenancy.getKey()))
+        .thenReturn(true);
+    when(mockRuntimeConfig.getBoolean(UniverseConfKeys.allowDisableDBApis.getKey()))
+        .thenReturn(true);
+    when(mockRuntimeConfig.getBoolean(UniverseConfKeys.multitenancySkipYcqlPrecheck.getKey()))
+        .thenReturn(true);
+
+    ObjectNode multiTenancyJson = Json.newObject().put("enableQos", true);
+    ObjectNode bodyJson =
+        Json.newObject()
+            .put("enableYSQL", false)
+            .put("enableYSQLAuth", false)
+            .set("multiTenancy", multiTenancyJson);
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/configure/ysql";
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(
+        result,
+        String.format(
+            "Universe %s will undergo disable YSQL, cannot enable multi-tenancy",
+            universe.getName()));
   }
 
   @Test
@@ -479,6 +717,28 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
     userIntent.enableYSQLAuth = enableYSQLAuth;
     userIntent.enableYCQL = enableYCQL;
     userIntent.enableYCQLAuth = enableYCQLAuth;
+    details.upsertPrimaryCluster(userIntent, null, null);
+    universe.setUniverseDetails(details);
+    universe.save();
+  }
+
+  private void prepareUniverseForMultiTenancy(Universe universe) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
+    userIntent.ybSoftwareVersion =
+        com.yugabyte.yw.common.Util.MULTITENANCY_SUPPORTED_DB_VERSION_STABLE;
+    userIntent.setCpuCgroupConfigured(true);
+    details.upsertPrimaryCluster(userIntent, null, null);
+    universe.setUniverseDetails(details);
+    universe.save();
+  }
+
+  private void enableMultiTenancyOnUniverse(Universe universe) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
+    MultiTenancyConfig mtConfig = new MultiTenancyConfig();
+    mtConfig.setEnableQos(true);
+    userIntent.setMultiTenancy(mtConfig);
     details.upsertPrimaryCluster(userIntent, null, null);
     universe.setUniverseDetails(details);
     universe.save();

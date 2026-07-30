@@ -12,12 +12,11 @@
 from ybops.cloud.common.base import AbstractPerCloudCommand
 from ybops.cloud.common.method import CreateInstancesMethod, ProvisionInstancesMethod, \
     DestroyInstancesMethod, ListInstancesMethod, ConfigureInstancesMethod, \
-    ControlInstanceMethod, AbstractMethod, AccessCreateVaultMethod, InitYSQLMethod, \
-    UpdateDiskMethod, CronCheckMethod, AccessEditVaultMethod, AccessDeleteKeyMethod, \
-    CreateRootVolumesMethod, ReplaceRootVolumeMethod, ChangeInstanceTypeMethod, \
-    UpdateMountedDisksMethod, DeleteRootVolumesMethod, TransferXClusterCerts, VerifySSHConnection, \
-    AddAuthorizedKey, RemoveAuthorizedKey, RebootInstancesMethod, RunHooks, WaitForConnection, \
-    ManageOtelCollector
+    ControlInstanceMethod, AbstractMethod, InitYSQLMethod, UpdateDiskMethod, CronCheckMethod, \
+    AccessDeleteKeyMethod, CreateRootVolumesMethod, ReplaceRootVolumeMethod, \
+    ChangeInstanceTypeMethod, UpdateMountedDisksMethod, DeleteRootVolumesMethod, \
+    TransferXClusterCerts, VerifySSHConnection, RebootInstancesMethod, RunHooks, \
+    WaitForConnection, ManageOtelCollector
 
 
 class InstanceCommand(AbstractPerCloudCommand):
@@ -47,8 +46,6 @@ class InstanceCommand(AbstractPerCloudCommand):
         self.add_method(ChangeInstanceTypeMethod(self))
         self.add_method(TransferXClusterCerts(self))
         self.add_method(VerifySSHConnection(self))
-        self.add_method(AddAuthorizedKey(self))
-        self.add_method(RemoveAuthorizedKey(self))
         self.add_method(RebootInstancesMethod(self))
         self.add_method(RunHooks(self))
         self.add_method(WaitForConnection(self))
@@ -101,8 +98,6 @@ class AccessCommand(AbstractPerCloudCommand):
         super(AccessCommand, self).__init__("access")
 
     def add_methods(self):
-        self.add_method(AccessCreateVaultMethod(self))
-        self.add_method(AccessEditVaultMethod(self))
         self.add_method(AccessDeleteKeyMethod(self))
 
 

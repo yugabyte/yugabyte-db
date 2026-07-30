@@ -19,6 +19,9 @@
 #include <memory>
 #include <queue>
 #include <ranges>
+#include <span>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "yb/gutil/macros.h"
@@ -26,6 +29,7 @@
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/concepts.h"
+#include "yb/util/lw_function.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
@@ -42,16 +46,42 @@ using FetchedTargets = boost::container::small_vector<PgFetchedTarget*, 8>;
 using FetchedTargetsPtr = std::shared_ptr<FetchedTargets>;
 using MergeSortKeys = boost::container::small_vector<YbcSortKey, 8>;
 using MergeSortKeysPtr = std::shared_ptr<MergeSortKeys>;
-using Buffers = boost::container::small_vector<RefCntBuffer, 8>;
-using BuffersPtr = std::shared_ptr<Buffers>;
-using YbctidProcessor = std::function<void(Slice)>;
+using YbctidProcessor = LWFunction<void(Slice)>;
+
+class DocResultDataRetention {
+ public:
+  explicit DocResultDataRetention(const RefCntBuffer& buffer);
+
+  struct Hash {
+    size_t operator()(const DocResultDataRetention& value) const;
+  };
+
+  struct EqualTo {
+    bool operator()(const DocResultDataRetention& lhs, const DocResultDataRetention& rhs) const;
+  };
+
+ private:
+  RefCntBuffer buffer_;
+};
+
+class DocResultYbctidRetention {
+ public:
+  void Clear() { container_.clear(); }
+  void Add(DocResultDataRetention&& retention) { container_.emplace(std::move(retention)); }
+
+ private:
+  using Container =
+      std::unordered_set<
+          DocResultDataRetention, DocResultDataRetention::Hash, DocResultDataRetention::EqualTo>;
+
+  Container container_;
+};
 
 //--------------------------------------------------------------------------------------------------
 // DocResult represents data in ONE reply from tablet servers.
 class DocResult {
  public:
-  explicit DocResult(rpc::SidecarHolder data);
-  DocResult(rpc::SidecarHolder data, const LWPgsqlResponsePB& response);
+  explicit DocResult(rpc::SidecarHolder data, std::span<const int64_t> orders = {});
   virtual ~DocResult() = default;
 
   // End of this batch.
@@ -65,13 +95,6 @@ class DocResult {
 
   int CompareTo(DocResult& other);
 
-  virtual Status ProcessYbctids(const YbctidProcessor& processor) {
-    return ProcessSysEntries([&processor](Slice& data) -> Status {
-      processor(VERIFY_RESULT(ReadYbctid(data)));
-      return Status::OK();
-    });
-  }
-
   // Processes rows containing data other than PG rows. (currently ybctids or sampling reservoir)
   template <PgDocResultSysEntryProcessor Processor>
   Status ProcessSysEntries(const Processor& processor) {
@@ -82,15 +105,13 @@ class DocResult {
     return Status::OK();
   }
 
-  // Row count in this batch.
-  int64_t row_count() const {
-    return row_count_;
-  }
+  int64_t row_count() const { return row_count_; }
 
-  const RefCntBuffer& DataBuffer() { return data_.first; }
+  auto Retention() const { return DocResultDataRetention{data_.first}; }
 
- protected:
-  static Result<Slice> ReadYbctid(Slice& data);
+  virtual Result<Slice> ReadYbctid();
+
+ private:
   // Data selected from DocDB.
   rpc::SidecarHolder data_;
 
@@ -99,7 +120,6 @@ class DocResult {
   int64_t row_count_ = 0;
   size_t current_row_idx_;
 
- private:
   std::vector<int64_t> row_orders_;
   DISALLOW_COPY_AND_ASSIGN(DocResult);
 };
@@ -121,10 +141,9 @@ class PgDocResult : public DocResult {
   virtual Status WritePgTuple(const FetchedTargets& targets, PgTuple* pg_tuple) override;
   Status WritePgTuple(PgTuple* pg_tuple);
   Status NextPgTuple();
-  virtual bool is_eof() const override {
-    return row_count_ == 0 || (!pg_tuple_is_valid_ && row_iterator_.empty());
-  }
-  virtual Status ProcessYbctids(const YbctidProcessor& processor) override;
+  bool is_eof() const override { return DocResult::is_eof() && !pg_tuple_is_valid_; }
+  Result<Slice> ReadYbctid() override;
+
  private:
   struct PgMemoryContextWrapper {
     explicit PgMemoryContextWrapper(void* ptr_) : ptr(ptr_) {}
@@ -162,17 +181,12 @@ class DocResultStream {
   // Static data is a predefined list of DocResult.
   explicit DocResultStream(PgsqlOpPtr op) : op_(op) {}
   explicit DocResultStream(std::list<R>&& results) : results_queue_(std::move(results)) {}
-  ~DocResultStream();
 
   bool operator==(const PgsqlOpPtr& op) const { return op_ == op; }
 
   StreamFetchStatus FetchStatus() const;
 
   void Detach();
-
-  // Do not discard empty DocResults. The held DocResults are discarded when HoldResults() is
-  // called again or when the DocResultStream instance is destroyed.
-  void HoldResults(BuffersPtr holder = nullptr);
 
   // Returns nullptr if nothing is available. May invalidate previously returned data.
   R* GetNextDocResult();
@@ -186,7 +200,6 @@ class DocResultStream {
 
   PgsqlOpPtr op_;
   std::list<R> results_queue_;
-  BuffersPtr old_results_holder_;
 
   DISALLOW_COPY_AND_ASSIGN(DocResultStream);
 };
@@ -233,13 +246,10 @@ class PgDocOpFetchStream {
     return false;
   }
 
-  virtual Result<bool> ProcessNextYbctids(const YbctidProcessor& processor) {
-    auto* result = VERIFY_RESULT(NextDocResult());
-    if (result) {
-      RETURN_NOT_OK(result->ProcessYbctids(processor));
-      return true;
-    }
-    return false;
+  template <InvocableAs<void(Slice)> Processor>
+  Result<bool> ProcessNextYbctids(
+      const Processor& processor, DocResultYbctidRetention* retention = nullptr) {
+    return DoProcessNextYbctids({make_lw_function(processor), retention});
   }
 
   // Returns next DocResult to read from or nullptr if EOF.
@@ -250,18 +260,22 @@ class PgDocOpFetchStream {
   virtual Result<uint64_t> EmplaceOpDocResult(
       const PgsqlOpPtr& op, rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response) = 0;
 
-  BuffersPtr HoldResults(BuffersPtr holder = nullptr);
-
  protected:
   template<class R, typename... Args>
   uint64_t EmplaceDocResult(DocResultStream<R>& stream, Args&&... args);
-  virtual void DoHoldResults() = 0;
+
+  struct YbctidProcessorContext {
+    const YbctidProcessor& processor;
+    DocResultYbctidRetention* retention;
+  };
+
   PgDocFetchCallback fetch_func_;
   FetchedTargetsPtr targets_;
   MergeSortKeysPtr merge_sort_keys_;
-  BuffersPtr old_results_holder_;
 
  private:
+  virtual Result<bool> DoProcessNextYbctids(const YbctidProcessorContext& ctx);
+
   DISALLOW_COPY_AND_ASSIGN(PgDocOpFetchStream);
 };
 
@@ -282,8 +296,6 @@ class ParallelPgDocOpFetchStream : public PgDocOpFetchStream {
       const PgsqlOpPtr& op, rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response) override;
 
   virtual Result<DocResult*> NextDocResult() override;
-
-  virtual void DoHoldResults() override;
 
  private:
   Result<DocResultStream<DocResult>&> FindReadStream(const PgsqlOpPtr& op);
@@ -306,8 +318,6 @@ class CachedPgDocOpFetchStream : public PgDocOpFetchStream {
       const PgsqlOpPtr& op, rpc::SidecarHolder&& data, const LWPgsqlResponsePB& response) override;
 
   virtual Result<DocResult*> NextDocResult() override;
-
-  virtual void DoHoldResults() override {}
 
  private:
   DocResultStream<DocResult> read_stream_;
@@ -342,30 +352,10 @@ class MergingPgDocOpFetchStream : public PgDocOpFetchStream {
 
   virtual Result<DocResult*> NextDocResult() override;
 
-  virtual Result<bool> ProcessNextYbctids(const YbctidProcessor& processor) override {
-    VLOG_WITH_FUNC(4) << "Start";
-    size_t found = 0;
-    DoHoldResults();
-    while (true) {
-      auto* result = VERIFY_RESULT(NextDocResult());
-      if (!result) {
-        VLOG_WITH_FUNC(4) << "All done after " << found << " ybctids processed";
-        return found > 0;
-      }
-      ++found;
-      RETURN_NOT_OK(result->ProcessYbctids(processor));
-      if (current_stream_->FetchStatus() == StreamFetchStatus::kNeedsFetch) {
-        VLOG_WITH_FUNC(4) << "Need to fetch after " << found << " ybctids processed";
-        return true;
-      }
-    }
-  }
-
-  virtual void DoHoldResults() override;
-
  private:
   Result<DocResultStream<R>&> FindReadStream(
       const PgsqlOpPtr& op, const LWPgsqlResponsePB& response);
+  Result<bool> DoProcessNextYbctids(const YbctidProcessorContext& ctx) override;
 
   // The list of streams participating in merge sort.
   std::list<DocResultStream<R>> read_streams_;

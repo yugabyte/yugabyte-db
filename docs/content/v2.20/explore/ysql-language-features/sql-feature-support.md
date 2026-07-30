@@ -149,4 +149,5 @@ This page highlights the important differences in feature support between YSQL a
 | {{<icon/yes>}} | Common table expressions                             |                                                                                    |
 | {{<icon/yes>}} | Extensions                                           | [PostgreSQL extensions](../pg-extensions/)                                         |
 | {{<icon/yes>}} | Foreign data wrappers                                | [Foreign data wrappers](../advanced-features/foreign-data-wrappers/)               |
+| {{<icon/no>}}  | Large objects                                        |                                                                                    |
 {.sno-1}

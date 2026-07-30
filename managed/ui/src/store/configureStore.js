@@ -1,8 +1,11 @@
 // Copyright (c) YugabyteDB, Inc.
 
-const configureStoreModule =
-  import.meta.env.PROD || (window.location && window.location.hostname !== 'localhost')
-    ? await import('./configureStore.prod.js')
-    : await import('./configureStore.dev.js');
+import configureStoreDev from './configureStore.dev.js';
+import configureStoreProd from './configureStore.prod.js';
 
-export default configureStoreModule.default;
+const configureStore =
+  import.meta.env.PROD || (typeof window !== 'undefined' && window.location?.hostname !== 'localhost')
+    ? configureStoreProd
+    : configureStoreDev;
+
+export default configureStore;

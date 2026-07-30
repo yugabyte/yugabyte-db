@@ -41,7 +41,19 @@ YB_DEFINE_ENUM(SortingType,
 static const char* const kObsoleteShortPrimaryTableId = "sys.catalog.uuid";
 
 constexpr auto kPitrFeatureName = "PITR";
+constexpr auto kXClusterFailoverFeatureName = "xCluster failover";
 
 constexpr auto kCDCSDKSlotEntryTabletId = "dummy_id_for_replication_slot";
+
+// Plugin name marking a replication slot as a gRPC CDC stream. Must match YB_GRPC_STREAM_INDICATOR
+// in src/postgres/src/backend/replication/slot.c.
+constexpr auto kYbGrpcStreamIndicator = "yb_grpc";
+
+// Must match YB_OUTPUT_PLUGIN in src/postgres/src/backend/replication/slot.c.
+constexpr auto kYbOutputPluginName = "yboutput";
+
+// Reserved slot-name prefix for the internal LISTEN/NOTIFY notifications replication slots. Must
+// match YbNotificationsSlotPrefix in src/postgres/src/backend/utils/init/globals.c.
+constexpr auto kYbNotificationsSlotPrefix = "yb_notifications_";
 
 } // namespace yb

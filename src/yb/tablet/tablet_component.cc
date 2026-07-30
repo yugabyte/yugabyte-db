@@ -79,6 +79,10 @@ std::mutex& TabletComponent::create_checkpoint_lock() const {
   return tablet_.create_checkpoint_lock_;
 }
 
+Env& TabletComponent::env() const {
+  return tablet_.env();
+}
+
 rocksdb::Env& TabletComponent::rocksdb_env() const {
   return tablet_.rocksdb_env();
 }
@@ -89,12 +93,13 @@ void TabletComponent::RefreshYBMetaDataCache() {
   tablet_.ResetYBMetaDataCache();
 }
 
-docdb::DocVectorIndexesPtr TabletComponent::VectorIndexesList() const {
+VectorIndexList TabletComponent::VectorIndexesList() const {
   return tablet_.vector_indexes().List();
 }
 
-Status TabletComponent::Flush(FlushMode mode, FlushFlags flags) {
-  return tablet_.Flush(mode, flags);
+Status TabletComponent::Flush(
+    FlushMode mode, FlushFlags flags, rocksdb::FlushReason rocksdb_flush_reason) {
+  return tablet_.Flush(mode, flags, rocksdb::FlushOptions::kNeverIgnore, rocksdb_flush_reason);
 }
 
 } // namespace yb::tablet

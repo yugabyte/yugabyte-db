@@ -7,7 +7,7 @@ summary: List of reserved names
 menu:
   v2.20_api:
     identifier: api-ysql-reserved-names
-    parent: api-ysql
+    parent: ysql-language-elements
     weight: 100
 type: docs
 ---

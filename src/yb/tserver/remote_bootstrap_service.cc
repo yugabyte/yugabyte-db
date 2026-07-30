@@ -44,6 +44,7 @@
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
+#include "yb/consensus/raft_consensus.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/ref_counted.h"
@@ -83,8 +84,7 @@ using namespace std::literals;
     } \
   } while (false)
 
-DEFINE_RUNTIME_AUTO_uint64_DO_NOT_USE(
-    remote_bootstrap_idle_timeout_ms, kLocalVolatile,
+DEFINE_RUNTIME_AUTO_uint64_DO_NOT_USE(remote_bootstrap_idle_timeout_ms, kLocalVolatile,
     static_cast<uint64_t>(2 * yb::MonoTime::kMillisecondsPerHour),
     static_cast<uint64_t>(3 * yb::MonoTime::kMillisecondsPerMinute),
     "Amount of time without activity before a remote bootstrap session which hasn't yet fetched "
@@ -108,23 +108,25 @@ DEFINE_test_flag(double, fault_crash_on_handle_rb_fetch_data, 0.0,
                  "Fraction of the time when the tablet will crash while "
                  "servicing a RemoteBootstrapService FetchData() RPC call.");
 
-DEFINE_test_flag(uint64, inject_latency_before_change_role_secs, 0,
-                 "Number of seconds to sleep before we call ChangeRole.");
-
-DEFINE_test_flag(bool, skip_change_role, false,
-                 "When set, we don't call ChangeRole after successfully finishing a remote "
-                 "bootstrap.");
+DEFINE_test_flag(uint64, delay_end_rbs_session_ms, 0,
+                 "Number of seconds to sleep before we return from end rbs request.");
 
 DEFINE_test_flag(uint64, inject_latency_before_fetch_data_secs, 0,
                  "Number of seconds to sleep before we call FetchData.");
 
-DEFINE_test_flag(
-    double, fault_crash_on_rbs_anchor_register, 0.0,
+DEFINE_test_flag(double, fault_crash_on_rbs_anchor_register, 0.0,
     "Fraction of the time when the peer will crash while "
     "servicing a RemoteBootstrapServiceImpl::RegisterLogAnchor() RPC call.");
 
-DEFINE_UNKNOWN_uint64(remote_bootstrap_change_role_timeout_ms, 15000,
-              "Timeout for change role operation during remote bootstrap.");
+DEFINE_test_flag(double, fault_crash_leader_while_handling_end_rbs_request, 0.0,
+    "The rbs source will crash while handling EndRemoteBootstrapSessionRequestPB i.e. "
+    "after successfully serving all data (SSTs & WALs) when the rbs client makes an rpc "
+    "to intimate success and request to keep the log anchor alive for its local bootstrap. "
+    "Note that this happens when the new peer is in PRE_VOTER state, and hence it gets "
+    "tombstoned and re-attemots rbs later.");
+
+DEFINE_test_flag(double, fault_fail_rbs_fetch_data_prob, 0.0,
+    "Fraction of the time when the node would fail RemoteBootstrapService::FetchData() RPC call.");
 
 METRIC_DEFINE_gauge_int32(server, num_remote_bootstrap_sessions_serving_data,
     "Number of active Remote Bootstrap Sessions transferring data", yb::MetricUnit::kUnits,
@@ -270,12 +272,25 @@ void RemoteBootstrapServiceImpl::FetchData(const FetchDataRequestPB* req,
     SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_inject_latency_before_fetch_data_secs));
   }
 
+  if (PREDICT_FALSE(RandomActWithProbability(FLAGS_TEST_fault_fail_rbs_fetch_data_prob))) {
+    RPC_RETURN_APP_ERROR(
+        RemoteBootstrapErrorPB::IO_ERROR, "TEST_fault_fail_rbs_fetch_data_prob",
+        STATUS_FORMAT(NetworkError, "TEST_fault_fail_rbs_fetch_data_prob"));
+  }
+
   const string& session_id = req->session_id();
 
   // Look up and validate remote bootstrap session.
   scoped_refptr<RemoteBootstrapSession> session;
   {
     std::lock_guard l(sessions_mutex_);
+    if (closing_) {
+      // Report the session as gone so the destination treats this as terminal and aborts its
+      // bootstrap, instead of retrying against a source that is shutting down. See issue #32211.
+      RPC_RETURN_APP_ERROR(
+          RemoteBootstrapErrorPB::NO_SESSION, "Remote bootstrap service is shutting down",
+          STATUS(NotFound, "Remote bootstrap service is shutting down"));
+    }
     auto it = sessions_.find(session_id);
     if (it == sessions_.end()) {
       RPC_RETURN_APP_ERROR(
@@ -382,12 +397,16 @@ void RemoteBootstrapServiceImpl::RemoveRemoteBootstrapSession(const std::string&
   sessions_.erase(it);
 }
 
-void RemoteBootstrapServiceImpl::Shutdown() {
-  shutdown_latch_.CountDown();
-  session_expiration_thread_->Join();
-
+void RemoteBootstrapServiceImpl::StartShutdown() {
+  // Mark the service as closing and tear down active sessions so that in-flight FetchData calls
+  // from peers fail fast with NO_SESSION (a terminal error for the destination) instead of them
+  // retrying against a source whose tablets are being shut down. Idempotent: a second call after
+  // closing_ is set is a no-op. See issue #32211.
   {
     std::lock_guard lock(sessions_mutex_);
+    if (std::exchange(closing_, true)) {
+      return;
+    }
     // Destroy all remote bootstrap sessions.
     std::vector<string> session_ids;
     session_ids.reserve(sessions_.size());
@@ -401,8 +420,15 @@ void RemoteBootstrapServiceImpl::Shutdown() {
       WARN_NOT_OK(
           DoEndRemoteBootstrapSession(session_id, false, &app_error),
           "DoEndRemoteBootstrapSession failed with status: ");
+      RemoveRemoteBootstrapSession(session_id);
     }
   }
+  shutdown_latch_.CountDown();
+}
+
+void RemoteBootstrapServiceImpl::Shutdown() {
+  StartShutdown();
+  session_expiration_thread_->Join();
 
   {
     std::lock_guard l(log_anchors_mutex_);
@@ -456,10 +482,31 @@ Result<scoped_refptr<RemoteBootstrapSession>> RemoteBootstrapServiceImpl::Create
     *error_code = RemoteBootstrapErrorPB::TABLET_NOT_FOUND;
     return STATUS(NotFound, Substitute("Tablet is not running yet: $0", tablet_id));
   }
+  auto raft_consensus = tablet_peer->GetRaftConsensus();
+  if (!raft_consensus.ok()) {
+    *error_code = RemoteBootstrapErrorPB::TABLET_NOT_FOUND;
+    return STATUS_FORMAT(
+        NotFound, "Can't get tablet $0 Raft consensus: $1", tablet_id, raft_consensus.status());
+  }
+  s = raft_consensus.get()->CheckReadyAsRbsSource();
+  if (!s.ok()) {
+    *error_code = RemoteBootstrapErrorPB::NOT_READY_AS_RBS_SOURCE;
+    return STATUS_FORMAT(TryAgain, "Tablet $0 is not ready as RBS source: $1", tablet_id, s);
+  }
 
   scoped_refptr<RemoteBootstrapSession> session;
   {
     std::lock_guard l(sessions_mutex_);
+    if (closing_) {
+      // Report the session as gone so the destination treats this as terminal and aborts its
+      // bootstrap, instead of retrying against a source that is shutting down. See issue #32211.
+      *error_code = RemoteBootstrapErrorPB::NO_SESSION;
+      return STATUS(ShutdownInProgress, "Remote bootstrap service is shutting down");
+    }
+    // Evict any prior session for the same (requestor, tablet) that the destination did not
+    // tear down cleanly. The new session is guaranteed not to be in sessions_ yet (the suffix
+    // is MonoTime::Now() captured a few lines above), so the prune never touches it.
+    PruneStaleRemoteBootstrapSessionsUnlocked(tablet_id, requestor_uuid, session_id);
     auto it = sessions_.find(session_id);
     if (it == sessions_.end()) {
       LOG(INFO) << "Beginning new remote bootstrap session on tablet " << tablet_id << " from peer "
@@ -482,6 +529,12 @@ Result<scoped_refptr<RemoteBootstrapSession>> RemoteBootstrapServiceImpl::Create
     if (!s.ok()) {
       return STATUS(RuntimeError, "Refresh Log Anchor session failed");
     }
+  }
+
+  // Leader-side log_anchors_map_ prune for S != L -> S == L retry (see .h).
+  {
+    std::lock_guard l(log_anchors_mutex_);
+    PruneStaleRemoteLogAnchorsForNewSessionUnlocked(tablet_id, requestor_uuid, session_id);
   }
 
   return session;
@@ -553,33 +606,10 @@ Status RemoteBootstrapServiceImpl::DoEndRemoteBootstrapSession(
         << "(Total ms: " << session->crc_compute_timer().elapsed().wall_millis() << ")";
     }
 
-    if (PREDICT_FALSE(FLAGS_TEST_inject_latency_before_change_role_secs)) {
-      LOG(INFO) << "Injecting latency for test";
-      SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_inject_latency_before_change_role_secs));
-    }
-
-    if (PREDICT_FALSE(FLAGS_TEST_skip_change_role)) {
-      LOG(INFO) << "Not changing role for " << session->requestor_uuid()
-                << " because flag FLAGS_TEST_skip_change_role is set";
-      return Status::OK();
-    }
-
-    if (session->ShouldChangeRole()) {
-      MonoTime deadline = MonoTime::Now() + MonoDelta::FromMilliseconds(
-                                                FLAGS_remote_bootstrap_change_role_timeout_ms);
-      Status status;
-      do {
-        status = session->ChangeRole();
-        if (status.ok()) {
-          LOG(INFO) << "ChangeRole succeeded for bootstrap session " << session_id;
-          break;
-        }
-        LOG(WARNING) << "ChangeRole failed for bootstrap session " << session_id
-                     << ", error : " << status;
-      } while (MonoTime::Now() < deadline && status.IsLeaderHasNoLease());
-      RemoteBootstrapErrorPB::Code app_error;
-      return it->second.ResetExpiration(&app_error);
-    }
+    AtomicFlagSleepMs(&FLAGS_TEST_delay_end_rbs_session_ms);
+    MAYBE_FAULT(FLAGS_TEST_fault_crash_leader_while_handling_end_rbs_request);
+    RemoteBootstrapErrorPB::Code app_error;
+    return it->second.ResetExpiration(&app_error);
   } else {
     num_sessions_serving_data_->Decrement();
     LOG_IF(DFATAL, nsessions_serving_data_.fetch_sub(1, std::memory_order_acq_rel) <= 0)
@@ -628,7 +658,12 @@ void RemoteBootstrapServiceImpl::RegisterLogAnchor(
       Substitute("Tablet is not running yet: $0", req->tablet_id()));
 
   const auto requested_log_index = req->op_id().index();
-  int64_t min_available_log_index = tablet_peer->log()->GetLogReader()->GetMinReplicateIndex();
+  auto log_reader_result = tablet_peer->log()->GetLogReader();
+  RPC_RETURN_NOT_OK(
+      log_reader_result,
+      RemoteBootstrapErrorPB::TABLET_NOT_FOUND,
+      Substitute("LogReader not available for tablet: $0", req->tablet_id()));
+  int64_t min_available_log_index = (*log_reader_result)->GetMinReplicateIndex();
   if (min_available_log_index == -1) {
     min_available_log_index = tablet_peer->log()->GetMinReplicateIndex();
   }
@@ -738,7 +773,9 @@ void RemoteBootstrapServiceImpl::UnregisterLogAnchor(
 
 void RemoteBootstrapServiceImpl::ChangePeerRole(
     const ChangePeerRoleRequestPB* req, ChangePeerRoleResponsePB* resp, rpc::RpcContext context) {
-  VLOG_WITH_FUNC(4) << req->ShortDebugString();
+  // Promotion of the new peer from PRE_VOTER to VOTER is deferred to the leader and is no more
+  // done on the RBS path. The behavior was introduced in https://phorge.dev.yugabyte.com/D50025.
+  LOG_WITH_FUNC(WARNING) << "method deprecated.";
 
   std::shared_ptr<tablet::TabletPeer> tablet_peer;
   {
@@ -755,10 +792,8 @@ void RemoteBootstrapServiceImpl::ChangePeerRole(
     it->second->ResetExpiration(true /* ChangeRole is only called for successful rbs sessions */);
   }
 
-  RPC_RETURN_NOT_OK(
-      tablet_peer->ChangeRole(req->requestor_uuid()),
-      RemoteBootstrapErrorPB::REMOTE_CHANGE_PEER_ROLE_FAILURE,
-      Substitute("Cannot ChangePeerRole for peer $0", req->requestor_uuid()));
+  // The leader would promote the new PRE_VOTER peer to VOTER on realizing it on
+  // heartbeats/consensus requests anyways. There's no need for us to do it here.
   context.RespondSuccess();
 }
 
@@ -790,8 +825,82 @@ Status RemoteBootstrapServiceImpl::DoEndLogAnchorSession(
   return Status::OK();
 }
 
+void RemoteBootstrapServiceImpl::PruneStaleRemoteLogAnchorsForNewSessionUnlocked(
+    const std::string& tablet_id, const std::string& requestor_uuid,
+    const std::string& new_session_id) {
+  // RemoteBootstrapAnchorClient registers anchors on the leader with owner_info equal to the
+  // source-side session_id, formatted as "<requestor_uuid>-<tablet_id>-<MonoTime::ToString>".
+  const std::string stable_prefix = Substitute("$0-$1-", requestor_uuid, tablet_id);
+  std::vector<string> stale_owner_infos;
+  stale_owner_infos.reserve(log_anchors_map_.size());
+  for (const auto& [owner_info, session_data] : log_anchors_map_) {
+    if (owner_info.compare(0, stable_prefix.size(), stable_prefix) != 0) {
+      continue;
+    }
+    if (session_data->tablet_peer_->tablet_id() != tablet_id) {
+      continue;
+    }
+    stale_owner_infos.push_back(owner_info);
+  }
+
+  for (const auto& owner_info : stale_owner_infos) {
+    VLOG(1) << "Pruning stale remote log anchor session " << owner_info
+            << " before new bootstrap session " << new_session_id
+            << " for tablet " << tablet_id;
+    RemoteBootstrapErrorPB::Code app_error = RemoteBootstrapErrorPB::UNKNOWN_ERROR;
+    WARN_NOT_OK(
+        DoEndLogAnchorSession(owner_info, &app_error),
+        Substitute("Pruning stale log anchor session $0 failed", owner_info));
+    RemoveLogAnchorSession(owner_info);
+  }
+}
+
+void RemoteBootstrapServiceImpl::PruneStaleRemoteBootstrapSessionsUnlocked(
+    const std::string& tablet_id, const std::string& requestor_uuid,
+    const std::string& new_session_id) {
+  std::vector<std::string> stale_session_ids;
+  stale_session_ids.reserve(sessions_.size());
+  for (const auto& [session_id, session_data] : sessions_) {
+    if (session_id == new_session_id) {
+      continue;
+    }
+    const auto& prior_session = session_data.session;
+    if (prior_session->requestor_uuid() != requestor_uuid) {
+      continue;
+    }
+    if (prior_session->tablet_id() != tablet_id) {
+      continue;
+    }
+    stale_session_ids.push_back(session_id);
+  }
+
+  for (const auto& session_id : stale_session_ids) {
+    auto it = sessions_.find(session_id);
+    if (it == sessions_.end()) {
+      continue;
+    }
+    // Inline minimal eviction (avoid DoEndRemoteBootstrapSession / mutex_); see
+    // https://github.com/yugabyte/yugabyte-db/issues/31848 for lifecycle refactor.
+    const auto& prior_session = it->second.session;
+    const bool prior_already_decremented = prior_session->Succeeded();
+    VLOG(1) << "Pruning stale remote bootstrap session " << session_id
+            << " on tablet " << tablet_id << " from peer " << requestor_uuid
+            << " before starting new session " << new_session_id
+            << ", succeeded=" << prior_already_decremented;
+    if (!prior_already_decremented) {
+      num_sessions_serving_data_->Decrement();
+      LOG_IF(DFATAL, nsessions_serving_data_.fetch_sub(1) <= 0)
+          << "found nsessions_serving_data_ <= 0 when pruning rbs session " << session_id;
+    }
+    sessions_.erase(it);
+  }
+}
+
 void RemoteBootstrapServiceImpl::EndExpiredRemoteBootstrapSessions() {
   std::lock_guard l(sessions_mutex_);
+  if (closing_) {
+    return;
+  }
   auto now = CoarseMonoClock::Now();
 
   std::vector<string> expired_session_ids;

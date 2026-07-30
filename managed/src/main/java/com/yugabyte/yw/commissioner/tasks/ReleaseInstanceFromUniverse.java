@@ -21,9 +21,8 @@ import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -74,8 +73,8 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
     // Check again after locking.
     runBasicChecks(universe);
     NodeDetails currentNode = universe.getNode(taskParams().nodeName);
-    Cluster cluster = universe.getCluster(currentNode.placementUuid);
-    if (cluster.userIntent.providerType == CloudType.onprem) {
+    Provider provider = Util.getProviderForNode(currentNode, universe);
+    if (provider.getCloudCode() == CloudType.onprem) {
       NodeInstance.maybeGetByName(currentNode.nodeName, currentNode.nodeUuid)
           .orElseThrow(
               () -> {
@@ -103,6 +102,7 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
             taskParams().expectedUniverseVersion, null /* Txn callback */);
     try {
       NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+      Provider provider = Util.getProviderForNode(currentNode, universe);
 
       preTaskActions();
 
@@ -115,12 +115,10 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       taskParams().nodeUuid = currentNode.nodeUuid;
       Collection<NodeDetails> currentNodeDetails = Collections.singleton(currentNode);
 
-      UserIntent userIntent =
-          universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid).userIntent;
       boolean instanceExists = instanceExists(taskParams());
       // Method instanceExists also checks for on-prem.
       if (instanceExists) {
-        if (userIntent.providerType == CloudType.onprem) {
+        if (provider.getCloudCode() == CloudType.onprem) {
           // Stop master and tservers.
           createStopServerTasks(
                   currentNodeDetails,
@@ -157,7 +155,7 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
         createDestroyServerTasks(
                 universe,
                 currentNodeDetails,
-                true /* isForceDelete */,
+                node -> true /* isForceDelete */,
                 false /* deleteNode */,
                 true /* deleteRootVolumes */,
                 false /* skipDestroyPrecheck */)

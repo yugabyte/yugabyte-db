@@ -77,7 +77,7 @@ TAG_FLAG(memory_limit_hard_bytes, stable);
 // NOTE: The default here is for tools and tests; the actual defaults
 // for the TServer and master processes are set in server_main_util.cc.
 DEFINE_NON_RUNTIME_double(default_memory_limit_to_ram_ratio, 0.85,
-    "The percentage of available RAM to use if --memory_limit_hard_bytes is 0. "
+    "The ratio of available RAM to use if --memory_limit_hard_bytes is 0. "
     "The special value " BOOST_PP_STRINGIZE(USE_RECOMMENDED_MEMORY_VALUE)
     " means to instead use a recommended percentage determined "
     "in part by the amount of RAM available.");
@@ -111,8 +111,7 @@ DEFINE_NON_RUNTIME_int64(mem_tracker_update_consumption_interval_us, 2 * 1000 * 
     "Interval that is used to update memory consumption from external source. "
     "For instance from tcmalloc statistics.");
 
-DEFINE_RUNTIME_double(
-    mem_tracker_external_consumption_accuracy_percentage, 1.0,
+DEFINE_RUNTIME_double(mem_tracker_external_consumption_accuracy_percentage, 1.0,
     "If mem tracker consumption changed by more than specified percentage of the soft memory limit "
     "since the last update from external source, update it explicitly from that external source to "
     "avoid too much bias.");
@@ -143,6 +142,8 @@ namespace {
 // Total amount of memory from calls to Release() since the last GC. If this
 // is greater than mem_tracker_tcmalloc_gc_release_bytes, this will trigger a tcmalloc gc.
 Atomic64 released_memory_since_gc;
+
+DEFINE_validator(default_memory_limit_to_ram_ratio, &::yb::internal::ValidateMemoryLimitToRamRatio);
 
 // Marked as unused because this is not referenced in release mode.
 DEFINE_validator(memory_limit_soft_percentage, &::yb::ValidatePercentageFlag);
@@ -269,6 +270,22 @@ shared_ptr<MemTracker> MemTracker::CreateTracker(int64_t byte_limit,
           create_metrics, metric_name);
 }
 
+std::shared_ptr<MemTracker> MemTracker::InsertChildUnlocked(
+  const std::string& id, std::shared_ptr<MemTracker> child) {
+  auto [iter, inserted] = child_trackers_.emplace(id, child);
+  if (inserted) {
+    return child;
+  }
+  auto& tracker_weak_ptr = iter->second;
+  auto existing = tracker_weak_ptr.lock();
+  if (existing) {
+    LOG(DFATAL) << Format("Duplicate memory tracker (id $0) on parent $1", id, ToString());
+    return existing;
+  }
+  tracker_weak_ptr = child;
+  return child;
+}
+
 shared_ptr<MemTracker> MemTracker::CreateChild(int64_t byte_limit,
                                                const string& id,
                                                ConsumptionFunctor consumption_functor,
@@ -276,28 +293,27 @@ shared_ptr<MemTracker> MemTracker::CreateChild(int64_t byte_limit,
                                                AddToParent add_to_parent,
                                                CreateMetrics create_metrics,
                                                const std::string& metric_name) {
+  auto create_mem_tracker = [&] {
+    return std::make_shared<MemTracker>(
+        byte_limit, id, std::move(consumption_functor), shared_from_this(),
+        add_to_parent, create_metrics, metric_name, IsRootTracker::kFalse);
+  };
+  if (!may_exist) {
+    // Create mem-tracker before locking to avoid recursive mutex acquisition through the following
+    // stack for untracked memory tracker creation:
+    // MemTracker::CreateTracker -> GetRootTracker()->CreateChild -> MemTracker::MemTracker() -> ...
+    // -> MemTracker::DoUpdateConsumption() -> MemTracker::GetUntrackedMemory() ->
+    // MemTracker::GetTrackedMemory() -> GetRootTracker()->ListChildren()
+    auto child = create_mem_tracker();
+    std::lock_guard lock(child_trackers_mutex_);
+    return InsertChildUnlocked(id, std::move(child));
+  }
   std::lock_guard lock(child_trackers_mutex_);
-  if (may_exist) {
-    auto result = FindChildUnlocked(id);
-    if (result) {
-      return result;
-    }
+  auto existing = FindChildUnlocked(id);
+  if (existing) {
+    return existing;
   }
-  auto result = std::make_shared<MemTracker>(
-      byte_limit, id, std::move(consumption_functor), shared_from_this(), add_to_parent,
-          create_metrics, metric_name, IsRootTracker::kFalse);
-  auto [iter, inserted] = child_trackers_.emplace(id, result);
-  if (!inserted) {
-    auto& tracker_weak_ptr = iter->second;
-    auto existing = tracker_weak_ptr.lock();
-    if (existing) {
-      LOG(DFATAL) << Format("Duplicate memory tracker (id $0) on parent $1", id, ToString());
-      return existing;
-    }
-    tracker_weak_ptr = result;
-  }
-
-  return result;
+  return InsertChildUnlocked(id, create_mem_tracker());
 }
 
 MemTracker::MemTracker(int64_t byte_limit, const string& id,
@@ -608,7 +624,7 @@ void MemTracker::Release(int64_t bytes) {
 
   bool do_force_update_consumption = false;
   if (PREDICT_FALSE(base::subtle::Barrier_AtomicIncrement(&released_memory_since_gc, bytes) >
-                    GetAtomicFlag(&FLAGS_mem_tracker_tcmalloc_gc_release_bytes))) {
+                    FLAGS_mem_tracker_tcmalloc_gc_release_bytes)) {
     // Force updating consumption to reflect real consumption if GC happened.
     do_force_update_consumption = GcTcmallocIfNeeded();
   }
@@ -860,8 +876,9 @@ const shared_ptr<MemTracker>& MemTracker::GetRootTracker() {
 
 uint64_t MemTracker::GetTrackedMemory() {
   uint64_t tracked_memory = 0;
-  for (auto child_tracker : GetRootTracker()->ListChildren()) {
-    if (!child_tracker->id().starts_with(kTCMallocTrackerNamePrefix)) {
+  for (const auto& child_tracker : GetRootTracker()->ListChildren()) {
+    if (!child_tracker->id().starts_with(kTCMallocTrackerNamePrefix) &&
+        child_tracker->id() != kUntrackedTrackerName) {
       tracked_memory += child_tracker->consumption();
     }
   }
@@ -974,5 +991,49 @@ bool CheckMemoryPressureWithLogging(
 
   return false;
 }
+
+void MonotonicThreadSafeScopedTrackedConsumption::Init(MemTrackerPtr tracker, int64_t to_consume) {
+  DCHECK(!tracker_);
+  DCHECK(tracker);
+  tracker_ = std::move(tracker);
+  consumption_.store(to_consume, std::memory_order_release);
+  tracker_->Consume(to_consume);
+}
+
+void MonotonicThreadSafeScopedTrackedConsumption::UpdateMonotonic(size_t new_bytes) {
+  if (!tracker_) {
+    return;
+  }
+  const auto value = new_bytes;
+  // Optimistic check: avoid taking the lock if there's nothing to do. A racing thread that
+  // sees a smaller current value will retry under the lock.
+  if (value <= consumption()) {
+    return;
+  }
+  std::lock_guard lock(mutex_);
+  const auto current = consumption();
+  if (value <= current) {
+    return;
+  }
+  tracker_->Consume(value - current);
+  consumption_.store(value, std::memory_order_release);
+}
+
+namespace internal {
+
+bool ValidateMemoryLimitToRamRatio(const char* flag_name, double value) {
+  if (value == USE_RECOMMENDED_MEMORY_VALUE) {
+    return true;  // Special sentinel value is allowed.
+  }
+  if (value <= 0.0 || value > 1.0) {
+    LOG_FLAG_VALIDATION_ERROR(flag_name, value)
+      << "Must be in the range (0, 1] or "
+      << USE_RECOMMENDED_MEMORY_VALUE << ".";
+    return false;
+  }
+  return true;
+}
+
+} // namespace internal
 
 } // namespace yb

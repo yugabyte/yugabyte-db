@@ -14,6 +14,9 @@ import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.common.YBADeprecated;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.io.ByteArrayInputStream;
@@ -27,6 +30,7 @@ import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import play.libs.Json;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -40,17 +44,71 @@ public class GCPCloudMonitoringConfig extends TelemetryProviderConfig {
   @ApiModelProperty(value = "Project ID", accessMode = READ_WRITE)
   private String project;
 
-  @ApiModelProperty(value = "Credentials", accessMode = READ_WRITE)
+  /**
+   * @deprecated Use {@link #credentialsString} (String) instead. JsonNode is not supported by
+   *     generated API clients. This field is only accepted on input for backward compatibility;
+   *     responses will only include credentialsString.
+   */
+  @Deprecated
+  @YBADeprecated(sinceDate = "2026-02-12", sinceYBAVersion = "2026.1.0")
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2026.1.0")
+  @ApiModelProperty(
+      value =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2026.1.0.</b> Use"
+              + " credentialsString instead.",
+      accessMode = READ_WRITE)
   private JsonNode credentials;
+
+  /**
+   * GCP service account credentials as JSON string. Preferred over the deprecated {@link
+   * #credentials} for API/CLI compatibility. When set via API, send the raw JSON content (e.g.
+   * content of the service account key file).
+   */
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0")
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. GCP service account credentials as"
+              + " JSON string (content of the credentials JSON file)",
+      accessMode = READ_WRITE)
+  private String credentialsString;
 
   public GCPCloudMonitoringConfig() {
     setType(ProviderType.GCP_CLOUD_MONITORING);
   }
 
+  /**
+   * Returns credentials as JsonNode from either the deprecated {@link #credentials} field or by
+   * parsing {@link #credentialsString}. Returns null if neither is set or credentialsString is
+   * invalid.
+   */
+  public JsonNode getGcmCredentials() {
+    if (credentials != null) {
+      return credentials;
+    }
+    if (StringUtils.isBlank(credentialsString)) {
+      return null;
+    }
+    try {
+      return Json.parse(credentialsString);
+    } catch (Exception e) {
+      log.warn("Failed to parse credentialsString as JSON", e);
+      return null;
+    }
+  }
+
   @Override
   public void validateConfigFields() {
-    // Check if project is given in atleast one of the param or creds.
-    if (StringUtils.isBlank(project) && !credentials.hasNonNull("project_id")) {
+    if (credentials != null && StringUtils.isNotBlank(credentialsString)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Provide only one of 'credentials' or 'credentialsString' - both cannot be set.");
+    }
+    JsonNode creds = getGcmCredentials();
+    if (creds == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Validation failed. GCP credentials are required.");
+    }
+    if (StringUtils.isBlank(project) && (creds == null || !creds.hasNonNull("project_id"))) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Validation failed. Project is required for GCP Cloud Monitoring");
     }
@@ -58,17 +116,15 @@ public class GCPCloudMonitoringConfig extends TelemetryProviderConfig {
 
   @Override
   public void validateConnectivity(ApiHelper apiHelper) {
-    // Use the project given in the creds if not given in the param.
-    String project_id =
-        StringUtils.isBlank(project) ? credentials.get("project_id").asText() : project;
+    JsonNode creds = getGcmCredentials();
+    String project_id = StringUtils.isBlank(project) ? creds.get("project_id").asText() : project;
 
     CloudResourceManager service;
     TestIamPermissionsRequest requestBody =
         new TestIamPermissionsRequest().setPermissions(REQUIRED_LOGGING_PERMISSIONS);
 
     try {
-      // Try and initialise the GCP resource manager service.
-      service = createCloudResourceManagerService(credentials);
+      service = createCloudResourceManagerService(creds);
 
       // Try and test for the permissions.
       TestIamPermissionsResponse testIamPermissionsResponse =

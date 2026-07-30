@@ -25,89 +25,48 @@ Benchmarking is the process of evaluating the performance and capabilities of a 
 
 ## Learn More
 
-<div class="row">
+{{<index/block>}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="tpcc-ysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">TPC-C</div>
-      </div>
-      <div class="body">
-        Test performance for concurrent transactions with TPC-C.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="TPC-C"
+    body="Test performance for concurrent transactions with TPC-C."
+    href="tpcc-ysql/"
+    icon="fa-thin fa-gauge-high">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="ycsb-ysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">YCSB</div>
-      </div>
-      <div class="body">
-        Test performance using the Yahoo Cloud Serving Benchmark.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="YCSB"
+    body="Test performance using the Yahoo Cloud Serving Benchmark."
+    href="ycsb-ysql/"
+    icon="fa-thin fa-gauge-high">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="sysbench-ysql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">sysbench</div>
-      </div>
-      <div class="body">
-        Test performance using sysbench.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="sysbench"
+    body="Test performance using sysbench."
+    href="sysbench-ysql/"
+    icon="fa-thin fa-gauge-high">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="key-value-workload-ycql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">Key-value workload</div>
-      </div>
-      <div class="body">
-        Test performance with key-value workloads.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Key-value workload"
+    body="Test performance with key-value workloads."
+    href="key-value-workload-ycql/"
+    icon="fa-thin fa-gauge-high">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="large-datasets-ycql/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">Large datasets</div>
-      </div>
-      <div class="body">
-        Test performance with large datasets.
-      </div>
-    </a>
-  </div>
+  {{<index/item
+    title="Large datasets"
+    body="Test performance with large datasets."
+    href="large-datasets-ycql/"
+    icon="fa-thin fa-gauge-high">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-      <a class="section-link icon-offset" href="scalability/">
-        <div class="head">
-          <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-          <div class="title">Scalability</div>
-        </div>
-        <div class="body">
-          Test throughput scalability.
-        </div>
-      </a>
-    </div>
+  {{<index/item
+    title="Scalability"
+    body="Test throughput scalability."
+    href="scalability/"
+    icon="fa-thin fa-gauge-high">}}
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="resilience/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">Resilience</div>
-      </div>
-      <div class="body">
-        Test resilience under failure conditions created by the Jepsen test suite.
-      </div>
-    </a>
-  </div>
-</div>
+  {{<index/item
+    title="Resilience"
+    body="Test resilience under failure conditions created by the Jepsen test suite."
+    href="resilience/"
+    icon="fa-thin fa-gauge-high">}}
+
+{{</index/block>}}

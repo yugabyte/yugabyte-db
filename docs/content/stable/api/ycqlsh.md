@@ -17,6 +17,10 @@ type: docs
 
 The YCQL shell (ycqlsh) is a CLI for interacting with YugabyteDB using [YCQL](../../api/ycql/).
 
+### Requirements
+
+Python 3 v3.6 or later must be pre-installed.
+
 ### Installation
 
 ycqlsh is installed with YugabyteDB and located in the `bin` directory of the YugabyteDB home directory.
@@ -140,6 +144,44 @@ Sets the consistency level for the read operations that follow. Valid arguments 
 | `ONE`             | Read from a follower with relaxed consistency guarantees.    |
 
 To view the current consistency level, use `CONSISTENCY` with no arguments.
+
+### SERIAL CONSISTENCY
+
+```cql
+SERIAL CONSISTENCY <level>
+```
+
+Sets the serial consistency level for statements that use it (for example, conditional updates with `IF`). This is separate from the regular consistency set by [CONSISTENCY](#consistency).
+
+Valid levels are `SERIAL` and `LOCAL_SERIAL`.
+
+To show the current serial consistency, run `SERIAL CONSISTENCY` with no arguments.
+
+{{< note title="Not the SERIAL data type" >}}
+This command does not relate to an auto-increment SQL-style `SERIAL` type. In YCQL, use [SERIAL CONSISTENCY](#serial-consistency) only for serial consistency on the read path of conditional (LWT-style) operations. For auto-increment-style keys in YCQL, use other patterns (for example, `uuid` or application-side IDs).
+{{< /note >}}
+
+### TRACING
+
+```cql
+TRACING ON
+TRACING OFF
+TRACING
+```
+
+Enables or disables request tracing for subsequent statements in this session. With no arguments, `TRACING` prints whether tracing is on or off.
+
+When tracing is on, the server can attach trace information to responses. How much detail appears in the shell may differ from Apache Cassandra; you can also inspect TServer logs for deeper diagnostics if needed.
+
+### UNICODE
+
+`UNICODE` is documented in the embedded ycqlsh help. It does not toggle behavior: it explains how non-ASCII and control characters are displayed for `text` and `ascii` values (for example, backslash escapes vs literal Unicode when your locale supports it).
+
+To read this help in the shell:
+
+```cql
+HELP UNICODE
+```
 
 ### COPY FROM
 
@@ -319,6 +361,8 @@ Example:
 ```cql
 ycqlsh> SOURCE '/home/yugabyte/commands.cql'
 ```
+
+For request tracing from the shell, see [TRACING](#tracing).
 
 ### TIMING
 

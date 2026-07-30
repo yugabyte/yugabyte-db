@@ -66,11 +66,16 @@ public class CreateYbaBackup extends AbstractTaskBase {
     }
     boolean excludeReleases = !taskParams.components.contains(YbaComponent.RELEASES);
     boolean excludePrometheus = !taskParams.components.contains(YbaComponent.PROMETHEUS);
+    boolean excludePAData = !taskParams.components.contains(YbaComponent.PA_COLLECTOR);
     ShellResponse response =
         replicationHelper.runCommand(
             replicationManager
             .new CreatePlatformBackupParams(
-                excludePrometheus, excludeReleases, taskParams.localPath));
+                excludePrometheus,
+                excludeReleases,
+                excludePAData,
+                excludePAData,
+                taskParams.localPath));
     if (response.code != 0) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Backup failed: " + response.message);

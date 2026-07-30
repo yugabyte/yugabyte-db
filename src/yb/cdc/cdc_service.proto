@@ -178,6 +178,8 @@ message InitVirtualWALForCDCRequestPB {
   repeated uint32 publication_oid = 7;
   // Boolean to indicate whether any publication associated with VWAL is an ALL TABLES publication.
   optional bool pub_all_tables = 8;
+  // Mapping of table's OID to relfilenode. This is used to detect table rewrites.
+  map<uint32,uint32> oid_to_relfilenode = 9;
 }
 
 message InitVirtualWALForCDCResponsePB {
@@ -211,6 +213,12 @@ message GetConsistentChangesResponsePB {
   // in the publication needs to be querried for refresh. This is only relevant if
   // the above field 'needs_publication_table_list_refresh' is true.
   optional uint64 publication_refresh_time = 4;
+
+  // When true, the refresh was caused by an explicit ALTER PUBLICATION rather than a CREATE TABLE
+  // auto-added to a FOR ALL TABLES publication. Tells the walsender to fire syscache callbacks so
+  // pgoutput re-reads the publication and re-sends RELATION messages. Only relevant when
+  // 'needs_publication_table_list_refresh' is true.
+  optional bool explicit_alter_publication_detected = 5;
 }
 
 message DestroyVirtualWALForCDCRequestPB {
@@ -243,6 +251,8 @@ message UpdatePublicationTableListRequestPB {
   optional bytes stream_id = 2;
   repeated string table_id = 3;
   reserved 4; // ASH metadata is now passed in RequestHeader PB
+  // Mapping of table's OID to relfilenode. This is used to detect table rewrites.
+  map<uint32,uint32> oid_to_relfilenode = 5;
 }
 
 message UpdatePublicationTableListResponsePB {
@@ -419,6 +429,10 @@ message CDCRecordPB {
   // populated with the tablets encoded partition key range.
   optional bytes encoded_start_key = 13;
   optional bytes encoded_end_key = 14;
+
+  // Old vector IDs to tombstone on the target during UPDATE/DELETE.
+  // See KeyValueWriteBatchPB.delete_vector_ids.
+  optional bytes delete_vector_ids = 15;
 }
 
 // CDCSDK: Column information used in case of DDL, as part of schema info
@@ -554,7 +568,7 @@ message RowMessage {
   // for other ops such as DDL/BEGIN/COMMIT/SAFEPOINT. Not populated in the Snapshot phase.
   optional bytes primary_key = 18;
 
-  // Replication origin id associated with the transaction. Only set for COMMIT Ops.
+  // Replication origin id associated with the transaction. Set on BEGIN, DML and COMMIT Ops.
   optional uint32 xrepl_origin_id = 19;
 }
 

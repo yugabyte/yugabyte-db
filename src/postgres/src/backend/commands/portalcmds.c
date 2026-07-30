@@ -36,6 +36,7 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
+#include "yb_dist_trace.h"
 
 
 /*
@@ -308,6 +309,16 @@ PortalCleanup(Portal portal)
 				if (portal->resowner)
 					CurrentResourceOwner = portal->resowner;
 
+				/*
+				 * YB: portal->queryDesc is set only for PORTAL_ONE_SELECT (see
+				 * PortalStart).  Skip ExecutorFinish's session-stats capture:
+				 * for the SELECT case ExecutorFinish does no work that produces
+				 * new DocDB stats, so the capture at end of ExecutorRun is
+				 * sufficient.
+				 */
+				Assert(portal->strategy == PORTAL_ONE_SELECT);
+				queryDesc->yb_skip_finish_capture = true;
+
 				ExecutorFinish(queryDesc);
 				ExecutorEnd(queryDesc);
 				FreeQueryDesc(queryDesc);
@@ -320,6 +331,15 @@ PortalCleanup(Portal portal)
 			PG_END_TRY();
 
 			CurrentResourceOwner = saveResourceOwner;
+		}
+		else if (YBCIsDistTraceEnabled())
+		{
+			/*
+			 * YB: executor shutdown is skipped for failed portals, so
+			 * ExecEndNode never runs and node spans left open by a suspended
+			 * portal would leak.
+			 */
+			YbDistTraceEndNodeSpans(queryDesc->planstate, /* errored */ true);
 		}
 	}
 }

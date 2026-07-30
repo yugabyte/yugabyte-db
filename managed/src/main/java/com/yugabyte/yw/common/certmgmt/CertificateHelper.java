@@ -58,6 +58,7 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.commons.validator.routines.InetAddressValidator;
 import org.bouncycastle.asn1.DERSequence;
+import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
 import org.bouncycastle.asn1.x500.RDN;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
@@ -639,6 +640,14 @@ public class CertificateHelper {
             .equals(cer2.getCustomCertPathParams().nodeKeyPath));
   }
 
+  public static boolean isK8sCertManager(UUID rootCA) {
+    if (rootCA == null) {
+      return false;
+    }
+    CertificateInfo certInfo = CertificateInfo.get(rootCA);
+    return certInfo.getCertType() == CertConfigType.K8SCertManager;
+  }
+
   public static void createChecksums() {
     List<CertificateInfo> certs = CertificateInfo.getAllNoChecksum();
     for (CertificateInfo cert : certs) {
@@ -703,13 +712,19 @@ public class CertificateHelper {
   }
 
   public static PrivateKey getPrivateKey(String keyContent) {
-    try {
-      PEMParser parser = new PEMParser(new StringReader(keyContent));
-      PEMKeyPair pemKeyPair = (PEMKeyPair) parser.readObject();
-      return new JcaPEMKeyConverter().getPrivateKey(pemKeyPair.getPrivateKeyInfo());
+    try (PEMParser parser = new PEMParser(new StringReader(keyContent))) {
+      Object parsedKey = parser.readObject();
+      PrivateKeyInfo privateKeyInfo;
+      if (parsedKey instanceof PrivateKeyInfo) {
+        privateKeyInfo = (PrivateKeyInfo) parsedKey;
+      } else if (parsedKey instanceof PEMKeyPair) {
+        privateKeyInfo = ((PEMKeyPair) parsedKey).getPrivateKeyInfo();
+      } else {
+        throw new RuntimeException("Unexpected key type parsed: " + parsedKey.getClass().getName());
+      }
+      return new JcaPEMKeyConverter().getPrivateKey(privateKeyInfo);
     } catch (Exception e) {
-      log.error(e.getMessage());
-      throw new RuntimeException("Unable to get Private Key");
+      throw new RuntimeException("Exception occurred parsing the private key", e);
     }
   }
 
@@ -1157,7 +1172,8 @@ public class CertificateHelper {
       CertificateInfo temporaryCert =
           CertificateInfo.createCopy(
               oldRootCert,
-              oldRootCert.getLabel() + EncryptionInTransitUtil.MULTI_ROOT_CERT_TMP_LABEL_SUFFIX,
+              String.join("-", universe.getUniverseUUID().toString(), oldRootCert.getLabel())
+                  + EncryptionInTransitUtil.MULTI_ROOT_CERT_TMP_LABEL_SUFFIX,
               new File(oldRootCert.getCertificate()).getAbsolutePath());
       return temporaryCert.getUuid();
     } catch (Exception e) {

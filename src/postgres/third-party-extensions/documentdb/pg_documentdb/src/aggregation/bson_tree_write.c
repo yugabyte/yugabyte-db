@@ -62,6 +62,8 @@ AppendLeafArrayFieldChildrenToWriter(pgbson_array_writer *arrayWriter, const
 	foreach_array_child(leafPathNode, leafArrayNode)
 	{
 		bson_value_t value;
+		pgbson_writer innerWriter;
+		pgbson_element_writer elementWriter;
 		if (leafPathNode->fieldData.kind == AggregationExpressionKind_Constant)
 		{
 			value = leafPathNode->fieldData.value;
@@ -72,8 +74,6 @@ AppendLeafArrayFieldChildrenToWriter(pgbson_array_writer *arrayWriter, const
 			StringView path = {
 				.string = "", .length = 0
 			};
-			pgbson_writer innerWriter;
-			pgbson_element_writer elementWriter;
 			PgbsonWriterInit(&innerWriter);
 			PgbsonInitObjectElementWriter(&innerWriter, &elementWriter, "", 0);
 			EvaluateAggregationExpressionDataToWriter(&leafPathNode->fieldData, document,

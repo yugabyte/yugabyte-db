@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -22,8 +23,12 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
+import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.ResourceTracker;
 import com.yugabyte.yw.common.operator.YBUniverseReconciler;
 import com.yugabyte.yw.common.operator.helpers.KubernetesOverridesSerializer;
 import com.yugabyte.yw.common.operator.helpers.OperatorPlacementInfoHelper;
@@ -34,27 +39,38 @@ import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
+import com.yugabyte.yw.forms.DrConfigFailoverForm;
+import com.yugabyte.yw.forms.DrConfigReplaceReplicaForm;
+import com.yugabyte.yw.forms.DrConfigRestartForm;
 import com.yugabyte.yw.forms.DrConfigSetDatabasesForm;
+import com.yugabyte.yw.forms.DrConfigSwitchoverForm;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
+import com.yugabyte.yw.forms.RestoreSnapshotScheduleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.forms.UpdatePitrConfigParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigRestartFormData.RestartBootstrapParams;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse.ThrottleParamValue;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.ReleaseArtifact;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
@@ -67,6 +83,7 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
+import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.ObjectMetaBuilder;
@@ -77,6 +94,7 @@ import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.ConfigBuilder;
 import io.fabric8.kubernetes.client.CustomResource;
 import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
@@ -87,7 +105,9 @@ import io.yugabyte.operator.v1alpha1.BackupScheduleSpec;
 import io.yugabyte.operator.v1alpha1.BackupSpec;
 import io.yugabyte.operator.v1alpha1.BackupStatus;
 import io.yugabyte.operator.v1alpha1.DrConfig;
+import io.yugabyte.operator.v1alpha1.KMSConfig;
 import io.yugabyte.operator.v1alpha1.PitrConfig;
+import io.yugabyte.operator.v1alpha1.PitrRestore;
 import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.ReleaseSpec;
 import io.yugabyte.operator.v1alpha1.StorageConfig;
@@ -113,16 +133,20 @@ import io.yugabyte.operator.v1alpha1.ybproviderspec.regions.Zones;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.ReadReplica;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YbcThrottleParameters;
 import java.nio.file.Paths;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
@@ -187,7 +211,7 @@ public class OperatorUtils {
     this.universeImporter = universeImporter;
   }
 
-  private synchronized Config getK8sClientConfig() {
+  public synchronized Config getK8sClientConfig() {
     if (_k8sClientConfig == null) {
       ConfigBuilder confBuilder = new ConfigBuilder();
       if (namespace == null || namespace.trim().isEmpty()) {
@@ -223,12 +247,26 @@ public class OperatorUtils {
     return cust.getUuid().toString();
   }
 
+  /**
+   * Returns the UUID of the local PlatformInstance when HA is configured, or empty if HA is not set
+   * up. Used to track which YBA instances have applied a resource to their K8s cluster.
+   */
+  public Optional<UUID> getLocalPlatformInstanceUuid() {
+    return HighAvailabilityConfig.get()
+        .flatMap(HighAvailabilityConfig::getLocal)
+        .map(PlatformInstance::getUuid);
+  }
+
   public Universe getUniverseFromNameAndNamespace(
       Long customerId, String universeName, String namespace) throws Exception {
     KubernetesResourceDetails ybUniverseResourceDetails = new KubernetesResourceDetails();
     ybUniverseResourceDetails.name = universeName;
     ybUniverseResourceDetails.namespace = namespace;
     YBUniverse ybUniverse = getYBUniverse(ybUniverseResourceDetails);
+    if (ybUniverse == null) {
+      log.debug("YBUniverse '{}' not found in namespace '{}'", universeName, namespace);
+      return null;
+    }
     String name = YBUniverseReconciler.getUniverseName(ybUniverse);
     log.debug("Getting universe from name: {}", name);
     Optional<Universe> universe = Universe.maybeGetUniverseByName(customerId, name);
@@ -369,6 +407,51 @@ public class OperatorUtils {
   }
 
   /**
+   * Adds a YBA resource ID annotation to the given Kubernetes resource metadata. Uses {@code edit}
+   * to atomically read the latest resource state from the server and apply the annotation. If the
+   * resource already has the annotation, no modification is made.
+   *
+   * @param resource The Kubernetes resource to annotate
+   * @param resourceId The UUID to store as the YBA resource ID annotation
+   */
+  public static <T extends HasMetadata> void maybeAddYbaResourceId(
+      T resource,
+      UUID resourceId,
+      MixedOperation<T, KubernetesResourceList<T>, Resource<T>> resourceClient) {
+    ObjectMeta metadata = resource.getMetadata();
+    if (metadata == null) {
+      throw new RuntimeException(String.format("Metadata is null for resource: %s", resource));
+    }
+    Map<String, String> annotations = metadata.getAnnotations();
+    if (annotations != null && annotations.containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+      return;
+    }
+    try {
+      resourceClient
+          .inNamespace(metadata.getNamespace())
+          .withName(metadata.getName())
+          .edit(
+              r -> {
+                ObjectMeta serverMeta = r.getMetadata();
+                Map<String, String> serverAnnotations = serverMeta.getAnnotations();
+                if (serverAnnotations != null
+                    && serverAnnotations.containsKey(ResourceAnnotationKeys.YBA_RESOURCE_ID)) {
+                  return r;
+                }
+                r.setMetadata(
+                    new ObjectMetaBuilder(serverMeta)
+                        .addToAnnotations(
+                            ResourceAnnotationKeys.YBA_RESOURCE_ID, resourceId.toString())
+                        .build());
+                return r;
+              });
+    } catch (KubernetesClientException e) {
+      log.warn(
+          "Failed to add YBA resource ID '{}' annotation to resource: {}", resourceId, resource, e);
+    }
+  }
+
+  /**
    * Checks if a Kubernetes resource has a YBA resource ID annotation.
    *
    * @param metadata The ObjectMeta from a Kubernetes resource
@@ -380,19 +463,22 @@ public class OperatorUtils {
 
   /*--- YBUniverse related help methods ---*/
 
-  public boolean shouldUpdatePrimaryCluster(Cluster currentCluster, YBUniverse newYbUniverse) {
+  public boolean shouldUpdatePrimaryCluster(
+      Cluster currentCluster, YBUniverse newYbUniverse, UserIntent incomingIntent) {
     UserIntent currentUserIntent = currentCluster.userIntent;
     int newNumNodes = newYbUniverse.getSpec().getNumNodes().intValue();
-    DeviceInfo newDeviceInfo = mapDeviceInfo(newYbUniverse.getSpec().getDeviceInfo());
-    DeviceInfo newMasterDeviceInfo =
-        mapMasterDeviceInfo(newYbUniverse.getSpec().getMasterDeviceInfo());
+    K8SNodeResourceSpec newMasterK8SNodeResourceSpec =
+        toNodeResourceSpec(
+            newYbUniverse.getSpec().getMasterResourceSpec(), s -> s.getCpu(), s -> s.getMemory());
+    K8SNodeResourceSpec newTserverK8SNodeResourceSpec =
+        toNodeResourceSpec(
+            newYbUniverse.getSpec().getTserverResourceSpec(), s -> s.getCpu(), s -> s.getMemory());
     return !(currentUserIntent.numNodes == newNumNodes)
-        || checkifDeviceInfoChanged(
-            currentUserIntent.deviceInfo, newDeviceInfo.volumeSize.intValue())
-        || checkifDeviceInfoChanged(
-            currentUserIntent.masterDeviceInfo, newMasterDeviceInfo.volumeSize.intValue())
+        || checkIfDeviceInfoChanged(currentCluster, incomingIntent, newYbUniverse)
         || OperatorPlacementInfoHelper.checkIfPlacementInfoChanged(
-            currentCluster.placementInfo, newYbUniverse, false);
+            currentCluster.placementInfo, newYbUniverse, false)
+        || !currentUserIntent.masterK8SNodeResourceSpec.equals(newMasterK8SNodeResourceSpec)
+        || !currentUserIntent.tserverK8SNodeResourceSpec.equals(newTserverK8SNodeResourceSpec);
   }
 
   public boolean shouldAddReadReplica(Universe universe, YBUniverse ybUniverse) {
@@ -407,31 +493,105 @@ public class OperatorUtils {
     return readReplicaClusterCount > 0 && !hasReadReplica;
   }
 
-  public boolean shouldUpdateReadReplica(Universe universe, YBUniverse ybUniverse) {
+  public boolean shouldUpdateReadReplica(
+      Universe universe, YBUniverse ybUniverse, UserIntent incomingIntent) {
     int readReplicaClusterCount = universe.getUniverseDetails().getReadOnlyClusters().size();
     boolean hasReadReplica = ybUniverse.getSpec().getReadReplica() != null;
     // No read replica exists or none requested
     if (readReplicaClusterCount == 0 || !hasReadReplica) {
       return false;
     } else {
-      UserIntent readReplicaUserIntent =
-          universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent;
-      PlacementInfo readReplicaPlacementInfo =
-          universe.getUniverseDetails().getReadOnlyClusters().get(0).placementInfo;
+      Cluster readReplicaCluster = universe.getUniverseDetails().getReadOnlyClusters().get(0);
+      UserIntent readReplicaUserIntent = readReplicaCluster.userIntent;
+      PlacementInfo readReplicaPlacementInfo = readReplicaCluster.placementInfo;
+      K8SNodeResourceSpec newReadReplicaTserverK8SNodeResourceSpec =
+          toNodeResourceSpec(
+              ybUniverse.getSpec().getReadReplica().getTserverResourceSpec(),
+              s -> s.getCpu(),
+              s -> s.getMemory());
       return readReplicaUserIntent.numNodes
               != ybUniverse.getSpec().getReadReplica().getNumNodes().intValue()
           || readReplicaUserIntent.replicationFactor
               != ybUniverse.getSpec().getReadReplica().getReplicationFactor().intValue()
           || OperatorPlacementInfoHelper.checkIfPlacementInfoChanged(
               readReplicaPlacementInfo, ybUniverse, true)
-          || checkifDeviceInfoChanged(
-              readReplicaUserIntent.deviceInfo,
-              ybUniverse.getSpec().getReadReplica().getDeviceInfo().getVolumeSize().intValue());
+          || checkIfDeviceInfoChanged(readReplicaCluster, incomingIntent, ybUniverse)
+          || !readReplicaUserIntent.tserverK8SNodeResourceSpec.equals(
+              newReadReplicaTserverK8SNodeResourceSpec);
     }
   }
 
-  public boolean checkifDeviceInfoChanged(DeviceInfo oldDeviceInfo, int newVolumeSize) {
-    return !oldDeviceInfo.volumeSize.equals(newVolumeSize);
+  public boolean checkIfDeviceInfoChanged(
+      Cluster curCluster, UserIntent newIntent, YBUniverse ybUniverse) {
+    if (ybUniverse.getSpec().getTserverVolume() != null
+        || ybUniverse.getSpec().getMasterVolume() != null) {
+      UserIntent newIntentClone = newIntent.clone();
+      AtomicBoolean deviceInfoChanged = new AtomicBoolean(false);
+      // If new userIntent does not contain perAZ overrides for tserver, first assign old
+      // userIntentOverrides
+      if (!(ybUniverse.getSpec().getTserverVolume() != null
+          && ybUniverse.getSpec().getTserverVolume().getPerAZ() != null)) {
+        newIntentClone.updateAZVolumeOverrides(
+            curCluster.userIntent,
+            curCluster.placementInfo.getAllAZUUIDs(),
+            null,
+            false /* isDedicatedMaster */);
+      }
+      // If new userIntent does not contain perAZ overrides for master, first assign old
+      // userIntentOverrides
+      if (curCluster.clusterType != ClusterType.ASYNC
+          && !(ybUniverse.getSpec().getMasterVolume() != null
+              && ybUniverse.getSpec().getMasterVolume().getPerAZ() != null)) {
+        newIntentClone.updateAZVolumeOverrides(
+            curCluster.userIntent,
+            curCluster.placementInfo.getAllAZUUIDs(),
+            null,
+            true /* isDedicatedMaster */);
+      }
+      curCluster
+          .placementInfo
+          .getAllAZUUIDs()
+          .forEach(
+              azUUID -> {
+                DeviceInfo tsDeviceInfo =
+                    curCluster.userIntent.getDeviceInfoForAz(azUUID, ServerType.TSERVER);
+                DeviceInfo newTsDeviceInfo =
+                    newIntentClone.getDeviceInfoForAz(azUUID, ServerType.TSERVER);
+                log.debug(
+                    "Comparing tserver device info for AZ {}: old {}, new {}",
+                    azUUID,
+                    Json.toJson(tsDeviceInfo),
+                    Json.toJson(newTsDeviceInfo));
+                deviceInfoChanged.set(
+                    deviceInfoChanged.get() || !tsDeviceInfo.equals(newTsDeviceInfo));
+
+                if (curCluster.clusterType != ClusterType.ASYNC) {
+                  DeviceInfo masterDeviceInfo =
+                      curCluster.userIntent.getDeviceInfoForAz(azUUID, ServerType.MASTER);
+                  DeviceInfo newMasterDeviceInfo =
+                      newIntentClone.getDeviceInfoForAz(azUUID, ServerType.MASTER);
+                  log.debug(
+                      "Comparing master device info for AZ {}: old {}, new {}",
+                      azUUID,
+                      Json.toJson(masterDeviceInfo),
+                      Json.toJson(newMasterDeviceInfo));
+                  deviceInfoChanged.set(
+                      deviceInfoChanged.get() || !masterDeviceInfo.equals(newMasterDeviceInfo));
+                }
+              });
+      log.debug("Device info changed: {}", deviceInfoChanged.get());
+      return deviceInfoChanged.get();
+    } else {
+      boolean tserverSizeChanged =
+          curCluster.userIntent.deviceInfo.volumeSize != newIntent.deviceInfo.volumeSize;
+      boolean masterSizeChanged = false;
+      if (curCluster.clusterType != ClusterType.ASYNC) {
+        masterSizeChanged =
+            curCluster.userIntent.masterDeviceInfo.volumeSize
+                != newIntent.masterDeviceInfo.volumeSize;
+      }
+      return tserverSizeChanged || masterSizeChanged;
+    }
   }
 
   public String getKubernetesOverridesString(Object kubernetesOverrides) {
@@ -575,6 +735,124 @@ public class OperatorUtils {
     return di;
   }
 
+  /**
+   * Maps tserverVolume from CRD to DeviceInfo object. This is the new way to specify volume
+   * configuration, replacing deviceInfo.
+   *
+   * @param tserverVolume TserverVolume object from CRD spec
+   * @return DeviceInfo object or null if tserverVolume is null
+   */
+  public DeviceInfo mapTserverVolume(
+      io.yugabyte.operator.v1alpha1.ybuniversespec.TserverVolume tserverVolume) {
+    if (tserverVolume == null) {
+      return null;
+    }
+
+    DeviceInfo di = new DeviceInfo();
+
+    Long numVols = tserverVolume.getNumVolumes();
+    if (numVols != null) {
+      di.numVolumes = numVols.intValue();
+    }
+
+    Long volSize = tserverVolume.getVolumeSize();
+    if (volSize != null) {
+      di.volumeSize = volSize.intValue();
+    }
+
+    di.storageClass = tserverVolume.getStorageClass();
+
+    return di;
+  }
+
+  /**
+   * Maps masterVolume from CRD to DeviceInfo object. This is the new way to specify volume
+   * configuration, replacing masterDeviceInfo.
+   *
+   * @param masterVolume MasterVolume object from CRD spec
+   * @return DeviceInfo object or null if masterVolume is null
+   */
+  public DeviceInfo mapMasterVolume(
+      io.yugabyte.operator.v1alpha1.ybuniversespec.MasterVolume masterVolume) {
+    if (masterVolume == null) {
+      return null;
+    }
+
+    DeviceInfo di = new DeviceInfo();
+
+    Long numVols = masterVolume.getNumVolumes();
+    if (numVols != null) {
+      di.numVolumes = numVols.intValue();
+    }
+
+    Long volSize = masterVolume.getVolumeSize();
+    if (volSize != null) {
+      di.volumeSize = volSize.intValue();
+    }
+
+    di.storageClass = masterVolume.getStorageClass();
+
+    return di;
+  }
+
+  /**
+   * Maps read replica tserverVolume from CRD to DeviceInfo object. This is the new way to specify
+   * volume configuration for read replicas, replacing deviceInfo.
+   *
+   * @param tserverVolume TserverVolume object from read replica CRD spec
+   * @return DeviceInfo object or null if tserverVolume is null
+   */
+  public DeviceInfo mapReadReplicaTserverVolume(
+      io.yugabyte.operator.v1alpha1.ybuniversespec.readreplica.TserverVolume tserverVolume) {
+    if (tserverVolume == null) {
+      return null;
+    }
+
+    DeviceInfo di = new DeviceInfo();
+
+    Long numVols = tserverVolume.getNumVolumes();
+    if (numVols != null) {
+      di.numVolumes = numVols.intValue();
+    }
+
+    Long volSize = tserverVolume.getVolumeSize();
+    if (volSize != null) {
+      di.volumeSize = volSize.intValue();
+    }
+
+    di.storageClass = tserverVolume.getStorageClass();
+
+    return di;
+  }
+
+  public <T> K8SNodeResourceSpec toNodeResourceSpec(
+      T operatorNodeResourceSpec, Function<T, Double> cpuMapper, Function<T, Double> memoryMapper) {
+    K8SNodeResourceSpec spec = new K8SNodeResourceSpec();
+
+    if (operatorNodeResourceSpec == null) {
+      return spec;
+    }
+
+    Double cpu = cpuMapper.apply(operatorNodeResourceSpec);
+    if (cpu != null) {
+      spec.cpuCoreCount = cpu;
+    }
+
+    Double memory = memoryMapper.apply(operatorNodeResourceSpec);
+    if (memory != null) {
+      spec.memoryGib = memory;
+    }
+
+    return spec;
+  }
+
+  public DeviceInfo defaultDeviceInfo() {
+    DeviceInfo masterDeviceInfo = new DeviceInfo();
+    masterDeviceInfo.volumeSize = 100;
+    masterDeviceInfo.numVolumes = 2;
+    return masterDeviceInfo;
+  }
+
   public DeviceInfo defaultMasterDeviceInfo() {
     DeviceInfo masterDeviceInfo = new DeviceInfo();
     masterDeviceInfo.volumeSize = 50;
@@ -582,12 +860,23 @@ public class OperatorUtils {
     return masterDeviceInfo;
   }
 
-  public boolean universeAndSpecMismatch(Customer cust, Universe u, YBUniverse ybUniverse) {
-    return universeAndSpecMismatch(cust, u, ybUniverse, null);
+  public boolean universeAndSpecMismatch(
+      Customer cust,
+      Universe u,
+      YBUniverse ybUniverse,
+      UserIntent newPrimaryIntent,
+      UserIntent newReadReplicaIntent) {
+    return universeAndSpecMismatch(
+        cust, u, ybUniverse, newPrimaryIntent, newReadReplicaIntent, null);
   }
 
   public boolean universeAndSpecMismatch(
-      Customer cust, Universe u, YBUniverse ybUniverse, @Nullable TaskInfo prevTaskToRerun) {
+      Customer cust,
+      Universe u,
+      YBUniverse ybUniverse,
+      UserIntent newPrimaryIntent,
+      UserIntent newReadReplicaIntent,
+      @Nullable TaskInfo prevTaskToRerun) {
     UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
     if (universeDetails == null || universeDetails.getPrimaryCluster() == null) {
       throw new RuntimeException(
@@ -601,16 +890,26 @@ public class OperatorUtils {
       currentUserIntent.masterDeviceInfo = defaultMasterDeviceInfo();
     }
 
-    Provider provider =
-        Provider.getOrBadRequest(cust.getUuid(), UUID.fromString(currentUserIntent.provider));
+    Provider provider = Util.getSingleProvider(currentUserIntent);
     // Get all required params
     SpecificGFlags specGFlags = getGFlagsFromSpec(ybUniverse, provider);
     String incomingOverrides =
         getKubernetesOverridesString(ybUniverse.getSpec().getKubernetesOverrides());
     String incomingYbSoftwareVersion = ybUniverse.getSpec().getYbSoftwareVersion();
-    DeviceInfo incomingDeviceInfo = mapDeviceInfo(ybUniverse.getSpec().getDeviceInfo());
-    DeviceInfo incomingMasterDeviceInfo =
-        mapMasterDeviceInfo(ybUniverse.getSpec().getMasterDeviceInfo());
+    // Use new volume fields if any are present, otherwise fall back to old deviceInfo fields
+    // If tserverVolume or masterVolume is present, use new fields for both (mutual exclusivity)
+    DeviceInfo incomingDeviceInfo;
+    DeviceInfo incomingMasterDeviceInfo;
+    if (ybUniverse.getSpec().getTserverVolume() != null
+        || ybUniverse.getSpec().getMasterVolume() != null) {
+      // Use new volume fields
+      incomingDeviceInfo = mapTserverVolume(ybUniverse.getSpec().getTserverVolume());
+      incomingMasterDeviceInfo = mapMasterVolume(ybUniverse.getSpec().getMasterVolume());
+    } else {
+      // Use old deviceInfo fields
+      incomingDeviceInfo = mapDeviceInfo(ybUniverse.getSpec().getDeviceInfo());
+      incomingMasterDeviceInfo = mapMasterDeviceInfo(ybUniverse.getSpec().getMasterDeviceInfo());
+    }
     int incomingNumNodes = (int) ybUniverse.getSpec().getNumNodes().longValue();
     Boolean pauseChangeRequired =
         ybUniverse.getSpec().getPaused() != u.getUniverseDetails().universePaused;
@@ -621,8 +920,9 @@ public class OperatorUtils {
         case EditKubernetesUniverse:
           UniverseDefinitionTaskParams prevTaskParams =
               Json.fromJson(prevTaskToRerun.getTaskParams(), UniverseDefinitionTaskParams.class);
-          return shouldUpdatePrimaryCluster(u.getUniverseDetails().getPrimaryCluster(), ybUniverse)
-              || shouldUpdateReadReplica(u, ybUniverse);
+          return shouldUpdatePrimaryCluster(
+                  u.getUniverseDetails().getPrimaryCluster(), ybUniverse, newPrimaryIntent)
+              || shouldUpdateReadReplica(u, ybUniverse, newReadReplicaIntent);
         case KubernetesOverridesUpgrade:
           KubernetesOverridesUpgradeParams overridesUpgradeTaskParams =
               Json.fromJson(
@@ -655,12 +955,13 @@ public class OperatorUtils {
     log.trace("gflags mismatch: {}", mismatch);
     mismatch =
         mismatch
-            || shouldUpdatePrimaryCluster(u.getUniverseDetails().getPrimaryCluster(), ybUniverse);
+            || shouldUpdatePrimaryCluster(
+                u.getUniverseDetails().getPrimaryCluster(), ybUniverse, newPrimaryIntent);
     log.trace("primary cluster mismatch: {}", mismatch);
     mismatch =
         mismatch || shouldAddReadReplica(u, ybUniverse) || shouldRemoveReadReplica(u, ybUniverse);
     log.trace("read replica count mismatch: {}", mismatch);
-    mismatch = mismatch || shouldUpdateReadReplica(u, ybUniverse);
+    mismatch = mismatch || shouldUpdateReadReplica(u, ybUniverse, newReadReplicaIntent);
     log.trace("read replica mismatch: {}", mismatch);
     mismatch =
         mismatch
@@ -670,6 +971,15 @@ public class OperatorUtils {
     log.trace("pause mismatch: {}", mismatch);
     mismatch = mismatch || isThrottleParamUpdate(u, ybUniverse);
     log.trace("throttle mismatch: {}", mismatch);
+    mismatch =
+        mismatch
+            || !(u.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc()
+                == ybUniverse.getSpec().getUseYbdbInbuiltYbc());
+    log.trace("Toggle Immutable YBC mismatch: {}", mismatch);
+    mismatch = mismatch || shouldRotateCerts(u, ybUniverse, cust.getUuid());
+    log.trace("certificate mismatch: {}", mismatch);
+    mismatch = mismatch || shouldToggleTls(currentUserIntent, ybUniverse);
+    log.trace("tls parameters mismatch: {}", mismatch);
     return mismatch;
   }
 
@@ -744,12 +1054,20 @@ public class OperatorUtils {
     log.info("Removed release {}", release.getMetadata().getName());
   }
 
-  public String getAndParseSecretForKey(String name, @Nullable String namespace, String key) {
+  public String getAndParseSecretForKey(
+      String name,
+      @Nullable String namespace,
+      String key,
+      ResourceTracker resourceTracker,
+      KubernetesResourceDetails owner,
+      UUID localInstanceUuid) {
     Secret secret = getSecret(name, namespace);
     if (secret == null) {
       log.warn("Secret {} not found", name);
       return null;
     }
+    resourceTracker.trackDependency(owner, secret, localInstanceUuid);
+    log.trace("Tracking secret {} as dependency of {}", secret.getMetadata().getName(), owner);
     return parseSecretForKey(secret, key);
   }
 
@@ -826,12 +1144,58 @@ public class OperatorUtils {
             if (value != specParams.getDiskWriteBytesPerSec()) return true;
             break;
           default:
-            // This shoud only happen if a new throttle parameter is introduced and not added here.
+            // This should only happen if a new throttle parameter is introduced and not added here.
             throw new RuntimeException("Unknown throttle parameter: " + key);
         }
       }
     }
     return false;
+  }
+
+  /*--- Certificate rotation helper methods ---*/
+
+  /**
+   * Checks if certificate rotation is needed for the universe.
+   *
+   * @param universe the current universe
+   * @param ybUniverse the YBUniverse spec
+   * @param customerUUID the customer UUID
+   * @return true if certificate rotation is needed, false otherwise
+   */
+  public boolean shouldRotateCerts(Universe universe, YBUniverse ybUniverse, UUID customerUUID) {
+    String specRootCAName = ybUniverse.getSpec().getRootCA();
+    UUID currentRootCA = universe.getUniverseDetails().rootCA;
+
+    // If no cert specified in spec, no rotation needed
+    if (StringUtils.isBlank(specRootCAName)) {
+      return false;
+    }
+
+    CertificateInfo specRootCACert = CertificateInfo.get(customerUUID, specRootCAName);
+    if (specRootCACert == null) {
+      log.warn("Certificate {} not found for customer {}", specRootCAName, customerUUID);
+      return false;
+    }
+
+    // Check if the certificate UUID differs from the current one
+    return !specRootCACert.getUuid().equals(currentRootCA);
+  }
+
+  /*--- TLS toggle helper methods ---*/
+
+  /**
+   * Checks if the encryption-in-transit settings in the spec differ from the universe, requiring a
+   * TLS toggle operation.
+   *
+   * @param currentUserIntent the current primary cluster user intent
+   * @param ybUniverse the YBUniverse spec
+   * @return true if node-to-node or client-to-node encryption settings have changed
+   */
+  public boolean shouldToggleTls(UserIntent currentUserIntent, YBUniverse ybUniverse) {
+    return currentUserIntent.enableNodeToNodeEncrypt
+            != ybUniverse.getSpec().getEnableNodeToNodeEncrypt()
+        || currentUserIntent.enableClientToNodeEncrypt
+            != ybUniverse.getSpec().getEnableClientToNodeEncrypt();
   }
 
   /*--- Backup and Scheduled backup helper methods ---*/
@@ -995,6 +1359,9 @@ public class OperatorUtils {
         CustomerConfig.get(backup.getCustomerUUID(), backup.getStorageConfigUUID());
     crSpec.setStorageConfig(storageConfigName);
     crSpec.setTimeBeforeDelete(params.timeBeforeDelete);
+    crSpec.setUseTablespaces(params.useTablespaces);
+    crSpec.setUseRoles(params.getUseRoles());
+    crSpec.setUsePrivileges(params.getUsePrivileges());
     Universe universe =
         Universe.getOrBadRequest(backup.getUniverseUUID(), Customer.get(backup.getCustomerUUID()));
     crSpec.setUniverse(universe.getUniverseDetails().getKubernetesResourceDetails().name);
@@ -1124,7 +1491,10 @@ public class OperatorUtils {
                       regionData.zoneList.stream()
                           .map(
                               zone -> {
-                                String secretNameZone = secretMap.get(zone.code);
+                                String secretNameZone = null;
+                                if (secretMap != null && secretMap.containsKey(zone.code)) {
+                                  secretNameZone = secretMap.get(zone.code);
+                                }
                                 Zones zoneSpec = new Zones();
                                 zoneSpec.setCode(zone.code);
                                 zoneSpec.setCloudInfo(
@@ -1384,20 +1754,18 @@ public class OperatorUtils {
     return createForm;
   }
 
-  public DrConfigSetDatabasesForm getDrConfigSetDatabasesFormFromCr(
-      DrConfig drConfig, SharedIndexInformer<StorageConfig> scInformer) throws Exception {
+  public DrConfigSetDatabasesForm getDrConfigSetDatabasesFormFromCr(DrConfig drConfig)
+      throws Exception {
     JsonNode crParams = objectMapper.valueToTree(drConfig.getSpec());
     DrConfigSetDatabasesForm drConfigSetDatabasesForm =
-        getDrConfigSetDatabasesFormFromCr(
-            crParams, drConfig.getMetadata().getNamespace(), scInformer);
+        getDrConfigSetDatabasesFormFromCr(crParams, drConfig.getMetadata().getNamespace());
     drConfigSetDatabasesForm.setKubernetesResourceDetails(
         KubernetesResourceDetails.fromResource(drConfig));
     return drConfigSetDatabasesForm;
   }
 
   @VisibleForTesting
-  DrConfigSetDatabasesForm getDrConfigSetDatabasesFormFromCr(
-      JsonNode crParams, String namespace, SharedIndexInformer<StorageConfig> scInformer)
+  DrConfigSetDatabasesForm getDrConfigSetDatabasesFormFromCr(JsonNode crParams, String namespace)
       throws Exception {
     Customer cust = getOperatorCustomer();
     String crSourceUniverseName = ((ObjectNode) crParams).get("sourceUniverse").asText();
@@ -1431,6 +1799,60 @@ public class OperatorUtils {
     return validatingFormFactory.getFormDataOrBadRequest(crParams, DrConfigSetDatabasesForm.class);
   }
 
+  public DrConfigFailoverForm getDrConfigFailoverFormFromCr(DrConfig drConfig) throws Exception {
+    DrConfigFailoverForm failoverForm =
+        getDrConfigFailoverFormFromCr(drConfig, drConfig.getMetadata().getNamespace());
+    failoverForm.setKubernetesResourceDetails(KubernetesResourceDetails.fromResource(drConfig));
+    return failoverForm;
+  }
+
+  @VisibleForTesting
+  DrConfigFailoverForm getDrConfigFailoverFormFromCr(DrConfig drConfig, String namespace)
+      throws Exception {
+
+    // Get the DR config model to find the current primary and replica universes
+    UUID drConfigUUID = UUID.fromString(drConfig.getStatus().getResourceUUID());
+    com.yugabyte.yw.models.DrConfig drConfigModel =
+        com.yugabyte.yw.models.DrConfig.getOrBadRequest(drConfigUUID);
+    XClusterConfig xClusterConfig = drConfigModel.getActiveXClusterConfig();
+
+    DrConfigFailoverForm failoverForm = new DrConfigFailoverForm();
+    // drReplicaUniverseUuid is the current target (will become new primary)
+    failoverForm.drReplicaUniverseUuid = xClusterConfig.getTargetUniverseUUID();
+    // primaryUniverseUuid is the current source (old primary)
+    failoverForm.primaryUniverseUuid = xClusterConfig.getSourceUniverseUUID();
+    // namespaceIdSafetimeEpochUsMap is optional, leaving it null for unplanned failover
+
+    return failoverForm;
+  }
+
+  public DrConfigSwitchoverForm getDrConfigSwitchoverFormFromCr(DrConfig drConfig)
+      throws Exception {
+    DrConfigSwitchoverForm switchoverForm =
+        getDrConfigSwitchoverFormFromCr(drConfig, drConfig.getMetadata().getNamespace());
+    switchoverForm.setKubernetesResourceDetails(KubernetesResourceDetails.fromResource(drConfig));
+    return switchoverForm;
+  }
+
+  @VisibleForTesting
+  DrConfigSwitchoverForm getDrConfigSwitchoverFormFromCr(DrConfig drConfig, String namespace)
+      throws Exception {
+
+    // Get the DR config model to find the current primary and replica universes
+    UUID drConfigUUID = UUID.fromString(drConfig.getStatus().getResourceUUID());
+    com.yugabyte.yw.models.DrConfig drConfigModel =
+        com.yugabyte.yw.models.DrConfig.getOrBadRequest(drConfigUUID);
+    XClusterConfig xClusterConfig = drConfigModel.getActiveXClusterConfig();
+
+    DrConfigSwitchoverForm switchoverForm = new DrConfigSwitchoverForm();
+    // primaryUniverseUuid is the current source (will become new replica after switchover)
+    switchoverForm.primaryUniverseUuid = xClusterConfig.getSourceUniverseUUID();
+    // drReplicaUniverseUuid is the current target (will become new primary after switchover)
+    switchoverForm.drReplicaUniverseUuid = xClusterConfig.getTargetUniverseUUID();
+
+    return switchoverForm;
+  }
+
   /**
    * Creates a Kubernetes Secret custom resource in the specified namespace. The method
    * automatically base64-encodes the provided value and creates an Opaque type secret with the
@@ -1462,7 +1884,7 @@ public class OperatorUtils {
     }
   }
 
-  public void createReleaseCr(
+  public boolean createReleaseCr(
       com.yugabyte.yw.models.Release ybRelease,
       ReleaseArtifact k8sArtifact,
       ReleaseArtifact x86_64Artifact,
@@ -1478,7 +1900,7 @@ public class OperatorUtils {
               .get()
           != null) {
         log.info("Release {} already exists, skipping creation", ybRelease.getVersion());
-        return;
+        return true;
       }
       Release release = new Release();
       release.setMetadata(
@@ -1537,6 +1959,7 @@ public class OperatorUtils {
         downloadConfig.setHttp(http);
       } else {
         log.info("Release {} uses a local file", ybRelease.getVersion());
+        return false;
       }
       config.setDownloadConfig(downloadConfig);
 
@@ -1544,6 +1967,7 @@ public class OperatorUtils {
       release.setSpec(releaseSpec);
 
       kubernetesClient.resources(Release.class).inNamespace(namespace).resource(release).create();
+      return true;
     }
   }
 
@@ -1715,6 +2139,9 @@ public class OperatorUtils {
                 params.incrementalBackupFrequency, params.incrementalBackupFrequencyTimeUnit));
       }
       spec.setEnablePointInTimeRestore(params.enablePointInTimeRestore);
+      spec.setUseTablespaces(params.useTablespaces);
+      spec.setUseRoles(params.getUseRoles());
+      spec.setUsePrivileges(params.getUsePrivileges());
       backupSchedule.setSpec(spec);
       kubernetesClient
           .resources(BackupSchedule.class)
@@ -1793,6 +2220,8 @@ public class OperatorUtils {
           universe.getUniverseDetails().getPrimaryCluster().userIntent.enableExposingService
               == ExposingServiceState.EXPOSED);
       spec.setPaused(universe.getUniverseDetails().universePaused);
+      spec.setUseYbdbInbuiltYbc(
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.isUseYbdbInbuiltYbc());
 
       if (universe.getUniverseDetails().clusters.size() > 1) {
         List<Cluster> readOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
@@ -1811,7 +2240,9 @@ public class OperatorUtils {
           ReadReplica rr = new ReadReplica();
           rr.setNumNodes(Long.valueOf(firstReadReplica.userIntent.numNodes));
           rr.setReplicationFactor(Long.valueOf(firstReadReplica.userIntent.replicationFactor));
-          universeImporter.setReadReplicaDeviceInfo(rr, firstReadReplica);
+          universeImporter.setReadReplicaTserverVolume(rr, firstReadReplica);
+          universeImporter.setReadReplicaAzDeviceInfoOverrides(rr, firstReadReplica);
+          universeImporter.setReadReplicaResourceSpecFromUniverse(rr, firstReadReplica);
           universeImporter.setReadReplicaPlacementInfo(rr, firstReadReplica);
           spec.setReadReplica(rr);
         }
@@ -1830,15 +2261,20 @@ public class OperatorUtils {
       // Gflags
       universeImporter.setGflagsSpecFromUniverse(spec, universe);
 
-      // Device info
-      universeImporter.setDeviceInfoSpecFromUniverse(spec, universe);
-      universeImporter.setMasterDeviceInfoSpecFromUniverse(spec, universe);
+      // Volume configuration
+      universeImporter.setTserverVolumeSpecFromUniverse(spec, universe);
+      universeImporter.setTserverResourceSpecFromUniverse(spec, universe);
+      universeImporter.setMasterResourceSpecFromUniverse(spec, universe);
+      universeImporter.setMasterVolumeSpecFromUniverse(spec, universe);
 
       // Ybc throttle parameters
       universeImporter.setYbcThrottleParametersSpecFromUniverse(spec, universe);
 
       // Kubernetes overrides
       universeImporter.setKubernetesOverridesSpecFromUniverse(spec, universe);
+
+      // UserIntent overrides
+      universeImporter.setAzDeviceInfoOverridesSpecFromUniverse(spec, universe);
 
       ybUniverse.setSpec(spec);
       YBUniverseStatus status = new YBUniverseStatus();
@@ -1937,5 +2373,400 @@ public class OperatorUtils {
         KubernetesResourceDetails.fromResource(pitrConfig));
 
     return updatePitrConfigParams;
+  }
+
+  /** Returns the backend {@link KeyProvider} for the given KMSConfig custom resource. */
+  public KeyProvider getKMSConfigProvider(KMSConfig kmsConfig) {
+    ObjectNode spec = objectMapper.valueToTree(kmsConfig.getSpec());
+    JsonNode providerNode = spec.get("provider");
+    if (providerNode == null || providerNode.isNull()) {
+      throw new RuntimeException("KMS config provider is not set");
+    }
+    return KeyProvider.valueOf(providerNode.asText());
+  }
+
+  /**
+   * Builds the KMS provider auth-config form data from the KMSConfig CR spec, resolving any
+   * referenced Kubernetes Secrets. The returned ObjectNode contains the KMS config {@code name}
+   * plus the provider-specific auth-config fields expected by the backend EncryptionAtRest services
+   * (the same shape the REST API accepts as the request body).
+   *
+   * <p>HASHICORP (Vault) is implemented with TOKEN and APPROLE auth, and AZU with a service
+   * principal or managed identity; every other provider throws {@link
+   * UnsupportedOperationException} as an explicit placeholder for future support.
+   */
+  public ObjectNode getKMSConfigFormDataFromCr(KMSConfig kmsConfig) {
+    ObjectNode spec = objectMapper.valueToTree(kmsConfig.getSpec());
+    KeyProvider provider = getKMSConfigProvider(kmsConfig);
+    String resourceNamespace = kmsConfig.getMetadata().getNamespace();
+    ObjectNode formData = Json.newObject();
+    formData.put("name", spec.get("name").asText());
+    switch (provider) {
+      case HASHICORP:
+        buildHashicorpAuthConfig(formData, spec.get("vault"), resourceNamespace);
+        break;
+      case AZU:
+        buildAzureAuthConfig(formData, spec.get("azure"), resourceNamespace);
+        break;
+      default:
+        throw new UnsupportedOperationException(
+            String.format(
+                "%s KMS is not yet supported via the Kubernetes operator", provider.name()));
+    }
+    return formData;
+  }
+
+  private void buildAzureAuthConfig(ObjectNode formData, JsonNode azure, String resourceNamespace) {
+    if (azure == null || azure.isNull()) {
+      throw new RuntimeException("azure configuration is required for AZU KMS");
+    }
+    formData.put(AzuKmsAuthConfigField.CLIENT_ID.fieldName, azure.get("clientID").asText());
+    formData.put(AzuKmsAuthConfigField.TENANT_ID.fieldName, azure.get("tenantID").asText());
+    formData.put(AzuKmsAuthConfigField.AZU_VAULT_URL.fieldName, azure.get("keyVaultURL").asText());
+    formData.put(AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName, azure.get("keyName").asText());
+    formData.put(
+        AzuKmsAuthConfigField.AZU_KEY_ALGORITHM.fieldName,
+        getTextOrDefault(azure, "keyAlgorithm", "RSA"));
+    formData.put(
+        AzuKmsAuthConfigField.AZU_KEY_SIZE.fieldName, getIntOrDefault(azure, "keySize", 2048));
+
+    // A managed identity authenticates through DefaultAzureCredential and omits the client secret;
+    // a service principal requires it. clientID and tenantID are required in both cases.
+    boolean useManagedIdentity =
+        azure.hasNonNull("useManagedIdentity") && azure.get("useManagedIdentity").asBoolean();
+    if (!useManagedIdentity) {
+      JsonNode clientSecretSecret = azure.get("clientSecretSecret");
+      if (clientSecretSecret == null || clientSecretSecret.isNull()) {
+        throw new RuntimeException(
+            "clientSecretSecret is required for AZU KMS unless useManagedIdentity is true");
+      }
+      formData.put(
+          AzuKmsAuthConfigField.CLIENT_SECRET.fieldName,
+          resolveSecretRef(clientSecretSecret, resourceNamespace));
+    }
+  }
+
+  private static int getIntOrDefault(JsonNode node, String field, int defaultValue) {
+    JsonNode value = node.get(field);
+    if (value == null || value.isNull()) {
+      return defaultValue;
+    }
+    return value.asInt();
+  }
+
+  private void buildHashicorpAuthConfig(
+      ObjectNode formData, JsonNode vault, String resourceNamespace) {
+    if (vault == null || vault.isNull()) {
+      throw new RuntimeException("vault configuration is required for HASHICORP KMS");
+    }
+    formData.put(HashicorpVaultConfigParams.HC_VAULT_ADDRESS, vault.get("address").asText());
+    formData.put(
+        HashicorpVaultConfigParams.HC_VAULT_KEY_NAME,
+        getTextOrDefault(vault, "keyName", "key_yugabyte"));
+    formData.put(
+        HashicorpVaultConfigParams.HC_VAULT_ENGINE,
+        getTextOrDefault(vault, "secretEngine", "transit"));
+
+    String mountPath = getTextOrDefault(vault, "mountPath", "transit/");
+
+    String authType = getTextOrDefault(vault, "authType", null);
+    if ("TOKEN".equals(authType)) {
+      JsonNode tokenSecret = vault.get("tokenSecret");
+      if (tokenSecret == null || tokenSecret.isNull()) {
+        throw new RuntimeException("tokenSecret is required for HASHICORP KMS with TOKEN auth");
+      }
+      formData.put(
+          HashicorpVaultConfigParams.HC_VAULT_TOKEN,
+          resolveSecretRef(tokenSecret, resourceNamespace));
+    } else if ("APPROLE".equals(authType)) {
+      JsonNode appRole = vault.get("appRole");
+      if (appRole == null || appRole.isNull()) {
+        throw new RuntimeException("appRole is required for HASHICORP KMS with APPROLE auth");
+      }
+      formData.put(HashicorpVaultConfigParams.HC_VAULT_ROLE_ID, appRole.get("roleID").asText());
+      JsonNode secretIdSecret = appRole.get("secretIdSecret");
+      if (secretIdSecret == null || secretIdSecret.isNull()) {
+        throw new RuntimeException(
+            "secretIdSecret is required for HASHICORP KMS with APPROLE auth");
+      }
+      formData.put(
+          HashicorpVaultConfigParams.HC_VAULT_SECRET_ID,
+          resolveSecretRef(secretIdSecret, resourceNamespace));
+
+      // authNamespace is only meaningful for APPROLE auth. The backend expects the transit mount
+      // path to be namespace-qualified (it strips the auth-namespace prefix before use), so the CR
+      // takes a mountPath relative to the Vault namespace and we prefix it here.
+      String authNamespace = getTextOrDefault(vault, "authNamespace", null);
+      if (authNamespace != null) {
+        formData.put(HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE, authNamespace);
+        String prefix = authNamespace.endsWith("/") ? authNamespace : authNamespace + "/";
+        if (!mountPath.startsWith(prefix)) {
+          mountPath = prefix + mountPath;
+        }
+      }
+    } else {
+      throw new UnsupportedOperationException(
+          "Unsupported auth type for HASHICORP KMS via the Kubernetes operator: " + authType);
+    }
+
+    formData.put(HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH, mountPath);
+  }
+
+  /**
+   * Resolves a {name, namespace, key} Secret reference from the CR to the secret's string value.
+   */
+  private String resolveSecretRef(JsonNode secretRef, String defaultNamespace) {
+    String name = secretRef.get("name").asText();
+    String key = secretRef.get("key").asText();
+    String namespace =
+        secretRef.hasNonNull("namespace") ? secretRef.get("namespace").asText() : defaultNamespace;
+    String value = parseSecretForKey(getSecret(name, namespace), key);
+    if (value == null) {
+      throw new RuntimeException(
+          String.format("Could not resolve key '%s' from secret '%s'", key, name));
+    }
+    return value;
+  }
+
+  private static String getTextOrDefault(JsonNode node, String field, String defaultValue) {
+    JsonNode value = node.get(field);
+    if (value == null || value.isNull()) {
+      return defaultValue;
+    }
+    return value.asText();
+  }
+
+  public boolean requiresDrConfigDatabaseUpdate(DrConfig drConfig, XClusterConfig xClusterConfig) {
+    try {
+      if (xClusterConfig == null) {
+        return false;
+      }
+
+      // Get database names from CR spec
+      List<String> specDatabases = drConfig.getSpec().getDatabases();
+      if (specDatabases == null) {
+        specDatabases = Collections.emptyList();
+      }
+
+      // Get current database IDs from xCluster config
+      java.util.Set<String> currentDbIds = xClusterConfig.getDbIds();
+      if (currentDbIds == null) {
+        currentDbIds = Collections.emptySet();
+      }
+
+      // Quick size check first
+      if (specDatabases.size() != currentDbIds.size()) {
+        return true;
+      }
+
+      // If both are empty, no update needed
+      if (specDatabases.isEmpty() && currentDbIds.isEmpty()) {
+        return false;
+      }
+
+      // Resolve spec database names to IDs
+      Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+      TableType tableType = TableType.PGSQL_TABLE_TYPE;
+      YBClient client = ybService.getUniverseClient(sourceUniverse);
+      Map<String, String> namespaceNameToIdMap =
+          UniverseTaskBase.getKeyspaceNameKeyspaceIdMap(client, tableType);
+
+      java.util.Set<String> specDbIds = new java.util.HashSet<>();
+      for (String dbName : specDatabases) {
+        String namespaceId = namespaceNameToIdMap.get(dbName.trim());
+        if (namespaceId != null) {
+          specDbIds.add(namespaceId);
+        } else {
+          // Database name not found - this might be a new database or typo
+          // Treat as requiring update so the actual task can handle the error
+          log.warn("Database '{}' not found in source universe, will attempt update", dbName);
+          return true;
+        }
+      }
+
+      // Compare the resolved IDs with current IDs
+      return !specDbIds.equals(currentDbIds);
+    } catch (Exception e) {
+      log.warn("Error checking DR config database update requirement: {}", e.getMessage());
+      // On error, return false to avoid unnecessary updates
+      return false;
+    }
+  }
+
+  public RestoreSnapshotScheduleParams getRestoreSnapshotScheduleParamsFromCr(
+      PitrRestore pitrRestore) throws Exception {
+    RestoreSnapshotScheduleParams restoreParams =
+        getRestoreSnapshotScheduleParamsFromCr(
+            pitrRestore, pitrRestore.getMetadata().getNamespace());
+    return restoreParams;
+  }
+
+  @VisibleForTesting
+  RestoreSnapshotScheduleParams getRestoreSnapshotScheduleParamsFromCr(
+      PitrRestore pitrRestore, String namespace) throws Exception {
+    Customer cust = getOperatorCustomer();
+
+    // Get universe from CR
+    String universeName = pitrRestore.getSpec().getUniverse();
+    Universe universe = getUniverseFromNameAndNamespace(cust.getId(), universeName, namespace);
+    if (universe == null) {
+      throw new Exception("No universe found with name " + universeName);
+    }
+
+    // Get PitrConfig from database by name
+    String pitrConfigName = pitrRestore.getSpec().getPitrConfig();
+    Optional<com.yugabyte.yw.models.PitrConfig> pitrConfigOpt =
+        com.yugabyte.yw.models.PitrConfig.maybeGetByName(
+            universe.getUniverseUUID(), pitrConfigName);
+    if (pitrConfigOpt.isEmpty()) {
+      throw new Exception(
+          "No PITR config found with name " + pitrConfigName + " for universe " + universeName);
+    }
+    com.yugabyte.yw.models.PitrConfig pitrConfig = pitrConfigOpt.get();
+
+    // Parse restore time from ISO 8601 format to millis
+    String restoreTimeStr = pitrRestore.getSpec().getRestoreTime();
+    long restoreTimeInMillis = OffsetDateTime.parse(restoreTimeStr).toInstant().toEpochMilli();
+
+    // Build RestoreSnapshotScheduleParams
+    RestoreSnapshotScheduleParams taskParams = new RestoreSnapshotScheduleParams();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.pitrConfigUUID = pitrConfig.getUuid();
+    taskParams.restoreTimeInMillis = restoreTimeInMillis;
+
+    return taskParams;
+  }
+
+  /**
+   * Creates a DrConfigRestartForm from the DrConfig CR. Used when restarting DR after failover or
+   * when DR is in halted state.
+   */
+  public DrConfigRestartForm getDrConfigRestartFormFromCr(
+      DrConfig drConfig, SharedIndexInformer<StorageConfig> scInformer) throws Exception {
+    DrConfigRestartForm restartForm =
+        getDrConfigRestartFormFromCr(drConfig, drConfig.getMetadata().getNamespace(), scInformer);
+    restartForm.setKubernetesResourceDetails(KubernetesResourceDetails.fromResource(drConfig));
+    return restartForm;
+  }
+
+  @VisibleForTesting
+  DrConfigRestartForm getDrConfigRestartFormFromCr(
+      DrConfig drConfig, String namespace, SharedIndexInformer<StorageConfig> scInformer)
+      throws Exception {
+    Customer cust = getOperatorCustomer();
+
+    // Get the DR config model to access current state
+    UUID drConfigUUID = UUID.fromString(drConfig.getStatus().getResourceUUID());
+    com.yugabyte.yw.models.DrConfig drConfigModel =
+        com.yugabyte.yw.models.DrConfig.getOrBadRequest(drConfigUUID);
+
+    // Get source universe for database ID resolution
+    String crSourceUniverseName = drConfig.getSpec().getSourceUniverse();
+    Universe sourceUniverse =
+        getUniverseFromNameAndNamespace(cust.getId(), crSourceUniverseName, namespace);
+    if (sourceUniverse == null) {
+      throw new Exception("No universe found with name " + crSourceUniverseName);
+    }
+
+    // Resolve database names to IDs
+    TableType tableType = TableType.PGSQL_TABLE_TYPE;
+    YBClient client = ybService.getUniverseClient(sourceUniverse);
+    Map<String, String> namespaceNameNamespaceIdMap =
+        UniverseTaskBase.getKeyspaceNameKeyspaceIdMap(client, tableType);
+
+    List<String> specDatabases = drConfig.getSpec().getDatabases();
+    Set<String> dbIds = new HashSet<>();
+    if (specDatabases != null) {
+      for (String dbName : specDatabases) {
+        String namespaceId = namespaceNameNamespaceIdMap.get(dbName.trim());
+        if (namespaceId != null) {
+          dbIds.add(namespaceId);
+        }
+      }
+    }
+
+    // Get storage config UUID
+    String crStorageConfig = drConfig.getSpec().getStorageConfig();
+    UUID storageConfigUUID = getStorageConfigUUIDFromName(crStorageConfig, scInformer);
+    if (storageConfigUUID == null) {
+      throw new Exception("No storage config found with name " + crStorageConfig);
+    }
+
+    DrConfigRestartForm restartForm = new DrConfigRestartForm();
+    restartForm.dbs = dbIds;
+
+    // Set bootstrap params from storage config
+    BootstrapParams.BootstrapBackupParams backupRequestParams =
+        new BootstrapParams.BootstrapBackupParams();
+    backupRequestParams.storageConfigUUID = storageConfigUUID;
+    restartForm.bootstrapParams = new RestartBootstrapParams();
+    restartForm.bootstrapParams.backupRequestParams = backupRequestParams;
+
+    return restartForm;
+  }
+
+  /**
+   * Creates a DrConfigReplaceReplicaForm from the DrConfig CR. Used when changing the
+   * target/replica universe while keeping the source the same.
+   */
+  public DrConfigReplaceReplicaForm getDrConfigReplaceReplicaFormFromCr(
+      DrConfig drConfig, SharedIndexInformer<StorageConfig> scInformer) throws Exception {
+    DrConfigReplaceReplicaForm replaceReplicaForm =
+        getDrConfigReplaceReplicaFormFromCr(
+            drConfig, drConfig.getMetadata().getNamespace(), scInformer);
+    replaceReplicaForm.setKubernetesResourceDetails(
+        KubernetesResourceDetails.fromResource(drConfig));
+    return replaceReplicaForm;
+  }
+
+  @VisibleForTesting
+  DrConfigReplaceReplicaForm getDrConfigReplaceReplicaFormFromCr(
+      DrConfig drConfig, String namespace, SharedIndexInformer<StorageConfig> scInformer)
+      throws Exception {
+    Customer cust = getOperatorCustomer();
+
+    // Get the DR config model to find the current primary universe
+    UUID drConfigUUID = UUID.fromString(drConfig.getStatus().getResourceUUID());
+    com.yugabyte.yw.models.DrConfig drConfigModel =
+        com.yugabyte.yw.models.DrConfig.getOrBadRequest(drConfigUUID);
+    XClusterConfig xClusterConfig = drConfigModel.getActiveXClusterConfig();
+
+    // Get source universe (primary) - this stays the same
+    String crSourceUniverseName = drConfig.getSpec().getSourceUniverse();
+    Universe sourceUniverse =
+        getUniverseFromNameAndNamespace(cust.getId(), crSourceUniverseName, namespace);
+    if (sourceUniverse == null) {
+      throw new Exception("No universe found with name " + crSourceUniverseName);
+    }
+
+    // Get new target universe (new replica)
+    String crTargetUniverseName = drConfig.getSpec().getTargetUniverse();
+    Universe newTargetUniverse =
+        getUniverseFromNameAndNamespace(cust.getId(), crTargetUniverseName, namespace);
+    if (newTargetUniverse == null) {
+      throw new Exception("No universe found with name " + crTargetUniverseName);
+    }
+
+    // Get storage config UUID
+    String crStorageConfig = drConfig.getSpec().getStorageConfig();
+    UUID storageConfigUUID = getStorageConfigUUIDFromName(crStorageConfig, scInformer);
+    if (storageConfigUUID == null) {
+      throw new Exception("No storage config found with name " + crStorageConfig);
+    }
+
+    DrConfigReplaceReplicaForm replaceReplicaForm = new DrConfigReplaceReplicaForm();
+    // primaryUniverseUuid is the current source (stays the same)
+    replaceReplicaForm.primaryUniverseUuid = sourceUniverse.getUniverseUUID();
+    // drReplicaUniverseUuid is the new target (replacement replica)
+    replaceReplicaForm.drReplicaUniverseUuid = newTargetUniverse.getUniverseUUID();
+
+    // Set bootstrap params from storage config
+    BootstrapParams.BootstrapBackupParams backupRequestParams =
+        new BootstrapParams.BootstrapBackupParams();
+    backupRequestParams.storageConfigUUID = storageConfigUUID;
+    replaceReplicaForm.bootstrapParams = new RestartBootstrapParams();
+    replaceReplicaForm.bootstrapParams.backupRequestParams = backupRequestParams;
+
+    return replaceReplicaForm;
   }
 }

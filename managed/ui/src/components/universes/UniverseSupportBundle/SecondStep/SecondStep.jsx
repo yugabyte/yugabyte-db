@@ -1,17 +1,16 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 import { useEffectOnce } from 'react-use';
 import { Box, Collapse, makeStyles, Typography, useTheme } from '@material-ui/core';
-import { Alert, DropdownButton, MenuItem } from 'react-bootstrap';
+import { Alert, Dropdown, DropdownButton, MenuItem } from 'react-bootstrap';
 import moment from 'moment';
 import momentLocalizer from 'react-widgets-moment';
 import { formatBytes } from '@app/utils/Formatters';
 
 import { YBLoading } from '../../../common/indicators';
 import { YBButton, YBCheckBox } from '../../../common/forms/fields';
-import { YBButton as YBRedesignedButton } from '../../../../redesign/components';
-import { YBInput, YBLabel } from '../../../../redesign/components';
+import { YBButton as YBRedesignedButton, YBInput, YBLabel } from '../../../../redesign/components';
 import { DateTimePicker } from 'react-widgets';
 import { CustomDateRangePicker } from '../DateRangePicker/DateRangePicker';
 import { convertToISODateString } from '../../../../redesign/helpers/DateUtils';
@@ -54,6 +53,26 @@ const useStyles = makeStyles((theme) => ({
 const CUSTOM = 'custom';
 const CUSTOM_WITH_VALUE = 'customWithValue';
 
+const PerfAdvisorMetricsFormat = {
+  PROM_CHUNK: 'PROM_CHUNK',
+  PROMQL_JSON: 'PROMQL_JSON'
+};
+
+const METRIC_FORMAT_OPTIONS = [
+  { value: PerfAdvisorMetricsFormat.PROM_CHUNK, label: 'Binary' },
+  { value: PerfAdvisorMetricsFormat.PROMQL_JSON, label: 'JSON' }
+];
+
+const PROMETHEUS_EXPORT_METHOD = {
+  REMOTE_READ: 'REMOTE_READ',
+  PROMQL: 'PROMQL'
+};
+
+const PROMETHEUS_EXPORT_METHOD_OPTIONS = [
+  { value: PROMETHEUS_EXPORT_METHOD.REMOTE_READ, label: 'Remote Read' },
+  { value: PROMETHEUS_EXPORT_METHOD.PROMQL, label: 'PromQL' }
+];
+
 const filterTypes = [
   { label: 'Last 24 hrs', type: 'days', value: '1' },
   { label: 'Last 3 days', type: 'days', value: '3' },
@@ -66,6 +85,16 @@ const filterTypePromDump = [
   { label: 'Last 15 mins', type: 'minutes', value: '15' },
   { label: 'Last 1 hour', type: 'hours', value: '1' },
   { label: 'Last 3 hours', type: 'hours', value: '3' },
+  { type: 'divider' },
+  { label: 'Custom', type: CUSTOM, value: CUSTOM }
+];
+
+const filterTypePerfAdvisor = [
+  { label: 'Last 1 hour', type: 'hours', value: '1' },
+  { label: 'Last 6 hours', type: 'hours', value: '6' },
+  { label: 'Last 24 hrs', type: 'hours', value: '24' },
+  { label: 'Last 2 days', type: 'days', value: '2' },
+  { label: 'Last 7 days', type: 'days', value: '7' },
   { type: 'divider' },
   { label: 'Custom', type: CUSTOM, value: CUSTOM }
 ];
@@ -121,13 +150,39 @@ export const DEFAULT_PROMETHEUS_METRICS_PARAMS = {
   prometheusMetricsOptionsValue: prometheusMetricsOptions.map(() => true),
   isPromDumpDateTypeCustom: false,
   promDumpDateType: filterTypePromDump[0],
-  prometheusQueries: []
+  prometheusQueries: [],
+  useRemoteRead: true,
+  promMetricsFormat: PerfAdvisorMetricsFormat.PROMQL_JSON,
+  promDumpDownSample: true,
+  stepPromDumpSecs: null,
+  batchDurationPromDumpMins: null
+};
+
+export const DEFAULT_PERF_ADVISOR_METADATA_PARAMS = {
+  paDumpStartDate: getBackDate(1, 'hours'),
+  paDumpEndDate: new Date(),
+  paMetricsFormat: PerfAdvisorMetricsFormat.PROM_CHUNK,
+  isPaDateTypeCustom: false,
+  paDateType: filterTypePerfAdvisor[0]
 };
 
 export const DEFAULT_UNIVERSE_LOGS_PARAMS = {
   filterPgAuditLogs: true
 };
 
+/**
+ * Builds the support bundle payload (options) from current state.
+ * @param dateType - Global date range type (from filterTypes); has .value and .type. Use CUSTOM_WITH_VALUE when global range is custom.
+ * @param selectionOptionsValue - Which components are selected (checkboxes).
+ * @param setIsDateTypeCustom - Setter for global "custom date" flag.
+ * @param universeLogsParams - Params for UniverseLogs (e.g. filterPgAuditLogs).
+ * @param coreFileParams - Params for CoreFiles (max cores, size, etc.).
+ * @param prometheusMetricsParams - Params for PrometheusMetrics (promDumpDateType, dates, queries). Must be this shape when PrometheusMetrics is selected.
+ * @param perfAdvisorMetadataParams - Params for PerfAdvisorMetadata (paDateType, dates). Must be this shape when PerfAdvisorMetadata is selected.
+ * @param startDate - Used when dateType is CUSTOM (global custom range).
+ * @param endDate - Used when dateType is CUSTOM (global custom range).
+ * @returns Payload object passed to onOptionsChange (startDate, endDate, components, and component-specific fields).
+ */
 export const updateOptions = (
   dateType,
   selectionOptionsValue,
@@ -135,6 +190,7 @@ export const updateOptions = (
   universeLogsParams,
   coreFileParams,
   prometheusMetricsParams,
+  perfAdvisorMetadataParams,
   startDate = new Date(),
   endDate = new Date()
 ) => {
@@ -151,7 +207,7 @@ export const updateOptions = (
 
   const components = [];
   selectionOptionsValue.forEach((selectionOption, index) => {
-    if (index !== 0 && selectionOption) {
+    if (index !== 0 && selectionOption && selectionOptions[index]) {
       components.push(selectionOptions[index].value);
     }
   });
@@ -170,14 +226,44 @@ export const updateOptions = (
       payloadObj = { ...payloadObj, ...coreFileParams };
     }
 
-    if (component === 'PrometheusMetrics') {
-      // if promDumpDateType: custom
-      if (prometheusMetricsParams.promDumpDateType.value === CUSTOM) {
-        prometheusMetricsParams.promDumpStartDate = startDate;
-        prometheusMetricsParams.promDumpEndDate = endDate;
+    if (component === 'PerfAdvisor') {
+      // When the per-component PA date type is one of the relative presets
+      // (e.g. "last 1 hour"), compute the absolute window relative to the
+      // outer bundle's endDate. When it is CUSTOM, the user-picked
+      // paStartDate / paEndDate already live in perfAdvisorMetadataParams and
+      // must be passed through as-is.
+      if (!perfAdvisorMetadataParams.isPaDateTypeCustom) {
+        perfAdvisorMetadataParams.paStartDate = getBackDateBeforeDate(
+          +perfAdvisorMetadataParams.paDateType.value,
+          perfAdvisorMetadataParams.paDateType.type,
+          endDate
+        );
+        perfAdvisorMetadataParams.paEndDate = endDate;
       }
 
-      // if promDumpDateType: not-custom
+      // if paDateType: customWithValue -or custom
+      // BE expects paDumpStartDate / paDumpEndDate (matching the BE field
+      // names on SupportBundleFormData and the promDump* naming convention).
+      payloadObj = {
+        ...payloadObj,
+        paDumpStartDate: convertToISODateString(perfAdvisorMetadataParams.paStartDate)
+      };
+      payloadObj = {
+        ...payloadObj,
+        paDumpEndDate: convertToISODateString(perfAdvisorMetadataParams.paEndDate)
+      };
+      payloadObj = {
+        ...payloadObj,
+        paMetricsFormat: perfAdvisorMetadataParams.paMetricsFormat
+      };
+    }
+
+    if (component === 'PrometheusMetrics') {
+      // When the per-component Prometheus date type is one of the relative
+      // presets (e.g. "last 15 minutes"), compute the absolute window
+      // relative to the outer bundle's endDate. When it is CUSTOM, the
+      // user-picked promDumpStartDate / promDumpEndDate already live in
+      // prometheusMetricsParams and must be passed through as-is.
       if (!prometheusMetricsParams.isPromDumpDateTypeCustom) {
         prometheusMetricsParams.promDumpStartDate = getBackDateBeforeDate(
           +prometheusMetricsParams.promDumpDateType.value,
@@ -203,19 +289,52 @@ export const updateOptions = (
           prometheusMetricsTypes.push(prometheusMetricsOptions[index].value);
         }
       });
-      const promQueries = {};
-      prometheusMetricsParams.prometheusQueries.forEach((prometheusQuery) => {
-        const folderName = prometheusQuery.folderName;
-        const query = prometheusQuery.query;
-        if (folderName && query) {
-          promQueries[folderName] = query;
-        }
-      });
+      payloadObj = { ...payloadObj, prometheusMetricsTypes };
+
+      const useRemoteRead = prometheusMetricsParams.useRemoteRead;
       payloadObj = {
         ...payloadObj,
-        prometheusMetricsTypes: prometheusMetricsTypes,
-        promQueries: promQueries
+        promExportType: useRemoteRead ? PROMETHEUS_EXPORT_METHOD.REMOTE_READ : PROMETHEUS_EXPORT_METHOD.PROMQL
       };
+      if (useRemoteRead) {
+        payloadObj = {
+          ...payloadObj,
+          promMetricsFormat: prometheusMetricsParams.promMetricsFormat,
+          promDumpDownSample: prometheusMetricsParams.promDumpDownSample !== false,
+          promQueries: {}
+        };
+      } else {
+        payloadObj = {
+          ...payloadObj,
+          promDumpDownSample: true
+        };
+        const promQueries = {};
+        prometheusMetricsParams.prometheusQueries.forEach((prometheusQuery) => {
+          const folderName = prometheusQuery.folderName;
+          const query = prometheusQuery.query;
+          if (folderName && query) {
+            promQueries[folderName] = query;
+          }
+        });
+        payloadObj = { ...payloadObj, promQueries };
+      }
+      if (prometheusMetricsParams.promDumpDownSample) {
+        if (prometheusMetricsParams.stepPromDumpSecs !== null || prometheusMetricsParams.stepPromDumpSecs !== undefined) {
+          payloadObj = { ...payloadObj, stepPromDumpSecs: prometheusMetricsParams.stepPromDumpSecs };
+        }
+        if (prometheusMetricsParams.batchDurationPromDumpMins !== null || prometheusMetricsParams.batchDurationPromDumpMins !== undefined) {
+          payloadObj = {
+            ...payloadObj,
+            batchDurationPromDumpMins: prometheusMetricsParams.batchDurationPromDumpMins
+          };
+        }
+      } else {
+        payloadObj = {
+          ...payloadObj,
+          stepPromDumpSecs: null,
+          batchDurationPromDumpMins: null,
+        };
+      }
     }
   });
   return payloadObj;
@@ -271,6 +390,7 @@ const getTotalSupportBundleEstimatedSize = (selectedComponents, perComponentEsti
 
 export const SecondStep = ({
   onOptionsChange,
+  isPerfAdvisorRegistered,
   isK8sUniverse,
   universeStatus,
   payload,
@@ -279,6 +399,9 @@ export const SecondStep = ({
   const [selectedFilterType, setSelectedFilterType] = useState(filterTypes[0]);
   const [selectedFilterTypePromDump, setSelectedFilterTypePromDump] = useState(
     filterTypePromDump[0]
+  );
+  const [selectedFilterTypePerfAdvisor, setSelectedFilterTypePerfAdvisor] = useState(
+    filterTypePerfAdvisor[0]
   );
   const [selectionOptionsValue, setSelectionOptionsValue] = useState(
     selectionOptions.map(() => true)
@@ -292,20 +415,36 @@ export const SecondStep = ({
   const [prometheusMetricsParams, setPrometheusMetricsParams] = useState(
     DEFAULT_PROMETHEUS_METRICS_PARAMS
   );
+  const [perfAdvisorMetadataParams, setPerfAdvisorMetadataParams] = useState(
+    DEFAULT_PERF_ADVISOR_METADATA_PARAMS
+  );
+  const [perfAdvisorMetricsFormat, setPerfAdvisorMetricsFormat] = useState(
+    METRIC_FORMAT_OPTIONS[0].label
+  );
   const [isDateTypeCustom, setIsDateTypeCustom] = useState(false);
   const [isPromDumpDateTypeCustom, setIsPromDumpDateTypeCustom] = useState(false);
+  const [isPaDateTypeCustom, setIsPaDateTypeCustom] = useState(false);
   const [startDate, setStartDate] = useState(getBackDate(1, 'days'));
   const [endDate, setEndDate] = useState(new Date());
   const [promDumpStartDate, setPromDumpStartDate] = useState(
     getBackDateBeforeDate(15, 'minutes', endDate)
   );
   const [promDumpEndDate, setPromDumpEndDate] = useState(endDate);
+  const [paStartDate, setPaStartDate] = useState(getBackDate(1, 'hours'));
+  const [paEndDate, setPaEndDate] = useState(new Date());
+
   const outerRefs = useRef([]);
   const innerRefs = useRef([]);
+  const selectionOptionsValueRef = useRef(selectionOptionsValue);
+  selectionOptionsValueRef.current = selectionOptionsValue;
+  // Ref used by estimate query so refetch() sends the current selection (e.g. includes PerfAdvisor when checked).
+  const estimatePayloadRef = useRef(payload);
+  estimatePayloadRef.current = payload;
   const featureFlags = useSelector((state) => state.featureFlags);
   const { data: globalRuntimeConfigs, isLoading } = useQuery(['globalRuntimeConfigs'], () =>
     fetchGlobalRunTimeConfigs(true).then((res) => res.data)
   );
+  const [isExpandedPaMetadata, setIsExpandedPaMetadata] = useState(false);
   const [isExpandedUniverseLogs, setIsExpandedUniverseLogs] = useState(false);
   const [isExpandedCoreFiles, setIsExpandedCoreFiles] = useState(false);
   const [isExpandedPromMetrics, setIsExpandedPromMetrics] = useState(false);
@@ -319,7 +458,7 @@ export const SecondStep = ({
 
   const estimateSupportBundleSizeQuery = useQuery(
     'estimatedSupportBundleSize',
-    () => fetchEstimatedSupportBundleSize(universeUUID, payload),
+    () => fetchEstimatedSupportBundleSize(universeUUID, estimatePayloadRef.current),
     {
       // We set enabled to false so the only time this query fires is when we
       // explicitly call estimatedSupportBundleSizeQuery.refetch().
@@ -346,15 +485,58 @@ export const SecondStep = ({
     onOptionsChange(changedOptions);
   };
 
+  // Sync "Perf Advisor Metadata" option with isPerfAdvisorRegistered prop: add when true, remove when false.
+  // Keeps selectionOptions (and selectionOptionsValue) in sync and notifies parent via handleOptionsChange.
+  useEffect(() => {
+    const perfAdvisorIndex = selectionOptions.findIndex((e) => e.value === 'PerfAdvisor');
+    const currentSelectionValues = selectionOptionsValueRef.current;
+    if (isPerfAdvisorRegistered) {
+      // Add Perf Advisor option only if not already present (avoids duplicates on re-run).
+      if (perfAdvisorIndex === -1) {
+        selectionOptions.push({ label: 'Perf Advisor Metadata', value: 'PerfAdvisor' });
+        const nextValue = [...currentSelectionValues, true];
+        setSelectionOptionsValue(nextValue);
+        handleOptionsChange(
+          updateOptions(
+            selectedFilterType,
+            nextValue,
+            setIsDateTypeCustom,
+            universeLogsParams,
+            coreFileParams,
+            prometheusMetricsParams,
+            perfAdvisorMetadataParams
+          )
+        );
+      }
+    } else if (!isPerfAdvisorRegistered && perfAdvisorIndex > -1) {
+      // Remove Perf Advisor option when prop is false.
+      selectionOptions.splice(perfAdvisorIndex, 1);
+      const nextValue = currentSelectionValues.filter((_, index) => index !== perfAdvisorIndex);
+      setSelectionOptionsValue(nextValue);
+      handleOptionsChange(
+        updateOptions(
+          selectedFilterType,
+          nextValue,
+          setIsDateTypeCustom,
+          universeLogsParams,
+          coreFileParams,
+          prometheusMetricsParams,
+          perfAdvisorMetadataParams
+        )
+      );
+    }
+  }, [isPerfAdvisorRegistered]);
+
   useEffectOnce(() => {
-    //This is to just check if selectiedOptions is intact with payload in universe Support bundle file
+    // This is to just check if selectiedOptions is intact with payload in universe Support bundle file
     const changedOptions = updateOptions(
       selectedFilterType,
       selectionOptionsValue,
       setIsDateTypeCustom,
       universeLogsParams,
       coreFileParams,
-      prometheusMetricsParams
+      prometheusMetricsParams,
+      perfAdvisorMetadataParams
     );
     handleOptionsChange(changedOptions);
   });
@@ -380,7 +562,8 @@ export const SecondStep = ({
       setIsDateTypeCustom,
       universeLogsParams,
       coreFileParams,
-      prometheusMetricsParams
+      prometheusMetricsParams,
+      perfAdvisorMetadataParams
     );
     handleOptionsChange(changedOptions);
   }
@@ -395,7 +578,8 @@ export const SecondStep = ({
       setIsDateTypeCustom,
       universeLogsParams,
       coreFileParams,
-      prometheusMetricsParams
+      prometheusMetricsParams,
+      perfAdvisorMetadataParams
     );
     handleOptionsChange(changedOptions);
   }
@@ -410,7 +594,8 @@ export const SecondStep = ({
       setIsDateTypeCustom,
       universeLogsParams,
       coreFileParams,
-      prometheusMetricsParams
+      prometheusMetricsParams,
+      perfAdvisorMetadataParams
     );
     handleOptionsChange(changedOptions);
   }
@@ -418,6 +603,7 @@ export const SecondStep = ({
   const isUniverseLogsSelected = isSelected('UniverseLogs');
   const isCoreFileSelected = isSelected('CoreFiles');
   const isPrometheusMetricsSelected = isSelected('PrometheusMetrics');
+  const isPerfAdvisorMetadataSelected = isSelected('PerfAdvisor');
 
   const ExpandableButton = ({ isExpanded, onClick, text }) => (
     <YBButton
@@ -455,7 +641,8 @@ export const SecondStep = ({
       setIsDateTypeCustom,
       universeLogsParams,
       coreFileParams,
-      updatedPrometheusMetricsParams
+      updatedPrometheusMetricsParams,
+      perfAdvisorMetadataParams
     );
     handleOptionsChange(changedOptions);
   };
@@ -503,25 +690,59 @@ export const SecondStep = ({
               onRangeChange={(startEnd) => {
                 setStartDate(startEnd.start);
                 setEndDate(startEnd.end);
+                // Recompute prom per-component window relative to the new
+                // outer end (or collapse onto the outer range when prom is in
+                // CUSTOM mode). Both the local picker state and the params
+                // object must be updated; the params object is what
+                // updateOptions() reads for the CUSTOM payload.
+                let newPromStart;
                 if (selectedFilterTypePromDump.value !== CUSTOM) {
-                  setPromDumpStartDate(
-                    getBackDateBeforeDate(
-                      +selectedFilterTypePromDump.value,
-                      selectedFilterTypePromDump.type,
-                      startEnd.end
-                    )
+                  newPromStart = getBackDateBeforeDate(
+                    +selectedFilterTypePromDump.value,
+                    selectedFilterTypePromDump.type,
+                    startEnd.end
                   );
                 } else {
-                  setPromDumpStartDate(startEnd.start);
+                  newPromStart = startEnd.start;
                 }
+                setPromDumpStartDate(newPromStart);
                 setPromDumpEndDate(startEnd.end);
+                const updatedPromParams = {
+                  ...prometheusMetricsParams,
+                  promDumpStartDate: newPromStart,
+                  promDumpEndDate: startEnd.end
+                };
+                setPrometheusMetricsParams(updatedPromParams);
+                // Mirror the same logic for the Perf Advisor per-component
+                // pickers so editing the outer custom range also moves the PA
+                // window (relative presets re-anchored to the new end; CUSTOM
+                // collapsed onto the outer range, matching prom behavior).
+                let newPaStart;
+                if (selectedFilterTypePerfAdvisor.value !== CUSTOM) {
+                  newPaStart = getBackDateBeforeDate(
+                    +selectedFilterTypePerfAdvisor.value,
+                    selectedFilterTypePerfAdvisor.type,
+                    startEnd.end
+                  );
+                } else {
+                  newPaStart = startEnd.start;
+                }
+                setPaStartDate(newPaStart);
+                setPaEndDate(startEnd.end);
+                const updatedPaParams = {
+                  ...perfAdvisorMetadataParams,
+                  paStartDate: newPaStart,
+                  paEndDate: startEnd.end
+                };
+                setPerfAdvisorMetadataParams(updatedPaParams);
                 const changedOptions = updateOptions(
                   { value: CUSTOM_WITH_VALUE },
                   selectionOptionsValue,
                   setIsDateTypeCustom,
                   universeLogsParams,
                   coreFileParams,
-                  prometheusMetricsParams,
+                  updatedPromParams,
+                  updatedPaParams,
                   startEnd.start,
                   startEnd.end
                 );
@@ -559,21 +780,51 @@ export const SecondStep = ({
                             +selectedFilterTypePromDump.value,
                             selectedFilterTypePromDump.type
                           );
+                    // Mirror the prom recompute for the Perf Advisor section.
+                    const paStartBackDate =
+                      selectedFilterTypePerfAdvisor.value === CUSTOM
+                        ? defaultBackDate
+                        : getBackDate(
+                            +selectedFilterTypePerfAdvisor.value,
+                            selectedFilterTypePerfAdvisor.type
+                          );
 
                     // Set start and end dates
                     setStartDate(defaultBackDate);
                     setEndDate(currentDate);
 
-                    // Set prom dump start and end dates
+                    // Set prom dump start and end dates and keep
+                    // prometheusMetricsParams in sync so the payload uses the
+                    // refreshed values for the CUSTOM case (otherwise the
+                    // stale defaults are emitted by updateOptions()).
                     setPromDumpStartDate(promDumpStartBackDate);
                     setPromDumpEndDate(currentDate);
+                    const updatedPromParams = {
+                      ...prometheusMetricsParams,
+                      promDumpStartDate: promDumpStartBackDate,
+                      promDumpEndDate: currentDate
+                    };
+                    setPrometheusMetricsParams(updatedPromParams);
+
+                    // Set PA start and end dates and keep
+                    // perfAdvisorMetadataParams in sync so the payload uses
+                    // the refreshed values for the CUSTOM case.
+                    setPaStartDate(paStartBackDate);
+                    setPaEndDate(currentDate);
+                    const updatedPaParams = {
+                      ...perfAdvisorMetadataParams,
+                      paStartDate: paStartBackDate,
+                      paEndDate: currentDate
+                    };
+                    setPerfAdvisorMetadataParams(updatedPaParams);
                     const changedOptions = updateOptions(
                       filterType,
                       selectionOptionsValue,
                       setIsDateTypeCustom,
                       universeLogsParams,
                       coreFileParams,
-                      prometheusMetricsParams
+                      updatedPromParams,
+                      updatedPaParams
                     );
                     handleOptionsChange(changedOptions);
                   }}
@@ -631,6 +882,7 @@ export const SecondStep = ({
                       universeLogsParams,
                       coreFileParams,
                       prometheusMetricsParams,
+                      perfAdvisorMetadataParams,
                       ...(selectedFilterType.value === CUSTOM ? [startDate, endDate] : [])
                     );
                     handleOptionsChange(changedOptions);
@@ -660,6 +912,13 @@ export const SecondStep = ({
                     text="Override properties (Optional)"
                   />
                 )}
+                {selectionOption.value === 'PerfAdvisor' && isPerfAdvisorMetadataSelected && (
+                  <ExpandableButton
+                    isExpanded={isExpandedPaMetadata}
+                    onClick={() => setIsExpandedPaMetadata(!isExpandedPaMetadata)}
+                    text="Override properties (Optional)"
+                  />
+                )}
               </div>
               {selectionOption.value === 'UniverseLogs' && isUniverseLogsSelected && (
                 <Collapse in={isExpandedUniverseLogs}>
@@ -682,6 +941,7 @@ export const SecondStep = ({
                             newUniverseLogsParams,
                             coreFileParams,
                             prometheusMetricsParams,
+                            perfAdvisorMetadataParams,
                             ...(selectedFilterType.value === CUSTOM ? [startDate, endDate] : [])
                           );
                           handleOptionsChange(changedOptions);
@@ -714,6 +974,7 @@ export const SecondStep = ({
                             universeLogsParams,
                             { ...updatedObj },
                             prometheusMetricsParams,
+                            perfAdvisorMetadataParams,
                             ...(selectedFilterType.value === CUSTOM ? [startDate, endDate] : [])
                           );
                           handleOptionsChange(changedOptions);
@@ -744,6 +1005,7 @@ export const SecondStep = ({
                             universeLogsParams,
                             { ...updatedObj },
                             prometheusMetricsParams,
+                            perfAdvisorMetadataParams,
                             ...(selectedFilterType.value === CUSTOM ? [startDate, endDate] : [])
                           );
                           handleOptionsChange(changedOptions);
@@ -768,9 +1030,11 @@ export const SecondStep = ({
                             formats={DATE_FORMAT}
                             onChange={(timestamp) => {
                               setPromDumpStartDate(timestamp);
+                              // Preserve the existing promDumpDateType (CUSTOM) so that
+                              // updateOptions() treats this as a user-picked custom range
+                              // and emits the user-edited dates verbatim.
                               const updatedObj = {
                                 ...prometheusMetricsParams,
-                                promDumpDateType: { value: CUSTOM_WITH_VALUE },
                                 promDumpStartDate: timestamp
                               };
                               setPrometheusMetricsParams({ ...updatedObj });
@@ -783,6 +1047,7 @@ export const SecondStep = ({
                                 universeLogsParams,
                                 coreFileParams,
                                 { ...updatedObj },
+                                perfAdvisorMetadataParams,
                                 ...(selectedFilterType.value === CUSTOM ? [startDate, endDate] : [])
                               );
                               handleOptionsChange(changedOptions);
@@ -798,9 +1063,9 @@ export const SecondStep = ({
                             formats={DATE_FORMAT}
                             onChange={(timestamp) => {
                               setPromDumpEndDate(timestamp);
+                              // Preserve the existing promDumpDateType (CUSTOM).
                               const updatedObj = {
                                 ...prometheusMetricsParams,
-                                promDumpDateType: { value: CUSTOM_WITH_VALUE },
                                 promDumpEndDate: timestamp
                               };
                               setPrometheusMetricsParams({ ...updatedObj });
@@ -813,6 +1078,7 @@ export const SecondStep = ({
                                 universeLogsParams,
                                 coreFileParams,
                                 { ...updatedObj },
+                                perfAdvisorMetadataParams,
                                 ...(selectedFilterType.value === CUSTOM ? [startDate, endDate] : [])
                               );
                               handleOptionsChange(changedOptions);
@@ -845,24 +1111,31 @@ export const SecondStep = ({
                               key={filterType.label}
                               onClick={() => {
                                 setSelectedFilterTypePromDump(filterType);
+                                // Compute the start/end that the date pickers will show
+                                // so that we can propagate them into prometheusMetricsParams
+                                // in the same render. Otherwise the params object keeps the
+                                // stale default and subsequent date-picker edits (which only
+                                // override the field they touch) emit incorrect ranges.
+                                let newPromDumpStartDate;
                                 if (filterType.value !== CUSTOM) {
                                   setIsPromDumpDateTypeCustom(false);
-                                  setPromDumpStartDate(
-                                    getBackDateBeforeDate(
-                                      +filterType.value,
-                                      filterType.type,
-                                      endDate
-                                    )
+                                  newPromDumpStartDate = getBackDateBeforeDate(
+                                    +filterType.value,
+                                    filterType.type,
+                                    endDate
                                   );
                                 } else {
                                   setIsPromDumpDateTypeCustom(true);
-                                  setPromDumpStartDate(startDate);
+                                  newPromDumpStartDate = startDate;
                                 }
+                                setPromDumpStartDate(newPromDumpStartDate);
                                 setPromDumpEndDate(endDate);
                                 const updatedObj = {
                                   ...prometheusMetricsParams,
                                   promDumpDateType: filterType,
-                                  isPromDumpDateTypeCustom: filterType.value === CUSTOM
+                                  isPromDumpDateTypeCustom: filterType.value === CUSTOM,
+                                  promDumpStartDate: newPromDumpStartDate,
+                                  promDumpEndDate: endDate
                                 };
                                 setPrometheusMetricsParams({ ...updatedObj });
                                 const changedOptions = updateOptions(
@@ -874,6 +1147,7 @@ export const SecondStep = ({
                                   universeLogsParams,
                                   coreFileParams,
                                   { ...updatedObj },
+                                  perfAdvisorMetadataParams,
                                   ...(selectedFilterType.value === CUSTOM
                                     ? [startDate, endDate]
                                     : [])
@@ -893,6 +1167,109 @@ export const SecondStep = ({
                         title="Prometheus dump start & end points"
                       />
                     </div>
+                    <Box display="flex" alignItems="center" mt={1} mb={1}>
+                      <YBLabel width="180px">Export method</YBLabel>
+                      <DropdownButton
+                        title={
+                          <span className="dropdown-text">
+                            {
+                              PROMETHEUS_EXPORT_METHOD_OPTIONS.find(
+                                (o) =>
+                                  o.value ===
+                                  (prometheusMetricsParams.useRemoteRead
+                                    ? PROMETHEUS_EXPORT_METHOD.REMOTE_READ
+                                    : PROMETHEUS_EXPORT_METHOD.PROMQL)
+                              )?.label ?? 'Remote Read'
+                            }
+                          </span>
+                        }
+                        pullRight
+                        id="prometheus-export-method-dropdown"
+                      >
+                        {PROMETHEUS_EXPORT_METHOD_OPTIONS.map((option) => (
+                          <MenuItem
+                            key={option.value}
+                            onSelect={() => {
+                              const useRemoteRead =
+                                option.value === PROMETHEUS_EXPORT_METHOD.REMOTE_READ;
+                              const updatedObj = {
+                                ...prometheusMetricsParams,
+                                useRemoteRead,
+                                ...(useRemoteRead && {
+                                  promMetricsFormat: PerfAdvisorMetricsFormat.PROMQL_JSON
+                                })
+                              };
+                              setPrometheusMetricsParams(updatedObj);
+                              const changedOptions = updateOptions(
+                                selectedFilterType.value === CUSTOM
+                                  ? { value: CUSTOM_WITH_VALUE }
+                                  : selectedFilterType,
+                                selectionOptionsValue,
+                                setIsDateTypeCustom,
+                                universeLogsParams,
+                                coreFileParams,
+                                updatedObj,
+                                perfAdvisorMetadataParams,
+                                ...(selectedFilterType.value === CUSTOM
+                                  ? [startDate, endDate]
+                                  : [])
+                              );
+                              handleOptionsChange(changedOptions);
+                            }}
+                          >
+                            {option.label}
+                          </MenuItem>
+                        ))}
+                      </DropdownButton>
+                    </Box>
+                    {prometheusMetricsParams.useRemoteRead && (
+                      <Box display="flex" alignItems="center" mb={1}>
+                        <YBLabel width="180px">Format</YBLabel>
+                        <DropdownButton
+                          title={
+                            <span className="dropdown-text">
+                              {
+                                METRIC_FORMAT_OPTIONS.find(
+                                  (o) => o.value === prometheusMetricsParams.promMetricsFormat
+                                )?.label ?? 'JSON'
+                              }
+                            </span>
+                          }
+                          pullRight
+                          id="prometheus-remote-read-format-dropdown"
+                        >
+                          {METRIC_FORMAT_OPTIONS.map((option) => (
+                            <MenuItem
+                              key={option.value}
+                              onSelect={() => {
+                                const updatedObj = {
+                                  ...prometheusMetricsParams,
+                                  promMetricsFormat: option.value
+                                };
+                                setPrometheusMetricsParams(updatedObj);
+                                const changedOptions = updateOptions(
+                                  selectedFilterType.value === CUSTOM
+                                    ? { value: CUSTOM_WITH_VALUE }
+                                    : selectedFilterType,
+                                  selectionOptionsValue,
+                                  setIsDateTypeCustom,
+                                  universeLogsParams,
+                                  coreFileParams,
+                                  updatedObj,
+                                  perfAdvisorMetadataParams,
+                                  ...(selectedFilterType.value === CUSTOM
+                                    ? [startDate, endDate]
+                                    : [])
+                                );
+                                handleOptionsChange(changedOptions);
+                              }}
+                            >
+                              {option.label}
+                            </MenuItem>
+                          ))}
+                        </DropdownButton>
+                      </Box>
+                    )}
                     {prometheusMetricsOptions.map((prometheusMetricsOption, i) => (
                       // eslint-disable-next-line react/jsx-key
                       <div className="selection-option">
@@ -922,6 +1299,7 @@ export const SecondStep = ({
                               universeLogsParams,
                               coreFileParams,
                               { ...updatedObj },
+                              perfAdvisorMetadataParams,
                               ...(selectedFilterType.value === CUSTOM ? [startDate, endDate] : [])
                             );
                             handleOptionsChange(changedOptions);
@@ -932,32 +1310,342 @@ export const SecondStep = ({
                         />
                       </div>
                     ))}
-                    <div className={classes.customPrometheusQueriesSection}>
-                      <YBRedesignedButton
-                        variant="ghost"
-                        startIcon={
-                          prometheusMetricsParams?.prometheusQueries?.length > 0 ? (
-                            <EditIcon className={classes.editIcon} />
-                          ) : (
-                            <AddIcon />
-                          )
-                        }
-                        className={classes.openCustomPrometheusQueriesButton}
-                        onClick={openEditCustomPrometheusQueriesModal}
-                      >
-                        Custom Queries
-                      </YBRedesignedButton>
-                      {isEditCustomPrometheusQueriesModalOpen && (
-                        <EditCustomPrometheusQueriesModal
-                          customPrometheusQueries={prometheusMetricsParams?.prometheusQueries ?? []}
-                          updateCustomPrometheusQueries={updatePrometheusQueries}
-                          modalProps={{
-                            open: isEditCustomPrometheusQueriesModalOpen,
-                            onClose: closeEditCustomPrometheusQueriesModal
-                          }}
-                        />
+                    {!prometheusMetricsParams.useRemoteRead && (
+                      <div className={classes.customPrometheusQueriesSection}>
+                        <YBRedesignedButton
+                          variant="ghost"
+                          startIcon={
+                            prometheusMetricsParams?.prometheusQueries?.length > 0 ? (
+                              <EditIcon className={classes.editIcon} />
+                            ) : (
+                              <AddIcon />
+                            )
+                          }
+                          className={classes.openCustomPrometheusQueriesButton}
+                          onClick={openEditCustomPrometheusQueriesModal}
+                        >
+                          Custom Queries
+                        </YBRedesignedButton>
+                        {isEditCustomPrometheusQueriesModalOpen && (
+                          <EditCustomPrometheusQueriesModal
+                            customPrometheusQueries={
+                              prometheusMetricsParams?.prometheusQueries ?? []
+                            }
+                            updateCustomPrometheusQueries={updatePrometheusQueries}
+                            modalProps={{
+                              open: isEditCustomPrometheusQueriesModalOpen,
+                              onClose: closeEditCustomPrometheusQueriesModal
+                            }}
+                          />
+                        )}
+                      </div>
+                    )}
+                    {prometheusMetricsParams.useRemoteRead && (
+                      <div className="selection-option">
+                        <Box display="flex" alignItems="center" mb={1}>
+                          <YBCheckBox
+                            onClick={() => {
+                              const updatedObj = {
+                                ...prometheusMetricsParams,
+                                promDumpDownSample: !prometheusMetricsParams.promDumpDownSample
+                              };
+                              setPrometheusMetricsParams(updatedObj);
+                              const changedOptions = updateOptions(
+                                selectedFilterType.value === CUSTOM
+                                  ? { value: CUSTOM_WITH_VALUE }
+                                  : selectedFilterType,
+                                selectionOptionsValue,
+                                setIsDateTypeCustom,
+                                universeLogsParams,
+                                coreFileParams,
+                                updatedObj,
+                                perfAdvisorMetadataParams,
+                                ...(selectedFilterType.value === CUSTOM
+                                  ? [startDate, endDate]
+                                  : [])
+                              );
+                              handleOptionsChange(changedOptions);
+                            }}
+                            checkState={prometheusMetricsParams.promDumpDownSample !== false}
+                          label="Downsample metrics"
+                          />
+                        </Box>
+                      </div>
+                    )}
+                    {prometheusMetricsParams.promDumpDownSample && (
+                      <Box display="flex" flexDirection="column" gridGap={1} mt={2}>
+                        <Typography variant="body2" color="textSecondary">
+                          Optional: override step and batch duration for longer historical trends
+                          (same data point count, so bundle size unchanged)
+                        </Typography>
+                        <Box display="flex" flexDirection="row" gridGap={2} flexWrap="wrap" justifyContent="space-between">
+                          <Box display="flex" alignItems="center">
+                            <YBLabel width="140px">Step (seconds)</YBLabel>
+                            <YBInput
+                              type="number"
+                              min={1}
+                              placeholder="e.g. 60 (default)"
+                              value={prometheusMetricsParams.stepPromDumpSecs ?? ''}
+                              onChange={(e) => {
+                                const val = e.target.value === '' ? null : parseInt(e.target.value, 10);
+                                const updatedObj = {
+                                  ...prometheusMetricsParams,
+                                  stepPromDumpSecs: val && val > 0 ? val : null
+                                };
+                                setPrometheusMetricsParams(updatedObj);
+                                const changedOptions = updateOptions(
+                                  selectedFilterType.value === CUSTOM
+                                    ? { value: CUSTOM_WITH_VALUE }
+                                    : selectedFilterType,
+                                  selectionOptionsValue,
+                                  setIsDateTypeCustom,
+                                  universeLogsParams,
+                                  coreFileParams,
+                                  updatedObj,
+                                  ...(selectedFilterType.value === CUSTOM ? [startDate, endDate] : [])
+                                );
+                                handleOptionsChange(changedOptions);
+                              }}
+                              style={{ width: '120px' }}
+                            />
+                          </Box>
+                          <Box display="flex" alignItems="center">
+                            <YBLabel width="180px">Batch duration (minutes)</YBLabel>
+                            <YBInput
+                              type="number"
+                              min={1}
+                              placeholder="e.g. 15 (default)"
+                              value={prometheusMetricsParams.batchDurationPromDumpMins ?? ''}
+                              onChange={(e) => {
+                                const val = e.target.value === '' ? null : parseInt(e.target.value, 10);
+                                const updatedObj = {
+                                  ...prometheusMetricsParams,
+                                  batchDurationPromDumpMins: val && val > 0 ? val : null
+                                };
+                                setPrometheusMetricsParams(updatedObj);
+                                const changedOptions = updateOptions(
+                                  selectedFilterType.value === CUSTOM
+                                    ? { value: CUSTOM_WITH_VALUE }
+                                    : selectedFilterType,
+                                  selectionOptionsValue,
+                                  setIsDateTypeCustom,
+                                  universeLogsParams,
+                                  coreFileParams,
+                                  updatedObj,
+                                  ...(selectedFilterType.value === CUSTOM ? [startDate, endDate] : [])
+                                );
+                                handleOptionsChange(changedOptions);
+                              }}
+                              style={{ width: '120px' }}
+                            />
+                          </Box>
+                        </Box>
+                      </Box>
+                    )}
+                  </Box>
+                </Collapse>
+              )}
+
+              {selectionOption.value === 'PerfAdvisor' && isPerfAdvisorMetadataSelected && (
+                <Collapse in={isExpandedPaMetadata}>
+                  <Box className="core-file-container" display={'flex'} flexDirection={'column'}>
+                    <div className="filters">
+                      {isPaDateTypeCustom && (
+                        <div className="date-time-picker">
+                          <DateTimePicker
+                            placeholder="Pick a start time"
+                            step={10}
+                            formats={DATE_FORMAT}
+                            onChange={(timestamp) => {
+                              setPaStartDate(timestamp);
+                              // Preserve the existing paDateType (CUSTOM) so that
+                              // updateOptions() treats this as a user-picked custom range
+                              // and emits the user-edited dates verbatim.
+                              const updatedObj = {
+                                ...perfAdvisorMetadataParams,
+                                paStartDate: timestamp
+                              };
+                              setPerfAdvisorMetadataParams({ ...updatedObj });
+                              const changedOptions = updateOptions(
+                                selectedFilterType.value === CUSTOM
+                                  ? { value: CUSTOM_WITH_VALUE }
+                                  : selectedFilterType,
+                                selectionOptionsValue,
+                                setIsDateTypeCustom,
+                                universeLogsParams,
+                                coreFileParams,
+                                prometheusMetricsParams,
+                                { ...updatedObj },
+                                ...(selectedFilterType.value === CUSTOM ? [startDate, endDate] : [])
+                              );
+                              handleOptionsChange(changedOptions);
+                            }}
+                            value={paStartDate}
+                            min={startDate}
+                            max={endDate}
+                          />
+                          &ndash;
+                          <DateTimePicker
+                            placeholder="Pick an end time"
+                            step={10}
+                            formats={DATE_FORMAT}
+                            onChange={(timestamp) => {
+                              setPaEndDate(timestamp);
+                              // Preserve the existing paDateType (CUSTOM).
+                              const updatedObj = {
+                                ...perfAdvisorMetadataParams,
+                                paEndDate: timestamp
+                              };
+                              setPerfAdvisorMetadataParams({ ...updatedObj });
+                              const changedOptions = updateOptions(
+                                selectedFilterType.value === CUSTOM
+                                  ? { value: CUSTOM_WITH_VALUE }
+                                  : selectedFilterType,
+                                selectionOptionsValue,
+                                setIsDateTypeCustom,
+                                universeLogsParams,
+                                coreFileParams,
+                                prometheusMetricsParams,
+                                { ...updatedObj },
+                                ...(selectedFilterType.value === CUSTOM ? [startDate, endDate] : [])
+                              );
+                              handleOptionsChange(changedOptions);
+                            }}
+                            value={paEndDate}
+                            min={paStartDate}
+                            max={endDate}
+                          />
+                        </div>
                       )}
+                      <DropdownButton
+                        title={
+                          <span className="dropdown-text">
+                            <i className="fa fa-calendar" />{' '}
+                            {
+                              filterTypePerfAdvisor.find(
+                                (type) => type.value === selectedFilterTypePerfAdvisor.value
+                              ).label
+                            }
+                          </span>
+                        }
+                        pullRight
+                      >
+                        {filterTypePerfAdvisor.map((filterType, index) => {
+                          if (filterType.type === 'divider') {
+                            return <MenuItem divider key={filterType.type} />;
+                          }
+                          return (
+                            <MenuItem
+                              key={filterType.label}
+                              onClick={() => {
+                                setSelectedFilterTypePerfAdvisor(filterType);
+                                // Compute the start/end that the date pickers will show
+                                // so that we can propagate them into perfAdvisorMetadataParams
+                                // in the same render. See the equivalent comment in the
+                                // Prometheus dropdown above for the rationale.
+                                let newPaStartDate;
+                                if (filterType.value !== CUSTOM) {
+                                  setIsPaDateTypeCustom(false);
+                                  newPaStartDate = getBackDateBeforeDate(
+                                    +filterType.value,
+                                    filterType.type,
+                                    endDate
+                                  );
+                                } else {
+                                  setIsPaDateTypeCustom(true);
+                                  newPaStartDate = startDate;
+                                }
+                                setPaStartDate(newPaStartDate);
+                                setPaEndDate(endDate);
+                                const updatedObj = {
+                                  ...perfAdvisorMetadataParams,
+                                  paDateType: filterType,
+                                  isPaDateTypeCustom: filterType.value === CUSTOM,
+                                  paStartDate: newPaStartDate,
+                                  paEndDate: endDate
+                                };
+                                setPerfAdvisorMetadataParams({ ...updatedObj });
+                                // updateOptions builds global payload: use global date type (selectedFilterType), not PA date type.
+                                // 6th param must be prometheusMetricsParams so Prometheus section of payload is correct.
+                                const globalDateType =
+                                  selectedFilterType?.value === CUSTOM
+                                    ? { value: CUSTOM_WITH_VALUE }
+                                    : selectedFilterType ?? filterTypes[0];
+                                const changedOptions = updateOptions(
+                                  globalDateType,
+                                  selectionOptionsValue,
+                                  setIsDateTypeCustom,
+                                  universeLogsParams,
+                                  coreFileParams,
+                                  prometheusMetricsParams,
+                                  { ...updatedObj },
+                                  ...(selectedFilterType?.value === CUSTOM
+                                    ? [startDate, endDate]
+                                    : [])
+                                );
+                                handleOptionsChange(changedOptions);
+                              }}
+                              value={filterType.value}
+                            >
+                              {filterType.label}
+                            </MenuItem>
+                          );
+                        })}
+                      </DropdownButton>
+                      &nbsp;&nbsp;
+                      <YBInfoTip
+                        content="Adjusts the global start and end times of the support bundle specifically for perf advisor metadata dump"
+                        title="Perf Advisor dump start & end points"
+                      />
                     </div>
+                    <Box display="flex" justifyContent="flex-start" alignItems="center">
+                      <Box>
+                        <span>{'Format:'}</span>
+                        &nbsp;&nbsp;&nbsp;&nbsp;
+                      </Box>
+                      <Box>
+                        <Dropdown id="perf-advisor-metadata-format-dropdown">
+                          <Dropdown.Toggle id="perf-advisor-format-dropdown-toggle">
+                            <span className="dropdown-text">{perfAdvisorMetricsFormat}</span>
+                          </Dropdown.Toggle>
+                          <Dropdown.Menu>
+                            {METRIC_FORMAT_OPTIONS.map((option) => (
+                              <MenuItem
+                                key={option.value}
+                                active={perfAdvisorMetricsFormat === option.value}
+                                onSelect={() => {
+                                  setPerfAdvisorMetricsFormat(option.label);
+                                  const updatedObj = {
+                                    ...perfAdvisorMetadataParams,
+                                    paMetricsFormat: option.value
+                                  };
+                                  setPerfAdvisorMetadataParams({ ...updatedObj });
+                                  const globalDateType =
+                                    selectedFilterType?.value === CUSTOM
+                                      ? { value: CUSTOM_WITH_VALUE }
+                                      : selectedFilterType ?? filterTypes[0];
+                                  const changedOptions = updateOptions(
+                                    globalDateType,
+                                    selectionOptionsValue,
+                                    setIsDateTypeCustom,
+                                    universeLogsParams,
+                                    coreFileParams,
+                                    prometheusMetricsParams,
+                                    { ...updatedObj },
+                                    ...(selectedFilterType?.value === CUSTOM
+                                      ? [startDate, endDate]
+                                      : [])
+                                  );
+                                  handleOptionsChange(changedOptions);
+                                }}
+                              >
+                                {option.label}
+                              </MenuItem>
+                            ))}
+                          </Dropdown.Menu>
+                        </Dropdown>
+                      </Box>
+                    </Box>
                   </Box>
                 </Collapse>
               )}
@@ -968,7 +1656,25 @@ export const SecondStep = ({
       <Box display="flex" gridGap={theme.spacing(2)}>
         <YBRedesignedButton
           variant="secondary"
-          onClick={estimateSupportBundleSizeQuery.refetch}
+          onClick={() => {
+            const globalDateType =
+              selectedFilterType?.value === CUSTOM
+                ? { value: CUSTOM_WITH_VALUE }
+                : selectedFilterType ?? filterTypes[0];
+            const currentPayload = updateOptions(
+              globalDateType,
+              selectionOptionsValue,
+              setIsDateTypeCustom,
+              universeLogsParams,
+              coreFileParams,
+              prometheusMetricsParams,
+              perfAdvisorMetadataParams,
+              ...(selectedFilterType?.value === CUSTOM ? [startDate, endDate] : [])
+            );
+            estimatePayloadRef.current = currentPayload;
+            handleOptionsChange(currentPayload);
+            estimateSupportBundleSizeQuery.refetch();
+          }}
           showSpinner={estimateSupportBundleSizeQuery.isFetching}
           disabled={estimateSupportBundleSizeQuery.isFetching}
           data-testid="GetEstimatedBundleSizeButton"

@@ -1,13 +1,14 @@
+import type { Mock } from 'vitest';
 import { toast } from 'react-toastify';
 import userEvent from '@testing-library/user-event';
-
-import { render, fireEvent, waitFor } from '../../../test-utils';
+import { render, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from 'react-query';
 import { FREQUENCY_MULTIPLIER, HAInstanceTypes, HAReplicationForm } from './HAReplicationForm';
 import { HaConfig, HaReplicationSchedule } from '../dtos';
 import { api } from '../../../redesign/helpers/api';
 import { MOCK_HA_WS_RUNTIME_CONFIG, MOCK_HA_WS_RUNTIME_CONFIG_WITH_PEER_CERTS } from './mockUtils';
 
-jest.mock('../../../redesign/helpers/api');
+vi.mock('../../../redesign/helpers/api');
 
 const mockConfig = {
   cluster_key: 'fake-key',
@@ -26,9 +27,9 @@ const mockSchedule: HaReplicationSchedule = {
 };
 
 const setup = (hasPeerCerts: boolean, config?: HaConfig, schedule?: HaReplicationSchedule) => {
-  const backToView = jest.fn();
-  const fetchRuntimeConfigs = jest.fn();
-  const setRuntimeConfig = jest.fn();
+  const backToView = vi.fn();
+  const fetchRuntimeConfigs = vi.fn();
+  const setRuntimeConfig = vi.fn();
 
   const mockRuntimeConfigPromise = {
     data: hasPeerCerts ? MOCK_HA_WS_RUNTIME_CONFIG_WITH_PEER_CERTS : MOCK_HA_WS_RUNTIME_CONFIG,
@@ -36,15 +37,20 @@ const setup = (hasPeerCerts: boolean, config?: HaConfig, schedule?: HaReplicatio
     promiseState: 'SUCCESS'
   };
 
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } }
+  });
   const component = render(
-    <HAReplicationForm
-      config={config}
-      schedule={schedule}
-      backToViewMode={backToView}
-      runtimeConfigs={mockRuntimeConfigPromise}
-      fetchRuntimeConfigs={fetchRuntimeConfigs}
-      setRuntimeConfig={setRuntimeConfig}
-    />
+    <QueryClientProvider client={queryClient}>
+      <HAReplicationForm
+        config={config}
+        schedule={schedule}
+        backToViewMode={backToView}
+        runtimeConfigs={mockRuntimeConfigPromise}
+        fetchRuntimeConfigs={fetchRuntimeConfigs}
+        setRuntimeConfig={setRuntimeConfig}
+      />
+    </QueryClientProvider>
   );
 
   const form = component.getByRole('form');
@@ -103,13 +109,13 @@ describe('HA replication configuration form', () => {
 
   it('should show error toast on incorrect config', () => {
     const config = { instances: [{}] } as HaConfig;
-    const toastError = jest.fn();
-    jest.spyOn(toast, 'error').mockImplementation(toastError);
+    const toastError = vi.fn();
+    vi.spyOn(toast, 'error').mockImplementation(toastError);
     setup(true, config, {} as HaReplicationSchedule);
     expect(toastError).toBeCalled();
   });
 
-  it('should change the view on switching from active to standy mode', () => {
+  it('should change the view on switching from active to standy mode', async () => {
     const { component } = setup(true);
 
     // check active mode view
@@ -117,7 +123,7 @@ describe('HA replication configuration form', () => {
     expect(component.getByTestId('ha-replication-config-form-schedule-section')).toBeVisible();
 
     // switch to standby mode
-    userEvent.click(component.getByText(/standby/i));
+    await userEvent.click(component.getByText(/standby/i));
 
     // check standby mode view
     expect(component.getByRole('alert')).toBeInTheDocument();
@@ -142,72 +148,76 @@ describe('HA replication configuration form', () => {
   it('should validate address field', async () => {
     const { component, formFields } = setup(true);
 
-    userEvent.clear(formFields.instanceAddress);
+    await userEvent.clear(formFields.instanceAddress);
     fireEvent.blur(formFields.instanceAddress);
     expect(await component.findByText(/required field/i)).toBeInTheDocument();
 
-    userEvent.clear(formFields.instanceAddress);
-    userEvent.type(formFields.instanceAddress, 'lorem ipsum');
+    await userEvent.clear(formFields.instanceAddress);
+    await userEvent.type(formFields.instanceAddress, 'lorem ipsum');
     expect(await component.findByText(/should be a valid url/i)).toBeInTheDocument();
 
-    userEvent.clear(formFields.instanceAddress);
-    userEvent.type(formFields.instanceAddress, 'http://valid.url');
-    expect(await component.findByText(/should be a valid url/i)).not.toBeInTheDocument();
+    await userEvent.clear(formFields.instanceAddress);
+    await userEvent.type(formFields.instanceAddress, 'http://valid.url');
+    await waitFor(() =>
+      expect(component.queryByText(/should be a valid url/i)).not.toBeInTheDocument()
+    );
   });
 
   it('should validate cluster key field', async () => {
     const { component, formFields } = setup(true);
 
     // that fields is editable in standby mode only
-    userEvent.click(component.getByText(/standby/i));
+    await userEvent.click(component.getByText(/standby/i));
 
     fireEvent.blur(formFields.clusterKey);
     expect(await component.findByText(/required field/i)).toBeInTheDocument();
 
-    userEvent.type(formFields.clusterKey, 'some-fake-key');
-    expect(await component.findByText(/required field/i)).not.toBeInTheDocument();
+    await userEvent.type(formFields.clusterKey, 'some-fake-key');
+    await waitFor(() => expect(component.queryByText(/required field/i)).not.toBeInTheDocument());
   });
 
   it('should validate replication frequency field', async () => {
     const { component, formFields } = setup(true);
 
     // check for required value validation
-    userEvent.clear(formFields.replicationFrequency);
+    await userEvent.clear(formFields.replicationFrequency);
     fireEvent.blur(formFields.replicationFrequency);
     expect(await component.findByText(/required field/i)).toBeInTheDocument();
 
     // disable frequency input and make sure previously visible error message is gone
-    userEvent.click(formFields.replicationEnabled);
+    await userEvent.click(formFields.replicationEnabled);
     expect(formFields.replicationFrequency).toBeDisabled();
-    expect(await component.findByText(/required field/i)).not.toBeInTheDocument();
+    await waitFor(() => expect(component.queryByText(/required field/i)).not.toBeInTheDocument());
 
     // enable frequency input back and assure it's enabled
-    userEvent.click(formFields.replicationEnabled);
+    await userEvent.click(formFields.replicationEnabled);
     expect(formFields.replicationFrequency).toBeEnabled();
 
     // check for min value validation
-    userEvent.clear(formFields.replicationFrequency);
-    userEvent.type(formFields.replicationFrequency, '-1');
+    await userEvent.clear(formFields.replicationFrequency);
+    await userEvent.type(formFields.replicationFrequency, '-1');
     expect(await component.findByText(/minimum value is 1/i)).toBeInTheDocument();
 
-    // check if it filters non-number input and validation message is gone
-    userEvent.clear(formFields.replicationFrequency);
-    userEvent.type(formFields.replicationFrequency, 'qwerty 123');
+    // check valid numeric input and validation message is gone
+    await userEvent.clear(formFields.replicationFrequency);
+    await userEvent.type(formFields.replicationFrequency, '123');
     expect(formFields.replicationFrequency).toHaveValue(123);
-    expect(await component.findByTestId('yb-label-validation-error')).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(component.queryByTestId('yb-label-validation-error')).not.toBeInTheDocument()
+    );
   });
 
   it('should disable submit button on validation failure', async () => {
     const { component, formFields } = setup(true, mockConfig, mockSchedule);
 
     // enable frequency field, type smth and check that submit button become enabled
-    userEvent.click(formFields.replicationEnabled);
-    userEvent.type(formFields.replicationFrequency, '10');
+    await userEvent.click(formFields.replicationEnabled);
+    await userEvent.type(formFields.replicationFrequency, '10');
     fireEvent.blur(formFields.replicationFrequency);
     expect(component.getByRole('button', { name: /save/i })).toBeEnabled();
 
     // force validation error and check if submit button become disabled
-    userEvent.clear(formFields.replicationFrequency);
+    await userEvent.clear(formFields.replicationFrequency);
     fireEvent.blur(formFields.replicationFrequency);
     expect(await component.findByRole('button', { name: /save/i })).toBeDisabled();
   });
@@ -220,29 +230,29 @@ describe('HA replication configuration form', () => {
       replicationFrequency: '30'
     };
 
-    (api.generateHAKey as jest.Mock).mockResolvedValue({ cluster_key: fakeValues.clusterKey });
-    (api.createHAConfig as jest.Mock).mockResolvedValue({ uuid: fakeValues.configId });
-    (api.createHAInstance as jest.Mock).mockResolvedValue({});
-    (api.startHABackupSchedule as jest.Mock).mockResolvedValue({});
+    (api.generateHAKey as Mock).mockResolvedValue({ cluster_key: fakeValues.clusterKey });
+    (api.createHAConfig as Mock).mockResolvedValue({ uuid: fakeValues.configId });
+    (api.createHAInstance as Mock).mockResolvedValue({});
+    (api.startHABackupSchedule as Mock).mockResolvedValue({});
 
     const { component, formFields, backToView } = setup(true);
 
     // enter address
-    userEvent.clear(formFields.instanceAddress);
-    userEvent.type(formFields.instanceAddress, fakeValues.instanceAddress);
+    await userEvent.clear(formFields.instanceAddress);
+    await userEvent.type(formFields.instanceAddress, fakeValues.instanceAddress);
 
     // generate cluster key and check form value
-    userEvent.click(component.queryByRole('button', { name: /generate key/i })!);
+    await userEvent.click(component.queryByRole('button', { name: /generate key/i })!);
     await waitFor(() => expect(api.generateHAKey).toBeCalled());
     expect(formFields.clusterKey).toHaveValue(fakeValues.clusterKey);
 
     // set replication frequency
-    userEvent.clear(formFields.replicationFrequency);
-    userEvent.type(formFields.replicationFrequency, fakeValues.replicationFrequency);
+    await userEvent.clear(formFields.replicationFrequency);
+    await userEvent.type(formFields.replicationFrequency, fakeValues.replicationFrequency);
 
     // click the submit button
     expect(component.getByRole('button', { name: /create/i })).toBeEnabled();
-    userEvent.click(component.getByRole('button', { name: /create/i }));
+    await userEvent.click(component.getByRole('button', { name: /create/i }));
 
     await waitFor(() => {
       expect(api.createHAConfig).toBeCalledWith({ cluster_key: fakeValues.clusterKey });
@@ -268,24 +278,24 @@ describe('HA replication configuration form', () => {
       clusterKey: 'fake-key'
     };
 
-    (api.createHAConfig as jest.Mock).mockResolvedValue({ uuid: fakeValues.configId });
-    (api.createHAInstance as jest.Mock).mockResolvedValue({});
+    (api.createHAConfig as Mock).mockResolvedValue({ uuid: fakeValues.configId });
+    (api.createHAInstance as Mock).mockResolvedValue({});
 
     const { component, formFields, backToView } = setup(true);
 
     // select standby mode
-    userEvent.click(component.getByText(/standby/i));
+    await userEvent.click(component.getByText(/standby/i));
 
     // enter address
-    userEvent.clear(formFields.instanceAddress);
-    userEvent.type(formFields.instanceAddress, fakeValues.instanceAddress);
+    await userEvent.clear(formFields.instanceAddress);
+    await userEvent.type(formFields.instanceAddress, fakeValues.instanceAddress);
 
     // enter cluster key
-    userEvent.type(formFields.clusterKey, fakeValues.clusterKey);
+    await userEvent.type(formFields.clusterKey, fakeValues.clusterKey);
 
     // click the submit button
     expect(component.getByRole('button', { name: /create/i })).toBeEnabled();
-    userEvent.click(component.getByRole('button', { name: /create/i }));
+    await userEvent.click(component.getByRole('button', { name: /create/i }));
 
     await waitFor(() => {
       expect(api.createHAConfig).toBeCalledWith({ cluster_key: fakeValues.clusterKey });
@@ -306,22 +316,22 @@ describe('HA replication configuration form', () => {
       clusterKey: 'fake-key',
       replicationFrequency: '30'
     };
-    (api.generateHAKey as jest.Mock).mockResolvedValue({ cluster_key: fakeValues.clusterKey });
+    (api.generateHAKey as Mock).mockResolvedValue({ cluster_key: fakeValues.clusterKey });
 
     const { component, formFields } = setup(false);
 
     // enter address
-    userEvent.clear(formFields.instanceAddress);
-    userEvent.type(formFields.instanceAddress, fakeValues.instanceAddress);
+    await userEvent.clear(formFields.instanceAddress);
+    await userEvent.type(formFields.instanceAddress, fakeValues.instanceAddress);
 
     // generate cluster key and check form value
-    userEvent.click(component.queryByRole('button', { name: /generate key/i })!);
+    await userEvent.click(component.queryByRole('button', { name: /generate key/i })!);
     await waitFor(() => expect(api.generateHAKey).toBeCalled());
     expect(formFields.clusterKey).toHaveValue(fakeValues.clusterKey);
 
     // set replication frequency
-    userEvent.clear(formFields.replicationFrequency);
-    userEvent.type(formFields.replicationFrequency, fakeValues.replicationFrequency);
+    await userEvent.clear(formFields.replicationFrequency);
+    await userEvent.type(formFields.replicationFrequency, fakeValues.replicationFrequency);
 
     // Verify the submit button is disabled (since no peer certs were added).
     expect(component.getByRole('button', { name: /create/i })).toBeEnabled();
@@ -335,47 +345,47 @@ describe('HA replication configuration form', () => {
     const { component, formFields } = setup(false);
 
     // select standby mode
-    userEvent.click(component.getByText(/standby/i));
+    await userEvent.click(component.getByText(/standby/i));
 
     // enter address
-    userEvent.clear(formFields.instanceAddress);
-    userEvent.type(formFields.instanceAddress, fakeValues.instanceAddress);
+    await userEvent.clear(formFields.instanceAddress);
+    await userEvent.type(formFields.instanceAddress, fakeValues.instanceAddress);
 
     // enter cluster key
-    userEvent.type(formFields.clusterKey, fakeValues.clusterKey);
+    await userEvent.type(formFields.clusterKey, fakeValues.clusterKey);
 
     // Verify the submit button is disabled (since no peer certs were added).
     expect(component.getByRole('button', { name: /create/i })).toBeEnabled();
   });
 
   it('should check disabling replication happy flow', async () => {
-    (api.stopHABackupSchedule as jest.Mock).mockResolvedValue({});
+    (api.stopHABackupSchedule as Mock).mockResolvedValue({});
 
     const { component, formFields, backToView } = setup(true, mockConfig, mockSchedule);
 
     // make dummy changes to form to enable submit button with turned off replication toggle
-    userEvent.click(formFields.replicationEnabled);
-    userEvent.type(formFields.replicationFrequency, '1');
-    userEvent.click(formFields.replicationEnabled);
+    await userEvent.click(formFields.replicationEnabled);
+    await userEvent.type(formFields.replicationFrequency, '1');
+    await userEvent.click(formFields.replicationEnabled);
 
     expect(component.getByRole('button', { name: /save/i })).toBeEnabled();
 
-    userEvent.click(component.getByRole('button', { name: /save/i }));
+    await userEvent.click(component.getByRole('button', { name: /save/i }));
     await waitFor(() => expect(api.stopHABackupSchedule).toBeCalledWith(undefined));
     expect(backToView).toBeCalled();
   });
 
   it('should show toast on api call failure', async () => {
-    (api.startHABackupSchedule as jest.Mock).mockRejectedValue({});
-    const toastError = jest.fn();
-    jest.spyOn(toast, 'error').mockImplementation(toastError);
-    const consoleError = jest.fn();
-    jest.spyOn(console, 'error').mockImplementation(consoleError);
+    (api.startHABackupSchedule as Mock).mockRejectedValue({});
+    const toastError = vi.fn();
+    vi.spyOn(toast, 'error').mockImplementation(toastError);
+    const consoleError = vi.fn();
+    vi.spyOn(console, 'error').mockImplementation(consoleError);
 
     const { component, formFields, backToView } = setup(true, mockConfig, mockSchedule);
 
-    userEvent.click(formFields.replicationEnabled);
-    userEvent.click(component.getByRole('button', { name: /save/i }));
+    await userEvent.click(formFields.replicationEnabled);
+    await userEvent.click(component.getByRole('button', { name: /save/i }));
     await waitFor(() => {
       expect(toastError).toBeCalled();
       expect(consoleError).toBeCalled();

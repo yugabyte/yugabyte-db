@@ -33,6 +33,8 @@ import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.cloud.azu.AZUClientFactory;
 import com.yugabyte.yw.cloud.azu.AZUResourceGroupApiClient;
 import com.yugabyte.yw.cloud.gcp.GCPInitializer;
+import com.yugabyte.yw.cloud.gcp.GCPProjectApiClient;
+import com.yugabyte.yw.cloud.gcp.GCPProjectApiClientFactory;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -54,6 +56,7 @@ import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.ImageBundleUtil;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.LdapUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
@@ -116,7 +119,6 @@ import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.YugawareProperty;
-import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -130,6 +132,7 @@ import io.prometheus.metrics.model.snapshots.HistogramSnapshot.HistogramDataPoin
 import io.prometheus.metrics.model.snapshots.Label;
 import io.prometheus.metrics.model.snapshots.Labels;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -150,6 +153,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.jboss.logging.MDC;
 import org.junit.Before;
 import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.CallbackController;
@@ -186,6 +190,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected TableManagerYb mockTableManagerYb = mock(TableManagerYb.class);
   protected CloudQueryHelper mockCloudQueryHelper = mock(CloudQueryHelper.class);
   protected ShellKubernetesManager mockKubernetesManager = mock(ShellKubernetesManager.class);
+  protected KubernetesManagerFactory mockKubernetesManagerFactory =
+      mock(KubernetesManagerFactory.class);
   protected SwamperHelper mockSwamperHelper = mock(SwamperHelper.class);
   protected CallHome mockCallHome = mock(CallHome.class);
   protected CallbackController mockCallbackController = mock(CallbackController.class);
@@ -243,11 +249,15 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected Commissioner commissioner;
   protected CustomerTaskManager customerTaskManager;
   protected ReleaseManager.ReleaseMetadata releaseMetadata;
+  protected ReleaseManager.ReleaseMetadata ybcReleaseMetadata;
   protected ReleaseContainer releaseContainer;
   protected ImageBundleUtil imageBundleUtil;
   protected AZUClientFactory azuClientFactory = mock(AZUClientFactory.class);
   protected AZUResourceGroupApiClient azuResourceGroupApiClient =
       mock(AZUResourceGroupApiClient.class);
+  protected GCPProjectApiClientFactory gcpClientFactory = mock(GCPProjectApiClientFactory.class);
+  protected GCPProjectApiClient gcpProjectApiClient = mock(GCPProjectApiClient.class);
+
   protected CloudAPI cloudAPI = mock(CloudAPI.class);
 
   protected int failsOnCapacityReservation = 0;
@@ -295,11 +305,36 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     RuntimeConfigFactory configFactory = app.injector().instanceOf(RuntimeConfigFactory.class);
     alertConfigurationService = spy(app.injector().instanceOf(AlertConfigurationService.class));
     taskExecutor = app.injector().instanceOf(TaskExecutor.class);
+    taskExecutor.setMaxWaitForTime(Duration.ofMillis(5));
     providerEditRestrictionManager =
         app.injector().instanceOf(ProviderEditRestrictionManager.class);
     imageBundleUtil = app.injector().instanceOf(ImageBundleUtil.class);
     lenient().when(azuClientFactory.getClient(any())).thenReturn(azuResourceGroupApiClient);
     lenient().when(mockCloudAPIFactory.get(any())).thenReturn(cloudAPI);
+    lenient().when(gcpClientFactory.getClient(any())).thenReturn(gcpProjectApiClient);
+
+    // GCP createCapacityReservation: echo back the reservation name (arg 0),
+    // matching the AWS/Azure stub style.
+    Map<String, Integer> gcpFailsPerReservation = new HashMap<>();
+    try {
+      lenient()
+          .doAnswer(
+              invocation -> {
+                String reservationName = invocation.getArgument(0);
+                if (failsOnCapacityReservation > 0) {
+                  int n = gcpFailsPerReservation.merge(reservationName, 1, Integer::sum);
+                  if (n <= failsOnCapacityReservation) {
+                    throw new RuntimeException("Failing");
+                  }
+                }
+                return reservationName;
+              })
+          .when(gcpProjectApiClient)
+          .createCapacityReservation(
+              anyString(), anyString(), anyString(), any(Integer.class), any(Map.class));
+    } catch (java.io.IOException e) {
+      throw new RuntimeException(e);
+    }
 
     PrometheusRegistry collectorRegistry = new PrometheusRegistry();
     capacityReservationGauge = CapacityReservationMetrics.initReservationGauge(collectorRegistry);
@@ -346,14 +381,21 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getYcqlQueryExecutor()).thenReturn(mockYcqlQueryExecutor);
     when(mockBaseTaskDependencies.getGFlagsValidation()).thenReturn(mockGFlagsValidation);
     when(mockBaseTaskDependencies.getNodeUniverseManager()).thenReturn(mockNodeUniverseManager);
+    lenient().when(mockKubernetesManagerFactory.getManager()).thenReturn(mockKubernetesManager);
     when(mockBaseTaskDependencies.getNodeAgentClient()).thenReturn(mockNodeAgentClient);
     when(mockBaseTaskDependencies.getImageBundleUtil()).thenReturn(imageBundleUtil);
     when(mockBaseTaskDependencies.getRestoreManagerYb()).thenReturn(restoreManagerYb);
     when(mockBaseTaskDependencies.getAutoFlagUtil()).thenReturn(mockAutoFlagUtil);
-    releaseMetadata = ReleaseManager.ReleaseMetadata.create("1.0.0.0-b1");
+    releaseMetadata =
+        ReleaseManager.ReleaseMetadata.create("1.0.0.0-b1").withFilePath("/fakedb-x86_64.tar.gz");
+    ybcReleaseMetadata =
+        ReleaseManager.ReleaseMetadata.create("1.0.0.0-b1").withFilePath("fakeybc-x86_64.tar.gz");
     releaseContainer =
         new ReleaseContainer(releaseMetadata, mockCloudUtilFactory, mockConfig, mockReleasesUtils);
     lenient().when(mockReleaseManager.getReleaseByVersion(any())).thenReturn(releaseContainer);
+    lenient()
+        .when(mockReleaseManager.getYbcReleaseByVersion(any(), any(), any()))
+        .thenReturn(ybcReleaseMetadata);
     ShellResponse response = ShellResponse.create(0, "Command output: Linux x86_64");
     lenient()
         .when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
@@ -372,6 +414,24 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     lenient()
         .when(mockNodeAgentManager.getNodeAgentPackagePath(any(), any()))
         .thenReturn(Paths.get("/opt/yugabyte"));
+    lenient().when(mockNodeUniverseManager.getYbHomeDir(any(), any())).thenReturn("/home/yugabyte");
+    lenient()
+        .doAnswer(
+            inv -> {
+              Universe universe = (Universe) inv.getArgument(0);
+              NodeTaskParams nodeTaskParam = (NodeTaskParams) inv.getArgument(1);
+              Cluster cluster = null;
+              if (nodeTaskParam.placementUuid != null) {
+                cluster =
+                    universe.getUniverseDetails().getClusterByUuid(nodeTaskParam.placementUuid);
+              }
+              if (cluster == null) {
+                cluster = universe.getUniverseDetails().getPrimaryCluster();
+              }
+              return cluster.userIntent;
+            })
+        .when(mockNodeManager)
+        .getUserIntentFromParams(any(Universe.class), any(NodeTaskParams.class));
     lenient()
         .doAnswer(
             inv -> {
@@ -502,8 +562,11 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(AZUClientFactory.class).toInstance(azuClientFactory))
                 .overrides(
                     bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager))
-                .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager)))
+                .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
+                .overrides(
+                    bind(KubernetesManagerFactory.class).toInstance(mockKubernetesManagerFactory)))
         .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
+        .overrides(bind(GCPProjectApiClientFactory.class).toInstance(gcpClientFactory))
         .overrides(bind(CapacityReservationMetrics.class).toInstance(reservationMetrics))
         .overrides(
             bind(OperatorStatusUpdaterFactory.class).toInstance(mockOperatorStatusUpdaterFactory))
@@ -540,13 +603,18 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   }
 
   public TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
-    return waitForTask(taskUUID, 200);
+    return waitForTask(taskUUID, 200 /*sleepDurationMs*/);
   }
 
-  public TaskInfo waitForTask(UUID taskUUID, long sleepDuration) throws InterruptedException {
+  public TaskInfo waitForTask(UUID taskUUID, long sleepDurationMs) throws InterruptedException {
+    return waitForTask(taskUUID, sleepDurationMs, MAX_RETRY_COUNT);
+  }
+
+  public TaskInfo waitForTask(UUID taskUUID, long sleepDurationMs, int maxRetries)
+      throws InterruptedException {
     int numRetries = 0;
-    TaskInfo taskInfo;
-    while (numRetries < MAX_RETRY_COUNT) {
+    TaskInfo taskInfo = null;
+    while (numRetries < maxRetries) {
       // Here is a hack to decrease amount of accidental problems for tests using this
       // function:
       // Surrounding the next block with try {} catch {} as sometimes h2 raises NPE
@@ -556,7 +624,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         try {
           taskInfo = TaskInfo.getOrBadRequest(taskUUID);
           // Also, ensure task details are set before returning.
-          if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())
+          if (TaskInfo.TERMINAL_STATES.contains(taskInfo.getTaskState())
               && taskInfo.getTaskParams() != null) {
             return taskInfo;
           }
@@ -567,12 +635,11 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
               e.getMessage());
         }
       }
-      Thread.sleep(sleepDuration);
+      Thread.sleep(sleepDurationMs);
       numRetries++;
     }
-
     Optional<TaskInfo> taskInfoOptional = TaskInfo.maybeGet(taskUUID);
-    if (taskInfoOptional.isEmpty()) {
+    if (!taskInfoOptional.isPresent()) {
       throw new RuntimeException(
           "WaitFor task exceeded maxRetries and could not fetch TaskInfo for taskUUID: "
               + taskUUID);
@@ -626,7 +693,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         return isRunning;
       }
       TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
-      if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
+      if (TaskInfo.TERMINAL_STATES.contains(taskInfo.getTaskState())) {
         return false;
       }
       Thread.sleep(10);
@@ -651,7 +718,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       if (commissioner.isTaskPaused(taskUuid)) {
         return;
       }
-      Thread.sleep(10);
+      Thread.sleep(100);
       numRetries++;
     }
     throw new RuntimeException(
@@ -940,8 +1007,12 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
    * @param hasTablets whether or not the nodes will have tablets assigned.
    */
   public void setDumpEntitiesMock(Universe universe, String nodeName, boolean hasTablets) {
+    DumpEntitiesResponse.Table table = new DumpEntitiesResponse.Table();
+    table.setTableName("Table");
+    table.setTableId("TableId1");
     Tablet tablet = new Tablet();
-    tablet.setTabletId("Tablet id 1");
+    tablet.setTabletId("TabletId1");
+    tablet.setTableId(table.getTableId());
 
     Collection<NodeDetails> nodes = new HashSet<>();
     if (nodeName.isEmpty()) {
@@ -964,6 +1035,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
     DumpEntitiesResponse response = new DumpEntitiesResponse();
     response.setTablets(Arrays.asList(tablet));
+    response.setTables(Collections.singletonList(table));
     ObjectNode dumpEntitiesJson = (ObjectNode) Json.toJson(response);
     when(mockNodeUIApiHelper.getRequest(endsWith(UniverseTaskBase.DUMP_ENTITIES_URL_SUFFIX)))
         .thenReturn(dumpEntitiesJson);
@@ -1015,8 +1087,32 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     ShellResponse shellResponse2 = new ShellResponse();
     shellResponse2.message = "Command output:\\nLocale is present";
     shellResponse2.code = 0;
-    when(mockNodeUniverseManager.runCommand(any(), any(), eq(command), any()))
+    lenient()
+        .when(mockNodeUniverseManager.runCommand(any(), any(), eq(command), any()))
         .thenReturn(shellResponse2);
+  }
+
+  /**
+   * Mocks shell responses for {@code CheckDbNodePortConnectivity} subtasks created by {@code
+   * createDbNodePortConnectivityCheckTasksForCreatedNodes} (bash + python3 connect_ex script).
+   */
+  protected void mockDbNodePortConnectivityResponse(NodeUniverseManager mockNodeUniverseManager) {
+    ShellResponse response =
+        ShellResponse.create(0, ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + "ok");
+    lenient()
+        .when(
+            mockNodeUniverseManager.runCommand(
+                any(),
+                any(),
+                ArgumentMatchers.<List<String>>argThat(
+                    cmd ->
+                        cmd != null
+                            && !cmd.isEmpty()
+                            && "bash".equals(cmd.get(0))
+                            && cmd.stream()
+                                .anyMatch(arg -> arg != null && arg.contains("python3"))),
+                any()))
+        .thenReturn(response);
   }
 
   protected void mockClockSyncResponse(NodeUniverseManager nodeUniverseManager) {
@@ -1058,7 +1154,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
           TabletServerInfo tserverInfo = new TabletServerInfo();
           tserverInfo.setCloudInfo(cloudInfo);
-          tserverInfo.setUuid(UUID.randomUUID());
+          tserverInfo.setPermanentUuid(UUID.randomUUID().toString().replace("-", ""));
           tserverInfo.setInPrimaryCluster(cluster.clusterType.equals(ClusterType.PRIMARY));
           tserverInfo.setPlacementUuid(clusterUuid);
           tserverInfo.setPrivateRpcAddress(
@@ -1072,7 +1168,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       when(listLiveTabletServersResponse.getTabletServers()).thenReturn(tabletServerInfoList);
       when(mockClient.listLiveTabletServers()).thenReturn(listLiveTabletServersResponse);
     } catch (Exception e) {
-      fail();
+      fail(e.getMessage());
     }
   }
 
@@ -1108,7 +1204,9 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     Provider provider = region.getProvider();
     String regionGroup =
         DoCapacityReservation.getCapacityReservationGroupName(
-            universeUUID, CommonUtils.getClusterType(provider, universe), region.getCode());
+            universeUUID,
+            DoCapacityReservation.getProviderStr(provider, universe),
+            region.getCode());
 
     Set<String> allZones =
         instanceTypeToZonesAndNodes.values().stream()
@@ -1235,7 +1333,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       Provider provider,
       Map<String, Map<String, ZoneData>>... instanceTypeToZonesAndNodesArray) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    ClusterType clusterType = CommonUtils.getClusterType(provider, universe);
+    String providerStr = DoCapacityReservation.getProviderStr(provider, universe);
 
     List<Double> nodesCounts = new ArrayList<>();
     for (Map<String, Map<String, ZoneData>> instanceTypeToZonesAndNodes :
@@ -1246,7 +1344,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 (zone, zoneData) -> {
                   String instanceTypeRes =
                       DoCapacityReservation.getZoneInstanceCapacityReservationName(
-                          universeUUID, clusterType, "az-" + zone, instanceType);
+                          universeUUID, providerStr, "az-" + zone, instanceType);
                   verify(cloudAPI)
                       .createCapacityReservation(
                           Mockito.eq(defaultProvider),
@@ -1272,6 +1370,105 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     }
 
     validateMetrics(Common.CloudType.aws, nodesCounts, 0);
+  }
+
+  @SafeVarargs
+  protected final void verifyCapacityReservationGcp(
+      UUID universeUUID, Map<String, Map<String, ZoneData>>... instanceTypeToZonesAndNodesArray)
+      throws java.io.IOException {
+    verifyCapacityReservationGcp(universeUUID, gcpProvider, instanceTypeToZonesAndNodesArray);
+  }
+
+  @SafeVarargs
+  protected final void verifyCapacityReservationGcp(
+      UUID universeUUID,
+      Provider provider,
+      Map<String, Map<String, ZoneData>>... instanceTypeToZonesAndNodesArray)
+      throws java.io.IOException {
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+
+    // Capture all create calls so we can map (instanceType, zone) -> reservationName
+    // without relying on persisted CapacityReservationState (which may be cleared
+    // by later subtasks in the CreateUniverse pipeline).
+    ArgumentCaptor<String> nameCaptor = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> zoneCaptor = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<String> typeCaptor = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<Integer> countCaptor = ArgumentCaptor.forClass(Integer.class);
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    ArgumentCaptor<Map<String, String>> tagsCaptor =
+        (ArgumentCaptor<Map<String, String>>) (ArgumentCaptor) ArgumentCaptor.forClass(Map.class);
+
+    verify(gcpProjectApiClient, Mockito.atLeast(0))
+        .createCapacityReservation(
+            nameCaptor.capture(),
+            zoneCaptor.capture(),
+            typeCaptor.capture(),
+            countCaptor.capture(),
+            tagsCaptor.capture());
+
+    // Build (instanceType, zoneCode) -> reservationName index from captured calls.
+    Map<String, Map<String, String>> capturedNames = new HashMap<>();
+    List<String> capturedNameVals = nameCaptor.getAllValues();
+    List<String> capturedZoneVals = zoneCaptor.getAllValues();
+    List<String> capturedTypeVals = typeCaptor.getAllValues();
+    for (int i = 0; i < capturedNameVals.size(); i++) {
+      capturedNames
+          .computeIfAbsent(capturedTypeVals.get(i), x -> new HashMap<>())
+          .put(capturedZoneVals.get(i), capturedNameVals.get(i));
+    }
+
+    List<Double> nodesCounts = new ArrayList<>();
+    for (Map<String, Map<String, ZoneData>> instanceTypeToZonesAndNodes :
+        instanceTypeToZonesAndNodesArray) {
+      for (Map.Entry<String, Map<String, ZoneData>> typeEntry :
+          instanceTypeToZonesAndNodes.entrySet()) {
+        String instanceType = typeEntry.getKey();
+        for (Map.Entry<String, ZoneData> zoneEntry : typeEntry.getValue().entrySet()) {
+          String zone = zoneEntry.getKey();
+          ZoneData zoneData = zoneEntry.getValue();
+          String fullZone = "az-" + zone;
+
+          String reservationName =
+              capturedNames.getOrDefault(instanceType, Collections.emptyMap()).get(fullZone);
+          assertNotNull(
+              "Expected captured GCP reservation for "
+                  + instanceType
+                  + "/"
+                  + fullZone
+                  + ". All captured: "
+                  + capturedNames,
+              reservationName);
+          assertTrue(
+              "GCP reservation name must start with r-: " + reservationName,
+              reservationName.startsWith("r-"));
+
+          Map<String, String> expectedTags =
+              Map.of(
+                  "universe-name",
+                  "universe-test",
+                  "universe-uuid",
+                  universeUUID.toString(),
+                  "zone",
+                  fullZone,
+                  "instance-type",
+                  instanceType);
+
+          verify(gcpProjectApiClient)
+              .createCapacityReservation(
+                  Mockito.eq(reservationName),
+                  Mockito.eq(fullZone),
+                  Mockito.eq(instanceType),
+                  Mockito.eq(Integer.valueOf(zoneData.nodes.size())),
+                  Mockito.eq(expectedTags));
+          nodesCounts.add((double) zoneData.nodes.size());
+          verify(gcpProjectApiClient)
+              .deleteCapacityReservation(
+                  Mockito.eq(reservationName), Mockito.eq(fullZone), Mockito.eq(true));
+        }
+      }
+    }
+
+    // validateMetrics(Common.CloudType.gcp, nodesCounts, 0);
   }
 
   protected void verifyNodeInteractionsCapacityReservation(

@@ -22,10 +22,16 @@ import org.yb.util.Pair;
 import org.yb.YBTestRunner;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 
 import com.yugabyte.util.PSQLException;
 import static org.yb.AssertionWrappers.*;
@@ -33,6 +39,16 @@ import static org.yb.AssertionWrappers.*;
 @RunWith(value=YBTestRunner.class)
 public class TestPgExplicitLocks extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgSelect.class);
+
+  @Override
+  protected int getInitialNumTServers() {
+    return 1;
+  }
+
+  @Override
+  protected int getReplicationFactor() {
+    return 1;
+  }
 
   @Override
   protected Map<String, String> getTServerFlags() {
@@ -148,6 +164,8 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
   private void runRangeKeyLocksTest(ParallelQueryRunner runner,
                                     IsolationLevel pgIsolationLevel,
                                     boolean skip_prefix_locks) throws SQLException {
+    boolean slowModeSerializable = pgIsolationLevel == IsolationLevel.SERIALIZABLE &&
+                                   skip_prefix_locks;
     QueryBuilder builder = new QueryBuilder("table_with_hash");
     // NOTE: for all examples below, the SELECT KEY SHARE statement will lock the whole predicate
     // for SERIALIZABLE isolation level and only matching rows in other isolation levels. The
@@ -230,26 +248,30 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
     runner.runWithConflict(
       builder.selectKeyShare("h = 1 AND r1 = 10 AND r2 = 100"),
       builder.delete("h = 1 AND r1 = 10 AND r2 = 100"));
-
-    runner.runWithoutConflict(
+    runner.run(
       builder.selectKeyShare("h = 1"),
-      builder.delete("h = 2 AND r1 = 20 AND r2 = 200"));
+      builder.delete("h = 2 AND r1 = 20 AND r2 = 200"),
+      slowModeSerializable /* conflict_expected */);
     runner.run(
       builder.selectKeyShare("h = 1 AND r1 = 10"),
       builder.delete("h = 1 AND r1 = 11 AND r2 = 101"),
-      pgIsolationLevel == IsolationLevel.SERIALIZABLE && skip_prefix_locks);
-    runner.runWithoutConflict(
+      slowModeSerializable);
+    runner.run(
       builder.selectKeyShare("h = 1 AND r1 in (10, 11) AND r2 = 102"),
-      builder.delete("h = 2 AND r1 = 21 AND r2 = 201"));
-    runner.runWithoutConflict(
+      builder.delete("h = 2 AND r1 = 21 AND r2 = 201"),
+      slowModeSerializable /* conflict_expected */);
+    runner.run(
       builder.selectKeyShare("h = 1 AND r1 = 11 AND r2 in (100, 101)"),
-      builder.delete("h = 1 AND r1 = 10 AND r2 = 100"));
-    runner.runWithoutConflict(
+      builder.delete("h = 1 AND r1 = 10 AND r2 = 100"),
+      slowModeSerializable /* conflict_expected */);
+    runner.run(
       builder.selectKeyShare("h = 1 AND r2 = 102"),
-      builder.delete("h = 2 AND r1 = 22 AND r2 = 202"));
-    runner.runWithoutConflict(
+      builder.delete("h = 2 AND r1 = 22 AND r2 = 202"),
+      slowModeSerializable /* conflict_expected */);
+    runner.run(
       builder.selectKeyShare("h = 1 AND r1 = 10 AND r2 = 100"),
-      builder.delete("h = 1 AND r1 = 10 AND r2 = 1000"));
+      builder.delete("h = 1 AND r1 = 10 AND r2 = 1000"),
+      slowModeSerializable /* conflict_expected */);
 
     builder = new QueryBuilder("table_without_hash");
     // Lock full tablet if SERIALIZABLE.
@@ -273,15 +295,18 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
     runner.run(
       builder.selectKeyShare("r1 = 1"),
       builder.delete("r1 = 2 AND r2 = 20"),
-      pgIsolationLevel == IsolationLevel.SERIALIZABLE && skip_prefix_locks);
-    runner.runWithoutConflict(
+      slowModeSerializable /* conflict_expected */);
+    runner.run(
       builder.selectKeyShare("r2 = 10 AND r1 IN (1)"),
-      builder.delete("r1 = 1 AND r2 = 11"));
+      builder.delete("r1 = 1 AND r2 = 11"),
+      slowModeSerializable /* conflict_expected */);
   }
 
   private void runFKLocksTest(ParallelQueryRunner runner,
                               IsolationLevel pgIsolationLevel,
                               boolean skip_prefix_locks) throws SQLException {
+    boolean slowModeSerializable = pgIsolationLevel == IsolationLevel.SERIALIZABLE &&
+                                   skip_prefix_locks;
     QueryBuilder childBuilder = new QueryBuilder("child_with_hash");
     QueryBuilder parentBuilder = new QueryBuilder("parent_with_hash");
     runner.runWithConflict(
@@ -294,32 +319,35 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
       childBuilder.insert("(3, 1, 10, 100)"),
       parentBuilder.delete("h = 1 AND r1 = 10 AND r2 = 100"));
 
-    runner.runWithoutConflict(
+    runner.run(
       childBuilder.insert("(4, 1, 10, 100)"),
-      parentBuilder.delete("h = 2"));
+      parentBuilder.delete("h = 2"),
+      slowModeSerializable /* conflict_expected */);
     runner.run(
       childBuilder.insert("(5, 1, 10, 100)"),
       parentBuilder.delete("h = 1 AND r1 = 11"),
-      pgIsolationLevel == IsolationLevel.SERIALIZABLE && skip_prefix_locks);
+      slowModeSerializable);
     runner.run(
       childBuilder.insert("(6, 1, 10, 100)"),
       parentBuilder.delete("h = 1 AND r1 = 10 AND r2 = 1000"),
-      pgIsolationLevel == IsolationLevel.SERIALIZABLE && skip_prefix_locks);
-    Pair<Integer, Integer> result = runner.runWithoutConflict(
+      slowModeSerializable);
+    Pair<Integer, Integer> result = runner.run(
       parentBuilder.delete("h = 3 AND r1 = 1 AND r2 = 10"),
-      parentBuilder.delete("h = 3 AND r1 = 1 AND r2 = 20"));
+      parentBuilder.delete("h = 3 AND r1 = 1 AND r2 = 20"),
+      slowModeSerializable /* conflict_expected */);
     LOG.info("RESULT " + result.getFirst() + ", " + result.getSecond());
-    assertEquals(new Pair<>(1, 1), result);
+    assertEquals(slowModeSerializable ? new Pair<>(1, 0) : new Pair<>(1, 1), result);
 
     childBuilder = new QueryBuilder("child_without_hash");
     parentBuilder = new QueryBuilder("parent_without_hash");
-    runner.runWithoutConflict(
+    runner.run(
       childBuilder.insert("(3, 1, 10)"),
-      parentBuilder.delete("r1 = 2"));
+      parentBuilder.delete("r1 = 2"),
+      slowModeSerializable /* conflict_expected */);
     runner.run(
       childBuilder.insert("(4, 1, 10)"),
       parentBuilder.delete("r1 = 1 AND r2 = 11"),
-      pgIsolationLevel == IsolationLevel.SERIALIZABLE && skip_prefix_locks);
+      slowModeSerializable);
 
     runner.runWithConflict(
       childBuilder.insert("(1, 1, 10)"),
@@ -327,10 +355,11 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
     runner.runWithConflict(
       childBuilder.insert("(2, 1, 10)"),
       parentBuilder.delete("r1 = 1 AND r2 = 10"));
-    result = runner.runWithoutConflict(
+    result = runner.run(
       parentBuilder.delete("r1 = 3 AND r2 = 10"),
-      parentBuilder.delete("r1 = 3 AND r2 = 20"));
-    assertEquals(new Pair<>(1, 1), result);
+      parentBuilder.delete("r1 = 3 AND r2 = 20"),
+      slowModeSerializable /* conflict_expected */);
+    assertEquals(slowModeSerializable ? new Pair<>(1, 0) : new Pair<>(1, 1), result);
   }
 
   private void testRangeKeyLocks(IsolationLevel pgIsolationLevel,
@@ -507,6 +536,55 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
       assertTrue((read_count_after - read_count_before) == 2);
       stmt1.execute("COMMIT");
       stmt2.execute("ROLLBACK");
+    }
+  }
+
+  private Row countRowLocks(Statement stmt, String tableName) throws Exception {
+    // yb_locks_min_txn_age hides locks from fresh transactions; wait before inspecting.
+    stmt.execute("SELECT pg_sleep(1.5)");
+
+    return getSingleRow(stmt, String.format(
+        "SELECT count(*) FROM yb_lock_status(null, null) l " +
+        "WHERE l.locktype = 'row' AND l.relation = '%s'::regclass", tableName));
+  }
+
+  private void runSkipLockedQueryWithFetchSize(Connection conn, int maxReadAhead) throws Exception {
+    final int fetchSize = 1;
+    final long rowsToFetch = 3;
+
+    Statement stmt = conn.createStatement();
+    conn.setAutoCommit(false);
+    stmt.setFetchSize(fetchSize);
+    stmt.execute(String.format(
+        "SET yb_explicit_row_lock_skip_locked_max_read_ahead = %d", maxReadAhead));
+    stmt.execute("BEGIN");
+    ResultSet rs = stmt.executeQuery("SELECT k FROM t_simple ORDER BY k FOR UPDATE SKIP LOCKED");
+
+    int[] expected_rows = {1, 2, 3};
+    for (int expected_row : expected_rows) {
+      assertTrue(rs.next());
+      assertEquals(expected_row, rs.getInt(1));
+    }
+
+    long actualRows = countRowLocks(stmt, "t_simple").getLong(0);
+    assertEquals(actualRows, rowsToFetch);
+
+    conn.commit();
+  }
+
+  // Validate that setFetchSize does not overlock when read-ahead batching is enabled.
+  @Test
+  public void testSkipLockedReadAheadWithFetchSize() throws Exception {
+    try (Connection conn = getConnectionBuilder()
+        .withPreferQueryMode("extended")
+        .connect()) {
+
+      Statement stmt = conn.createStatement();
+      stmt.execute("CREATE TABLE t_simple (k INT, PRIMARY KEY (k ASC))");
+      stmt.execute("INSERT INTO t_simple SELECT i FROM generate_series(1, 10) i");
+
+      runSkipLockedQueryWithFetchSize(conn, 4 /* maxReadAhead */);
+      runSkipLockedQueryWithFetchSize(conn, 1 /* maxReadAhead */);
     }
   }
 }

@@ -20,6 +20,7 @@
 #include "yb/rpc/reactor_thread_role.h"
 
 #include "yb/util/net/socket.h"
+#include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {

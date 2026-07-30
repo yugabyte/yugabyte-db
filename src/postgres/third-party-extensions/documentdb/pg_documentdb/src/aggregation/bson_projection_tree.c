@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/bson/bson_tree.c
+ * src/aggregation/bson_tree.c
  *
  * Functions to create, modify and query bson projection path trees.
  *
@@ -346,8 +346,9 @@ EnsureValidInclusionExclusion(const BuildBsonPathTreeContext *context,
 		const char *to = context->hasInclusion ? Exclusion_String :
 						 Inclusion_String;
 		ereport(ERROR, (errcode(code),
-						errmsg("Cannot do %s on field %.*s in %s projection.",
-							   to, path->length, path->string, from)));
+						errmsg(
+							"%s cannot be applied to field %.*s within the %s projection.",
+							to, path->length, path->string, from)));
 	}
 }
 

@@ -36,6 +36,7 @@ import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.pa.EmbeddedCollectorInitializer;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -103,6 +104,7 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.input.ReversedLinesFileReader;
+import org.apache.pekko.stream.Materializer;
 import org.pac4j.core.profile.CommonProfile;
 import org.pac4j.core.profile.ProfileManager;
 import org.pac4j.oidc.profile.OidcProfile;
@@ -157,6 +159,8 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject private RefetchOIDCAccessToken refreshAccessToken;
 
+  @Inject private EmbeddedCollectorInitializer embeddedCollectorInitializer;
+
   private final ApiHelper apiHelper;
 
   private final RuntimeConfigFactory runtimeConfigFactory;
@@ -165,17 +169,18 @@ public class SessionController extends AbstractPlatformController {
   public static final String API_TOKEN = "apiToken";
   public static final String CUSTOMER_UUID = "customerUUID";
   private static final Duration FOREVER = Duration.ofSeconds(2147483647);
-  public static final String FILTERED_LOGS_SCRIPT = "bin/filtered_logs.sh";
   private static final String OIDC_TOKEN_EXPIRATION = "expiration";
 
   @Inject
   public SessionController(
-      CustomWsClientFactory wsClientFactory, RuntimeConfigFactory runtimeConfigFactory) {
+      CustomWsClientFactory wsClientFactory,
+      RuntimeConfigFactory runtimeConfigFactory,
+      Materializer materializer) {
     WSClient wsClient =
         wsClientFactory.forCustomConfig(
             runtimeConfigFactory.globalRuntimeConf().getValue(Util.LIVE_QUERY_TIMEOUTS));
     this.runtimeConfigFactory = runtimeConfigFactory;
-    this.apiHelper = new ApiHelper(wsClient);
+    this.apiHelper = new ApiHelper(wsClient, materializer);
   }
 
   @ApiModel(description = "Session information")
@@ -230,8 +235,7 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "customerCount", response = CustomerCountResp.class)
   public Result customerCount() {
-    int customerCount = Customer.find.all().size();
-    return PlatformResults.withData(new CustomerCountResp(customerCount));
+    return PlatformResults.withData(new CustomerCountResp(Customer.find.query().findCount()));
   }
 
   @ApiOperation(value = "appVersion", responseContainer = "Map", response = String.class)
@@ -417,7 +421,7 @@ public class SessionController extends AbstractPlatformController {
     return withData(sessionInfo);
   }
 
-  @ApiOperation(value = "UI_ONLY", hidden = true, produces = "application/json")
+  @ApiOperation(value = "UI_ONLY", hidden = true, produces = "application/javascript")
   public Result getPlatformConfig() {
     boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
     boolean showJWTTokenInfo =
@@ -432,7 +436,7 @@ public class SessionController extends AbstractPlatformController {
     responseJson.put("show_jwt_token_info", showJWTTokenInfo);
     responseJson.put("allow_local_login_with_sso", allowLocalLoginWithSso);
     platformConfig = String.format(platformConfig, responseJson.toString());
-    return ok(platformConfig).as(MimeTypes.JSON);
+    return ok(platformConfig).as("application/javascript");
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
@@ -442,7 +446,11 @@ public class SessionController extends AbstractPlatformController {
         request.queryString("show_api_token").map(Boolean::parseBoolean);
     String email = thirdPartyLoginHandler.getEmailFromCtx(request);
     Users user = Users.getByEmail(email);
-    if (user != null && user.getRole().equals(Users.Role.SuperAdmin)) {
+    // Block local SuperAdmin accounts from using the SSO callback; SSO-provisioned SuperAdmin
+    // users (for example via OIDC group mapping) must still be able to sign in via SSO.
+    if (user != null
+        && user.getRole().equals(Users.Role.SuperAdmin)
+        && UserType.local.equals(user.getUserType())) {
       throw new PlatformServiceException(FORBIDDEN, "SuperAdmin is not allowed login via SSO!");
     }
     if (confGetter.getGlobalConf(GlobalConfKeys.enableOidcAutoCreateUser)) {
@@ -775,6 +783,9 @@ public class SessionController extends AbstractPlatformController {
           newRbacRole.getName(),
           createdRoleBinding.toString());
     }
+
+    // Have to call it here, because customer only present inside the same transaction.
+    embeddedCollectorInitializer.initialize(cust);
 
     String authToken = user.createAuthToken();
     String apiToken = generateApiToken ? user.upsertApiToken() : null;

@@ -46,6 +46,7 @@
 
 namespace yb {
 
+class Cgroup;
 class Counter;
 class MetricEntity;
 class Socket;
@@ -59,8 +60,8 @@ using NewSocketHandler = std::function<void(Socket*, const Endpoint&)>;
 // A acceptor that calls accept() to create new connections.
 class Acceptor {
  public:
-  // Create a new acceptor pool.
-  Acceptor(const scoped_refptr<MetricEntity>& metric_entity, NewSocketHandler handler);
+  Acceptor(const scoped_refptr<MetricEntity>& metric_entity, NewSocketHandler handler,
+           Cgroup* cgroup = nullptr);
   ~Acceptor();
 
   // Setup acceptor to listen address.
@@ -94,6 +95,9 @@ class Acceptor {
   bool closing_ = false;
   ev::dynamic_loop loop_;
   ev::async async_;
+#ifdef __linux__
+  Cgroup* cgroup_ = nullptr;
+#endif
 
   DISALLOW_COPY_AND_ASSIGN(Acceptor);
 };

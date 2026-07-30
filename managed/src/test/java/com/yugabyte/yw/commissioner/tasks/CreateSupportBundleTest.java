@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.models.Customer;
@@ -24,6 +25,7 @@ import com.yugabyte.yw.models.helpers.BundleDetails.ComponentType;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.io.IOException;
+import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.List;
@@ -32,6 +34,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -39,6 +42,7 @@ public class CreateSupportBundleTest extends CommissionerBaseTest {
   private Universe universe;
   private Customer customer;
   protected RuntimeConfigFactory runtimeConfigFactory;
+  protected RuntimeConfGetter runtimeConfGetter;
 
   @Before
   public void setUp() {
@@ -46,6 +50,7 @@ public class CreateSupportBundleTest extends CommissionerBaseTest {
     this.customer = ModelFactory.testCustomer();
     this.universe = ModelFactory.createUniverse(customer.getId());
     this.runtimeConfigFactory = mockBaseTaskDependencies.getRuntimeConfigFactory();
+    this.runtimeConfGetter = mockBaseTaskDependencies.getConfGetter();
   }
 
   @After
@@ -67,7 +72,7 @@ public class CreateSupportBundleTest extends CommissionerBaseTest {
     bundleData.startDate = startDate;
     bundleData.endDate = endDate;
     bundleData.components = EnumSet.allOf(ComponentType.class);
-    SupportBundle supportBundle = SupportBundle.create(bundleData, universe);
+    SupportBundle supportBundle = SupportBundle.create(bundleData, universe, runtimeConfGetter);
     SupportBundleTaskParams bundleTaskParams =
         new SupportBundleTaskParams(supportBundle, bundleData, customer, universe);
     try {
@@ -152,6 +157,36 @@ public class CreateSupportBundleTest extends CommissionerBaseTest {
     // Check if bundle path exists
     File bundleFile = new File(supportBundleList.get(0).getPath());
     assertTrue(bundleFile.isFile());
+  }
+
+  @Test
+  public void testCreateSupportBundlePreservesStartAndEndDateTime() throws Exception {
+    ArgumentCaptor<Date> startCaptor = ArgumentCaptor.forClass(Date.class);
+    ArgumentCaptor<Date> endCaptor = ArgumentCaptor.forClass(Date.class);
+
+    when(mockSupportBundleComponentFactory.getComponent(any()))
+        .thenReturn(mockSupportBundleComponent);
+    doNothing()
+        .when(mockSupportBundleComponent)
+        .downloadComponentBetweenDates(
+            any(), any(), any(), any(), startCaptor.capture(), endCaptor.capture(), any());
+
+    SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+    Date start = sdf.parse("2026-05-06 09:17:13");
+    Date end = sdf.parse("2026-05-06 15:30:45");
+
+    TaskInfo taskInfo = submitTask(start, end);
+    assertEquals(Success, taskInfo.getTaskState());
+
+    verify(mockSupportBundleComponent, atLeast(1))
+        .downloadComponentBetweenDates(any(), any(), any(), any(), any(), any(), any());
+
+    for (Date capturedStart : startCaptor.getAllValues()) {
+      assertEquals(start, capturedStart);
+    }
+    for (Date capturedEnd : endCaptor.getAllValues()) {
+      assertEquals(end, capturedEnd);
+    }
   }
 
   @Test

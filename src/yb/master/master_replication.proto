@@ -68,6 +68,13 @@ message CDCStreamInfoPB {
   // This field controls if tables without primary key will be polled by the CDC
   // stream.
   optional bool allow_tables_without_primary_key = 15 [ default = false ];
+
+  // This field decides whether the slot will use pub refresh mechanism or mechanism to poll sys
+  // catalog tablet for detecting changes to publications.
+  optional bool detect_publication_changes_implicitly = 16 [default = false];
+
+  // This field decides whether the slot is an internal LISTEN/NOTIFY notifications stream.
+  optional bool is_notification_slot = 17 [default = false];
 }
 
 message ValidateReplicationInfoRequestPB {
@@ -143,6 +150,15 @@ message IsObjectPartOfXReplResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
   required bool is_object_part_of_xrepl = 2;
+}
+
+message IsNamespacePartOfCDCSDKRequestPB {
+  optional string namespace_id = 1;
+}
+
+message IsNamespacePartOfCDCSDKResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool is_namespace_part_of_cdcsdk = 2;
 }
 
 message GetCDCStreamRequestPB {
@@ -598,6 +614,10 @@ message GetTableSchemaFromSysCatalogResponsePB {
 
   // Table schema version
   optional uint32 version = 3;
+
+  // Schema name of the table, fetched authoritatively from pg_namespace.
+  // Should only be used by CDC.
+  optional string pgschema_name = 4;
 }
 
 message XClusterReportNewAutoFlagConfigVersionRequestPB {
@@ -874,6 +894,24 @@ message RemoveTablesFromCDCSDKStreamResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message XClusterFailoverRequestPB {
+  optional string replication_group_id = 1;
+}
+
+message XClusterFailoverResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message IsXClusterFailoverDoneRequestPB {
+  optional string replication_group_id = 1;
+}
+
+message IsXClusterFailoverDoneResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool done = 2;
+  optional AppStatusPB failover_error = 3;
+}
+
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -887,6 +925,8 @@ service MasterReplication {
   rpc ListCDCStreams(ListCDCStreamsRequestPB) returns (ListCDCStreamsResponsePB);
   rpc IsObjectPartOfXRepl(IsObjectPartOfXReplRequestPB)
       returns (IsObjectPartOfXReplResponsePB);
+  rpc IsNamespacePartOfCDCSDK(IsNamespacePartOfCDCSDKRequestPB)
+      returns (IsNamespacePartOfCDCSDKResponsePB);
   rpc GetCDCStream(GetCDCStreamRequestPB) returns (GetCDCStreamResponsePB);
   rpc GetCDCDBStreamInfo(GetCDCDBStreamInfoRequestPB) returns (GetCDCDBStreamInfoResponsePB);
   rpc UpdateCDCStream (UpdateCDCStreamRequestPB) returns (UpdateCDCStreamResponsePB);
@@ -1011,4 +1051,10 @@ service MasterReplication {
   // Introduced for bug (#22876, #22773)
   rpc RemoveTablesFromCDCSDKStream (RemoveTablesFromCDCSDKStreamRequestPB)
       returns (RemoveTablesFromCDCSDKStreamResponsePB);
+
+  rpc XClusterFailover(XClusterFailoverRequestPB)
+      returns (XClusterFailoverResponsePB);
+
+  rpc IsXClusterFailoverDone(IsXClusterFailoverDoneRequestPB)
+      returns (IsXClusterFailoverDoneResponsePB);
 }

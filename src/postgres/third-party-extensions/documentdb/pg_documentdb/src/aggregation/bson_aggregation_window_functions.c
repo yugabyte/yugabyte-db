@@ -134,18 +134,18 @@ bson_linear_fill(PG_FUNCTION_ARGS)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
 						errmsg(
-							"The sortBy field must be either numeric or a date, but not both"),
+							"The sortBy field should contain either numeric values or dates, but cannot include both types simultaneously"),
 						errdetail_log(
-							"The sortBy field must be either numeric or a date, but not both")));
+							"The sortBy field should contain either numeric values or dates, but cannot include both types simultaneously")));
 	}
 
-	/* Check if there are repeated values in the sortBy field in a single partition */
+	/* Verify presence of duplicate values within the sortBy field for an individual partition */
 	if (current_pos != 0 && WinRowsArePeers(winobj, current_pos - 1, current_pos))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION6050106),
-						errmsg("There can be no repeated values in the sort field"),
+						errmsg("The sort field must not contain any duplicate values"),
 						errdetail_log(
-							"There can be no repeated values in the sort field")));
+							"The sort field must not contain any duplicate values")));
 	}
 
 	/* Move forward winobj's mark position to release unnecessary tuples in TupleStore */
@@ -156,13 +156,14 @@ bson_linear_fill(PG_FUNCTION_ARGS)
 	PgbsonToSinglePgbsonElement(currentValue, &currentValueElement);
 	if (!isnull && currentValueElement.bsonValue.value_type != BSON_TYPE_NULL)
 	{
-		/* As Mongo does, the filled value should be numeric or nullish. */
+		/* The filled value should be numeric or nullish. */
 		if (!BsonValueIsNumber(&currentValueElement.bsonValue))
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
-							errmsg(" Value to be filled must be numeric or nullish"),
+							errmsg(
+								" The value provided must be either a numeric type or explicitly null"),
 							errdetail_log(
-								"Value to be filled must be numeric or nullish")));
+								"The value provided must be either a numeric type or explicitly null")));
 		}
 		stateData->hasPre = true;
 
@@ -234,17 +235,19 @@ bson_linear_fill(PG_FUNCTION_ARGS)
 	}
 
 	/**
-	 * As Mongo does, the filled value should be numeric or nullish.
+	 * The filled value should be numeric or nullish.
 	 */
 	if (!BsonValueIsNumber(&stateData->nextValue))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
-						errmsg(" Value to be filled must be numeric or nullish"),
-						errdetail_log("Value to be filled must be numeric or nullish")));
+						errmsg(
+							" The value provided must be either a numeric type or explicitly null"),
+						errdetail_log(
+							"The value provided must be either a numeric type or explicitly null")));
 	}
 
 	/**
-	 * As Mongo does, if both values are not Deciaml128, double will be returned; otherwise, Decimal128 will be returned.
+	 * If both values are not Deciaml128, double will be returned; otherwise, Decimal128 will be returned.
 	 */
 	if (stateData->preValue.value_type != BSON_TYPE_DECIMAL128 &&
 		stateData->nextValue.value_type != BSON_TYPE_DECIMAL128)
@@ -410,18 +413,20 @@ CheckSortKeyBsonValue(bool isnull, pgbsonelement *sortKeyElement)
 	if (isnull || sortKeyElement->bsonValue.value_type == BSON_TYPE_NULL)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
-						errmsg("sortBy value must be numeric or a date, but found null"),
+						errmsg(
+							"The sortBy parameter should contain either a numeric value or a date, but a null value was provided instead."),
 						errdetail_log(
-							"sortBy value must be numeric or a date, but found null")));
+							"The sortBy parameter should contain either a numeric value or a date, but a null value was provided instead.")));
 	}
 	if (!BsonValueIsNumber(&sortKeyElement->bsonValue) &&
 		sortKeyElement->bsonValue.value_type != BSON_TYPE_DATE_TIME)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_TYPEMISMATCH),
-						errmsg("sortBy value must be numeric or a date, but found %s",
-							   BsonTypeName(sortKeyElement->bsonValue.value_type)),
+						errmsg(
+							"The sortBy parameter must contain either a numeric value or a date, but instead received %s",
+							BsonTypeName(sortKeyElement->bsonValue.value_type)),
 						errdetail_log(
-							"sortBy value must be numeric or a date, but found %s",
+							"The sortBy parameter must contain either a numeric value or a date, but instead received %s",
 							BsonTypeName(
 								sortKeyElement->bsonValue.value_type))));
 	}

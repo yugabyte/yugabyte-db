@@ -110,4 +110,4 @@ Detailed steps on how to use Metabase are available in the [Metabase documentati
 - Perform data aggregation using GROUP BY
 - Use built-in functions such as SUM, MIN, MAX, and so on
 
-Click **Ask a Question > Custom Query**. Choose the database you just set up, and enter the SQL queries noted in the [Retail Analytics](../../../sample-data/retail-analytics/) section.
+Click **Ask a Question > Custom Query**. Choose the database you just set up, and enter the SQL queries noted in the [Retail Analytics](/stable/develop/sample-data/retail-analytics/) section.

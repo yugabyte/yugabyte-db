@@ -317,17 +317,9 @@ Services:
 
 ### Upgrade
 
-To upgrade using YBA Installer, first download the version of YBA Installer corresponding to the version of YBA you want to upgrade to. See [Download YBA Installer](#download-yba-installer).
+YBA Installer is also used to perform upgrades of existing installations, using the `upgrade` command.
 
-Upgrade works similarly to the install workflow, by first running preflight checks to validate the system is in a good state.
-
-When ready to upgrade, run the `upgrade` command from the untarred directory of the target version of the YBA upgrade:
-
-```sh
-sudo ./yba-ctl upgrade
-```
-
-The upgrade takes a few minutes to complete. When finished, use the [status command](#service-management) to verify that YBA has been upgraded to the target version.
+For complete instructions and details on how to prepare for an upgrade, refer to [Upgrade YugabyteDB Anywhere](../../../upgrade/).
 
 ### Backup and restore
 
@@ -480,7 +472,11 @@ OAuth related settings are described in the following table. With the exception 
 
 #### Proxy
 
-When configuring proxy values for YBA, all values must be set correctly. On AWS, ensure `169.254.169.254` is in the `no_proxy` and `java_non_proxy` lists, as this enables access to the EC2 metadata service.
+When configuring proxy values for YBA, all values must be set correctly.
+
+{{< note title="Using a proxy with cloud providers" >}}
+On AWS, GCP, or Azure, ensure `169.254.169.254` is in the `no_proxy` and `java_non_proxy` lists, as this enables access to the VM instance metadata.
+{{< /note >}}
 
 If you are setting these values on an existing system, run `yba-ctl reconfigure` to set the new values for YBA.
 
@@ -508,6 +504,7 @@ If you are setting these values on an existing system, run `yba-ctl reconfigure`
 | `maxSamples` | Maximum number of samples that a single query can load into memory. |
 | `timeout` | The time threshold for inactivity after which Prometheus will be declared inactive. |
 | `retentionTime` | How long Prometheus retains the database metrics. |
+| `allowedTLSCiphers` | List of ciphers that Prometheus is allowed to use (assuming https is enabled). If any of the default ciphers provided in the configuration file are not supported on the machine you are using for YBA, remove them from the list. |
 
 ### Configure PostgreSQL
 

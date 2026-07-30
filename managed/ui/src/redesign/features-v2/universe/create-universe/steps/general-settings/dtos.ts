@@ -1,3 +1,4 @@
+import { ArchitectureType } from '@app/components/configRedesign/providerRedesign/constants';
 import {
   ImageBundle,
   Provider
@@ -18,11 +19,11 @@ export interface ProviderType extends Provider {
   uuid: string;
   isOnPremManuallyProvisioned: boolean;
   code: CloudType;
-  imageBundles: ImageBundle & { uuid: string }[];
+  imageBundles: ImageBundle & { uuid: string; details: { arch: ArchitectureType } }[];
 }
 export interface GeneralSettingsProps {
   [UNIVERSE_NAME]: UniverseSpec['name'];
-  [PROVIDER_CONFIGURATION]: ProviderType;
+  [PROVIDER_CONFIGURATION]: ProviderType | undefined;
   [DATABASE_VERSION]: UniverseInfo['ybc_software_version'];
   [CLOUD]: string;
 }

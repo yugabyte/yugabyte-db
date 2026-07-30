@@ -1,0 +1,1338 @@
+SET citus.next_shard_id TO 951000;
+SET documentdb.next_collection_id TO 9510;
+SET documentdb.next_collection_index_id TO 9510;
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+set documentdb.defaultUseCompositeOpClass to on;
+-- Insert data
+SELECT documentdb_api.insert_one('compdb','customer_purchases',' { "_id" : 1, "item_name" : "shirt", "price" : 12, "order_quantity" : 2 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','customer_purchases', '{ "_id" : 2, "item_name" : "pants", "price" : 20, "order_quantity" : 1 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','customer_purchases',' { "_id" : 3, "item_name" : "hat", "price" : 10, "order_quantity" : 5 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','customer_purchases',' { "_id" : 4, "item_name" : ["shirt", "hat", "pants"], "price" : 10, "order_quantity" : 5 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','customer_purchases',' { "_id" : 5}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','customer_purchases',' { "_id" : 6, "item_name" : {"a": "x", "b" : 1, "c" : [1, 2, 3]} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','customer_purchases',' { "_id" : 7, "item_name" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','catalog_items',' { "_id" : 1, "item_code" : "shirt", "product_description": "product 1", "stock_quantity" : 120 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','catalog_items',' { "_id" : 11, "item_code" : "shirt", "product_description": "product 1", "stock_quantity" : 240 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','catalog_items','{ "_id" : 2, "item_code" : "hat", "product_description": "product 2", "stock_quantity" : 80 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','catalog_items','{ "_id" : 3, "item_code" : "shoes", "product_description": "product 3", "stock_quantity" : 60 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','catalog_items','{ "_id" : 4, "item_code" : "pants", "product_description": "product 4", "stock_quantity" : 70 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','catalog_items','{ "_id" : 5, "item_code" : null, "product_description": "product 4", "stock_quantity" : 70 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','catalog_items','{ "_id" : 6, "item_code" :  {"a": "x", "b" : 1, "c" : [1, 2, 3]}, "product_description": "complex object" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','catalog_items','{ "_id" : 7, "item_code" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"], "product_description": "complex array" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','catalog_items','{ "_id" : 8, "item_code" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"], "product_description": "complex array" }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Create Index on catalog_items
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+  'compdb',
+  '{
+     "createIndexes": "catalog_items",
+     "indexes": [
+       {"key": {"item_code": 1}, "name": "idx_catalog_items_item_code"}
+     ]
+   }',
+   true
+);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- Test Index pushdown
+SELECT documentdb_distributed_test_helpers.drop_primary_key('compdb','catalog_items');
+ drop_primary_key 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+BEGIN;
+set local enable_seqscan TO off;
+EXPLAIN(costs off) SELECT document FROM bson_aggregation_pipeline('compdb', '{ "aggregate": "customer_purchases", "pipeline": [ { "$lookup": { "from": "catalog_items", "localField": "item_name", "foreignField": "item_code", "as": "matched_docs" } } ]}');
+                                                                                                                               QUERY PLAN                                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Nested Loop
+               ->  Bitmap Heap Scan on documents_9511_951002 collection
+                     Recheck Cond: (shard_key_value = '9511'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '9511'::bigint)
+               ->  Aggregate
+                     ->  Index Scan using idx_catalog_items_item_code on documents_9512_951004 collection_0_1
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "item_code" : "item_name" }'::documentdb_core.bson))
+                           Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(document, documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "item_code" : "item_name" }'::documentdb_core.bson), 'item_code'::text)
+(14 rows)
+
+ROLLBACK;
+SELECT document FROM bson_aggregation_pipeline('compdb', '{ "aggregate": "customer_purchases", "pipeline": [ { "$lookup": { "from": "catalog_items", "localField": "item_name", "foreignField": "item_code", "as": "matched_docs" } } ]}');
+                                                                                                                                                                                                                                                                                                                                                                             document                                                                                                                                                                                                                                                                                                                                                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "item_name" : "shirt", "price" : { "$numberInt" : "12" }, "order_quantity" : { "$numberInt" : "2" }, "matched_docs" : [ { "_id" : { "$numberInt" : "1" }, "item_code" : "shirt", "product_description" : "product 1", "stock_quantity" : { "$numberInt" : "120" } }, { "_id" : { "$numberInt" : "11" }, "item_code" : "shirt", "product_description" : "product 1", "stock_quantity" : { "$numberInt" : "240" } } ] }
+ { "_id" : { "$numberInt" : "2" }, "item_name" : "pants", "price" : { "$numberInt" : "20" }, "order_quantity" : { "$numberInt" : "1" }, "matched_docs" : [ { "_id" : { "$numberInt" : "4" }, "item_code" : "pants", "product_description" : "product 4", "stock_quantity" : { "$numberInt" : "70" } } ] }
+ { "_id" : { "$numberInt" : "3" }, "item_name" : "hat", "price" : { "$numberInt" : "10" }, "order_quantity" : { "$numberInt" : "5" }, "matched_docs" : [ { "_id" : { "$numberInt" : "2" }, "item_code" : "hat", "product_description" : "product 2", "stock_quantity" : { "$numberInt" : "80" } } ] }
+ { "_id" : { "$numberInt" : "4" }, "item_name" : [ "shirt", "hat", "pants" ], "price" : { "$numberInt" : "10" }, "order_quantity" : { "$numberInt" : "5" }, "matched_docs" : [ { "_id" : { "$numberInt" : "1" }, "item_code" : "shirt", "product_description" : "product 1", "stock_quantity" : { "$numberInt" : "120" } }, { "_id" : { "$numberInt" : "11" }, "item_code" : "shirt", "product_description" : "product 1", "stock_quantity" : { "$numberInt" : "240" } }, { "_id" : { "$numberInt" : "2" }, "item_code" : "hat", "product_description" : "product 2", "stock_quantity" : { "$numberInt" : "80" } }, { "_id" : { "$numberInt" : "4" }, "item_code" : "pants", "product_description" : "product 4", "stock_quantity" : { "$numberInt" : "70" } } ] }
+ { "_id" : { "$numberInt" : "5" }, "matched_docs" : [ { "_id" : { "$numberInt" : "5" }, "item_code" : null, "product_description" : "product 4", "stock_quantity" : { "$numberInt" : "70" } } ] }
+ { "_id" : { "$numberInt" : "6" }, "item_name" : { "a" : "x", "b" : { "$numberInt" : "1" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "matched_docs" : [ { "_id" : { "$numberInt" : "6" }, "item_code" : { "a" : "x", "b" : { "$numberInt" : "1" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "product_description" : "complex object" } ] }
+ { "_id" : { "$numberInt" : "7" }, "item_name" : [ { "a" : { "b" : { "$numberInt" : "1" } } }, [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "1" }, "x" ], "matched_docs" : [ { "_id" : { "$numberInt" : "7" }, "item_code" : [ { "a" : { "b" : { "$numberInt" : "1" } } }, [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "1" }, "x" ], "product_description" : "complex array" }, { "_id" : { "$numberInt" : "8" }, "item_code" : [ { "a" : { "b" : { "$numberInt" : "1" } } }, [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "1" }, "x" ], "product_description" : "complex array" } ] }
+(7 rows)
+
+-- Insert data into a new collection to be sharded (shard key can't be an array, but can be null or object)
+SELECT documentdb_api.insert_one('compdb','customer_purchases_sharded',' { "_id" : 1, "item_name" : "shirt", "price" : 12, "order_quantity" : 2 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','customer_purchases_sharded','{ "_id" : 2, "item_name" : "pants", "price" : 20, "order_quantity" : 1 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','customer_purchases_sharded',' { "_id" : 3, "item_name" : "hat", "price" : 10, "order_quantity" : 5 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','customer_purchases_sharded',' { "_id" : 4}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','customer_purchases_sharded',' { "_id" : 5, "item_name" : {"a": "x", "b" : 1, "c" : [1, 2, 3]} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- Shard customer_purchases collection on item_name 
+SELECT documentdb_api.shard_collection('compdb','customer_purchases_sharded', '{"item_name":"hashed"}', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+-- Test Index pushdown on sharded left collection
+BEGIN;
+set local enable_seqscan TO off;
+SET JIT To off;
+SELECT documentdb_distributed_test_helpers.mask_plan_id_from_distributed_subplan($Q$
+EXPLAIN(costs off) SELECT document FROM bson_aggregation_pipeline('compdb',
+    '{ "aggregate": "customer_purchases_sharded", "pipeline": [ { "$lookup": { "from": "catalog_items", "localField": "item_name", "foreignField": "item_code", "as": "matched_docs" } } ]}')
+$Q$);
+                                                          mask_plan_id_from_distributed_subplan                                                           
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   ->  Distributed Subplan X_X
+         ->  Custom Scan (Citus Adaptive)
+               Task Count: 8
+               Tasks Shown: One of 8
+               ->  Task
+                     Node: host=localhost port=58070 dbname=regression
+                     ->  Seq Scan on documents_9513_951008 collection
+   ->  Distributed Subplan X_X
+         ->  Custom Scan (Citus Adaptive)
+               Task Count: 1
+               Tasks Shown: All
+               ->  Task
+                     Node: host=localhost port=58070 dbname=regression
+                     ->  Seq Scan on documents_9512_951004 collection_0_1
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Nested Loop
+               ->  Function Scan on read_intermediate_result intermediate_result
+               ->  Aggregate
+                     ->  Function Scan on read_intermediate_result intermediate_result_1
+                           Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(document, intermediate_result.lookup_filter, 'item_code'::text)
+(24 rows)
+
+ROLLBACK;
+SELECT shard_key_value, object_id, document FROM documentdb_api.collection('compdb', 'customer_purchases_sharded') order by object_id;
+   shard_key_value    |            object_id            |                                                                                    document                                                                                     
+---------------------------------------------------------------------
+ -4688595418384734640 | { "" : { "$numberInt" : "1" } } | { "_id" : { "$numberInt" : "1" }, "item_name" : "shirt", "price" : { "$numberInt" : "12" }, "order_quantity" : { "$numberInt" : "2" } }
+ -9153250461281815030 | { "" : { "$numberInt" : "2" } } | { "_id" : { "$numberInt" : "2" }, "item_name" : "pants", "price" : { "$numberInt" : "20" }, "order_quantity" : { "$numberInt" : "1" } }
+  4967885567985676909 | { "" : { "$numberInt" : "3" } } | { "_id" : { "$numberInt" : "3" }, "item_name" : "hat", "price" : { "$numberInt" : "10" }, "order_quantity" : { "$numberInt" : "5" } }
+ -4514028574017177401 | { "" : { "$numberInt" : "4" } } | { "_id" : { "$numberInt" : "4" } }
+  8428415592906042960 | { "" : { "$numberInt" : "5" } } | { "_id" : { "$numberInt" : "5" }, "item_name" : { "a" : "x", "b" : { "$numberInt" : "1" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
+(5 rows)
+
+-- Test lookup on sharded left collection
+SELECT document FROM bson_aggregation_pipeline('compdb',
+    '{ "aggregate": "customer_purchases_sharded", "pipeline": [ { "$lookup": { "from": "catalog_items", "localField": "item_name", "foreignField": "item_code", "as": "matched_docs" } } ]}');
+                                                                                                                                                                                                                        document                                                                                                                                                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "item_name" : "pants", "price" : { "$numberInt" : "20" }, "order_quantity" : { "$numberInt" : "1" }, "matched_docs" : [ { "_id" : { "$numberInt" : "4" }, "item_code" : "pants", "product_description" : "product 4", "stock_quantity" : { "$numberInt" : "70" } } ] }
+ { "_id" : { "$numberInt" : "4" }, "matched_docs" : [ { "_id" : { "$numberInt" : "5" }, "item_code" : null, "product_description" : "product 4", "stock_quantity" : { "$numberInt" : "70" } } ] }
+ { "_id" : { "$numberInt" : "5" }, "item_name" : { "a" : "x", "b" : { "$numberInt" : "1" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "matched_docs" : [ { "_id" : { "$numberInt" : "6" }, "item_code" : { "a" : "x", "b" : { "$numberInt" : "1" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "product_description" : "complex object" } ] }
+ { "_id" : { "$numberInt" : "1" }, "item_name" : "shirt", "price" : { "$numberInt" : "12" }, "order_quantity" : { "$numberInt" : "2" }, "matched_docs" : [ { "_id" : { "$numberInt" : "1" }, "item_code" : "shirt", "product_description" : "product 1", "stock_quantity" : { "$numberInt" : "120" } }, { "_id" : { "$numberInt" : "11" }, "item_code" : "shirt", "product_description" : "product 1", "stock_quantity" : { "$numberInt" : "240" } } ] }
+ { "_id" : { "$numberInt" : "3" }, "item_name" : "hat", "price" : { "$numberInt" : "10" }, "order_quantity" : { "$numberInt" : "5" }, "matched_docs" : [ { "_id" : { "$numberInt" : "2" }, "item_code" : "hat", "product_description" : "product 2", "stock_quantity" : { "$numberInt" : "80" } } ] }
+(5 rows)
+
+SELECT document FROM bson_aggregation_pipeline('compdb',
+    '{ "aggregate": "customer_purchases_sharded", "pipeline": [ { "$lookup": { "from": "catalog_items", "localField": "item_name", "foreignField": "item_code", "as": "matched_docs" } }, { "$addFields": { "matched_docs.hello": "newsubpipelinefield" } } ]}');
+                                                                                                                                                                                                                                                         document                                                                                                                                                                                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "item_name" : "pants", "price" : { "$numberInt" : "20" }, "order_quantity" : { "$numberInt" : "1" }, "matched_docs" : [ { "_id" : { "$numberInt" : "4" }, "item_code" : "pants", "product_description" : "product 4", "stock_quantity" : { "$numberInt" : "70" }, "hello" : "newsubpipelinefield" } ] }
+ { "_id" : { "$numberInt" : "4" }, "matched_docs" : [ { "_id" : { "$numberInt" : "5" }, "item_code" : null, "product_description" : "product 4", "stock_quantity" : { "$numberInt" : "70" }, "hello" : "newsubpipelinefield" } ] }
+ { "_id" : { "$numberInt" : "5" }, "item_name" : { "a" : "x", "b" : { "$numberInt" : "1" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "matched_docs" : [ { "_id" : { "$numberInt" : "6" }, "item_code" : { "a" : "x", "b" : { "$numberInt" : "1" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "product_description" : "complex object", "hello" : "newsubpipelinefield" } ] }
+ { "_id" : { "$numberInt" : "1" }, "item_name" : "shirt", "price" : { "$numberInt" : "12" }, "order_quantity" : { "$numberInt" : "2" }, "matched_docs" : [ { "_id" : { "$numberInt" : "1" }, "item_code" : "shirt", "product_description" : "product 1", "stock_quantity" : { "$numberInt" : "120" }, "hello" : "newsubpipelinefield" }, { "_id" : { "$numberInt" : "11" }, "item_code" : "shirt", "product_description" : "product 1", "stock_quantity" : { "$numberInt" : "240" }, "hello" : "newsubpipelinefield" } ] }
+ { "_id" : { "$numberInt" : "3" }, "item_name" : "hat", "price" : { "$numberInt" : "10" }, "order_quantity" : { "$numberInt" : "5" }, "matched_docs" : [ { "_id" : { "$numberInt" : "2" }, "item_code" : "hat", "product_description" : "product 2", "stock_quantity" : { "$numberInt" : "80" }, "hello" : "newsubpipelinefield" } ] }
+(5 rows)
+
+SELECT document FROM bson_aggregation_pipeline('compdb',
+    '{ "aggregate": "customer_purchases_sharded", "pipeline": [ { "$lookup": { "from": "catalog_items", "localField": "item_name", "foreignField": "item_code", "as": "matched_docs", "pipeline": [ { "$addFields": { "matched_docs.hello": "newsubpipelinefield" } } ] } } ]}');
+                                                                                                                                                                                                                                                                              document                                                                                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "item_name" : "pants", "price" : { "$numberInt" : "20" }, "order_quantity" : { "$numberInt" : "1" }, "matched_docs" : [ { "_id" : { "$numberInt" : "4" }, "item_code" : "pants", "product_description" : "product 4", "stock_quantity" : { "$numberInt" : "70" }, "matched_docs" : { "hello" : "newsubpipelinefield" } } ] }
+ { "_id" : { "$numberInt" : "4" }, "matched_docs" : [ { "_id" : { "$numberInt" : "5" }, "item_code" : null, "product_description" : "product 4", "stock_quantity" : { "$numberInt" : "70" }, "matched_docs" : { "hello" : "newsubpipelinefield" } } ] }
+ { "_id" : { "$numberInt" : "5" }, "item_name" : { "a" : "x", "b" : { "$numberInt" : "1" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "matched_docs" : [ { "_id" : { "$numberInt" : "6" }, "item_code" : { "a" : "x", "b" : { "$numberInt" : "1" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "product_description" : "complex object", "matched_docs" : { "hello" : "newsubpipelinefield" } } ] }
+ { "_id" : { "$numberInt" : "1" }, "item_name" : "shirt", "price" : { "$numberInt" : "12" }, "order_quantity" : { "$numberInt" : "2" }, "matched_docs" : [ { "_id" : { "$numberInt" : "1" }, "item_code" : "shirt", "product_description" : "product 1", "stock_quantity" : { "$numberInt" : "120" }, "matched_docs" : { "hello" : "newsubpipelinefield" } }, { "_id" : { "$numberInt" : "11" }, "item_code" : "shirt", "product_description" : "product 1", "stock_quantity" : { "$numberInt" : "240" }, "matched_docs" : { "hello" : "newsubpipelinefield" } } ] }
+ { "_id" : { "$numberInt" : "3" }, "item_name" : "hat", "price" : { "$numberInt" : "10" }, "order_quantity" : { "$numberInt" : "5" }, "matched_docs" : [ { "_id" : { "$numberInt" : "2" }, "item_code" : "hat", "product_description" : "product 2", "stock_quantity" : { "$numberInt" : "80" }, "matched_docs" : { "hello" : "newsubpipelinefield" } } ] }
+(5 rows)
+
+-- Test coalesce path, return empty array when no match found 
+SELECT documentdb_api.insert_one('compdb','coalesce_source','{"_id": 0, "a": 1}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','coalesce_source','{"_id": 1, "a": null}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','coalesce_source','{"_id": 2}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','coalesce_foreign','{"_id": 0, "b": 1}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','coalesce_foreign','{"_id": 1, "b": null}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','coalesce_foreign','{"_id": 2}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('compdb',
+    '{ "aggregate": "coalesce_source", "pipeline": [ { "$lookup": { "from": "coalesce_foreign", "localField": "a", "foreignField": "nonex", "as": "matched_docs" } } ]}');
+                                                                                                         document                                                                                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "a" : { "$numberInt" : "1" }, "matched_docs" : [  ] }
+ { "_id" : { "$numberInt" : "1" }, "a" : null, "matched_docs" : [ { "_id" : { "$numberInt" : "0" }, "b" : { "$numberInt" : "1" } }, { "_id" : { "$numberInt" : "1" }, "b" : null }, { "_id" : { "$numberInt" : "2" } } ] }
+ { "_id" : { "$numberInt" : "2" }, "matched_docs" : [ { "_id" : { "$numberInt" : "0" }, "b" : { "$numberInt" : "1" } }, { "_id" : { "$numberInt" : "1" }, "b" : null }, { "_id" : { "$numberInt" : "2" } } ] }
+(3 rows)
+
+-- Test dotted path
+SELECT documentdb_api.insert_one('compdb','dotted_path_source','{"_id": 0, "a": 1}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','dotted_path_source','{"_id": 1, "a": null}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','dotted_path_source','{"_id": 2}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','dotted_path_source','{"_id": 3, "a": {"c": 1}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','dotted_path_foreign','{"_id": 0, "b": 1}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','dotted_path_foreign','{"_id": 1, "b": null}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','dotted_path_foreign','{"_id": 2}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','dotted_path_foreign','{"_id": 3, "b": {"c" : 1}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','dotted_path_foreign','{"_id": 4, "b": {"c" : 2}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('compdb',
+    '{ "aggregate": "dotted_path_source", "pipeline": [ { "$lookup": { "from": "dotted_path_foreign", "localField": "a.c", "foreignField": "b.c", "as": "matched_docs" } } ]}');
+                                                                                                                  document                                                                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "a" : { "$numberInt" : "1" }, "matched_docs" : [ { "_id" : { "$numberInt" : "0" }, "b" : { "$numberInt" : "1" } }, { "_id" : { "$numberInt" : "1" }, "b" : null }, { "_id" : { "$numberInt" : "2" } } ] }
+ { "_id" : { "$numberInt" : "1" }, "a" : null, "matched_docs" : [ { "_id" : { "$numberInt" : "0" }, "b" : { "$numberInt" : "1" } }, { "_id" : { "$numberInt" : "1" }, "b" : null }, { "_id" : { "$numberInt" : "2" } } ] }
+ { "_id" : { "$numberInt" : "2" }, "matched_docs" : [ { "_id" : { "$numberInt" : "0" }, "b" : { "$numberInt" : "1" } }, { "_id" : { "$numberInt" : "1" }, "b" : null }, { "_id" : { "$numberInt" : "2" } } ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "c" : { "$numberInt" : "1" } }, "matched_docs" : [ { "_id" : { "$numberInt" : "3" }, "b" : { "c" : { "$numberInt" : "1" } } } ] }
+(4 rows)
+
+-- (B) Lookup with pipeline support
+-- (B).1 Data Ingestion
+SELECT documentdb_api.insert_one('compdb','establishments',' {"_id": 1, "establishment_name": "The Grand Diner", "dishes": ["burger", "fries"], "order_quantity": 100 , "drinks": ["soda", "juice"]}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','establishments','{ "_id": 2, "establishment_name": "Pizza Palace", "dishes": ["veggie pizza", "meat pizza"], "order_quantity": 120, "drinks": ["soda"]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','menu','{ "_id": 1, "item_name": "burger", "establishment_name": "The Grand Diner"}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','menu','{ "_id": 2, "item_name": "veggie pizza", "establishment_name": "Pizza Palace", "drink": "water"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','menu','{ "_id": 3, "item_name": "veggie pizza", "establishment_name": "Pizza Palace", "drink": "soda"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- (B).1 Simple Lookup with pipeline
+-- {
+-- 	$lookup :
+-- 	{
+-- 		from : establishments,
+--		to:	menu,
+--		localField: establishment_name,
+--		foreignField: establishment_name,
+--		pipeline: {
+--			[
+--				{
+--					$match :  { order_quantity : { $gt, 110}}
+--				}
+--			]
+--		}
+--	}
+--}
+SELECT document from bson_aggregation_pipeline('compdb', 
+  '{ "aggregate": "menu", "pipeline": [ { "$lookup": { "from": "establishments", "pipeline": [ { "$match": { "order_quantity": { "$gt": 110 } }}], "as": "matched_docs", "localField": "establishment_name", "foreignField": "establishment_name" }} ], "cursor": {} }');
+                                                                                                                                                                  document                                                                                                                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "item_name" : "burger", "establishment_name" : "The Grand Diner", "matched_docs" : [  ] }
+ { "_id" : { "$numberInt" : "2" }, "item_name" : "veggie pizza", "establishment_name" : "Pizza Palace", "drink" : "water", "matched_docs" : [ { "_id" : { "$numberInt" : "2" }, "establishment_name" : "Pizza Palace", "dishes" : [ "veggie pizza", "meat pizza" ], "order_quantity" : { "$numberInt" : "120" }, "drinks" : [ "soda" ] } ] }
+ { "_id" : { "$numberInt" : "3" }, "item_name" : "veggie pizza", "establishment_name" : "Pizza Palace", "drink" : "soda", "matched_docs" : [ { "_id" : { "$numberInt" : "2" }, "establishment_name" : "Pizza Palace", "dishes" : [ "veggie pizza", "meat pizza" ], "order_quantity" : { "$numberInt" : "120" }, "drinks" : [ "soda" ] } ] }
+(3 rows)
+
+-- (B).2 Index creation on the from collection
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+  'compdb',
+  '{
+     "createIndexes": "establishments",
+     "indexes": [
+       {"key": {"establishment_name": 1}, "name": "idx_establishments_establishment_name"},
+	   {"key": {"order_quantity": 1}, "name": "idx_establishments_order_quantity"},
+       {"key": {"establishment_name": 1, "order_quantity": 1}, "name": "idx_establishments_establishment_name_order_quantity"}
+     ]
+   }',
+   true
+);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_catalog.bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM documentdb_api.list_indexes_cursor_first_page('compdb', '{ "listIndexes": "establishments" }') ORDER BY 1;
+                                                                                                                                                                                        bson_dollar_unwind                                                                                                                                                                                        
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "compdb.establishments", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "compdb.establishments", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "establishment_name" : { "$numberInt" : "1" } }, "name" : "idx_establishments_establishment_name", "storageEngine" : { "enableOrderedIndex" : true } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "compdb.establishments", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "establishment_name" : { "$numberInt" : "1" }, "order_quantity" : { "$numberInt" : "1" } }, "name" : "idx_establishments_establishment_name_order_quantity", "storageEngine" : { "enableOrderedIndex" : true } } }, "ok" : { "$numberDouble" : "1.0" } }
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "compdb.establishments", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "order_quantity" : { "$numberInt" : "1" } }, "name" : "idx_establishments_order_quantity", "storageEngine" : { "enableOrderedIndex" : true } } }, "ok" : { "$numberDouble" : "1.0" } }
+(4 rows)
+
+-- (B).3.a Index usage
+BEGIN;
+SET LOCAL enable_seqscan TO off;
+EXPLAIN(costs off) SELECT document from bson_aggregation_pipeline('compdb', 
+  '{ "aggregate": "menu", "pipeline": [ { "$lookup": { "from": "establishments", "pipeline": [ { "$match": { "order_quantity": { "$gt": 110 } }}], "as": "matched_docs", "localField": "establishment_name", "foreignField": "establishment_name" }} ], "cursor": {} }');
+                                                                                                                                             QUERY PLAN                                                                                                                                             
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Nested Loop
+               ->  Bitmap Heap Scan on documents_9519_951026 collection
+                     Recheck Cond: (shard_key_value = '9519'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '9519'::bigint)
+               ->  Aggregate
+                     ->  Index Scan using idx_establishments_order_quantity on documents_9518_951024 collection_0_1
+                           Index Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "order_quantity" : { "$numberInt" : "110" } }'::documentdb_core.bson)
+                           Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(document, documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "establishment_name" : "establishment_name" }'::documentdb_core.bson), 'establishment_name'::text)
+(14 rows)
+
+ROLLBACK;
+-- Adding a $sort in the pipeline
+BEGIN;
+EXPLAIN(costs off) SELECT document from bson_aggregation_pipeline('compdb', 
+  '{ "aggregate": "menu", "pipeline": [ { "$lookup": { "from": "establishments", "pipeline": [ { "$match": { "order_quantity": { "$gt": 110 } }}, { "$sort": { "_id": 1 }}], "as": "matched_docs", "localField": "establishment_name", "foreignField": "establishment_name" }} ], "cursor": {} }');
+                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Nested Loop
+               ->  Bitmap Heap Scan on documents_9519_951026 collection
+                     Recheck Cond: (shard_key_value = '9519'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '9519'::bigint)
+               ->  Aggregate
+                     ->  Sort
+                           Sort Key: (documentdb_api_catalog.bson_orderby(collection_0_1.document, '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
+                           ->  Seq Scan on documents_9518_951024 collection_0_1
+                                 Filter: ((document OPERATOR(documentdb_api_catalog.@>) '{ "order_quantity" : { "$numberInt" : "110" } }'::documentdb_core.bson) AND documentdb_api_internal.bson_dollar_lookup_join_filter(document, documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "establishment_name" : "establishment_name" }'::documentdb_core.bson), 'establishment_name'::text))
+(15 rows)
+
+ROLLBACK;
+-- Adding a $sort that can be pushed down in the pipeline
+BEGIN;
+SET LOCAL enable_seqscan TO off;
+set local documentdb.enableIndexOrderbyPushdown to on;
+EXPLAIN(costs off) SELECT document from bson_aggregation_pipeline('compdb', 
+  '{ "aggregate": "menu", "pipeline": [ { "$lookup": { "from": "establishments", "pipeline": [ { "$match": { "order_quantity": { "$gt": 110 } }}, { "$sort": { "establishment_name": 1 }}], "as": "matched_docs", "localField": "establishment_name", "foreignField": "establishment_name" }} ], "cursor": {} }');
+                                                                                                                                                QUERY PLAN                                                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Nested Loop
+               ->  Bitmap Heap Scan on documents_9519_951026 collection
+                     Recheck Cond: (shard_key_value = '9519'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '9519'::bigint)
+               ->  Aggregate
+                     ->  Sort
+                           Sort Key: (documentdb_api_catalog.bson_orderby(collection_0_1.document, '{ "establishment_name" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
+                           ->  Index Scan using idx_establishments_order_quantity on documents_9518_951024 collection_0_1
+                                 Index Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "order_quantity" : { "$numberInt" : "110" } }'::documentdb_core.bson)
+                                 Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(document, documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "establishment_name" : "establishment_name" }'::documentdb_core.bson), 'establishment_name'::text)
+(16 rows)
+
+ROLLBACK;
+BEGIN;
+SELECT document from bson_aggregation_pipeline('compdb', 
+  '{ "aggregate": "menu", "pipeline": [ { "$lookup": { "from": "establishments", "pipeline": [ { "$match": { "order_quantity": { "$gt": 110 } }}, { "$sort": { "_id": 1 }}], "as": "matched_docs", "localField": "establishment_name", "foreignField": "establishment_name" }} ], "cursor": {} }');
+                                                                                                                                                                  document                                                                                                                                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "item_name" : "burger", "establishment_name" : "The Grand Diner", "matched_docs" : [  ] }
+ { "_id" : { "$numberInt" : "2" }, "item_name" : "veggie pizza", "establishment_name" : "Pizza Palace", "drink" : "water", "matched_docs" : [ { "_id" : { "$numberInt" : "2" }, "establishment_name" : "Pizza Palace", "dishes" : [ "veggie pizza", "meat pizza" ], "order_quantity" : { "$numberInt" : "120" }, "drinks" : [ "soda" ] } ] }
+ { "_id" : { "$numberInt" : "3" }, "item_name" : "veggie pizza", "establishment_name" : "Pizza Palace", "drink" : "soda", "matched_docs" : [ { "_id" : { "$numberInt" : "2" }, "establishment_name" : "Pizza Palace", "dishes" : [ "veggie pizza", "meat pizza" ], "order_quantity" : { "$numberInt" : "120" }, "drinks" : [ "soda" ] } ] }
+(3 rows)
+
+ROLLBACK;
+-- (B).3.b Index usage with optimization: (if lookup has a join condition and the lookup pipeline has $match as the first 
+-- stage we push the $match filter up with the join. If both conditions are one same property both the filters should be 
+-- part of the index condition)
+BEGIN;
+SET LOCAL enable_seqscan TO off;
+EXPLAIN(costs off) SELECT document from bson_aggregation_pipeline('compdb', 
+  '{ "aggregate": "menu", "pipeline": [ { "$lookup": { "from": "establishments", "pipeline": [ { "$match": { "establishment_name" : { "$eq" : "Pizza Palace" } }}], "as": "matched_docs", "localField": "establishment_name", "foreignField": "establishment_name" }} ], "cursor": {} }');
+                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                    
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Nested Loop
+               ->  Bitmap Heap Scan on documents_9519_951026 collection
+                     Recheck Cond: (shard_key_value = '9519'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '9519'::bigint)
+               ->  Aggregate
+                     ->  Index Scan using idx_establishments_establishment_name on documents_9518_951024 collection_0_1
+                           Index Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "establishment_name" : "Pizza Palace" }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "establishment_name" : "establishment_name" }'::documentdb_core.bson)))
+                           Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(document, documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "establishment_name" : "establishment_name" }'::documentdb_core.bson), 'establishment_name'::text)
+(14 rows)
+
+ROLLBACK;
+BEGIN;
+SET LOCAL enable_seqscan TO off;
+EXPLAIN(costs off) SELECT document from bson_aggregation_pipeline('compdb', 
+  '{ "aggregate": "menu", "pipeline": [ { "$lookup": { "from": "establishments", "pipeline": [ { "$match": { "establishment_name" : { "$eq" : "Pizza Palace" } }}], "as": "matched_docs", "localField": "establishment_name", "foreignField": "establishment_name" }} ], "cursor": {} }');
+                                                                                                                                                                                   QUERY PLAN                                                                                                                                                                                    
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Nested Loop
+               ->  Bitmap Heap Scan on documents_9519_951026 collection
+                     Recheck Cond: (shard_key_value = '9519'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '9519'::bigint)
+               ->  Aggregate
+                     ->  Index Scan using idx_establishments_establishment_name on documents_9518_951024 collection_0_1
+                           Index Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "establishment_name" : "Pizza Palace" }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@*=) documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "establishment_name" : "establishment_name" }'::documentdb_core.bson)))
+                           Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(document, documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "establishment_name" : "establishment_name" }'::documentdb_core.bson), 'establishment_name'::text)
+(14 rows)
+
+ROLLBACK;
+-- (B).4 Nested lookup pipeline (lookup pipeline containing lookup)
+-- {
+-- 	$lookup :
+-- 	{
+-- 		from : establishments,
+--		to:	menu,
+--		localField: establishment_name,
+--		foreignField: establishment_name,
+--		pipeline: {
+--			[
+--				{
+--					$lookup :  {
+-- 						from : establishments,
+--						to:	establishments,
+--						localField: _id,
+--						foreignField: _id,
+--						pipeline: {
+--							[
+--								{ unwind : "dishes"}
+--							]
+--						}
+--					}
+--				}
+--			]
+--		}
+--	}
+--}
+SELECT document from bson_aggregation_pipeline('compdb', 
+  '{ "aggregate": "menu", "pipeline": [ { "$lookup": { "from": "establishments", "pipeline": [ { "$lookup": { "from": "establishments", "localField": "_id", "foreignField": "_id", "pipeline": [ { "$unwind": "$dishes" } ], "as": "matched_docs_id" } } ], "as": "matched_docs", "localField": "establishment_name", "foreignField": "establishment_name" }} ], "cursor": {} }');
+                                                                                                                                                                                                                                                                                                                                                       document                                                                                                                                                                                                                                                                                                                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "item_name" : "burger", "establishment_name" : "The Grand Diner", "matched_docs" : [ { "_id" : { "$numberInt" : "1" }, "establishment_name" : "The Grand Diner", "dishes" : [ "burger", "fries" ], "order_quantity" : { "$numberInt" : "100" }, "drinks" : [ "soda", "juice" ], "matched_docs_id" : [ { "_id" : { "$numberInt" : "1" }, "establishment_name" : "The Grand Diner", "dishes" : "burger", "order_quantity" : { "$numberInt" : "100" }, "drinks" : [ "soda", "juice" ] }, { "_id" : { "$numberInt" : "1" }, "establishment_name" : "The Grand Diner", "dishes" : "fries", "order_quantity" : { "$numberInt" : "100" }, "drinks" : [ "soda", "juice" ] } ] } ] }
+ { "_id" : { "$numberInt" : "2" }, "item_name" : "veggie pizza", "establishment_name" : "Pizza Palace", "drink" : "water", "matched_docs" : [ { "_id" : { "$numberInt" : "2" }, "establishment_name" : "Pizza Palace", "dishes" : [ "veggie pizza", "meat pizza" ], "order_quantity" : { "$numberInt" : "120" }, "drinks" : [ "soda" ], "matched_docs_id" : [ { "_id" : { "$numberInt" : "2" }, "establishment_name" : "Pizza Palace", "dishes" : "veggie pizza", "order_quantity" : { "$numberInt" : "120" }, "drinks" : [ "soda" ] }, { "_id" : { "$numberInt" : "2" }, "establishment_name" : "Pizza Palace", "dishes" : "meat pizza", "order_quantity" : { "$numberInt" : "120" }, "drinks" : [ "soda" ] } ] } ] }
+ { "_id" : { "$numberInt" : "3" }, "item_name" : "veggie pizza", "establishment_name" : "Pizza Palace", "drink" : "soda", "matched_docs" : [ { "_id" : { "$numberInt" : "2" }, "establishment_name" : "Pizza Palace", "dishes" : [ "veggie pizza", "meat pizza" ], "order_quantity" : { "$numberInt" : "120" }, "drinks" : [ "soda" ], "matched_docs_id" : [ { "_id" : { "$numberInt" : "2" }, "establishment_name" : "Pizza Palace", "dishes" : "veggie pizza", "order_quantity" : { "$numberInt" : "120" }, "drinks" : [ "soda" ] }, { "_id" : { "$numberInt" : "2" }, "establishment_name" : "Pizza Palace", "dishes" : "meat pizza", "order_quantity" : { "$numberInt" : "120" }, "drinks" : [ "soda" ] } ] } ] }
+(3 rows)
+
+-- (B).5 Nested lookup pipeline (lookup pipeline containing lookup) index usage
+BEGIN;
+SET LOCAL enable_seqscan TO off;
+EXPLAIN(costs off) SELECT document from bson_aggregation_pipeline('compdb', 
+  '{ "aggregate": "menu", "pipeline": [ { "$lookup": { "from": "establishments", "pipeline": [ { "$lookup": { "from": "establishments", "localField": "_id", "foreignField": "_id", "pipeline": [ { "$unwind": "$dishes" } ], "as": "matched_docs_id" } } ], "as": "matched_docs", "localField": "establishment_name", "foreignField": "establishment_name" }} ], "cursor": {} }');
+                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Nested Loop
+               ->  Bitmap Heap Scan on documents_9519_951026 collection
+                     Recheck Cond: (shard_key_value = '9519'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '9519'::bigint)
+               ->  Aggregate
+                     ->  Nested Loop
+                           ->  Index Scan using _id_ on documents_9518_951024 collection_0_1
+                                 Index Cond: (shard_key_value = '9518'::bigint)
+                           ->  Subquery Scan on "lookupRight_stage_sub_1_1"
+                                 Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(documentdb_api_internal.bson_dollar_merge_documents(collection_0_1.document, (SubPlan 2), true), documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "establishment_name" : "establishment_name" }'::documentdb_core.bson), 'establishment_name'::text)
+                                 ->  Aggregate
+                                       ->  Index Scan using _id_ on documents_9518_951024 collection_0_2
+                                             Index Cond: ((shard_key_value = '9518'::bigint) AND (object_id OPERATOR(documentdb_core.=) collection_0_1.object_id))
+                                 SubPlan 2
+                                   ->  Aggregate
+                                         ->  ProjectSet
+                                               ->  Function Scan on bson_lookup_unwind lookup_subpipeline_substage_1_1
+                     SubPlan 1
+                       ->  Aggregate
+                             ->  ProjectSet
+                                   ->  Function Scan on bson_lookup_unwind lookup_subpipeline_substage_1
+(27 rows)
+
+ROLLBACK;
+BEGIN;
+SET LOCAL enable_seqscan TO off;
+EXPLAIN(costs off) SELECT document from bson_aggregation_pipeline('compdb', 
+  '{ "aggregate": "menu", "pipeline": [ { "$lookup": { "from": "establishments", "localField": "_id", "foreignField": "_id", "as": "matched_docs_id" } } ], "cursor": {} }');
+                                                                 QUERY PLAN                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Nested Loop
+               ->  Bitmap Heap Scan on documents_9519_951026 collection
+                     Recheck Cond: (shard_key_value = '9519'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '9519'::bigint)
+               ->  Aggregate
+                     ->  Index Scan using _id_ on documents_9518_951024 collection_0_1
+                           Index Cond: ((shard_key_value = '9518'::bigint) AND (object_id OPERATOR(documentdb_core.=) collection.object_id))
+(13 rows)
+
+ROLLBACK;
+BEGIN;
+SET LOCAL enable_seqscan TO off;
+EXPLAIN(costs off) SELECT document from bson_aggregation_pipeline('compdb', 
+  '{ "aggregate": "menu", "pipeline": [ { "$lookup": { "from": "establishments", "localField": "_id", "foreignField": "_id", "as": "matched_docs_id" } } ], "cursor": {} }');
+                                                                 QUERY PLAN                                                                  
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Nested Loop
+               ->  Bitmap Heap Scan on documents_9519_951026 collection
+                     Recheck Cond: (shard_key_value = '9519'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '9519'::bigint)
+               ->  Aggregate
+                     ->  Index Scan using _id_ on documents_9518_951024 collection_0_1
+                           Index Cond: ((shard_key_value = '9518'::bigint) AND (object_id OPERATOR(documentdb_core.=) collection.object_id))
+(13 rows)
+
+ROLLBACK;
+BEGIN;
+SET LOCAL enable_seqscan TO off;
+EXPLAIN(costs off) SELECT document from bson_aggregation_pipeline('compdb', 
+  '{ "aggregate": "menu", "pipeline": [ { "$lookup": { "from": "establishments", "pipeline": [ { "$lookup": { "from": "establishments", "localField": "_id", "foreignField": "_id", "pipeline": [ { "$project": { "bar": "$dishes" } } ], "as": "matched_docs_id" } } ], "as": "matched_docs", "localField": "establishment_name", "foreignField": "establishment_name" }} ], "cursor": {} }');
+                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Nested Loop
+               ->  Bitmap Heap Scan on documents_9519_951026 collection
+                     Recheck Cond: (shard_key_value = '9519'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '9519'::bigint)
+               ->  Aggregate
+                     ->  Nested Loop
+                           ->  Index Scan using _id_ on documents_9518_951024 collection_0_1
+                                 Index Cond: (shard_key_value = '9518'::bigint)
+                           ->  Subquery Scan on "lookupRight_stage_sub_1_1"
+                                 Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(documentdb_api_internal.bson_dollar_merge_documents(collection_0_1.document, (SubPlan 2), true), documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "establishment_name" : "establishment_name" }'::documentdb_core.bson), 'establishment_name'::text)
+                                 ->  Aggregate
+                                       ->  Index Scan using _id_ on documents_9518_951024 collection_0_2
+                                             Index Cond: ((shard_key_value = '9518'::bigint) AND (object_id OPERATOR(documentdb_core.=) collection_0_1.object_id))
+                                 SubPlan 2
+                                   ->  Aggregate
+                                         ->  Function Scan on bson_lookup_unwind lookup_subpipeline_substage_1_1
+                     SubPlan 1
+                       ->  Aggregate
+                             ->  Function Scan on bson_lookup_unwind lookup_subpipeline_substage_1
+(25 rows)
+
+ROLLBACK;
+BEGIN;
+SET LOCAL enable_seqscan TO off;
+EXPLAIN(costs off) SELECT document from bson_aggregation_pipeline('compdb', 
+  '{ "aggregate": "menu", "pipeline": [ { "$lookup": { "from": "establishments", "pipeline": [ { "$lookup": { "from": "establishments", "localField": "_id", "foreignField": "_id", "pipeline": [ { "$sort": { "dishes": 1 } } ], "as": "matched_docs_id" } } ], "as": "matched_docs", "localField": "establishment_name", "foreignField": "establishment_name" }} ], "cursor": {} }');
+                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Nested Loop
+               ->  Bitmap Heap Scan on documents_9519_951026 collection
+                     Recheck Cond: (shard_key_value = '9519'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '9519'::bigint)
+               ->  Aggregate
+                     ->  Nested Loop
+                           ->  Index Scan using _id_ on documents_9518_951024 collection_0_1
+                                 Index Cond: (shard_key_value = '9518'::bigint)
+                           ->  Subquery Scan on "lookupRight_stage_sub_1_1"
+                                 Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(documentdb_api_internal.bson_dollar_merge_documents(collection_0_1.document, (SubPlan 2), true), documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "establishment_name" : "establishment_name" }'::documentdb_core.bson), 'establishment_name'::text)
+                                 ->  Aggregate
+                                       ->  Index Scan using _id_ on documents_9518_951024 collection_0_2
+                                             Index Cond: ((shard_key_value = '9518'::bigint) AND (object_id OPERATOR(documentdb_core.=) collection_0_1.object_id))
+                                 SubPlan 2
+                                   ->  Aggregate
+                                         ->  Sort
+                                               Sort Key: (documentdb_api_catalog.bson_orderby(lookup_subpipeline_substage_1_1.lookup_unwind, '{ "dishes" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
+                                               ->  Function Scan on bson_lookup_unwind lookup_subpipeline_substage_1_1
+                     SubPlan 1
+                       ->  Aggregate
+                             ->  Sort
+                                   Sort Key: (documentdb_api_catalog.bson_orderby(lookup_subpipeline_substage_1.lookup_unwind, '{ "dishes" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
+                                   ->  Function Scan on bson_lookup_unwind lookup_subpipeline_substage_1
+(29 rows)
+
+ROLLBACK;
+BEGIN;
+SET LOCAL enable_seqscan TO off;
+EXPLAIN(costs off) SELECT document from bson_aggregation_pipeline('compdb', 
+  '{ "aggregate": "menu", "pipeline": [ { "$lookup": { "from": "establishments", "pipeline": [ { "$lookup": { "from": "establishments", "localField": "_id", "foreignField": "_id", "pipeline": [ { "$project": { "_id": "bar" } } ], "as": "matched_docs_id" } } ], "as": "matched_docs", "localField": "establishment_name", "foreignField": "establishment_name" }} ], "cursor": {} }');
+                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                            
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Node: host=localhost port=58070 dbname=regression
+         ->  Nested Loop
+               ->  Bitmap Heap Scan on documents_9519_951026 collection
+                     Recheck Cond: (shard_key_value = '9519'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (shard_key_value = '9519'::bigint)
+               ->  Aggregate
+                     ->  Nested Loop
+                           ->  Index Scan using _id_ on documents_9518_951024 collection_0_1
+                                 Index Cond: (shard_key_value = '9518'::bigint)
+                           ->  Subquery Scan on "lookupRight_stage_sub_1_1"
+                                 Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(documentdb_api_internal.bson_dollar_merge_documents(collection_0_1.document, (SubPlan 2), true), documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "establishment_name" : "establishment_name" }'::documentdb_core.bson), 'establishment_name'::text)
+                                 ->  Aggregate
+                                       ->  Index Scan using _id_ on documents_9518_951024 collection_0_2
+                                             Index Cond: ((shard_key_value = '9518'::bigint) AND (object_id OPERATOR(documentdb_core.=) collection_0_1.object_id))
+                                 SubPlan 2
+                                   ->  Aggregate
+                                         ->  Function Scan on bson_lookup_unwind lookup_subpipeline_substage_1_1
+                     SubPlan 1
+                       ->  Aggregate
+                             ->  Function Scan on bson_lookup_unwind lookup_subpipeline_substage_1
+(25 rows)
+
+ROLLBACK;
+-- Lookup Tests for array index-based paths
+SELECT documentdb_api.insert_one('compdb','array_path_purchases',' { "_id" : 1, "a" : [{"x" : 1}] }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','array_path_purchases',' { "_id" : 2, "a" : {"x" : 1} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','array_path_purchases',' { "_id" : 3, "a" : [{"x": 2}, {"x": 1}] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','array_path_purchases',' { "_id" : 4, "a" : [{"y": 1}, {"x": 1}] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','array_path_purchases',' { "_id" : 5, "a" : [2, 3] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','array_path_purchases',' { "_id" : 6, "a" : {"x": [1, 2]} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','array_path_purchases',' { "_id" : 7, "a" : [{"x": 1}, {"y": 1}] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','array_path_purchases',' { "_id" : 8, "a" : [{"x": [1, 2]}, {"y": 1}] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','array_path_purchases',' { "_id" : 9, "a" : [[{"x": [1, 2]}, {"y": 1}]] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','array_path_items',' { "_id" : 1, "b" : 1 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('compdb', '{ "aggregate": "array_path_purchases", "pipeline": [ { "$lookup": { "from": "array_path_items", "localField": "a.0.x", "foreignField": "b", "as": "matched_docs" }} ]}');
+                                                                                                              document                                                                                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : [ { "x" : { "$numberInt" : "1" } } ], "matched_docs" : [ { "_id" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } } ] }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "x" : { "$numberInt" : "1" } }, "matched_docs" : [  ] }
+ { "_id" : { "$numberInt" : "3" }, "a" : [ { "x" : { "$numberInt" : "2" } }, { "x" : { "$numberInt" : "1" } } ], "matched_docs" : [  ] }
+ { "_id" : { "$numberInt" : "4" }, "a" : [ { "y" : { "$numberInt" : "1" } }, { "x" : { "$numberInt" : "1" } } ], "matched_docs" : [  ] }
+ { "_id" : { "$numberInt" : "5" }, "a" : [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ], "matched_docs" : [  ] }
+ { "_id" : { "$numberInt" : "6" }, "a" : { "x" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, "matched_docs" : [  ] }
+ { "_id" : { "$numberInt" : "7" }, "a" : [ { "x" : { "$numberInt" : "1" } }, { "y" : { "$numberInt" : "1" } } ], "matched_docs" : [ { "_id" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } } ] }
+ { "_id" : { "$numberInt" : "8" }, "a" : [ { "x" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "y" : { "$numberInt" : "1" } } ], "matched_docs" : [ { "_id" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } } ] }
+ { "_id" : { "$numberInt" : "9" }, "a" : [ [ { "x" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "y" : { "$numberInt" : "1" } } ] ], "matched_docs" : [  ] }
+(9 rows)
+
+SELECT document FROM bson_aggregation_pipeline('compdb', '{ "aggregate": "array_path_items", "pipeline": [ { "$lookup": { "from": "array_path_purchases", "localField": "b", "foreignField": "a.0.x", "as": "matched_docs" }} ]}');
+                                                                                                                                                                                                                                                                                        document                                                                                                                                                                                                                                                                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" }, "matched_docs" : [ { "_id" : { "$numberInt" : "1" }, "a" : [ { "x" : { "$numberInt" : "1" } } ] }, { "_id" : { "$numberInt" : "7" }, "a" : [ { "x" : { "$numberInt" : "1" } }, { "y" : { "$numberInt" : "1" } } ] }, { "_id" : { "$numberInt" : "8" }, "a" : [ { "x" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "y" : { "$numberInt" : "1" } } ] }, { "_id" : { "$numberInt" : "9" }, "a" : [ [ { "x" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }, { "y" : { "$numberInt" : "1" } } ] ] } ] }
+(1 row)
+
+-- Test for Index push down crash when Foreign Field = '_id' and the target collection is sharded 
+SELECT documentdb_api.insert_one('compdb','purchases_pushdown_test',' { "_id" : 1, "item_name" : "itemA", "price" : 12, "order_quantity" : 2 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','purchases_pushdown_test','{ "_id" : 2, "item_name" : "itemE", "price" : 20, "order_quantity" : 1 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','purchases_pushdown_test',' { "_id" : 3, "item_name" : "itemC", "price" : 10, "order_quantity" : 5 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','purchases_pushdown_test',' { "_id" : 4, "item_name" : ["itemA", "itemC", "itemE"], "price" : 10, "order_quantity" : 5 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','purchases_pushdown_test',' { "_id" : 5}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','purchases_pushdown_test',' { "_id" : 6, "item_name" : {"a": "x", "b" : 1, "c" : [1, 2, 3]} }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','purchases_pushdown_test',' { "_id" : 7, "item_name" : [{"a": { "b" : 1}}, [1, 2, 3], 1, "x"] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','items_pushdown_test',' { "_id" :  "itemA", "item_description": "product 1", "in_stock" : 120 }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','items_pushdown_test',' { "_id" :  "itemB", "item_description": "product 1", "in_stock" : 240 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','items_pushdown_test','{ "_id" :  "itemC", "item_description": "product 2", "in_stock" : 80 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','items_pushdown_test','{ "_id" :  "itemD", "item_description": "product 3", "in_stock" : 60 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','items_pushdown_test','{ "_id" :  "itemE", "item_description": "product 4", "in_stock" : 70 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('compdb','items_pushdown_test','{ "_id" :  "itemF", "item_description": "product 4", "in_stock" : 70 }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.shard_collection('compdb','items_pushdown_test', '{"_id":"hashed"}', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('compdb', 
+    '{ "aggregate": "purchases_pushdown_test", "pipeline": [ { "$lookup": { "from": "items_pushdown_test", "as": "matched_docs", "localField": "item_name", "foreignField": "_id", "pipeline": [ { "$count": "efe" } ] } } ], "cursor": {} }');
+                                                                                                                              document                                                                                                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "item_name" : "itemA", "price" : { "$numberInt" : "12" }, "order_quantity" : { "$numberInt" : "2" }, "matched_docs" : [ { "efe" : { "$numberInt" : "1" } } ] }
+ { "_id" : { "$numberInt" : "2" }, "item_name" : "itemE", "price" : { "$numberInt" : "20" }, "order_quantity" : { "$numberInt" : "1" }, "matched_docs" : [ { "efe" : { "$numberInt" : "1" } } ] }
+ { "_id" : { "$numberInt" : "3" }, "item_name" : "itemC", "price" : { "$numberInt" : "10" }, "order_quantity" : { "$numberInt" : "5" }, "matched_docs" : [ { "efe" : { "$numberInt" : "1" } } ] }
+ { "_id" : { "$numberInt" : "4" }, "item_name" : [ "itemA", "itemC", "itemE" ], "price" : { "$numberInt" : "10" }, "order_quantity" : { "$numberInt" : "5" }, "matched_docs" : [ { "efe" : { "$numberInt" : "3" } } ] }
+ { "_id" : { "$numberInt" : "5" }, "matched_docs" : [ { "efe" : { "$numberInt" : "0" } } ] }
+ { "_id" : { "$numberInt" : "6" }, "item_name" : { "a" : "x", "b" : { "$numberInt" : "1" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "matched_docs" : [ { "efe" : { "$numberInt" : "0" } } ] }
+ { "_id" : { "$numberInt" : "7" }, "item_name" : [ { "a" : { "b" : { "$numberInt" : "1" } } }, [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "1" }, "x" ], "matched_docs" : [ { "efe" : { "$numberInt" : "0" } } ] }
+(7 rows)
+
+SELECT document FROM bson_aggregation_pipeline('compdb', 
+    '{ "aggregate": "customer_purchases", "pipeline": [ { "$lookup": { "from": "catalog_items", "as": "matched_docs", "localField": "item_name", "foreignField": "_id" } }, { "$unwind": "$matched_docs" } ], "cursor": {} }');
+                                                                                                                                                                                document                                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "item_name" : [ { "a" : { "b" : { "$numberInt" : "1" } } }, [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "1" }, "x" ], "matched_docs" : { "_id" : { "$numberInt" : "1" }, "item_code" : "shirt", "product_description" : "product 1", "stock_quantity" : { "$numberInt" : "120" } } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('compdb', 
+    '{ "aggregate": "customer_purchases", "pipeline": [ { "$lookup": { "from": "catalog_items", "as": "matched_docs", "localField": "item_name", "foreignField": "_id", "pipeline": [ { "$addFields": { "myBar": 1 } }, { "$limit": 10 }] } }, { "$unwind": "$matched_docs" } ], "cursor": {} }');
+                                                                                                                                                                                                 document                                                                                                                                                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "item_name" : [ { "a" : { "b" : { "$numberInt" : "1" } } }, [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "1" }, "x" ], "matched_docs" : { "_id" : { "$numberInt" : "1" }, "item_code" : "shirt", "product_description" : "product 1", "stock_quantity" : { "$numberInt" : "120" }, "myBar" : { "$numberInt" : "1" } } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('compdb', 
+    '{ "aggregate": "customer_purchases", "pipeline": [ { "$lookup": { "from": "catalog_items", "as": "matched_docs", "localField": "item_name", "foreignField": "_id" } }, { "$unwind": { "path": "$matched_docs" } } ], "cursor": {} }');
+                                                                                                                                                                                document                                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "item_name" : [ { "a" : { "b" : { "$numberInt" : "1" } } }, [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "1" }, "x" ], "matched_docs" : { "_id" : { "$numberInt" : "1" }, "item_code" : "shirt", "product_description" : "product 1", "stock_quantity" : { "$numberInt" : "120" } } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('compdb', 
+    '{ "aggregate": "customer_purchases", "pipeline": [ { "$lookup": { "from": "catalog_items", "as": "matched_docs", "localField": "item_name", "foreignField": "_id" } }, { "$unwind": { "path": "$matched_docs", "includeArrayIndex": "idx" } } ], "cursor": {} }'); -- this will not inline
+                                                                                                                                                                                                 document                                                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "item_name" : [ { "a" : { "b" : { "$numberInt" : "1" } } }, [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "1" }, "x" ], "matched_docs" : { "_id" : { "$numberInt" : "1" }, "item_code" : "shirt", "product_description" : "product 1", "stock_quantity" : { "$numberInt" : "120" } }, "idx" : { "$numberLong" : "0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('compdb', 
+    '{ "aggregate": "customer_purchases", "pipeline": [ { "$lookup": { "from": "catalog_items", "as": "matched_docs", "localField": "item_name", "foreignField": "_id" } }, { "$unwind": { "path": "$matched_docs", "preserveNullAndEmptyArrays" : true } } ], "cursor": {} }'); -- should inline and use LEFT JOIN
+                                                                                                                                                                                document                                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "item_name" : "shirt", "price" : { "$numberInt" : "12" }, "order_quantity" : { "$numberInt" : "2" } }
+ { "_id" : { "$numberInt" : "2" }, "item_name" : "pants", "price" : { "$numberInt" : "20" }, "order_quantity" : { "$numberInt" : "1" } }
+ { "_id" : { "$numberInt" : "3" }, "item_name" : "hat", "price" : { "$numberInt" : "10" }, "order_quantity" : { "$numberInt" : "5" } }
+ { "_id" : { "$numberInt" : "4" }, "item_name" : [ "shirt", "hat", "pants" ], "price" : { "$numberInt" : "10" }, "order_quantity" : { "$numberInt" : "5" } }
+ { "_id" : { "$numberInt" : "5" } }
+ { "_id" : { "$numberInt" : "6" }, "item_name" : { "a" : "x", "b" : { "$numberInt" : "1" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
+ { "_id" : { "$numberInt" : "7" }, "item_name" : [ { "a" : { "b" : { "$numberInt" : "1" } } }, [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "1" }, "x" ], "matched_docs" : { "_id" : { "$numberInt" : "1" }, "item_code" : "shirt", "product_description" : "product 1", "stock_quantity" : { "$numberInt" : "120" } } }
+(7 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('compdb', 
+    '{ "aggregate": "customer_purchases", "pipeline": [ { "$lookup": { "from": "catalog_items", "as": "matched_docs", "localField": "item_name", "foreignField": "_id" } }, { "$unwind": "$matched_docs" } ], "cursor": {} }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_api_internal.bson_dollar_merge_documents_at_path(lookup_stage_1.document, "lookupRight_stage_1".document, 'matched_docs'::text) AS document FROM ((SELECT collection.document, documentdb_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item_name" }'::documentdb_core.bson) AS lookup_filter FROM documentdb_data.documents_9511_951002 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '9511'::bigint)) lookup_stage_1 JOIN LATERAL (SELECT lookup_right_query_stage_0.document FROM (SELECT collection_0_1.document, collection_0_1.object_id AS "objectId" FROM documentdb_data.documents_9512_951004 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '9512'::bigint)) lookup_right_query_stage_0 WHERE (lookup_right_query_stage_0."objectId" OPERATOR(documentdb_core.=) ANY (lookup_stage_1.lookup_filter))) "lookupRight_stage_1" ON (true))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Nested Loop
+               Output: documentdb_api_internal.bson_dollar_merge_documents_at_path(collection.document, collection_0_1.document, 'matched_docs'::text)
+               Join Filter: (collection_0_1.object_id OPERATOR(documentdb_core.=) ANY (documentdb_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item_name" }'::documentdb_core.bson)))
+               ->  Seq Scan on documentdb_data.documents_9512_951004 collection_0_1
+                     Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document
+               ->  Bitmap Heap Scan on documentdb_data.documents_9511_951002 collection
+                     Output: collection.shard_key_value, collection.object_id, collection.document
+                     Recheck Cond: (collection.shard_key_value = '9511'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '9511'::bigint)
+(17 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('compdb', 
+    '{ "aggregate": "customer_purchases", "pipeline": [ { "$lookup": { "from": "catalog_items", "as": "matched_docs", "localField": "item_name", "foreignField": "_id", "pipeline": [ { "$addFields": { "myBar": 1 } }, { "$limit": 10 }] } }, { "$unwind": "$matched_docs" } ], "cursor": {} }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_api_catalog.bson_dollar_unwind(document, '$matched_docs'::text) AS document FROM (SELECT documentdb_api_internal.bson_dollar_merge_documents(lookup_non_inlined_stage_1."left", (SELECT COALESCE(documentdb_api_catalog.bson_array_agg(agg_stage_sub_1_2."funcName", 'matched_docs'::text), '{ "matched_docs" : [  ] }'::documentdb_core.bson) AS "funcName" FROM (SELECT documentdb_api_internal.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson) AS "funcName" FROM documentdb_api_catalog.bson_lookup_unwind(lookup_non_inlined_stage_1."right", 'matched_docs'::text) lookup_subpipeline_substage_0(lookup_unwind) LIMIT '10'::bigint) agg_stage_sub_1_2), true) AS document FROM (SELECT lookup_stage_1.document AS "left", "lookupRight_stage_1".document AS "right" FROM ((SELECT collection.document, documentdb_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item_name" }'::documentdb_core.bson) AS lookup_filter FROM documentdb_data.documents_9511_951002 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '9511'::bigint)) lookup_stage_1 JOIN LATERAL (SELECT COALESCE(documentdb_api_catalog.bson_array_agg(lookup_right_query_stage_0.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::documentdb_core.bson) AS document FROM (SELECT collection_0_1.document, collection_0_1.object_id AS "objectId" FROM documentdb_data.documents_9512_951004 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '9512'::bigint)) lookup_right_query_stage_0 WHERE (lookup_right_query_stage_0."objectId" OPERATOR(documentdb_core.=) ANY (lookup_stage_1.lookup_filter))) "lookupRight_stage_1" ON (true))) lookup_non_inlined_stage_1) agg_stage_1
+         Node: host=localhost port=58070 dbname=regression
+         ->  ProjectSet
+               Output: documentdb_api_catalog.bson_dollar_unwind(documentdb_api_internal.bson_dollar_merge_documents(collection.document, (SubPlan 1), true), '$matched_docs'::text)
+               ->  Nested Loop
+                     Output: collection.document, (COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::documentdb_core.bson))
+                     ->  Bitmap Heap Scan on documentdb_data.documents_9511_951002 collection
+                           Output: collection.shard_key_value, collection.object_id, collection.document
+                           Recheck Cond: (collection.shard_key_value = '9511'::bigint)
+                           ->  Bitmap Index Scan on _id_
+                                 Index Cond: (collection.shard_key_value = '9511'::bigint)
+                     ->  Aggregate
+                           Output: COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::documentdb_core.bson)
+                           ->  Seq Scan on documentdb_data.documents_9512_951004 collection_0_1
+                                 Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document
+                                 Filter: (collection_0_1.object_id OPERATOR(documentdb_core.=) ANY (documentdb_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item_name" }'::documentdb_core.bson)))
+               SubPlan 1
+                 ->  Aggregate
+                       Output: COALESCE(documentdb_api_catalog.bson_array_agg((documentdb_api_internal.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)), 'matched_docs'::text), '{ "matched_docs" : [  ] }'::documentdb_core.bson)
+                       ->  Limit
+                             Output: (documentdb_api_internal.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson))
+                             ->  Function Scan on documentdb_api_catalog.bson_lookup_unwind lookup_subpipeline_substage_0
+                                   Output: documentdb_api_internal.bson_dollar_add_fields(lookup_subpipeline_substage_0.lookup_unwind, '{ "myBar" : { "$numberInt" : "1" } }'::documentdb_core.bson, '{ "now" : NOW_SYS_VARIABLE }'::documentdb_core.bson)
+                                   Function Call: documentdb_api_catalog.bson_lookup_unwind((COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::documentdb_core.bson)), 'matched_docs'::text)
+(29 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('compdb', 
+    '{ "aggregate": "customer_purchases", "pipeline": [ { "$lookup": { "from": "catalog_items", "as": "matched_docs", "localField": "item_name", "foreignField": "_id" } }, { "$unwind": { "path": "$matched_docs" } } ], "cursor": {} }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_api_internal.bson_dollar_merge_documents_at_path(lookup_stage_1.document, "lookupRight_stage_1".document, 'matched_docs'::text) AS document FROM ((SELECT collection.document, documentdb_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item_name" }'::documentdb_core.bson) AS lookup_filter FROM documentdb_data.documents_9511_951002 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '9511'::bigint)) lookup_stage_1 JOIN LATERAL (SELECT lookup_right_query_stage_0.document FROM (SELECT collection_0_1.document, collection_0_1.object_id AS "objectId" FROM documentdb_data.documents_9512_951004 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '9512'::bigint)) lookup_right_query_stage_0 WHERE (lookup_right_query_stage_0."objectId" OPERATOR(documentdb_core.=) ANY (lookup_stage_1.lookup_filter))) "lookupRight_stage_1" ON (true))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Nested Loop
+               Output: documentdb_api_internal.bson_dollar_merge_documents_at_path(collection.document, collection_0_1.document, 'matched_docs'::text)
+               Join Filter: (collection_0_1.object_id OPERATOR(documentdb_core.=) ANY (documentdb_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item_name" }'::documentdb_core.bson)))
+               ->  Seq Scan on documentdb_data.documents_9512_951004 collection_0_1
+                     Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document
+               ->  Bitmap Heap Scan on documentdb_data.documents_9511_951002 collection
+                     Output: collection.shard_key_value, collection.object_id, collection.document
+                     Recheck Cond: (collection.shard_key_value = '9511'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '9511'::bigint)
+(17 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('compdb', 
+    '{ "aggregate": "customer_purchases", "pipeline": [ { "$lookup": { "from": "catalog_items", "as": "matched_docs", "localField": "item_name", "foreignField": "_id" } }, { "$unwind": { "path": "$matched_docs", "includeArrayIndex": "idx" } } ], "cursor": {} }'); -- this will not inline
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_api_catalog.bson_dollar_unwind(document, '{ "path" : "$matched_docs", "includeArrayIndex" : "idx" }'::documentdb_core.bson) AS document FROM (SELECT documentdb_api_internal.bson_dollar_merge_documents(lookup_stage_1.document, "lookupRight_stage_1".document, true) AS document FROM ((SELECT collection.document, documentdb_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item_name" }'::documentdb_core.bson) AS lookup_filter FROM documentdb_data.documents_9511_951002 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '9511'::bigint)) lookup_stage_1 JOIN LATERAL (SELECT COALESCE(documentdb_api_catalog.bson_array_agg(lookup_right_query_stage_0.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::documentdb_core.bson) AS document FROM (SELECT collection_0_1.document, collection_0_1.object_id AS "objectId" FROM documentdb_data.documents_9512_951004 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '9512'::bigint)) lookup_right_query_stage_0 WHERE (lookup_right_query_stage_0."objectId" OPERATOR(documentdb_core.=) ANY (lookup_stage_1.lookup_filter))) "lookupRight_stage_1" ON (true))) agg_stage_1
+         Node: host=localhost port=58070 dbname=regression
+         ->  ProjectSet
+               Output: documentdb_api_catalog.bson_dollar_unwind(documentdb_api_internal.bson_dollar_merge_documents(collection.document, (COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::documentdb_core.bson)), true), '{ "path" : "$matched_docs", "includeArrayIndex" : "idx" }'::documentdb_core.bson)
+               ->  Nested Loop
+                     Output: collection.document, (COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::documentdb_core.bson))
+                     ->  Bitmap Heap Scan on documentdb_data.documents_9511_951002 collection
+                           Output: collection.shard_key_value, collection.object_id, collection.document
+                           Recheck Cond: (collection.shard_key_value = '9511'::bigint)
+                           ->  Bitmap Index Scan on _id_
+                                 Index Cond: (collection.shard_key_value = '9511'::bigint)
+                     ->  Aggregate
+                           Output: COALESCE(documentdb_api_catalog.bson_array_agg(collection_0_1.document, 'matched_docs'::text), '{ "matched_docs" : [  ] }'::documentdb_core.bson)
+                           ->  Seq Scan on documentdb_data.documents_9512_951004 collection_0_1
+                                 Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document
+                                 Filter: (collection_0_1.object_id OPERATOR(documentdb_core.=) ANY (documentdb_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item_name" }'::documentdb_core.bson)))
+(21 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('compdb', 
+    '{ "aggregate": "customer_purchases", "pipeline": [ { "$lookup": { "from": "catalog_items", "as": "matched_docs", "localField": "item_name", "foreignField": "_id" } }, { "$unwind": { "path": "$matched_docs", "preserveNullAndEmptyArrays" : true } } ], "cursor": {} }'); -- should inline and use LEFT JOIN
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_api_internal.bson_dollar_merge_documents_at_path(lookup_stage_1.document, COALESCE("lookupRight_stage_1".document, '{ }'::documentdb_core.bson), 'matched_docs'::text) AS document FROM ((SELECT collection.document, documentdb_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item_name" }'::documentdb_core.bson) AS lookup_filter FROM documentdb_data.documents_9511_951002 collection WHERE (collection.shard_key_value OPERATOR(pg_catalog.=) '9511'::bigint)) lookup_stage_1 LEFT JOIN LATERAL (SELECT lookup_right_query_stage_0.document FROM (SELECT collection_0_1.document, collection_0_1.object_id AS "objectId" FROM documentdb_data.documents_9512_951004 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '9512'::bigint)) lookup_right_query_stage_0 WHERE (lookup_right_query_stage_0."objectId" OPERATOR(documentdb_core.=) ANY (lookup_stage_1.lookup_filter))) "lookupRight_stage_1" ON (true))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Nested Loop Left Join
+               Output: documentdb_api_internal.bson_dollar_merge_documents_at_path(collection.document, COALESCE(collection_0_1.document, '{ }'::documentdb_core.bson), 'matched_docs'::text)
+               Join Filter: (collection_0_1.object_id OPERATOR(documentdb_core.=) ANY (documentdb_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "item_name" }'::documentdb_core.bson)))
+               ->  Bitmap Heap Scan on documentdb_data.documents_9511_951002 collection
+                     Output: collection.shard_key_value, collection.object_id, collection.document
+                     Recheck Cond: (collection.shard_key_value = '9511'::bigint)
+                     ->  Bitmap Index Scan on _id_
+                           Index Cond: (collection.shard_key_value = '9511'::bigint)
+               ->  Materialize
+                     Output: collection_0_1.document, collection_0_1.object_id
+                     ->  Seq Scan on documentdb_data.documents_9512_951004 collection_0_1
+                           Output: collection_0_1.document, collection_0_1.object_id
+(19 rows)
+
+-- Test for removal of inner join
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "customer_purchases", "indexes": [ { "key": { "item_name": 1 }, "name": "customer_purchases_item_name_1" } ] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+BEGIN;
+set local enable_seqscan to off;
+SELECT document FROM bson_aggregation_pipeline('compdb', 
+    '{ "aggregate": "customer_purchases", "pipeline": [ { "$match": { "item_name": { "$exists": true } } }, { "$lookup": { "from": "catalog_items", "as": "matched_docs", "localField": "item_name", "foreignField": "item_code" } }, { "$unwind": "$matched_docs" } ], "cursor": {} }');
+                                                                                                                                                                                                                                    document                                                                                                                                                                                                                                    
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "item_name" : "shirt", "price" : { "$numberInt" : "12" }, "order_quantity" : { "$numberInt" : "2" }, "matched_docs" : { "_id" : { "$numberInt" : "1" }, "item_code" : "shirt", "product_description" : "product 1", "stock_quantity" : { "$numberInt" : "120" } } }
+ { "_id" : { "$numberInt" : "1" }, "item_name" : "shirt", "price" : { "$numberInt" : "12" }, "order_quantity" : { "$numberInt" : "2" }, "matched_docs" : { "_id" : { "$numberInt" : "11" }, "item_code" : "shirt", "product_description" : "product 1", "stock_quantity" : { "$numberInt" : "240" } } }
+ { "_id" : { "$numberInt" : "2" }, "item_name" : "pants", "price" : { "$numberInt" : "20" }, "order_quantity" : { "$numberInt" : "1" }, "matched_docs" : { "_id" : { "$numberInt" : "4" }, "item_code" : "pants", "product_description" : "product 4", "stock_quantity" : { "$numberInt" : "70" } } }
+ { "_id" : { "$numberInt" : "3" }, "item_name" : "hat", "price" : { "$numberInt" : "10" }, "order_quantity" : { "$numberInt" : "5" }, "matched_docs" : { "_id" : { "$numberInt" : "2" }, "item_code" : "hat", "product_description" : "product 2", "stock_quantity" : { "$numberInt" : "80" } } }
+ { "_id" : { "$numberInt" : "4" }, "item_name" : [ "shirt", "hat", "pants" ], "price" : { "$numberInt" : "10" }, "order_quantity" : { "$numberInt" : "5" }, "matched_docs" : { "_id" : { "$numberInt" : "1" }, "item_code" : "shirt", "product_description" : "product 1", "stock_quantity" : { "$numberInt" : "120" } } }
+ { "_id" : { "$numberInt" : "4" }, "item_name" : [ "shirt", "hat", "pants" ], "price" : { "$numberInt" : "10" }, "order_quantity" : { "$numberInt" : "5" }, "matched_docs" : { "_id" : { "$numberInt" : "11" }, "item_code" : "shirt", "product_description" : "product 1", "stock_quantity" : { "$numberInt" : "240" } } }
+ { "_id" : { "$numberInt" : "4" }, "item_name" : [ "shirt", "hat", "pants" ], "price" : { "$numberInt" : "10" }, "order_quantity" : { "$numberInt" : "5" }, "matched_docs" : { "_id" : { "$numberInt" : "2" }, "item_code" : "hat", "product_description" : "product 2", "stock_quantity" : { "$numberInt" : "80" } } }
+ { "_id" : { "$numberInt" : "4" }, "item_name" : [ "shirt", "hat", "pants" ], "price" : { "$numberInt" : "10" }, "order_quantity" : { "$numberInt" : "5" }, "matched_docs" : { "_id" : { "$numberInt" : "4" }, "item_code" : "pants", "product_description" : "product 4", "stock_quantity" : { "$numberInt" : "70" } } }
+ { "_id" : { "$numberInt" : "6" }, "item_name" : { "a" : "x", "b" : { "$numberInt" : "1" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "matched_docs" : { "_id" : { "$numberInt" : "6" }, "item_code" : { "a" : "x", "b" : { "$numberInt" : "1" }, "c" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }, "product_description" : "complex object" } }
+ { "_id" : { "$numberInt" : "7" }, "item_name" : [ { "a" : { "b" : { "$numberInt" : "1" } } }, [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "1" }, "x" ], "matched_docs" : { "_id" : { "$numberInt" : "7" }, "item_code" : [ { "a" : { "b" : { "$numberInt" : "1" } } }, [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "1" }, "x" ], "product_description" : "complex array" } }
+ { "_id" : { "$numberInt" : "7" }, "item_name" : [ { "a" : { "b" : { "$numberInt" : "1" } } }, [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "1" }, "x" ], "matched_docs" : { "_id" : { "$numberInt" : "8" }, "item_code" : [ { "a" : { "b" : { "$numberInt" : "1" } } }, [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ], { "$numberInt" : "1" }, "x" ], "product_description" : "complex array" } }
+(11 rows)
+
+ROLLBACK;
+BEGIN;
+set local enable_seqscan to off;
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('compdb', 
+    '{ "aggregate": "customer_purchases", "pipeline": [ { "$match": { "item_name": { "$exists": true } } }, { "$lookup": { "from": "catalog_items", "as": "matched_docs", "localField": "item_name", "foreignField": "item_code" } }, { "$unwind": "$matched_docs" } ], "cursor": {} }');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive)
+   Output: remote_scan.document
+   Task Count: 1
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_api_internal.bson_dollar_merge_documents_at_path(lookup_stage_1.document, "lookupRight_stage_1".document, 'matched_docs'::text) AS document FROM ((SELECT collection.document, documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "item_code" : "item_name" }'::documentdb_core.bson) AS lookup_filter FROM documentdb_data.documents_9511_951002 collection WHERE ((collection.document OPERATOR(documentdb_api_catalog.#>=) '{ "item_name" : { "$minKey" : 1 } }'::documentdb_core.bsonquery) AND (collection.shard_key_value OPERATOR(pg_catalog.=) '9511'::bigint))) lookup_stage_1 JOIN LATERAL (SELECT lookup_right_query_stage_0.document FROM (SELECT collection_0_1.document FROM documentdb_data.documents_9512_951004 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '9512'::bigint)) lookup_right_query_stage_0 WHERE documentdb_api_internal.bson_dollar_lookup_join_filter(lookup_right_query_stage_0.document, lookup_stage_1.lookup_filter, 'item_code'::text)) "lookupRight_stage_1" ON (true))
+         Node: host=localhost port=58070 dbname=regression
+         ->  Nested Loop
+               Output: documentdb_api_internal.bson_dollar_merge_documents_at_path(collection.document, collection_0_1.document, 'matched_docs'::text)
+               ->  Index Scan using customer_purchases_item_name_1 on documentdb_data.documents_9511_951002 collection
+                     Output: collection.shard_key_value, collection.object_id, collection.document
+                     Index Cond: (collection.document OPERATOR(documentdb_api_catalog.@>=) '{ "item_name" : { "$minKey" : 1 } }'::documentdb_core.bson)
+               ->  Index Scan using idx_catalog_items_item_code on documentdb_data.documents_9512_951004 collection_0_1
+                     Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document
+                     Index Cond: (collection_0_1.document OPERATOR(documentdb_api_catalog.@*=) documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "item_code" : "item_name" }'::documentdb_core.bson))
+                     Filter: documentdb_api_internal.bson_dollar_lookup_join_filter(collection_0_1.document, documentdb_api_internal.bson_dollar_lookup_extract_filter_expression(collection.document, '{ "item_code" : "item_name" }'::documentdb_core.bson), 'item_code'::text)
+(16 rows)
+
+ROLLBACK;
+-- do a multi layer lookup that matches on _id
+SELECT COUNT(documentdb_api.insert_one('compdb', 'source1', FORMAT('{ "_id": %s, "field1": "value%s", "fieldsource1": "foo" }', i, i)::bson)) FROM generate_series(1, 100) i;
+NOTICE:  creating collection
+ count 
+---------------------------------------------------------------------
+   100
+(1 row)
+
+SELECT COUNT(documentdb_api.insert_one('compdb', 'source2', FORMAT('{ "_id": "value%s", "field2": "othervalue%s", "fieldsource2": "foobar" }', i, i)::bson)) FROM generate_series(1, 100) i;
+NOTICE:  creating collection
+ count 
+---------------------------------------------------------------------
+   100
+(1 row)
+
+SELECT COUNT(documentdb_api.insert_one('compdb', 'source3', FORMAT('{ "_id": "othervalue%s", "field3": "someothervalue%s", "fieldsource3": "foobarfoo" }', i, i)::bson)) FROM generate_series(1, 100) i;
+NOTICE:  creating collection
+ count 
+---------------------------------------------------------------------
+   100
+(1 row)
+
+SELECT COUNT(documentdb_api.insert_one('compdb', 'source4', FORMAT('{ "_id": "someothervalue%s", "field4": "yetsomeothervalue%s", "fieldsource4": "foobarbaz" }', i, i)::bson)) FROM generate_series(1, 100) i;
+NOTICE:  creating collection
+ count 
+---------------------------------------------------------------------
+   100
+(1 row)
+
+-- create indexes on the intermediate fields
+SELECT documentdb_api_internal.create_indexes_non_concurrently('compdb', '{ "createIndexes": "source1", "indexes": [ { "key": { "field1": 1 }, "name": "field1_1" } ] }', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+ANALYZE documentdb_data.documents_9520;
+ANALYZE documentdb_data.documents_9521;
+ANALYZE documentdb_data.documents_9522;
+ANALYZE documentdb_data.documents_9523;
+-- should always pick up _id index.
+BEGIN;
+set local enable_indexscan to off;
+set local enable_bitmapscan to off;
+set local enable_material to off;
+EXPLAIN (COSTS OFF, ANALYZE ON, VERBOSE ON, TIMING OFF, SUMMARY OFF) SELECT document FROM bson_aggregation_pipeline('compdb',
+  '{ "aggregate": "source1", "pipeline": [ 
+    { "$match": { "field1": { "$eq": "value10" } } },
+    { "$lookup": { "from": "source2", "as": "source2_docs", "localField": "field1", "foreignField": "_id" } },
+    { "$unwind": { "path": "$source2_docs", "preserveNullAndEmptyArrays": true } },
+    { "$lookup": { "from": "source3", "as": "source3_docs", "localField": "source2_docs", "foreignField": "_id" } },
+    { "$unwind": { "path": "$source3_docs", "preserveNullAndEmptyArrays": true } },
+    { "$lookup": { "from": "source4", "as": "source4_docs", "localField": "source3_docs", "foreignField": "_id" } },
+    { "$unwind": { "path": "$source4_docs", "preserveNullAndEmptyArrays": true } }
+  ]}');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
+---------------------------------------------------------------------
+ Custom Scan (Citus Adaptive) (actual rows=1 loops=1)
+   Output: remote_scan.document
+   Task Count: 1
+   Tuple data received from nodes: 142 bytes
+   Tasks Shown: All
+   ->  Task
+         Query: SELECT documentdb_api_internal.bson_dollar_merge_documents_at_path(lookup_stage_1.document, COALESCE("lookupRight_stage_1".document, '{ }'::documentdb_core.bson), 'source4_docs'::text) AS document FROM ((SELECT agg_stage_3.document, documentdb_api_internal.bson_dollar_lookup_extract_filter_array(agg_stage_3.document, '{ "_id" : "source3_docs" }'::documentdb_core.bson) AS lookup_filter FROM (SELECT documentdb_api_internal.bson_dollar_merge_documents_at_path(lookup_stage_1_1.document, COALESCE("lookupRight_stage_1_1".document, '{ }'::documentdb_core.bson), 'source3_docs'::text) AS document FROM ((SELECT agg_stage_2.document, documentdb_api_internal.bson_dollar_lookup_extract_filter_array(agg_stage_2.document, '{ "_id" : "source2_docs" }'::documentdb_core.bson) AS lookup_filter FROM (SELECT documentdb_api_internal.bson_dollar_merge_documents_at_path(lookup_stage_1_2.document, COALESCE("lookupRight_stage_1_2".document, '{ }'::documentdb_core.bson), 'source2_docs'::text) AS document FROM ((SELECT collection.document, documentdb_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "field1" }'::documentdb_core.bson) AS lookup_filter FROM documentdb_data.documents_9524_951044 collection WHERE ((collection.document OPERATOR(documentdb_api_catalog.#=) '{ "field1" : "value10" }'::documentdb_core.bsonquery) AND (collection.shard_key_value OPERATOR(pg_catalog.=) '9524'::bigint))) lookup_stage_1_2 LEFT JOIN LATERAL (SELECT lookup_right_query_stage_0.document FROM (SELECT collection_0_1.document, collection_0_1.object_id AS "objectId" FROM documentdb_data.documents_9525_951046 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '9525'::bigint)) lookup_right_query_stage_0 WHERE (lookup_right_query_stage_0."objectId" OPERATOR(documentdb_core.=) ANY (lookup_stage_1_2.lookup_filter))) "lookupRight_stage_1_2" ON (true))) agg_stage_2) lookup_stage_1_1 LEFT JOIN LATERAL (SELECT lookup_right_query_stage_0.document FROM (SELECT collection_0_1.document, collection_0_1.object_id AS "objectId" FROM documentdb_data.documents_9526_951048 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '9526'::bigint)) lookup_right_query_stage_0 WHERE (lookup_right_query_stage_0."objectId" OPERATOR(documentdb_core.=) ANY (lookup_stage_1_1.lookup_filter))) "lookupRight_stage_1_1" ON (true))) agg_stage_3) lookup_stage_1 LEFT JOIN LATERAL (SELECT lookup_right_query_stage_0.document FROM (SELECT collection_0_1.document, collection_0_1.object_id AS "objectId" FROM documentdb_data.documents_9527_951050 collection_0_1 WHERE (collection_0_1.shard_key_value OPERATOR(pg_catalog.=) '9527'::bigint)) lookup_right_query_stage_0 WHERE (lookup_right_query_stage_0."objectId" OPERATOR(documentdb_core.=) ANY (lookup_stage_1.lookup_filter))) "lookupRight_stage_1" ON (true))
+         Tuple data received from node: 142 bytes
+         Node: host=localhost port=58070 dbname=regression
+         ->  Nested Loop Left Join (actual rows=1 loops=1)
+               Output: documentdb_api_internal.bson_dollar_merge_documents_at_path(documentdb_api_internal.bson_dollar_merge_documents_at_path(documentdb_api_internal.bson_dollar_merge_documents_at_path(collection.document, COALESCE(collection_0_1.document, '{ }'::documentdb_core.bson), 'source2_docs'::text), COALESCE(collection_0_1_1.document, '{ }'::documentdb_core.bson), 'source3_docs'::text), COALESCE(collection_0_1_2.document, '{ }'::documentdb_core.bson), 'source4_docs'::text)
+               ->  Nested Loop Left Join (actual rows=1 loops=1)
+                     Output: collection.document, collection_0_1.document, collection_0_1_1.document
+                     ->  Nested Loop Left Join (actual rows=1 loops=1)
+                           Output: collection.document, collection_0_1.document
+                           ->  Seq Scan on documentdb_data.documents_9524_951044 collection (actual rows=1 loops=1)
+                                 Output: collection.shard_key_value, collection.object_id, collection.document
+                                 Filter: (collection.document OPERATOR(documentdb_api_catalog.@=) '{ "field1" : "value10" }'::documentdb_core.bson)
+                                 Rows Removed by Filter: 99
+                           ->  Index Scan using _id_ on documentdb_data.documents_9525_951046 collection_0_1 (actual rows=1 loops=1)
+                                 Output: collection_0_1.shard_key_value, collection_0_1.object_id, collection_0_1.document
+                                 Index Cond: ((collection_0_1.shard_key_value = '9525'::bigint) AND (collection_0_1.object_id OPERATOR(documentdb_core.=) ANY (documentdb_api_internal.bson_dollar_lookup_extract_filter_array(collection.document, '{ "_id" : "field1" }'::documentdb_core.bson))))
+                     ->  Index Scan using _id_ on documentdb_data.documents_9526_951048 collection_0_1_1 (actual rows=0 loops=1)
+                           Output: collection_0_1_1.shard_key_value, collection_0_1_1.object_id, collection_0_1_1.document
+                           Index Cond: ((collection_0_1_1.shard_key_value = '9526'::bigint) AND (collection_0_1_1.object_id OPERATOR(documentdb_core.=) ANY (documentdb_api_internal.bson_dollar_lookup_extract_filter_array(documentdb_api_internal.bson_dollar_merge_documents_at_path(collection.document, COALESCE(collection_0_1.document, '{ }'::documentdb_core.bson), 'source2_docs'::text), '{ "_id" : "source2_docs" }'::documentdb_core.bson))))
+               ->  Index Scan using _id_ on documentdb_data.documents_9527_951050 collection_0_1_2 (actual rows=0 loops=1)
+                     Output: collection_0_1_2.shard_key_value, collection_0_1_2.object_id, collection_0_1_2.document
+                     Index Cond: ((collection_0_1_2.shard_key_value = '9527'::bigint) AND (collection_0_1_2.object_id OPERATOR(documentdb_core.=) ANY (documentdb_api_internal.bson_dollar_lookup_extract_filter_array(documentdb_api_internal.bson_dollar_merge_documents_at_path(documentdb_api_internal.bson_dollar_merge_documents_at_path(collection.document, COALESCE(collection_0_1.document, '{ }'::documentdb_core.bson), 'source2_docs'::text), COALESCE(collection_0_1_1.document, '{ }'::documentdb_core.bson), 'source3_docs'::text), '{ "_id" : "source3_docs" }'::documentdb_core.bson))))
+(28 rows)
+
+ROLLBACK;

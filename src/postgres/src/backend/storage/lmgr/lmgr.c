@@ -30,6 +30,8 @@
 
 /* YB includes */
 #include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_gflags.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 
 /*
@@ -140,6 +142,14 @@ LockRelationOid(Oid relid, LOCKMODE lockmode)
 		AcceptInvalidationMessages();
 		MarkLockClear(locallock);
 	}
+
+	/*
+	 * Max hybrid time across all nodes available after exclusive lock acquisition.
+	 * Clamp uncertainty window.
+	 */
+	if (res == LOCKACQUIRE_OK && lockmode >= ShareUpdateExclusiveLock
+		&& !YBCIsLegacyModeForCatalogOps())
+		YBCPgSetClampUncertaintyWindow(true);
 }
 
 /*
@@ -175,6 +185,14 @@ ConditionalLockRelationOid(Oid relid, LOCKMODE lockmode)
 		MarkLockClear(locallock);
 	}
 
+	/*
+	 * Max hybrid time across all nodes available after exclusive lock acquisition.
+	 * Clamp uncertainty window.
+	 */
+	if (res == LOCKACQUIRE_OK && lockmode >= ShareUpdateExclusiveLock
+		&& !YBCIsLegacyModeForCatalogOps())
+		YBCPgSetClampUncertaintyWindow(true);
+
 	return true;
 }
 
@@ -204,6 +222,14 @@ LockRelationId(LockRelId *relid, LOCKMODE lockmode)
 		AcceptInvalidationMessages();
 		MarkLockClear(locallock);
 	}
+
+	/*
+	 * Max hybrid time across all nodes available after exclusive lock acquisition.
+	 * Clamp uncertainty window.
+	 */
+	if (res == LOCKACQUIRE_OK && lockmode >= ShareUpdateExclusiveLock
+		&& !YBCIsLegacyModeForCatalogOps())
+		YBCPgSetClampUncertaintyWindow(true);
 }
 
 /*
@@ -406,7 +432,22 @@ LockRelationIdForSession(LockRelId *relid, LOCKMODE lockmode)
 	LOCKTAG		tag;
 
 	SET_LOCKTAG_RELATION(tag, relid->dbId, relid->relId);
-
+	if (YBGetObjectLockMode() == YB_OBJECT_LOCK_ENABLED)
+	{
+		if (YbLockHeldOnObjectBySession(&tag))
+		{
+			elog(FATAL, "unexpected active session lock on relid %d, dbid: %d",
+				 relid->relId, relid->dbId);
+		}
+		if (!LockHeldByMe(&tag, lockmode))
+		{
+			elog(FATAL, "expected active txn lock on relid %d, dbid: %d",
+				 relid->relId, relid->dbId);
+		}
+		if (lockmode < ShareUpdateExclusiveLock)
+			elog(ERROR, "expected session lock on relid %d, dbid: %d to be a global object lock",
+				 relid->relId, relid->dbId);
+	}
 	(void) LockAcquire(&tag, lockmode, true, false);
 }
 
@@ -574,6 +615,11 @@ UnlockPage(Relation relation, BlockNumber blkno, LOCKMODE lockmode)
 void
 LockTuple(Relation relation, ItemPointer tid, LOCKMODE lockmode)
 {
+
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE && !*YBCGetGFlags()->TEST_enable_obj_tuple_locks)
+	{
+		return;
+	}
 	LOCKTAG		tag;
 
 	/*
@@ -606,6 +652,10 @@ LockTuple(Relation relation, ItemPointer tid, LOCKMODE lockmode)
 bool
 ConditionalLockTuple(Relation relation, ItemPointer tid, LOCKMODE lockmode)
 {
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE && !*YBCGetGFlags()->TEST_enable_obj_tuple_locks)
+	{
+		return true;
+	}
 	LOCKTAG		tag;
 
 	/*
@@ -635,6 +685,10 @@ ConditionalLockTuple(Relation relation, ItemPointer tid, LOCKMODE lockmode)
 void
 UnlockTuple(Relation relation, ItemPointer tid, LOCKMODE lockmode)
 {
+	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE && !*YBCGetGFlags()->TEST_enable_obj_tuple_locks)
+	{
+		return;
+	}
 	LOCKTAG		tag;
 
 	/*
@@ -1003,10 +1057,7 @@ WaitForLockersMultiple(List *locktags, LOCKMODE lockmode, bool progress)
 	int			total = 0;
 	int			done = 0;
 
-	/*
-	 * TODO(#27719): Propagate wait to tserver's object lock manager.
-	 */
-	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE)
+	if (YBGetObjectLockMode() == YB_OBJECT_LOCK_DISABLED)
 	{
 		return;
 	}
@@ -1014,6 +1065,30 @@ WaitForLockersMultiple(List *locktags, LOCKMODE lockmode, bool progress)
 	/* Done if no locks to wait for */
 	if (list_length(locktags) == 0)
 		return;
+
+	if (YBGetObjectLockMode() == YB_OBJECT_LOCK_ENABLED)
+	{
+		int			num_locks = list_length(locktags);
+		YbcObjectLockId *lock_ids = palloc(num_locks * sizeof(YbcObjectLockId));
+		int			i = 0;
+
+		foreach(lc, locktags)
+		{
+			LOCKTAG    *locktag = lfirst(lc);
+			lock_ids[i++] = (YbcObjectLockId)
+			{
+				.db_oid = locktag->locktag_field1,
+				.relation_oid = locktag->locktag_field2,
+				.object_oid = locktag->locktag_field3,
+				.object_sub_oid = locktag->locktag_field4,
+			};
+		}
+
+		HandleYBStatus(YBCWaitForLockersMultiple(lock_ids,
+												 (YbcObjectLockMode) lockmode, num_locks));
+		pfree(lock_ids);
+		return;
+	}
 
 	/* Collect the transactions we need to wait on */
 	foreach(lc, locktags)
@@ -1085,15 +1160,6 @@ void
 WaitForLockers(LOCKTAG heaplocktag, LOCKMODE lockmode, bool progress)
 {
 	List	   *l;
-
-	/*
-	 * TODO(#27719): Propagate wait to tserver's object lock manager.
-	 */
-	if (YBGetObjectLockMode() != PG_OBJECT_LOCK_MODE)
-	{
-		return;
-	}
-
 	l = list_make1(&heaplocktag);
 	WaitForLockersMultiple(l, lockmode, progress);
 	list_free(l);

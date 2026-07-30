@@ -65,5 +65,6 @@ extern uint32 ybGetNextUid(PlannerGlobal *glob);
 extern uint32 ybGetNextNodeUid(PlannerGlobal *glob);
 extern void ybInitHintedUids(PlannerGlobal *glob);
 extern bool ybIsHintedUid(PlannerGlobal *glob, uint32 uid);
+extern uint64 ybGetPlanId(PlannedStmt *plannedStmt);
 
 #endif							/* PLANNER_H */

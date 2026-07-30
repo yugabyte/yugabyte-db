@@ -74,7 +74,6 @@ public class AlertChannelPagerDutyTest extends FakeDBApplication {
 
     AlertChannel channelConfig = new AlertChannel();
     AlertChannelPagerDutyParams params = new AlertChannelPagerDutyParams();
-    params.setApiKey("Some API Key");
     params.setRoutingKey("Some Routing Key");
     channelConfig.setParams(params);
 
@@ -113,7 +112,6 @@ public class AlertChannelPagerDutyTest extends FakeDBApplication {
 
     AlertChannel channelConfig = new AlertChannel();
     AlertChannelPagerDutyParams params = new AlertChannelPagerDutyParams();
-    params.setApiKey("Some API Key");
     params.setRoutingKey("Some Routing Key");
     channelConfig.setParams(params);
 
@@ -136,7 +134,6 @@ public class AlertChannelPagerDutyTest extends FakeDBApplication {
 
     AlertChannel channelConfig = new AlertChannel();
     AlertChannelPagerDutyParams params = new AlertChannelPagerDutyParams();
-    params.setApiKey("Some API Key");
     params.setRoutingKey("Some Routing Key");
     channelConfig.setParams(params);
 

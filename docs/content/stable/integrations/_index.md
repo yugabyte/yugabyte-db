@@ -21,6 +21,10 @@ Yugabyte has partnered with open-source projects and vendors to support the foll
 
 Version refers to the latest tested version of the integration.
 
+{{< tip title="Docs MCP Server" >}}
+Developing with YugabyteDB? Access the YugabyteDB Docs AI from your IDE or CLI. See [Docs MCP Server](../reference/docs-mcp-server/).
+{{< /tip >}}
+
 ## Choose your integration
 
 ### Drivers and ORMs
@@ -42,6 +46,12 @@ Version refers to the latest tested version of the integration.
 | :---------| :------ | :------ | :------- |
 | PGmigrate | 1.0.7   | Partial | [PGmigrate](pgmigrate/) |
 | YSQL Loader (pgloader) | 3.6.3 | Full | [YSQL Loader](ysql-loader/) |
+
+### Gen-AI
+
+| Tool      | Version | Support | Tutorial |
+| :---------| :------ | :------ | :------- |
+| LangChain Framework | 0.2.13-0.3.x  | Full | [LangChain](langchain/) |
 
 ### Data integration (CDC)
 

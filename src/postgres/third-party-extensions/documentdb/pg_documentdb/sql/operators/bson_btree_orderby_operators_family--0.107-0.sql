@@ -1,0 +1,2 @@
+ALTER OPERATOR FAMILY __API_SCHEMA_INTERNAL_V2__.bson_btree_orderby_operators_family USING btree
+    ADD FUNCTION 2 (__CORE_SCHEMA__.bson)__API_SCHEMA_INTERNAL_V2__.bson_orderby_compare_sort_support(internal);

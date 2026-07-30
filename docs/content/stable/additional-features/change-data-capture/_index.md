@@ -4,8 +4,6 @@ headerTitle: Change data capture (CDC)
 linkTitle: Change data capture
 description: CDC or Change data capture is a process to capture changes made to data in the database.
 headcontent: Capture changes made to data in the database
-tags:
-  feature: early-access
 aliases:
   - /stable/develop/change-data-capture/
 menu:
@@ -30,7 +28,7 @@ YugabyteDB supports the following methods for reading change events.
 
 ## PostgreSQL Replication Protocol
 
-This method uses the [PostgreSQL replication protocol](using-logical-replication/key-concepts/#replication-protocols), ensuring compatibility with PostgreSQL CDC systems. Logical replication operates through a publish-subscribe model. It replicates data objects and their changes based on the replication identity.
+{{<tags/feature/ea idea="805">}}This method uses the [PostgreSQL replication protocol](using-logical-replication/key-concepts/#replication-protocols), ensuring compatibility with PostgreSQL CDC systems. Logical replication operates through a publish-subscribe model. It replicates data objects and their changes based on the replication identity.
 
 It works as follows:
 
@@ -44,7 +42,7 @@ Learn about CDC in YugabyteDB using the [PostgreSQL Replication Protocol](./usin
 
 ## YugabyteDB gRPC Replication Protocol
 
-This method involves setting up a change stream in YugabyteDB that uses the native gRPC replication protocol to publish change events.
+{{<tags/feature/ea>}}This method involves setting up a change stream in YugabyteDB that uses the native gRPC replication protocol to publish change events.
 
 It works as follows:
 
@@ -54,4 +52,18 @@ It works as follows:
 
 {{<lead link="./using-yugabytedb-grpc-replication/">}}
 Learn about CDC in YugabyteDB using the [gRPC Replication Protocol](./using-yugabytedb-grpc-replication/).
+{{</lead>}}
+
+## Apache Flink CDC
+
+{{<tags/feature/tp idea="2658">}}This method uses [Apache Flink CDC](https://nightlies.apache.org/flink/flink-cdc-docs-stable/) to capture row-level changes from YugabyteDB's logical replication stream and process them as a continuous Flink stream. Unlike a traditional Debezium connector, Flink CDC lets you filter, transform, and route change events using Flink SQL or the DataStream API before writing to any Flink-supported sink.
+
+It works as follows:
+
+1. Create YugabyteDB source tables, and a publication and logical replication slot in YugabyteDB.
+1. Deploy a Flink cluster with the `postgres-cdc` and sink connector JARs.
+1. Define source and sink tables in the Flink SQL Client and submit a streaming job.
+
+{{<lead link="./using-flink-cdc/">}}
+Learn about CDC in YugabyteDB using [Apache Flink CDC](./using-flink-cdc/).
 {{</lead>}}

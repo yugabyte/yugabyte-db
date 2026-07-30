@@ -60,3 +60,7 @@ properties:
     type: integer
     format: int32
     default: -1
+  log_line_prefix:
+    description: YbaApi Internal. Log line prefix format for PostgreSQL logs. User-configured log_line_prefix in gflags takes precedence over this value when specified.
+    type: string
+    example: '%m [%p] '

@@ -26,6 +26,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.AZUtil;
+import com.yugabyte.yw.common.DeltaEvaluator;
 import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -34,16 +35,17 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HealthCheck;
 import com.yugabyte.yw.models.HealthCheck.Details;
 import com.yugabyte.yw.models.MasterInfo;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import com.yugabyte.yw.queries.QueryHelper;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -51,10 +53,13 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -135,17 +140,21 @@ public class UniverseInfoHandler {
 
   public UniverseInterruptionResult spotUniverseStatus(Universe universe) {
     UniverseInterruptionResult result = new UniverseInterruptionResult(universe.getName());
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
-    switch (userIntent.providerType) {
-      case aws:
-        result = awsUtil.spotInstanceUniverseStatus(universe);
-        break;
-      case gcp:
-        result = gcpUtil.spotInstanceUniverseStatus(universe);
-        break;
-      case azu:
-        result = azUtil.spotInstanceUniverseStatus(universe);
+    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
+    for (NodeDetails node : universe.getNodes()) {
+      Provider provider = providerGetter.apply(node);
+      switch (provider.getCloudCode()) {
+        case aws:
+          awsUtil.addSpotInstanceUniverseStatus(result, node, universe, provider);
+          break;
+        case gcp:
+          gcpUtil.addSpotInstanceUniverseStatus(result, node, universe, provider);
+          break;
+        case azu:
+          azUtil.addSpotInstanceUniverseStatus(result, node, universe, provider);
+      }
     }
+
     return result;
   }
 
@@ -266,6 +275,35 @@ public class UniverseInfoHandler {
     nodeUniverseManager.downloadNodeFile(
         node, universe, ybHomeDir, sourceNodeFile, targetFile.toString());
     return targetFile;
+  }
+
+  /**
+   * This method returns the state transition details for a given universe and state when the
+   * universe is in the middle of a task. The state can be "source", "target", or "delta". Depending
+   * on the state, it will return the old value, new value, or only the delta of the state
+   * transition details.
+   *
+   * @param customerUUID the UUID of the customer
+   * @param universeUUID the UUID of the universe
+   * @param state the optional state of the transition ("source", "target", or "delta")
+   * @return
+   */
+  public JsonNode getStateTransition(UUID customerUUID, UUID universeUUID, @Nullable String state) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+    StateTransitionDetails details = universe.getStateTransitionDetails();
+    if (details == null) {
+      return Json.newObject();
+    }
+    JsonNode result = details.getDelta();
+    if (Objects.equals("source", state)) {
+      result = DeltaEvaluator.generateOldValue(result);
+    } else if (Objects.equals("target", state)) {
+      result = DeltaEvaluator.generateNewValue(result);
+    } else if (Objects.equals("delta", state)) {
+      result = DeltaEvaluator.generateOnlyDelta(result);
+    }
+    return result;
   }
 
   private JsonNode getUniverseAliveStatus(Universe universe, MetricQueryHelper metricQueryHelper) {

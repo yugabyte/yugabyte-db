@@ -2,7 +2,6 @@ title: ClusterPartitionSpec
 description: 'Cluster Partition specification. Part of ClusterSpec, ClusterAddSpec and ClusterEditSpec. Future substitute for placement_spec. Cluster should contain one or more geo partitions (one of them should be default partition). Readonly replicas now can have only single partition.'
 type: object
 required:
-  - name
   - placement
   - default_partition
   - replication_factor
@@ -24,5 +23,8 @@ properties:
     description: The replication factor for the partition.
     type: integer
     format: int32
+  tablespace_name:
+    description: The name of corresponding tablespace.
+    type: string
   placement:
     $ref: "./ClusterPlacementSpec.yaml"

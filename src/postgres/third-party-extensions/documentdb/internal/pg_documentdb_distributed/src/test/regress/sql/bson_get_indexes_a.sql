@@ -4,36 +4,36 @@ SET documentdb.next_collection_id TO 21000;
 SET documentdb.next_collection_index_id TO 21000;
 
 --Test 1 Collection exist with only one Index --
-SELECT documentdb_api_internal.create_indexes_non_concurrently('msdb', documentdb_distributed_test_helpers.generate_create_index_arg('employee', 'sal_index', '{"Salary": 1}'), true);
-SELECT documentdb_api.list_indexes_cursor_first_page('msdb','{ "listIndexes": "employee" }') ORDER BY 1;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('orderdb', documentdb_distributed_test_helpers.generate_create_index_arg('order_data', 'total_price_idx', '{"total_price": 1}'), true);
+SELECT documentdb_api.list_indexes_cursor_first_page('orderdb','{ "listIndexes": "order_data" }') ORDER BY 1;
 
 --Test 2 Collection exist with multiple Index --
-SELECT documentdb_api_internal.create_indexes_non_concurrently('msdb', documentdb_distributed_test_helpers.generate_create_index_arg('employee', 'exp_index', '{"experience": 1}'), true);
-SELECT documentdb_api_internal.create_indexes_non_concurrently('msdb', documentdb_distributed_test_helpers.generate_create_index_arg('employee', 'age_index', '{"Age": 1}'), true);
-SELECT documentdb_api_internal.create_indexes_non_concurrently('msdb', documentdb_distributed_test_helpers.generate_create_index_arg('employee', 'gender_index', '{"Gender": 1}'), true);
-SELECT documentdb_api_internal.create_indexes_non_concurrently('msdb', documentdb_distributed_test_helpers.generate_create_index_arg('employee', 'designation_index', '{"Designation": 1}'), true);
-SELECT documentdb_api_internal.create_indexes_non_concurrently('msdb', documentdb_distributed_test_helpers.generate_create_index_arg('employee', 'reports_to_index', '{"reports_to": 1}'), true);
-SELECT documentdb_api.list_indexes_cursor_first_page('msdb','{ "listIndexes": "employee" }') ORDER BY 1;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('orderdb', documentdb_distributed_test_helpers.generate_create_index_arg('order_data', 'shipping_distance_idx', '{"shipping_distance": 1}'), true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('orderdb', documentdb_distributed_test_helpers.generate_create_index_arg('order_data', 'delivery_hours_idx', '{"delivery_hours": 1}'), true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('orderdb', documentdb_distributed_test_helpers.generate_create_index_arg('order_data', 'customer_rating_idx', '{"customer_rating": 1}'), true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('orderdb', documentdb_distributed_test_helpers.generate_create_index_arg('order_data', 'item_count_idx', '{"item_count": 1}'), true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('orderdb', documentdb_distributed_test_helpers.generate_create_index_arg('order_data', 'to_city_idx', '{"to_city": 1}'), true);
+SELECT documentdb_api.list_indexes_cursor_first_page('orderdb','{ "listIndexes": "order_data" }') ORDER BY 1;
 
 --Test 3: Collection not exist --
-SELECT documentdb_api.list_indexes_cursor_first_page('msdb','{ "listIndexes": "collection2" }') ORDER BY 1;
+SELECT documentdb_api.list_indexes_cursor_first_page('orderdb','{ "listIndexes": "nonexistent_collection" }') ORDER BY 1;
 
 --Test 4: DB not exist --
-SELECT documentdb_api.list_indexes_cursor_first_page('db','{ "listIndexes": "employee" }') ORDER BY 1;
+SELECT documentdb_api.list_indexes_cursor_first_page('db_not_exist','{ "listIndexes": "order_data" }') ORDER BY 1;
 
 --Test 5: DB and collection both does not exist --
-SELECT documentdb_api.list_indexes_cursor_first_page('db','{ "listIndexes": "collection2" }') ORDER BY 1;
+SELECT documentdb_api.list_indexes_cursor_first_page('db_not_exist','{ "listIndexes": "nonexistent_collection" }') ORDER BY 1;
 
 -- Test 6: Sparse is included in result only when specified:
-SELECT documentdb_api_internal.create_indexes_non_concurrently('sparsedb', '{"createIndexes": "collection1", "indexes": [{"key": {"a": 1}, "name": "my_sparse_idx1", "sparse": true}]}', true);
-SELECT documentdb_api_internal.create_indexes_non_concurrently('sparsedb', '{"createIndexes": "collection1", "indexes": [{"key": {"b": 1}, "name": "my_non_sparse_idx1", "sparse": false}]}', true);
-SELECT documentdb_api_internal.create_indexes_non_concurrently('sparsedb', '{"createIndexes": "collection1", "indexes": [{"key": {"c": 1}, "name": "my_idx1"}]}', true);
-SELECT documentdb_api_internal.create_indexes_non_concurrently('sparsedb', '{"createIndexes": "collection1", "indexes": [{"key": {"d": 1}, "name": "my_idx2", "sparse": 1.0}]}', true);
-SELECT documentdb_api_internal.create_indexes_non_concurrently('sparsedb', '{"createIndexes": "collection1", "indexes": [{"key": {"d": 1}, "name": "my_idx3", "sparse": 0.0}]}', true); 
-SELECT documentdb_api_internal.create_indexes_non_concurrently('sparsedb', '{"createIndexes": "collection1", "indexes": [{"key": {"e": 1}, "name": "my_idx4", "sparse": 0.0, "expireAfterSeconds" : 3600}]}', true);
-SELECT documentdb_api.list_indexes_cursor_first_page('sparsedb','{ "listIndexes": "collection1" }') ORDER BY 1;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('sparsedb', '{"createIndexes": "sparse_orders", "indexes": [{"key": {"promo_code": 1}, "name": "promo_sparse_idx1", "sparse": true}]}', true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('sparsedb', '{"createIndexes": "sparse_orders", "indexes": [{"key": {"order_status": 1}, "name": "status_non_sparse_idx1", "sparse": false}]}', true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('sparsedb', '{"createIndexes": "sparse_orders", "indexes": [{"key": {"payment_method": 1}, "name": "payment_idx1"}]}', true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('sparsedb', '{"createIndexes": "sparse_orders", "indexes": [{"key": {"gift_message": 1}, "name": "gift_idx2", "sparse": 1.0}]}', true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('sparsedb', '{"createIndexes": "sparse_orders", "indexes": [{"key": {"gift_message": 1}, "name": "gift_idx3", "sparse": 0.0}]}', true); 
+SELECT documentdb_api_internal.create_indexes_non_concurrently('sparsedb', '{"createIndexes": "sparse_orders", "indexes": [{"key": {"coupon_code": 1}, "name": "coupon_idx4", "sparse": 0.0, "expireAfterSeconds" : 3600}]}', true);
+SELECT documentdb_api.list_indexes_cursor_first_page('sparsedb','{ "listIndexes": "sparse_orders" }') ORDER BY 1;
 
 -- Test 7: Unique indexes is included if it is specified and true.
-SELECT documentdb_api_internal.create_indexes_non_concurrently('uniquedb', '{"createIndexes": "collection1", "indexes": [{"key": {"f": 1}, "name": "my_idx3", "unique": 0.0}]}', true);
-SELECT documentdb_api_internal.create_indexes_non_concurrently('uniquedb', '{"createIndexes": "collection1", "indexes": [{"key": {"g": 1}, "name": "my_idx4", "unique": 1.0, "sparse": 1.0, "expireAfterSeconds" : 5400}]}', true);
-SELECT documentdb_api.list_indexes_cursor_first_page('uniquedb','{ "listIndexes": "collection1" }') ORDER BY 1;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('uniquedb', '{"createIndexes": "unique_orders", "indexes": [{"key": {"order_number": 1}, "name": "order_idx3", "unique": 0.0}]}', true);
+SELECT documentdb_api_internal.create_indexes_non_concurrently('uniquedb', '{"createIndexes": "unique_orders", "indexes": [{"key": {"tracking_number": 1}, "name": "tracking_idx4", "unique": 1.0, "sparse": 1.0, "expireAfterSeconds" : 5400}]}', true);
+SELECT documentdb_api.list_indexes_cursor_first_page('uniquedb','{ "listIndexes": "unique_orders" }') ORDER BY 1;

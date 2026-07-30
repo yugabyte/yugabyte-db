@@ -144,9 +144,6 @@ print_report() {
       print_report_line "%s" "Build architecture" "${YB_TARGET_ARCH}"
       print_report_line "%s" "Build directory" "${BUILD_ROOT:-undefined}"
       print_report_line "%s" "Third-party dir" "${YB_THIRDPARTY_DIR:-undefined}"
-      if using_linuxbrew; then
-        print_report_line "%s" "Linuxbrew dir" "${YB_LINUXBREW_DIR:-undefined}"
-      fi
 
       set +u
       local make_targets_str="${make_targets[*]}"
@@ -194,9 +191,6 @@ build_root: "$BUILD_ROOT"
 compiler_type: "$YB_COMPILER_TYPE"
 thirdparty_dir: "${YB_THIRDPARTY_DIR:-$YB_SRC_ROOT/thirdparty}"
 EOT
-    if using_linuxbrew; then
-      echo "linuxbrew_dir: \"${YB_LINUXBREW_DIR:-}\"" >>"$build_descriptor_path"
-    fi
     log "Created a build descriptor file at '$build_descriptor_path'"
   fi
 }
@@ -681,10 +675,6 @@ handle_predefined_build_root
 # Setting CMake options.
 cmake_opts=()
 
-if is_mac && [[ $should_build_clangd_index == "true" && ${YB_COMPILER_TYPE:-} == "" ]]; then
-  # On macOS, we need to use our custom-built version of Clang to build the clangd index.
-  YB_COMPILER_TYPE=clang16
-fi
 if [[ $validate_args_only == "true" ]]; then
   yb_set_build_type_quietly=true
 fi
@@ -813,10 +803,6 @@ fi
 
 if [[ ${build_java} != "true" && ${resolve_java_dependencies} == "true" ]]; then
   fatal "--resolve-java-dependencies is not allowed if not building Java code"
-fi
-
-if [[ $build_type == "prof_use" ]] && [[ $pgo_data_path == "" ]]; then
-  fatal "Please set --pgo-data-path path/to/pgo/data"
 fi
 
 if [[ "${should_use_packaged_targets}" == "true" ]]; then
@@ -959,6 +945,7 @@ fi
 find_or_download_ysql_snapshots
 activate_virtualenv
 set_pythonpath
+verify_thirdparty_not_stale
 find_or_download_thirdparty
 detect_toolchain
 find_make_or_ninja_and_update_cmake_opts
@@ -1027,8 +1014,19 @@ if [[ ${use_google_tcmalloc} == "true" ]]; then
   cmake_opts+=( "-DYB_GOOGLE_TCMALLOC=1" )
 fi
 
+if [[ $build_type == "prof_gen" ]]; then
+  if [[ $pgo_instrument_type == "" ]]; then
+    fatal "Please set --pgo-instrument-type"
+  fi
+  cmake_opts+=( "-DYB_PGO_INSTRUMENT_TYPE=$pgo_instrument_type" )
+fi
+
 if [[ $pgo_data_path != "" ]]; then
   cmake_opts+=( "-DYB_PGO_DATA_PATH=$pgo_data_path" )
+fi
+
+if [[ $bolt_enabled == "true" ]]; then
+  cmake_opts+=( "-DYB_BOLT_ENABLED=on" )
 fi
 
 detect_num_cpus_and_set_make_parallelism
@@ -1036,8 +1034,6 @@ if [[ ${build_cxx} == "true" ]]; then
   log "Using make parallelism of $YB_MAKE_PARALLELISM" \
       "(YB_REMOTE_COMPILATION=${YB_REMOTE_COMPILATION:-undefined})"
 fi
-
-add_brew_bin_to_path
 
 create_build_descriptor_file
 
@@ -1115,6 +1111,23 @@ if [[ ${build_java} == "true" ]]; then
     # and in general we don't need them when running tests, so skip them in the most common
     # development workflow when running a single test.
     java_build_opts+=( "-Dassembly.skipAssembly=true" )
+    # Source jars (-sources.jar / -test-sources.jar) are only useful for IDEs and publishing, never
+    # for running a test. Building them is a few seconds per module (plus extra forked
+    # generate-sources lifecycle runs), so skip them when running a single test.
+    java_build_opts+=( "-Dmaven.source.skip=true" )
+  fi
+
+  # When building for a single Java test, scope the Maven build to that test's module and its
+  # dependencies (mvn -pl <module> --also-make), so we don't build unrelated modules. We skip this
+  # when resolving all Java dependencies, which intentionally needs the full reactor.
+  if [[ ${scope_java_build_to_test_module} == "true" &&
+        ${run_java_tests} == "true" && -n $java_test_name &&
+        ${resolve_java_dependencies} != "true" ]]; then
+    resolve_java_test "$java_test_name"
+    log "Scoping Java build to module '$resolved_java_test_module' and its dependencies for test" \
+        "'$java_test_name' (use --no-scoped-java-build to build all modules)."
+    java_build_opts+=( --projects "$resolved_java_test_module" --also-make )
+    unset resolved_java_test_module resolved_java_test_module_dir resolved_java_test_name
   fi
 
   if [[ ${resolve_java_dependencies} == "true" ]]; then
@@ -1149,7 +1162,6 @@ fi
 run_tests_remotely
 
 if [[ ${ran_tests_remotely} != "true" ]]; then
-  ensure_test_tmp_dir_is_set
   if [[ -n $cxx_test_name ]]; then
     capture_sec_timestamp cxx_test_start
     run_cxx_test

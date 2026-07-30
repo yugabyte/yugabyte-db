@@ -17,7 +17,10 @@
 
 #include "yb/common/pgsql_error.h"
 
+#include "yb/integration-tests/external_mini_cluster.h"
+
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
@@ -155,6 +158,31 @@ void GenerateCSVFileForCopy(
     temp_file << std::endl;
   }
   temp_file.close();
+}
+
+// Reads the given tserver's shared memory and returns its postgres auth key.
+// Useful when an ExternalMiniCluster test wants to authenticate a libpq
+// connection as user=postgres against the hardcoded
+//
+//     local all postgres yb-tserver-key
+//
+// HBA rule -- i.e. real yb-tserver-key auth, the same path production
+// tserver-side code takes via CreateInternalPGConnBuilder.
+Result<uint64_t> GetPostgresAuthKey(ExternalDaemon* ts) {
+  tserver::SharedMemoryManager shared_mem_manager;
+  RETURN_NOT_OK(shared_mem_manager.InitializePgBackend(
+      ts->instance_id().permanent_uuid()));
+  return shared_mem_manager.SharedData()->postgres_auth_key();
+}
+
+std::chrono::steady_clock::time_point NextDiscreteTimePoint(std::chrono::milliseconds step) {
+  using DurationType = decltype(step);
+  const auto now_count =
+      std::chrono::duration_cast<DurationType>(
+          std::chrono::steady_clock::now().time_since_epoch()).count();
+  const auto step_count = step.count();
+  return std::chrono::steady_clock::time_point{DurationType{
+      static_cast<int64_t>(std::ceil(static_cast<double>(now_count) / step_count) * step_count)}};
 }
 
 } // namespace yb::pgwrapper

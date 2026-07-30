@@ -110,7 +110,10 @@ public class AuthenticationHandler {
           RoleResourceDefinitionMapper.INSTANCE.toV1RoleResourceDefinitionList(
               mapping.getRoleResourceDefinitions());
 
-      roleBindingUtil.validateRoles(cUUID, roleResourceDefinitions);
+      roleBindingUtil.validateRoles(
+          cUUID,
+          roleResourceDefinitions,
+          confGetter.getGlobalConf(GlobalConfKeys.allowSuperadminUserGroupMapping));
       roleBindingUtil.validateResourceGroups(cUUID, roleResourceDefinitions);
 
       // Add role bindings if rbac is on.

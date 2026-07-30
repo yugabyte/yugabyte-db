@@ -61,7 +61,8 @@ static bool InverseMatchVisitTopLevelField(pgbsonelement *element, const
 										   StringView *filterPath,
 										   void *state);
 static bool InverseMatchContinueProcessIntermediateArray(void *state, const
-														 bson_value_t *value);
+														 bson_value_t *value, bool
+														 isArrayIndexSearch);
 
 static const TraverseBsonExecutionFuncs InverseMatchExecutionFuncs = {
 	.ContinueProcessIntermediateArray = InverseMatchContinueProcessIntermediateArray,
@@ -69,6 +70,8 @@ static const TraverseBsonExecutionFuncs InverseMatchExecutionFuncs = {
 	.VisitArrayField = NULL,
 	.VisitTopLevelField = InverseMatchVisitTopLevelField,
 	.SetIntermediateArrayIndex = NULL,
+	.HandleIntermediateArrayPathNotFound = NULL,
+	.SetIntermediateArrayStartEnd = NULL,
 };
 
 /* --------------------------------------------------------- */
@@ -159,6 +162,8 @@ EvaluateInverseMatch(pgbson *document, const InverseMatchArgs *args)
 	MemoryContext memoryContext = CurrentMemoryContext;
 	ExprEvalState *exprEvalState = GetExpressionEvalState(&queryValue, memoryContext);
 
+	pgbson_writer valueWriter;
+	PgbsonWriterInit(&valueWriter);
 	bson_value_t queryInput;
 	if (args->queryInputExpression.kind == AggregationExpressionKind_Constant)
 	{
@@ -166,9 +171,7 @@ EvaluateInverseMatch(pgbson *document, const InverseMatchArgs *args)
 	}
 	else
 	{
-		pgbson_writer valueWriter;
 		pgbson_element_writer elementWriter;
-		PgbsonWriterInit(&valueWriter);
 		bool isNullOnEmpty = false;
 		ExpressionVariableContext *variableContext = NULL;
 		StringView path = { .string = "", .length = 0 };
@@ -218,8 +221,8 @@ EvaluateInverseMatch(pgbson *document, const InverseMatchArgs *args)
 
 /*
  * Parses the {"path": <document>, "input": <document or array of documents>, "defaultResult": <bool> }
- * and stores it into the args parameter. It just validates the input as the rest of validation is done at the top level query and transformed to the
- * expected spec at this stage of the query.
+ * and stores it into the args parameter. It just validates the input as the rest of validation is done at
+ * the top level query and transformed to the expected spec at this stage of the query.
  */
 static void
 PopulateInverseMatchArgs(InverseMatchArgs *args, bson_iter_t *specIter)
@@ -253,7 +256,7 @@ PopulateInverseMatchArgs(InverseMatchArgs *args, bson_iter_t *specIter)
 
 	/*
 	 * We support parsing as an expression to support cases where the input might come from a previous stage,
-	 * i.e: $project in order to build the input in a specific shape and reference it via a path expression.
+	 * e.g., $project in order to build the input in a specific shape and reference it via a path expression.
 	 */
 	ParseAggregationExpressionContext parseContext = { 0 };
 	ParseAggregationExpressionData(&args->queryInputExpression, &queryInput,
@@ -289,10 +292,10 @@ ValidateQueryInput(const bson_value_t *value)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 						errmsg(
-							"$inverseMatch requires that 'input' be a document or an array of documents, found: %s",
+							"The $inverseMatch requires 'input' to be either a single document or an array of documents, but instead received: %s",
 							BsonTypeName(queryInputType)),
 						errdetail_log(
-							"$inverseMatch requires that 'input' be a document or an array of documents, found: %s",
+							"The $inverseMatch requires 'input' to be either a single document or an array of documents, but instead received: %s",
 							BsonTypeName(queryInputType))));
 	}
 
@@ -335,7 +338,7 @@ InverseMatchVisitTopLevelField(pgbsonelement *element, const StringView *filterP
 /* This function stops the traversing of the bson in intermediate array fields. */
 static bool
 InverseMatchContinueProcessIntermediateArray(void *state, const
-											 bson_value_t *value)
+											 bson_value_t *value, bool isArrayIndexSearch)
 {
 	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
 					errmsg(

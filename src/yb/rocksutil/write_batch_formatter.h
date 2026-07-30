@@ -15,7 +15,7 @@
 
 #include <sstream>
 
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/types.h"
 #include "yb/rocksdb/write_batch.h"
 
@@ -61,7 +61,7 @@ class WriteBatchFormatter : public rocksdb::WriteBatch::Handler {
       const rocksdb::Slice& key,
       const rocksdb::Slice& value) override;
 
-  Status Frontiers(const rocksdb::UserFrontiers& range) override;
+  Status Frontiers(const yb::storage::UserFrontiers& range) override;
 
   std::string str() { return out_.str(); }
 

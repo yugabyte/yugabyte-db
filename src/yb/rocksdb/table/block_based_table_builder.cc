@@ -64,6 +64,7 @@
 #include "yb/rocksdb/util/xxhash.h"
 
 #include "yb/util/mem_tracker.h"
+#include "yb/util/memory/memory_usage.h"
 #include "yb/util/status_log.h"
 
 DEFINE_test_flag(bool, allow_table_option_compressed_block_cache, false, "If true, the table option"
@@ -85,13 +86,14 @@ FilterType GetFilterType(const BlockBasedTableOptions& table_opt) {
 }
 
 // Create a filter builder based on its type.
-FilterBlockBuilder* CreateFilterBlockBuilder(const ImmutableCFOptions& opt,
-    const BlockBasedTableOptions& table_opt, FilterType filter_type) {
+FilterBlockBuilder* CreateFilterBlockBuilder(
+    const ImmutableCFOptions& opt, const BlockBasedTableOptions& table_opt, FilterType filter_type,
+    const yb::MemTrackerPtr& mem_tracker) {
   switch (filter_type) {
     case FilterType::kBlockBasedFilter:
       return new BlockBasedFilterBlockBuilder(opt.prefix_extractor, table_opt);
     case FilterType::kFixedSizeFilter:
-      return new FixedSizeFilterBlockBuilder(opt.prefix_extractor, table_opt);
+      return new FixedSizeFilterBlockBuilder(opt.prefix_extractor, table_opt, mem_tracker);
     case FilterType::kFullFilter:
       return new FullFilterBlockBuilder(opt.prefix_extractor,
                                         table_opt.whole_key_filtering,
@@ -262,6 +264,37 @@ struct BlockBasedTableBuilder::FileWriterWithOffsetAndCachePrefix {
   block_based_table::CacheKeyPrefixBuffer compressed_cache_key_prefix;
 };
 
+// Shouldn't be generally used unless there are strong reasons for this. Prefer using
+// MemTrackedByteBuffer instead. Here we only use it in order to minimize changes to legacy code
+// for blocks compression and avoid refactoring it to use MemTrackedByteBuffer instead of string
+// buffer.
+class MemTrackedStringBuffer {
+ public:
+  explicit MemTrackedStringBuffer(const yb::MemTrackerPtr& mem_tracker)
+      : mem_tracker_(mem_tracker) {}
+
+  ~MemTrackedStringBuffer() {
+    if (mem_tracker_) {
+      mem_tracker_->Release(consumption_);
+    }
+  }
+
+  std::string* mutable_data() { return &data_; }
+
+  void UpdateConsumption() {
+    if (mem_tracker_) {
+      const auto prev_consumption = consumption_;
+      consumption_ = yb::DynamicMemoryUsageOf(data_);
+      mem_tracker_->Consume(consumption_ - prev_consumption);
+    }
+  }
+
+ private:
+  yb::MemTrackerPtr mem_tracker_;
+  std::string data_;
+  int64_t consumption_ = 0;
+};
+
 struct BlockBasedTableBuilder::Rep {
   const ImmutableCFOptions ioptions;
   const BlockBasedTableOptions table_options;
@@ -278,6 +311,8 @@ struct BlockBasedTableBuilder::Rep {
   std::shared_ptr<FileWriterWithOffsetAndCachePrefix> metadata_writer;
   std::shared_ptr<FileWriterWithOffsetAndCachePrefix> data_writer;
   Status status;
+
+  yb::MemTrackerPtr mem_tracker;
 
   FilterType filter_type;
   std::unique_ptr<FilterBlockBuilder> filter_block_builder;
@@ -301,12 +336,10 @@ struct BlockBasedTableBuilder::Rep {
   BlockHandle data_pending_handle;    // Handle to add to data index block
   BlockHandle filter_pending_handle;  // Handle to add to filter index block
 
-  std::string compressed_output;
+  MemTrackedStringBuffer compressed_output;
   std::unique_ptr<FlushBlockPolicy> flush_block_policy;
 
   std::vector<std::unique_ptr<IntTblPropCollector>> table_properties_collectors;
-
-  yb::MemTrackerPtr mem_tracker;
 
   bool TEST_skip_writing_key_value_encoding_format_ = false;
 
@@ -360,35 +393,32 @@ BlockBasedTableBuilder::Rep::Rep(
     : ioptions(_ioptions),
       table_options(table_opt),
       internal_comparator(icomparator),
+      mem_tracker(_ioptions.block_based_table_builder_mem_tracker),
       filter_type(GetFilterType(table_options)),
       filter_block_builder(skip_filters ? nullptr : CreateFilterBlockBuilder(
-          _ioptions, table_options, filter_type)),
+          _ioptions, table_options, filter_type, mem_tracker)),
       data_block_builder(
-          table_options.block_restart_interval,
-          table_options.data_block_key_value_encoding_format, table_options.use_delta_encoding),
+          table_options.block_restart_interval, table_options.data_block_key_value_encoding_format,
+          mem_tracker, table_options.use_delta_encoding),
       internal_prefix_transform(_ioptions.prefix_extractor),
       filter_key_transformer(table_opt.filter_policy ?
           table_opt.filter_policy->GetKeyTransformer() : nullptr),
       data_index_builder(
           IndexBuilder::CreateIndexBuilder(
               table_options.index_type, internal_comparator.get(), &internal_prefix_transform,
-              table_options)),
+              table_options, mem_tracker)),
       filter_index_builder(
           // Prefix_extractor is not used by binary search index which we use for bloom filter
           // blocks indexing.
           IndexBuilder::CreateIndexBuilder(
               IndexType::kBinarySearch, BytewiseComparator(),
-              nullptr /* prefix_extractor */, table_options)),
+              nullptr /* prefix_extractor */, table_options, mem_tracker)),
       compression_type(_compression_type),
       compression_opts(_compression_opts),
+      compressed_output(mem_tracker),
       flush_block_policy(
           table_options.flush_block_policy_factory->NewFlushBlockPolicy(
               table_options, data_block_builder)) {
-  if (_ioptions.mem_tracker) {
-    mem_tracker = yb::MemTracker::FindOrCreateTracker(
-        "BlockBasedTableBuilder", _ioptions.mem_tracker);
-  }
-
   metadata_writer = std::make_shared<FileWriterWithOffsetAndCachePrefix>();
   metadata_writer->writer = metadata_file;
   if (data_file != nullptr) {
@@ -612,14 +642,16 @@ size_t BlockBasedTableBuilder::WriteBlock(const Slice& raw_block_contents,
   if (raw_block_contents.size() < kCompressionSizeLimit) {
     block_contents =
         CompressBlock(raw_block_contents, r->compression_opts, &type,
-                      r->table_options.format_version, &r->compressed_output);
+                      r->table_options.format_version, r->compressed_output.mutable_data());
+    r->compressed_output.UpdateConsumption();
   } else {
     RecordTick(r->ioptions.statistics, NUMBER_BLOCK_NOT_COMPRESSED);
     type = kNoCompression;
     block_contents = raw_block_contents;
   }
   size_t block_size = WriteRawBlock(block_contents, type, handle, writer_info);
-  r->compressed_output.clear();
+  r->compressed_output.mutable_data()->clear();
+  r->compressed_output.UpdateConsumption();
   return block_size;
 }
 
@@ -752,7 +784,7 @@ Status BlockBasedTableBuilder::Finish() {
   //    3. [meta block: properties]
   //    4. [metaindex block]
   // write meta blocks
-  MetaIndexBuilder meta_index_builder;
+  MetaIndexBuilder meta_index_builder(r->mem_tracker);
   for (const auto& item : r->data_index_blocks.meta_blocks) {
     BlockHandle block_handle;
     WriteBlock(item.second, &block_handle, r->metadata_writer.get());
@@ -799,7 +831,7 @@ Status BlockBasedTableBuilder::Finish() {
 
     // Write properties block.
     {
-      PropertyBlockBuilder property_block_builder;
+      PropertyBlockBuilder property_block_builder(r->mem_tracker);
       r->props.filter_policy_name = r->table_options.filter_policy != nullptr ?
           r->table_options.filter_policy->Name() : "";
       r->props.data_index_size =

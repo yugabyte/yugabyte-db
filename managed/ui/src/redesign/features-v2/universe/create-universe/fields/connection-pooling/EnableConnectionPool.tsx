@@ -5,15 +5,17 @@ import { useFormContext, useWatch, Controller } from 'react-hook-form';
 import { mui, YBToggleField, YBTooltip, YBInput } from '@yugabyte-ui-library/core';
 import { FieldContainer } from '../../components/DefaultComponents';
 import { YBEarlyAccessTag } from '../../../../../components';
-import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
 import { isVersionConnectionPoolSupported } from '../../../../../features/universe/universe-form/utils/helpers';
-
 import { DatabaseSettingsProps } from '../../steps/database-settings/dtos';
-import { YSQL_FIELD } from '../ysql-settings/YSQLSettingsField';
+import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
+import { DEFAULT_CONNECTION_POOLING_PORTS } from '../../helpers/syncConnectionPoolingPorts';
+import { YSQL_FIELD, CONNECTION_POOLING_FIELD } from '../FieldNames';
 
-const { Box, Typography, styled } = mui;
-
+//icons
 import NextLineIcon from '../../../../../assets/next-line.svg';
+// import InfoIcon from '../../../../../assets/approved/info-new.svg';
+
+const { Box, Typography, styled, Link } = mui;
 
 interface ConnectionPoolFieldProps {
   disabled: boolean;
@@ -21,7 +23,6 @@ interface ConnectionPoolFieldProps {
 }
 
 const MAX_PORT = 65535;
-const CONNECTION_POOLING_FIELD = 'enableConnectionPooling';
 
 const StyledSubText = styled(Typography)(({ theme }) => ({
   fontSize: '11.5px',
@@ -29,6 +30,24 @@ const StyledSubText = styled(Typography)(({ theme }) => ({
   fontWeight: 400,
   color: '#4E5F6D'
 }));
+
+const StyledLabelIcon = styled(Box)(({ theme }) => ({
+  fontSize: '13px',
+  lineHeight: '16px',
+  fontWeight: 500,
+  color: '#6D7C88',
+  display: 'flex',
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: '2px'
+}));
+
+const StyledLinkText = styled(Link)({
+  fontSize: '11.5px',
+  lineHeight: '16px',
+  fontWeight: 400,
+  color: '#67666C'
+});
 
 export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled, dbVersion }) => {
   const { control, setValue } = useFormContext<DatabaseSettingsProps>();
@@ -42,20 +61,34 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
       id: 'ysqlServerRpcPort',
       label: t('ysqlPortlabel'),
       helperText: (
-        <Trans
-          i18nKey={'createUniverseV2.databaseSettings.conPool.defaultPortMsg'}
-          values={{ port: DEFAULT_COMMUNICATION_PORTS.ysqlServerRpcPort }}
-        />
+        <>
+          <Trans
+            i18nKey={'createUniverseV2.databaseSettings.conPool.defaultPortMsg'}
+            values={{ port: DEFAULT_COMMUNICATION_PORTS.ysqlServerRpcPort }}
+          />
+          <br />
+          {t('ysqlServerRpcPortHelper', {
+            keyPrefix: 'createUniverseV2.otherAdvancedSettings.deployPortsFeild'
+          })}
+        </>
       )
     },
     {
       id: 'internalYsqlServerRpcPort',
       label: t('internalPortLabel'),
       helperText: (
-        <Trans
-          i18nKey={'createUniverseV2.databaseSettings.conPool.defaultPortMsg'}
-          values={{ port: DEFAULT_COMMUNICATION_PORTS.internalYsqlServerRpcPort }}
-        />
+        <>
+          <Trans
+            i18nKey={'createUniverseV2.databaseSettings.conPool.defaultPortMsg'}
+            values={{ port: DEFAULT_COMMUNICATION_PORTS.internalYsqlServerRpcPort }}
+          />
+          <br />
+          <Trans
+            i18nKey={
+              'createUniverseV2.otherAdvancedSettings.deployPortsFeild.internalYsqlServerRpcPortHelper'
+            }
+          />
+        </>
       )
     }
   ];
@@ -71,10 +104,37 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
     if (!isYSQLEnabled) setValue(CONNECTION_POOLING_FIELD, false);
   }, [isYSQLEnabled]);
 
+  // Disabling the override (or CP itself) must restore default CP ports.
+  useUpdateEffect(() => {
+    if (!isConPoolEnabled) {
+      setValue('overrideCPPorts', false);
+      setValue('ysqlServerRpcPort', DEFAULT_CONNECTION_POOLING_PORTS.ysqlServerRpcPort);
+      setValue(
+        'internalYsqlServerRpcPort',
+        DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
+      );
+      return;
+    }
+    if (!isOverrideCPEnabled) {
+      setValue('ysqlServerRpcPort', DEFAULT_CONNECTION_POOLING_PORTS.ysqlServerRpcPort);
+      setValue(
+        'internalYsqlServerRpcPort',
+        DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
+      );
+    }
+  }, [isOverrideCPEnabled, isConPoolEnabled, setValue]);
+
   return (
     <FieldContainer>
-      <Box sx={{ display: 'flex', flexDirection: 'column', padding: '16px 24px' }}>
-        <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px' }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', padding: '16px 24px', gap: '4px' }}>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+        >
           <YBTooltip
             title={
               isYSQLEnabled ? (
@@ -88,7 +148,7 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
               )
             }
           >
-            <div>
+            <div style={{ marginBottom: '-5px' }}>
               <YBToggleField
                 dataTestId="enable-PG-compatibility-field"
                 name={CONNECTION_POOLING_FIELD}
@@ -101,11 +161,19 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
               />
             </div>
           </YBTooltip>
+          {/* <InfoIcon /> */}
           <YBEarlyAccessTag />
         </Box>
-        <Box sx={{ ml: 5 }}>
+        <Box sx={{ ml: 6 }}>
           <StyledSubText>
-            <Trans>{t('helperMsg')}</Trans>
+            <Trans>
+              {t('helperMsg')}
+              <StyledLinkText
+                underline="always"
+                href="https://docs.yugabyte.com/preview/explore/ysql-language-features/postgresql-compatibility/"
+                target="_blank"
+              ></StyledLinkText>
+            </Trans>
           </StyledSubText>
         </Box>
       </Box>
@@ -135,9 +203,7 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
               sx={{
                 display: 'flex',
                 flexDirection: 'column',
-                ml: 5,
-                pt: 2,
-                pl: 1,
+                padding: '32px 0px 8px 40px',
                 gap: '16px',
                 width: '200px'
               }}
@@ -150,7 +216,12 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
                       <YBInput
                         value={value}
                         onChange={onChange}
-                        label={item.label}
+                        label={
+                          <StyledLabelIcon>
+                            <span>{item.label}</span>
+                            {/* <InfoIcon /> */}
+                          </StyledLabelIcon>
+                        }
                         helperText={item.helperText}
                         dataTestId={`override-CP-ports-field-${item.id}`}
                         onBlur={(event) => {

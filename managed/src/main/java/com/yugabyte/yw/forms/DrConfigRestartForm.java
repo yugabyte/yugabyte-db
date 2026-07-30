@@ -1,10 +1,13 @@
 // Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.yw.forms;
 
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Set;
 import javax.validation.Valid;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.ToString;
 
 @ApiModel(description = "dr config restart form")
@@ -20,4 +23,9 @@ public class DrConfigRestartForm {
   @Valid
   @ApiModelProperty("Parameters needed for the bootstrap flow including backup/restore")
   public XClusterConfigRestartFormData.RestartBootstrapParams bootstrapParams;
+
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  private KubernetesResourceDetails kubernetesResourceDetails;
 }

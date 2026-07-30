@@ -14,11 +14,16 @@
 #pragma once
 
 #include <bitset>
+#include <cstddef>
+#include <cstdint>
+#include <istream>
+#include <ostream>
 #include <string>
+#include <type_traits>
+#include <typeinfo>
 #include <unordered_map>
 #include <utility>
 
-#include <boost/algorithm/string/predicate.hpp>
 #include <boost/core/demangle.hpp>
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/expr_if.hpp>
@@ -31,8 +36,6 @@
 #include <boost/preprocessor/stringize.hpp>
 
 #include "yb/util/math_util.h" // For constexpr_max
-#include "yb/util/result.h"
-#include "yb/util/string_util.h"
 
 namespace yb {
 
@@ -136,7 +139,7 @@ class AllEnumItemsIterable {
     return out << ToString(value); \
   } \
   inline __attribute__((unused)) std::istream& operator>>(std::istream& in, enum_name& value) { \
-    ::yb::detail::EnumFromInputStreamHelper<enum_name>(in, value); \
+    ::yb::internal::EnumFromInputStreamHelper<enum_name>(in, value); \
     return in; \
   } \
   constexpr __attribute__((unused)) size_t BOOST_PP_CAT(kElementsIn, enum_name) = \
@@ -408,57 +411,59 @@ class EnumBitSet {
   }
 };
 
-// Convert from the underlying type to enum value. This is slow as it takes linear time.
+namespace internal {
+
+// ASCII case-insensitive equality, locale-independent. Enum value names are C++ identifiers
+// (ASCII), so this is sufficient and avoids pulling in <cctype>/locale machinery.
+inline bool AsciiCaseInsensitiveEquals(const char* lhs, const char* rhs) {
+  const auto to_lower = [](char c) -> char {
+    return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+  };
+  while (*lhs != '\0' && *rhs != '\0') {
+    if (to_lower(*lhs) != to_lower(*rhs)) {
+      return false;
+    }
+    ++lhs;
+    ++rhs;
+  }
+  return *lhs == *rhs;
+}
+
+// Case-insensitive parse of an enum value by its name. Returns true and assigns *value on a match.
+// This carries no Status/Result dependency, so it -- and the stream-extraction operator generated
+// by YB_DEFINE_ENUM -- live entirely in enums.h, keeping result.h out of every enum includer.
+// ParseEnumInsensitive() in enum_parse.h wraps this to additionally return a descriptive Status.
 template <typename EnumType>
-Result<EnumType> UnderlyingToEnumSlow(const typename std::underlying_type<EnumType>::type int_val) {
-  for (auto value : List(static_cast<EnumType*>(nullptr))) {
-    if (static_cast<typename std::underlying_type<EnumType>::type>(value) == int_val) {
-      return value;
+bool TryParseEnumInsensitive(const char* str, EnumType* value) {
+  for (auto candidate : List(static_cast<EnumType*>(nullptr))) {
+    if (AsciiCaseInsensitiveEquals(ToCString(candidate), str)) {
+      *value = candidate;
+      return true;
     }
   }
-  return STATUS_FORMAT(InvalidArgument, "$0 invalid value: $1", GetTypeName<EnumType>(), int_val);
+  return false;
 }
 
-// Parses string representation to enum value
 template <typename EnumType>
-Result<EnumType> ParseEnumInsensitive(const char* str) {
-  for (auto value : List(static_cast<EnumType*>(nullptr))) {
-    if (boost::iequals(ToCString(value), str)) {
-      return value;
-    }
-  }
-  return STATUS_FORMAT(InvalidArgument, "$0 invalid value: $1", GetTypeName<EnumType>(), str);
-}
-
-template<typename EnumType>
-Result<EnumType> ParseEnumInsensitive(const std::string& str) {
-  return ParseEnumInsensitive<EnumType>(str.c_str());
-}
-
-
-namespace detail {
-
-template<typename EnumType>
 void EnumFromInputStreamHelper(std::istream& in, EnumType& value) {
   std::string token;
   in >> token;
   if (in.fail()) {
     return;
   }
-  auto parse_result = ParseEnumInsensitive<EnumType>(token);
-  if (parse_result.ok()) {
-    value = parse_result.get();
+  if (TryParseEnumInsensitive(token.c_str(), &value)) {
     return;
   }
   // The vast majority of enums are defined with kFoo, kBar, etc. as their values.
-  parse_result = ParseEnumInsensitive<EnumType>("k" + token);
-  if (parse_result.ok()) {
-    value = parse_result.get();
+  if (TryParseEnumInsensitive(("k" + token).c_str(), &value)) {
     return;
   }
   in.setstate(std::ios_base::failbit);
 }
 
-}  // namespace detail
+}  // namespace internal
+
+// UnderlyingToEnumSlow() and the Result-returning ParseEnumInsensitive() live in
+// yb/util/enum_parse.h (they require yb/util/result.h). Include that header to use them.
 
 }  // namespace yb

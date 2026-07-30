@@ -22,18 +22,33 @@
 #include <boost/functional/hash/hash.hpp>
 
 #include "yb/common/pg_system_attr.h"
+#include "yb/common/pgsql_utils.h"
 
 #include "yb/util/memory/arena.h"
 #include "yb/util/result.h"
 
 #include "yb/yql/pggate/pg_doc_op.h"
+#include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_type.h"
 
 DECLARE_uint32(TEST_yb_ash_sleep_at_wait_state_ms);
-DECLARE_uint32(TEST_yb_ash_wait_code_to_sleep_at);
 DECLARE_string(TEST_yb_test_wait_event_aux_to_sleep_at_csv);
+
+std::ostream& operator<<(std::ostream& str, const YbcObjectLockId& lock_id) {
+  return str << "object { db_oid: " << lock_id.db_oid
+             << ", table_oid: " << lock_id.relation_oid
+             << ", object_id: " << lock_id.object_oid
+             << ", object_sub_oid: " << lock_id.object_sub_oid << "}";
+}
+
+std::ostream& operator<<(std::ostream& str, const YbcAdvisoryLockId& lock_id) {
+  return str << "advisory lock { db_oid: " << lock_id.database_id
+             << ", classid: " << lock_id.classid
+             << ", object_oid: " << lock_id.objid
+             << ", object_sub_oid: " << lock_id.objsubid << "}";
+}
 
 namespace yb::pggate {
 namespace {
@@ -72,7 +87,7 @@ bool IsSleepRequired(ash::PggateRPC rpc) {
 
 inline bool MaybeSleepForTests(ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc) {
   return FLAGS_TEST_yb_ash_sleep_at_wait_state_ms > 0 && (
-      FLAGS_TEST_yb_ash_wait_code_to_sleep_at == std::to_underlying(wait_event) ||
+      ash::TEST_ShouldSleepAtWaitCode(wait_event) ||
       IsSleepRequired(pggate_rpc));
 }
 
@@ -130,18 +145,6 @@ Slice YbctidAsSlice(const PgTypeInfo& pg_types, uint64_t ybctid) {
   return Slice(value, bytes);
 }
 
-std::string ToString(const YbcObjectLockId& lock_id) {
-  return Format(
-      "object { db_oid: $0, table_oid: $1, object_id: $2, object_sub_oid: $3 }",
-      lock_id.db_oid, lock_id.relation_oid, lock_id.object_oid, lock_id.object_sub_oid);
-}
-
-std::string ToString(const YbcAdvisoryLockId& lock_id) {
-  return Format(
-      "advisory lock { db_oid: $0, classid: $1, object_oid: $2, object_sub_oid: $3 } ",
-      lock_id.database_id, lock_id.classid, lock_id.objid, lock_id.objsubid);
-}
-
 TablespaceCache::TablespaceCache(size_t capacity) : impl_(capacity) {}
 
 std::optional<PgTablespaceOid> TablespaceCache::Get(PgObjectId table_oid) {
@@ -175,6 +178,12 @@ const YbcPgTableLocalityInfo& TableLocalityMap::Get(PgOid table_id) const {
 
 void TableLocalityMap::Clear() {
   map_.clear();
+}
+
+bool SkipIntents(const PgsqlOp& op) {
+  return op.is_read()
+      ? HasSkipIntents(down_cast<const PgsqlReadOp&>(op).read_request())
+      : HasSkipIntents(down_cast<const PgsqlWriteOp&>(op).write_request());
 }
 
 } // namespace yb::pggate

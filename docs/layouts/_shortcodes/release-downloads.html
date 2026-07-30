@@ -1,0 +1,62 @@
+{{/*
+Renders a tabbed download section for a YugabyteDB release.
+
+Parameters:
+  version  - full 4-part version, e.g. "2026.1.0.0"
+  build    - build tag without the "b" prefix, e.g. "115"
+  type     - "ybdb" (default) or "yba"
+
+Usage:
+  {{< release-downloads version="2026.1.0.0" build="115" >}}
+  {{< release-downloads version="2026.1.0.0" build="115" type="yba" >}}
+*/}}
+
+{{- .Page.Scratch.Add "releaseDownloadTabOrdinal" 1 -}}
+{{- $tabPaneOrdinal := .Page.Scratch.Get "releaseDownloadTabOrdinal" -}}
+
+{{- $version  := .Get "version" -}}
+{{- $build    := .Get "build" -}}
+{{- $type     := default "ybdb" (.Get "type") -}}
+{{- $bver     := printf "%s-b%s" $version $build -}}
+{{- $base     := printf "https://software.yugabyte.com/releases/%s" $version -}}
+{{- $ybaBase  := printf "https://downloads.yugabyte.com/releases/%s" $version -}}
+
+{{- $tabs := slice -}}
+{{- if eq $type "ybdb" -}}
+{{- $tabs = slice
+  (dict "header" `<i class='fa-brands fa-apple' aria-hidden='true'></i> x86` "body" (printf "wget %s/yugabyte-%s-darwin-x86_64.tar.gz\necho \"$(curl -L %s/yugabyte-%s-darwin-x86_64-tar.gz.sha) *yugabyte-%s-darwin-x86_64.tar.gz\" | shasum --check" $base $bver $base $bver $bver))
+  (dict "header" `<i class='fa-brands fa-apple' aria-hidden='true'></i> ARM` "body" (printf "wget %s/yugabyte-%s-darwin-arm64.tar.gz\necho \"$(curl -L %s/yugabyte-%s-darwin-arm64-tar.gz.sha) *yugabyte-%s-darwin-arm64.tar.gz\" | shasum --check" $base $bver $base $bver $bver))
+  (dict "header" `<i class='fa-brands fa-linux' aria-hidden='true'></i> x86` "body" (printf "wget %s/yugabyte-%s-linux-x86_64.tar.gz\necho \"$(curl -L %s/yugabyte-%s-linux-x86_64-tar.gz.sha) *yugabyte-%s-linux-x86_64.tar.gz\" | shasum --check" $base $bver $base $bver $bver))
+  (dict "header" `<i class='fa-brands fa-linux' aria-hidden='true'></i> ARM` "body" (printf "wget %s/yugabyte-%s-el8-aarch64.tar.gz\necho \"$(curl -L %s/yugabyte-%s-el8-aarch64-tar.gz.sha) *yugabyte-%s-el8-aarch64.tar.gz\" | shasum --check" $base $bver $base $bver $bver))
+  (dict "header" `<i class='fa-brands fa-docker' aria-hidden='true'></i> Docker` "body" (printf "docker pull yugabytedb/yugabyte:%s" $bver))
+-}}
+{{- else if eq $type "yba" -}}
+{{- $tabs = slice
+  (dict "header" `<i class='fa-brands fa-linux' aria-hidden='true'></i> Linux x86` "body" (printf "wget %s/yba_installer_full-%s-linux-x86_64.tar.gz\necho \"$(curl -L %s/yba_installer_full-%s-linux-x86_64.tar.gz.sha) *yba_installer_full-%s-linux-x86_64.tar.gz\" | shasum --check" $ybaBase $bver $ybaBase $bver $bver))
+-}}
+{{- end -}}
+
+{{- if eq (len $tabs) 1 -}}
+{{- $solo := index $tabs 0 -}}
+<div class="release-downloads">
+<ul class="nav nav-tabs tabpane-plain rd-single-tab" role="presentation">
+  <li class="nav-item">
+    <span class="nav-link active" style="cursor:default;pointer-events:none;">{{ $solo.header | safeHTML }}</span>
+  </li>
+</ul>
+<div class="tab-content">
+<div class="tab-body tab-pane fade show active" role="tabpanel">
+{{ (print "```sh\n" $solo.body "\n```") | .Page.RenderString }}
+</div>
+</div>
+</div>
+{{- else -}}
+{{- $tabpane := print `{{< tabpane text=true plain=true ordinal="` $tabPaneOrdinal `" >}}` "\n" -}}
+{{- range $tabs -}}
+{{- $tabpane = print $tabpane `{{% tab header="` .header `" %}}` "\n" "```sh\n" .body "\n```\n" `{{% /tab %}}` "\n" -}}
+{{- end -}}
+{{- $tabpane = print $tabpane `{{< /tabpane >}}` -}}
+<div class="release-downloads">
+{{ $tabpane | .Page.RenderString }}
+</div>
+{{- end -}}

@@ -34,10 +34,13 @@ struct LockData {
   ObjectLockOwner object_lock_owner;
   TabletId status_tablet;
   MonoTime start_time;
+  TransactionId background_transaction_id = TransactionId::Nil();
   StdStatusCallback callback;
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(key_to_lock, deadline, object_lock_owner, status_tablet, start_time);
+    return YB_STRUCT_TO_STRING(
+        key_to_lock, deadline, object_lock_owner, status_tablet, start_time,
+        background_transaction_id);
   }
 };
 
@@ -77,9 +80,23 @@ class ObjectLockManager {
   // Release all locks held against the given object_lock_owner.
   TxnBlockedTableLockRequests Unlock(const ObjectLockOwner& object_lock_owner);
 
+  // Unlock specific objects for the given owner, used for session object locks.
+  void UnlockObjectsForSession(
+      const TransactionId& txn, DetermineKeysToLockResult<ObjectLockManager>&& key_to_unlock);
+
+  // Snapshot conflicting transactions for the given lock keys and register callbacks on each to
+  // be notified when they release all locks. The callback fires once all conflicting transactions
+  // have completed their unlock.
+  void WaitForConflictingLockers(
+      const DetermineKeysToLockResult<ObjectLockManager>& keys_to_check,
+      StdStatusCallback callback,
+      CoarseTimePoint deadline,
+      const TransactionId& background_txn_id);
+
   void Poll();
 
   void Start(docdb::LocalWaitingTxnRegistry* waiting_txn_registry);
+  void EnableSharedLockState();
 
   void Shutdown();
 

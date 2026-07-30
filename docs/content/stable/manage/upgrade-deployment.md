@@ -26,6 +26,8 @@ YugabyteDB is a distributed database that can be installed on multiple nodes. Up
 
 The `data`, `log`, and `conf` directories are typically stored in a fixed location that remains unchanged during the upgrade process. This ensures that the cluster's data and configuration settings are preserved throughout the upgrade.
 
+For more information on upgrading YugabyteDB, refer to [Upgrade FAQ](/stable/faq/operations-faq/#upgrade).
+
 ## Important information
 
 {{< warning >}}
@@ -34,22 +36,29 @@ Review the following information before starting an upgrade.
 {{< warning title="YSQL major version upgrades" >}}
 To upgrade YugabyteDB to a version based on a different version of PostgreSQL (for example, from v2024.2 based on PG 11 to v2025.1 or later based on PG 15), you need to perform additional steps. Refer to [YSQL major upgrade](../ysql-major-upgrade-yugabyted/).
 {{< /warning >}}
+{{< warning title="TA-31533: Universes with xCluster" >}}
+For some xCluster setups, before upgrading, you should run a verification script to check if the universe is affected by TA-31533. For more information, refer to {{<ta 31533>}}.
+{{< /warning >}}
 
 - Make sure your operating system is up to date. If your universe is running on a [deprecated OS](../../reference/configuration/operating-systems/), you need to update your OS before you can upgrade to the next major YugabyteDB release.
 
-- You can only upgrade to the latest minor version of every release.
+- It is strongly recommended to upgrade to the latest minor version of every release.
 
-    For example, if you are upgrading from v2.18.3.0, and the latest release in the v2.20 release series is v2.20.2.0, then you must upgrade to v2.20.2.0 (and not v2.20.1.0 or v2.20.0.0).
+    For example, if you are upgrading from v2025.1.0, and the latest release in the v2025.2 release series is v2025.2.2.1, then you should upgrade to v2025.2.2.1 (and not v2025.2.1.0 or v2025.2.0.0).
 
     To view and download releases, refer to [Releases](/stable/releases/).
 
+- Upgrades must be to a chronologically later release - you cannot upgrade to a version that was released before the one you are currently running. For example, if you are running v2024.2.8.0 (released February 23, 2026), you cannot upgrade to v2025.2.1.0 (released February 12, 2026).
+
 - Upgrades are not supported between preview and stable versions.
 
-- Make sure you are following the instructions for the version of YugabyteDB that you are upgrading from. You can select the doc version using the version selector in the upper right corner of the page.
+- Make sure you are following the instructions for the version of YugabyteDB that you are upgrading from. You can select the doc version using the version selector at the top of the page.
 
 - Roll back is supported in v2.20.2 and later only. If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](https://docs-archive.yugabyte.com/v2.18/manage/upgrade-deployment/).
 
 - You can upgrade from one stable version to another in one go, even across major versions, as long as they are in the same major YSQL version. For information on performing major YSQL version upgrades, refer to [YSQL major upgrade](../ysql-major-upgrade-yugabyted/).
+
+### Backups and point-in-time-recovery
 
 - Backups
 
@@ -57,24 +66,32 @@ To upgrade YugabyteDB to a version based on a different version of PostgreSQL (f
   - Backups taken during the upgrade cannot be restored to universes running a previous version.
   - Backups taken before the upgrade _can_ be used for restore to the new version.
 
-- [Point-in-time-restore](../backup-restore/point-in-time-recovery/) (PITR)
+- [Point-in-time-recovery](../backup-restore/point-in-time-recovery/) (PITR)
 
-  - If you have PITR enabled, you must disable it before performing an upgrade. Re-enable it only after the upgrade is either finalized or rolled back.
-  - After the upgrade, PITR cannot be done to a time before the upgrade.
+  Before starting the upgrade, you should delete all the snapshot schedules for the universe. Recreate them after either [finalizing](#a-finalize-phase) or [rolling back](#b-rollback-phase) the upgrade.
 
-- YSQL
+  You cannot use PITR during the upgrade, or during the [monitoring phase](#monitor-phase) (before either finalizing or rolling back). In addition, you can't go back in time between versions.
 
-  - For additional information on upgrading universes that have Enhanced PostgreSQL Compatibility Mode, refer to [Enhanced PostgreSQL Compatibility Mode](../../reference/configuration/postgresql-compatibility/).
+  After finalizing or rolling back an upgrade, PITR-based actions become available again. However, keep in mind the following:
 
-  - For information on upgrading or enabling cost-based optimizer, refer to [Enable cost-based optimizer](../../best-practices-operations/ysql-yb-enable-cbo/).
+  - After finalizing, you cannot perform a PITR-based action targeting a time before the upgrade was started.
+  - After rollback, you cannot perform a PITR-based action targeting a time before the upgrade was started.
 
-    If you upgrade to v2025.2 and the universe already has cost-based optimizer enabled, the following features are enabled by default:
+  If PITR has been enabled on the YSQL database `yugabyte`, disable it before starting the upgrade.
 
-    - Auto Analyze (ysql_enable_auto_analyze=true)
-    - YugabyteDB bitmap scan (yb_enable_bitmapscan=true)
-    - Parallel query (yb_enable_parallel_append=true)
+### YSQL
 
-For more information, refer to [Upgrade FAQ](/stable/faq/operations-faq/#upgrade).
+- For additional information on upgrading universes that have Enhanced PostgreSQL Compatibility Mode, refer to [Enhanced PostgreSQL Compatibility Mode](../../reference/configuration/postgresql-compatibility/).
+
+- For information on upgrading or enabling cost-based optimizer, refer to [Enable cost-based optimizer](../../best-practices-operations/ysql-yb-enable-cbo/).
+
+  If you upgrade to v2025.2 and the universe already has cost-based optimizer enabled, the following features are enabled by default:
+
+  - Auto Analyze (ysql_enable_auto_analyze=true)
+  - YugabyteDB bitmap scan (yb_enable_bitmapscan=true)
+  - Parallel append (yb_enable_parallel_append=true, yb_parallel_range_rows=10000)
+
+- If you are upgrading from v2025.1 series and your database includes a [vector index](../../additional-features/pg-extensions/extension-pgvector/#vector-indexing), the upgrade will fail. Drop the indexes and then re-add them after the upgrade is finalized.
 
 ## Upgrade YugabyteDB cluster
 
@@ -252,7 +269,7 @@ In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is t
 
 - Roll back is {{<tags/feature/ea>}} in v2.20.3.0 and {{<tags/feature/ga>}} in v2024.1.0 and higher.
 - Roll back is only supported when you are upgrading a cluster that is already on version v2.20.2.0 to higher versions (for example, v2.20.3.0, v2024.1.0, and so on). If you are upgrading from v2.20.1.x or earlier, follow the instructions for [v2.18](https://docs-archive.yugabyte.com/v2.18/manage/upgrade-deployment/).
-- You cannot roll back after finalizing the upgrade. If you still want to go back to the old version, you have to migrate your data to another cluster running the old version. You can either restore a backup taken while on the old version or [Export and import](../backup-restore/export-import-data/) the current data from the new version. The import script may have to be manually changed in order to conform to the query format of the old version.
+- You cannot roll back after finalizing the upgrade. If you still want to go back to the old version, you have to migrate your data to another cluster running the old version. You can either restore a backup taken while on the old version or [Export and import](../backup-restore/export-import-data-ysql/) the current data from the new version. The import script may have to be manually changed in order to conform to the query format of the old version.
 {{< /warning >}}
 
 In order to roll back to the version that you were on before the upgrade, you need to restart all YB-Master and YB-TServers on the old version. All YB-TServers have to be rolled back before you roll back YB-Masters.
@@ -303,13 +320,41 @@ Use the following procedure to roll back all YB-Masters:
 
 ## Upgrades with xCluster
 
-When you have unidirectional xCluster replication, it is recommended to upgrade the target cluster before the source. After the target cluster is upgraded and finalized, you can proceed to upgrade the source cluster.
+### Unidirectional xCluster
 
-If you have bidirectional xCluster replication, then you should upgrade and finalize both clusters at the same time. Perform the upgrade steps for each cluster individually and monitor both of them. If you encounter any issues, roll back both clusters. If everything appears to be in good condition, finalize both clusters with as little delay as possible.
+When you have unidirectional xCluster replication, upgrade the target cluster before the source. After the target cluster is upgraded and finalized, you can proceed to upgrade the source cluster.
 
-{{< note title="Note" >}}
-xCluster replication requires the target cluster version to the same or later than the source cluster version. The setup of a new xCluster replication will fail if this check fails. Existing replications will automatically pause if the source cluster is finalized before the target cluster.
+{{< note title="Target cluster version" >}}
+xCluster replication requires the target cluster version to be the same or later than the source cluster version. Setup of a new xCluster replication will fail if this check fails. Existing replications will automatically pause if the source cluster is finalized before the target cluster.
 {{< /note >}}
+
+To upgrade clusters in transactional xCluster, the sequence is as follows:
+
+1. Upgrade the target.
+1. Finalize the upgrade on the target.
+1. Validate that reads work on the target.
+1. Upgrade the source.
+1. Perform validation tests ([Monitor phase](#monitor-phase)).
+
+    Perform any application-level tests as needed (including, if needed, application-level failovers).
+
+1. Finalize the upgrade on the source.
+
+### Bidirectional xCluster
+
+If you have bidirectional xCluster replication, perform the upgrade steps for each universe individually and monitor both of them. If you encounter any issues, roll back both universes. If everything appears to be in good condition, finalize both universes with as little delay as possible.
+
+The sequence is as follows:
+
+1. Upgrade B.
+1. Upgrade A.
+1. Perform validation tests ([Monitor phase](#monitor-phase) for both clusters).
+
+    Perform any application-level tests as needed (including, if needed, application-level failovers).
+
+    Note that any features that rely on [PITR](#backups-and-point-in-time-recovery) are not possible during the monitoring phase.
+
+1. Finalize the upgrade on A, and finalize the upgrade on B. Do these as near simultaneously as possible.
 
 ## Advanced - enable volatile AutoFlags during monitoring
 

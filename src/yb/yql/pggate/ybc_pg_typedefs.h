@@ -13,7 +13,11 @@
 // This module contains C definitions for all YugaByte structures that are used to exhange data
 // and metadata between Postgres and YBClient libraries.
 
-#pragma once
+// YB: include guard instead of pragma once: this header is installed into
+// the PostgreSQL server include directory, and pragma once does not
+// deduplicate identical copies of a header visible via two paths.
+#ifndef YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H
+#define YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -58,6 +62,15 @@ YB_DEFINE_HANDLE_TYPE(PgTableDesc);
 
 // Handle to a memory context.
 YB_DEFINE_HANDLE_TYPE(PgMemctx);
+
+// Handle to a global view read scan.
+YB_DEFINE_HANDLE_TYPE(PgGlobalViewRead);
+
+// Handle to a distributed trace span context.
+YB_DEFINE_HANDLE_TYPE(OtelSpanContext);
+
+// Handle to a live distributed-trace span for a single executor plan node.
+YB_DEFINE_HANDLE_TYPE(OtelNodeSpan);
 
 // Represents STATUS_* definitions from src/postgres/src/include/c.h.
 #define YBC_STATUS_OK     (0)
@@ -202,6 +215,13 @@ typedef enum {
   kHigherPriorityRange,
   kHighestPriority
 } YbcTxnPriorityRequirement;
+
+// Single key column value for YBCGetTabletForKey (used by yb_get_tablet_for_key).
+typedef struct {
+  const YbcPgTypeEntity *type_entity;
+  uint64_t datum;
+  bool is_null;
+} YbcPgKeyValue;
 
 // PostgreSQL can represent text strings up to 1 GB minus a four-byte header.
 static const int64_t kYBCMaxPostgresTextSizeBytes = 1024ll * 1024 * 1024 - 4;
@@ -389,6 +409,8 @@ typedef struct {
   uint16_t (*GetSessionReplicationOriginId)();
   /* CHECK_FOR_INTERRUPTS */
   void (*CheckForInterrupts)();
+  /* xact.h */
+  bool (*IsInParallelMode)();
 } YbcPgCallbacks;
 
 typedef struct {
@@ -423,7 +445,7 @@ typedef struct {
 } YbcServerDescriptor;
 
 typedef struct {
-  bool is_primary;
+  bool is_key;
   bool is_hash;
 } YbcPgColumnInfo;
 
@@ -649,7 +671,18 @@ typedef struct {
   uint64_t active_pid;
   bool expired;
   bool allow_tables_without_primary_key;
+  bool detect_publication_changes_implicitly;
 } YbcReplicationSlotDescriptor;
+
+typedef struct {
+  const char *stream_id;
+  uint64_t confirmed_flush_lsn;
+  uint64_t restart_lsn;
+  uint32_t xmin;
+  uint64_t record_id_commit_time_ht;
+  uint64_t last_pub_refresh_time;
+  uint64_t active_pid;
+} YbcSlotEntryDescriptor;
 
 // Upon adding any more palloc'd members in the below struct, add logic to free it in
 // DeepFreeRecordBatch function of yb_virtual_wal_client.c.
@@ -703,17 +736,26 @@ typedef struct {
   YbcPgRowMessage* rows;
   bool needs_publication_table_list_refresh;
   uint64_t publication_refresh_time;
+  bool explicit_alter_publication_detected;
 } YbcPgChangeRecordBatch;
+
+typedef struct {
+  // Query id as seen on pg_stat_statements to identify identical normalized
+  // queries. There might be many queries with different root_request_id
+  // but with the same query_id.
+  uint64_t query_id;
+  // Plan hash from yb_pg_stat_plans. YB_ASH_DEFAULT_PLAN_ID for utility
+  // statements or when QPM is disabled.
+  uint64_t plan_id;
+} YbcAshQueryPlanPair;
 
 // A struct to store ASH metadata in PG's procarray
 typedef struct {
   // A unique id corresponding to a YSQL query in bytes.
   unsigned char root_request_id[16];
 
-  // Query id as seen on pg_stat_statements to identify identical
-  // normalized queries. There might be many queries with different
-  // root_request_id but with the same query_id.
-  uint64_t query_id;
+  // Query id and plan id pair for the currently executing query.
+  YbcAshQueryPlanPair qp;
 
   // pid of the YSQL/YCQL backend which is executing the query
   int32_t pid;
@@ -854,6 +896,8 @@ typedef struct {
   const char** replicas;
   size_t replicas_count;
   bool is_hash_partitioned;
+  const char* tablet_state;
+  YbcPgOid pg_table_oid;
 } YbcPgGlobalTabletsDescriptor;
 
 typedef struct {
@@ -906,7 +950,11 @@ typedef struct {
   // The clone time in microseconds since the unix epoch (not a hybrid time).
   uint64_t clone_time;
   const char* src_db_name;
-  const char* src_owner;
+  // Raw role name (as stored in pg_authid.rolname) of the new database owner.
+  // ysql_dump consumes this via its --rename-owner option and quotes it via
+  // fmtId() at emission time, so this must be passed unquoted. The source DB
+  // owner is no longer carried on this struct: ysql_dump derives it itself
+  // from pg_database.datdba.
   const char* tgt_owner;
 } YbcCloneInfo;
 
@@ -986,6 +1034,12 @@ typedef struct {
   int num_lists;
 } YbcCatalogMessageLists;
 
+typedef struct {
+  YbcPgOid table_oid;
+  uint64_t mutations;
+  char* last_analyze_info;
+} YbcAutoAnalyzeInfo;
+
 typedef enum {
   /*
    * Taken from XClusterNamespaceInfoPB.XClusterRole in
@@ -1040,8 +1094,41 @@ typedef struct {
   void *sortstate;
 } YbcSortKey;
 
+typedef struct {
+  // We cannot use the PGresult symbol inside pggate because of circular dependency.
+  // So the response PB is stored in this uint8_t* and later converted to PGresult.
+  uint8_t* pgresult;
+  size_t pgresult_size;
+  // Human-readable error description when the remote query failed.
+  // NULL when the query succeeded. Owned by PgGlobalViewRead and valid
+  // until the next ExecScan call on the same handle.
+  const char* error_message;
+} YbcRemotePgExecResult;
+
+typedef struct YbcCloudInfo {
+  const char *cloud;
+  const char *region;
+  const char *zone;
+} YbcCloudInfo;
+
+typedef struct YbcReplicationInfo {
+  int32_t num_live_replicas;
+  const YbcCloudInfo *live_replicas;
+  int32_t num_affinitized_leaders;
+  const YbcCloudInfo *affinitized_leaders;
+} YbcReplicationInfo;
+
+typedef uint64_t YbcIsExplicitlyLockedRowSkippedCheckHandle;
+
+typedef struct YbcIsExplicitlyLockedRowSkippedCheckHandleOptional {
+  bool has_value;
+  YbcIsExplicitlyLockedRowSkippedCheckHandle value;
+} YbcIsExplicitlyLockedRowSkippedCheckHandleOptional;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
 
 #undef YB_DEFINE_HANDLE_TYPE
+
+#endif  // YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H

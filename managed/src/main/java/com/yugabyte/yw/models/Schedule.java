@@ -835,6 +835,7 @@ public class Schedule extends Model {
             .taskType(schedule.taskType)
             .status(schedule.status)
             .cronExpression(schedule.cronExpression)
+            .useLocalTimezone(schedule.isUseLocalTimezone())
             .runningState(schedule.runningState)
             .failureCount(schedule.failureCount)
             .backlogStatus(schedule.backlogStatus)

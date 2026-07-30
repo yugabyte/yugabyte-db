@@ -1,8 +1,8 @@
 ---
-title: Set up transactional xCluster
+title: Set up transactional xCluster (Semi-automatic)
 headerTitle: Set up transactional xCluster
 linkTitle: Setup
-description: Setting up transactional (active-active single-master) replication between two YB universes
+description: Semi-automatic setup of transactional (active-active single-master) replication between two YB universes
 headContent: Set up transactional xCluster replication
 menu:
   v2025.1:

@@ -64,6 +64,7 @@
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/random_util.h"
 #include "yb/util/slice.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
@@ -76,6 +77,7 @@ using std::shared_ptr;
 DECLARE_bool(use_priority_thread_pool_for_compactions);
 DECLARE_bool(use_priority_thread_pool_for_flushes);
 DECLARE_bool(TEST_allow_table_option_compressed_block_cache);
+DECLARE_bool(TEST_fail_flush_mem_table);
 
 namespace rocksdb {
 
@@ -2152,11 +2154,14 @@ static std::string CompressibleString(Random* rnd, int len) {
 
 TEST_F(DBTest, FailMoreDbPaths) {
   Options options = CurrentOptions();
+  // db_paths is capped at kMaxPathId + 1 entries (path_id is packed into kFilePathIdBits bits,
+  // so the largest valid index is kMaxPathId). Configuring one more than that must fail with
+  // NotSupported. Add kMaxPathId + 2 paths (home + kMaxPathId + 1 extras) to cross the limit.
   options.db_paths.emplace_back(dbname_, 10000000);
-  options.db_paths.emplace_back(dbname_ + "_2", 1000000);
-  options.db_paths.emplace_back(dbname_ + "_3", 1000000);
-  options.db_paths.emplace_back(dbname_ + "_4", 1000000);
-  options.db_paths.emplace_back(dbname_ + "_5", 1000000);
+  for (uint32_t i = 1; i <= kMaxPathId + 1; ++i) {
+    options.db_paths.emplace_back(dbname_ + "_" + std::to_string(i + 1), 1000000);
+  }
+  ASSERT_EQ(options.db_paths.size(), kMaxPathId + 2);
   ASSERT_TRUE(TryReopen(options).IsNotSupported());
 }
 
@@ -3366,7 +3371,9 @@ TEST_F(DBTest, SnapshotFiles) {
     uint64_t manifest_size = 0;
     std::vector<std::string> files;
     ASSERT_OK(dbfull()->DisableFileDeletions());
-    ASSERT_OK(dbfull()->GetLiveFiles(files, &manifest_size));
+    ASSERT_OK(
+        dbfull()->GetLiveFiles(
+            files, &manifest_size, /* flush_memtable */ true, FlushReason::kTestOnly));
 
     // CURRENT, MANIFEST, *.sst, *.sst.sblock files (one for each CF)
     ASSERT_EQ(files.size(), 6U);
@@ -3442,7 +3449,9 @@ TEST_F(DBTest, SnapshotFiles) {
     uint64_t new_manifest_size = 0;
     std::vector<std::string> newfiles;
     ASSERT_OK(dbfull()->DisableFileDeletions());
-    ASSERT_OK(dbfull()->GetLiveFiles(newfiles, &new_manifest_size));
+    ASSERT_OK(
+        dbfull()->GetLiveFiles(
+            newfiles, &new_manifest_size, /* flush_memtable */ true, FlushReason::kTestOnly));
 
     // find the new manifest file. assert that this manifest file is
     // the same one as in the previous snapshot. But its size should be
@@ -4712,8 +4721,9 @@ class ModelDB: public DB {
   Status EnableFileDeletions(bool force) override {
     return Status::OK();
   }
-  virtual Status GetLiveFiles(std::vector<std::string>&, uint64_t* size,
-                              bool flush_memtable = true) override {
+  virtual Status GetLiveFiles(
+      std::vector<std::string>&, uint64_t* size, bool flush_memtable,
+      FlushReason flush_reason) override {
     return Status::OK();
   }
 
@@ -4756,6 +4766,10 @@ class ModelDB: public DB {
 
   void SetAllowCompactionFailures(AllowCompactionFailures allow_compaction_failures) override {
     LOG(FATAL) << "SetAllowCompactionFailures is not supported.";
+  }
+
+  Status UpdateFrontiers(const yb::storage::UserFrontiers& frontiers) override {
+    return Status::OK();
   }
 
  private:
@@ -6108,7 +6122,7 @@ TEST_F(DBTest, DynamicCompactionOptions) {
     ASSERT_OK(Put(Key(count), RandomString(&rnd, 1024), wo));
     ASSERT_OK(dbfull()->TEST_FlushMemTable(true));
     count++;
-    if (dbfull()->TEST_write_controler().IsStopped()) {
+    if (dbfull()->TEST_write_controller().IsStopped()) {
       sleeping_task_low.WakeUp();
       break;
     }
@@ -6138,7 +6152,7 @@ TEST_F(DBTest, DynamicCompactionOptions) {
     ASSERT_OK(Put(Key(count), RandomString(&rnd, 1024), wo));
     ASSERT_OK(dbfull()->TEST_FlushMemTable(true));
     count++;
-    if (dbfull()->TEST_write_controler().IsStopped()) {
+    if (dbfull()->TEST_write_controller().IsStopped()) {
       sleeping_task_low.WakeUp();
       break;
     }
@@ -7047,7 +7061,7 @@ TEST_F(DBTest, SoftLimit) {
     // Flush the file. File size is around 30KB.
     ASSERT_OK(Flush());
   }
-  ASSERT_TRUE(dbfull()->TEST_write_controler().NeedsDelay());
+  ASSERT_TRUE(dbfull()->TEST_write_controller().NeedsDelay());
 
   sleeping_task_low.WakeUp();
   sleeping_task_low.WaitUntilDone();
@@ -7058,7 +7072,7 @@ TEST_F(DBTest, SoftLimit) {
   // The L1 file size is around 30KB.
 
   ASSERT_EQ(NumTableFilesAtLevel(1), 1);
-  ASSERT_TRUE(!dbfull()->TEST_write_controler().NeedsDelay());
+  ASSERT_TRUE(!dbfull()->TEST_write_controller().NeedsDelay());
 
   // Only allow one compactin going through.
   yb::SyncPoint::GetInstance()->SetCallBack(
@@ -7095,7 +7109,7 @@ TEST_F(DBTest, SoftLimit) {
   // doesn't trigger soft_pending_compaction_bytes_limit. Another compaction
   // promoting the L1 file to L2 is unscheduled.
   ASSERT_EQ(NumTableFilesAtLevel(1), 1);
-  ASSERT_TRUE(!dbfull()->TEST_write_controler().NeedsDelay());
+  ASSERT_TRUE(!dbfull()->TEST_write_controller().NeedsDelay());
 
   // Create 3 L0 files, making score of L0 to be 3, higher than L0.
   for (int i = 0; i < 3; i++) {
@@ -7114,12 +7128,12 @@ TEST_F(DBTest, SoftLimit) {
   // Now there is one L2 file (around 60KB) which doesn't trigger
   // soft_pending_compaction_bytes_limit but the 3 L0 files do get the delay token
   ASSERT_EQ(NumTableFilesAtLevel(2), 1);
-  ASSERT_TRUE(dbfull()->TEST_write_controler().NeedsDelay());
+  ASSERT_TRUE(dbfull()->TEST_write_controller().NeedsDelay());
 
   sleeping_task_low.WakeUp();
   sleeping_task_low.WaitUntilSleeping();
 
-  ASSERT_TRUE(!dbfull()->TEST_write_controler().NeedsDelay());
+  ASSERT_TRUE(!dbfull()->TEST_write_controller().NeedsDelay());
 
   // shrink level base so L2 will hit soft limit easier.
   ASSERT_OK(dbfull()->SetOptions({
@@ -7128,7 +7142,7 @@ TEST_F(DBTest, SoftLimit) {
 
   ASSERT_OK(Put("", ""));
   ASSERT_OK(Flush());
-  ASSERT_TRUE(dbfull()->TEST_write_controler().NeedsDelay());
+  ASSERT_TRUE(dbfull()->TEST_write_controller().NeedsDelay());
 
   sleeping_task_low.WaitUntilSleeping();
   yb::SyncPoint::GetInstance()->DisableProcessing();
@@ -7162,11 +7176,11 @@ TEST_F(DBTest, LastWriteBufferDelay) {
     for (int j = 0; j < kNumKeysPerMemtable; j++) {
       ASSERT_OK(Put(Key(j), ""));
     }
-    ASSERT_TRUE(!dbfull()->TEST_write_controler().NeedsDelay());
+    ASSERT_TRUE(!dbfull()->TEST_write_controller().NeedsDelay());
   }
   // Inserting a new entry would create a new mem table, triggering slow down.
   ASSERT_OK(Put(Key(0), ""));
-  ASSERT_TRUE(dbfull()->TEST_write_controler().NeedsDelay());
+  ASSERT_TRUE(dbfull()->TEST_write_controller().NeedsDelay());
 
   sleeping_task.WakeUp();
   sleeping_task.WaitUntilDone();
@@ -7229,7 +7243,7 @@ TEST_F(DBTest, MaxFlushingBytes) {
            ++i, ++key_idx) {
         ASSERT_OK(Put(Key(key_idx), RandomString(&rnd, value_size)));
       }
-      auto& write_controller = dbfull()->TEST_write_controler();
+      auto& write_controller = dbfull()->TEST_write_controller();
       ASSERT_FALSE(write_controller.NeedsDelay());
       ASSERT_FALSE(write_controller.IsStopped());
       ASSERT_EQ(0, callback_count.load());
@@ -8651,7 +8665,7 @@ TEST_F(DBTest, CancelBackgroundWorkWithFlush) {
       ASSERT_OK(Put(Key(++key), RandomString(&rnd, kValueSize), wo));
     }
 
-    db_->SetDisableFlushOnShutdown(true);
+    db_->SetDisableFlushOnShutdown();
     CancelAllBackgroundWork(db_);
 
     // Write one more key, that should trigger scheduling flush.
@@ -8660,6 +8674,34 @@ TEST_F(DBTest, CancelBackgroundWorkWithFlush) {
 
     Close();
   }
+}
+
+TEST_F(DBTest, BgErrorGetsResetOnlyOnDBReOpen) {
+  ASSERT_OK(Put("foo", "v1"));
+  ASSERT_OK(Flush());
+  // Mock IO error like disk full by setting flag to fail flush.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_flush_mem_table) = true;
+  ASSERT_OK(Put("bar", "v2"));
+  const auto expected_failure_str =
+      "TEST_fail_flush_mem_table set: Requires a process restart to clear the error from cache.";
+  ASSERT_NOK_STR_CONTAINS(Flush(), expected_failure_str);
+  // Write/Flush fails despite failure flag being reset/ disk space available.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fail_flush_mem_table) = false;
+  ASSERT_NOK_STR_CONTAINS(Put("baz", "v3"), expected_failure_str);
+  Close();
+
+  // Cached error gets reset on db reopen/tablet shutdown + re-open/process restart.
+  auto options = CurrentOptions();
+  options.env = env_;
+  Reopen(options);
+  ASSERT_OK(Put("baz", "v3"));
+  ASSERT_OK(Flush());
+  Close();
+
+  // Now check keys in read only mode.
+  ASSERT_OK(ReadOnlyReopen(options));
+  ASSERT_EQ("v3", Get("baz"));
+  ASSERT_EQ("v2", Get("bar"));
 }
 
 }  // namespace rocksdb

@@ -7,14 +7,22 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { YBInputFieldProps, yba } from '@yugabyte-ui-library/core';
+import { useEffectOnce } from 'react-use';
 import { Controller, FieldValues, Path, useFormContext } from 'react-hook-form';
+import { YBInputFieldProps, yba, mui } from '@yugabyte-ui-library/core';
+import { generateUniqueName } from '@app/redesign/helpers/utils';
+import { GeneralSettingsProps } from '../../steps/general-settings/dtos';
+
+import ClearIcon from '@app/redesign/assets/close.svg';
 
 const { YBInputField } = yba;
+const { InputAdornment, IconButton } = mui;
 
-interface UniverseNameFieldProps<T extends FieldValues>
-  extends Omit<YBInputFieldProps<T>, 'name' | 'control'> {
-  name: Path<T>;
+interface UniverseNameFieldProps<T extends FieldValues> extends Omit<
+  YBInputFieldProps<T>,
+  'name' | 'control'
+> {
+  name: Path<GeneralSettingsProps>;
   label: string;
   placeholder?: string;
   type?: string;
@@ -27,7 +35,14 @@ export const UniverseNameField = <T extends FieldValues>({
   type = 'text',
   sx
 }: UniverseNameFieldProps<T>) => {
-  const { control } = useFormContext<T>();
+  const { control, setValue, getValues } = useFormContext<GeneralSettingsProps>();
+
+  useEffectOnce(() => {
+    if (!getValues(name)) {
+      //set deafault value only for the first time
+      setValue(name, generateUniqueName());
+    }
+  });
 
   return (
     <Controller
@@ -43,6 +58,24 @@ export const UniverseNameField = <T extends FieldValues>({
           label={label}
           sx={sx}
           dataTestId="universe-name-field"
+          slotProps={{
+            input: {
+              endAdornment: (field.value ?? '')?.toString().trim() ? (
+                <InputAdornment position="end">
+                  <IconButton
+                    size="small"
+                    onClick={() => setValue(name, '')}
+                    onMouseDown={(e: React.MouseEvent) => e.preventDefault()}
+                    aria-label="Clear"
+                    data-testid="universe-name-field-clear"
+                    disableRipple
+                  >
+                    <ClearIcon />
+                  </IconButton>
+                </InputAdornment>
+              ) : null
+            }
+          }}
         />
       )}
     />

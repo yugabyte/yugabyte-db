@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/oss_backend/commands/drop_collection.c
+ * src/commands/drop_collection.c
  *
  * Implementation of view and collection creation functions.
  *
@@ -27,6 +27,7 @@
 #include "utils/index_utils.h"
 #include "utils/guc_utils.h"
 #include "utils/version_utils.h"
+#include "commands/commands_common.h"
 
 #include "api_hooks.h"
 
@@ -49,6 +50,7 @@ command_drop_collection(PG_FUNCTION_ARGS)
 		PG_RETURN_BOOL(false);
 	}
 
+	ThrowIfServerOrTransactionReadOnly();
 	Datum databaseNameDatum = PG_GETARG_DATUM(0);
 	Datum collectionNameDatum = PG_GETARG_DATUM(1);
 

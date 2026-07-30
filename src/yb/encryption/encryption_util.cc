@@ -104,8 +104,8 @@ EncryptionParamsPtr EncryptionParams::NewEncryptionParams() {
   RAND_bytes(encryption_params->nonce, kBlockSize - 4);
   RAND_bytes(boost::reinterpret_pointer_cast<uint8_t>(&encryption_params->counter), 4);
 
-  const int64_t ctr_min = GetAtomicFlag(&FLAGS_encryption_counter_min);
-  const int64_t ctr_max = GetAtomicFlag(&FLAGS_encryption_counter_max);
+  const int64_t ctr_min = FLAGS_encryption_counter_min;
+  const int64_t ctr_max = FLAGS_encryption_counter_max;
   if (0 <= ctr_min && ctr_min <= ctr_max && ctr_max <= std::numeric_limits<uint32_t>::max()) {
     encryption_params->counter = narrow_cast<uint32_t>(
         ctr_min + encryption_params->counter % (ctr_max - ctr_min + 1));

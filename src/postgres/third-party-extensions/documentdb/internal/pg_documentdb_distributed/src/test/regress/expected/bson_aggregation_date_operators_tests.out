@@ -179,9 +179,8 @@ SELECT * FROM bson_dollar_project('{"date": {"$date": "1930-12-31T11:59:00.000Z"
 (1 row)
 
 -- $week and $isoWeek 
--- $week range is 0-53, weeks are from Sunday-Saturday, and the 1st of the year starts on the first Sunday of the year, so any day of that year before
--- the first Sunday, is week 0.
--- $isoWeek follows ISO 8601, ranges is 1-53, weeks are Monday-Sunday, and the 1st of the year is the week that contains the year's first Thursday.
+-- $week range is 0-53, weeks are from Sunday-Saturday.
+-- $isoWeek ranges is 1-53, weeks are Monday-Sunday.
 -- 2023-01-01 is first Sunday of the year.
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2023-01-01T07:30:10.5Z"}}', '{"week": {"$week": "$date"}, "isoWeek": {"$isoWeek": "$date"}}');
                            bson_dollar_project                            
@@ -260,9 +259,7 @@ SELECT * FROM bson_dollar_project('{"leapDate": {"$date": "2024-12-31T07:30:10.5
  { "leapDayOfYear" : { "$numberInt" : "366" }, "nonLeapDayOfYear" : { "$numberInt" : "365" } }
 (1 row)
 
--- $dayOfWeek and $isoDayOfWeek
--- $dayOfWeek is between 1 (Sunday) and 7 (Saturday).
--- $isoDayOfWeek is between 1 (Monday) and 7 (Sunday).
+-- $dayOfWeek and $isoDayOfWeek both are 1-7 following $week or $isoWeek.
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2023-01-01T07:30:10.5Z"}}', '{"name": "Sunday", "dayOfWeek": {"$dayOfWeek": "$date"}, "isoDayOfWeek": {"$isoDayOfWeek": "$date"}}');
                                          bson_dollar_project                                          
 ---------------------------------------------------------------------
@@ -306,7 +303,6 @@ SELECT * FROM bson_dollar_project('{"date": {"$date": "2035-06-23T07:30:10.5Z"}}
 (1 row)
 
 -- $year and $isoWeekYear
--- $isoWeekYear returns the ISO 8601 week-numbering year that the date falls in.
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2023-01-01T07:30:10.5Z"}}', '{"year": {"$year": "$date"}, "isoWeekYear": {"$isoWeekYear": "$date"}}');
                                 bson_dollar_project                                 
 ---------------------------------------------------------------------
@@ -481,7 +477,7 @@ SELECT * FROM bson_dollar_project('{"date": {"$date": "2035-06-23T07:30:10.5Z"}}
 ERROR:  $isoDayOfWeek requires a string for the timezone argument, but was given a bool (true)
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2035-06-23T07:30:10.5Z"}}', '{"isoWeek": {"$isoWeek": {"date": "$date", "timezone": true}}}');
 ERROR:  $isoWeek requires a string for the timezone argument, but was given a bool (true)
--- date part operators: date option must be provided when argument is an object
+-- date part operators: object argument.
 SELECT * FROM bson_dollar_project('{ }', '{"year": {"$year": {"timezone": true}}}');
 ERROR:  missing 'date' argument to $year, provided: $year: { "timezone" : true }
 SELECT * FROM bson_dollar_project('{ }', '{"month": {"$month": {}}}');
@@ -508,60 +504,60 @@ SELECT * FROM bson_dollar_project('{ }', '{"isoDayOfWeek": {"$isoDayOfWeek": {"t
 ERROR:  missing 'date' argument to $isoDayOfWeek, provided: $isoDayOfWeek: { "timezone" : true }
 SELECT * FROM bson_dollar_project('{ }', '{"isoWeek": {"$isoWeek": {"timezone": true}}}');
 ERROR:  missing 'date' argument to $isoWeek, provided: $isoWeek: { "timezone" : true }
--- date part operators: when argument is object only date and timezone keys are accepted.
+-- date part operators: object with date and timezone arguments.
 SELECT * FROM bson_dollar_project('{ }', '{"year": {"$year": {"random": true}}}');
-ERROR:  unrecognized option to $year: "random"
+ERROR:  Unrecognized $year option provided: "random"
 SELECT * FROM bson_dollar_project('{ }', '{"month": {"$month": {"foo": 1}}}');
-ERROR:  unrecognized option to $month: "foo"
+ERROR:  Unrecognized $month option provided: "foo"
 SELECT * FROM bson_dollar_project('{ }', '{"dayOfMonth": {"$dayOfMonth": {"timezone": [], "date": 1, "time": 1}}}');
-ERROR:  unrecognized option to $dayOfMonth: "time"
+ERROR:  Unrecognized $dayOfMonth option provided: "time"
 SELECT * FROM bson_dollar_project('{ }', '{"dayOfYear": {"$dayOfYear": {"timezone": 1, "dat": 2}}}');
-ERROR:  unrecognized option to $dayOfYear: "dat"
+ERROR:  Unrecognized $dayOfYear option provided: "dat"
 SELECT * FROM bson_dollar_project('{ }', '{"dayOfWeek": {"$dayOfWeek": {"timezon": {}}}}');
-ERROR:  unrecognized option to $dayOfWeek: "timezon"
+ERROR:  Unrecognized $dayOfWeek option provided: "timezon"
 SELECT * FROM bson_dollar_project('{ }', '{"hour": {"$hour": {"datetime": 1}}}');
-ERROR:  unrecognized option to $hour: "datetime"
+ERROR:  Unrecognized $hour option provided: "datetime"
 SELECT * FROM bson_dollar_project('{ }', '{"minute": {"$minute": {"timeZone": [[[]]]}}}');
-ERROR:  unrecognized option to $minute: "timeZone"
+ERROR:  Unrecognized $minute option provided: "timeZone"
 SELECT * FROM bson_dollar_project('{ }', '{"second": {"$second": {"Timezone": {}}}}');
-ERROR:  unrecognized option to $second: "Timezone"
+ERROR:  Unrecognized $second option provided: "Timezone"
 SELECT * FROM bson_dollar_project('{ }', '{"millisecond": {"$millisecond": {"unknown": "1"}}}');
-ERROR:  unrecognized option to $millisecond: "unknown"
+ERROR:  Unrecognized $millisecond option provided: "unknown"
 SELECT * FROM bson_dollar_project('{ }', '{"week": {"$week": {"location": {"$date": {"$numberLong": "0"}}}}}');
-ERROR:  unrecognized option to $week: "location"
+ERROR:  Unrecognized $week option provided: "location"
 SELECT * FROM bson_dollar_project('{ }', '{"isoWeekYear": {"$isoWeekYear": {"timezonE": {"$oid": "639926cee6bda3127f153bf1"}}}}');
-ERROR:  unrecognized option to $isoWeekYear: "timezonE"
+ERROR:  Unrecognized $isoWeekYear option provided: "timezonE"
 SELECT * FROM bson_dollar_project('{ }', '{"isoDayOfWeek": {"$isoDayOfWeek": {"timezone": true, "foo": 1}}}');
-ERROR:  unrecognized option to $isoDayOfWeek: "foo"
+ERROR:  Unrecognized $isoDayOfWeek option provided: "foo"
 SELECT * FROM bson_dollar_project('{ }', '{"isoWeek": {"$isoWeek": {"date": 1, "info": ""}}}');
-ERROR:  unrecognized option to $isoWeek: "info"
--- date part operators: when argument is array, it only accepts a single element in the array.
+ERROR:  Unrecognized $isoWeek option provided: "info"
+-- date part operators: array argument, should be single element array.
 SELECT * FROM bson_dollar_project('{ }', '{"year": {"$year": [1, 2, 3]}}');
-ERROR:  $year accepts exactly one argument if given an array, but was given 3
+ERROR:  $year requires exactly one argument when an array is provided, but received 3
 SELECT * FROM bson_dollar_project('{ }', '{"month": {"$month": []}}');
-ERROR:  $month accepts exactly one argument if given an array, but was given 0
+ERROR:  $month requires exactly one argument when an array is provided, but received 0
 SELECT * FROM bson_dollar_project('{ }', '{"dayOfMonth": {"$dayOfMonth": [1, 2]}}');
-ERROR:  $dayOfMonth accepts exactly one argument if given an array, but was given 2
+ERROR:  $dayOfMonth requires exactly one argument when an array is provided, but received 2
 SELECT * FROM bson_dollar_project('{ }', '{"dayOfYear": {"$dayOfYear": [[], []]}}');
-ERROR:  $dayOfYear accepts exactly one argument if given an array, but was given 2
+ERROR:  $dayOfYear requires exactly one argument when an array is provided, but received 2
 SELECT * FROM bson_dollar_project('{ }', '{"dayOfWeek": {"$dayOfWeek": []}}');
-ERROR:  $dayOfWeek accepts exactly one argument if given an array, but was given 0
+ERROR:  $dayOfWeek requires exactly one argument when an array is provided, but received 0
 SELECT * FROM bson_dollar_project('{ }', '{"hour": {"$hour": [1, 2, 3, 4]}}');
-ERROR:  $hour accepts exactly one argument if given an array, but was given 4
+ERROR:  $hour requires exactly one argument when an array is provided, but received 4
 SELECT * FROM bson_dollar_project('{ }', '{"minute": {"$minute": []}}');
-ERROR:  $minute accepts exactly one argument if given an array, but was given 0
+ERROR:  $minute requires exactly one argument when an array is provided, but received 0
 SELECT * FROM bson_dollar_project('{ }', '{"second": {"$second": ["srr", "foo"]}}');
-ERROR:  $second accepts exactly one argument if given an array, but was given 2
+ERROR:  $second requires exactly one argument when an array is provided, but received 2
 SELECT * FROM bson_dollar_project('{ }', '{"millisecond": {"$millisecond": [1, 2]}}');
-ERROR:  $millisecond accepts exactly one argument if given an array, but was given 2
+ERROR:  $millisecond requires exactly one argument when an array is provided, but received 2
 SELECT * FROM bson_dollar_project('{ }', '{"week": {"$week": []}}');
-ERROR:  $week accepts exactly one argument if given an array, but was given 0
+ERROR:  $week requires exactly one argument when an array is provided, but received 0
 SELECT * FROM bson_dollar_project('{ }', '{"isoWeekYear": {"$isoWeekYear": [1, 2, 3, 4, 5]}}');
-ERROR:  $isoWeekYear accepts exactly one argument if given an array, but was given 5
+ERROR:  $isoWeekYear requires exactly one argument when an array is provided, but received 5
 SELECT * FROM bson_dollar_project('{ }', '{"isoDayOfWeek": {"$isoDayOfWeek": []}}');
-ERROR:  $isoDayOfWeek accepts exactly one argument if given an array, but was given 0
+ERROR:  $isoDayOfWeek requires exactly one argument when an array is provided, but received 0
 SELECT * FROM bson_dollar_project('{ }', '{"isoWeek": {"$isoWeek": [1, []]}}');
-ERROR:  $isoWeek accepts exactly one argument if given an array, but was given 2
+ERROR:  $isoWeek requires exactly one argument when an array is provided, but received 2
 -- date part operators: unrecognized timezones
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2035-06-23T07:30:10.5Z"}}', '{"year": {"$year": {"date": "$date", "timezone": ""}}}');
 ERROR:  unrecognized time zone identifier: ""
@@ -707,18 +703,18 @@ SELECT * FROM bson_dollar_project('{"_id": 1 }', '{"dateParts": {"$dateToParts":
 
 -- $dateToParts 'date' argument is required
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2017-06-19T15:13:25.713Z"}}', '{"dateParts": {"$dateToParts": { "timezone": "$tz" }}}');
-ERROR:  Missing 'date' parameter to $dateToParts
+ERROR:  'date' parameter is required for $dateToParts
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2017-06-19T15:13:25.713Z"}}', '{"dateParts": {"$dateToParts": { "timezone": "$tz", "iso8601": true }}}');
-ERROR:  Missing 'date' parameter to $dateToParts
+ERROR:  'date' parameter is required for $dateToParts
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2017-06-19T15:13:25.713Z"}}', '{"dateParts": {"$dateToParts": { "timezone": "Unknown", "iso8601": true }}}');
-ERROR:  Missing 'date' parameter to $dateToParts
+ERROR:  'date' parameter is required for $dateToParts
 -- $dateToParts 'iso8601' should be a bool
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2017-06-19T15:13:25.713Z"}}', '{"dateParts": {"$dateToParts": { "date": "$date", "iso8601": {"$add": [1, 1]} }}}');
-ERROR:  iso8601 must evaluate to a bool, found int
+ERROR:  iso8601 should return a boolean value, but received int instead
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2017-06-19T15:13:25.713Z"}}', '{"dateParts": {"$dateToParts": { "date": "$date", "iso8601": "str" }}}');
-ERROR:  iso8601 must evaluate to a bool, found string
+ERROR:  iso8601 should return a boolean value, but received string instead
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2017-06-19T15:13:25.713Z"}}', '{"dateParts": {"$dateToParts": { "date": {"$add": [1, 1]}, "iso8601": "str" }}}');
-ERROR:  iso8601 must evaluate to a bool, found string
+ERROR:  iso8601 should return a boolean value, but received string instead
 -- $dateToParts 'date' must be a date, timestamp or oid
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2017-06-19T15:13:25.713Z"}}', '{"dateParts": {"$dateToParts": { "date":  {"$add": [1, 1]}, "iso8601": true }}}');
 ERROR:  can't convert from BSON type int to Date
@@ -1061,14 +1057,14 @@ SELECT * FROM bson_dollar_project('{"date": null}', '{"dateString": {"$dateToStr
 ERROR:  Missing 'date' parameter to $dateToString
 -- $dateToString unknown field
 SELECT * FROM bson_dollar_project('{"date": null}', '{"dateString": {"$dateToString": { "date": "$date", "format": "Natural: %Y-W%w-%U, ISO: %G-W%u-%V", "onNull": "$a", "customField": "a" }}}');
-ERROR:  Unrecognized argument to $dateToString: customField
+ERROR:  Unrecognized parameter provided for $dateToString: customField
 -- $dateToString an object is required as an argument
 SELECT * FROM bson_dollar_project('{"arg": {"date": null, "format": "%Y", "timezone": "UTC"}}', '{"dateString": {"$dateToString": "$arg"}}');
-ERROR:  $dateToString only supports an object as its argument
+ERROR:  $dateToString requires an object parameter only
 SELECT * FROM bson_dollar_project('{"arg": {"date": null, "format": "%Y", "timezone": "UTC"}}', '{"dateString": {"$dateToString": null}}');
-ERROR:  $dateToString only supports an object as its argument
+ERROR:  $dateToString requires an object parameter only
 SELECT * FROM bson_dollar_project('{"arg": {"date": null, "format": "%Y", "timezone": "UTC"}}', '{"dateString": {"$dateToString": []}}');
-ERROR:  $dateToString only supports an object as its argument
+ERROR:  $dateToString requires an object parameter only
 -- $dateToString invalid format modifier
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2017-07-04T14:56:42.911Z"}}', '{"dateString": {"$dateToString": { "date": "$date", "format": "%Y-%m-%d %i %H:%M:%S %z (%Z minutes)", "timezone": "UTC" }}}');
 ERROR:  Invalid format character '%i' in format string
@@ -1081,9 +1077,9 @@ SELECT * FROM bson_dollar_project('{"date": {"$date": "2017-07-04T14:56:42.911Z"
 ERROR:  Unmatched '%' at end of format string
 -- $dateToString 'format' argument must be a string
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2017-07-04T14:56:42.911Z"}}', '{"dateString": {"$dateToString": { "date": "$date", "format": true, "timezone": "UTC" }}}');
-ERROR:  $dateToString requires that 'format' be a string, found: bool with value true
+ERROR:  $dateToString requires that 'format' be a string, but instead encountered: bool with value true
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2017-07-04T14:56:42.911Z"}}', '{"dateString": {"$dateToString": { "date": "$date", "format": 1, "timezone": "UTC" }}}');
-ERROR:  $dateToString requires that 'format' be a string, found: int with value 1
+ERROR:  $dateToString requires that 'format' be a string, but instead encountered: int with value 1
 -- $dateToString 'date' must be an oid, timestamp or date
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2017-07-04T14:56:42.911Z"}}', '{"dateString": {"$dateToString": { "date": "", "timezone": "UTC" }}}');
 ERROR:  can't convert from BSON type string to Date
@@ -1098,14 +1094,14 @@ SELECT * FROM bson_dollar_project('{"date": {"$date": "2017-07-04T14:56:42.911Z"
 ERROR:  unrecognized time zone identifier: "+80000000"
 -- $dateToString date component outside of supported range
 SELECT * FROM bson_dollar_project('{"date": {"$date": "9999-12-31T11:59:59.911Z"}}', '{"dateString": {"$dateToString": { "date": {"$add": ["$date", {"$numberLong": "86400000"}]} }}}');
-ERROR:  Could not convert date to string: date component was outside the supported range of 0-9999: 10000
+ERROR:  Failed to convert date into text because the date value was beyond the supported range of 0 to 9999: 10000
 SELECT * FROM bson_dollar_project('{"date": {"$date": "9999-12-31T11:59:59.911Z"}}', '{"dateString": {"$dateToString": { "date": {"$add": ["$date", {"$numberLong": "86400000"}]}, "format": "%Y" }}}');
-ERROR:  Could not convert date to string: date component was outside the supported range of 0-9999: 10000
+ERROR:  Failed to convert date into text because the date value was beyond the supported range of 0 to 9999: 10000
 -- $dateFromParts null cases
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": null }}');
-ERROR:  $dateFromParts only supports an object as its argument
+ERROR:  $dateFromParts only accepts an object type as its provided argument
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"$undefined":true} }}');
-ERROR:  $dateFromParts only supports an object as its argument
+ERROR:  $dateFromParts only accepts an object type as its provided argument
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"year": null} }}');
  bson_dollar_project 
 ---------------------------------------------------------------------
@@ -1439,45 +1435,45 @@ select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"year" :
 
 -- $dateFromParts cases negative cases
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": 1 }}');
-ERROR:  $dateFromParts only supports an object as its argument
+ERROR:  $dateFromParts only accepts an object type as its provided argument
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": "abc" }}');
-ERROR:  $dateFromParts only supports an object as its argument
+ERROR:  $dateFromParts only accepts an object type as its provided argument
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {} }}');
-ERROR:  $dateFromParts requires either 'year' or 'isoWeekYear' to be present
+ERROR:  $dateFromParts needs to include either 'year' or 'isoWeekYear' in order to function properly
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"year":2017, "isoWeekYear": 2012} }}');
-ERROR:  $dateFromParts does not allow mixing natural dates with ISO dates
+ERROR:  $dateFromParts cannot be used when combining natural date formats with ISO date formats
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"year": {"$numberDecimal": "2014.5"} } }}');
-ERROR:  'year' must evaluate to an integer, found decimal with value :2014.5
+ERROR:  'year' must evaluate to an integer, but found decimal with the actual value :2014.5
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": 1 }}');
-ERROR:  $dateFromParts only supports an object as its argument
+ERROR:  $dateFromParts only accepts an object type as its provided argument
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": "abc" }}');
-ERROR:  $dateFromParts only supports an object as its argument
+ERROR:  $dateFromParts only accepts an object type as its provided argument
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {} }}');
-ERROR:  $dateFromParts requires either 'year' or 'isoWeekYear' to be present
+ERROR:  $dateFromParts needs to include either 'year' or 'isoWeekYear' in order to function properly
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"year":2017, "isoWeekYear": 2012} }}');
-ERROR:  $dateFromParts does not allow mixing natural dates with ISO dates
+ERROR:  $dateFromParts cannot be used when combining natural date formats with ISO date formats
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"year":2017.5} }}');
-ERROR:  'year' must evaluate to an integer, found double with value :2017.5
+ERROR:  'year' must evaluate to an integer, but found double with the actual value :2017.5
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"year":"2017"} }}');
-ERROR:  'year' must evaluate to an integer, found string with value :"2017"
+ERROR:  'year' must evaluate to an integer, but found string with the actual value :"2017"
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"year": 2017, "abcd":1} }}');
-ERROR:  Unrecognized argument to $dateFromParts: abcd
+ERROR:  Invalid argument supplied to operator $dateFromParts: abcd
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"isoWeekYear": 2012.12} }}');
-ERROR:  'isoWeekYear' must evaluate to an integer, found double with value :2012.12
+ERROR:  'isoWeekYear' must evaluate to an integer, but found double with the actual value :2012.12
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"isoWeekYear": "2012"} }}');
-ERROR:  'isoWeekYear' must evaluate to an integer, found string with value :"2012"
+ERROR:  'isoWeekYear' must evaluate to an integer, but found string with the actual value :"2012"
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"isoWeekYear": 2012, "timezone": "hello"} }}');
 ERROR:  unrecognized time zone identifier: "hello"
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"year": 2012, "timezone": 1} }}');
 ERROR:  timezone must evaluate to a string, found int
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"year": 0} }}');
-ERROR:  'year' must evaluate to an integer in the range 1 to 9999, found 0
+ERROR:  The value for 'year' must evaluate to an integer in the range 1 to 9999, but the provided value was 0
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"year": 11110} }}');
-ERROR:  'year' must evaluate to an integer in the range 1 to 9999, found 11110
+ERROR:  The value for 'year' must evaluate to an integer in the range 1 to 9999, but the provided value was 11110
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"isoWeekYear": 0} }}');
-ERROR:  'isoWeekYear' must evaluate to an integer in the range 1 to 9999, found 0
+ERROR:  The value for 'isoWeekYear' must evaluate to an integer in the range 1 to 9999, but the provided value was 0
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"isoWeekYear": 11110} }}');
-ERROR:  'isoWeekYear' must evaluate to an integer in the range 1 to 9999, found 11110
+ERROR:  The value for 'isoWeekYear' must evaluate to an integer in the range 1 to 9999, but the provided value was 11110
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"year": 2010, "month": 32769, "day": 100, "second": 50, "minute":100} }}');
 ERROR:  'month' must evaluate to a value in the range [-32768, 32767]; value 32769 is not in range
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"year": 2010, "month": 12, "day": 32769, "second": 50, "minute":100} }}');
@@ -1507,21 +1503,21 @@ ERROR:  'hour' must evaluate to a value in the range [-32768, 32767]; value -327
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"year": 2010, "month": 12, "day": 1, "hour": -24, "minute":-32769} }}');
 ERROR:  'minute' must evaluate to a value in the range [-32768, 32767]; value -32769 is not in range
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"year": 2010, "millisecond": {"$numberDecimal": "-18999999999999999888888888"}} }}');
-ERROR:  'millisecond' must evaluate to an integer, found decimal with value :-18999999999999999888888888
+ERROR:  'millisecond' must evaluate to an integer, but found decimal with the actual value :-18999999999999999888888888
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"isoWeekYear": 2012, "month":12} }}');
-ERROR:  $dateFromParts does not allow mixing natural dates with ISO dates
+ERROR:  $dateFromParts cannot be used when combining natural date formats with ISO date formats
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"isoWeekYear": 2012, "day":12} }}');
-ERROR:  $dateFromParts does not allow mixing natural dates with ISO dates
+ERROR:  $dateFromParts cannot be used when combining natural date formats with ISO date formats
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"year": 1209, "isoWeek": 12} }}');
-ERROR:  $dateFromParts does not allow mixing natural dates with ISO dates
+ERROR:  $dateFromParts cannot be used when combining natural date formats with ISO date formats
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"year": 1209, "isoDayOfWeek": 12} }}');
-ERROR:  $dateFromParts does not allow mixing natural dates with ISO dates
+ERROR:  $dateFromParts cannot be used when combining natural date formats with ISO date formats
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"month": 1209, "isoDayOfWeek": 12} }}');
-ERROR:  $dateFromParts does not allow mixing natural dates with ISO dates
+ERROR:  $dateFromParts cannot be used when combining natural date formats with ISO date formats
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"month": 1209} }}');
-ERROR:  $dateFromParts requires either 'year' or 'isoWeekYear' to be present
+ERROR:  $dateFromParts needs to include either 'year' or 'isoWeekYear' in order to function properly
 select * from bson_dollar_project('{}', '{"result": {"$dateFromParts": {"isoWeek": 1209} }}');
-ERROR:  $dateFromParts requires either 'year' or 'isoWeekYear' to be present
+ERROR:  $dateFromParts needs to include either 'year' or 'isoWeekYear' in order to function properly
 -- $dateFromParts document based cases
 select * from bson_dollar_project('{"year" : 2011, "month": 2, "day": 28, "hour":23 , "minute":59, "second":50, "millisecond":450}', '{"result": {"$dateFromParts": {"year" : "$year", "month": "$month", "day": "$day", "hour":"$hour" , "minute":"$minute", "second":"$second", "millisecond":"$millisecond"} }}');
                        bson_dollar_project                        
@@ -1561,9 +1557,9 @@ select * from bson_dollar_project(' {"isoWeekYear": 2024, "isoWeek":50, "isoDayO
 
 --$dateTrunc null cases
 select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": null }}');
-ERROR:  $dateTrunc only supports an object as its argument
+ERROR:  $dateTrunc requires an object type as its input argument
 select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"$undefined": true} }}');
-ERROR:  $dateTrunc only supports an object as its argument
+ERROR:  $dateTrunc requires an object type as its input argument
 select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$date" : {"$numberLong": "1707123355381"}}, "unit": "second", "binSize": null  }  }}');
  bson_dollar_project 
 ---------------------------------------------------------------------
@@ -1928,36 +1924,36 @@ select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$d
 
 -- $dateTrunc invalid cases
 select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": "A" }}');
-ERROR:  $dateTrunc only supports an object as its argument
+ERROR:  $dateTrunc requires an object type as its input argument
 select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {} }}');
-ERROR:  Missing 'date' parameter to $dateTrunc
+ERROR:  The 'date' parameter required by the $dateTrunc is missing.
 select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"abc": 1} }}');
-ERROR:  Unrecognized argument to $dateTrunc: abc. Expected arguments are date, unit, and optionally, binSize, timezone, startOfWeek
+ERROR:  Invalid argument provided to operator $dateTrunc: abc. Expected parameters include date, unit, and optionally binSize, timezone, and startOfWeek.
 select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$date" : {"$numberLong": "1707123355381"}}  } }}');
-ERROR:  Missing 'unit' parameter to $dateTrunc
+ERROR:  The 'unit' parameter required by the $dateTrunc is missing.
 select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$date" : {"$numberLong": "1707123355381"}} , "unit": 1 } }}');
-ERROR:  $dateTrunc requires 'unit' to be a string, but got int
+ERROR:  $dateTrunc needs 'unit' as a string, but received int instead
 select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$date" : {"$numberLong": "1707123355381"}} , "unit": "456" } }}');
-ERROR:  $dateTrunc parameter 'unit' value cannot be recognized as a time unit: 456
+ERROR:  The provided 'unit' parameter for $dateTrunc is not recognized as a valid time unit: 456
 select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$date" : {"$numberLong": "1707123355381"}} , "unit": "456" } }}');
-ERROR:  $dateTrunc parameter 'unit' value cannot be recognized as a time unit: 456
+ERROR:  The provided 'unit' parameter for $dateTrunc is not recognized as a valid time unit: 456
 select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$date" : {"$numberLong": "1707123355381"}} , "unit": "year", "binSize": "1" } }}');
-ERROR:  $dateTrunc requires 'binSize' to be a 64-bit integer, but got value '"1"' of type string
+ERROR:  $dateTrunc needs 'binSize' as a 64-bit integer, but received value '"1"' of type string 
 select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$date" : {"$numberLong": "1707123355381"}} , "unit": "year", "binSize": 1.5 } }}');
-ERROR:  $dateTrunc requires 'binSize' to be a 64-bit integer, but got value '1.5' of type double
+ERROR:  $dateTrunc needs 'binSize' as a 64-bit integer, but received value '1.5' of type double 
 select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$date" : {"$numberLong": "1707123355381"}} , "unit": "year", "binSize": 1 , "timezone": 123} }}');
 ERROR:  timezone must evaluate to a string, found int
 select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$date" : {"$numberLong": "1707123355381"}} , "unit": "week", "binSize": 1 , "startOfWeek": "Menday"} }}');
-ERROR:  $dateTrunc parameter 'startOfWeek' value cannot be recognized as a day of a week: Menday
+ERROR:  The 'startOfWeek' parameter in $dateTrunc has a value that is not recognized as a valid day of the week: Menday
 select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": "A" , "unit": "456" } }}');
-ERROR:  $dateTrunc requires 'date' to be a date, but got string
+ERROR:  $dateTrunc expects the 'date' parameter to be a valid date type, but received string instead.
 -- $dateAdd null based cases
 select * from bson_dollar_project('{}','{"result": {"$dateAdd": null } }');
-ERROR:  $dateAdd expects an object as its argument.found input type:null
+ERROR:  $dateAdd requires an object type argument, but received input type: null
 select * from bson_dollar_project('{}','{"result": {"$dateAdd": {"$undefined":true} } }');
-ERROR:  $dateAdd expects an object as its argument.found input type:{ "$undefined" : true }
+ERROR:  $dateAdd requires an object type argument, but received input type: { "$undefined" : true }
 select * from bson_dollar_project('{}','{"result": {"$dateAdd": {} } }');
-ERROR:  $dateAdd requires startDate, unit, and amount to be present
+ERROR:  $dateAdd needs startDate, unit, and amount to be presented
 -- $dateAdd cases when input parts are null or undefined
 select * from bson_dollar_project('{}','{"result": {"$dateAdd": {"startDate": null , "unit":"month" , "amount":30000000000, "timezone": "+04:00" } } }');
  bson_dollar_project 
@@ -2098,42 +2094,42 @@ select * from bson_dollar_project('{}','{"result": {"$dateAdd": {"startDate": {"
 
 -- $dateAdd cases with input validation of ranges which are calculated manually. With these inputs we should error that it's out of range. This is a pre-addition validation
 select * from bson_dollar_project('{}','{"result": {"$dateAdd": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"year" , "amount": 584942419} } }');
-ERROR:  invalid $dateAdd 'amount' parameter value: 584942419 year
+ERROR:  Invalid $dateAdd for 'amount' parameter: provided value 584942419 year is not acceptable
 select * from bson_dollar_project('{}','{"result": {"$dateAdd": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"quarter" , "amount": 1754827252} } }');
-ERROR:  invalid $dateAdd 'amount' parameter value: 1754827252 quarter
+ERROR:  Invalid $dateAdd for 'amount' parameter: provided value 1754827252 quarter is not acceptable
 select * from bson_dollar_project('{}','{"result": {"$dateAdd": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"month" , "amount": 7019309005} } }');
-ERROR:  invalid $dateAdd 'amount' parameter value: 7019309005 month
+ERROR:  Invalid $dateAdd for 'amount' parameter: provided value 7019309005 month is not acceptable
 select * from bson_dollar_project('{}','{"result": {"$dateAdd": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"week" , "amount": 30500568906} } }');
-ERROR:  invalid $dateAdd 'amount' parameter value: 30500568906 week
+ERROR:  Invalid $dateAdd for 'amount' parameter: provided value 30500568906 week is not acceptable
 select * from bson_dollar_project('{}','{"result": {"$dateAdd": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"week" , "amount": 30500568906} } }');
-ERROR:  invalid $dateAdd 'amount' parameter value: 30500568906 week
+ERROR:  Invalid $dateAdd for 'amount' parameter: provided value 30500568906 week is not acceptable
 select * from bson_dollar_project('{}','{"result": {"$dateAdd": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"day" , "amount": 213503982336} } }');
-ERROR:  invalid $dateAdd 'amount' parameter value: 213503982336 day
+ERROR:  Invalid $dateAdd for 'amount' parameter: provided value 213503982336 day is not acceptable
 select * from bson_dollar_project('{}','{"result": {"$dateAdd": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"hour" , "amount": 5124095576041} } }');
-ERROR:  invalid $dateAdd 'amount' parameter value: 5124095576041 hour
+ERROR:  Invalid $dateAdd for 'amount' parameter: provided value 5124095576041 hour is not acceptable
 select * from bson_dollar_project('{}','{"result": {"$dateAdd": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"minute" , "amount": 307445734562401} } }');
-ERROR:  invalid $dateAdd 'amount' parameter value: 307445734562401 minute
+ERROR:  Invalid $dateAdd for 'amount' parameter: provided value 307445734562401 minute is not acceptable
 select * from bson_dollar_project('{}','{"result": {"$dateAdd": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"second" , "amount": 18446744073744001} } }');
-ERROR:  invalid $dateAdd 'amount' parameter value: 18446744073744001 second
+ERROR:  Invalid $dateAdd for 'amount' parameter: provided value 18446744073744001 second is not acceptable
 select * from bson_dollar_project('{}','{"result": {"$dateAdd": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"second" , "amount": 1, "hex": "a"} } }');
 ERROR:  Unrecognized argument to $dateAdd: hex. Expected arguments are startDate, unit, amount, and optionally timezone
 -- $dateAdd cases with error cases
 select * from bson_dollar_project('{}','{"result": {"$dateAdd": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"year" , "amount": 56.55} } }');
-ERROR:  $dateAdd expects integer amount of time units
+ERROR:  Expected 'integer' type for $dateAdd
 select * from bson_dollar_project('{}','{"result": {"$dateAdd": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"years" , "amount": 56} } }');
-ERROR:  unknown time unit value: years
+ERROR:  Unrecognized or invalid time unit value: years
 select * from bson_dollar_project('{}','{"result": {"$dateAdd": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"year" , "amount": 56, "field":5} } }');
 ERROR:  Unrecognized argument to $dateAdd: field. Expected arguments are startDate, unit, amount, and optionally timezone
 select * from bson_dollar_project('{}','{"result": {"$dateAdd": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"year" , "amount": 56, "field":5} } }');
 ERROR:  Unrecognized argument to $dateAdd: field. Expected arguments are startDate, unit, amount, and optionally timezone
 select * from bson_dollar_project('{}','{"result": {"$dateAdd": {"startDate": {"$date": {"$numberLong": "1612062000000"} }  , "amount": 56} } }');
-ERROR:  $dateAdd requires startDate, unit, and amount to be present
+ERROR:  $dateAdd needs startDate, unit, and amount to be presented
 select * from bson_dollar_project('{}','{"result": {"$dateAdd": {"unit":"day"  , "amount": 56} } }');
-ERROR:  $dateAdd requires startDate, unit, and amount to be present
+ERROR:  $dateAdd needs startDate, unit, and amount to be presented
 select * from bson_dollar_project('{}','{"result": {"$dateAdd": {"unit":"day"  , "amount": 56} } }');
-ERROR:  $dateAdd requires startDate, unit, and amount to be present
+ERROR:  $dateAdd needs startDate, unit, and amount to be presented
 select * from bson_dollar_project('{}','{"result": {"$dateAdd": {"startDate": "abcd"  , "amount": 56, "unit": 5} } }');
-ERROR:  $dateAdd requires startDate to be convertible to a date
+ERROR:  $dateAdd needs startDate to be converted into a valid date
 select * from bson_dollar_project('{}','{"result": {"$dateAdd": {"startDate": {"$date": {"$numberLong": "1612062000000"} }  , "amount": 56, "unit": 5, "timezone": "abcd"} } }');
 ERROR:  $dateAdd expects string defining the time unit
 -- $dateAdd cases with overflow
@@ -2170,11 +2166,11 @@ select * from bson_dollar_project('{"startDate": {"$date": {"$numberLong": "1615
 
 -- $dateSubtract null based cases
 select * from bson_dollar_project('{}','{"result": {"$dateSubtract": null } }');
-ERROR:  $dateSubtract expects an object as its argument.found input type:null
+ERROR:  $dateSubtract requires an object type argument, but received input type: null
 select * from bson_dollar_project('{}','{"result": {"$dateSubtract": {"$undefined":true} } }');
-ERROR:  $dateSubtract expects an object as its argument.found input type:{ "$undefined" : true }
+ERROR:  $dateSubtract requires an object type argument, but received input type: { "$undefined" : true }
 select * from bson_dollar_project('{}','{"result": {"$dateSubtract": {} } }');
-ERROR:  $dateSubtract requires startDate, unit, and amount to be present
+ERROR:  $dateSubtract needs startDate, unit, and amount to be presented
 -- $dateSubtract cases when input parts are null or undefined
 select * from bson_dollar_project('{}','{"result": {"$dateSubtract": {"startDate": null , "unit":"month" , "amount":30000000000, "timezone": "+04:00" } } }');
  bson_dollar_project 
@@ -2321,42 +2317,42 @@ select * from bson_dollar_project('{}','{"result": {"$dateSubtract": {"startDate
 
 -- $dateSubtract cases with input validation of ranges which are calculated manually. With these inputs we should error that it's out of range. This is a pre-subtraction validation
 select * from bson_dollar_project('{}','{"result": {"$dateSubtract": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"year" , "amount": 584942419} } }'); 
-ERROR:  invalid $dateSubtract 'amount' parameter value: 584942419 year
+ERROR:  Invalid $dateSubtract for 'amount' parameter: provided value 584942419 year is not acceptable
 select * from bson_dollar_project('{}','{"result": {"$dateSubtract": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"quarter" , "amount": 1754827252} } }');
-ERROR:  invalid $dateSubtract 'amount' parameter value: 1754827252 quarter
+ERROR:  Invalid $dateSubtract for 'amount' parameter: provided value 1754827252 quarter is not acceptable
 select * from bson_dollar_project('{}','{"result": {"$dateSubtract": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"month" , "amount": 7019309005} } }');
-ERROR:  invalid $dateSubtract 'amount' parameter value: 7019309005 month
+ERROR:  Invalid $dateSubtract for 'amount' parameter: provided value 7019309005 month is not acceptable
 select * from bson_dollar_project('{}','{"result": {"$dateSubtract": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"week" , "amount": 30500568906} } }');
-ERROR:  invalid $dateSubtract 'amount' parameter value: 30500568906 week
+ERROR:  Invalid $dateSubtract for 'amount' parameter: provided value 30500568906 week is not acceptable
 select * from bson_dollar_project('{}','{"result": {"$dateSubtract": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"week" , "amount": 30500568906} } }');
-ERROR:  invalid $dateSubtract 'amount' parameter value: 30500568906 week
+ERROR:  Invalid $dateSubtract for 'amount' parameter: provided value 30500568906 week is not acceptable
 select * from bson_dollar_project('{}','{"result": {"$dateSubtract": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"day" , "amount": 213503982336} } }');
-ERROR:  invalid $dateSubtract 'amount' parameter value: 213503982336 day
+ERROR:  Invalid $dateSubtract for 'amount' parameter: provided value 213503982336 day is not acceptable
 select * from bson_dollar_project('{}','{"result": {"$dateSubtract": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"hour" , "amount": 5124095576041} } }');
-ERROR:  invalid $dateSubtract 'amount' parameter value: 5124095576041 hour
+ERROR:  Invalid $dateSubtract for 'amount' parameter: provided value 5124095576041 hour is not acceptable
 select * from bson_dollar_project('{}','{"result": {"$dateSubtract": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"minute" , "amount": 307445734562401} } }');
-ERROR:  invalid $dateSubtract 'amount' parameter value: 307445734562401 minute
+ERROR:  Invalid $dateSubtract for 'amount' parameter: provided value 307445734562401 minute is not acceptable
 select * from bson_dollar_project('{}','{"result": {"$dateSubtract": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"second" , "amount": 18446744073744001} } }');
-ERROR:  invalid $dateSubtract 'amount' parameter value: 18446744073744001 second
+ERROR:  Invalid $dateSubtract for 'amount' parameter: provided value 18446744073744001 second is not acceptable
 select * from bson_dollar_project('{}','{"result": {"$dateSubtract": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"second" , "amount": 1, "hex": "a"} } }');
 ERROR:  Unrecognized argument to $dateSubtract: hex. Expected arguments are startDate, unit, amount, and optionally timezone
 -- $dateSubtract cases with error cases
 select * from bson_dollar_project('{}','{"result": {"$dateSubtract": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"year" , "amount": 56.55} } }');
-ERROR:  $dateSubtract expects integer amount of time units
+ERROR:  Expected 'integer' type for $dateSubtract
 select * from bson_dollar_project('{}','{"result": {"$dateSubtract": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"years" , "amount": 56} } }');
-ERROR:  unknown time unit value: years
+ERROR:  Unrecognized or invalid time unit value: years
 select * from bson_dollar_project('{}','{"result": {"$dateSubtract": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"year" , "amount": 56, "field":5} } }');
 ERROR:  Unrecognized argument to $dateSubtract: field. Expected arguments are startDate, unit, amount, and optionally timezone
 select * from bson_dollar_project('{}','{"result": {"$dateSubtract": {"startDate": {"$date": {"$numberLong": "1612062000000"} } , "unit":"year" , "amount": 56, "field":5} } }');
 ERROR:  Unrecognized argument to $dateSubtract: field. Expected arguments are startDate, unit, amount, and optionally timezone
 select * from bson_dollar_project('{}','{"result": {"$dateSubtract": {"startDate": {"$date": {"$numberLong": "1612062000000"} }  , "amount": 56} } }');
-ERROR:  $dateSubtract requires startDate, unit, and amount to be present
+ERROR:  $dateSubtract needs startDate, unit, and amount to be presented
 select * from bson_dollar_project('{}','{"result": {"$dateSubtract": {"unit":"day"  , "amount": 56} } }');
-ERROR:  $dateSubtract requires startDate, unit, and amount to be present
+ERROR:  $dateSubtract needs startDate, unit, and amount to be presented
 select * from bson_dollar_project('{}','{"result": {"$dateSubtract": {"unit":"day"  , "amount": 56} } }');
-ERROR:  $dateSubtract requires startDate, unit, and amount to be present
+ERROR:  $dateSubtract needs startDate, unit, and amount to be presented
 select * from bson_dollar_project('{}','{"result": {"$dateSubtract": {"startDate": "abcd"  , "amount": 56, "unit": 5} } }');
-ERROR:  $dateSubtract requires startDate to be convertible to a date
+ERROR:  $dateSubtract needs startDate to be converted into a valid date
 select * from bson_dollar_project('{}','{"result": {"$dateSubtract": {"startDate": {"$date": {"$numberLong": "1612062000000"} }  , "amount": 56, "unit": 5, "timezone": "abcd"} } }');
 ERROR:  $dateSubtract expects string defining the time unit
 -- $dateSubtract cases with overflow
@@ -3000,33 +2996,33 @@ select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"endDate": {"$
 
 -- $dateDiff invalid cases
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": 1 } }');
-ERROR:  $dateDiff only supports an object as its argument
+ERROR:  $dateDiff can only accept an object type as its input argument
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": "abc" } }');
-ERROR:  $dateDiff only supports an object as its argument
+ERROR:  $dateDiff can only accept an object type as its input argument
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": ["abc"] } }');
-ERROR:  $dateDiff only supports an object as its argument
+ERROR:  $dateDiff can only accept an object type as its input argument
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {} } }');
-ERROR:  Missing 'startDate' parameter to $dateDiff
+ERROR:  'startDate' parameter required for $dateDiff
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": {"$date": {"$numberLong": "1262304000000"} } , "unit": "month"  } } }');
-ERROR:  Missing 'endDate' parameter to $dateDiff
+ERROR:  $dateDiff requires 'endDate' to be specified
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"endDate": {"$date": {"$numberLong": "1262304000000"} } , "unit": "month"  } } }');
-ERROR:  Missing 'startDate' parameter to $dateDiff
+ERROR:  'startDate' parameter required for $dateDiff
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"startDate": 1 , "unit": "month",  "endDate": {"$date": {"$numberLong": "1262304000000"} } } } }');
-ERROR:  $dateDiff requires 'startDate' to be a date, but got int
+ERROR:  $dateDiff needs 'startDate' to be provided as a valid date, but instead received int
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"endDate": 1 , "unit": "month",  "startDate": {"$date": {"$numberLong": "1262304000000"} } } } }');
-ERROR:  $dateDiff requires 'endDate' to be a date, but got int
+ERROR:  $dateDiff needs 'endDate' to be provided as a valid date, but instead received int
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"hex":1, "endDate": 1 , "unit": "month",  "startDate": {"$date": {"$numberLong": "1262304000000"} } } } }');
-ERROR:  Unrecognized argument to $dateDiff: hex
+ERROR:  Unrecognized parameter provided to $dateDiff: hex
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"endDate": {"$date": {"$numberLong": "1262304000000"} } , "unit": "ashd",  "startDate": {"$date": {"$numberLong": "1262304000000"} } } } }');
-ERROR:  $dateDiff parameter 'unit' value cannot be recognized as a time unit: ashd
+ERROR:  The 'unit' parameter in $dateDiff has an unrecognized time unit value: ashd
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"endDate": {"$date": {"$numberLong": "1262304000000"} } , "unit": 1,  "startDate": {"$date": {"$numberLong": "1262304000000"} } } } }');
-ERROR:  $dateDiff requires 'unit' to be a string, but got int
+ERROR:  $dateDiff needs 'unit' as a string, but received int instead
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"endDate": {"$date": {"$numberLong": "1262304000000"} } , "unit": "week",  "startDate": {"$date": {"$numberLong": "1262304000000"} }, "timezone" : 1 } } }');
 ERROR:  timezone must evaluate to a string, found int
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"endDate": {"$date": {"$numberLong": "1262304000000"} } , "unit": "week",  "startDate": {"$date": {"$numberLong": "1262304000000"} }, "timezone" : "abcd" } } }');
 ERROR:  unrecognized time zone identifier: "abcd"
 select * from bson_dollar_project('{}','{"result": {"$dateDiff": {"endDate": {"$date": {"$numberLong": "1262304000000"} } , "unit": "week",  "startDate": {"$date": {"$numberLong": "1262304000000"} }, "timezone" : "UTC", "startOfWeek": "hello" } } }');
-ERROR:  $dateDiff parameter 'startOfWeek' value cannot be recognized as a day of a week: hello
+ERROR:  'startOfWeek' parameter in $dateDiff must be a valid weekday, but got: hello
 -- $dateFromString null cases
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": null } } }');
  bson_dollar_project 
@@ -3397,17 +3393,17 @@ select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateStr
 
 -- $dateFromString invalid cases
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": "a" } }');
-ERROR:  $dateFromString only supports an object as an argument, found: string
+ERROR:  $dateFromString only supports an object as an argument, found: string",
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": 1 } }');
-ERROR:  $dateFromString only supports an object as an argument, found: int
+ERROR:  $dateFromString only supports an object as an argument, found: int",
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {} } }');
-ERROR:  Missing 'dateString' parameter to $dateFromString
+ERROR:  Required 'dateString' parameter is not provided for $dateFromString
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": 5} } }');
 ERROR:  $dateFromString requires that 'dateString' be a string, found: int with value 5
 select * FROM bson_dollar_project('{"dates": { "startDate": "2024-04-15", "endDate": "2024-05-14" }}','{ "result": { "$dateFromString": {"dateString": "$dates", "format": "%Y-%m-%d"}}}');
 ERROR:  $dateFromString requires that 'dateString' be a string, found: object with value { "startDate" : "2024-04-15", "endDate" : "2024-05-14" }
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "2022-10-12", "format": 1} } }');
-ERROR:  $dateFromString requires that 'format' be a string, found: int with value 1
+ERROR:  $dateFromString requires that 'format' be a string, but instead it received int with the value 1
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "2022-10-12", "format": " %Y-%m-%d"} } }');
 ERROR:  Error parsing date string '2022-10-12'. Format literal not found '2'
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "2022-10-12", "format": " %Y-%m-%d"} } }');
@@ -3415,22 +3411,22 @@ ERROR:  Error parsing date string '2022-10-12'. Format literal not found '2'
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "2024 1002", "format": "%Y %j" } } }');
 ERROR:  Error parsing date string '2024 1002'. Trailing data '2'
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "Jenuery 1 2024", "format": "%B %d %Y" } } }');
-ERROR:  an incomplete date/time string has been found, with elements missing: 'Jenuery 1 2024'
+ERROR:  an incomplete date/time string has been found, with certain required elements missing: 'Jenuery 1 2024'
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "act 1 2024", "format": "%b %d %Y" } } }');
-ERROR:  an incomplete date/time string has been found, with elements missing: 'act 1 2024'
+ERROR:  an incomplete date/time string has been found, with certain required elements missing: 'act 1 2024'
 -- unkown argument in input
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "2022-10-12", "format": " %Y-%m-%d", "unknown":1} } }');
-ERROR:  Unrecognized argument to $dateFromString: unknown
+ERROR:  Unrecognized argument passed to $dateFromString operator: unknown
 -- passing timezone as input with existing timezone in string
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "2017-07-12T22:23:55 GMT+02:00", "format": "%Y-%m-%dT%H:%M:%S %z", "timezone": "Europe/Paris"} } }');
 ERROR:  you cannot pass in a date/time string with GMT offset together with a timezone argument
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "2017-07-12T22:23:55 GMT", "format": "%Y-%m-%dT%H:%M:%S %z", "timezone": "Europe/Paris"} } }');
-ERROR:  you cannot pass in a date/time string with time zone information ('GMT') together with a timezone argument
+ERROR:  It is not allowed to provide a date/time string containing time zone details ('GMT') at the same time as specifying a separate timezone argument.
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "2017-07-12T22:23:55 +02:20", "format": "%Y-%m-%dT%H:%M:%S %z", "timezone": "Europe/Paris"} } }');
 ERROR:  you cannot pass in a date/time string with GMT offset together with a timezone argument
 -- not enough data
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "2017-07T22:23:55 GMT+02:00", "format": "%Y-%mT%H:%M:%S %z"} } }');
-ERROR:  an incomplete date/time string has been found, with elements missing: '2017-07T22:23:55 GMT+02:00'
+ERROR:  an incomplete date/time string has been found, with certain required elements missing: '2017-07T22:23:55 GMT+02:00'
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "2017", "format": "%C"} } }');
 ERROR:  Invalid format character '%C' in format string
 select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateString": "ISO Week 1, 2018", "format": "ISO Week %V, %Y"} } }');
@@ -3589,9 +3585,9 @@ select * from bson_dollar_project('{}','{"result": {"$dateFromString": {"dateStr
 
 -- Defensive check to prevent error from ms conversion to timestamptz
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$dateToString": {"date":{"$toDate": {"$numberDouble": "-244058800000000"}}}}}');
-ERROR:  Invalid conversion to date time.
+ERROR:  value -244058800000000 (milliseconds) is out of range for timestamps.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$dateToString": {"date":{"$toDate": {"$numberDouble": "9664590969990000"}}}}}');
-ERROR:  Invalid conversion to date time.
+ERROR:  value 9664590969990000 (milliseconds) is out of range for timestamps.
 -- parse with preset formats
 select * from bson_dollar_project('{"dateString": "2021-01-11 11:00:03"}','{"result": {"$dateFromString": {"dateString": "$dateString"} } }');
                        bson_dollar_project                        

@@ -31,6 +31,7 @@ When upgrading universes in [xCluster Replication](../../manage-deployments/xclu
 
 - Use the same version of YugabyteDB on both the source/DR primary and target/DR replica.
 - Upgrade and finalize the target/DR replica before upgrading and finalizing the source/DR primary.
+- For some xCluster setups, before upgrading, you should run a verification script to check if the universe is affected by TA-31533. For more information, refer to {{<ta 31533>}}.
 {{< /note >}}
 
 {{< warning title="YSQL major version upgrades" >}}

@@ -148,8 +148,12 @@ const LiveQueriesComponent = ({ location }) => {
    *
    * @param {String} cell A YSQL or YCQL query statement
    */
-  const getQueryStatement = (cell) => {
-    const truncatedText = cell.length > 50 ? `${cell.substring(0, 50)}...` : cell;
+  const getQueryStatement = (queryText) => {
+    if (!queryText) {
+      return '-';
+    }
+    const truncatedText =
+      queryText.length > 50 ? `${queryText.substring(0, 50)}...` : queryText;
     return (
       <div className="query-container">
         <Highlighter type="sql" text={truncatedText} element="pre" />
@@ -313,7 +317,7 @@ const LiveQueriesComponent = ({ location }) => {
         queryData={displayedQueries.find((x) => selectedRow.length && x.id === selectedRow[0])}
         queryType={QueryType.LIVE}
         queryApi={isYSQL ? QueryApi.YSQL : QueryApi.YCQL}
-        visible={selectedRow.length}
+        visible={selectedRow.length && selectedRow[0] !== undefined}
         isConnectionPoolEnabled={isConnectionPoolEnabled}
       />
     </div>

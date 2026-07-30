@@ -1,0 +1,87 @@
+name: Build deb packages
+concurrency:
+  group: build-packages-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'main'
+      - 'release/**'
+    paths-ignore:
+      - 'docs/**'
+      - '.devcontainer/**'
+      - '*.md'
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  packages: write
+  contents: read
+  id-token: write
+
+jobs:
+  build-deb-packages:
+    runs-on: ${{ matrix.runner }}
+    name: Debian ${{ matrix.os }}-${{ matrix.arch }}-pg${{ matrix.pg_version }}
+    if: github.event.pull_request.draft == false
+    strategy:
+      fail-fast: false
+      # Use reduced matrix for PRs to speed up checks
+      # Use full matrix for pushes to main/manual triggers, but exclude pg18 on deb11/deb13 because required packages are missing
+      matrix:
+        ${{ fromJson(
+          github.event_name == 'pull_request' &&
+          '{"include":[{"os":"deb12","arch":"amd64","runner":"ubuntu-24.04","pg_version":"17"},{"os":"ubuntu22.04","arch":"arm64","runner":"ubuntu-24.04-arm","pg_version":"18"}]}' ||
+          '{"os":["deb11","deb12","deb13","ubuntu22.04","ubuntu24.04"],"arch":["amd64","arm64"],"include":[{"arch":"amd64","runner":"ubuntu-24.04"},{"arch":"arm64","runner":"ubuntu-24.04-arm"}],"pg_version":["16","17",18]}'
+        ) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract and Format Default Version
+        id: extract_version
+        run: |
+          DOCUMENTDB_VERSION=$(grep -E "^default_version" pg_documentdb_core/documentdb_core.control | sed -E "s/.*'([0-9]+\.[0-9]+-[0-9]+)'.*/\1/")
+          DOCUMENTDB_VERSION=$(echo $DOCUMENTDB_VERSION | sed "s/-/./g")
+          echo "Extracted Version: $DOCUMENTDB_VERSION"
+          echo "DOCUMENTDB_VERSION=$DOCUMENTDB_VERSION" >> $GITHUB_ENV
+
+          GATEWAY_VERSION=$(grep '^version' pg_documentdb_gw/Cargo.toml | head -n1 | sed 's/version *= *"\(.*\)"/\1/')
+          echo "Extracted Gateway Version: $GATEWAY_VERSION"
+          echo "GATEWAY_VERSION=$GATEWAY_VERSION" >> $GITHUB_ENV
+
+      - name: Build Debian Package
+        run: |
+          ./packaging/build_packages.sh --os ${{ matrix.os }} --pg ${{ matrix.pg_version }} --version ${{ env.DOCUMENTDB_VERSION }}
+
+      - name: Upload Debian Package as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: archive-${{ matrix.os }}-${{ matrix.arch }}-pg${{ matrix.pg_version }}-documentdb-${{ env.DOCUMENTDB_VERSION }}
+          path: |
+            packaging/*postgresql*.deb
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
+
+
+      - name: Build Gateway Debian Package
+        # Just to avoid building gateway packages twice for pg version.
+        # keep pg version when building gateway in case we need it for gateway build process in the future.
+        if: matrix.pg_version == '17'
+        run: |
+          ./packaging/build_gateway_packages.sh --os ${{ matrix.os }} --pg 17 --version ${{ env.DOCUMENTDB_VERSION }} --test-clean-install
+
+      - name: Upload Gateway Debian Package as Artifact
+        if: matrix.pg_version == '17'
+        uses: actions/upload-artifact@v4
+        with:
+          name: archive-${{ matrix.os }}-${{ matrix.arch }}-documentdb-gateway-${{ env.GATEWAY_VERSION }}
+          path: |
+            packaging/*gateway*.deb
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0

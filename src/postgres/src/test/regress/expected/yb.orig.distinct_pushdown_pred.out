@@ -1,27 +1,10 @@
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun_distinct_pushdown.sql'
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
-\getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun.sql'
-\i :filename
--- A helper script to explain and run a query.  Use in regress tests by
--- defining :explain, :query, and optionally :hint#.
-\set explain1 ':explain :hint1 :query;'
-\set explain2 ':explain1 :explain :hint2 :query;'
-\set explain3 ':explain2 :explain :hint3 :query;'
-\set explain4 ':explain3 :explain :hint4 :query;'
-\set explain5 ':explain4 :explain :hint5 :query;'
-\set explain1run1 ':explain1; :hint1 :query;'
-\set explain2run2 ':explain2; :hint1 :query; :hint2 :query;'
-\set explain3run3 ':explain3; :hint1 :query; :hint2 :query; :hint3 :query;'
-\set explain4run4 ':explain4; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query;'
-\set explain5run5 ':explain5; :hint1 :query; :hint2 :query; :hint3 :query; :hint4 :query; :hint5 :query;'
--- Default to no hints.
-\set hint1 ''
-\set hint2 ''
-\set hint3 ''
-\set hint4 ''
-\set hint5 ''
+\set _echo_parameterized_query :ECHO
+\set ECHO none
+\set P1 ':explain'
+\set P2
 \set explain 'EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)'
 -- Split at 1, ... to ensure that the value r1 = 1 is present in more than one tablet.
 -- See #18101.
@@ -74,8 +57,11 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 --    DISTINCT r2.
 -- Do not eliminate r2, see comment (2) above.
 -- However, since r1 is equivalent to r2, the query still requests a distinct prefix regardless, see comment (7).
-\set query 'SELECT DISTINCT r2 FROM t WHERE r1 = r2'
-:explain1run1
+\set query ':P SELECT DISTINCT r2 FROM t WHERE r1 = r2;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r2 FROM t WHERE r1 = r2;
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Unique (actual rows=2 loops=1)
@@ -84,14 +70,18 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
          Storage Filter: (r1 = r2)
 (4 rows)
 
+SELECT DISTINCT r2 FROM t WHERE r1 = r2;
  r2 
 ----
   1
   2
 (2 rows)
 
-\set query 'SELECT DISTINCT r1, r2 FROM t WHERE r1 = r2'
-:explain1run1
+\set query ':P SELECT DISTINCT r1, r2 FROM t WHERE r1 = r2;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, r2 FROM t WHERE r1 = r2;
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Unique (actual rows=2 loops=1)
@@ -100,6 +90,7 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
          Storage Filter: (r1 = r2)
 (4 rows)
 
+SELECT DISTINCT r1, r2 FROM t WHERE r1 = r2;
  r1 | r2 
 ----+----
   1 |  1
@@ -107,8 +98,11 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 (2 rows)
 
 -- Eliminate r3 when equal to a constant, see comment (3) above.
-\set query 'SELECT DISTINCT r3 FROM t WHERE r3 = 1'
-:explain1run1
+\set query ':P SELECT DISTINCT r3 FROM t WHERE r3 = 1;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r3 FROM t WHERE r3 = 1;
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
@@ -117,14 +111,18 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
          Distinct Keys: r1
 (4 rows)
 
+SELECT DISTINCT r3 FROM t WHERE r3 = 1;
  r3 
 ----
   1
 (1 row)
 
 -- Out-of-range predicate.
-\set query 'SELECT DISTINCT r3 FROM t WHERE r3 = 5'
-:explain1run1
+\set query ':P SELECT DISTINCT r3 FROM t WHERE r3 = 5;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r3 FROM t WHERE r3 = 5;
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Unique (actual rows=0 loops=1)
@@ -133,13 +131,17 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
          Distinct Keys: r1
 (4 rows)
 
+SELECT DISTINCT r3 FROM t WHERE r3 = 5;
  r3 
 ----
 (0 rows)
 
 -- Other targets.
-\set query 'SELECT DISTINCT r2, r3 FROM t WHERE r3 = 1'
-:explain1run1
+\set query ':P SELECT DISTINCT r2, r3 FROM t WHERE r3 = 1;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r2, r3 FROM t WHERE r3 = 1;
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  HashAggregate (actual rows=1 loops=1)
@@ -149,13 +151,17 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
          Distinct Keys: r1, r2
 (5 rows)
 
+SELECT DISTINCT r2, r3 FROM t WHERE r3 = 1;
  r2 | r3 
 ----+----
   1 |  1
 (1 row)
 
-\set query 'SELECT DISTINCT r2, r3 FROM t WHERE r3 = 5'
-:explain1run1
+\set query ':P SELECT DISTINCT r2, r3 FROM t WHERE r3 = 5;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r2, r3 FROM t WHERE r3 = 5;
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  HashAggregate (actual rows=0 loops=1)
@@ -165,14 +171,18 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
          Distinct Keys: r1, r2
 (5 rows)
 
+SELECT DISTINCT r2, r3 FROM t WHERE r3 = 5;
  r2 | r3 
 ----+----
 (0 rows)
 
 -- Can infer that r2 = r3, r3 = 1 <=> r2 = 1, r3 = 1.
 -- Thus eliminating both r2 and r3.
-\set query 'SELECT DISTINCT r2, r3 FROM t WHERE r2 = r3 AND r3 = 1'
-:explain1run1
+\set query ':P SELECT DISTINCT r2, r3 FROM t WHERE r2 = r3 AND r3 = 1;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r2, r3 FROM t WHERE r2 = r3 AND r3 = 1;
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
@@ -181,14 +191,18 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
          Distinct Keys: r1
 (4 rows)
 
+SELECT DISTINCT r2, r3 FROM t WHERE r2 = r3 AND r3 = 1;
  r2 | r3 
 ----+----
   1 |  1
 (1 row)
 
 -- Cannot eliminate a non-index key that is equal to a constant, see comment (5) above.
-\set query 'SELECT DISTINCT v FROM t WHERE v = 1'
-:explain1run1
+\set query ':P SELECT DISTINCT v FROM t WHERE v = 1;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v FROM t WHERE v = 1;
                  QUERY PLAN                  
 ---------------------------------------------
  Unique (actual rows=1 loops=1)
@@ -196,13 +210,17 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
          Storage Filter: (v = 1)
 (3 rows)
 
+SELECT DISTINCT v FROM t WHERE v = 1;
  v 
 ---
  1
 (1 row)
 
-\set query 'SELECT DISTINCT r1, v FROM t WHERE v = 1'
-:explain1run1
+\set query ':P SELECT DISTINCT r1, v FROM t WHERE v = 1;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, v FROM t WHERE v = 1;
                  QUERY PLAN                  
 ---------------------------------------------
  HashAggregate (actual rows=2 loops=1)
@@ -211,6 +229,7 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
          Storage Filter: (v = 1)
 (4 rows)
 
+SELECT DISTINCT r1, v FROM t WHERE v = 1;
  r1 | v 
 ----+---
   1 | 1
@@ -221,8 +240,11 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 -- r1 = r2 tested above is a non-index predicate as well.
 -- Here are some more tests to include more expressions.
 -- Support product expressions.
-\set query 'SELECT DISTINCT r1 FROM t WHERE r1 * r1 = 1'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM t WHERE r1 * r1 = 1;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t WHERE r1 * r1 = 1;
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
@@ -231,13 +253,17 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
          Storage Filter: ((r1 * r1) = 1)
 (4 rows)
 
+SELECT DISTINCT r1 FROM t WHERE r1 * r1 = 1;
  r1 
 ----
   1
 (1 row)
 
-\set query 'SELECT DISTINCT r1 FROM t WHERE r2 * r2 = 1'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM t WHERE r2 * r2 = 1;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t WHERE r2 * r2 = 1;
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Unique (actual rows=2 loops=1)
@@ -246,6 +272,7 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
          Storage Filter: ((r2 * r2) = 1)
 (4 rows)
 
+SELECT DISTINCT r1 FROM t WHERE r2 * r2 = 1;
  r1 
 ----
   1
@@ -253,8 +280,11 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 (2 rows)
 
 -- Support expressions in targets.
-\set query 'SELECT DISTINCT r1 * r2 AS r FROM t'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 * r2 AS r FROM t;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 * r2 AS r FROM t;
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  HashAggregate (actual rows=4 loops=1)
@@ -263,6 +293,7 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
          Distinct Keys: r1, r2
 (4 rows)
 
+SELECT DISTINCT r1 * r2 AS r FROM t;
  r 
 ---
  4
@@ -272,8 +303,11 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 (4 rows)
 
 -- Support expressions that can have duplicate values even when the arguments are DISTINCT.
-\set query 'SELECT DISTINCT 0 * r1 AS r FROM t'
-:explain1run1
+\set query ':P SELECT DISTINCT 0 * r1 AS r FROM t;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT 0 * r1 AS r FROM t;
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  HashAggregate (actual rows=1 loops=1)
@@ -282,6 +316,7 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
          Distinct Keys: r1
 (4 rows)
 
+SELECT DISTINCT 0 * r1 AS r FROM t;
  r 
 ---
  0
@@ -308,8 +343,11 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 * RANDOM() AS r 
 (3 rows)
 
 -- Test range clauses as well while here.
-\set query 'SELECT DISTINCT r1 FROM t WHERE r1 > 1'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM t WHERE r1 > 1;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t WHERE r1 > 1;
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
@@ -318,6 +356,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 * RANDOM() AS r 
          Distinct Keys: r1
 (4 rows)
 
+SELECT DISTINCT r1 FROM t WHERE r1 > 1;
  r1 
 ----
   2
@@ -325,8 +364,11 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 * RANDOM() AS r 
 
 -- r2 need not be part of the distinct prefix since the only clause is an index clause
 -- and index clauses currently execute before DISTINCT.
-\set query 'SELECT DISTINCT r1 FROM t WHERE r2 > 1'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM t WHERE r2 > 1;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t WHERE r2 > 1;
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Unique (actual rows=2 loops=1)
@@ -335,6 +377,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 * RANDOM() AS r 
          Distinct Keys: r1
 (4 rows)
 
+SELECT DISTINCT r1 FROM t WHERE r2 > 1;
  r1 
 ----
   1
@@ -343,8 +386,11 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 * RANDOM() AS r 
 
 -- Cannot eliminate r2 here since the query requires all distinct values of r2 and there isn't
 -- one distinct value of r2 unlike constants.
-\set query 'SELECT DISTINCT r2 FROM t WHERE r2 < 5'
-:explain1run1
+\set query ':P SELECT DISTINCT r2 FROM t WHERE r2 < 5;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r2 FROM t WHERE r2 < 5;
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  HashAggregate (actual rows=3 loops=1)
@@ -354,6 +400,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 * RANDOM() AS r 
          Distinct Keys: r1, r2
 (5 rows)
 
+SELECT DISTINCT r2 FROM t WHERE r2 < 5;
  r2 
 ----
   0
@@ -362,8 +409,11 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 * RANDOM() AS r 
 (3 rows)
 
 -- Now, execute some scalar array operations.
-\set query 'SELECT DISTINCT r1 FROM t WHERE r1 IN (1, 2)'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM t WHERE r1 IN (1, 2);'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t WHERE r1 IN (1, 2);
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Unique (actual rows=2 loops=1)
@@ -372,6 +422,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 * RANDOM() AS r 
          Distinct Keys: r1
 (4 rows)
 
+SELECT DISTINCT r1 FROM t WHERE r1 IN (1, 2);
  r1 
 ----
   1
@@ -394,8 +445,11 @@ SELECT DISTINCT r1 FROM t WHERE r1 IN (3, 5);
 (0 rows)
 
 -- Do not include index clause references in the prefix.
-\set query 'SELECT DISTINCT r1 FROM t WHERE r2 IN (1, 2)'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM t WHERE r2 IN (1, 2);'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t WHERE r2 IN (1, 2);
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Unique (actual rows=2 loops=1)
@@ -404,6 +458,7 @@ SELECT DISTINCT r1 FROM t WHERE r1 IN (3, 5);
          Distinct Keys: r1
 (4 rows)
 
+SELECT DISTINCT r1 FROM t WHERE r2 IN (1, 2);
  r1 
 ----
   1
@@ -411,8 +466,11 @@ SELECT DISTINCT r1 FROM t WHERE r1 IN (3, 5);
 (2 rows)
 
 -- Eliminate r2 from the prefix since it is a constant.
-\set query 'SELECT DISTINCT r1, r2 FROM t WHERE r1 IN (1, 2) AND r2 = 2'
-:explain1run1
+\set query ':P SELECT DISTINCT r1, r2 FROM t WHERE r1 IN (1, 2) AND r2 = 2;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, r2 FROM t WHERE r1 IN (1, 2) AND r2 = 2;
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Unique (actual rows=2 loops=1)
@@ -421,6 +479,7 @@ SELECT DISTINCT r1 FROM t WHERE r1 IN (3, 5);
          Distinct Keys: r1
 (4 rows)
 
+SELECT DISTINCT r1, r2 FROM t WHERE r1 IN (1, 2) AND r2 = 2;
  r1 | r2 
 ----+----
   1 |  2
@@ -429,8 +488,11 @@ SELECT DISTINCT r1 FROM t WHERE r1 IN (3, 5);
 
 -- LSM indexes support IN index clauses on lower key columns and still support
 -- sorting.
-\set query 'SELECT DISTINCT r1, r2 FROM t WHERE r2 IN (1, 2) ORDER BY r1, r2'
-:explain1run1
+\set query ':P SELECT DISTINCT r1, r2 FROM t WHERE r2 IN (1, 2) ORDER BY r1, r2;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, r2 FROM t WHERE r2 IN (1, 2) ORDER BY r1, r2;
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Unique (actual rows=4 loops=1)
@@ -439,6 +501,7 @@ SELECT DISTINCT r1 FROM t WHERE r1 IN (3, 5);
          Distinct Keys: r1, r2
 (4 rows)
 
+SELECT DISTINCT r1, r2 FROM t WHERE r2 IN (1, 2) ORDER BY r1, r2;
  r1 | r2 
 ----+----
   1 |  1
@@ -448,8 +511,11 @@ SELECT DISTINCT r1 FROM t WHERE r1 IN (3, 5);
 (4 rows)
 
 -- Unique node still necessary for range columns equal to constant.
-\set query 'SELECT DISTINCT r1 FROM t WHERE r1 = 1'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM t WHERE r1 = 1;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t WHERE r1 = 1;
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
@@ -458,6 +524,7 @@ SELECT DISTINCT r1 FROM t WHERE r1 IN (3, 5);
          Distinct Keys: r1
 (4 rows)
 
+SELECT DISTINCT r1 FROM t WHERE r1 = 1;
  r1 
 ----
   1
@@ -492,14 +559,18 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
 -- All hash columns.
 -- Isn't necessary to stick a unique node on top since hash columns
 -- separate cleanly across tables.
-\set query 'SELECT DISTINCT h1, h2 FROM th'
-:explain1run1
+\set query ':P SELECT DISTINCT h1, h2 FROM th;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT h1, h2 FROM th;
                            QUERY PLAN                            
 -----------------------------------------------------------------
  Distinct Index Scan using th_pkey on th (actual rows=6 loops=1)
    Distinct Keys: h1, h2
 (2 rows)
 
+SELECT DISTINCT h1, h2 FROM th;
  h1 | h2 
 ----+----
   2 |  0
@@ -511,8 +582,11 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
 (6 rows)
 
 -- Strict prefix of hash columns.
-\set query 'SELECT DISTINCT h1 FROM th'
-:explain1run1
+\set query ':P SELECT DISTINCT h1 FROM th;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT h1 FROM th;
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  HashAggregate (actual rows=2 loops=1)
@@ -521,6 +595,7 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
          Distinct Keys: h1, h2
 (4 rows)
 
+SELECT DISTINCT h1 FROM th;
  h1 
 ----
   2
@@ -528,8 +603,11 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
 (2 rows)
 
 -- Subset of the prefix of all hash columns.
-\set query 'SELECT DISTINCT h2 FROM th'
-:explain1run1
+\set query ':P SELECT DISTINCT h2 FROM th;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT h2 FROM th;
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  HashAggregate (actual rows=3 loops=1)
@@ -538,6 +616,7 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
          Distinct Keys: h1, h2
 (4 rows)
 
+SELECT DISTINCT h2 FROM th;
  h2 
 ----
   0
@@ -547,14 +626,18 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
 
 -- Both hash and range columns.
 -- Prefix is still not sorted just because a range column is selected.
-\set query 'SELECT DISTINCT h1, h2, r1 FROM th'
-:explain1run1
+\set query ':P SELECT DISTINCT h1, h2, r1 FROM th;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT h1, h2, r1 FROM th;
                            QUERY PLAN                            
 -----------------------------------------------------------------
  Distinct Index Scan using th_pkey on th (actual rows=6 loops=1)
    Distinct Keys: h1, h2, r1
 (2 rows)
 
+SELECT DISTINCT h1, h2, r1 FROM th;
  h1 | h2 | r1 
 ----+----+----
   2 |  0 |  2
@@ -567,8 +650,11 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
 
 -- Range columns only.
 -- Includes hash columns since they come first.
-\set query 'SELECT DISTINCT r1 FROM th'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM th;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM th;
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  HashAggregate (actual rows=3 loops=1)
@@ -577,6 +663,7 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
          Distinct Keys: h1, h2, r1
 (4 rows)
 
+SELECT DISTINCT r1 FROM th;
  r1 
 ----
   0
@@ -587,8 +674,11 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
 -- Avoid classifying hash columns as sortable.
 -- Guard rails meant to prevent DISTINCT logic from
 -- marking hash columns as sortable.
-\set query 'SELECT DISTINCT h1 FROM th ORDER BY h1'
-:explain1run1
+\set query ':P SELECT DISTINCT h1 FROM th ORDER BY h1;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT h1 FROM th ORDER BY h1;
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Unique (actual rows=2 loops=1)
@@ -599,6 +689,7 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
                Distinct Keys: h1, h2
 (6 rows)
 
+SELECT DISTINCT h1 FROM th ORDER BY h1;
  h1 
 ----
   1
@@ -606,8 +697,11 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
 (2 rows)
 
 -- Once all the hash columns are set, range columns are returned in sorted order as usual.
-\set query 'SELECT DISTINCT r1 FROM th WHERE h1 = 1 AND h2 = 1 ORDER BY r1'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM th WHERE h1 = 1 AND h2 = 1 ORDER BY r1;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM th WHERE h1 = 1 AND h2 = 1 ORDER BY r1;
                            QUERY PLAN                            
 -----------------------------------------------------------------
  Distinct Index Scan using th_pkey on th (actual rows=1 loops=1)
@@ -615,14 +709,18 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
    Distinct Keys: h1, h2, r1
 (3 rows)
 
+SELECT DISTINCT r1 FROM th WHERE h1 = 1 AND h2 = 1 ORDER BY r1;
  r1 
 ----
   1
 (1 row)
 
 -- Not the case if any of the hash columns are not set.
-\set query 'SELECT DISTINCT r1 FROM th WHERE h1 = 1 ORDER BY r1'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM th WHERE h1 = 1 ORDER BY r1;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM th WHERE h1 = 1 ORDER BY r1;
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Unique (actual rows=3 loops=1)
@@ -634,6 +732,7 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
                Storage Filter: (h1 = 1)
 (7 rows)
 
+SELECT DISTINCT r1 FROM th WHERE h1 = 1 ORDER BY r1;
  r1 
 ----
   0
@@ -642,8 +741,11 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
 (3 rows)
 
 -- Hash columns constant.
-\set query 'SELECT DISTINCT h1, h2 FROM th WHERE h1 = 1 AND h2 = 1'
-:explain1run1
+\set query ':P SELECT DISTINCT h1, h2 FROM th WHERE h1 = 1 AND h2 = 1;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT h1, h2 FROM th WHERE h1 = 1 AND h2 = 1;
                            QUERY PLAN                            
 -----------------------------------------------------------------
  Distinct Index Scan using th_pkey on th (actual rows=1 loops=1)
@@ -651,14 +753,18 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
    Distinct Keys: h1, h2
 (3 rows)
 
+SELECT DISTINCT h1, h2 FROM th WHERE h1 = 1 AND h2 = 1;
  h1 | h2 
 ----+----
   1 |  1
 (1 row)
 
 -- Range column constant
-\set query 'SELECT DISTINCT h1, h2 FROM th WHERE r1 = 1'
-:explain1run1
+\set query ':P SELECT DISTINCT h1, h2 FROM th WHERE r1 = 1;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT h1, h2 FROM th WHERE r1 = 1;
                            QUERY PLAN                            
 -----------------------------------------------------------------
  Distinct Index Scan using th_pkey on th (actual rows=2 loops=1)
@@ -666,14 +772,18 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
    Storage Filter: (r1 = 1)
 (3 rows)
 
+SELECT DISTINCT h1, h2 FROM th WHERE r1 = 1;
  h1 | h2 
 ----+----
   1 |  1
   2 |  1
 (2 rows)
 
-\set query 'SELECT DISTINCT r1 FROM th WHERE r1 = 1'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM th WHERE r1 = 1;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM th WHERE r1 = 1;
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
@@ -682,6 +792,7 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
          Storage Filter: (r1 = 1)
 (4 rows)
 
+SELECT DISTINCT r1 FROM th WHERE r1 = 1;
  r1 
 ----
   1
@@ -902,8 +1013,11 @@ DROP TABLE t;
 CREATE TABLE sample(a int, b int, primary key(a asc, b asc));
 INSERT INTO sample VALUES (1,1), (1,2);
 DELETE FROM sample where b = 1;
-\set query 'SELECT DISTINCT a FROM sample WHERE a > 0'
-:explain1run1
+\set query ':P SELECT DISTINCT a FROM sample WHERE a > 0;'
+\i :run_query
+\set _echo_run_query :ECHO
+\set ECHO none
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT a FROM sample WHERE a > 0;
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Unique (actual rows=1 loops=1)
@@ -912,6 +1026,7 @@ DELETE FROM sample where b = 1;
          Distinct Keys: a
 (4 rows)
 
+SELECT DISTINCT a FROM sample WHERE a > 0;
  a 
 ---
  1

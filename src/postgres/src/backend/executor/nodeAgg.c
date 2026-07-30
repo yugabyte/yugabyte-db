@@ -2302,8 +2302,36 @@ yb_agg_pushdown_supported(AggState *aggstate)
 
 			if (IsA(tle->expr, Var))
 			{
+				Var		   *var = castNode(Var, tle->expr);
+
 				check_outer_plan = true;
-				type = castNode(Var, tle->expr)->vartype;
+				type = var->vartype;
+
+				/*
+				 * If the aggregate argument refers to a decoded PK column,
+				 * disable pushdown and return early.
+				 */
+				if (IsA(ss, IndexOnlyScanState))
+				{
+					IndexOnlyScanState *ioss =
+						castNode(IndexOnlyScanState, ss);
+
+					if (ioss->yb_ioss_num_decoded_pk_cols > 0)
+					{
+						int			phys_natts = RelationGetDescr(ioss->ioss_RelationDesc)->natts;
+						List *tlist = outerPlanState(aggstate)->plan->targetlist;
+						TargetEntry *target = list_nth_node(TargetEntry, tlist, var->varattno - 1);
+
+						/*
+						 * This check only applies to Vars, since Consts are
+						 * not affected by decoding and other nodes cannot be
+						 * pushed down regardless.
+						 */
+						if (IsA(target->expr, Var) &&
+							castNode(Var, target->expr)->varattno > phys_natts)
+							return;
+					}
+				}
 			}
 			else if (IsA(tle->expr, Const))
 			{
@@ -2327,6 +2355,25 @@ yb_agg_pushdown_supported(AggState *aggstate)
 			 * otherwise.
 			 */
 			if (!YbDataTypeIsValidForKey(type))
+				return;
+
+			/*
+			 * Aggregates over a money argument are pushed down only if
+			 * they are one of min/max/count, whose transition state
+			 * cannot overflow.  Anything else (sum(money) today, and
+			 * any future or user-defined money aggregate) is evaluated
+			 * in Postgres, where the transition function does proper
+			 * overflow checking: cash_pl raises "money out of range",
+			 * whereas DocDB's EvalSumInt uses plain 64-bit addition
+			 * and would silently wrap around.  This keys on the
+			 * argument type rather than the transition type so that
+			 * aggregates accumulating money in another form (e.g. an
+			 * int8 array) are also caught.
+			 */
+			if (type == MONEYOID &&
+				strcmp(func_name, "min") != 0 &&
+				strcmp(func_name, "max") != 0 &&
+				strcmp(func_name, "count") != 0)
 				return;
 		}
 	}
@@ -2699,30 +2746,33 @@ agg_retrieve_direct(AggState *aggstate)
 						Datum		count_value = outerslot->tts_values[valno];
 						bool		count_isnull = outerslot->tts_isnull[valno];
 
-						if (isnull || count_isnull)
-							continue;
+						if (!isnull && !count_isnull)
+						{
+							/*
+							 * Like COUNT, add the sum and count values
+							 * directly. The datum is guaranteed to be an
+							 * Int8TransTypeData.
+							 * The checking code is taken from int8_avg()
+							 * in numeric.c.
+							 */
+							Int8TransTypeData *transdata;
+							ArrayType  *transarray = (ArrayType *) (pergroupstate->transValue);
+							oldContext = MemoryContextSwitchTo(aggstate->curaggcontext->ecxt_per_tuple_memory);
 
-						/*
-						 * Like COUNT, add the sum and count values directly.
-						 * The datum is guaranteed to be an Int8TransTypeData.
-						 * The checking code is taken from int8_avg()
-						 * in numeric.c.
-						 */
-						oldContext = MemoryContextSwitchTo(aggstate->curaggcontext->ecxt_per_tuple_memory);
-						Int8TransTypeData *transdata;
-						ArrayType  *transarray = (ArrayType *) (pergroupstate->transValue);
+							if (ARR_HASNULL(transarray) ||
+								ARR_SIZE(transarray) != ARR_OVERHEAD_NONULLS(1) +
+								sizeof(Int8TransTypeData))
+							{
+								elog(ERROR, "expected 2-element int8 array");
+							}
 
-						if (ARR_HASNULL(transarray) ||
-							ARR_SIZE(transarray) != ARR_OVERHEAD_NONULLS(1) +
-							sizeof(Int8TransTypeData))
-							elog(ERROR, "expected 2-element int8 array");
+							transdata = (Int8TransTypeData *) ARR_DATA_PTR(transarray);
 
-						transdata = (Int8TransTypeData *) ARR_DATA_PTR(transarray);
+							transdata->sum += value;
+							transdata->count += count_value;
 
-						transdata->sum += value;
-						transdata->count += count_value;
-
-						MemoryContextSwitchTo(oldContext);
+							MemoryContextSwitchTo(oldContext);
+						}
 					}
 					else
 					{

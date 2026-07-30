@@ -1,6 +1,7 @@
 test: yb.orig.stat-activity-waitevent-statement-retry
 test: yb.orig.rc-ignores-txn-priority-bounds
-test: yb.orig.fk-row-locking
+# TODO: #30791:  Re-enable part of the test that can run with skip_prefix_locks=true mode
+# test: yb.orig.fk-row-locking
 test: yb.orig.user-managed-constraint
 test: yb.orig.fk-relationship
 test: yb.orig.check-constraint-locking

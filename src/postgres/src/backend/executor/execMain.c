@@ -113,6 +113,11 @@ static void EvalPlanQualStart(EPQState *epqstate, Plan *planTree);
 
 /* end of local decls */
 
+static bool
+YbIsReadAheadAllowed()
+{
+	return XactIsoLevel != XACT_SERIALIZABLE;
+}
 
 /* ----------------------------------------------------------------
  *		ExecutorStart
@@ -140,6 +145,12 @@ void
 ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
 	/*
+	 * Disable skip intents if this query has a modifying CTE. We must do this
+	 * before execution starts because the write might occur before any read.
+	 */
+	YbDisableSkipIntentsIfModifyingCTE(queryDesc);
+
+	/*
 	 * In some cases (e.g. an EXECUTE statement or an execute message with the
 	 * extended query protocol) the query_id won't be reported, so do it now.
 	 *
@@ -161,11 +172,14 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	EState	   *estate;
 	MemoryContext oldcontext;
 
+	if (yb_test_sleep_before_executor_start_ms > 0)
+		pg_usleep(yb_test_sleep_before_executor_start_ms * 1000);
+
 	/* sanity checks: queryDesc must not be started already */
 	Assert(queryDesc != NULL);
 	Assert(queryDesc->estate == NULL);
 
-	if (yb_enable_pg_stat_statements_metrics)
+	if (yb_enable_pg_stat_statements_docdb_metrics)
 		YbSetMetricsCaptureTypeIfUnset(YB_YQL_METRICS_CAPTURE_PGSS_METRICS);
 
 	/*
@@ -356,6 +370,8 @@ standard_ExecutorRun(QueryDesc *queryDesc,
 	Assert(estate != NULL);
 	Assert(!(estate->es_top_eflags & EXEC_FLAG_EXPLAIN_ONLY));
 
+	YBOnExecutorOperationBegin();
+
 	if (IsYugaByteEnabled())
 		YBBeginOperationsBuffering();
 
@@ -406,6 +422,8 @@ standard_ExecutorRun(QueryDesc *queryDesc,
 		InstrStopNode(queryDesc->totaltime, estate->es_processed);
 
 	MemoryContextSwitchTo(oldcontext);
+
+	YBOnExecutorOperationEnd(queryDesc);
 }
 
 /* ----------------------------------------------------------------
@@ -448,6 +466,8 @@ standard_ExecutorFinish(QueryDesc *queryDesc)
 	/* This should be run once and only once per Executor instance */
 	Assert(!estate->es_finished);
 
+	YBOnExecutorOperationBegin();
+
 	/* Switch into per-query memory context */
 	oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
 
@@ -474,6 +494,8 @@ standard_ExecutorFinish(QueryDesc *queryDesc)
 	MemoryContextSwitchTo(oldcontext);
 
 	estate->es_finished = true;
+
+	YBOnExecutorOperationEnd(queryDesc);
 }
 
 /* ----------------------------------------------------------------
@@ -546,7 +568,7 @@ standard_ExecutorEnd(QueryDesc *queryDesc)
 	queryDesc->planstate = NULL;
 	queryDesc->totaltime = NULL;
 	queryDesc->yb_query_stats = NULL;
-	if (yb_enable_pg_stat_statements_metrics)
+	if (yb_enable_pg_stat_statements_docdb_metrics)
 		YbSetMetricsCaptureType(YB_YQL_METRICS_CAPTURE_NONE);
 }
 
@@ -1660,6 +1682,7 @@ ExecutePlan(QueryDesc *queryDesc,
 	bool		use_parallel_mode;
 	TupleTableSlot *slot;
 	uint64		current_tuple_count;
+	bool		yb_read_ahead_allowed = false;
 
 	/*
 	 * initialize local variables
@@ -1681,12 +1704,17 @@ ExecutePlan(QueryDesc *queryDesc,
 	if (queryDesc->already_executed || numberTuples != 0)
 		use_parallel_mode = false;
 	else
+	{ /* YB: Account for read-ahead logic */
 		use_parallel_mode = queryDesc->plannedstmt->parallelModeNeeded;
+		yb_read_ahead_allowed = IsYugaByteEnabled() && YbIsReadAheadAllowed();
+	}
 	queryDesc->already_executed = true;
 
 	estate->es_use_parallel_mode = use_parallel_mode;
 	if (use_parallel_mode)
 		EnterParallelMode();
+
+	estate->yb_read_ahead_allowed = yb_read_ahead_allowed;
 
 	/*
 	 * Loop until we've processed the proper number of tuples from the plan.
@@ -1985,39 +2013,40 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 		int			natts = tupdesc->natts;
 		int			attrChk;
 
+		/*
+		 * YB: When the plan does not fetch the target tuple (e.g. the
+		 * single-row UPDATE path), unmodified columns are absent from the
+		 * slot, so the NOT NULL check below must skip them.  Skip only for
+		 * UPDATE and DELETE: an INSERT has no target tuple to fetch, and the
+		 * inserted tuple is always complete.  Any future operation (e.g.
+		 * MERGE) must opt in deliberately.
+		 */
+		bool		yb_skip_unmodified = (mtstate &&
+										  (mtstate->operation == CMD_UPDATE ||
+										   mtstate->operation == CMD_DELETE) &&
+										  mtstate->yb_skip_fetch_target_tuple);
+		Bitmapset  *yb_modifiedCols = NULL;
+
+		if (yb_skip_unmodified)
+			yb_modifiedCols = bms_union(ExecGetInsertedCols(resultRelInfo,
+															estate),
+										ExecGetUpdatedCols(resultRelInfo,
+														   estate));
+
 		for (attrChk = 1; attrChk <= natts; attrChk++)
 		{
 			Form_pg_attribute att = TupleDescAttr(tupdesc, attrChk - 1);
 
-			/*
-			 * YB: Below we check if attribute belongs to the modified columns
-			 * for the NOT NULL constraint and if so, performs single-row
-			 * updates. Thus modified columns must be calculated beforehand.
-			 */
-			if (resultRelInfo->ri_RootResultRelInfo)
-			{
-				ResultRelInfo *rootrel = resultRelInfo->ri_RootResultRelInfo;
-
-				modifiedCols = bms_union(ExecGetInsertedCols(rootrel, estate),
-										 ExecGetUpdatedCols(rootrel, estate));
-			}
-			else
-			{
-				modifiedCols = bms_union(ExecGetInsertedCols(resultRelInfo, estate),
-										 ExecGetUpdatedCols(resultRelInfo, estate));
-			}
-
-			bool		att_in_modified_cols = bms_is_member(att->attnum - YBGetFirstLowInvalidAttributeNumber(rel),
-															 modifiedCols);
-
-			if (mtstate && !mtstate->yb_fetch_target_tuple && !att_in_modified_cols)
+			if (yb_skip_unmodified &&
+				!bms_is_member(att->attnum -
+							   YBGetFirstLowInvalidAttributeNumber(rel),
+							   yb_modifiedCols))
 			{
 				/*
 				 * Without a target tuple, we only know the values of the
 				 * modified columns. But in this case it is safe to skip the
 				 * unmodified columns anyway.
 				 */
-				bms_free(modifiedCols);
 				continue;
 			}
 
@@ -2072,8 +2101,9 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 						 val_desc ? errdetail("Failing row contains %s.", val_desc) : 0,
 						 errtablecol(orig_rel, attrChk)));
 			}
-			bms_free(modifiedCols);
 		}
+
+		bms_free(yb_modifiedCols);
 	}
 
 	if (rel->rd_rel->relchecks > 0)

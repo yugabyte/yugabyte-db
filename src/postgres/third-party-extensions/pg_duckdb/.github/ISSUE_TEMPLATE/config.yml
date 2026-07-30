@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Feature Request
+    # manual template until discussion templates are GA
+    url: https://github.com/duckdb/pg_duckdb/discussions/new?category=ideas&title=Feature%20Request:%20...&labels=feature&body=Why%20do%20you%20want%20this%20feature%3F
+    about: Submit feature requests here
+  - name: Discussions
+    url: https://discord.com/channels/909674491309850675/1289177578237857802
+    about: Please ask and answer general questions here.

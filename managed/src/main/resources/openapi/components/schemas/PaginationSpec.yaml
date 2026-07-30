@@ -1,15 +1,21 @@
 title: PaginationSpec
 description: Pagination spec in page API requests.
 type: object
+x-parent: true
 properties:
   offset:
     description: Start offset of the records.
     type: integer
     format: int32
+    default: 0
+    minimum: 0
   limit:
     description: Maximum number of records to be fetched.
     type: integer
     format: int32
+    default: 10
+    maximum: 500
+    minimum: 1
   direction:
     description: Sort order of the records.
     type: string

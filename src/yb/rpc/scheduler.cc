@@ -26,6 +26,7 @@
 #include <boost/multi_index/ordered_index.hpp>
 
 #include "yb/util/errno.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/status.h"
 

@@ -446,8 +446,13 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     nodeActionsToTest.addAll(Arrays.asList(NodeActionType.values()));
     // Skip QUERY b/c it is UI-only flag.
     // Skip DELETE - tested in another test (testDisableStopRemove).
+    // Skip PRECHECK_DETACHED - it is not a universe node action.
     nodeActionsToTest.removeAll(
-        Arrays.asList(NodeActionType.QUERY, NodeActionType.DECOMMISSION, NodeActionType.DELETE));
+        Arrays.asList(
+            NodeActionType.QUERY,
+            NodeActionType.DECOMMISSION,
+            NodeActionType.DELETE,
+            NodeActionType.PRECHECK_DETACHED));
 
     for (NodeActionType nodeActionType : nodeActionsToTest) {
       UUID fakeTaskUUID = buildTaskInfo(null, TaskType.AddNodeToUniverse);
@@ -455,6 +460,15 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
           .thenReturn(fakeTaskUUID);
       Universe u = ModelFactory.createUniverse(nodeActionType.name(), customer.getId());
       u = Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
+      NodeDetails targetNode = u.getNode("host-n1");
+      Set<NodeState> nodeStates = NodeState.allowedStatesForAction(nodeActionType);
+      assertTrue(
+          "There should be at least one allowed node state for action " + nodeActionType,
+          nodeStates.size() > 0);
+      targetNode.state = nodeStates.iterator().next();
+      targetNode.isMaster = nodeActionType != NodeActionType.START_MASTER;
+      u.setUniverseDetails(u.getUniverseDetails());
+      u.save();
       Result r =
           performNodeAction(
               customer.getUuid(), u.getUniverseUUID(), "host-n1", nodeActionType, false);
@@ -601,8 +615,11 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     Universe u = ModelFactory.createUniverse(nodeActionType.name(), customer.getId());
     assertNotNull(u.getUniverseDetails().clusters);
     u.getUniverseDetails().rootCA = UUID.randomUUID();
-
     u = Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
+    // Change node state to Stopped to allow START action to proceed.
+    u.getNode("host-n1").state = NodeState.Stopped;
+    u.setUniverseDetails(u.getUniverseDetails());
+    u.save();
     Result r =
         performNodeAction(
             customer.getUuid(), u.getUniverseUUID(), "host-n1", nodeActionType, false);

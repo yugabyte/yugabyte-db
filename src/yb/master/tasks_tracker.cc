@@ -14,6 +14,8 @@
 
 #include "yb/master/tasks_tracker.h"
 
+#include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/flags.h"
 #include "yb/util/shared_lock.h"
@@ -64,9 +66,9 @@ std::vector<std::shared_ptr<server::MonitoredTask>> TasksTracker::GetTasks() {
 void TasksTracker::CleanupOldTasks() {
   auto timeout_ms =
       FLAGS_catalog_manager_bg_task_wait_ms *
-      GetAtomicFlag(user_initiated_
-                        ? &FLAGS_long_term_tasks_tracker_keep_time_multiplier
-                        : &FLAGS_tasks_tracker_keep_time_multiplier);
+      (user_initiated_
+          ? FLAGS_long_term_tasks_tracker_keep_time_multiplier
+          : FLAGS_tasks_tracker_keep_time_multiplier);
   std::lock_guard l(lock_);
   for (auto iter = tasks_.begin(); iter != tasks_.end(); ) {
     if (MonoTime::Now()

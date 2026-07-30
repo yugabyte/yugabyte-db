@@ -39,6 +39,7 @@
 #include "yb/rocksdb/table/internal_iterator.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/malloc.h"
 
 namespace rocksdb {
 
@@ -66,7 +67,7 @@ class Block {
   size_t usable_size() const {
 #ifdef ROCKSDB_MALLOC_USABLE_SIZE
     if (contents_.allocation.get() != nullptr) {
-      return malloc_usable_size(contents_.allocation.get());
+      return yb::malloc_usable_size(contents_.allocation.get());
     }
 #endif  // ROCKSDB_MALLOC_USABLE_SIZE
     return size_;
@@ -237,6 +238,18 @@ class BlockIter : public InternalIterator {
 
   inline uint32_t GetNumRestarts() const {
     return num_restarts_;
+  }
+
+  // Byte offset within the block's data of the current entry. Valid only while positioned
+  // (Valid()). Added to the block's file offset this yields the entry's file offset; see
+  // BlockBasedTable::SeekOffsetOf.
+  inline uint32_t GetCurrentEntryOffset() const {
+    DCHECK(Valid());
+    return current_;
+  }
+
+  bool IsInitialized() const {
+    return data_;
   }
 
  private:

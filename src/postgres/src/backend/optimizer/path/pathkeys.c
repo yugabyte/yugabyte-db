@@ -30,7 +30,7 @@
 
 /* YB includes */
 #include "access/sysattr.h"
-#include "optimizer/yb_saop_merge.h"
+#include "optimizer/yb_merge_scan.h"
 
 
 static bool pathkey_is_redundant(PathKey *new_pathkey, List *pathkeys);
@@ -283,6 +283,35 @@ make_pathkey_from_sortop(PlannerInfo *root,
 									  NULL,
 									  create_it,
 									  false);
+}
+
+/*
+ * yb_make_hash_code_pathkey
+ *	  Create a PathKey matching the index's hash code.
+ *
+ * The hash code is represented as a yb_hash_code() function with the arguments
+ * matching the index's hash key columns. It is always ascending, so we only
+ * need to know if the scan direction is backward to figure out the strategy
+ * and nulls ordering.
+ *
+ * Though the hash code can't be null, the nulls ordering must match the
+ * yb_hash_code() expression in the EC.
+ */
+static PathKey *
+yb_make_hash_code_pathkey(PlannerInfo *root,
+						  IndexOptInfo *index,
+						  bool is_reverse)
+{
+	EquivalenceClass *eclass = yb_get_eclass_for_hash_code(root, index);
+
+	/* Fail if no EC and !create_it */
+	if (!eclass)
+		return NULL;
+
+	int16 strategy = is_reverse ? BTGreaterStrategyNumber : BTLessStrategyNumber;
+	bool nulls_first = is_reverse;
+	return make_canonical_pathkey(root, eclass, INTEGER_BTREE_FAM_OID,
+								  strategy, nulls_first);
 }
 
 
@@ -554,8 +583,8 @@ get_cheapest_parallel_safe_total_inner(List *paths)
  * Returns -1 in 'yb_distinct_nkeys' if the pathkeys cannot span the prefix.
  * Returns 0 in 'yb_distinct_nkeys' when the prefix is empty.
  *
- * YB: 'yb_saop_merge_saop_cols' is an out-param.  List of
- * YbSaopMergeSaopColInfo.  If NULL is passed, disallow SAOP merge.  Otherwise,
+ * YB: 'yb_merge_scan_saop_cols' is an out-param.  List of
+ * YbMergeScanSaopColInfo.  If NULL is passed, disallow merge scan.  Otherwise,
  * an empty list should be passed.
  */
 List *
@@ -563,13 +592,14 @@ build_index_pathkeys(PlannerInfo *root,
 					 IndexOptInfo *index,
 					 ScanDirection scandir,
 					 int *yb_distinct_nkeys,
-					 List **yb_saop_merge_saop_cols)
+					 List **yb_merge_scan_saop_cols)
 {
 	List	   *retval = NIL;
 	ListCell   *lc;
 	int			i;
 	int			yb_distinct_prefixlen;
-	int			yb_saop_merge_cardinality = 1;
+	int			yb_merge_scan_cardinality = 1;
+	PathKey	   *yb_pathkey = NULL;
 
 	if (index->sortopfamily == NULL)
 		return NIL;				/* non-orderable index */
@@ -581,7 +611,21 @@ build_index_pathkeys(PlannerInfo *root,
 	yb_distinct_prefixlen = *yb_distinct_nkeys;
 	*yb_distinct_nkeys = yb_distinct_prefixlen == 0 ? 0 : -1;
 
-	Assert(!yb_saop_merge_saop_cols || *yb_saop_merge_saop_cols == NIL);
+	Assert(!yb_merge_scan_saop_cols || *yb_merge_scan_saop_cols == NIL);
+
+	/*
+	 * YB: If the index is hash, check if we have a matching yb_hash_code()
+	 * expression in the ORDER BY or WHERE clause. The hash index is ordered
+	 * by the hash code first, and not suitable for ordering unless the hash
+	 * code is the desired order, or redundant.
+	 */
+	if (index->nhashcolumns > 0)
+	{
+		bool is_reverse = ScanDirectionIsBackward(scandir);
+		yb_pathkey = yb_make_hash_code_pathkey(root, index, is_reverse);
+		if (yb_pathkey && !pathkey_is_redundant(yb_pathkey, retval))
+			retval = lappend(retval, yb_pathkey);
+	}
 
 	i = 0;
 	foreach(lc, index->indextlist)
@@ -592,7 +636,12 @@ build_index_pathkeys(PlannerInfo *root,
 		bool		nulls_first;
 		PathKey    *cpathkey;
 
-		bool		yb_is_hash_column = i < index->nhashcolumns;
+		/*
+		 * If the hash code is useful to support the order, treat the hash
+		 * columns as regular key columns. Sort order of the hash columns is
+		 * valid if the hash code is participating.
+		 */
+		bool		yb_is_hash_column = !yb_pathkey && i < index->nhashcolumns;
 
 		/*
 		 * INCLUDE columns are stored in index unordered, so they don't
@@ -634,16 +683,16 @@ build_index_pathkeys(PlannerInfo *root,
 
 		/*
 		 * YB: Index keys part of scalar array operations may be eligible for
-		 * SAOP merge, in which case we can continue to examine lower-order
+		 * merge scan, in which case we can continue to examine lower-order
 		 * index columns.  Disqualify from consideration if the index key is
 		 * part of a redundant EC or a pure sort EC (i.e. a sort EC that is not
 		 * equivalent to another column).
 		 */
 		if (!(cpathkey && (EC_MUST_BE_REDUNDANT(cpathkey->pk_eclass) ||
 						   cpathkey->pk_eclass->ec_sortref != 0)) &&
-			yb_indexcol_can_saop_merge(root, index, indexkey, i,
-									   &yb_saop_merge_cardinality,
-									   yb_saop_merge_saop_cols))
+			yb_indexcol_can_merge_scan(root, index, indexkey, i,
+									   &yb_merge_scan_cardinality,
+									   yb_merge_scan_saop_cols))
 		{
 			/* Do nothing */
 		}
@@ -670,42 +719,25 @@ build_index_pathkeys(PlannerInfo *root,
 			 * should stop considering index columns; any lower-order sort
 			 * keys won't be useful either.
 			 */
-			if (!indexcol_is_bool_constant_for_query(root, index, i) ||
-				yb_is_hash_column)
+			if (!indexcol_is_bool_constant_for_query(root, index, i))
+			{
+				/*
+				 * YB: A hash index is only good for ordering if all the hash
+				 * columns are participating. Current column is a hash, and not
+				 * participating, hence discard all the accumulated pathkeys
+				 * and exit.
+				 */
+				if (yb_is_hash_column)
+					return NIL;
+
 				break;
+			} /* YB: silence up the linter */
 		}
 
 		i++;
 		/* YB: For later use in creating a UpperUniquePath node. */
 		if (i == yb_distinct_prefixlen)
 			*yb_distinct_nkeys = list_length(retval);
-	}
-
-	/*
-	 * YB: Broadly, index paths are generated either for ordering, index
-	 * access via predicates supported by the index, or for fetching distinct
-	 * tuples from the index.
-	 * Hash columns are not used for ordering, however.
-	 * To use the index, there must be an index clause on each hash column.
-	 * The check below prevents hash columns being used for ordering.
-	 *
-	 * For the purposes of distinct index scans,
-	 * return pathkeys only when all hash columns are requested to be distinct.
-	 * Otherwise, while it may still be useful to generate a
-	 * distinct index scan, that scan alone may still have duplicate values.
-	 * Hence, we return no pathkeys since the result is not actually distinct.
-	 *
-	 * Example: DISTINCT h1 (both h1 and h2 are hash columns).
-	 * We can request a distinct index scan on h1, h2 tuples but there may still
-	 * be some duplicate values of h1 in the result.
-	 */
-	if (i < index->nhashcolumns)
-	{
-		/*
-		 * All hash columns must have EQ pathkeys. Otherwise, we cannot use
-		 * the index
-		 */
-		return NULL;
 	}
 	return retval;
 }
@@ -2074,4 +2106,49 @@ yb_get_ecs_for_query_uniqkeys(PlannerInfo *root)
 	}
 
 	return ecs;
+}
+
+/*
+ * Convert a subquery's uniqkeys into the terms of the outer query.
+ */
+List *
+yb_convert_subquery_uniqkeys(RelOptInfo *rel, List *subquery_uniqkeys,
+							 List *subquery_tlist)
+{
+	List	   *retval = NIL;
+	ListCell   *i;
+
+	foreach(i, subquery_uniqkeys)
+	{
+		Expr	   *uniqkey = (Expr *) lfirst(i);
+		Var		   *outer_var = NULL;
+		ListCell   *j;
+
+		foreach(j, subquery_tlist)
+		{
+			TargetEntry *tle = (TargetEntry *) lfirst(j);
+			Expr	   *tle_expr;
+
+			tle_expr = canonicalize_ec_expression(tle->expr,
+												  exprType((Node *) uniqkey),
+												  exprCollation((Node *) uniqkey));
+			if (!equal(tle_expr, uniqkey))
+				continue;
+
+			outer_var = find_var_for_subquery_tle(rel, tle);
+			if (outer_var)
+				break;
+		}
+
+		/*
+		 * DISTINCT on {a, b} does not imply DISTINCT on {a}.  Therefore,
+		 * if one uniqkey cannot be translated, the whole set must be dropped.
+		 */
+		if (!outer_var)
+			return NIL;
+
+		retval = lappend(retval, outer_var);
+	}
+
+	return retval;
 }

@@ -33,14 +33,14 @@
 #include <iostream>
 #include <string>
 
-#include "yb/encryption/encrypted_file_factory.h"
-#include "yb/encryption/header_manager_impl.h"
-#include "yb/encryption/universe_key_manager.h"
+#include "yb/tools/pbc_tools_lib.h"
+
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status.h"
+
 
 using yb::encryption::UniverseKeyManager;
 using yb::Status;
@@ -51,48 +51,20 @@ using std::string;
 DEFINE_NON_RUNTIME_bool(oneline, false, "print each protobuf on a single line");
 TAG_FLAG(oneline, stable);
 
-namespace yb {
-namespace pb_util {
+namespace yb::pb_util {
 
 Status DumpPBContainerFile(const string& filename, const string& keyfile,
                            const string& keyid) {
-
+  auto tool_env = VERIFY_RESULT(PBToolEnv::Create(keyid, keyfile));
   std::unique_ptr<RandomAccessFile> reader;
-
-  // If keyfile or keyid are not provided, assume file is unencrypted.
-  if (keyfile.empty() || keyid.empty()) {
-    RETURN_NOT_OK(Env::Default()->NewRandomAccessFile(filename, &reader));
-  } else {
-    std::unique_ptr<Env> env;
-    std::unique_ptr<UniverseKeyManager> universe_key_manager;
-    faststring key_file_content;
-    Status s = ReadFileToString(Env::Default(), keyfile, &key_file_content);
-    std::string keydata = key_file_content.ToString();
-
-    if(!s.ok()) {
-      LOG(FATAL) << yb::Format("Could not read key file at path $0: $1", keyfile, s.ToString());
-    }
-
-    auto res = UniverseKeyManager::FromKey(keyid, yb::Slice(keydata));
-    if (!res.ok()) {
-      LOG(FATAL) << "Could not create universe key manager: " << res.status().ToString();
-    }
-
-    universe_key_manager = std::move(*res);
-    env = yb::encryption::NewEncryptedEnv(
-        yb::encryption::DefaultHeaderManager(universe_key_manager.get()));
-    RETURN_NOT_OK(env->NewRandomAccessFile(filename, &reader));
-  }
-
+  RETURN_NOT_OK(tool_env.env().NewRandomAccessFile(filename, &reader));
   ReadablePBContainerFile pb_reader(std::move(reader));
   RETURN_NOT_OK(pb_reader.Init());
   RETURN_NOT_OK(pb_reader.Dump(&std::cout, FLAGS_oneline));
-
   return Status::OK();
 }
 
-} // namespace pb_util
-} // namespace yb
+}  // namespace yb::pb_util
 
 int main(int argc, char **argv) {
   yb::ParseCommandLineFlags(&argc, &argv, true);

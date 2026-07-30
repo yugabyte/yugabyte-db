@@ -7,7 +7,7 @@ import java.util.UUID;
 
 public class TabletServerInfo {
 
-  private UUID uuid;
+  private String permamentUuid;
 
   private boolean inPrimaryCluster;
 
@@ -57,12 +57,12 @@ public class TabletServerInfo {
     }
   }
 
-  public UUID getUuid() {
-    return this.uuid;
+  public String getPermanentUuid() {
+    return this.permamentUuid;
   }
 
-  public void setUuid(UUID uuid) {
-    this.uuid = uuid;
+  public void setPermanentUuid(String permamentUuid) {
+    this.permamentUuid = permamentUuid;
   }
 
   public boolean isInPrimaryCluster() {

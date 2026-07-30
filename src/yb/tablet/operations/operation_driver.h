@@ -168,6 +168,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   const ash::WaitStateInfoPtr& wait_state() const { return wait_state_; }
 
   Status AddedToLeader(const OpId& op_id, const OpId& committed_op_id) override;
+  void SubmittedToLeaderQueue() override;
 
   bool is_leader_side() {
     // TODO: switch state to an atomic.

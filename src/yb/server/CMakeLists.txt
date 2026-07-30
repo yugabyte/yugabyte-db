@@ -89,7 +89,6 @@ set(SERVER_PROCESS_SRCS
   default-path-handlers.cc
   generic_service.cc
   glog_metrics.cc
-  html_print_helper.cc
   monitored_task.cc
   pprof-path-handlers.cc
   rpc_server.cc
@@ -120,6 +119,12 @@ target_link_libraries(server_process
 
 if("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
   target_link_libraries(server_process profiler)
+  if(APPLE)
+    # On macOS tcmalloc is a shared library; link it so server_process's references to the tcmalloc
+    # API (MallocExtension/MallocHook/HeapProfiler) resolve at link time. Elsewhere tcmalloc is
+    # force-loaded into executables instead.
+    target_link_libraries(server_process tcmalloc)
+  endif()
 endif()
 
 #########################################

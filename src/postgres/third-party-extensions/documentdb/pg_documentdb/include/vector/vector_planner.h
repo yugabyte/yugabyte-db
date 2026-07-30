@@ -17,10 +17,9 @@
 #include "vector/vector_utilities.h"
 
 
-pgbson * CalculateSearchParamBsonForIndexPath(IndexPath *vectorSearchPath);
+pgbson * CalculateSearchParamBsonForIndexPath(IndexPath *vectorSearchPath,
+											  pgbson *searchParamBson);
 
 void SetSearchParametersToGUC(Oid vectorAccessMethodOid, pgbson *searchParamBson);
-
-void TrySetDefaultSearchParamForCustomScan(SearchQueryEvalData *querySearchData);
 
 #endif

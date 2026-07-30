@@ -1,0 +1,6 @@
+title: ImageBundlePagedResp
+description: Paged list response for provider image bundles.
+type: object
+x-data-container: PaginationResp
+x-data-item: ImageBundle
+x-data-entities-description: Image bundles for this page.

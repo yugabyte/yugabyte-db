@@ -21,6 +21,7 @@ import { SubTaskInfo, Task, TaskState } from '../../dtos';
 import { TaskDrawerCompProps } from './dtos';
 import { isTaskFailed, isTaskRunning } from '../../TaskUtils';
 import LinkIcon from '../../../../assets/link.svg?img';
+import { formatDuration } from '../../../../../utils/Formatters';
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -42,7 +43,7 @@ const useStyles = makeStyles((theme) => ({
     },
     display: 'flex',
     justifyContent: 'space-between',
-    gap: '8px'
+    gap: theme.spacing(1)
   },
   expandMoreButton: {
     flex: '0 0 100px'
@@ -230,6 +231,25 @@ export type SubTaskCardProps = {
   toggleExpanded: (index: number) => void;
 };
 
+// Old tasks can return a negative totalTimeMs because there was no execution time.
+function getTotalSubTaskTimeMs(details?: SubTaskInfo['details']): number | null {
+  if (!details) return null;
+  const total = details.totalTimeMs;
+  if (total === undefined || total === null || total < 0) return null;
+  return total;
+}
+
+// All subTasks in the group have the same position.
+// Task executor waits for all subtasks in the group to complete.
+// Return the maximum total time of all subtasks in the group.
+function getSubTaskGroupTotalTimeMs(tasks: SubTaskInfo[]): number | null {
+  return tasks.reduce<number | null>((max, task) => {
+    const ms = getTotalSubTaskTimeMs(task.details);
+    if (ms === null) return max;
+    return max === null ? ms : Math.max(max, ms);
+  }, null);
+}
+
 const subTaskCardStyles = makeStyles((theme) => ({
   card: {
     borderRadius: '8px',
@@ -241,10 +261,17 @@ const subTaskCardStyles = makeStyles((theme) => ({
   header: {
     display: 'flex',
     alignItems: 'center',
-    gap: '8px',
+    gap: theme.spacing(1),
     cursor: 'pointer',
     userSelect: 'none',
     color: theme.palette.grey[900]
+  },
+  headerTitleBlock: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1.5),
+    flex: 1,
+    minWidth: 0
   },
   caret: {
     fontSize: '16px'
@@ -282,18 +309,17 @@ const subTaskCardStyles = makeStyles((theme) => ({
     background: 'rgba(240, 244, 247, 0.50)',
     display: 'flex',
     flexDirection: 'column',
-    gap: '24px',
+    gap: theme.spacing(3),
     padding: '14px',
     marginLeft: '20px',
     marginTop: '16px',
     borderRadius: '8px'
   },
   content: {
-    borderRadius: '50%',
     display: 'flex',
-    alignItems: 'center',
-    flexFlow: 'wrap',
-    gap: '20px',
+    flexDirection: 'column',
+    gap: theme.spacing(1),
+    width: '100%',
     '&.Success,&.Created': {
       '& i': {
         color: theme.palette.success[500]
@@ -313,6 +339,26 @@ const subTaskCardStyles = makeStyles((theme) => ({
     transitionDuration: '0.2s',
     transform: 'rotate(90deg)'
   },
+  subTaskMainLine: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(2.5),
+    width: '100%'
+  },
+  subTaskTitleBlock: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1.5),
+    flex: 1,
+    minWidth: 0
+  },
+  executionTime: {
+    marginLeft: 'auto',
+    flexShrink: 0,
+    whiteSpace: 'nowrap',
+    // caption variant is uppercase in redesign theme; keep duration unit casing from formatDuration.
+    textTransform: 'none'
+  },
   errMsg: {
     width: '100%',
     marginLeft: '50px',
@@ -320,9 +366,6 @@ const subTaskCardStyles = makeStyles((theme) => ({
     background: theme.palette.error[100],
     padding: '8px 10px',
     wordBreak: 'break-word'
-  },
-  timeElapsed: {
-    marginLeft: 'auto'
   }
 }));
 
@@ -359,7 +402,7 @@ export const SubTaskCard: FC<SubTaskCardProps> = ({
   // Get the category status based on the subtasks
   // If any of the subtasks is not success, then the category status is the status of the last subtask
   // If all the subtasks are success, then the category status is success
-  let categoryTaskStatus = TaskState.CREATED;
+  let categoryTaskStatus: TaskState = TaskState.CREATED;
 
   for (let i = 0; i < subTasks.length; i++) {
     if (subTasks[i].taskState !== TaskState.SUCCESS) {
@@ -385,6 +428,8 @@ export const SubTaskCard: FC<SubTaskCardProps> = ({
     return '';
   };
 
+  const groupTotalSubTaskTimeMs = getSubTaskGroupTotalTimeMs(subTasks);
+
   return (
     <div className={classes.card} key={index}>
       <div className={classes.header} onClick={() => toggleExpanded(index)}>
@@ -398,19 +443,47 @@ export const SubTaskCard: FC<SubTaskCardProps> = ({
         <div className={clsx(classes.indexCircle, categoryTaskStatus)}>
           {getTaskIcon(categoryTaskStatus, index + 1)}
         </div>
-        <Typography variant="body2">{startCase(category)}</Typography>
+        <div className={classes.headerTitleBlock}>
+          <Typography variant="body2">{startCase(category)}</Typography>
+          {groupTotalSubTaskTimeMs !== null && (
+            <Typography
+              variant="caption"
+              color="textSecondary"
+              component="span"
+              className={classes.executionTime}
+            >
+              {formatDuration(groupTotalSubTaskTimeMs)}
+            </Typography>
+          )}
+        </div>
       </div>
       <Collapse in={expanded}>
         <div className={classes.subTaskPanel}>
           {subTasks.map((subTask, index) => {
+            const totalSubTaskTimeMs = getTotalSubTaskTimeMs(subTask.details);
+            const showExecutionTime = totalSubTaskTimeMs !== null;
             return (
               <div className={clsx(classes.content, subTask.taskState)} key={index}>
-                <div className={clsx(classes.indexCircle, subTask.taskState)}>
-                  {getTaskIcon(subTask.taskState, index + 1)}
+                <div className={classes.subTaskMainLine}>
+                  <div className={clsx(classes.indexCircle, subTask.taskState)}>
+                    {getTaskIcon(subTask.taskState, index + 1)}
+                  </div>
+                  <div className={classes.subTaskTitleBlock}>
+                    <Tooltip title={getNodeNames(subTask)} placement="top" arrow>
+                      <Typography variant="body2">{startCase(subTask.taskType)}</Typography>
+                    </Tooltip>
+                    {showExecutionTime && (
+                      <Typography
+                        variant="caption"
+                        color="textSecondary"
+                        component="span"
+                        className={classes.executionTime}
+                      >
+                        {formatDuration(totalSubTaskTimeMs)}
+                      </Typography>
+                    )}
+                  </div>
                 </div>
-                <Tooltip title={getNodeNames(subTask)} placement="top" arrow>
-                  <Typography variant="body2">{startCase(subTask.taskType)}</Typography>
-                </Tooltip>
                 {subTask.details?.error?.originMessage && (
                   <div className={classes.errMsg}>{subTask.details?.error?.originMessage}</div>
                 )}

@@ -41,7 +41,7 @@ The examples run on any YugabyteDB universe.
 {{</nav/panels>}}
 <!-- end: nav tabs -->
 
-The example uses the `customers` table from the [Northwind sample database](../../../../sample-data/northwind/#install-the-northwind-sample-database).
+The example uses the `customers` table from the [Northwind sample database](/stable/develop/sample-data/northwind/#install-the-northwind-sample-database).
 
 View the contents of the `customers` table:
 

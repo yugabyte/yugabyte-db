@@ -1,0 +1,19 @@
+x-yba-api-visibility: internal
+title: CleanupCollectionInfo
+description: Result of cleaning up collected files from database nodes
+type: object
+properties:
+  collection_uuid:
+    description: The collection UUID that was cleaned up
+    type: string
+    format: uuid
+  nodes_cleaned:
+    description: Number of nodes where files were successfully deleted
+    type: integer
+  message:
+    description: Status message
+    type: string
+required:
+  - collection_uuid
+  - nodes_cleaned
+  - message

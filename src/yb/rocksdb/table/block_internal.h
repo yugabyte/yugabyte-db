@@ -58,6 +58,10 @@ inline const char* DecodeEntryThreeSharedParts(
     uint32_t* non_shared_2_size, int64_t* non_shared_2_size_delta,
     uint32_t* shared_last_component_size, uint64_t* shared_last_component_increase,
     uint32_t* value_size) {
+  DVLOG_WITH_FUNC(4) << "p: " << static_cast<const void*>(p)
+                     << " limit: " << static_cast<const void*>(limit)
+                     << " bytes left: " << limit - p;
+
   if (limit - p < 2) {
     return nullptr;
   }
@@ -66,6 +70,7 @@ inline const char* DecodeEntryThreeSharedParts(
   if ((p = GetVarint64Ptr(p, limit, &encoded_1)) == nullptr) {
     return nullptr;
   }
+  DVLOG_WITH_FUNC(4) << "encoded_1: " << encoded_1 << " bytes left: " << limit - p;
   *value_size = static_cast<uint32_t>(encoded_1 >> 2);
   *shared_last_component_increase = (encoded_1 & 2) << 7;
   const bool is_frequent_case_1 = encoded_1 & 1;
@@ -84,7 +89,8 @@ inline const char* DecodeEntryThreeSharedParts(
   } else {
     const uint8_t encoded_2 = *pointer_cast<const uint8_t*>(p++);
     if ((encoded_2 & 1) == 0) {
-      DVLOG_WITH_FUNC(4) << "encoded_2: " << static_cast<uint16_t>(encoded_2);
+      DVLOG_WITH_FUNC(4) << "encoded_2: " << static_cast<uint16_t>(encoded_2)
+                         << " bytes left: " << limit - p;
       *is_something_shared = false;
       if (encoded_2 == 0) {
         p = GetVarint32Ptr(p, limit, non_shared_1_size);
@@ -102,36 +108,46 @@ inline const char* DecodeEntryThreeSharedParts(
     } else {
       *is_something_shared = true;
       if ((encoded_2 & 2) == 0) {
-        DVLOG_WITH_FUNC(4) << "encoded_2: " << static_cast<uint16_t>(encoded_2);
+        DVLOG_WITH_FUNC(4) << "encoded_2: " << static_cast<uint16_t>(encoded_2)
+                           << " bytes left: " << limit - p;
         *shared_last_component_size = kLastInternalComponentSize;
         *non_shared_1_size_delta = 0;
         *non_shared_2_size_delta = (encoded_2 >> 2) & 1;
         *non_shared_1_size = (encoded_2 >> 3) & 7;
         *non_shared_2_size = (encoded_2 >> 6) & 3;
       } else {
-        DVLOG_WITH_FUNC(4) << "encoded_2: " << static_cast<uint16_t>(encoded_2);
+        DVLOG_WITH_FUNC(4) << "encoded_2: " << static_cast<uint16_t>(encoded_2)
+                           << " bytes left: " << limit - p;
         *shared_last_component_size = (encoded_2 & 4) ? kLastInternalComponentSize : 0;
         p = GetVarint32Ptr(p, limit, non_shared_1_size);
         if (PREDICT_FALSE(!p)) {
+          DVLOG_WITH_FUNC(4) << "Failed to decode non_shared_1_size, bytes left: " << limit - p;
           return nullptr;
         }
         p = DecodeSignedVarint64Ptr(
             p, limit, non_shared_1_size_delta, (encoded_2 & 8) != 0);
         if (PREDICT_FALSE(!p)) {
+          DVLOG_WITH_FUNC(4) << "Failed to decode non_shared_1_size_delta, bytes left: "
+                             << limit - p;
           return nullptr;
         }
         p = DecodeVarint32Ptr(p, limit, non_shared_2_size, (encoded_2 & 16) != 0);
         if (PREDICT_FALSE(!p)) {
+          DVLOG_WITH_FUNC(4) << "Failed to decode non_shared_2_size, bytes left: "
+                             << limit - p;
           return nullptr;
         }
         p = DecodeSignedVarint64Ptr(
             p, limit, non_shared_2_size_delta, (encoded_2 & 32) != 0);
         if (PREDICT_FALSE(!p)) {
+          DVLOG_WITH_FUNC(4) << "Failed to decode non_shared_2_size_delta, bytes left: "
+                             << limit - p;
           return nullptr;
         }
       }
       p = GetVarint32Ptr(p, limit, shared_prefix_size);
       if (PREDICT_FALSE(!p)) {
+        DVLOG_WITH_FUNC(4) << "Failed to decode shared_prefix_size, bytes left: " << limit - p;
         return nullptr;
       }
     }
@@ -139,6 +155,8 @@ inline const char* DecodeEntryThreeSharedParts(
 
   if (PREDICT_FALSE(std::cmp_less(
           limit - p, *non_shared_1_size + *non_shared_2_size + *value_size))) {
+    DVLOG_WITH_FUNC(4) << "Not enough bytes left for non-shared key components and value: "
+                       << limit - p;
     return nullptr;
   }
   return p;

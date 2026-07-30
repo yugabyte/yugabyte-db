@@ -11,14 +11,17 @@
 // under the License.
 
 #pragma once
+
 #include <algorithm>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include <boost/assign.hpp>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+
+#include <boost/assign.hpp>
 
 #include "yb/cdc/cdc_service.pb.h"
 
@@ -71,6 +74,8 @@ using std::string;
 using std::vector;
 
 DECLARE_uint64(cdc_intent_retention_ms);
+DECLARE_bool(cdc_enable_time_based_intent_retention);
+DECLARE_uint64(cdc_min_sec_to_retain_intent);
 DECLARE_bool(enable_update_local_peer_min_index);
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_bool(stream_truncate_record);
@@ -93,7 +98,7 @@ DECLARE_bool(enable_load_balancing);
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_int32(cdcsdk_table_processing_limit_per_run);
-DECLARE_int32(cdc_snapshot_batch_size);
+DECLARE_uint64(cdc_snapshot_records_threshold_size_bytes);
 DECLARE_bool(TEST_cdc_snapshot_failure);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_uint64(ysql_packed_row_size_limit);
@@ -116,7 +121,9 @@ DECLARE_bool(TEST_cdcsdk_skip_processing_dynamic_table_addition);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 DECLARE_uint32(cdcsdk_max_consistent_records);
 DECLARE_bool(ysql_yb_enable_replication_slot_consumption);
+DECLARE_bool(ysql_yb_enable_replication_slot_query_api);
 DECLARE_bool(TEST_cdc_sdk_fail_setting_retention_barrier);
+DECLARE_bool(TEST_cdc_add_dynamic_index_to_state_table);
 DECLARE_uint64(cdcsdk_publication_list_refresh_interval_secs);
 DECLARE_bool(TEST_cdcsdk_use_microseconds_refresh_interval);
 DECLARE_uint64(TEST_cdcsdk_publication_list_refresh_interval_micros);
@@ -128,13 +135,14 @@ DECLARE_bool(TEST_cdcsdk_skip_updating_cdc_state_entries_on_table_removal);
 DECLARE_bool(TEST_cdcsdk_add_indexes_to_stream);
 DECLARE_bool(TEST_cdcsdk_skip_stream_active_check);
 DECLARE_bool(TEST_cdcsdk_disable_drop_table_cleanup);
+DECLARE_bool(cdcsdk_use_dropped_table_list_for_cleanup);
 DECLARE_bool(TEST_cdcsdk_disable_deleted_stream_cleanup);
 DECLARE_bool(cdcsdk_enable_cleanup_of_expired_table_entries);
 DECLARE_bool(TEST_cdcsdk_skip_processing_unqualified_tables);
 DECLARE_bool(TEST_cdcsdk_skip_table_removal_from_qualified_list);
 DECLARE_bool(cdc_disable_sending_composite_values);
 DECLARE_bool(cdc_use_byte_threshold_for_vwal_changes);
-DECLARE_bool(ysql_enable_pg_export_snapshot);
+DECLARE_bool(ysql_yb_enable_pg_export_snapshot);
 DECLARE_bool(ysql_yb_enable_consistent_replication_from_hash_range);
 DECLARE_uint64(cdcsdk_update_restart_time_interval_secs);
 DECLARE_int32(retryable_request_timeout_secs);
@@ -144,9 +152,25 @@ DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);
 DECLARE_int32(TEST_cdc_simulate_error_for_get_changes);
 DECLARE_bool(TEST_fail_cdc_setting_retention_barriers_on_apply);
 DECLARE_int32(update_min_cdc_indices_master_interval_secs);
+DECLARE_bool(enable_update_local_peer_min_index_master);
+DECLARE_int32(cdc_min_replicated_index_considered_stale_secs_master);
 DECLARE_bool(cdcsdk_update_restart_time_when_nothing_to_stream);
 DECLARE_string(TEST_cdc_tablet_id_to_stall_state_table_updates);
-DECLARE_bool(TEST_enable_table_rewrite_for_cdcsdk_table);
+DECLARE_bool(enable_table_rewrite_for_cdcsdk_table);
+DECLARE_uint64(TEST_delay_before_complete_expired_pg_sessions_shutdown_ms);
+DECLARE_uint32(cdcsdk_vwal_tablets_to_poll_batch_size);
+DECLARE_uint32(TEST_cdcsdk_vwal_getchanges_rpc_delay_ms);
+DECLARE_bool(TEST_cdcsdk_disable_stream_drop_during_db_drop);
+DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
+DECLARE_bool(cdc_enable_dynamic_schema_changes);
+DECLARE_bool(TEST_cdc_skip_master_bg_task);
+DECLARE_bool(TEST_cdc_fail_before_setting_barrier);
+DECLARE_string(ysql_yb_default_replica_identity);
+DECLARE_int32(cdc_create_stream_alter_table_dispatch_batch_size);
+DECLARE_int32(cdc_create_stream_alter_table_dispatch_delay_ms);
+DECLARE_int32(max_concurrent_alter_table_rpcs);
+DECLARE_int32(ysql_ddl_rpc_timeout_sec);
+DECLARE_bool(TEST_cdc_make_consistent_stream_safe_time_invalid);
 
 namespace yb {
 
@@ -258,10 +282,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Status TruncateTable(PostgresMiniCluster* cluster, const std::vector<string>& table_ids);
 
   // The range is exclusive of end i.e. [start, end)
-  static Status WriteRows(
+  Status WriteRows(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
-      const vector<string>& optional_cols_name = {},
-      pgwrapper::PGConn* conn = nullptr);
+      const vector<string>& optional_cols_name = {}, pgwrapper::PGConn* conn = nullptr);
 
   static Status WriteRowsWithConn(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster,
@@ -302,8 +325,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status WriteEnumsRows(
       uint32_t start, uint32_t end, PostgresMiniCluster* cluster, const string& enum_suffix = "",
-      string database_name = kNamespaceName, string table_name = kTableName,
-      string schema_name = "public");
+      string table_name = kTableName, string schema_name = "public");
 
   Result<YBTableName> CreateCompositeTable(
       PostgresMiniCluster* cluster, const uint32_t num_tablets,
@@ -538,13 +560,19 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Status InitVirtualWAL(
       const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
       const uint64_t session_id = kVWALSessionId1,
-      const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range = nullptr);
+      const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range = nullptr,
+      bool include_oid_to_relfilenode = false,
+      int timeout = kRpcTimeout);
 
   Status DestroyVirtualWAL(const uint64_t session_id = kVWALSessionId1);
 
   Status UpdateAndPersistLSN(
       const xrepl::StreamId& stream_id, const uint64_t confirmed_flush_lsn,
       const uint64_t restart_lsn, const uint64_t session_id = kVWALSessionId1);
+
+  Status PopulateOidToRelfileNode(
+      const std::vector<TableId>& table_ids,
+      google::protobuf::Map<uint32_t, uint32_t>* oid_to_relfilenode_map);
 
   // This method will keep on consuming changes until it gets the txns fully i.e COMMIT record of
   // the last txn. This indicates that even though we might have received the expecpted DML records,
@@ -553,7 +581,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const xrepl::StreamId& stream_id, std::vector<TableId> table_ids, int expected_dml_records,
       bool init_virtual_wal, const uint64_t session_id = kVWALSessionId1,
       bool allow_sending_feedback = true,
-      const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range = nullptr);
+      const std::unique_ptr<ReplicationSlotHashRange>& slot_hash_range = nullptr,
+      std::vector<TableId> new_table_ids = {});
 
   GetAllPendingChangesResponse GetAllPendingChangesFromCdc(
       const xrepl::StreamId& stream_id,
@@ -590,7 +619,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status UpdatePublicationTableList(
       const xrepl::StreamId& stream_id, const std::vector<TableId> table_ids,
-      uint64_t session_id = kVWALSessionId1);
+      uint64_t session_id = kVWALSessionId1, bool include_oid_to_relfilenode = false);
 
   void TestIntentGarbageCollectionFlag(
       const uint32_t num_tservers,
@@ -616,7 +645,28 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const xrepl::StreamId& stream_id, const std::unordered_set<std::string>& expected_table_ids,
       const std::string& timeout_msg,
       const std::optional<std::unordered_set<std::string>>& expected_unqualified_table_ids =
-          std::nullopt);
+          std::nullopt,
+      bool include_catalog_tables = false);
+
+  void VerifyTablesAndStateInStreamMetadata(
+      const xrepl::StreamId& stream_id, const std::unordered_set<std::string>& expected_table_ids,
+      const std::optional<std::unordered_set<std::string>>& expected_unqualified_table_ids =
+          std::nullopt,
+      const std::optional<std::unordered_set<std::string>>& expected_dropped_table_ids =
+          std::nullopt,
+      const master::SysCDCStreamEntryPB::State& expected_state =
+          master::SysCDCStreamEntryPB::ACTIVE,
+      bool include_catalog_tables = false,
+      const std::string& timeout_msg = "Stream metadata doesn't match the expected state");
+
+  Status VerifyOriginIdOnAllRecords(
+      const GetChangesResponsePB& resp, uint32_t expected_origin_id);
+
+  void VerifyTabletIdsInCdcStateForStream(
+      const xrepl::StreamId& stream_id,
+      const std::unordered_set<TabletId>& expected_tablet_ids,
+      const std::string& timeout_msg =
+          "Tablets in cdc_state for the stream doesn't match the expected set");
 
   Status ChangeLeaderOfTablet(size_t new_leader_index, const TabletId tablet_id);
 
@@ -662,11 +712,25 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const TabletId& tablet_id, const yb::client::YBTableName& table,
       const int expected_num_tablets = 2);
 
+  void PollUntilTabletSplit(
+      const xrepl::StreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      GetChangesResponsePB* change_resp = nullptr,
+      int tablet_idx = -1);
+
+  void VerifyTabletList(
+      const xrepl::StreamId& stream_id,
+      const TableId& table_id,
+      const std::set<TabletId>& expected,
+      const std::string& context_msg);
+
   void CheckTabletsInCDCStateTable(
-      const std::unordered_set<TabletId> expected_tablet_ids, client::YBClient* client,
+      const std::unordered_set<TabletId>& expected_tablet_ids, client::YBClient* client,
       const xrepl::StreamId& stream_id = xrepl::StreamId::Nil(),
+      const std::unordered_set<TabletId>& expected_colocated_table_ids = {},
       const std::string timeout_msg =
-          "Tablets in cdc_state for the stream doesnt match the expected set");
+          "Tablets in cdc_state for the stream doesnt match the expected set",
+      bool include_catalog_tables = false);
 
   Result<int> GetStateTableRowCount();
 
@@ -875,6 +939,13 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void TestRemovalOfColocatedTableFromCDCStream(bool start_removal_from_first_table);
 
+  void TestCleanupOfTableNotOfInterest(bool use_logical_replication);
+
+  void TestCleanupOfExpiredTable(bool use_logical_replication);
+
+  void TestXClusterTablesNotAddedToStream(
+      bool use_logical_replication_stream, bool enable_xcluster_before_stream_creation);
+
   void TestMetricObjectRemovalAfterStreamDeletion(bool use_logical_replication);
 
   Status CreateTables(
@@ -893,6 +964,11 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
                                         initial_intents_and_intent_sst_file_count);
 
   void TestLagMetricWithConsistentSnapshotStream(bool expire_table);
+
+  void TestStreamsDroppedOnDBDropAndMasterRestart(
+      const string& sync_point_name, bool use_logical_replication);
+
+  Status CdcReleaseBarriersOnTablet(const TabletId& tablet_id);
 };
 
 }  // namespace cdc

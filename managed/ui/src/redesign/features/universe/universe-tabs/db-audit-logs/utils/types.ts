@@ -29,6 +29,7 @@ export interface AuditLogFormFields {
   logStatement: boolean;
   logStatementOnce: boolean;
   logLevel?: YSQLAuditLogLevel;
+  logRetentionDays?: number;
   exportActive: boolean;
   exporterUuid?: string;
 }
@@ -48,6 +49,7 @@ export interface AuditLogConfig {
     logStatement: boolean;
     logStatementOnce: boolean;
     logLevel?: YSQLAuditLogLevel;
+    logRetentionDays?: number;
     classes: YSQLAuditStatementClass[];
   };
   universeLogsExporterConfig?: ExporterObject[];
@@ -56,4 +58,12 @@ export interface AuditLogConfig {
 export interface AuditLogPayload {
   installOtelCollector: boolean;
   auditLogConfig: AuditLogConfig;
+}
+
+export interface QueryLogConfig {
+  exportActive: boolean;
+  ysqlQueryLogConfig?: {
+    enabled: boolean;
+  };
+  universeLogsExporterConfig?: ExporterObject[];
 }

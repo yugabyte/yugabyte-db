@@ -12,6 +12,7 @@
 
 #include <postgres.h>
 
+#include "collation/collation.h"
 #include "metadata/collection.h"
 
 
@@ -21,16 +22,22 @@
 typedef struct
 {
 	/* list of Deletions */
-	pgbson *query;
+	const bson_value_t *query;
 
 	/* sort order to use when selecting 1 row */
-	pgbson *sort;
+	const bson_value_t *sort;
 
 	/* whether to return deleted document */
 	bool returnDeletedDocument;
 
 	/* fields to return if returning a document */
-	pgbson *returnFields;
+	const bson_value_t *returnFields;
+
+	/* parsed variable spec*/
+	const bson_value_t *variableSpec;
+
+	/* collation string */
+	const char collationString[MAX_ICU_COLLATION_LENGTH];
 } DeleteOneParams;
 
 

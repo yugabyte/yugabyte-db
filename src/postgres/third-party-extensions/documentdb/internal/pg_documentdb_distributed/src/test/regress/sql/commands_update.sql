@@ -3,6 +3,8 @@ SET citus.next_shard_id TO 649000;
 SET documentdb.next_collection_id TO 6490;
 SET documentdb.next_collection_index_id TO 6490;
 
+SET documentdb.EnableVariablesSupportForWriteCommands TO on;
+
 select 1 from documentdb_api.insert_one('db', 'updateme', '{"a":1,"_id":1,"b":1}');
 select 1 from documentdb_api.insert_one('db', 'updateme', '{"a":2,"_id":2,"b":2}');
 select 1 from documentdb_api.insert_one('db', 'updateme', '{"a":3,"_id":3,"b":3}');
@@ -369,6 +371,13 @@ begin;
 select documentdb_api.update('db', '{"update":"updateme",  "updates":[{"q":{"_id":33, "a": 10 },"u":{"$set":{"b":2}},"multi":true,"upsert":true}]}', '{ "":[{"q":{"_id":33, "a": 10 },"u":{"$set":{"b":1}},"multi":false,"upsert":true}] }');
 rollback;
 
+-- update with index hint specified by name and by key object
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "updateme", "indexes": [ { "key" : { "a": 1 }, "name": "validIndex"}] }', true);
+begin;
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true,"hint": "validIndex"}]}');
+select documentdb_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true,"hint": { "a": 1 }}]}');
+rollback;
+
 select documentdb_api.drop_collection('db','updateme');
 
 SELECT 1 FROM documentdb_api.insert_one('update', 'test_sort_returning', '{"_id":1,"a":3,"b":7}');
@@ -701,4 +710,283 @@ SELECT documentdb_api.update('update', '{ "update": "single", "updates": [ { "q"
 
 -- this will collide and produce a unique conflict.
 SELECT documentdb_api.update('update', '{ "update": "single", "updates": [ { "q": { "_id": 8010, "a": 5 }, "u": { "$set": { "c": 8010 } }, "upsert": true, "multi": true }] }');
+ROLLBACK;
+
+
+-- test updateOne with sort
+select documentdb_api.create_collection('update', 'test_update_one_sort');
+SELECT documentdb_api.insert_one('update', 'test_update_one_sort', '{"_id":1,"a":3,"b":7}');
+SELECT documentdb_api.insert_one('update', 'test_update_one_sort', '{"_id":2,"a":3,"b":5}');
+SELECT document FROM documentdb_api.collection('update', 'test_update_one_sort');
+SELECT documentdb_api.update('update', '{"update":"test_update_one_sort", "updates":[{"q":{"a":3},"u":{"$set":{"b":0}},"multi":false,"upsert":false, "sort": {"b": 1}}]}');
+SELECT document FROM documentdb_api.collection('update', 'test_update_one_sort');
+SELECT documentdb_api.update('update', '{"update":"test_update_one_sort", "updates":[{"q":{"a":3},"u":{"$set":{"b":10}},"multi":false,"upsert":false, "sort": {"_id": 1}}]}');
+SELECT document FROM documentdb_api.collection('update', 'test_update_one_sort');
+SELECT documentdb_api.insert_one('update', 'test_update_one_sort', '{"_id":3,"a":3,"b":3}');
+SELECT documentdb_api.update('update', '{"update":"test_update_one_sort", "updates":[{"q":{"a":3},"u":{"$set":{"b":-1}},"multi":false,"upsert":false, "sort": {"_id": -1}}]}');
+SELECT document FROM documentdb_api.collection('update', 'test_update_one_sort');
+SELECT documentdb_api.update('update', '{"update":"test_update_one_sort", "updates":[{"q":{"a":3},"u":{"$set":{"b":-1}},"multi":false,"upsert":false, "sort": {"_id": -1}}]}');
+SELECT document FROM documentdb_api.collection('update', 'test_update_one_sort');
+SELECT documentdb_api.update('update', '{"update":"test_update_one_sort", "updates":[{"q":{"b":{"$lt":5}},"u":{"$set":{"text":"smaller than 5"}},"multi":false,"upsert":false, "sort": {"b": -1}}, {"q":{"b":{"$gte":5}},"u":{"$set":{"text":"large"}},"multi":false,"upsert":false, "sort": {"b": 1}}]}');
+SELECT document FROM documentdb_api.collection('update', 'test_update_one_sort');
+-- negative test case
+SELECT documentdb_api.update('update', '{"update":"test_update_one_sort", "updates":[{"q":{"b":{"$lt":5}},"u":{"$set":{"text":"tt"}},"multi":true,"sort": {"b": -1}}]}');
+SELECT document FROM documentdb_api.collection('update', 'test_update_one_sort');
+SELECT documentdb_api.insert('update', '{"insert":"test_update_one_sort_ex", "documents":[{"_id":-1,"a":1,"b":"string"}, {"_id":-2,"a":0,"b":1.2}, {"_id":-3,"a":1,"b":[1,2,3]}]}');
+select documentdb_api.update('update', '{"update":"test_update_one_sort_ex", "updates":[{"q":{"a":{"$gte":0}},"u":{"$set":{"b":"exception"}},"multi":false,"sort": {"b": -1}},{"q":{"a":{"$gte":0}},"u":{"$set":{"b":[4,5]}},"multi":false,"sort": {"b": 1}}]}');
+SELECT cursorPage FROM documentdb_api.find_cursor_first_page('update', '{ "find" : "test_update_one_sort_ex", "filter" : {"b":"exception"}, "limit" : 10, "singleBatch" : true, "batchSize" : 10, "$db" : "update", "projection":{"_id":0} }');
+SELECT cursorPage FROM documentdb_api.find_cursor_first_page('update', '{ "find" : "test_update_one_sort_ex", "filter" : {"b":[4,5]}, "limit" : 10, "singleBatch" : true, "batchSize" : 10, "$db" : "update", "projection":{"_id":0} }');
+WITH generated_data AS (
+    SELECT
+        row_number() OVER () AS _id, 
+        1 AS a,
+        CASE (random()*6)::int
+            WHEN 0 THEN (random()*1000)::int::text
+            WHEN 1 THEN to_char(random()*1000, 'FM999.9999')
+            WHEN 2 THEN 'str_' || floor(random()*10000)::int
+            WHEN 3 THEN (ARRAY['true','false'])[floor(random()*2)+1]
+            WHEN 4 THEN to_char(
+                         now() - (floor(random()*3650)||' days')::interval,
+                         'YYYY-MM-DD'
+                     )
+            WHEN 5 THEN gen_random_uuid()::text
+            ELSE NULL::text
+        END AS b
+    FROM generate_series(1, 1000)
+)
+SELECT documentdb_api.insert(
+    'update'::text,
+    ('{"insert":"test_update_one_sort_ex", "documents":[' ||
+    (SELECT string_agg(row_to_json(g)::text, ',') FROM generated_data g) ||
+    ']}')::bson  
+);
+select documentdb_api.update('update', '{"update":"test_update_one_sort_ex", "updates":[{"q":{"a":{"$gte":0}},"u":{"$set":{"b":"exception"}},"multi":false,"sort": {"b": -1}},{"q":{"a":{"$gte":0}},"u":{"$set":{"b":[4,5]}},"multi":false,"sort": {"b": 1}}]}');
+SELECT cursorPage FROM documentdb_api.find_cursor_first_page('update', '{ "find" : "test_update_one_sort_ex", "filter" : {"b":"exception"}, "limit" : 10, "singleBatch" : true, "batchSize" : 10, "$db" : "update", "projection":{"_id":0} }');
+SELECT cursorPage FROM documentdb_api.find_cursor_first_page('update', '{ "find" : "test_update_one_sort_ex", "filter" : {"b":[4,5]}, "limit" : 10, "singleBatch" : true, "batchSize" : 10, "$db" : "update", "projection":{"_id":0} }');
+
+-- sharded collection
+select documentdb_api.shard_collection('update', 'test_update_one_sort', '{"_id": "hashed"}', false);
+-- expect to fail as updateOne without id filter is not supported on sharded collection
+SELECT documentdb_api.update('update', '{"update":"test_update_one_sort", "updates":[{"q":{"a":3},"u":{"$set":{"b":0}},"multi":false,"upsert":false, "sort": {"b": 1}}]}');
+SELECT documentdb_api.update('update', '{"update":"test_update_one_sort", "updates":[{"q":{"a":3},"u":{"$set":{"b":-10}},"multi":false,"upsert":false, "sort": {"_id": -1}}]}');
+-- expect to succeed as updateOne with id filter is supported on sharded collection
+SELECT documentdb_api.update('update', '{"update":"test_update_one_sort", "updates":[{"q":{"_id":1, "a":3},"u":{"$set":{"b":0}},"multi":false,"upsert":false, "sort": {"b": 1}}]}');
+SELECT documentdb_api.update('update', '{"update":"test_update_one_sort", "updates":[{"q":{"_id":2, "a":3},"u":{"$set":{"b":-10}},"multi":false,"upsert":false, "sort": {"_id": -1}}]}');
+-- negative test case
+SELECT documentdb_api.update('update', '{"update":"test_update_one_sort", "updates":[{"q":{"_id":3, "a":3},"u":{"$set":{"b":-1}},"multi":true,"upsert":false, "sort": {"_id": -1}}]}');
+SELECT document FROM documentdb_api.collection('update', 'test_update_one_sort');
+-- expect to throw error but the first one should succeed
+SELECT documentdb_api.update('update', '{"update":"test_update_one_sort", "updates":[{"q":{"_id":3, "a":3},"u":{"$set":{"b":-10}},"multi":true,"upsert":false},{"q":{"_id":3, "a":3},"u":{"$set":{"b":-2}},"multi":true,"upsert":false, "sort": {"_id": -1}}]}');
+SELECT document FROM documentdb_api.collection('update', 'test_update_one_sort');
+
+-- let support
+SELECT documentdb_api.insert_one('db', 'coll_update', '{"_id": 1, "a":"kofi"}');
+SELECT documentdb_api.insert_one('db', 'coll_update', '{"_id": 2, "a":"ama"}');
+SELECT documentdb_api.insert_one('db', 'coll_update', '{"_id": 3, "a":"$$varRef"}');
+
+-- EnableVariablesSupportForWriteCommands GUC off: ignore variableSpec
+SET documentdb.EnableVariablesSupportForWriteCommands TO off;
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$eq": ["$a", "$$varRef"] } }, "u": {"$set": {"b": "zebra"}}, "multi": true}], "let": {"varRef": "ama"} }');
+
+-- EnableVariablesSupportForWriteCommands GUC on: user variableSpec
+SET documentdb.EnableVariablesSupportForWriteCommands TO on;
+
+-- variables accessed outside $expr will not evaluate to let variable value in 'q'
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"_id": "$$varRef" }, "u": {"$set": {"b": "zebra"}}, "multi": false}], "let": {"varRef": 2}} ');
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"_id": "$$varRef" }, "u": {"$set": {"b": "zebra"}}, "multi": true}], "let": {"varRef": 2}} ');
+
+BEGIN;
+-- updateMany
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$eq": ["$_id", "$$varRef"] } }, "u": {"$set": {"b": "zebra"}}, "multi": true}], "let": {"varRef": 2} }');
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$eq": ["$_id", "$$varRef"] } }, "u": {"$set": {"b": "zebra"}}, "multi": true}], "let": {"varRef": 2} }');
+ROLLBACK;
+
+BEGIN;
+-- updateOne
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$eq": ["$a", "$$varRef"] } }, "u": {"$set": {"b": "zebra"}}, "multi": false}], "let": {"varRef": "ama"} }');
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$eq": ["$_id", "$$varRef"] } }, "u": {"$set": {"b": "zebra"}}, "multi": false}], "let": {"varRef": 2} }');
+ROLLBACK;
+
+BEGIN;
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+SELECT documentdb_api.update(
+    'db',
+    '{
+        "update": "coll_update",
+        "updates": [
+            {"q": {"$expr": {"$eq": ["$a", "$$varRef2"]}}, "u": {"$set": {"b": "kojo"}}, "multi": true},
+            {"q": {"_id": 1, "$expr": {"$eq": ["$_id", "$$varRef1"]}}, "u": {"$set": {"b": "kojo"}}, "multi": false}
+        ],
+        "ordered": true,
+        "let": {"varRef1": 1, "varRef2": "ama"}
+    }'
+);
+
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+ROLLBACK;
+
+BEGIN;
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+
+SELECT documentdb_api.update(
+    'db',
+    '{
+        "update": "coll_update",
+        "updates": [
+            {"q": {"$expr": {"$eq": ["$a", "$$varRef2"]}}, "u": {"$set": {"b": "kojo"}}, "multi": true},
+            {"q": {"_id": 1, "$expr": {"$eq": ["$_id", "$$varRef1"]}}, "u": {"$set": {"b": "kojo"}}, "multi": false}
+        ],
+        "ordered": true,
+        "let": {"varRef1": 1, "varRef2": "ama"}
+    }'
+);
+
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+ROLLBACK;
+
+
+-- let support: variables in 'u'
+BEGIN;
+-- variables are accessible in aggregation pipeline
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$lte": ["$_id", "$$varRef"] } }, "u": {"$set": {"set": "$$varRef"}}, "multi": true}], "let": {"varRef": 2} }');
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+ROLLBACK;
+
+BEGIN;
+-- updateMany: $set
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$lte": ["$_id", "$$varRef"] } }, "u": [{"$set": {"set": "$$varRef"}}], "multi": true}], "let": {"varRef": 2} }');
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+
+-- updateMany: addFields
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$eq": ["$_id", "$$varRef"] } }, "u": [{"$addFields": {"addFields": "$$varRef"}}], "multi": true}], "let": {"varRef": 2} }');
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+
+-- updateMany: $project
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$gte": ["$_id", "$$varRef"] } }, "u": [{"$project": {"project": "$$varRef"}}], "multi": true}], "let": {"varRef": 2} }');
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+
+-- updateMany: $replaceRoot
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$eq": ["$_id", "$$varRef1"] } }, "u": [{"$replaceRoot": {"newRoot": "$$varRef2"}}], "multi": true}], "let": {"varRef1": 2, "varRef2": {"newRoot": 1 }} }');
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+
+-- updateMany: $replaceWith
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$eq": ["$_id", "$$varRef1"] } }, "u": [{"$replaceWith": "$$varRef2"}], "multi": true}], "let": {"varRef1": 2, "varRef2": {"replaceWith": 1 }} }');
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+ROLLBACK;
+
+BEGIN;
+-- updateOne: $set
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$lt": ["$a", "$$varRef"] } }, "u": [{"$set": {"set": "$$varRef"}}], "multi": false}], "let": {"varRef": "ama"} }');
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+
+-- updateOne: addFields
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$eq": ["$a", "$$varRef"] } }, "u": [{"$addFields": {"addField": "$$varRef"}}], "multi": false}], "let": {"varRef": "ama"} }');
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+
+-- updateOne: $project
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$gt": ["$a", "$$varRef"] } }, "u": [{"$project": {"project": "$$varRef"}}], "multi": false}], "let": {"varRef": "ama"} }');
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+
+-- updateOne: $replaceRoot
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$eq": ["$_id", "$$varRef1"] } }, "u": [{"$replaceRoot": {"newRoot": "$$varRef2"}}], "multi": false}], "let": {"varRef1": 2, "varRef2": {"newRoot": 1 }} }');
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+
+-- updateOne: $replaceWith
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$eq": ["$_id", "$$varRef1"] } }, "u": [{"$replaceWith": "$$varRef2"}], "multi": false}], "let": {"varRef1": 2, "varRef2": {"replaceWith": 1 }} }');
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+ROLLBACK;
+
+-- $in: []
+BEGIN;
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$in": [] } }, "u": [{"$addFields": {"addFields": "$$varRef"}}], "multi": true}], "let": {"varRef": 2} }');
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$in": [] } }, "u": [{"$addFields": {"addFields": "$$varRef"}}], "multi": true}], "let": {"varRef": 2} }');
+ROLLBACK;
+
+-- let support: sharded collection
+SELECT documentdb_api.shard_collection('db', 'coll_update', '{ "a": "hashed" }', false);
+
+BEGIN;
+-- updateMany
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"a": 1, "$expr": {"$eq": ["$a", "$$varRef"] } }, "u": {"$set": {"b": "anomaa"}}, "multi": true}], "let": {"varRef": "kofi"} }');
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+ROLLBACK;
+
+BEGIN;
+-- updateOne
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"a": 2, "$expr": {"$lt": ["$a", "$$varRef"] } }, "u": {"$set": {"b": "ako"}}, "multi": false}], "let": {"varRef": "ama"} }');
+ROLLBACK;
+
+BEGIN;
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+SELECT documentdb_api.update(
+    'db',
+    '{
+        "update": "coll_update",
+        "updates": [
+            {"q": {"$expr": {"$eq": ["$a", "$$varRef2"]}}, "u": {"$set": {"b": "akua"}}, "multi": true},
+            {"q": {"_id": 1, "$expr": {"$eq": ["$_id", "$$varRef1"]}}, "u": {"$set": {"b": "abena"}}, "multi": false}
+        ],
+        "ordered": true,
+        "let": {"varRef1": 1, "varRef2": "ama"}
+    }'
+);
+
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+ROLLBACK;
+
+BEGIN;
+-- updateMany: $set
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$lte": ["$_id", "$$varRef"] } }, "u": [{"$set": {"set": "$$varRef"}}], "multi": true}], "let": {"varRef": 2} }');
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+
+-- updateMany: addFields
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$eq": ["$_id", "$$varRef"] } }, "u": [{"$addFields": {"addFields": "$$varRef"}}], "multi": true}], "let": {"varRef": 2} }');
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+
+-- updateMany: $project
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$gte": ["$_id", "$$varRef"] } }, "u": [{"$project": {"project": "$$varRef"}}], "multi": true}], "let": {"varRef": 2} }');
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+
+-- updateMany: $replaceRoot
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$eq": ["$_id", "$$varRef1"] } }, "u": [{"$replaceRoot": {"newRoot": "$$varRef2"}}], "multi": true}], "let": {"varRef1": 2, "varRef2": {"newRoot": 1 }} }');
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+
+-- updateMany: $replaceWith
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$eq": ["$_id", "$$varRef1"] } }, "u": [{"$replaceWith": "$$varRef2"}], "multi": true}], "let": {"varRef1": 2, "varRef2": {"replaceWith": 1 }} }');
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+ROLLBACK;
+
+BEGIN;
+-- updateOne: $set
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"_id": 3, "$expr": {"$lt": ["$a", "$$varRef"] } }, "u": [{"$set": {"set": "$$varRef"}}], "multi": false}], "let": {"varRef": "ama"} }');
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+
+-- updateOne: addFields
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"_id": 2, "$expr": {"$eq": ["$a", "$$varRef"] } }, "u": [{"$addFields": {"addField": "$$varRef"}}], "multi": false}], "let": {"varRef": "ama"} }');
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+
+-- updateOne: $project
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"_id": 1, "$expr": {"$gt": ["$a", "$$varRef"] } }, "u": [{"$project": {"project": "$$varRef"}}], "multi": false}], "let": {"varRef": "ama"} }');
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+
+-- updateOne: $replaceRoot
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"_id": 2, "$expr": {"$eq": ["$_id", "$$varRef1"] } }, "u": [{"$replaceRoot": {"newRoot": "$$varRef2"}}], "multi": false}], "let": {"varRef1": 2, "varRef2": {"newRoot": 1 }} }');
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+
+-- updateOne: $replaceWith
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"_id": 2, "$expr": {"$eq": ["$_id", "$$varRef1"] } }, "u": [{"$replaceWith": "$$varRef2"}], "multi": false}], "let": {"varRef1": 2, "varRef2": {"replaceWith": 1 }} }');
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+ROLLBACK;
+
+-- sharded collection shard on some other field and query on object_id
+SELECT 1 FROM documentdb_api.insert_one('db', 'upShardTest', '{"_id":1,"b":1}');
+SELECT documentdb_api.shard_collection('db', 'upShardTest', '{"b": "hashed"}', false);
+select documentdb_api.update('db', '{"update":"upShardTest", "updates":[{"q":{"_id":1},"u":{"b":1},"multi":false}]}');
+
+-- $in: []
+BEGIN;
+SELECT document FROM documentdb_api.collection('db', 'coll_update');
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$in": [] } }, "u": [{"$addFields": {"addFields": "$$varRef"}}], "multi": true}], "let": {"varRef": 2} }');
+SELECT documentdb_api.update('db', '{ "update": "coll_update", "updates": [ { "q": {"$expr": {"$in": [] } }, "u": [{"$addFields": {"addFields": "$$varRef"}}], "multi": true}], "let": {"varRef": 2} }');
 ROLLBACK;

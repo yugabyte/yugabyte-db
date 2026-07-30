@@ -34,7 +34,7 @@ import org.yb.YBTestRunner;
 public class TestSnapshot extends CDCBaseClass {
   private final static Logger LOG = LoggerFactory.getLogger(TestSnapshot.class);
 
-  protected final long DEFAULT_BATCH_SIZE = 250;
+  protected final long SMALL_SNAPSHOT_THRESHOLD_BYTES = 10240;
 
   private List<Integer> convertSnapshotRecordRecordToList(CdcService.CDCSDKProtoRecordPB record) {
     List<Integer> valueList = new ArrayList<>();
@@ -81,11 +81,12 @@ public class TestSnapshot extends CDCBaseClass {
 
     // Setting back to default value before each test.
     try {
-      setServerFlag(getTserverHostAndPort(), CDC_BATCH_SIZE_GFLAG,
-        String.valueOf(DEFAULT_BATCH_SIZE));
-        setServerFlag(getTserverHostAndPort(), CDC_POPULATE_SAFEPOINT_RECORD, "false");
+      setServerFlag(getTserverHostAndPort(), CDC_SNAPSHOT_THRESHOLD_SIZE_GFLAG,
+          String.valueOf(4 * 1024 * 1024)); // 4MB default
+      setServerFlag(getTserverHostAndPort(), CDC_POPULATE_SAFEPOINT_RECORD, "false");
     } catch (Exception e) {
-      LOG.error("Error while setting up default flag value for " + CDC_BATCH_SIZE_GFLAG, e);
+      LOG.error("Error while setting up default flag value for "
+          + CDC_SNAPSHOT_THRESHOLD_SIZE_GFLAG, e);
       System.exit(-1);
     }
   }
@@ -115,8 +116,7 @@ public class TestSnapshot extends CDCBaseClass {
     List<CdcService.CDCSDKProtoRecordPB> outputList = new ArrayList<>();
     CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
 
-    setServerFlag(getTserverHostAndPort(), CDC_BATCH_SIZE_GFLAG, "20000");
-
+    // With default 4MB threshold, all 5000 records should fit in one batch.
     testSubscriber.createStreamAndGetSnapshot(outputList);
     int insertedRecordsUsingScript = 5000;
 
@@ -136,7 +136,7 @@ public class TestSnapshot extends CDCBaseClass {
   @Test
   public void testDefaultSnapshotBatchSize() {
     try {
-      // Default batch size is 250.
+      // With the default threshold of 4MB, all 5000 records should fit in a single batch.
       CDCTestUtils.runSqlScript(connection, "cdc_large_snapshot.sql");
 
       List<CdcService.CDCSDKProtoRecordPB> outputList = new ArrayList<>();
@@ -144,11 +144,11 @@ public class TestSnapshot extends CDCBaseClass {
 
       testSubscriber.createStreamAndGetSnapshot(outputList);
 
-      // +1 if for checking the DDL record because it would be added in the beginning of
-      // the snapshot batch.
-      assertEquals(DEFAULT_BATCH_SIZE+1, outputList.size());
+      // All 5000 records + 1 DDL record should be returned since default threshold is 4MB.
+      int insertedRecordsUsingScript = 5000;
+      assertEquals(insertedRecordsUsingScript + 1, outputList.size());
     } catch (Exception e) {
-      LOG.error("Test to verify default batch size failed", e);
+      LOG.error("Test to verify default snapshot threshold failed", e);
       fail();
     }
   }
@@ -181,13 +181,19 @@ public class TestSnapshot extends CDCBaseClass {
       List<CdcService.CDCSDKProtoRecordPB> outputList = new ArrayList<>();
       CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
 
-      setServerFlag(getTserverHostAndPort(), CDC_BATCH_SIZE_GFLAG, "2500");
+      // Set a small threshold (1KB) to force batching.
+      setServerFlag(getTserverHostAndPort(), CDC_SNAPSHOT_THRESHOLD_SIZE_GFLAG,
+          String.valueOf(SMALL_SNAPSHOT_THRESHOLD_BYTES));
       setServerFlag(getTserverHostAndPort(), CDC_POPULATE_SAFEPOINT_RECORD, "false");
       testSubscriber.createStreamAndGetSnapshot(outputList);
 
-      // We get one extra record in outputList, that record is the initial DDL containing the
-      // schema of the table, the +1 is for the same DDL record only.
-      assertEquals(2500+1, outputList.size());
+      // With a 1KB threshold, we should get fewer records than the total 5000.
+      int insertedRecordsUsingScript = 5000;
+      assertTrue("Expected fewer records due to byte threshold, but got: " + outputList.size(),
+          outputList.size() < insertedRecordsUsingScript);
+      // Should have at least the DDL record and some data records
+      assertTrue("Expected at least some records, but got: " + outputList.size(),
+          outputList.size() > 1);
     } catch (Exception e) {
       LOG.error("Test to verify working of GFlag for snapshots failed", e);
       fail();
@@ -263,6 +269,96 @@ public class TestSnapshot extends CDCBaseClass {
       assertEquals(postSnapshotRecords.length, recordsAsserted);
     } catch (Exception e) {
       LOG.error("Test to verify streaming after large snapshot failed", e);
+      fail();
+    }
+  }
+
+  private int getSnapshotWithBatchCount(CDCSubscriber testSubscriber,
+      List<CdcService.CDCSDKProtoRecordPB> allRecords) throws Exception {
+    int batchCount = 0;
+
+    testSubscriber.createStreamAndGetSnapshot(allRecords);
+    batchCount++;
+
+    // Continue fetching until snapshot is complete
+    while (testSubscriber.getSubscriberCheckpoint().getKey().length > 0) {
+      List<CdcService.CDCSDKProtoRecordPB> batchRecords = new ArrayList<>();
+      testSubscriber.getResponseFromCDC(batchRecords, testSubscriber.getSubscriberCheckpoint());
+      if (batchRecords.isEmpty()) {
+        break;
+      }
+      allRecords.addAll(batchRecords);
+      batchCount++;
+    }
+
+    return batchCount;
+  }
+
+  @Test
+  public void testByteBasedSnapshotBatching() {
+    try {
+      // Insert 5000 rows - each row is (int, int, int)
+      CDCTestUtils.runSqlScript(connection, "cdc_large_snapshot.sql");
+
+      // With default 4MB threshold, should complete in 1 batch
+      List<CdcService.CDCSDKProtoRecordPB> outputList = new ArrayList<>();
+      CDCSubscriber testSubscriber = new CDCSubscriber(getMasterAddresses());
+      setServerFlag(getTserverHostAndPort(), CDC_POPULATE_SAFEPOINT_RECORD, "false");
+
+      int batchCount = getSnapshotWithBatchCount(testSubscriber, outputList);
+      LOG.info("With default 4MB threshold: {} records in {} batch(es)", outputList.size(),
+                batchCount);
+
+      // All 5000 records + 1 DDL should fit in 1 batch with 4MB threshold
+      assertEquals("Expected all records in single batch with 4MB threshold",
+          5001, outputList.size());
+      assertEquals("Expected 1 batch with 4MB threshold", 1, batchCount);
+
+      // With small threshold (10KB), should require multiple batches
+      statement.execute("drop table if exists test;");
+      statement.execute("create table test (a int primary key, b int, c int);");
+      CDCTestUtils.runSqlScript(connection, "cdc_large_snapshot.sql");
+
+      outputList.clear();
+      CDCSubscriber testSubscriber2 = new CDCSubscriber(getMasterAddresses());
+
+      // Set threshold to 10KB - should require multiple batches for 5000 records
+      setServerFlag(getTserverHostAndPort(), CDC_SNAPSHOT_THRESHOLD_SIZE_GFLAG,
+          String.valueOf(10 * 1024)); // 10KB
+
+      batchCount = getSnapshotWithBatchCount(testSubscriber2, outputList);
+      LOG.info("With 10KB threshold: {} records in {} batch(es)", outputList.size(), batchCount);
+
+      assertEquals("Expected all records to be fetched", 5001, outputList.size());
+
+      assertTrue("Expected 40+ batches with 10KB threshold, got: " + batchCount,
+          batchCount > 40);
+
+      // Verify batch count scales with threshold size
+      // With 1KB threshold, should need more batches than 10KB(Somewhere between 7-10x)
+      statement.execute("drop table if exists test;");
+      statement.execute("create table test (a int primary key, b int, c int);");
+      CDCTestUtils.runSqlScript(connection, "cdc_large_snapshot.sql");
+
+      outputList.clear();
+      CDCSubscriber testSubscriber3 = new CDCSubscriber(getMasterAddresses());
+      setServerFlag(getTserverHostAndPort(), CDC_SNAPSHOT_THRESHOLD_SIZE_GFLAG,
+          String.valueOf(1 * 1024)); // 1KB
+
+      int batchCount1KB = getSnapshotWithBatchCount(testSubscriber3, outputList);
+      LOG.info("With 1KB threshold: {} records in {} batch(es)",
+          outputList.size(), batchCount1KB);
+
+      assertEquals("Expected all records to be fetched", 5001, outputList.size());
+
+      // 1KB threshold should need more batches than 10KB threshold.
+      assertTrue(
+          "Expected at least 7-10x more batches with 1KB than 10KB threshold. 1KB: "
+              + batchCount1KB + ", 10KB: " + batchCount,
+          7 * batchCount1KB > batchCount);
+
+    } catch (Exception e) {
+      LOG.error("Test to verify byte-based snapshot batching failed", e);
       fail();
     }
   }

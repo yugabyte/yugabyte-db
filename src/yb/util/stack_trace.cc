@@ -14,6 +14,8 @@
 #include "yb/util/stack_trace.h"
 
 #include <execinfo.h>
+#define UNW_LOCAL_ONLY
+#include <libunwind.h>
 #include <signal.h>
 
 #ifdef __linux__
@@ -35,6 +37,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/symbolize.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
@@ -53,6 +56,15 @@ typedef sig_t sighandler_t;
 
 DEFINE_test_flag(bool, disable_thread_stack_collection_wait, false,
     "When set to true, ThreadStacks() will not wait for threads to respond");
+
+// TODO(#32197): glibc backtrace() is not safe for use inside signal handlers, and is known to
+// cause trouble in TSAN builds (deadlock during collection). But the alternative (llvm libunwind)
+// currently has issues with BOLT-ed binaries that we use for releases, and backtrace() is what
+// we have been using in the past. So disabling in non-sanitizer builds until #32197 is resolved.
+DEFINE_RUNTIME_bool(use_libunwind_for_stack_trace_collection, yb::IsSanitizer(),
+    "Use (llvm-)libunwind for stack trace collection instead of glibc backtrace().");
+TAG_FLAG(use_libunwind_for_stack_trace_collection, advanced);
+TAG_FLAG(use_libunwind_for_stack_trace_collection, hidden);
 
 // A hack to grab a function from glog.
 // For source see e.g. https://github.com/yugabyte/glog/blob/v0.4.0-yb-5/src/stacktrace.h#L57
@@ -303,19 +315,38 @@ void StackTrace::Collect(int skip_frames) {
   is_collecting_stack = true;
   auto se = ScopeExit([]() { is_collecting_stack = false; });
 
-#if THREAD_SANITIZER || ADDRESS_SANITIZER
-  num_frames_ = google::GetStackTrace(frames_, arraysize(frames_), skip_frames);
-#else
-  int max_frames = skip_frames + arraysize(frames_);
-  void** buffer = static_cast<void**>(alloca((max_frames) * sizeof(void*)));
-  num_frames_ = backtrace(buffer, max_frames);
-  if (num_frames_ > skip_frames) {
-    num_frames_ -= skip_frames;
-    memmove(frames_, buffer + skip_frames, num_frames_ * sizeof(void*));
-  } else {
+  if (PREDICT_TRUE(FLAGS_use_libunwind_for_stack_trace_collection)) {
+    // Taken from libunwind docs and enhanced with skip_frames.
+    unw_context_t uc;
+    unw_getcontext(&uc);
+
+    unw_cursor_t cursor;
+    unw_init_local(&cursor, &uc);
     num_frames_ = 0;
+    while (static_cast<size_t>(num_frames_) < arraysize(frames_) && unw_step(&cursor) > 0) {
+      if (skip_frames > 1) { // to be backward compatible we should skip less stack frames
+        --skip_frames;
+        continue;
+      }
+      unw_word_t ip;
+      unw_get_reg(&cursor, UNW_REG_IP, &ip);
+      frames_[num_frames_] = reinterpret_cast<void*>(ip);
+      ++num_frames_;
+    }
+  } else {
+    // Collection via glibc backtrace. This is not safe (backtrace is not async-signal-safe and
+    // this is in a signal handler). But it's what we had before switching to llvm-libunwind, so
+    // is left in as a fallback in case we run into issues with llvm-libunwind.
+    int max_frames = skip_frames + arraysize(frames_);
+    void** buffer = static_cast<void**>(alloca((max_frames) * sizeof(void*)));
+    num_frames_ = backtrace(buffer, max_frames);
+    if (num_frames_ > skip_frames) {
+      num_frames_ -= skip_frames;
+      memmove(frames_, buffer + skip_frames, num_frames_ * sizeof(void*));
+    } else {
+      num_frames_ = 0;
+    }
   }
-#endif
 }
 
 void StackTrace::StringifyToHex(char* buf, size_t size, int flags) const {

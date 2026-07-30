@@ -18,7 +18,7 @@ func NewDisabledDnfAutomatic(basePath string) config.Module {
 	return &DisabledDnfAutomatic{
 		BaseModule: config.NewBaseModule(
 			ModuleName,
-			filepath.Join(basePath, "disabled_dnf_automatic"),
+			filepath.Join(basePath, "disable_dnf_automatic"),
 		),
 	}
 }

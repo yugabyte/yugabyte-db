@@ -56,6 +56,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/shutdown_controller.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/tostring.h"
 #include "yb/util/unique_lock.h"
@@ -178,6 +179,9 @@ class SysCatalogTable {
   Status ForceWrite(
       int8_t type, const std::string& item_id, const google::protobuf::Message& new_pb,
       QLWriteRequestPB::QLStmtType op_type, int64_t leader_term);
+
+  Result<bool> GetYsqlYbSystemTableInfo(
+      PgOid relnamespace, const TableName& table_name, PgOid* oid, PgOid* relfilenode);
 
   // ==================================================================
   // Static schema related methods.
@@ -371,6 +375,11 @@ class SysCatalogTable {
     return tablet_peer_;
   }
 
+  Result<int64_t> CountPgYbMigrationRows(
+      uint32_t database_oid, const ReadHybridTime& read_time = ReadHybridTime());
+
+  Result<PgOid> GetYsqlDatabaseOid(const NamespaceName& ns_name);
+
  private:
   friend class CatalogManager;
   friend class ScopedLeaderSharedLock;
@@ -508,6 +517,11 @@ class SysCatalogTable {
   std::shared_ptr<tserver::TabletMemoryManager> mem_manager_;
 
   std::unique_ptr<consensus::MultiRaftManager> multi_raft_manager_;
+
+  // Makes the two-phase StartShutdown / CompleteShutdown run at most once, in order. A removed
+  // master going into shell mode (GoIntoShellMode) can race with process shutdown; both drive
+  // the tablet peer shutdown.
+  ShutdownController shutdown_controller_;
 
   DISALLOW_COPY_AND_ASSIGN(SysCatalogTable);
 };

@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react';
+import type { Meta, StoryObj } from '@storybook/react-vite';
 import { YBInputProps } from '../redesign/components/YBInput/YBInput';
 import { YBPassword } from '../redesign/components/YBPassword/YBPassword';
 

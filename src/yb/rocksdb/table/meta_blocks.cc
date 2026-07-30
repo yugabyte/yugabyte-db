@@ -64,9 +64,9 @@ ReadOptions CreateMetaBlockReadOptions(RandomAccessFileReader* file) {
 
 }  // namespace
 
-MetaIndexBuilder::MetaIndexBuilder()
+MetaIndexBuilder::MetaIndexBuilder(const yb::MemTrackerPtr& mem_tracker)
     : meta_index_block_(new BlockBuilder(
-          kMetaIndexBlockRestartInterval, kMetaIndexBlockKeyValueEncodingFormat)) {}
+          kMetaIndexBlockRestartInterval, kMetaIndexBlockKeyValueEncodingFormat, mem_tracker)) {}
 
 void MetaIndexBuilder::Add(const std::string& key,
                            const BlockHandle& handle) {
@@ -82,9 +82,9 @@ Slice MetaIndexBuilder::Finish() {
   return meta_index_block_->Finish();
 }
 
-PropertyBlockBuilder::PropertyBlockBuilder()
-    : properties_block_(
-          new BlockBuilder(kPropertyBlockRestartInterval, kPropertyBlockKeyValueEncodingFormat)) {}
+PropertyBlockBuilder::PropertyBlockBuilder(const yb::MemTrackerPtr& mem_tracker)
+    : properties_block_(new BlockBuilder(
+          kPropertyBlockRestartInterval, kPropertyBlockKeyValueEncodingFormat, mem_tracker)) {}
 
 void PropertyBlockBuilder::Add(const std::string& name,
                                const std::string& val) {

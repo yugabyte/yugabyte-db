@@ -131,11 +131,7 @@ void SetFD_CLOEXEC(int fd, const EnvOptions* options) {
   }
 }
 
-class PosixFileLock : public FileLock {
- public:
-  int fd_;
-  std::string filename;
-};
+using yb::PosixFileLock;
 
 class PosixEnv : public Env {
  public:
@@ -384,6 +380,27 @@ class PosixEnv : public Env {
 
   virtual Status NewLogger(const std::string& fname,
                            std::shared_ptr<Logger>* result) override {
+#if defined(__APPLE__)
+    // On macOS, use raw fd to avoid the ~32K stdio FILE* stream limit (SHRT_MAX in Apple's libc).
+    int fd;
+    {
+      IOSTATS_TIMER_GUARD(open_nanos);
+      fd = open(fname.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    }
+    if (fd < 0) {
+      result->reset();
+      return STATUS_IO_ERROR(fname, errno);
+    } else {
+#ifdef ROCKSDB_FALLOCATE_PRESENT
+      if (fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, 4 * 1024) != 0) {
+        LOG(WARNING) << STATUS_IO_ERROR(fname, errno);
+      }
+#endif
+      SetFD_CLOEXEC(fd, nullptr);
+      result->reset(new PosixLogger(fname, fd, &PosixEnv::gettid, this));
+      return Status::OK();
+    }
+#else
     FILE* f;
     {
       IOSTATS_TIMER_GUARD(open_nanos);
@@ -403,6 +420,7 @@ class PosixEnv : public Env {
       result->reset(new PosixLogger(fname, f, &PosixEnv::gettid, this));
       return Status::OK();
     }
+#endif // defined(__APPLE__)
   }
 
   uint64_t NowMicros() override {
@@ -582,6 +600,22 @@ class PosixRocksDBFileFactory : public RocksDBFileFactory {
                            std::unique_ptr<SequentialFile>* result,
                            const EnvOptions& options) override {
     result->reset();
+#if defined(__APPLE__)
+    // On macOS, use raw fd to avoid the ~32K stdio FILE* stream limit (SHRT_MAX in Apple's libc).
+    int fd = -1;
+    do {
+      IOSTATS_TIMER_GUARD(open_nanos);
+      fd = open(fname.c_str(), O_RDONLY);
+    } while (fd < 0 && errno == EINTR);
+    if (fd < 0) {
+      *result = nullptr;
+      return STATUS_IO_ERROR(fname, errno);
+    } else {
+      SetFD_CLOEXEC(fd, &options);
+      *result = std::make_unique<yb::PosixSequentialFile>(fname, fd, options);
+      return Status::OK();
+    }
+#else
     FILE* f = nullptr;
     do {
       IOSTATS_TIMER_GUARD(open_nanos);
@@ -596,6 +630,7 @@ class PosixRocksDBFileFactory : public RocksDBFileFactory {
       *result = std::make_unique<yb::PosixSequentialFile>(fname, f, options);
       return Status::OK();
     }
+#endif // defined(__APPLE__)
   }
 
   Status NewRandomAccessFile(const std::string& fname,
@@ -662,7 +697,7 @@ class PosixRocksDBFileFactory : public RocksDBFileFactory {
         // disable mmap writes
         EnvOptions no_mmap_writes_options = options;
         no_mmap_writes_options.use_mmap_writes = false;
-        *result = std::make_unique<PosixWritableFile>(fname, fd, no_mmap_writes_options);
+        *result = std::make_unique<yb::PosixWritableFile>(fname, fd, no_mmap_writes_options);
       }
     }
     return s;
@@ -706,7 +741,7 @@ class PosixRocksDBFileFactory : public RocksDBFileFactory {
         EnvOptions no_mmap_writes_options = options;
         no_mmap_writes_options.use_mmap_writes = false;
 
-        *result = std::make_unique<PosixWritableFile>(fname, fd, no_mmap_writes_options);
+        *result = std::make_unique<yb::PosixWritableFile>(fname, fd, no_mmap_writes_options);
       }
     }
     return s;

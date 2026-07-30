@@ -2,6 +2,7 @@ SET search_path TO documentdb_api,documentdb_core,documentdb_api_catalog;
 SET documentdb.next_collection_id TO 1500;
 SET documentdb.next_collection_index_id TO 1500;
 
+SET documentdb.enableupdatebsondocument TO false;
 select 1 from documentdb_api.insert_one('db', 'updateme', '{"a":1,"_id":1,"b":1}');
 select 1 from documentdb_api.insert_one('db', 'updateme', '{"a":2,"_id":2,"b":2}');
 select 1 from documentdb_api.insert_one('db', 'updateme', '{"a":3,"_id":3,"b":3}');
@@ -619,3 +620,5 @@ select documentdb_api.update('update', '{"update":"server1470_noid", "updates":[
 select documentdb_api.update('update', '{"update":"server1470_noref", "updates":[{"q": {"name": "first", "pic": {"$id": {"$oid": "4c48d04cd33a5a92628c9af6"} } }, "u":{"$set": {"refx": 1}}, "multi": true, "upsert": true} ] }');
 select documentdb_api.update('update', '{"update":"server1470_extraf_1", "updates":[{"q": {"name": "first", "pic": {"$ref": "foo", "extraField": "extraField", "$id": {"$oid": "4c48d04cd33a5a92628c9af6"} } }, "u":{"$set": {"refx": 1}}, "multi": true, "upsert": true} ] }');
 select documentdb_api.update('update', '{"update":"server1470_extraf_2", "updates":[{"q": {"name": "first", "pic": {"$id": {"$oid": "4c48d04cd33a5a92628c9af6"}, "extraField": "extraFiele", "$ref": "foo" } }, "u":{"$set": {"refx": 1}}, "multi": true, "upsert": true} ] }');
+
+SET documentdb.enableupdatebsondocument TO true;

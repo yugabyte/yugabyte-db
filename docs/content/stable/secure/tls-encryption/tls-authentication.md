@@ -16,7 +16,7 @@ type: docs
 
 TLS can be configured in conjunction with authentication using the following configuration flags related to TLS and authentication:
 
-* [ysql_enable_auth](../../authentication/password-authentication/) to enable password (md5) authentication
+* [ysql_enable_auth](../../authentication/password-authentication/) to enable password authentication (SCRAM-SHA-256 by default for new clusters; MD5 for upgraded clusters unless overridden)
 * [use_client_to_server_encryption](../server-to-server/) to enable client-server TLS encryption
 * [ysql_hba_conf_csv](../../authentication/host-based-authentication/) to manually set a host-based authentication (HBA) configuration
 
@@ -26,15 +26,15 @@ The four default cases are shown in the following table.
 
 | | Auth disabled | Auth enabled |
 | :--- | :--- | :--- |
-| TLS disabled | `host all all all trust`</br>(no ssl, no password) | `host all all all md5`</br>(no ssl, password required) |
-| TLS enabled | `hostssl all all all trust`</br>(require ssl, no password) | `hostssl all all all md5`</br>(require ssl and password) |
+| TLS disabled | `host all all all trust`</br>(no ssl, no password) | `host all all all scram-sha-256`</br>(no ssl, password required; default for new clusters; upgraded clusters may use `md5` unless overridden) |
+| TLS enabled | `hostssl all all all trust`</br>(require ssl, no password) | `hostssl all all all scram-sha-256`</br>(require ssl and password; default for new clusters; upgraded clusters may use `md5` unless overridden) |
 
 Additionally, `ysql_hba_conf_csv` can be used to manually configure a custom HBA configuration.
 
-For instance, to use TLS with both password authentication and client certificate verification, you can set the `ysql_hba_conf_csv` flag as follows:
+For instance, to use TLS with both password authentication and client certificate verification, you can set the `ysql_hba_conf_csv` flag as follows (use `scram-sha-256` for SCRAM, or `md5` if needed for compatibility):
 
 ```sh
-hostssl all all all md5 clientcert=verify-full
+hostssl all all all scram-sha-256 clientcert=verify-full
 ```
 
 {{< note title="Note" >}}
@@ -224,7 +224,7 @@ To create the database, execute the following command:
 $ ./bin/yugabyted destroy && \
     ./bin/yugabyted cert generate_server_certs --hostnames=127.0.0.1 && \
     ./bin/yugabyted start \
-    --tserver_flags="$ENABLE_TLS,ysql_hba_conf_csv={hostssl all all all md5 clientcert=verify-full}"
+    --tserver_flags="$ENABLE_TLS,ysql_hba_conf_csv={hostssl all all all scram-sha-256 clientcert=verify-full}"
 ```
 
 The `ysql_enable_auth=true` flag is redundant in this case, but included to demonstrate the ability to override the auto-generated configuration using `ysql_hba_conf_csv`.

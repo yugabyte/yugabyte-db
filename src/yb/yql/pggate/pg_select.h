@@ -34,15 +34,16 @@ class PgSelect : public PgStatementLeafBase<PgDmlRead, StmtOp::kSelect> {
   };
 
   static Result<std::unique_ptr<PgSelect>> Make(
-      const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id,
-      const YbcPgTableLocalityInfo& locality_info,
+      const PgSessionPtr& pg_session, const PgObjectId& table_id,
+      const YbcPgTableLocalityInfo& locality_info, bool skip_intents_read,
       const std::optional<IndexQueryInfo>& index_info = std::nullopt);
 
  protected:
-  explicit PgSelect(const PgSession::ScopedRefPtr& pg_session);
+  explicit PgSelect(const PgSessionPtr& pg_session);
 
   Status Prepare(
       const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+      bool skip_intents_read,
       const std::optional<IndexQueryInfo>& index_info = std::nullopt);
 };
 

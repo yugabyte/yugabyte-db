@@ -58,6 +58,8 @@ using dockv::ValueControlFields;
 
 namespace {
 
+YB_STRONGLY_TYPED_BOOL(RepackAllowed);
+
 struct OverwriteData {
   EncodedDocHybridTime encoded_doc_ht;
   Expiration expiration;
@@ -114,6 +116,29 @@ class LazyHybridTime {
 
 constexpr auto kUnlimitedTail = std::numeric_limits<ssize_t>::min();
 
+Result<CompactionSchemaInfo> GetCompactionSchemaInfoForCoprefix(
+    SchemaPackingProvider* schema_packing_provider, Slice coprefix,
+    HistoryCutoff history_cutoff) {
+  SCHECK_NOTNULL(schema_packing_provider);
+  HybridTime chosen_ht = GetHistoryCutoffForKey(coprefix, history_cutoff);
+  if (coprefix.empty()) {
+    return schema_packing_provider->CotablePacking(
+        Uuid::Nil(), kLatestSchemaVersion, chosen_ht);
+  } else if (coprefix.TryConsumeByte(dockv::KeyEntryTypeAsChar::kColocationId)) {
+    if (coprefix.size() != sizeof(ColocationId)) {
+      return STATUS_FORMAT(Corruption, "Wrong colocation size: $0", coprefix.ToDebugHexString());
+    }
+    uint32_t colocation_id = BigEndian::Load32(coprefix.data());
+    return schema_packing_provider->ColocationPacking(
+        colocation_id, kLatestSchemaVersion, chosen_ht);
+  } else if (coprefix.TryConsumeByte(dockv::KeyEntryTypeAsChar::kTableId)) {
+    auto cotable_id = VERIFY_RESULT(Uuid::FromComparable(coprefix));
+    return schema_packing_provider->CotablePacking(
+        cotable_id, kLatestSchemaVersion, chosen_ht);
+  }
+  return STATUS_FORMAT(Corruption, "Wrong coprefix: $0", coprefix.ToDebugHexString());
+}
+
 class PackedRowData {
  public:
   PackedRowData(PackedRowFeed* feed, SchemaPackingProvider* provider,
@@ -130,8 +155,20 @@ class PackedRowData {
     return active_coprefix_missing_schema_;
   }
 
+  bool active_coprefix_missing_schema_has_table_tombstone() const {
+    return active_coprefix_missing_schema_has_table_tombstone_;
+  }
+
+  void set_active_coprefix_missing_schema_has_table_tombstone() {
+    active_coprefix_missing_schema_has_table_tombstone_ = true;
+  }
+
   bool can_start_packing() const {
     return new_packing_.packed_row_version.has_value();
+  }
+
+  bool repack_allowed() const {
+    return active() && repack_allowed_;
   }
 
   bool ColumnDeleted(ColumnId column_id) const {
@@ -167,11 +204,13 @@ class PackedRowData {
 
   Status ProcessPackedRow(
       Slice internal_key, size_t doc_key_size, Slice full_value, size_t control_fields_size,
-      const EncodedDocHybridTime& encoded_row_doc_ht, size_t new_doc_key_serial) {
+      const EncodedDocHybridTime& encoded_row_doc_ht, size_t new_doc_key_serial,
+      RepackAllowed repack_allowed) {
     VLOG_WITH_FUNC(4)
         << "Key: " << internal_key.ToDebugHexString() << ", full_value: "
         << full_value.ToDebugHexString() << ", control_fields_size: " << control_fields_size
-        << ", row_doc_ht: " << encoded_row_doc_ht.ToString();
+        << ", row_doc_ht: " << encoded_row_doc_ht.ToString() << ", repack_allowed: "
+     << repack_allowed;
     RSTATUS_DCHECK(!active(), Corruption, Format(
         "Double packed rows: $0, $1", key_.AsSlice().ToDebugHexString(),
         internal_key.ToDebugHexString()));
@@ -181,11 +220,12 @@ class PackedRowData {
     InitKey(internal_key, doc_key_size, new_doc_key_serial);
     control_fields_size_ = control_fields_size;
     encoded_doc_ht_ = encoded_row_doc_ht;
+    repack_allowed_ = repack_allowed;
 
     old_value_.Assign(full_value);
     old_value_slice_ = old_value_.AsSlice().WithoutPrefix(control_fields_size);
-    std::tie(old_packing_.packed_row_version, old_schema_version_) = VERIFY_RESULT(ParseValueHeader(
-        &old_value_slice_));
+    std::tie(old_packing_.packed_row_version, old_schema_version_) =
+        VERIFY_RESULT(ParseValueHeader(&old_value_slice_));
     if (old_schema_version_ < new_packing_.schema_version) {
       return StartRepacking();
     }
@@ -206,16 +246,8 @@ class PackedRowData {
     control_fields_size_ = 0;
     encoded_doc_ht_ = encoded_doc_ht;
     old_value_slice_ = Slice();
+    repack_allowed_ = true;
     return InitPacker();
-  }
-
-  void InitKey(
-      const Slice& internal_key, size_t doc_key_size, size_t new_doc_key_serial) {
-    doc_key_serial_ = new_doc_key_serial;
-    key_.Assign(internal_key.cdata(), doc_key_size);
-    memcpy(
-        last_internal_component_, internal_key.end() - rocksdb::kLastInternalComponentSize,
-        sizeof(last_internal_component_));
   }
 
   // Returns true if column was processed. Otherwise caller should handle this column.
@@ -454,6 +486,8 @@ class PackedRowData {
     }
     RETURN_NOT_OK(Flush());
 
+    active_coprefix_missing_schema_has_table_tombstone_ = false;
+
     auto packing = GetCompactionSchemaInfo(coprefix);
     if (!packing.ok()) {
       if (packing.status().IsNotFound()) {
@@ -471,27 +505,19 @@ class PackedRowData {
   }
 
   Result<CompactionSchemaInfo> GetCompactionSchemaInfo(Slice coprefix) {
-    HybridTime chosen_ht = GetHistoryCutoffForKey(coprefix, history_cutoff_);
-    if (coprefix.empty()) {
-      return schema_packing_provider_->CotablePacking(
-          Uuid::Nil(), kLatestSchemaVersion, chosen_ht);
-    } else if (coprefix.TryConsumeByte(dockv::KeyEntryTypeAsChar::kColocationId)) {
-      if (coprefix.size() != sizeof(ColocationId)) {
-        return STATUS_FORMAT(Corruption, "Wrong colocation size: $0", coprefix.ToDebugHexString());
-      }
-      uint32_t colocation_id = BigEndian::Load32(coprefix.data());
-      return schema_packing_provider_->ColocationPacking(
-          colocation_id, kLatestSchemaVersion, chosen_ht);
-    } else if (coprefix.TryConsumeByte(dockv::KeyEntryTypeAsChar::kTableId)) {
-      auto cotable_id = VERIFY_RESULT(Uuid::FromComparable(coprefix));
-      return schema_packing_provider_->CotablePacking(
-          cotable_id, kLatestSchemaVersion, chosen_ht);
-    } else {
-      return STATUS_FORMAT(Corruption, "Wrong coprefix: $0", coprefix.ToDebugHexString());
-    }
+    return GetCompactionSchemaInfoForCoprefix(
+        schema_packing_provider_, coprefix, history_cutoff_);
   }
 
  private:
+  void InitKey(Slice internal_key, size_t doc_key_size, size_t new_doc_key_serial) {
+    doc_key_serial_ = new_doc_key_serial;
+    key_.Assign(internal_key.cdata(), doc_key_size);
+    memcpy(
+        last_internal_component_, internal_key.end() - rocksdb::kLastInternalComponentSize,
+        sizeof(last_internal_component_));
+  }
+
   PackedRowFeed& feed_;
   SchemaPackingProvider* schema_packing_provider_; // Owned externally.
 
@@ -511,6 +537,7 @@ class PackedRowData {
   dockv::PackedRowDecoderVariant old_row_decoder_;
 
   bool packing_started_ = false; // Whether we have started packing the row.
+  bool repack_allowed_ = false;
 
   // Use fake coprefix as default value.
   // So we will trigger table change on the first record.
@@ -518,6 +545,11 @@ class PackedRowData {
 
   // True if the active coprefix is for a table that does not exist.
   bool active_coprefix_missing_schema_ = false;
+
+  // True if a table-level tombstone has been seen for the current missing-schema coprefix.
+  // When set, row-level tombstones for this coprefix are redundant and can be dropped.
+  // Otherwise, we keep the row-level tombstones to not reveal older data for this coprefix.
+  bool active_coprefix_missing_schema_has_table_tombstone_ = false;
 
   CompactionSchemaInfo new_packing_;
   std::optional<dockv::RowPackerVariant> packer_;
@@ -539,26 +571,30 @@ class PackedRowData {
 
 class VectorMetadataFilter {
  public:
-  virtual ~VectorMetadataFilter() = default;
-  virtual rocksdb::FilterDecision Filter(Slice key, Slice value) {
-    // Dummy filter by default.
-    return rocksdb::FilterDecision::kKeep;
+  VectorMetadataFilter(
+      rocksdb::CompactionReason compaction_reason,
+      const KeyBounds* key_bounds,
+      SchemaPackingProvider* schema_packing_provider,
+      HistoryCutoff history_cutoff,
+      DocVectorMetadataIteratorProvider* vector_metadata_iterator_provider)
+      : compaction_reason_(compaction_reason),
+        key_bounds_(key_bounds),
+        schema_packing_provider_(schema_packing_provider),
+        history_cutoff_(history_cutoff),
+        iterator_provider_(vector_metadata_iterator_provider) {
+    VLOG(1) << "VectorMetadataFilter: compaction_reason: " << compaction_reason_
+            << ", key_bounds: " << (key_bounds_ ? key_bounds_->ToString() : "none")
+            << ", schema_packing_provider: " << (schema_packing_provider_ != nullptr)
+            << ", iterator_provider: " << (iterator_provider_ != nullptr);
   }
-};
 
-using VectorMetadataFilterPtr = std::unique_ptr<VectorMetadataFilter>;
-
-class VectorMetadataFilterImpl : public VectorMetadataFilter {
- public:
-  VectorMetadataFilterImpl(
-      const KeyBounds& key_bounds,
-      const DocVectorMetadataIteratorProvider& vector_metadata_iterator_provider)
-      : key_bounds_(key_bounds), provider_(vector_metadata_iterator_provider) {
-    VLOG(1) << "VectorMetadataFilter: key_bounds: " << key_bounds.ToString();
-  }
-
-  rocksdb::FilterDecision Filter(Slice key, Slice value) override {
+  // Discards reverse mappings whose ybctid is outside tablet key bounds. Runs for every
+  // compaction reason so parent-inherited entries on split children get cleaned up eagerly,
+  // not only during the async post-split compaction. Tombstone -> live-entry lookup remains
+  // post-split-only (see DoFilter).
+  Result<rocksdb::FilterDecision> Filter(Slice key, Slice value) {
     DCHECK(key.starts_with(dockv::KeyEntryTypeAsChar::kVectorIndexMetadata));
+
     auto decision = DoFilter(key, value);
     VLOG_WITH_FUNC(4)
         << "key: " << key.ToDebugHexString() << ", "
@@ -567,66 +603,181 @@ class VectorMetadataFilterImpl : public VectorMetadataFilter {
     return decision;
   }
 
+  // Discards the entry if (1) colocation is gone or (2) vector column was deleted.
+  Result<rocksdb::FilterDecision> FilterRetained(Slice key, Slice value) {
+    DCHECK(key.starts_with(dockv::KeyEntryTypeAsChar::kVectorIndexMetadata));
+
+    if (!schema_packing_provider_) {
+      return rocksdb::FilterDecision::kKeep;
+    }
+
+    // Tombstones are passed through the standard Feed overwrite/retention flow.
+    // Legacy raw ybctid values have no packing association - leave them alone.
+    if (value.starts_with(dockv::ValueEntryTypeAsChar::kTombstone) ||
+        !value.starts_with(dockv::KeyEntryTypeAsChar::kVectorIndexMetadata)) {
+      return rocksdb::FilterDecision::kKeep;
+    }
+
+    auto decision = DoFilterRetained(value);
+    VLOG_WITH_FUNC(4)
+        << "key: " << key.ToDebugHexString() << ", "
+        << "value: " << value.ToDebugHexString() << ", "
+        << "decision: " << decision;
+    return decision;
+  }
+
  private:
+  bool HasKeyBounds() const {
+    return key_bounds_ && key_bounds_->IsInitialized();
+  }
+
+  bool IsPostSplitCompaction() const {
+    return compaction_reason_ == rocksdb::CompactionReason::kPostSplitCompaction;
+  }
+
   rocksdb::FilterDecision DoFilterYbctid(Slice ybctid) {
-    return IsWithinBounds(&key_bounds_, ybctid)
+    DCHECK(HasKeyBounds());
+
+    // Discarding an out-of-bounds live entry is safe in any compaction reason: tablet key bounds
+    // never re-expand after a split and the child never serves the sibling's rows. Reverse-mapping
+    // keys sit outside the row-coprefix regions covered by GetLiveRanges() and are therefore
+    // included in every compaction's live ranges, so a non-post-split compaction may legitimately
+    // observe parent-inherited entries for the sibling's range before the async post-split
+    // compaction runs (or if it is skipped once parent_data_compacted is set).
+    return IsWithinBounds(key_bounds_, ybctid)
         ? rocksdb::FilterDecision::kKeep : rocksdb::FilterDecision::kDiscard;
   }
 
-  rocksdb::FilterDecision DoFilter(Slice key, Slice value) {
-    DCHECK(key.starts_with(dockv::KeyEntryTypeAsChar::kVectorIndexMetadata));
+  Result<rocksdb::FilterDecision> DoFilterValue(Slice value) {
+    auto decoded = VERIFY_RESULT(dockv::EncodedDocVectorMetaValue::Decode(value));
+
+    // Sanity checks:
+    // 1. The caller guarantees value is not a tombstone.
+    // 2. Post-split compaction is not used for colocated tables.
+    DCHECK(!decoded.IsTombstone()) << "Unexpected tombstone while filtering reverse mapping value";
+    DCHECK(!IsPostSplitCompaction() || decoded.table_key_prefix.empty());
+
+    return DoFilterYbctid(decoded.ybctid);
+  }
+
+  Result<rocksdb::FilterDecision> DoFilter(Slice key, Slice value) {
+    if (!HasKeyBounds()) {
+      return rocksdb::FilterDecision::kKeep;
+    }
+
     if (!value.starts_with(dockv::ValueEntryTypeAsChar::kTombstone)) {
-      return DoFilterYbctid(value);
+      return DoFilterValue(value);
+    }
+
+    // Tombstones are left to the standard Feed flow. Only post-split needs the corresponding
+    // live value's ybctid so DoFilterValue can apply key-bounds filtering.
+    if (!iterator_provider_ || !IsPostSplitCompaction()) {
+      return rocksdb::FilterDecision::kKeep;
     }
 
     // Special handling for the tombstoned entries: need to find entry's corresponding ybctid.
-    EnsureIteratorCreated();
+    RETURN_NOT_OK(EnsureIteratorCreated());
 
     // Seek for the next record.
     dockv::KeyBytes next_key { key, dockv::KeyEntryTypeAsChar::kMaxByte };
     iterator()->Seek(next_key.AsSlice(), SeekFilter::kAll);
-    const FetchedEntry& entry = CHECK_RESULT(iterator()->Fetch());
+    const auto& entry = VERIFY_RESULT_REF(iterator()->Fetch());
 
     // Make sure extracted entry matches the specified key.
     if (!entry.key.starts_with(key.Prefix(dockv::kEncodedDocVectorKeyStaticSize))) {
-      LOG_WITH_FUNC(DFATAL)
-          << "Unable to locate vector index reverse mapping"
+      // Single tombstone with no vector_id -> ybctid mapping left in the tablet: safe to drop
+      // as the mapping pair has been already dropped somewhere in the past, otherwise it should
+      // have been found by the Seek() above.
+      VLOG_WITH_FUNC(2)
+          << "Discarding orphaned vector index reverse mapping tombstone"
           << ", expected: " << key.Prefix(dockv::kEncodedDocVectorKeyStaticSize).ToDebugHexString()
           << ", located: " << entry.key.ToDebugHexString();
+      return rocksdb::FilterDecision::kDiscard;
+    }
+
+    return DoFilterValue(entry.value);
+  }
+
+  Result<rocksdb::FilterDecision> DoFilterRetained(Slice value) {
+    auto decoded = VERIFY_RESULT(dockv::EncodedDocVectorMetaValue::Decode(value));
+
+    // Sanity checks: caller already filters out legacy / tombstone values.
+    if (decoded.IsTombstone()) {
+      LOG(DFATAL) << "Unexpected tombstone while filtering reverse mapping value: "
+                  << value.ToDebugHexString();
+      return rocksdb::FilterDecision::kKeep;
+    }
+    if (decoded.column_id == kInvalidColumnId) {
+      LOG(DFATAL) << "Unexpected invalid column id in V1 vector reverse mapping: "
+                  << value.ToDebugHexString();
       return rocksdb::FilterDecision::kKeep;
     }
 
-    return DoFilterYbctid(entry.value);
+    // TODO(vector_index): Vector reverse-mapping keys sort by vector_id, so table_key_prefix
+    // (which lives in the value) does not cluster the way it does for row keys. Still, for
+    // a tablet with a single V1-owning table every entry carries the same coprefix, and even
+    // in the multi-coprefix case the last-seen coprefix's packing could be cached to avoid
+    // repeated provider lookups.
+    auto packing = GetCompactionSchemaInfoForCoprefix(
+        schema_packing_provider_, decoded.table_key_prefix, history_cutoff_);
+    if (!packing.ok()) {
+      if (packing.status().IsNotFound()) {
+        // Indexed table / colocation is gone.
+        // TODO(vector_index): xCluster DDL may replicate colocated data before the table exists
+        // locally (same "upcoming table" case as SubDocKey missing-schema handling / #28314). For
+        // those coprefixes packing is also NotFound, but rows must be kept. Align reverse-mapping
+        // GC with that path later if V1 reverse mappings can appear in that window.
+        return rocksdb::FilterDecision::kDiscard;
+      }
+
+      // Any non-NotFound failure here would otherwise abort the entire compaction. Hence, using
+      // a DFATAL and keep the record: GC will retry on the next compaction.
+      LOG(DFATAL) << "Unexpected packing lookup failure for V1 reverse mapping, coprefix: "
+                  << decoded.table_key_prefix.ToDebugHexString()
+                  << ", status: " << packing.status();
+      return rocksdb::FilterDecision::kKeep;
+    }
+
+    if (packing->deleted_cols.contains(decoded.column_id)) {
+      return rocksdb::FilterDecision::kDiscard;
+    }
+
+    return rocksdb::FilterDecision::kKeep;
   }
 
-  // Iterator lazy instantiation.
-  void EnsureIteratorCreated() {
+  Status EnsureIteratorCreated() {
     if (iterator()) {
-      return;
+      return Status::OK();
     }
-    iterator_holder_ = CHECK_RESULT(provider_.CreateVectorMetadataIterator(ReadHybridTime::Max()));
-    CHECK_NOTNULL(iterator());
+    SCHECK_NOTNULL(iterator_provider_);
+    iterator_holder_ =
+        VERIFY_RESULT(iterator_provider_->CreateVectorMetadataIterator(
+            ReadHybridTime::Max(), nullptr));
+    SCHECK_NOTNULL(iterator());
+    return Status::OK();
   }
 
   inline IntentAwareIterator* iterator() {
     return std::get<docdb::IntentAwareIteratorPtr>(iterator_holder_).get();
   }
 
-  const KeyBounds& key_bounds_;
-  const DocVectorMetadataIteratorProvider& provider_;
+  rocksdb::CompactionReason compaction_reason_;
+  const KeyBounds* key_bounds_;
+  SchemaPackingProvider* schema_packing_provider_;
+  HistoryCutoff history_cutoff_;
+  DocVectorMetadataIteratorProvider* iterator_provider_;
   IntentAwareIteratorWithBounds iterator_holder_;
 };
 
-static VectorMetadataFilterPtr CreateVectorMetadataFilter(
-    rocksdb::CompactionReason compaction_reason, const KeyBounds* key_bounds,
+std::unique_ptr<VectorMetadataFilter> CreateVectorMetadataFilter(
+    rocksdb::CompactionReason compaction_reason,
+    const KeyBounds* key_bounds,
+    SchemaPackingProvider* schema_packing_provider,
+    HistoryCutoff history_cutoff,
     DocVectorMetadataIteratorProvider* vector_metadata_iterator_provider) {
-  VLOG_WITH_FUNC(1) << "compaction_reason: " << compaction_reason;
-  if (compaction_reason == rocksdb::CompactionReason::kPostSplitCompaction &&
-      vector_metadata_iterator_provider && key_bounds && key_bounds->IsInitialized()) {
-    return std::make_unique<VectorMetadataFilterImpl>(
-      *key_bounds, *vector_metadata_iterator_provider);
-  }
-  return std::make_unique<VectorMetadataFilter>();
+  return std::make_unique<VectorMetadataFilter>(
+      compaction_reason, key_bounds, schema_packing_provider, history_cutoff,
+      vector_metadata_iterator_provider);
 }
 
 class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed {
@@ -635,8 +786,7 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
       rocksdb::CompactionReason compaction_reason,
       rocksdb::CompactionFeed* next_feed,
       const HistoryRetentionDirective& retention,
-      HybridTime min_input_hybrid_time,
-      HybridTime min_other_data_ht,
+      const CompactionHybridTimeConstraints& hybrid_time_limits,
       rocksdb::BoundaryValuesExtractor* boundary_extractor,
       const KeyBounds* key_bounds,
       SchemaPackingProvider* schema_packing_provider,
@@ -651,14 +801,23 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
         // matching hybrid time.
         encoded_min_other_data_ht_(
             retention_directive_.retain_delete_markers_in_major_compaction
-                ? HybridTime::kMin : min_other_data_ht,
+                ? HybridTime::kMin : hybrid_time_limits.other_min,
             kMinWriteId),
-        could_change_key_range_(
-            !CanHaveOtherDataBefore(EncodedDocHybridTime(min_input_hybrid_time, kMinWriteId))),
+        encoded_repack_min_ht_(hybrid_time_limits.repack_range_min, kMaxWriteId),
+        encoded_repack_max_ht_(hybrid_time_limits.repack_range_max, kMinWriteId),
+        could_change_key_range_(!CanHaveOtherDataBefore(
+            EncodedDocHybridTime(hybrid_time_limits.input_min, kMinWriteId))),
         boundary_extractor_(boundary_extractor),
         packed_row_(this, schema_packing_provider, retention_directive_.history_cutoff),
         vector_metadata_filter_(CreateVectorMetadataFilter(
-            compaction_reason, key_bounds_, vector_metadata_iterator_provider)) {
+            compaction_reason, key_bounds_, schema_packing_provider,
+            retention_directive_.history_cutoff, vector_metadata_iterator_provider)) {
+    // TODO: switch this to VLOG if it becomes too chatty.
+    LOG(DETAIL)
+        << "DocDB compaction feed, min_other_data_ht: " << encoded_min_other_data_ht_.ToString()
+        << ", history_cutoff = " << retention_directive_.history_cutoff
+        << ", repack range: " << encoded_repack_min_ht_.ToString()
+        << " - " << encoded_repack_max_ht_.ToString();
   }
 
   Status Feed(const Slice& internal_key, const Slice& value) override;
@@ -722,6 +881,12 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
     return next_feed_.Flush();
   }
 
+  void CompactionFinished() {
+    // Vector index metadata filter may hold an iterator to the Rocks DB. The iterator
+    // must be freed while the compaction is being finished and DB mutex is unheld.
+    vector_metadata_filter_.reset();
+  }
+
  private:
   // Assigns prev_key_ from memory addressed by data. The length of key is taken from
   // sub_key_ends_ and same_bytes are reused.
@@ -743,8 +908,8 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
     }
     user_values_.clear();
     RETURN_NOT_OK(boundary_extractor_->Extract(rocksdb::ExtractUserKey(key), &user_values_));
-    rocksdb::UpdateUserValues(user_values_, rocksdb::UpdateUserValueType::kSmallest, &smallest_);
-    rocksdb::UpdateUserValues(user_values_, rocksdb::UpdateUserValueType::kLargest, &largest_);
+    rocksdb::UpdateUserValues(user_values_, storage::UpdateUserValueType::kSmallest, &smallest_);
+    rocksdb::UpdateUserValues(user_values_, storage::UpdateUserValueType::kLargest, &largest_);
     return Status::OK();
   }
 
@@ -789,6 +954,8 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
   EncodedHistoryCutoff encoded_history_cutoff_information_;
   const KeyBounds* key_bounds_;
   const EncodedDocHybridTime encoded_min_other_data_ht_;
+  const EncodedDocHybridTime encoded_repack_min_ht_;
+  const EncodedDocHybridTime encoded_repack_max_ht_;
   const bool could_change_key_range_;
   rocksdb::BoundaryValuesExtractor* boundary_extractor_;
   ValueBuffer new_value_buffer_;
@@ -845,7 +1012,6 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
 
   // We use this to only log a message that the feed is being used once on the first call to
   // the Filter function.
-  bool feed_usage_logged_ = false;
   bool within_merge_block_ = false;
 
   PackedRowData packed_row_;
@@ -861,7 +1027,7 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
   PendingEntry* first_pending_row_ = nullptr;
   PendingEntry** last_pending_row_next_ = &first_pending_row_;
 
-  VectorMetadataFilterPtr vector_metadata_filter_;
+  std::unique_ptr<VectorMetadataFilter> vector_metadata_filter_;
 };
 
 // ------------------------------------------------------------------------------------------------
@@ -914,14 +1080,6 @@ Status DecodeMetaSubKeyEnds(Slice key, boost::container::small_vector_base<size_
 } // namespace
 
 Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) {
-  if (!feed_usage_logged_) {
-    // TODO: switch this to VLOG if it becomes too chatty.
-    LOG(INFO) << "DocDB compaction feed, min_other_data_ht: "
-              << encoded_min_other_data_ht_.ToString()
-              << ", history_cutoff = " << retention_directive_.history_cutoff;
-    feed_usage_logged_ = true;
-  }
-
   const auto key = internal_key.WithoutSuffix(rocksdb::kLastInternalComponentSize);
   const auto key_type = dockv::DecodeKeyEntryType(key);
   const auto is_sub_doc_key = !IsMetaKey(key_type);
@@ -945,9 +1103,10 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     return Status::OK();
   }
 
-  // Filtering vector index reverse maping records whose ybctid is out of key_bounds.
+  // Filtering vector index reverse mapping records whose ybctid is out of key_bounds.
   if (key_type == dockv::KeyEntryType::kVectorIndexMetadata &&
-      vector_metadata_filter_->Filter(key, value) == rocksdb::FilterDecision::kDiscard) {
+      VERIFY_RESULT(vector_metadata_filter_->Filter(key, value)) ==
+          rocksdb::FilterDecision::kDiscard) {
     return Status::OK();
   }
 
@@ -1115,6 +1274,40 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   // This is used for xCluster DDL replication to handle upcoming colocated tables that have not yet
   // been created on the target side.
   if (packed_row_.active_coprefix_missing_schema()) {
+    VLOG_WITH_FUNC(3) << "Active coprefix missing schema: " << key.ToDebugHexString()
+                      << " => " << value.ToDebugHexString();
+    // During partial compaction, removing tombstones may expose older records from SST files not
+    // included in this compaction. This is relevant because cotable_id/colocation_id can be
+    // reused. For example: https://github.com/yugabyte/yugabyte-db/issues/28314.
+    auto value_slice = value;
+    RETURN_NOT_OK(ValueControlFields::Decode(&value_slice));
+    if (value_slice.starts_with(dockv::ValueEntryTypeAsChar::kTombstone) &&
+        CanHaveOtherDataBefore(encoded_doc_ht)) {
+      // If a table-level tombstone (empty DocKey) is present, it masks all row-level data,
+      // making individual row tombstones redundant. We detect table tombstones via
+      // sub_key_ends_.size() == 1: DecodeDocKeyAndSubKeyEnds skips the doc-key end for table
+      // tombstones, leaving only the coprefix end.
+      if (sub_key_ends_.size() == 1) {
+        packed_row_.set_active_coprefix_missing_schema_has_table_tombstone();
+        VLOG_WITH_FUNC(3) << "Active coprefix missing schema: keeping table-level tombstone";
+        return ForwardToNextFeed(internal_key, value);
+      }
+      if (!packed_row_.active_coprefix_missing_schema_has_table_tombstone()) {
+        // Having a row-level tombstone without a table-level tombstone for a missing-schema
+        // coprefix is not generally expected. However, let's be conservative here and keep
+        // the row-level tombstone. Maybe some info/warning would be useful here.
+        VLOG_WITH_FUNC(3) << "Active coprefix missing schema: keeping row-level tombstone";
+        return ForwardToNextFeed(internal_key, value);
+      }
+    }
+
+    return Status::OK();
+  }
+
+  // Filtering vector index reverse mapping records past history cutoff.
+  if (key_type == dockv::KeyEntryType::kVectorIndexMetadata &&
+      VERIFY_RESULT(vector_metadata_filter_->FilterRetained(key, value)) ==
+          rocksdb::FilterDecision::kDiscard) {
     return Status::OK();
   }
 
@@ -1156,29 +1349,36 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
           // Don't start packing if we already passed columns for this key.
           // Could happen because of history retention.
           doc_key_serial_ != last_passed_doc_key_serial_ &&
-          !CanHaveOtherDataBefore(encoded_doc_ht);
+          !CanHaveOtherDataBefore(encoded_doc_ht) &&
+          encoded_doc_ht < encoded_repack_max_ht_ &&
+          encoded_doc_ht > encoded_repack_min_ht_;
       VLOG_WITH_FUNC(4)
           << "Packed row active: " << packed_row_.active() << ", can start packing: "
           << packed_row_.can_start_packing() << ", doc_key_serial: " << doc_key_serial_
           << ", last_passed_doc_key_serial: " << last_passed_doc_key_serial_
           << ", can have other data before: " << CanHaveOtherDataBefore(encoded_doc_ht)
-          << ", start packing: " << start_packing;
+          << ", start packing: " << start_packing
+          << ", encoded_doc_ht: " << encoded_doc_ht.ToString()
+          << ", encoded_repack_max_ht_: " << encoded_repack_max_ht_.ToString()
+          << ", repack allowed: " << packed_row_.repack_allowed();
       if (start_packing) {
         RETURN_NOT_OK(packed_row_.StartPacking(
             internal_key, doc_key_size, encoded_doc_ht, doc_key_serial_));
         AssignPrevKey(key.cdata(), same_bytes);
       }
-      if (packed_row_.can_start_packing() && packed_row_.active()) {
+      if (packed_row_.can_start_packing() && packed_row_.repack_allowed()) {
         if (sub_key_type == dockv::KeyEntryType::kSystemColumnId &&
             column_id == dockv::KeyEntryValue::kLivenessColumn.GetColumnId()) {
           return Status::OK();
         }
-        // Return if column was processed by packed row.
-        auto encoded_control_fields_size = value_slice.data() - value.data();
-        if (VERIFY_RESULT(packed_row_.ProcessColumn(
-                column_id, value, encoded_doc_ht, control_fields, intent_doc_ht,
-                encoded_control_fields_size, &lazy_ht))) {
-          return Status::OK();
+        if (encoded_doc_ht < encoded_repack_max_ht_) {
+          // Return if column was processed by packed row.
+          auto encoded_control_fields_size = value_slice.data() - value.data();
+          if (VERIFY_RESULT(packed_row_.ProcessColumn(
+                  column_id, value, encoded_doc_ht, control_fields, intent_doc_ht,
+                  encoded_control_fields_size, &lazy_ht))) {
+            return Status::OK();
+          }
         }
       }
     }
@@ -1269,7 +1469,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   } else if (IsPackedRow(value_type)) {
     return packed_row_.ProcessPackedRow(
         internal_key, sub_key_ends_.back(), value, value_slice.data() - value.data(),
-        encoded_doc_ht, doc_key_serial_);
+        encoded_doc_ht, doc_key_serial_, RepackAllowed(encoded_doc_ht > encoded_repack_min_ht_));
   } else if (!intent_doc_ht.empty()) {
     // Cleanup intent doc hybrid time when we don't need it anymore.
     // See https://github.com/yugabyte/yugabyte-db/issues/4535 for details.
@@ -1298,8 +1498,7 @@ class DocDBCompactionContext : public rocksdb::CompactionContext {
       rocksdb::CompactionReason compaction_reason,
       rocksdb::CompactionFeed* next_feed,
       HistoryRetentionDirective retention,
-      HybridTime min_input_hybrid_time,
-      HybridTime min_other_data_ht,
+      const CompactionHybridTimeConstraints& hybrid_time_limits,
       rocksdb::BoundaryValuesExtractor* boundary_extractor,
       const KeyBounds* key_bounds,
       SchemaPackingProvider* schema_packing_provider,
@@ -1318,7 +1517,7 @@ class DocDBCompactionContext : public rocksdb::CompactionContext {
 
   // This is used to provide the history_cutoff timestamp to the compaction as a field in the
   // ConsensusFrontier, so that it can be persisted in RocksDB metadata and recovered on bootstrap.
-  rocksdb::UserFrontierPtr GetLargestUserFrontier() const override;
+  storage::UserFrontierPtr GetLargestUserFrontier() const override;
 
   // Returns an empty list when key_ranges_ is not set, denoting that the whole key range of the
   // tablet should be considered live.
@@ -1333,6 +1532,10 @@ class DocDBCompactionContext : public rocksdb::CompactionContext {
     return feed_->UpdateMeta(meta);
   }
 
+  void CompactionFinished() override {
+    feed_->CompactionFinished();
+  }
+
  private:
   HistoryCutoff history_cutoff_;
   const KeyBounds* key_bounds_;
@@ -1343,8 +1546,7 @@ DocDBCompactionContext::DocDBCompactionContext(
     rocksdb::CompactionReason compaction_reason,
     rocksdb::CompactionFeed* next_feed,
     HistoryRetentionDirective retention,
-    HybridTime min_input_hybrid_time,
-    HybridTime min_other_data_ht,
+    const CompactionHybridTimeConstraints& hybrid_time_limits,
     rocksdb::BoundaryValuesExtractor* boundary_extractor,
     const KeyBounds* key_bounds,
     SchemaPackingProvider* schema_packing_provider,
@@ -1352,15 +1554,15 @@ DocDBCompactionContext::DocDBCompactionContext(
     : history_cutoff_(retention.history_cutoff),
       key_bounds_(key_bounds),
       feed_(std::make_unique<DocDBCompactionFeed>(
-          compaction_reason, next_feed, std::move(retention), min_input_hybrid_time,
-          min_other_data_ht, boundary_extractor, key_bounds, schema_packing_provider,
+          compaction_reason, next_feed, std::move(retention), hybrid_time_limits,
+          boundary_extractor, key_bounds, schema_packing_provider,
           vector_metadata_iterator_provider)) {
 }
 
-rocksdb::UserFrontierPtr DocDBCompactionContext::GetLargestUserFrontier() const {
+storage::UserFrontierPtr DocDBCompactionContext::GetLargestUserFrontier() const {
   auto* consensus_frontier = new ConsensusFrontier();
   consensus_frontier->set_history_cutoff_information(history_cutoff_);
-  return rocksdb::UserFrontierPtr(consensus_frontier);
+  return storage::UserFrontierPtr(consensus_frontier);
 }
 
 std::vector<std::pair<Slice, Slice>> DocDBCompactionContext::GetLiveRanges() const {
@@ -1379,19 +1581,6 @@ std::vector<std::pair<Slice, Slice>> DocDBCompactionContext::GetLiveRanges() con
     key_bounds_->upper.AsSlice());
 
   return {first_range, second_range};
-}
-
-HybridTime MinHybridTime(const std::vector<rocksdb::FileMetaData*>& inputs) {
-  auto result = HybridTime::kMax;
-  for (const auto& file : inputs) {
-    if (!file->smallest.user_frontier) {
-      continue;
-    }
-    auto smallest = down_cast<ConsensusFrontier&>(*file->smallest.user_frontier);
-    // Hybrid time is defined by Raft hybrid time and commit hybrid time of all records.
-    result = std::min(result, smallest.hybrid_time());
-  }
-  return result;
 }
 
 } // namespace
@@ -1448,21 +1637,20 @@ bool CompactionSchemaInfo::keep_write_time() const {
 std::shared_ptr<rocksdb::CompactionContextFactory> CreateCompactionContextFactory(
     std::shared_ptr<HistoryRetentionPolicy> retention_policy,
     const KeyBounds* key_bounds,
-    const DeleteMarkerRetentionTimeProvider& delete_marker_retention_provider,
+    const CompactionHybridTimeLimitsProvider& compaction_hybrid_time_limit_provider,
     SchemaPackingProvider* schema_packing_provider,
     DocVectorMetadataIteratorProvider* vector_metadata_iterator_provider) {
   return std::make_shared<rocksdb::CompactionContextFactory>(
-      [retention_policy, key_bounds, delete_marker_retention_provider,
+      [retention_policy, key_bounds, compaction_hybrid_time_limit_provider,
        schema_packing_provider, vector_metadata_iterator_provider](
           rocksdb::CompactionFeed* next_feed, const rocksdb::CompactionContextOptions& options) {
       return std::make_unique<DocDBCompactionContext>(
           options.compaction_reason,
           next_feed,
           retention_policy->GetRetentionDirective(),
-          MinHybridTime(options.level0_inputs),
-          delete_marker_retention_provider
-              ? delete_marker_retention_provider(options.level0_inputs)
-              : HybridTime::kMax,
+          compaction_hybrid_time_limit_provider
+              ? compaction_hybrid_time_limit_provider(options.level0_inputs)
+              : CompactionHybridTimeConstraints{},
           options.boundary_extractor,
           key_bounds,
           schema_packing_provider,
@@ -1522,6 +1710,53 @@ HybridTime GetHistoryCutoffForKey(Slice coprefix, HistoryCutoff cutoff_info) {
   }
   VLOG(4) << "Primary cutoff " << cutoff_info.primary_cutoff_ht;
   return cutoff_info.primary_cutoff_ht;
+}
+
+void CompactionHybridTimeConstraints::HandleOtherRange(HybridTime min, HybridTime max) {
+  VLOG_WITH_FUNC(4) << ToString() << ", min: " << min << ", max: " << max;
+  other_min = std::min(other_min, min);
+
+  // Adjust the repack interval so that it does not overlap with another range.
+  // We compute the intersection between the input range `()` and the other range `[]`,
+  // and shrink the input range accordingly.
+  //
+  // Possible overlap cases:
+  //
+  // 1) [(])  -- partial overlap on the right
+  //    The right part of the input range overlaps with the other range.
+  //    We keep only the non-overlapping right segment: `])`.
+  //
+  // 2) ([)]  -- partial overlap on the left
+  //    The left part of the input range overlaps with the other range.
+  //    We keep only the non-overlapping left segment: `([`.
+  //
+  // 3) [()]  -- input range fully inside the other range
+  //    The input range is completely covered by the other range.
+  //    Repacking is not possible.
+  //
+  // 4) ([])  -- other range fully inside the input range
+  //    This splits the input range into two valid non-overlapping subranges.
+  //    In theory, both could be used, but this case is rare.
+  //    For simplicity, we keep only one subrange (the right one): `])`.
+  //
+  // This approach avoids overlap while keeping the logic simple and efficient.
+  if (min <= input_min || max < input_max) {
+    repack_range_min = std::max(repack_range_min, max);
+  }
+  if (max >= input_max) {
+    repack_range_max = std::min(repack_range_max, min);
+  }
+}
+
+void CompactionHybridTimeConstraints::HandleOtherRange(
+    const storage::UserFrontier& smallest, const storage::UserFrontier& largest) {
+  HandleOtherRange(
+      down_cast<const docdb::ConsensusFrontier&>(smallest).hybrid_time(),
+      down_cast<const docdb::ConsensusFrontier&>(largest).hybrid_time());
+}
+
+std::string CompactionHybridTimeConstraints::ToString() const {
+  return YB_STRUCT_TO_STRING(input_min, input_max, other_min, repack_range_min, repack_range_max);
 }
 
 }  // namespace yb::docdb

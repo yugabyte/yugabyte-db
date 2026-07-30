@@ -18,6 +18,8 @@
 
 #include "yb/common/common.messages.h"
 
+#include "yb/util/status_format.h"
+
 namespace yb {
 
 ConsistentReadPoint::ConsistentReadPoint(const scoped_refptr<ClockBase>& clock)

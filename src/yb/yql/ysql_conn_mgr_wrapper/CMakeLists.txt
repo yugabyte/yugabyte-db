@@ -17,7 +17,11 @@ set(YSQL_CONN_MGR_WRAPPER_SRCS
 
 set(YSQL_CONN_MGR_WRAPPER_LIBS
     yb_util
-    yb_process_wrapper)
+    yb_process_wrapper
+    server_process
+    tserver
+    yb_pggate
+    yb_pgwrapper)
 
 ADD_YB_LIBRARY(ysql_conn_mgr_wrapper
                SRCS ${YSQL_CONN_MGR_WRAPPER_SRCS}

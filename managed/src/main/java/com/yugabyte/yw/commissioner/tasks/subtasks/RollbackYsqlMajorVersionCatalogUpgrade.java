@@ -5,14 +5,15 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.master.MasterAdminOuterClass.YsqlMajorCatalogUpgradeState;
 
 @Slf4j
 public class RollbackYsqlMajorVersionCatalogUpgrade extends YsqlMajorUpgradeServerTaskBase {
 
-  private final int MAX_ATTEMPTS = 20;
-  private final long SLEEP_TIME_MS = 10000;
+  private final int maxAttempts = 20;
+  private final Duration sleepTime = Duration.ofSeconds(10);
 
   public static class Params extends YsqlMajorUpgradeServerTaskBase.Params {}
 
@@ -35,14 +36,14 @@ public class RollbackYsqlMajorVersionCatalogUpgrade extends YsqlMajorUpgradeServ
           YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_ROLLBACK_IN_PROGRESS)) {
         int attempts = 0;
         boolean isRollbackCompleted = false;
-        while (attempts < MAX_ATTEMPTS) {
+        while (attempts < maxAttempts) {
           state = getYsqlMajorCatalogUpgradeState();
           if (!state.equals(
               YsqlMajorCatalogUpgradeState.YSQL_MAJOR_CATALOG_UPGRADE_ROLLBACK_IN_PROGRESS)) {
             isRollbackCompleted = true;
             break;
           }
-          Thread.sleep(SLEEP_TIME_MS);
+          waitFor(sleepTime);
           attempts++;
         }
         if (!isRollbackCompleted) {

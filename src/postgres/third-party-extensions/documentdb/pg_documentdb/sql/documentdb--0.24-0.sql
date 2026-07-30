@@ -82,6 +82,7 @@ CREATE SCHEMA documentdb_data;
 #include "schema/bson_rum_exclusion_operator_class--0.23-0.sql"
 #include "operators/bson_dollar_text_operators--0.24-0.sql"
 #include "udfs/rum/bson_rum_text_path_funcs--0.24-0.sql"
+#include "udfs/rum/bson_rum_text_path_adapter_funcs--0.24-0.sql"
 #include "schema/bson_rum_text_path_ops--0.24-0.sql"
 #include "udfs/rum/extensibility_functions--0.10-0.sql"
 #include "udfs/rum/single_path_extensibility_functions--0.10-0.sql"

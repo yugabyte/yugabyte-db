@@ -30,6 +30,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/curl_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
@@ -54,6 +55,7 @@ DECLARE_bool(ysql_minimal_catalog_caches_preload);
 DECLARE_bool(ysql_catalog_preload_additional_tables);
 DECLARE_bool(ysql_use_relcache_file);
 DECLARE_bool(ysql_yb_enable_invalidation_messages);
+DECLARE_bool(ysql_enable_read_request_cache_for_connection_auth);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_string(ysql_catalog_preload_additional_table_list);
 DECLARE_uint64(TEST_pg_response_cache_catalog_read_time_usec);
@@ -63,6 +65,10 @@ DECLARE_uint64(pg_response_cache_size_bytes);
 DECLARE_uint32(pg_response_cache_size_percentage);
 DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_bool(ysql_enable_relcache_init_optimization);
+DECLARE_int32(ysql_client_read_write_timeout_ms);
+DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_concurrent_ddl);
+DECLARE_int32(pg_client_extra_timeout_ms);
 
 using namespace std::literals;
 
@@ -71,6 +77,9 @@ using yb::common::GetMemberAsArray;
 using yb::common::ParseJson;
 
 namespace yb::pgwrapper {
+
+constexpr auto qpmTableName1 = "qpm_test1";
+constexpr auto qpmTableName2 = "qpm_test2";
 
 namespace {
 
@@ -86,6 +95,8 @@ struct Configuration {
   const std::string_view preload_additional_catalog_list = {};
   const bool preload_additional_catalog_tables = false;
   const bool use_relcache_file = true;
+  const bool enable_invalidation_messages = false;
+  const bool enable_read_request_cache_for_connection_auth = false;
 };
 
 struct MetricCounters {
@@ -157,9 +168,22 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
     }
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_relcache_file) = config.use_relcache_file;
     // When invalidation messages are used, this test does not use the tserver response
-    // cache and the test will timeout if we wait for response cache counters to become
-    // greater than 0.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_invalidation_messages) = false;
+    // cache for the general catalog preload and the test will timeout if we wait for
+    // response cache counters to become greater than 0.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_invalidation_messages) =
+        config.enable_invalidation_messages;
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_ysql_enable_read_request_cache_for_connection_auth) =
+        config.enable_read_request_cache_for_connection_auth;
+
+    // Object locking and concurrent DDL require invalidation messages (see the gflag validator in
+    // common_flags.cc), so enable/ disable them based on whether invalidation messages are
+    // turned on/ off above.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) =
+        config.enable_invalidation_messages;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) =
+        config.enable_invalidation_messages;
+
     // Auto-Analyze runs ANALYZEs and increments catalog version, causing more response cache
     // queires. Disable auto-analyze for more stable test results.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
@@ -231,6 +255,14 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
   // when a DB connection is made.
   uint32_t ASHCollectorRPCCount() const {
     return static_cast<uint32_t>(num_connections_created_ == 1);
+  }
+
+  std::string GetQpmInsertQuery(const std::string& tableName, int val) {
+    return yb::Format("INSERT INTO $0 VALUES($1)", tableName, val);
+  }
+
+  std::string GetQpmTrackConfig(bool qpmEnabled) {
+    return yb::Format("SET yb_pg_stat_plans_track TO $0", (qpmEnabled ? "top" : "none"));
   }
 
   std::optional<MetricWatcher<MetricCountersDescriber>> metrics_;
@@ -323,6 +355,21 @@ constexpr Configuration kConfigSmallPreload{
 constexpr Configuration kConfigStatsPreload{
     .preload_additional_catalog_list = kStatsTableList};
 
+// Connection-auth cache (#32063). The connection-auth prefetch (pg_authid,
+// pg_database, ...) is served from the tserver response cache. Applies to
+// both connection manager auth backends and regular backends; the test runs
+// without connection manager.
+constexpr Configuration kConfigConnectionAuthCache{
+    .response_cache_size_bytes = kResponseCacheSize5MB,
+    .enable_invalidation_messages = true,
+    .enable_read_request_cache_for_connection_auth = true};
+
+// Same as above but with the connection-auth cache disabled.
+constexpr Configuration kConfigConnectionAuthCacheDisabled{
+    .response_cache_size_bytes = kResponseCacheSize5MB,
+    .enable_invalidation_messages = true,
+    .enable_read_request_cache_for_connection_auth = false};
+
 template<class Base, const Configuration& Config>
 class ConfigurableTest : public Base {
  private:
@@ -348,6 +395,10 @@ using PgPredictableMemoryUsageTest =
     ConfigurableTest<PgCatalogPerfTestBase, kConfigPredictableMemoryUsage>;
 using PgSmallPreloadTest =
     ConfigurableTest<PgCatalogPerfTestBase, kConfigSmallPreload>;
+using PgConnectionAuthCacheTest =
+    ConfigurableTest<PgCatalogPerfTestBase, kConfigConnectionAuthCache>;
+using PgConnectionAuthCacheDisabledTest =
+    ConfigurableTest<PgCatalogPerfTestBase, kConfigConnectionAuthCacheDisabled>;
 
 class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithUnlimitedCachePerfTest {
  protected:
@@ -366,9 +417,9 @@ class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithUnlimitedCachePe
 };
 
 constexpr uint64_t kFirstConnectionRPCCountDefault = 6;
-constexpr uint64_t kFirstConnectionRPCCountWithAdditionalTables = 8;
+constexpr uint64_t kFirstConnectionRPCCountWithAdditionalTables = 7;
 constexpr uint64_t kFirstConnectionRPCCountWithSmallPreload = 6;
-constexpr uint64_t kSubsequentConnectionRPCCount = 3;
+constexpr uint64_t kSubsequentConnectionRPCCount = 2;
 constexpr uint64_t kFirstConnectionRPCCountNoRelcacheFile = 7;
 static_assert(kFirstConnectionRPCCountDefault <= kFirstConnectionRPCCountWithAdditionalTables);
 
@@ -431,7 +482,7 @@ TEST_F(PgCatalogPerfTest, StartupRPCCount) {
 // Test checks number of RPC in case of cache refresh without partitioned tables.
 TEST_F(PgCatalogPerfTest, CacheRefreshRPCCountWithoutPartitionTables) {
   const auto cache_refresh_rpc_count = ASSERT_RESULT(CacheRefreshRPCCount());
-  ASSERT_EQ(cache_refresh_rpc_count, 3);
+  ASSERT_EQ(cache_refresh_rpc_count, 4);
 }
 
 // Test checks number of RPC in case of cache refresh with partitioned tables.
@@ -455,7 +506,7 @@ TEST_F(PgCatalogPerfTest, CacheRefreshRPCCountWithPartitionTables) {
       kTableWithCastInPartitioning));
 
   const auto cache_refresh_rpc_count = ASSERT_RESULT(CacheRefreshRPCCount());
-  ASSERT_EQ(cache_refresh_rpc_count, 7);
+  ASSERT_EQ(cache_refresh_rpc_count, 8);
 }
 
 TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnInsert) {
@@ -541,6 +592,75 @@ TEST_F_EX(PgCatalogPerfTest,
   }));
   ASSERT_EQ(metrics.cache.queries, 5);
   ASSERT_EQ(metrics.cache.hits, 5);
+}
+
+TEST_F_EX(PgCatalogPerfTest,
+          ConnectionAuthCacheServedFromCache,
+          PgConnectionAuthCacheTest) {
+  // Warm up: ensure the shared catalog version is published and the
+  // connection-auth response cache entry is populated.
+  ASSERT_RESULT(Connect());
+  ASSERT_RESULT(Connect());
+  const auto metrics = ASSERT_RESULT(metrics_->Delta([this] {
+    RETURN_NOT_OK(Connect());
+    return static_cast<Status>(Status::OK());
+  }));
+  // Two cached batches are served on a warm connection: the general catalog
+  // preload (1) plus the connection-auth prefetch (1). The latter is the batch
+  // added by this feature; the control test below sees only the former.
+  ASSERT_EQ(metrics.cache.queries, 2);
+  ASSERT_EQ(metrics.cache.hits, 2);
+}
+
+TEST_F_EX(PgCatalogPerfTest,
+          ConnectionAuthCacheDisabled,
+          PgConnectionAuthCacheDisabledTest) {
+  ASSERT_RESULT(Connect());
+  ASSERT_RESULT(Connect());
+  const auto metrics = ASSERT_RESULT(metrics_->Delta([this] {
+    RETURN_NOT_OK(Connect());
+    return static_cast<Status>(Status::OK());
+  }));
+  // Only the general catalog preload (1 cached batch) is served from the
+  // response cache on a warm connection; without the connection-auth cache the
+  // auth prefetch does not add a batch. Contrast with the +1 batch in the
+  // enabled test above.
+  ASSERT_EQ(metrics.cache.queries, 1);
+  ASSERT_EQ(metrics.cache.hits, 1);
+}
+
+class PgCatalogShortRpcDeadlineTest : public PgCatalogWithUnlimitedCachePerfTest {
+ protected:
+  static constexpr int kRpcDeadlineMs = 2000;
+  static constexpr int kPgClientExtraTimeoutMs = 1000;
+
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_client_read_write_timeout_ms) = kRpcDeadlineMs;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_extra_timeout_ms) = kPgClientExtraTimeoutMs;
+    PgCatalogWithUnlimitedCachePerfTest::SetUp();
+  }
+};
+
+// Test that the response cache is used even after the RPC deadline has passed.
+TEST_F_EX(PgCatalogPerfTest,
+          ResponseCacheValidPastReadinessDeadline,
+          PgCatalogShortRpcDeadlineTest) {
+  // Warm up catalog's response cache.
+  ASSERT_RESULT(Connect());
+
+  const auto total_deadline_ms =
+      PgCatalogShortRpcDeadlineTest::kRpcDeadlineMs +
+      PgCatalogShortRpcDeadlineTest::kPgClientExtraTimeoutMs;
+  std::this_thread::sleep_for(std::chrono::milliseconds(
+      total_deadline_ms + ReleaseVsDebugVsAsanVsTsan(4000, 8000, 10000, 16000)));
+
+  // Ensure new connections use the response cache.
+  auto metrics = ASSERT_RESULT(metrics_->Delta([this] {
+    RETURN_NOT_OK(Connect());
+    return static_cast<Status>(Status::OK());
+  }));
+  ASSERT_GT(metrics.cache.queries, 0);
+  ASSERT_EQ(metrics.cache.queries, metrics.cache.hits);
 }
 
 // The test checks response cache renewing process in case of 'Snapshot too old' error.
@@ -629,7 +749,7 @@ TEST_F(PgCatalogPerfTest, RPCCountAfterDdlFailure) {
     return conn->Execute("CREATE TABLE mytable1 (id int)");
   }));
   auto rpc_count_for_ddl_failure = ASSERT_RESULT(RPCCountAfterCacheRefresh([](PGConn* conn) {
-    RETURN_NOT_OK(conn->Execute("SET yb_test_fail_next_ddl=true"));
+    RETURN_NOT_OK(conn->Execute("SET yb_test_fail_next_ddl=1"));
     if (conn->Execute("CREATE TABLE mytable (id int)").ok()) {
       return STATUS(RuntimeError, "Expected to fail Ddl");
     }
@@ -638,6 +758,81 @@ TEST_F(PgCatalogPerfTest, RPCCountAfterDdlFailure) {
   // The failed DDL will trigger a lookup for the catalog version. This will result in a read call
   // to the master.
   ASSERT_EQ(rpc_count_for_ddl_failure, rpc_count_for_ddl_success + 1);
+}
+
+// QPM (and any other code requiring plan id calculation) can require looking
+// up object names in the catalog. This test makes sure we do not do unnecessary
+// calls to get an object name if the object has an invalid OID (e.g., an RTE
+// of type RTE_FUNCTION or RTE_RESULT).
+//
+// The test works by running statements with QPM OFF/ON and making sure
+// the RPC counts are the same.
+TEST_F(PgCatalogPerfTest, RPCCountQpm) {
+
+  std::vector<std::string> qpmTestQueryVec;
+
+  // The plans for these queries reference objects that have an invalid OID.
+  auto qpmQuery = yb::Format(
+    "SELECT COUNT(*) FROM GENERATE_SERIES(1, 5) dt(x), $0 WHERE col1=x", qpmTableName1);
+  qpmTestQueryVec.push_back(qpmQuery);
+
+  qpmQuery = yb::Format(
+    "INSERT INTO $0(col1) SELECT (SELECT MAX(1) FROM $1) AS x FROM $2",
+    qpmTableName2, qpmTableName1, qpmTableName1);
+
+  qpmTestQueryVec.push_back(qpmQuery);
+  qpmQuery = GetQpmInsertQuery(qpmTableName1, 0);
+  qpmTestQueryVec.push_back(qpmQuery);
+
+  // Get a connection and create 2 tables.
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (col1 INT)", qpmTableName1));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (col1 INT)", qpmTableName2));
+
+  // Create statements to set QPM tracking.
+  std::vector<std::string> qpmConfigVec(2);
+  qpmConfigVec[0] = GetQpmTrackConfig(false);
+  qpmConfigVec[1] = GetQpmTrackConfig(true);
+
+  // Process each statement.
+  for (const std::string& qpmQueryString : qpmTestQueryVec) {
+
+    // Determine if we have an INSERT or a SELECT.
+    bool isSelect;
+    if (qpmQueryString.find("INSERT INTO", 0, 11) != std::string::npos)
+      isSelect = false;
+    else if (qpmQueryString.find("SELECT ", 0, 7) == std::string::npos)
+      FAIL() << "Unexpected query : " << qpmQueryString;
+    else
+      isSelect = true;
+
+    uint64 rpcs[2];
+    for (bool qpmEnabled : {false, true}) {
+
+      // Get the RPC stats.
+      rpcs[qpmEnabled] = ASSERT_RESULT(RPCCountAfterCacheRefresh([&](PGConn* conn) {
+        // Set QPM tracking.
+        RETURN_NOT_OK(conn->Execute(qpmConfigVec[qpmEnabled].c_str()));
+
+        // Execute the statement.
+        if (!isSelect)
+          // No rows returned so invoke Execute.
+        RETURN_NOT_OK(conn->Execute(qpmQueryString));
+        else
+          // Single row/column returned so invoke FetchRow.
+        (void) VERIFY_RESULT(conn->FetchRow<int64_t>(qpmQueryString));
+
+        // Return RPC count.
+        return static_cast<Status>(Status::OK());
+      }));
+    }
+
+    // Check that RPC count is the same with QPM OFF/ON.
+    ASSERT_EQ(rpcs[0], rpcs[1]) << "RPC check failed for " << qpmQueryString;
+  }
+
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", qpmTableName1));
+  ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0", qpmTableName2));
 }
 
 TEST_F(PgCatalogPerfTest, RPCCountAfterDmlFailure) {

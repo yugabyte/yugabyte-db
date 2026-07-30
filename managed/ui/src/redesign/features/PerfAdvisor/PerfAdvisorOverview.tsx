@@ -1,19 +1,18 @@
 import { useState } from 'react';
 import { Tab } from 'react-bootstrap';
-import { useSelector } from 'react-redux';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { Box } from '@material-ui/core';
-import { AppName, ConfigureUniverseMetadata } from '@yugabytedb/perf-advisor-ui';
 import { YBErrorIndicator, YBLoading } from '../../../components/common/indicators';
 import { YBTabsPanel } from '../../../components/panels';
 import { PerfAdvisorUniverseConfig } from './PerfAdvisorUniverseConfig';
 import { PerfAdvisorRegistration } from './PerfAdvisorRegistration';
+import { PerfAdvisorUniverseList } from './PerfAdvisorUniverseList';
 import { QUERY_KEY, PerfAdvisorAPI } from './api';
-import { isNonEmptyString } from '../../../utils/ObjectUtils';
 
 interface PerfAdvisorOverviewProps {
   activeTab: string | undefined;
+  isEmbeddedPAEnabled: boolean;
 }
 
 export const ROUTE_PREFIX = 'troubleshoot';
@@ -24,11 +23,10 @@ export const ConfigTabKey = {
 } as const;
 export type ConfigTabKey = typeof ConfigTabKey[keyof typeof ConfigTabKey];
 
-export const PerfAdvisorOverview = ({ activeTab }: PerfAdvisorOverviewProps) => {
+export const PerfAdvisorOverview = ({ activeTab, isEmbeddedPAEnabled }: PerfAdvisorOverviewProps) => {
   const { t } = useTranslation();
 
   const [paData, setPaData] = useState<any>([]);
-  const currentCustomerInfo = useSelector((state: any) => state.customer.currentCustomer.data);
   const tabToDisplay = activeTab ?? ConfigTabKey.REGISTER;
 
   const perfAdvisorUniverseList = useQuery(
@@ -74,32 +72,36 @@ export const PerfAdvisorOverview = ({ activeTab }: PerfAdvisorOverviewProps) => 
           {paData?.length > 0 ? (
             <PerfAdvisorUniverseConfig
               metricsUrl={paData[0].metricsUrl}
+              metricsUsername={paData[0].metricsUsername}
+              metricsPassword={paData[0].metricsPassword}
               ybaUrl={paData[0].ybaUrl}
-              tpUrl={paData[0].tpUrl}
-              tpUuid={paData[0].uuid}
+              paUrl={paData[0].paUrl}
+              paUuid={paData[0].uuid}
               apiToken={paData[0].apiToken}
               tpApiToken={paData[0].tpApiToken}
               metricsScrapePeriodSecs={paData[0].metricsScrapePeriodSecs}
               customerUUID={paData[0].customerUUID}
               inUseStatus={paData[0].inUseStatus === 'IN_USE'}
+              embedded={!!paData[0].embedded}
               onRefetchConfig={onRefetchConfig}
             />
           ) : (
             <PerfAdvisorRegistration onRefetchConfig={onRefetchConfig} />
           )}
         </Tab>
-        <Tab
-          eventKey={ConfigTabKey.UNIVERSES}
-          title={t('clusterDetail.troubleshoot.universesTabTitle')}
-          key={ConfigTabKey.UNIVERSES}
-          unmountOnExit={true}
-        >
-          <ConfigureUniverseMetadata
-            appName={AppName.YBA}
-            customerUuid={currentCustomerInfo?.uuid}
-            apiUrl={isNonEmptyString(paData?.[0]?.tpUrl) ? `${paData[0].tpUrl}/api` : ''}
-          />
-        </Tab>
+        {paData?.length > 0 && (
+          <Tab
+            eventKey={ConfigTabKey.UNIVERSES}
+            title={t('clusterDetail.troubleshoot.universesTabTitle')}
+            key={ConfigTabKey.UNIVERSES}
+            unmountOnExit={true}
+          >
+            <PerfAdvisorUniverseList
+              paUuid={paData[0].uuid}
+              isEmbeddedPAEnabled={isEmbeddedPAEnabled}
+            />
+          </Tab>
+        )}
       </YBTabsPanel>
     </Box>
   );

@@ -47,7 +47,15 @@ namespace rocksdb {
 
 uint64_t PackFileNumberAndPathId(uint64_t number, uint64_t path_id) {
   assert(number <= kFileNumberMask);
+  DCHECK_LE(path_id, kMaxPathId);
   return number | (path_id * (kFileNumberMask + 1));
+}
+
+uint32_t SafePathId(uint32_t target, size_t num_paths) {
+  DCHECK_LT(target, num_paths)
+      << "target_path_id " << target << " >= db_paths.size() " << num_paths
+      << "; defaulting to 0";
+  return target < num_paths ? target : 0;
 }
 
 namespace {
@@ -92,6 +100,7 @@ FileMetaData::FileMetaData()
 }
 
 bool FileMetaData::Unref(TableCache* table_cache) {
+  LOG_IF(DFATAL, refs <= 0) << "Unref on already-dead FileMetaData " << fd.GetNumber();
   refs--;
   if (refs <= 0) {
     if (table_reader_handle) {
@@ -122,10 +131,10 @@ void FileMetaData::UpdateBoundarySeqNo(SequenceNumber sequence_number) {
 void FileMetaData::UpdateBoundaryUserValues(
     const UserBoundaryValueRefs& source, UpdateBoundariesType type) {
   if (type != UpdateBoundariesType::kLargest) {
-    UpdateUserValues(source, UpdateUserValueType::kSmallest, &smallest.user_values);
+    UpdateUserValues(source, yb::storage::UpdateUserValueType::kSmallest, &smallest.user_values);
   }
   if (type != UpdateBoundariesType::kSmallest) {
-    UpdateUserValues(source, UpdateUserValueType::kLargest, &largest.user_values);
+    UpdateUserValues(source, yb::storage::UpdateUserValueType::kLargest, &largest.user_values);
   }
 }
 
@@ -133,15 +142,20 @@ void FileMetaData::UpdateBoundariesExceptKey(
     const BoundaryValues& source, UpdateBoundariesType type) {
   if (type != UpdateBoundariesType::kLargest) {
     smallest.seqno = std::min(smallest.seqno, source.seqno);
-    UserFrontier::Update(
-        source.user_frontier.get(), UpdateUserValueType::kSmallest, &smallest.user_frontier);
-    UpdateUserValues(source.user_values, UpdateUserValueType::kSmallest, &smallest.user_values);
+    yb::storage::UserFrontier::Update(
+        source.user_frontier.get(), yb::storage::UpdateUserValueType::kSmallest,
+        &smallest.user_frontier);
+    UpdateUserValues(
+        source.user_values, yb::storage::UpdateUserValueType::kSmallest,
+        &smallest.user_values);
   }
   if (type != UpdateBoundariesType::kSmallest) {
     largest.seqno = std::max(largest.seqno, source.seqno);
-    UserFrontier::Update(
-        source.user_frontier.get(), UpdateUserValueType::kLargest, &largest.user_frontier);
-    UpdateUserValues(source.user_values, UpdateUserValueType::kLargest, &largest.user_values);
+    yb::storage::UserFrontier::Update(
+        source.user_frontier.get(), yb::storage::UpdateUserValueType::kLargest,
+        &largest.user_frontier);
+    UpdateUserValues(
+        source.user_values, yb::storage::UpdateUserValueType::kLargest, &largest.user_values);
   }
 }
 
@@ -156,10 +170,13 @@ std::string FileMetaData::FrontiersToString() const {
 }
 
 std::string FileMetaData::ToString() const {
-  return yb::Format("{ number: $0 total_size: $1 base_size: $2 "
-                    "being_compacted: $3 smallest: $4 largest: $5 }",
+  // being_compacted is intentionally omitted. It is a mutable field guarded by the RocksDB mutex,
+  // but ToString() may be called from lock-free contexts (for example the exclude_from_compaction
+  // callback runs inside Version::PrepareApply, which VersionSet::LogAndApply deliberately invokes
+  // with the mutex released). Formatting being_compacted there would be a data race.
+  return yb::Format("{ number: $0 total_size: $1 base_size: $2 smallest: $3 largest: $4 }",
                     fd.GetNumber(), fd.GetTotalFileSize(), fd.GetBaseFileSize(),
-                    being_compacted, smallest, largest);
+                    smallest, largest);
 }
 
 void VersionEdit::Clear() {
@@ -384,7 +401,7 @@ Status VersionEdit::DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& 
                     << meta.largest.user_frontier->ToString()
                     << ", version edit protobuf:\n" << SanitizeDebugString(pb);
       } else if (!flushed_frontier_->Dominates(*meta.largest.user_frontier,
-                                               UpdateUserValueType::kLargest)) {
+                                               yb::storage::UpdateUserValueType::kLargest)) {
         // The flushed frontier of this VersionEdit must already include the information provided
         // by flushed frontiers of individual files.
         LOG(DFATAL) << "Flushed frontier is present but has to be updated with data from "
@@ -394,7 +411,8 @@ Status VersionEdit::DecodeFrom(BoundaryValuesExtractor* extractor, const Slice& 
                     << ", version edit protobuf:\n" << SanitizeDebugString(pb);
       }
       UpdateUserFrontier(
-          &flushed_frontier_, meta.largest.user_frontier, UpdateUserValueType::kLargest);
+          &flushed_frontier_, meta.largest.user_frontier,
+          yb::storage::UpdateUserValueType::kLargest);
     }
   }
 
@@ -454,11 +472,12 @@ void VersionEdit::AddCleanedFile(int level, const FileMetaData& f) {
   new_files_.emplace_back(level, std::move(nf));
 }
 
-void VersionEdit::UpdateFlushedFrontier(UserFrontierPtr value) {
+void VersionEdit::UpdateFlushedFrontier(yb::storage::UserFrontierPtr value) {
   ModifyFlushedFrontier(std::move(value), FrontierModificationMode::kUpdate);
 }
 
-void VersionEdit::ModifyFlushedFrontier(UserFrontierPtr value, FrontierModificationMode mode) {
+void VersionEdit::ModifyFlushedFrontier(
+    yb::storage::UserFrontierPtr value, FrontierModificationMode mode) {
   const bool allow_mode_change = frontier_modification_mode_ == FrontierModificationMode::kUpdate ||
                                  frontier_modification_mode_ == mode;
   LOG_IF(DFATAL, !allow_mode_change)
@@ -468,7 +487,8 @@ void VersionEdit::ModifyFlushedFrontier(UserFrontierPtr value, FrontierModificat
   if (mode == FrontierModificationMode::kForce) {
     flushed_frontier_ = std::move(value);
   } else {
-    UpdateUserFrontier(&flushed_frontier_, std::move(value), UpdateUserValueType::kLargest);
+    UpdateUserFrontier(&flushed_frontier_, std::move(value),
+    yb::storage::UpdateUserValueType::kLargest);
   }
 }
 

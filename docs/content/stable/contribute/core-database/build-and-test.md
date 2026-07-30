@@ -74,6 +74,12 @@ By default, `clang` is used, but `gcc` is also supported.
 Specify the compiler using the `--gcc<version_number>` and `--clang<version_number>` flags.
 The specific versions supported can be found in `./build-support/third-party-archives.yml`, which details the configurations regularly tested in-house.
 
+Pre-built toolchains are downloaded to `/opt/yb-build` and used by default. To instead build with a GCC toolchain installed on the system, set the `YB_USE_SYSTEM_GCC` environment variable:
+
+```sh
+YB_USE_SYSTEM_GCC=1 ./yb_build.sh --clean --gcc<version_number>
+```
+
 ### Third-party
 
 By default, third-party libraries are pre-built into archives, and those archives are downloaded to be used during build.

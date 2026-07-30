@@ -1,0 +1,87 @@
+title: BackupInfo
+description: System-generated backup metadata and status.
+type: object
+properties:
+  uuid:
+    description: Backup UUID.
+    type: string
+    format: uuid
+    readOnly: true
+  base_backup_uuid:
+    description: Base backup UUID for incremental chains.
+    type: string
+    format: uuid
+    readOnly: true
+  state:
+    description: Current backup state.
+    $ref: "./BackupState.yaml"
+    readOnly: true
+  storage_config_uuid:
+    description: Storage config UUID used for the backup.
+    type: string
+    format: uuid
+    readOnly: true
+  kms_config_uuid:
+    description: KMS config UUID used to encrypt the backup.
+    type: string
+    format: uuid
+    readOnly: true
+  task_uuid:
+    description: Task UUID for the backup operation.
+    type: string
+    format: uuid
+    readOnly: true
+  create_time:
+    description: Time when the backup was created.
+    type: string
+    format: date-time
+    readOnly: true
+  update_time:
+    description: Time when the backup was last updated.
+    type: string
+    format: date-time
+    readOnly: true
+  completion_time:
+    description: Time when the backup completed.
+    type: string
+    format: date-time
+    readOnly: true
+  total_backup_size_in_bytes:
+    description: 'Total backup size, in bytes.'
+    type: integer
+    format: int64
+    readOnly: true
+  sse:
+    description: Whether server-side encryption is enabled for the backup.
+    type: boolean
+    readOnly: true
+  table_by_table_backup:
+    description: Whether the backup was taken table by table.
+    type: boolean
+    readOnly: true
+  has_incremental_backups:
+    description: Whether incremental backups exist for this backup chain.
+    type: boolean
+    readOnly: true
+  last_incremental_backup_time:
+    description: Time of the most recent incremental backup in the chain.
+    type: string
+    format: date-time
+    readOnly: true
+  last_backup_state:
+    description: State of the most recent backup in the incremental chain.
+    $ref: "./BackupState.yaml"
+    readOnly: true
+  is_storage_config_present:
+    description: Whether the storage config still exists.
+    type: boolean
+    readOnly: true
+  is_universe_present:
+    description: Whether the source universe still exists.
+    type: boolean
+    readOnly: true
+  full_chain_size_in_bytes:
+    description: 'Total size of the full backup chain, in bytes.'
+    type: integer
+    format: int64
+    readOnly: true

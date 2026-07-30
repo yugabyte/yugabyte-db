@@ -34,6 +34,8 @@ public class TestOneOrTwoAdmins extends BasePgSQLTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
+    // Disable skip_prefix_locks because serialize is used in the test
+    flagMap.put("skip_prefix_locks", "false");
     // This test expects one of two conflicting transactions to be killed immediately in each
     // iteration. Therefore, we run it in fail-on-conflict concurrency control.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871

@@ -1,6 +1,9 @@
 package org.yb.ysqlconnmgr;
 
+import static org.yb.AssertionWrappers.assertNull;
 import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertNotNull;
+import static org.yb.AssertionWrappers.assertTrue;
 import static org.yb.AssertionWrappers.fail;
 
 import com.google.gson.JsonObject;
@@ -8,18 +11,30 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
+import org.yb.minicluster.LogErrorListener;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestAuthPassthrough extends BaseYsqlConnMgr {
   final String TEST_USERNAME = "user1";
   final String TEST_PASSWORD = "pwd";
@@ -35,11 +50,10 @@ public class TestAuthPassthrough extends BaseYsqlConnMgr {
       {
         put("enable_ysql_conn_mgr", "true");
         put("ysql_conn_mgr_use_auth_backend", "false");
-        put("ysql_conn_mgr_superuser_sticky", "false");
+        put("ysql_conn_mgr_superuser_sticky", "true");
         put("ysql_enable_auth", "true");
+        put("ysql_conn_mgr_alter_guc_adoption_strategy", "connection_static");
         put("ysql_conn_mgr_log_settings", "log_debug,log_query");
-        put("allowed_preview_flags_csv", "ysql_conn_mgr_version_matching");
-        put("ysql_conn_mgr_version_matching", "true");
       }
     };
 
@@ -72,7 +86,15 @@ public class TestAuthPassthrough extends BaseYsqlConnMgr {
   @Test
   public void testConsecutiveConnections() throws Exception {
     // Connect 5 times in a row
+    // each auth attempt should reuse the same control backend.
+
+    ConnMgrLogTailer tailer = ConnMgrLogTailer.create(miniCluster, TSERVER_IDX);
+    Set<String> serverIds = new HashSet<>();
+    Pattern serverIdPattern =
+        Pattern.compile("\\[\\S+ (\\S+)\\] \\(yb auth passthrough\\)");
+
     for (int iteration = 0; iteration < 5; iteration++) {
+      tailer.skipToEnd();
       try (Connection connection = getConnectionBuilder()
                .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
                .withUser(TEST_USERNAME)
@@ -81,7 +103,15 @@ public class TestAuthPassthrough extends BaseYsqlConnMgr {
           Statement statement = connection.createStatement()) {
         statement.executeQuery("SELECT 1");
       }
+      String logLine = tailer.waitForLogRegex(
+          "\\(yb auth passthrough\\) starting Auth Passthrough", 10, TimeUnit.SECONDS);
+      assertNotNull("Expected auth passthrough log line for iteration " + iteration, logLine);
+      Matcher m = serverIdPattern.matcher(logLine);
+      assertTrue("Could not extract server ID from log line: " + logLine, m.find());
+      serverIds.add(m.group(1));
     }
+
+    assertEquals("All auth attempts should use the same control backend", 1, serverIds.size());
 
     Thread.sleep(2 * STATS_UPDATE_INTERVAL * 1000);
     JsonObject pool = getPool("control_connection", "control_connection");
@@ -120,6 +150,202 @@ public class TestAuthPassthrough extends BaseYsqlConnMgr {
              .connect();
         Statement statement = connection.createStatement()) {
       statement.executeQuery("SELECT 1");
+    }
+  }
+
+  // Verify that a password change in pg_authid is picked up by auth passthrough
+  // and the old password is rejected despite tserver response cache prefetching.
+  @Test
+  public void testPasswordChangeWithCache() throws Exception {
+    final String user = TEST_USERNAME;
+    final String oldPassword = TEST_PASSWORD;
+    final String newPassword = "new_pwd";
+
+    withAuthCacheCluster(adminStmt -> {
+      try {
+        recreateLoginRole(adminStmt, user, oldPassword);
+
+        assertLoginWithPasswordResult(user, oldPassword, true);
+
+        adminStmt.execute("ALTER ROLE " + user + " PASSWORD '" + newPassword + "'");
+
+        assertLoginWithPasswordResult(user, newPassword, true);
+        assertLoginWithPasswordResult(user, oldPassword, false);
+      } finally {
+        adminStmt.execute("DROP ROLE IF EXISTS " + user);
+      }
+    });
+  }
+
+  // Verify that revoking login privilege (ALTER ROLE ... NOLOGIN) is enforced
+  // through prefetched pg_authid and not masked by stale cache entries.
+  @Test
+  public void testNoLoginRevokeWithCache() throws Exception {
+    final String user = TEST_USERNAME;
+    withAuthCacheCluster(adminStmt -> {
+      try {
+        recreateLoginRole(adminStmt, user, TEST_PASSWORD);
+        assertLoginResult(user, TEST_PASSWORD, true);
+
+        adminStmt.execute("ALTER ROLE " + user + " NOLOGIN");
+        assertLoginResult(user, TEST_PASSWORD, false);
+      } finally {
+        adminStmt.execute("DROP ROLE IF EXISTS " + user);
+      }
+    });
+  }
+
+  // Verify that restoring login privilege (ALTER ROLE ... LOGIN) after NOLOGIN
+  // is correctly reflected through the prefetched auth cache.
+  @Test
+  public void testLoginRestoreWithCache() throws Exception {
+    final String user = TEST_USERNAME;
+    withAuthCacheCluster(adminStmt -> {
+      try {
+        recreateLoginRole(adminStmt, user, TEST_PASSWORD);
+        assertLoginResult(user, TEST_PASSWORD, true);
+
+        adminStmt.execute("ALTER ROLE " + user + " NOLOGIN");
+        assertLoginResult(user, TEST_PASSWORD, false);
+
+        adminStmt.execute("ALTER ROLE " + user + " LOGIN");
+        assertLoginResult(user, TEST_PASSWORD, true);
+      } finally {
+        adminStmt.execute("DROP ROLE IF EXISTS " + user);
+      }
+    });
+  }
+
+  // Verify that dropping a role prevents login even when the role was recently
+  // cached in the tserver response cache during a prior successful auth.
+  @Test
+  public void testDroppedRoleWithCache() throws Exception {
+    final String user = TEST_USERNAME;
+    withAuthCacheCluster(adminStmt -> {
+      recreateLoginRole(adminStmt, user, TEST_PASSWORD);
+      assertLoginResult(user, TEST_PASSWORD, true);
+
+      adminStmt.execute("DROP ROLE " + user);
+      assertLoginResult(user, TEST_PASSWORD, false);
+    });
+  }
+
+  // Verify that revoking CONNECT privilege on the database is enforced through
+  // prefetched pg_database ACLs and not bypassed by stale cache.
+  @Test
+  public void testConnectPrivRevokeWithCache() throws Exception {
+    final String user = TEST_USERNAME;
+    withAuthCacheCluster(adminStmt -> {
+      try {
+        recreateLoginRole(adminStmt, user, TEST_PASSWORD);
+        assertLoginResult(user, TEST_PASSWORD, true);
+
+        adminStmt.execute("REVOKE CONNECT ON DATABASE yugabyte FROM PUBLIC");
+        adminStmt.execute("REVOKE CONNECT ON DATABASE yugabyte FROM " + user);
+        assertLoginResult(user, TEST_PASSWORD, false);
+      } finally {
+        adminStmt.execute("GRANT CONNECT ON DATABASE yugabyte TO PUBLIC");
+        adminStmt.execute("REVOKE ALL ON DATABASE yugabyte FROM " + user);
+        adminStmt.execute("DROP ROLE IF EXISTS " + user);
+      }
+    });
+  }
+
+  // Verify that setting rolvaliduntil to a past timestamp causes auth to reject
+  // the role, even when the password itself is correct and was previously cached.
+  @Test
+  public void testValidUntilExpiryWithCache() throws Exception {
+    final String user = TEST_USERNAME;
+    withAuthCacheCluster(adminStmt -> {
+      try {
+        recreateLoginRole(adminStmt, user, TEST_PASSWORD);
+        assertLoginResult(user, TEST_PASSWORD, true);
+
+        adminStmt.execute("ALTER ROLE " + user + " VALID UNTIL '2000-01-01'");
+        assertLoginResult(user, TEST_PASSWORD, false);
+      } finally {
+        adminStmt.execute("DROP ROLE IF EXISTS " + user);
+      }
+    });
+  }
+
+  @FunctionalInterface
+  private interface AdminAction {
+    void run(Statement adminStatement) throws Exception;
+  }
+
+  // Restarts the cluster with tserver response cache enabled for auth, then
+  // runs the supplied action with a direct-to-PG admin connection.
+  private void withAuthCacheCluster(AdminAction action) throws Exception {
+    Map<String, String> flags = new HashMap<>();
+    flags.put("ysql_enable_read_request_cache_for_connection_auth", "true");
+    restartClusterWithAdditionalFlags(Collections.EMPTY_MAP, flags);
+
+    try (Connection adminConn = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.POSTGRES)
+             .withUser(ADMIN_USERNAME)
+             .withPassword(ADMIN_PASSWORD)
+             .connect();
+         Statement adminStmt = adminConn.createStatement()) {
+      action.run(adminStmt);
+    }
+  }
+
+  private void recreateLoginRole(Statement adminStatement, String user, String password)
+      throws SQLException {
+    try {
+      adminStatement.execute("DROP ROLE IF EXISTS " + user);
+      adminStatement.execute("CREATE ROLE " + user + " LOGIN PASSWORD '" + password + "'");
+    } catch (SQLException e) {
+      LOG.error("Got exception while recreating login role", e);
+      fail();
+    }
+  }
+
+  private void assertLoginResult(String user, String password, boolean shouldSucceed)
+      throws Exception {
+    try (Connection connection = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+             .withUser(user)
+             .withPassword(password)
+             .connect();
+         Statement statement = connection.createStatement()) {
+      if (!shouldSucceed) {
+        fail("Expected login to fail for user \"" + user + "\"");
+      }
+      statement.executeQuery("SELECT 1");
+    } catch (SQLException e) {
+      if (shouldSucceed) {
+        fail("Expected login to succeed for user \"" + user + "\", got: " + e.getMessage());
+      }
+    }
+  }
+
+  private void assertLoginWithPasswordResult(String user, String password, boolean shouldSucceed)
+      throws Exception {
+    try (Connection connection = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+             .withUser(user)
+             .withPassword(password)
+             .connect();
+         Statement statement = connection.createStatement()) {
+      if (!shouldSucceed) {
+        fail("Expected login attempt to fail for user \"" + user + "\"");
+      }
+      ResultSet resultSet = statement.executeQuery("SELECT 1");
+      assertEquals("Expected one row from SELECT 1", true, resultSet.next());
+      assertEquals("Expected SELECT 1 result value", 1, resultSet.getInt(1));
+    } catch (SQLException e) {
+      if (shouldSucceed) {
+        fail("Expected login attempt to succeed for user \"" + user + "\", got: "
+            + e.getMessage());
+      }
+      String message = e.getMessage();
+      if (message == null ||
+          !message.contains("password authentication failed for user \"" + user + "\"")) {
+        fail("Expected password-authentication failure for user \"" + user
+            + "\", got: " + message);
+      }
     }
   }
 
@@ -241,4 +467,134 @@ public class TestAuthPassthrough extends BaseYsqlConnMgr {
           "Expected failure when setting PGC_SUSET GUC var in startup packet. Got exception: ", e);
     }
   }
+
+  // Verify that the auth passthrough path emits the expected "connection received"
+  // and "connection authorized" log lines when log_connections is enabled.
+  // Restarts the cluster with log_connections=on as connection logging happens
+  // before GUCs are parsed.
+  @Test
+  public void testAuthPassthroughConnectionLogging() throws Exception {
+
+    // Attach a listener to capture PG log lines from each tserver.
+    PgLogListener listener = new PgLogListener();
+    miniCluster.getTabletServers().entrySet()
+        .forEach(entry -> entry.getValue().getLogPrinter().addErrorListener(listener));
+
+    checkIfAuthLogLineEmitted(listener, 10_000, false);
+
+    // Restart with log_connections enabled (PGC_SU_BACKEND).
+    Map<String, String> flags = new HashMap<>();
+    flags.put("ysql_pg_conf_csv", "log_connections=on");
+    restartClusterWithAdditionalFlags(Collections.emptyMap(), flags);
+
+    listener.clear();
+    miniCluster.getTabletServers().entrySet()
+        .forEach(entry -> entry.getValue().getLogPrinter().addErrorListener(listener));
+
+    // Recreate the test role on the fresh cluster.
+    SetupTestUser();
+
+    checkIfAuthLogLineEmitted(listener, 10_000, true);
+
+
+  }
+
+  private void checkIfAuthLogLineEmitted(PgLogListener listener, long timeout_ms,
+    boolean expect_success) throws Exception {
+    // Connect via the connection manager to trigger the auth passthrough path.
+    try (Connection connection = getConnectionBuilder()
+             .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+             .withUser(TEST_USERNAME)
+             .withPassword(TEST_PASSWORD)
+             .connect();
+         Statement statement = connection.createStatement()) {
+      statement.executeQuery("SELECT 1");
+    }
+
+    // Check if the "connection received" log line was emitted.
+    String received = listener.waitForSubstring(
+        "connection received (Auth Passthrough): host=", timeout_ms);
+    if (expect_success) {
+      assertNotNull("Expected 'connection received (Auth Passthrough)' log line", received);
+    } else {
+      assertNull("Expected no 'connection received (Auth Passthrough)' log line", received);
+    }
+
+    // Assert that the "connection authorized" log line was emitted with the
+    // correct user and the "(via Auth Passthrough)" suffix.
+    String authorized = listener.waitForSubstring(
+        "connection authorized: user=" + TEST_USERNAME, timeout_ms);
+    if (expect_success) {
+      assertTrue("Expected '(via Auth Passthrough)' in authorized log line",
+        authorized != null && authorized.contains("(via Auth Passthrough)"));
+    } else {
+      // Ideally, we shouldn't see *any* log line for newly authorized conns
+      assertNull("Expected no 'connection authorized' log line", authorized);
+    }
+  }
+
+  /**
+   * LogErrorListener that captures PostgreSQL log lines containing
+   * "Auth Passthrough" from the tserver's LogPrinter stream.
+   *
+   * Only lines matching the marker are buffered to avoid unbounded memory
+   * growth from the full tserver log output. Callers use
+   * {@link #waitForSubstring} to block until a line containing a given
+   * substring appears or a timeout expires.
+   */
+  private static class PgLogListener implements LogErrorListener {
+    private static final String AUTH_PASSTHROUGH_MARKER = "Auth Passthrough";
+
+    private final List<String> lines = new ArrayList<>();
+    private final Object lock = new Object();
+
+    @Override
+    public void handleLine(String line) {
+      if (!line.contains(AUTH_PASSTHROUGH_MARKER)) {
+        return;
+      }
+      synchronized (lock) {
+        lines.add(line);
+        lock.notifyAll();
+      }
+    }
+
+    @Override
+    public void reportErrorsAtEnd() {}
+
+    /**
+     * Blocks until a buffered line containing {@code substring} is found,
+     * or {@code timeoutMs} elapses. Returns the matching line, or
+     * {@code null} on timeout.
+     */
+    public String waitForSubstring(String substring, long timeoutMs)
+        throws InterruptedException {
+      long deadline = System.nanoTime() + timeoutMs * 1_000_000L;
+      int scanFrom = 0;
+
+      while (true) {
+        synchronized (lock) {
+          for (int i = scanFrom; i < lines.size(); i++) {
+            if (lines.get(i).contains(substring)) {
+              return lines.get(i);
+            }
+          }
+          scanFrom = lines.size();
+
+          long waitMs = (deadline - System.nanoTime()) / 1_000_000L;
+          if (waitMs <= 0) {
+            return null;
+          }
+          lock.wait(waitMs);
+        }
+      }
+    }
+
+    public void clear() {
+      synchronized (lock) {
+        lines.clear();
+      }
+    }
+  }
+
 }

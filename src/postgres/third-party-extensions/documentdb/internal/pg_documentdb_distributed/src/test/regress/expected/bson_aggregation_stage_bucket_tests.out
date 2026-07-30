@@ -3,44 +3,44 @@ SET citus.next_shard_id TO 5120000;
 SET documentdb.next_collection_id TO 51200;
 SET documentdb.next_collection_index_id TO 51200;
 -- Insert data
-SELECT documentdb_api.insert_one('db','dollarBucket',' { "_id" : 1, "item" : "almonds", "pricing" : { "wholesale": 10, "retail": 15 }, "quantity" : 2, "year": 2020 }', NULL);
+SELECT documentdb_api.insert_one('db','dollarBucket',' { "_id" : 1, "product" : "almonds", "pricing" : { "bulk": 10, "store": 15 }, "stock" : 2, "year": 2020 }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','dollarBucket','{ "_id" : 2, "item" : "pecans", "pricing" : { "wholesale": 10, "retail": 9 }, "quantity" : 1, "year": 2021 }', NULL);
+SELECT documentdb_api.insert_one('db','dollarBucket','{ "_id" : 2, "product" : "peach", "pricing" : { "bulk": 10, "store": 9 }, "stock" : 1, "year": 2021 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','dollarBucket',' { "_id" : 3, "item" : "bread", "pricing" : { "wholesale": 10, "retail": 15 }, "quantity" : 5 , "year": 2020}', NULL);
+SELECT documentdb_api.insert_one('db','dollarBucket',' { "_id" : 3, "product" : "banana", "pricing" : { "bulk": 10, "store": 15 }, "stock" : 5 , "year": 2020}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','dollarBucket',' { "_id" : 4, "item" : "meat", "pricing" : { "wholesale": 4, "retail": 10 }, "quantity" : 3 , "year": 2022}', NULL);
+SELECT documentdb_api.insert_one('db','dollarBucket',' { "_id" : 4, "product" : "melon", "pricing" : { "bulk": 4, "store": 10 }, "stock" : 3 , "year": 2022}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','dollarBucket','{ "_id" : 5, "item" : "bread", "pricing" : { "wholesale": 75, "retail": 100 }, "quantity" : 1, "year": 2021 }', NULL);
+SELECT documentdb_api.insert_one('db','dollarBucket','{ "_id" : 5, "product" : "banana", "pricing" : { "bulk": 75, "store": 100 }, "stock" : 1, "year": 2021 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','dollarBucket','{ "_id" : 6, "item" : "bread", "pricing" : { "wholesale": 75, "retail": 100 }, "quantity" : 1, "year": 2021 }', NULL);
+SELECT documentdb_api.insert_one('db','dollarBucket','{ "_id" : 6, "product" : "banana", "pricing" : { "bulk": 75, "store": 100 }, "stock" : 1, "year": 2021 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','dollarBucket','{ "_id" : 7, "item" : "bread", "pricing" : { "retail": 15, "wholesale": 10 }, "quantity" : 1, "year": 2020 }', NULL);
+SELECT documentdb_api.insert_one('db','dollarBucket','{ "_id" : 7, "product" : "banana", "pricing" : { "store": 15, "bulk": 10 }, "stock" : 1, "year": 2020 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
@@ -66,25 +66,25 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBuck
 (3 rows)
 
 -- $bucket with output fields
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022, 2023], "output": { "count": { "$sum": 1 }, "averageQuantity": { "$avg": "$quantity" } } } } ] }');
-                                                                  document                                                                  
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022, 2023], "output": { "count": { "$sum": 1 }, "averageStock": { "$avg": "$stock" } } } } ] }');
+                                                                document                                                                 
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "2020" }, "count" : { "$numberInt" : "3" }, "averageQuantity" : { "$numberDouble" : "2.6666666666666665186" } }
- { "_id" : { "$numberInt" : "2021" }, "count" : { "$numberInt" : "3" }, "averageQuantity" : { "$numberDouble" : "1.0" } }
- { "_id" : { "$numberInt" : "2022" }, "count" : { "$numberInt" : "1" }, "averageQuantity" : { "$numberDouble" : "3.0" } }
+ { "_id" : { "$numberInt" : "2020" }, "count" : { "$numberInt" : "3" }, "averageStock" : { "$numberDouble" : "2.6666666666666665186" } }
+ { "_id" : { "$numberInt" : "2021" }, "count" : { "$numberInt" : "3" }, "averageStock" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "2022" }, "count" : { "$numberInt" : "1" }, "averageStock" : { "$numberDouble" : "3.0" } }
 (3 rows)
 
 -- $bucket with output fields and default value
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022], "default": "others", "output": { "count": { "$sum": 1 }, "averageQuantity": { "$avg": "$quantity" } } } } ] }');
-                                                                  document                                                                  
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022], "default": "others", "output": { "count": { "$sum": 1 }, "averageStock": { "$avg": "$stock" } } } } ] }');
+                                                                document                                                                 
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "2020" }, "count" : { "$numberInt" : "3" }, "averageQuantity" : { "$numberDouble" : "2.6666666666666665186" } }
- { "_id" : { "$numberInt" : "2021" }, "count" : { "$numberInt" : "3" }, "averageQuantity" : { "$numberDouble" : "1.0" } }
- { "_id" : "others", "count" : { "$numberInt" : "1" }, "averageQuantity" : { "$numberDouble" : "3.0" } }
+ { "_id" : { "$numberInt" : "2020" }, "count" : { "$numberInt" : "3" }, "averageStock" : { "$numberDouble" : "2.6666666666666665186" } }
+ { "_id" : { "$numberInt" : "2021" }, "count" : { "$numberInt" : "3" }, "averageStock" : { "$numberDouble" : "1.0" } }
+ { "_id" : "others", "count" : { "$numberInt" : "1" }, "averageStock" : { "$numberDouble" : "3.0" } }
 (3 rows)
 
 -- $bucket with nested field path in groupBy field
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$pricing.wholesale", "boundaries": [10, 20, 30], "default": "unknown" } } ] }');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$pricing.bulk", "boundaries": [10, 20, 30], "default": "unknown" } } ] }');
                                document                                
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "10" }, "count" : { "$numberInt" : "4" } }
@@ -101,7 +101,7 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBuck
 (3 rows)
 
 -- $bucket with another stage before it
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$match": { "item": "bread" } }, { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022, 2023] } } ] }');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$match": { "product": "banana" } }, { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022, 2023] } } ] }');
                                 document                                 
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "2020" }, "count" : { "$numberInt" : "2" } }
@@ -109,12 +109,12 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBuck
 (2 rows)
 
 -- $bucket without count in output fields
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022, 2023], "output": { "averageQuantity": { "$avg": "$quantity" }, "totalQuantity": { "$sum": "$quantity" } } } } ] }');
-                                                                      document                                                                      
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022, 2023], "output": { "averageStock": { "$avg": "$stock" }, "totalStock": { "$sum": "$stock" } } } } ] }');
+                                                                   document                                                                   
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "2020" }, "averageQuantity" : { "$numberDouble" : "2.6666666666666665186" }, "totalQuantity" : { "$numberInt" : "8" } }
- { "_id" : { "$numberInt" : "2021" }, "averageQuantity" : { "$numberDouble" : "1.0" }, "totalQuantity" : { "$numberInt" : "3" } }
- { "_id" : { "$numberInt" : "2022" }, "averageQuantity" : { "$numberDouble" : "3.0" }, "totalQuantity" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "2020" }, "averageStock" : { "$numberDouble" : "2.6666666666666665186" }, "totalStock" : { "$numberInt" : "8" } }
+ { "_id" : { "$numberInt" : "2021" }, "averageStock" : { "$numberDouble" : "1.0" }, "totalStock" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "2022" }, "averageStock" : { "$numberDouble" : "3.0" }, "totalStock" : { "$numberInt" : "3" } }
 (3 rows)
 
 -- $bucket with default value equals to the highest boundaries value
@@ -126,7 +126,7 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBuck
 (2 rows)
 
 -- groupBy non-integar field
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$item", "boundaries": ["a", "c", "n"], "default": "others" } } ] }');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$product", "boundaries": ["a", "c", "n"], "default": "others" } } ] }');
                         document                        
 ---------------------------------------------------------------------
  { "_id" : "a", "count" : { "$numberInt" : "5" } }
@@ -171,40 +171,40 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBuck
 -- negative cases, validations:
 -- required fields
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "boundaries": [2020, 2021,2022,2023] } } ] }');
-ERROR:  $bucket requires 'groupBy' and 'boundaries' to be specified.
+ERROR:  The $bucket stage requires both 'groupBy' and 'boundaries' fields to be explicitly defined.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year"} } ] }');
-ERROR:  $bucket requires 'groupBy' and 'boundaries' to be specified.
+ERROR:  The $bucket stage requires both 'groupBy' and 'boundaries' fields to be explicitly defined.
 -- groupBy must be a path with prefix $ or expression
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "year", "boundaries": [2020, 2021, 2022, 2023] } } ] }');
-ERROR:  $bucket could not find a bucket for an input value "year", and no default was specified.
+ERROR:  $bucket was unable to locate a matching bucket for the provided input value "year", and no default bucket was defined.
 -- boundaries is acsending constant array, more than one element, same type.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": 2020 } } ] }');
-ERROR:  The $bucket 'boundaries' field must be an array of values. But found: int
+ERROR:  The $bucket 'boundaries' field is required to be an array containing values, but instead it was found to be: int
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020] } } ] }');
-ERROR:  The $bucket 'boundaries' field must have at least 2 values, but found: 1
+ERROR:  The $bucket 'boundaries' field requires a minimum of 2 values, but it detected: 1
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2020, 2022, 2023] } } ] }');
-ERROR:  The $bucket 'boundaries' field must be an array of values in ascending order.
+ERROR:  The $bucket 'boundaries' field must be provided as an array containing values arranged in ascending order.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 1999, 2023] } } ] }');
-ERROR:  The $bucket 'boundaries' field must be an array of values in ascending order.
+ERROR:  The $bucket 'boundaries' field must be provided as an array containing values arranged in ascending order.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, "a", 2022, 2023] } } ] }');
-ERROR:  The $bucket 'boundaries' field must be an array of values of the same type. Found different types: int and string
+ERROR:  The $bucket 'boundaries' field is required to be an array containing values that share the same data type. Detected differing types: int and string
 -- default must be a constant, the default value must be less than the lowest boundaries value, or greater than or equal to the highest boundaries value, if having same type.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022], "default": "$pricing"  } } ] }');
-ERROR:  The $bucket 'default' field must be a constant. Input value: "$pricing"
+ERROR:  The $bucket stage 'default' field needs to be a fixed constant value. Input provided: "$pricing"
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021], "default": 2020 } } ] }');
-ERROR:  The $bucket 'default' field must be less than the lowest boundary or greater than or equal to the highest boundary.
+ERROR:  The $bucket 'default' field should be either smaller than the minimum boundary value or greater than or equal to the maximum boundary value.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2022, 2023], "default": 2021 } } ] }');
-ERROR:  The $bucket 'default' field must be less than the lowest boundary or greater than or equal to the highest boundary.
+ERROR:  The $bucket 'default' field should be either smaller than the minimum boundary value or greater than or equal to the maximum boundary value.
 -- output must be document
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022], "output": 1 } } ] }');
-ERROR:  The $bucket 'output' field must be a document. But found: int
+ERROR:  The 'output' field in the $bucket must be a document type, but a different type was encountered: int
 -- More validations
 -- unknown argument of $bucket
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022], "default": "others", "output": { "averageQuantity": { "$avg": "$quantity" }}, "unknown": 1 } } ] }');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022], "default": "others", "output": { "averageStock": { "$avg": "$stock" }}, "unknown": 1 } } ] }');
 ERROR:  Unrecognized option to $bucket: unknown
 -- document cannot fall into any bucket with no default being set.
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021] } } ] }');
-ERROR:  $bucket could not find a bucket for an input value 2021, and no default was specified.
+ERROR:  $bucket was unable to locate a matching bucket for the provided input value 2021, and no default bucket was defined.
 -- sharded collection
 SELECT documentdb_api.shard_collection('db', 'dollarBucket', '{ "_id": "hashed" }', false);
  shard_collection 
@@ -231,25 +231,25 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBuck
 (3 rows)
 
 -- $bucket with output fields
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022, 2023], "output": { "count": { "$sum": 1 }, "averageQuantity": { "$avg": "$quantity" } } } } ] }');
-                                                                  document                                                                  
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022, 2023], "output": { "count": { "$sum": 1 }, "averageStock": { "$avg": "$stock" } } } } ] }');
+                                                                document                                                                 
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "2022" }, "count" : { "$numberInt" : "1" }, "averageQuantity" : { "$numberDouble" : "3.0" } }
- { "_id" : { "$numberInt" : "2021" }, "count" : { "$numberInt" : "3" }, "averageQuantity" : { "$numberDouble" : "1.0" } }
- { "_id" : { "$numberInt" : "2020" }, "count" : { "$numberInt" : "3" }, "averageQuantity" : { "$numberDouble" : "2.6666666666666665186" } }
+ { "_id" : { "$numberInt" : "2022" }, "count" : { "$numberInt" : "1" }, "averageStock" : { "$numberDouble" : "3.0" } }
+ { "_id" : { "$numberInt" : "2021" }, "count" : { "$numberInt" : "3" }, "averageStock" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "2020" }, "count" : { "$numberInt" : "3" }, "averageStock" : { "$numberDouble" : "2.6666666666666665186" } }
 (3 rows)
 
 -- $bucket with output fields and default value
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022], "default": "others", "output": { "count": { "$sum": 1 }, "averageQuantity": { "$avg": "$quantity" } } } } ] }');
-                                                                  document                                                                  
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022], "default": "others", "output": { "count": { "$sum": 1 }, "averageStock": { "$avg": "$stock" } } } } ] }');
+                                                                document                                                                 
 ---------------------------------------------------------------------
- { "_id" : "others", "count" : { "$numberInt" : "1" }, "averageQuantity" : { "$numberDouble" : "3.0" } }
- { "_id" : { "$numberInt" : "2021" }, "count" : { "$numberInt" : "3" }, "averageQuantity" : { "$numberDouble" : "1.0" } }
- { "_id" : { "$numberInt" : "2020" }, "count" : { "$numberInt" : "3" }, "averageQuantity" : { "$numberDouble" : "2.6666666666666665186" } }
+ { "_id" : "others", "count" : { "$numberInt" : "1" }, "averageStock" : { "$numberDouble" : "3.0" } }
+ { "_id" : { "$numberInt" : "2021" }, "count" : { "$numberInt" : "3" }, "averageStock" : { "$numberDouble" : "1.0" } }
+ { "_id" : { "$numberInt" : "2020" }, "count" : { "$numberInt" : "3" }, "averageStock" : { "$numberDouble" : "2.6666666666666665186" } }
 (3 rows)
 
 -- $bucket with nested field path in groupBy field
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$pricing.wholesale", "boundaries": [10, 20, 30], "default": "unknown" } } ] }');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$pricing.bulk", "boundaries": [10, 20, 30], "default": "unknown" } } ] }');
                                document                                
 ---------------------------------------------------------------------
  { "_id" : "unknown", "count" : { "$numberInt" : "3" } }
@@ -266,7 +266,7 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBuck
 (3 rows)
 
 -- $bucket with another stage before it
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$match": { "item": "bread" } }, { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022, 2023] } } ] }');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$match": { "product": "banana" } }, { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022, 2023] } } ] }');
                                 document                                 
 ---------------------------------------------------------------------
  { "_id" : { "$numberInt" : "2021" }, "count" : { "$numberInt" : "2" } }
@@ -274,12 +274,12 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBuck
 (2 rows)
 
 -- $bucket without count in output fields
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022, 2023], "output": { "averageQuantity": { "$avg": "$quantity" }, "totalQuantity": { "$sum": "$quantity" } } } } ] }');
-                                                                      document                                                                      
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$year", "boundaries": [2020, 2021, 2022, 2023], "output": { "averageStock": { "$avg": "$stock" }, "totalStock": { "$sum": "$stock" } } } } ] }');
+                                                                   document                                                                   
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "2022" }, "averageQuantity" : { "$numberDouble" : "3.0" }, "totalQuantity" : { "$numberInt" : "3" } }
- { "_id" : { "$numberInt" : "2021" }, "averageQuantity" : { "$numberDouble" : "1.0" }, "totalQuantity" : { "$numberInt" : "3" } }
- { "_id" : { "$numberInt" : "2020" }, "averageQuantity" : { "$numberDouble" : "2.6666666666666665186" }, "totalQuantity" : { "$numberInt" : "8" } }
+ { "_id" : { "$numberInt" : "2022" }, "averageStock" : { "$numberDouble" : "3.0" }, "totalStock" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "2021" }, "averageStock" : { "$numberDouble" : "1.0" }, "totalStock" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "2020" }, "averageStock" : { "$numberDouble" : "2.6666666666666665186" }, "totalStock" : { "$numberInt" : "8" } }
 (3 rows)
 
 -- $bucket with default value equals to the highest boundaries value
@@ -291,7 +291,7 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBuck
 (2 rows)
 
 -- groupBy non-integar field
-SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$item", "boundaries": ["a", "c", "n"], "default": "others" } } ] }');
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "dollarBucket", "pipeline": [ { "$bucket": { "groupBy": "$product", "boundaries": ["a", "c", "n"], "default": "others" } } ] }');
                         document                        
 ---------------------------------------------------------------------
  { "_id" : "others", "count" : { "$numberInt" : "1" } }

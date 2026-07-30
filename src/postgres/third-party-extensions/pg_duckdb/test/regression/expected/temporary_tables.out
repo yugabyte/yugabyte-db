@@ -1,0 +1,605 @@
+-- All the queries below should work even if duckdb.force_execution is turned off.
+SET duckdb.force_execution = false;
+CREATE TEMP TABLE t(
+    bool BOOLEAN,
+    i2 SMALLINT,
+    i4 INT DEFAULT 1,
+    i8 BIGINT NOT NULL,
+    fl4 REAL DEFAULT random() + 1,
+    fl8 DOUBLE PRECISION CHECK(fl8 > 0),
+    t1 TEXT,
+    t2 VARCHAR,
+    t3 BPCHAR,
+    d DATE,
+    ts TIMESTAMP,
+    json_obj JSON,
+    CHECK (i4 > i2)
+) USING duckdb;
+INSERT INTO t VALUES (true, 2, 4, 8, 4.0, 8.0, 't1', 't2', 't3', '2024-05-04', '2020-01-01T01:02:03', '{"a": 1}');
+SELECT * FROM t;
+ bool | i2 | i4 | i8 | fl4 | fl8 | t1 | t2 | t3 |     d      |            ts            | json_obj 
+------+----+----+----+-----+-----+----+----+----+------------+--------------------------+----------
+ t    |  2 |  4 |  8 |   4 |   8 | t1 | t2 | t3 | 05-04-2024 | Wed Jan 01 01:02:03 2020 | {"a": 1}
+(1 row)
+
+CREATE TEMP TABLE t_heap (a int);
+INSERT INTO t_heap VALUES (2);
+SELECT * FROM t JOIN t_heap ON i2 = a;
+ bool | i2 | i4 | i8 | fl4 | fl8 | t1 | t2 | t3 |     d      |            ts            | json_obj | a 
+------+----+----+----+-----+-----+----+----+----+------------+--------------------------+----------+---
+ t    |  2 |  4 |  8 |   4 |   8 | t1 | t2 | t3 | 05-04-2024 | Wed Jan 01 01:02:03 2020 | {"a": 1} | 2
+(1 row)
+
+-- The default_table_access_method GUC should be honored.
+set default_table_access_method = 'duckdb';
+CREATE TEMP TABLE t2(a int);
+INSERT INTO t2 VALUES (1), (2), (3);
+SELECT * FROM t2 ORDER BY a;
+ a 
+---
+ 1
+ 2
+ 3
+(3 rows)
+
+DELETE FROM t2 WHERE a = 2;
+SELECT * FROM t2 ORDER BY a;
+ a 
+---
+ 1
+ 3
+(2 rows)
+
+UPDATE t2 SET a = 5 WHERE a = 3;
+SELECT * FROM t2 ORDER BY a;
+ a 
+---
+ 1
+ 5
+(2 rows)
+
+TRUNCATE t2;
+SELECT * FROM t2 ORDER BY a;
+ a 
+---
+(0 rows)
+
+-- Writing to a DuckDB table in a transaction is allowed
+BEGIN;
+    INSERT INTO t2 VALUES (1), (2), (3);
+END;
+-- We should be able to run DuckDB DDL in transactions
+BEGIN;
+    CREATE TEMP TABLE t3(a int);
+END;
+BEGIN;
+    DROP TABLE t3;
+END;
+-- Plain postgres DDL and queries should work fine too
+BEGIN;
+    CREATE TEMP TABLE t4(a int) USING heap;
+    INSERT INTO t4 VALUES (1);
+    SELECT * FROM t4;
+ a 
+---
+ 1
+(1 row)
+
+    DROP TABLE t4;
+END;
+-- Even if duckdb.force_execution is turned on
+BEGIN;
+    SET LOCAL duckdb.force_execution = true;
+    CREATE TEMP TABLE t4(a int) USING heap;
+    INSERT INTO t4 VALUES (1);
+    SELECT * FROM t4;
+ a 
+---
+ 1
+(1 row)
+
+    DROP TABLE t4;
+END;
+-- ANALYZE should not fail on our tables. For now it doesn't do anything
+-- though. But it should not fail, otherwise a plain "ANALYZE" of all tables
+-- will error.
+ANALYZE t;
+SELECT duckdb.raw_query($$ SELECT database_name, schema_name, sql FROM duckdb_tables() $$);
+NOTICE:  result: database_name	schema_name	sql	
+VARCHAR	VARCHAR	VARCHAR	
+[ Rows: 2]
+pg_temp	main	CREATE TABLE t(bool BOOLEAN, i2 SMALLINT, i4 INTEGER DEFAULT(1), i8 BIGINT NOT NULL, fl4 FLOAT DEFAULT((random() + CAST(1 AS DOUBLE))), fl8 DOUBLE, t1 VARCHAR, t2 VARCHAR, t3 VARCHAR, d DATE, ts TIMESTAMP, json_obj JSON, CHECK((i4 > i2)), CHECK((fl8 > CAST(0 AS DOUBLE))));
+pg_temp	main	CREATE TABLE t2(a INTEGER);
+
+
+ raw_query 
+-----------
+ 
+(1 row)
+
+-- Ensure that we can drop the table with all the supported features inside a
+-- transaction.
+BEGIN;
+DROP TABLE t;
+END;
+DROP TABLE t_heap, t2;
+SELECT duckdb.raw_query($$ SELECT database_name, schema_name, sql FROM duckdb_tables() $$);
+NOTICE:  result: database_name	schema_name	sql	
+VARCHAR	VARCHAR	VARCHAR	
+[ Rows: 0]
+
+
+ raw_query 
+-----------
+ 
+(1 row)
+
+CREATE TABLE t(a int);
+ERROR:  Only TEMP tables are supported in DuckDB if MotherDuck support is not enabled
+-- XXX: A better error message would be nice here, but for now this is acceptable.
+CREATE TEMP TABLE t(a int PRIMARY KEY);
+ERROR:  duckdb does not implement duckdb_index_build_range_scan
+-- XXX: A better error message would be nice here, but for now this is acceptable.
+CREATE TEMP TABLE t(a int UNIQUE);
+ERROR:  duckdb does not implement duckdb_index_build_range_scan
+CREATE TEMP TABLE t(a int, b int GENERATED ALWAYS AS (a + 1) STORED);
+ERROR:  DuckDB does not support STORED generated columns
+CREATE TEMP TABLE t(a int GENERATED ALWAYS AS IDENTITY);
+ERROR:  Identity columns are not supported in DuckDB
+CREATE TEMP TABLE theap(b int PRIMARY KEY) USING heap;
+CREATE TEMP TABLE t(a int REFERENCES theap(b));
+ERROR:  DuckDB tables do not support foreign keys
+DROP TABLE theap;
+-- allowed but all other collations are not supported
+CREATE TEMP TABLE t(a text COLLATE "default");
+DROP TABLE t;
+CREATE TEMP TABLE t(a text COLLATE "C");
+DROP TABLE t;
+CREATE TEMP TABLE t(a text COLLATE "POSIX");
+DROP TABLE t;
+CREATE TEMP TABLE t(a text COLLATE "de-x-icu");
+ERROR:  DuckDB does not support column collations
+CREATE TEMP TABLE t(A text COMPRESSION "pglz");
+ERROR:  Column compression is not supported in DuckDB
+CREATE TEMP TABLE t(a int) WITH (fillfactor = 50);
+ERROR:  Storage options are not supported in DuckDB
+-- Should fail because user should specify the precision of the NUMERIC.
+CREATE TEMP TABLE large_numeric_tbl (a NUMERIC) USING duckdb;
+ERROR:  (PGDuckDB/duckdb_create_table_trigger_cpp) Not implemented Error: Unsupported PostgreSQL type found in query: DuckDB requires the precision of a NUMERIC to be set. You can choose to convert these NUMERICs to a DOUBLE by using 'SET duckdb.convert_unsupported_numeric_to_double = true'
+-- But it's fine if the user specifies the precision
+CREATE TEMP TABLE large_numeric_tbl_specified (a NUMERIC(38,20)) USING duckdb;
+-- CTAS is fine though, it will use duckdb its default
+-- TODO: Maybe make this fail too for consistency?
+CREATE TEMP TABLE duckdb_numeric_from_pg_bare USING duckdb AS select 1::numeric x;
+SELECT format_type(atttypid, atttypmod) FROM pg_attribute WHERE attrelid = 'duckdb_numeric_from_pg_bare'::regclass AND attname = 'x';
+  format_type  
+---------------
+ numeric(18,3)
+(1 row)
+
+-- Except if they are fully specified
+CREATE TEMP TABLE duckdb_numeric_from_pg USING duckdb AS select 1::numeric(10,8) x;
+SELECT format_type(atttypid, atttypmod) FROM pg_attribute WHERE attrelid = 'duckdb_numeric_from_pg'::regclass AND attname = 'x';
+  format_type  
+---------------
+ numeric(10,8)
+(1 row)
+
+-- Same when the query is forced by duckdb
+CREATE TEMP TABLE duckdb_numeric_bare USING duckdb AS select * from duckdb.query($$ select 1::numeric x $$);
+SELECT format_type(atttypid, atttypmod) FROM pg_attribute WHERE attrelid = 'duckdb_numeric_bare'::regclass AND attname = 'x';
+  format_type  
+---------------
+ numeric(18,3)
+(1 row)
+
+-- But CTAS with numerics coming from a duckdb query are fine (i.e. we pass on the precision that duckdb uses)
+CREATE TEMP TABLE duckdb_numeric USING duckdb AS select * from duckdb.query($$ select 1::numeric(10, 5) x $$);
+SELECT format_type(atttypid, atttypmod) FROM pg_attribute WHERE attrelid = 'duckdb_numeric'::regclass AND attname = 'x';
+  format_type  
+---------------
+ numeric(10,5)
+(1 row)
+
+CREATE TEMP TABLE cities_duckdb (
+  name       text,
+  population real,
+  elevation  int
+);
+CREATE TEMP TABLE cities_heap (
+  name       text,
+  population real,
+  elevation  int
+) USING heap;
+-- XXX: A better error message would be nice here, but for now this is acceptable.
+CREATE TEMP TABLE capitals_duckdb (
+  state      char(2) UNIQUE NOT NULL
+) INHERITS (cities_duckdb);
+ERROR:  duckdb does not implement duckdb_index_build_range_scan
+-- XXX: A better error message would be nice here, but for now this is acceptable.
+CREATE TEMP TABLE capitals_duckdb (
+  state      char(2) UNIQUE NOT NULL
+) INHERITS (cities_heap);
+ERROR:  duckdb does not implement duckdb_index_build_range_scan
+-- XXX: A better error message would be nice here, but for now this is acceptable.
+CREATE TEMP TABLE capitals_heap (
+  state      char(2) UNIQUE NOT NULL
+) INHERITS (cities_duckdb);
+ERROR:  duckdb does not implement duckdb_index_build_range_scan
+DROP TABLE cities_heap, cities_duckdb;
+CREATE TEMP TABLE t(a int) ON COMMIT PRESERVE ROWS;
+INSERT INTO t VALUES (1);
+SELECT * FROM t;
+ a 
+---
+ 1
+(1 row)
+
+DROP TABLE t;
+CREATE TEMP TABLE t(a int) ON COMMIT DELETE ROWS;
+INSERT INTO t VALUES (1);
+SELECT * FROM t;
+ a 
+---
+(0 rows)
+
+DROP TABLE t;
+-- unsupported
+CREATE TEMP TABLE t(a int) ON COMMIT DROP;
+ERROR:  DuckDB does not support ON COMMIT DROP
+-- CTAS fully in Duckdb
+CREATE TEMP TABLE webpages USING duckdb AS SELECT r['column00'], r['column01'], r['column02'] FROM read_csv('../../data/web_page.csv') r;
+SELECT * FROM webpages ORDER BY column00 LIMIT 2;
+ column00 |     column01     |  column02  
+----------+------------------+------------
+        1 | AAAAAAAABAAAAAAA | 09-03-1997
+        2 | AAAAAAAACAAAAAAA | 09-03-1997
+(2 rows)
+
+CREATE TEMP TABLE t_heap(a int) USING heap;
+INSERT INTO t_heap VALUES (1);
+-- CTAS from postgres table to duckdb table
+CREATE TEMP TABLE t(b) USING duckdb AS SELECT * FROM t_heap;
+SELECT * FROM t;
+ b 
+---
+ 1
+(1 row)
+
+-- CTAS from DuckDB table to postgres table
+CREATE TEMP TABLE t_heap2(c) USING heap AS SELECT * FROM t;
+SELECT * FROM t_heap2;
+ c 
+---
+ 1
+(1 row)
+
+-- CTAS from postgres table to postgres table (not actually handled by
+-- pg_duckdb, but should still work)
+CREATE TEMP TABLE t_heap3(c) USING heap AS SELECT * FROM t_heap;
+SELECT * FROM t_heap3;
+ c 
+---
+ 1
+(1 row)
+
+CREATE TEMP TABLE t_jsonb_heap(data jsonb) USING heap;
+INSERT INTO t_jsonb_heap VALUES ('{"a": 1, "b": 2}');
+-- CTAS from postgres table with type that has a different name in DuckDB
+CREATE TEMP TABLE t_json AS SELECT * FROM t_jsonb_heap;
+SELECT * FROM t_json;
+       data       
+------------------
+ {"a": 1, "b": 2}
+(1 row)
+
+-- DuckDB table should have
+SELECT atttypid::regtype FROM pg_attribute WHERE attrelid = 't_json'::regclass AND attname = 'data';
+ atttypid 
+----------
+ json
+(1 row)
+
+SELECT duckdb.raw_query($$ SELECT database_name, schema_name, sql FROM duckdb_tables() $$);
+NOTICE:  result: database_name	schema_name	sql	
+VARCHAR	VARCHAR	VARCHAR	
+[ Rows: 8]
+pg_temp	main	CREATE TABLE duckdb_numeric(x DECIMAL(10,5));
+pg_temp	main	CREATE TABLE duckdb_numeric_bare(x DECIMAL(18,3));
+pg_temp	main	CREATE TABLE duckdb_numeric_from_pg(x DECIMAL(10,8));
+pg_temp	main	CREATE TABLE duckdb_numeric_from_pg_bare(x DECIMAL(18,3));
+pg_temp	main	CREATE TABLE large_numeric_tbl_specified(a DECIMAL(38,20));
+pg_temp	main	CREATE TABLE t(b INTEGER);
+pg_temp	main	CREATE TABLE t_json("data" JSON);
+pg_temp	main	CREATE TABLE webpages(column00 BIGINT, column01 VARCHAR, column02 DATE);
+
+
+ raw_query 
+-----------
+ 
+(1 row)
+
+-- multi-VALUES
+CREATE TEMP TABLE ta (a int DEFAULT 3, b int) USING duckdb;
+INSERT INTO ta (b) VALUES (123), (456);
+INSERT INTO ta (a, b) VALUES (123, 456), (456, 123);
+SELECT * FROM ta;
+  a  |  b  
+-----+-----
+   3 | 123
+   3 | 456
+ 123 | 456
+ 456 | 123
+(4 rows)
+
+CREATE TEMP TABLE tb (a int DEFAULT 3, b int, c varchar DEFAULT 'pg_duckdb') USING duckdb;
+INSERT INTO tb (a) VALUES (123), (456);
+INSERT INTO tb (b) VALUES (123), (456);
+INSERT INTO tb (c) VALUES ('ta'), ('tb');
+SELECT * FROM tb;
+  a  |  b  |     c     
+-----+-----+-----------
+ 123 |     | pg_duckdb
+ 456 |     | pg_duckdb
+   3 | 123 | pg_duckdb
+   3 | 456 | pg_duckdb
+   3 |     | ta
+   3 |     | tb
+(6 rows)
+
+-- INSERT ... SELECT
+TRUNCATE TABLE ta;
+INSERT INTO ta (a) SELECT 789;
+INSERT INTO ta (b) SELECT 789;
+INSERT INTO ta (a) SELECT * FROM t_heap;
+INSERT INTO ta (b) SELECT * FROM t_heap;
+SELECT * FROM ta;
+  a  |  b  
+-----+-----
+ 789 |    
+   3 | 789
+   1 |    
+   3 |   1
+(4 rows)
+
+TRUNCATE TABLE tb;
+INSERT INTO tb (a) SELECT 789;
+INSERT INTO tb (b) SELECT 789;
+INSERT INTO tb (a) SELECT * FROM t_heap;
+INSERT INTO tb (b) SELECT * FROM t_heap;
+SELECT * FROM tb;
+  a  |  b  |     c     
+-----+-----+-----------
+ 789 |     | pg_duckdb
+   3 | 789 | pg_duckdb
+   1 |     | pg_duckdb
+   3 |   1 | pg_duckdb
+(4 rows)
+
+TRUNCATE TABLE tb;
+INSERT INTO tb (c) SELECT 'ta';
+INSERT INTO tb (c) SELECT 'ta' || 'tb';
+INSERT INTO tb (a) SELECT (2)::numeric;
+INSERT INTO tb (b) SELECT (3)::numeric;
+INSERT INTO tb (c) SELECT t.a FROM (SELECT 'ta' || 'tb' AS a) t;
+INSERT INTO tb (b, c) SELECT t.b, t.c FROM (SELECT (3)::numeric AS b, 'ta' || 'tb' AS c) t;
+INSERT INTO tb (a, b, c) SELECT 1, 2, 'tb';
+INSERT INTO tb  SELECT * FROM (SELECT (3)::numeric AS a, (3)::numeric AS b, 'ta' || 'tb' AS c) t;
+SELECT * FROM tb;
+ a | b |     c     
+---+---+-----------
+ 3 |   | ta
+ 3 |   | tatb
+ 2 |   | pg_duckdb
+ 3 | 3 | pg_duckdb
+ 3 |   | tatb
+ 3 | 3 | tatb
+ 1 | 2 | tb
+ 3 | 3 | tatb
+(8 rows)
+
+CREATE TEMP TABLE tc (a int DEFAULT 3, b int, c varchar DEFAULT 'pg_duckdb', d varchar DEFAULT 'a' || 'b', e int DEFAULT 1 + 2) USING duckdb;
+INSERT INTO tc (a) VALUES (123), (456);
+INSERT INTO tc (b) VALUES (123), (456);
+INSERT INTO tc (c) VALUES ('ta'), ('tb');
+SELECT * FROM tc;
+  a  |  b  |     c     | d  | e 
+-----+-----+-----------+----+---
+ 123 |     | pg_duckdb | ab | 3
+ 456 |     | pg_duckdb | ab | 3
+   3 | 123 | pg_duckdb | ab | 3
+   3 | 456 | pg_duckdb | ab | 3
+   3 |     | ta        | ab | 3
+   3 |     | tb        | ab | 3
+(6 rows)
+
+TRUNCATE TABLE tc;
+INSERT INTO tc (a) SELECT 789;
+INSERT INTO tc (b) SELECT 789;
+INSERT INTO tc (a) SELECT * FROM t_heap;
+INSERT INTO tc (b) SELECT * FROM t_heap;
+SELECT * FROM tc;
+  a  |  b  |     c     | d  | e 
+-----+-----+-----------+----+---
+ 789 |     | pg_duckdb | ab | 3
+   3 | 789 | pg_duckdb | ab | 3
+   1 |     | pg_duckdb | ab | 3
+   3 |   1 | pg_duckdb | ab | 3
+(4 rows)
+
+TRUNCATE TABLE tc;
+INSERT INTO tc (c) SELECT 'ta';
+INSERT INTO tc (c) SELECT 'ta' || 'tb';
+INSERT INTO tc (a) SELECT (2)::numeric;
+INSERT INTO tc (b) SELECT (3)::numeric;
+INSERT INTO tc (c) SELECT t.a FROM (SELECT 'ta' || 'tb' AS a) t;
+INSERT INTO tc (b, c) SELECT t.b, t.c FROM (SELECT (3)::numeric AS b, 'ta' || 'tb' AS c) t;
+INSERT INTO tc (a, b, c) SELECT 1, 2, 'tb';
+INSERT INTO tc  SELECT * FROM (SELECT (3)::numeric AS a, (3)::numeric AS b, 'ta' || 'tb' AS c) t;
+SELECT * FROM tc;
+ a | b |     c     | d  | e 
+---+---+-----------+----+---
+ 3 |   | ta        | ab | 3
+ 3 |   | tatb      | ab | 3
+ 2 |   | pg_duckdb | ab | 3
+ 3 | 3 | pg_duckdb | ab | 3
+ 3 |   | tatb      | ab | 3
+ 3 | 3 | tatb      | ab | 3
+ 1 | 2 | tb        | ab | 3
+ 3 | 3 | tatb      | ab | 3
+(8 rows)
+
+CREATE TEMP TABLE td (a int, ts timestamp default now()) USING duckdb;
+INSERT INTO td (a) SELECT 1;
+SELECT a FROM td;
+ a 
+---
+ 1
+(1 row)
+
+-- Single Row Function
+TRUNCATE TABLE td;
+INSERT INTO td (ts) SELECT now();
+SELECT count(*) FROM td;
+ count 
+-------
+     1
+(1 row)
+
+TRUNCATE TABLE tc;
+EXPLAIN VERBOSE INSERT INTO tc(c) SELECT md5('ta');
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Custom Scan (DuckDBScan)  (cost=0.00..0.00 rows=0 width=0)
+   Output: "Count"
+   DuckDB Execution Plan: 
+ 
+ ┌───────────────────────────┐
+ │           INSERT          │
+ └─────────────┬─────────────┘
+ ┌─────────────┴─────────────┐
+ │         PROJECTION        │
+ │    ────────────────────   │
+ │     CAST(3 AS INTEGER)    │
+ │            NULL           │
+ │             #0            │
+ │  (CAST('a' AS VARCHAR) || │
+ │    CAST('b' AS VARCHAR))  │
+ │          (1 + 2)          │
+ │                           │
+ │           ~1 row          │
+ └─────────────┬─────────────┘
+ ┌─────────────┴─────────────┐
+ │         PROJECTION        │
+ │    ────────────────────   │
+ │            md5            │
+ │                           │
+ │           ~1 row          │
+ └─────────────┬─────────────┘
+ ┌─────────────┴─────────────┐
+ │         DUMMY_SCAN        │
+ └───────────────────────────┘
+ 
+ 
+(31 rows)
+
+INSERT INTO tc(c) SELECT md5('ta');
+EXPLAIN VERBOSE INSERT INTO tc(d) SELECT md5('test');
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Custom Scan (DuckDBScan)  (cost=0.00..0.00 rows=0 width=0)
+   Output: "Count"
+   DuckDB Execution Plan: 
+ 
+ ┌───────────────────────────┐
+ │           INSERT          │
+ └─────────────┬─────────────┘
+ ┌─────────────┴─────────────┐
+ │         PROJECTION        │
+ │    ────────────────────   │
+ │     CAST(3 AS INTEGER)    │
+ │            NULL           │
+ │    CAST('pg_duckdb' AS    │
+ │          VARCHAR)         │
+ │             #0            │
+ │          (1 + 2)          │
+ │                           │
+ │           ~1 row          │
+ └─────────────┬─────────────┘
+ ┌─────────────┴─────────────┐
+ │         PROJECTION        │
+ │    ────────────────────   │
+ │            md5            │
+ │                           │
+ │           ~1 row          │
+ └─────────────┬─────────────┘
+ ┌─────────────┴─────────────┐
+ │         DUMMY_SCAN        │
+ └───────────────────────────┘
+ 
+ 
+(31 rows)
+
+INSERT INTO tc(d) SELECT md5('test');
+SELECT * FROM tc;
+ a | b |                c                 |                d                 | e 
+---+---+----------------------------------+----------------------------------+---
+ 3 |   | fec8f2a3f2e808ccb17c4d278b4fa469 | ab                               | 3
+ 3 |   | pg_duckdb                        | 098f6bcd4621d373cade4e832627b4f6 | 3
+(2 rows)
+
+-- Set Returning Function
+TRUNCATE TABLE ta;
+INSERT INTO ta (a) SELECT generate_series(1, 3); -- failed. DuckDB expects this "INSERT INTO ta (a) FROM generate_series(1, 3)"
+ERROR:  (PGDuckDB/Duckdb_ExecCustomScan_Cpp) Conversion Error: Unimplemented type for cast (BIGINT[] -> INTEGER) when casting from source column generate_series
+
+LINE 1:  INSERT INTO pg_temp.main.ta (a) SELECT generate_series(1, 3) AS generate_series
+                                                ^
+INSERT INTO ta (a) SELECT * FROM generate_series(1, 3); -- OK
+INSERT INTO ta (b) SELECT * FROM generate_series(1, 3); -- OK
+SELECT * FROM ta;
+ a | b 
+---+---
+ 1 |  
+ 2 |  
+ 3 |  
+ 3 | 1
+ 3 | 2
+ 3 | 3
+(6 rows)
+
+ALTER TABLE ta
+    ADD COLUMN xyz int,
+    ADD COLUMN "column with spaces" text,
+    ALTER COLUMN b TYPE bigint;
+select * from duckdb.query( $$ describe pg_temp.ta $$ );
+    column_name     | column_type | null | key | default | extra 
+--------------------+-------------+------+-----+---------+-------
+ a                  | INTEGER     | YES  |     | 3       | 
+ b                  | BIGINT      | YES  |     |         | 
+ xyz                | INTEGER     | YES  |     |         | 
+ column with spaces | VARCHAR     | YES  |     |         | 
+(4 rows)
+
+SELECT * FROM ta;
+ a | b | xyz | column with spaces 
+---+---+-----+--------------------
+ 1 |   |     | 
+ 2 |   |     | 
+ 3 |   |     | 
+ 3 | 1 |     | 
+ 3 | 2 |     | 
+ 3 | 3 |     | 
+(6 rows)
+
+CREATE TEMP TABLE measurement (
+    city_id         int not null,
+    logdate         date not null,
+    peaktemp        int,
+    unitsales       int
+) PARTITION BY RANGE (logdate);
+-- This command should fail because we don't support duckdb partitions yet
+CREATE TEMP TABLE measurement_y2006m02 PARTITION OF measurement
+    FOR VALUES FROM ('2006-02-01') TO ('2006-03-01') USING duckdb;
+ERROR:  DuckDB tables cannot be used as a partition
+DROP TABLE webpages, t, t_heap, t_heap2, t_heap3, ta, tb, tc, td, measurement;

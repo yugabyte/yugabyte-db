@@ -38,7 +38,7 @@ SELECT count(*) FROM documentdb_api.collection('collection_management','nonexist
 
 -- SELECT * from a non-existing collection
 SELECT * FROM documentdb_api.collection('collection_management','nonexistent');
- shard_key_value | object_id | document | creation_time 
+ shard_key_value | object_id | document 
 ---------------------------------------------------------------------
 (0 rows)
 
@@ -46,7 +46,7 @@ SELECT * FROM documentdb_api.collection('collection_management','nonexistent');
 EXPLAIN SELECT * FROM documentdb_api.collection('collection_management','nonexistent');
                                      QUERY PLAN                                      
 ---------------------------------------------------------------------
- Function Scan on empty_data_table collection  (cost=0.25..10.25 rows=1000 width=80)
+ Function Scan on empty_data_table collection  (cost=0.25..10.25 rows=1000 width=72)
 (1 row)
 
 -- try to rename to an already existing name
@@ -58,13 +58,13 @@ NOTICE:  creating collection
 (1 row)
 
 SELECT documentdb_api.rename_collection('collection_management','originalname', 'newname');
-ERROR:  collection collection_management.newname already exists
+ERROR:  The collection collection_management.newname is already present in the system
 -- Disallow system.views, system.profile etc as the target collection names
 SELECT documentdb_api.rename_collection('collection_management','originalname', 'system.views');
-ERROR:  cannot write to collection_management.system.views
+ERROR:  Unable to write data to specified location collection_management.system.views
 CONTEXT:  SQL statement "UPDATE documentdb_api_catalog.collections SET collection_name = $1 WHERE database_name = $2 AND collection_name = $3"
 SELECT documentdb_api.rename_collection('collection_management','originalname', 'system.profile');
-ERROR:  cannot write to collection_management.system.profile
+ERROR:  Unable to write data to specified location collection_management.system.profile
 CONTEXT:  SQL statement "UPDATE documentdb_api_catalog.collections SET collection_name = $1 WHERE database_name = $2 AND collection_name = $3"
 -- validate duplicate collections are not allowed
 SELECT documentdb_api.create_collection('collection_management','collection1');

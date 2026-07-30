@@ -1,0 +1,135 @@
+\x on
+SET bytea_output = 'escape';
+SELECT * FROM duckdb.query($$
+FROM test_all_types()
+SELECT * exclude(
+    small_enum,
+    medium_enum,
+    large_enum,
+    struct,
+    struct_of_arrays,
+    array_of_structs,
+    fixed_nested_int_array,
+    fixed_nested_varchar_array,
+    fixed_struct_array,
+    struct_of_fixed_array,
+    fixed_array_of_int_list,
+    list_of_fixed_int_array,
+    nested_int_array, -- The nested array has different lengths, which is not possible in PG
+    date, -- the min/max values of dates overflow in Postgres so selecting these would throw an error
+    timestamp, -- the min/max values of timestamps overflow in Postgres so selecting these would throw an error
+    timestamp_s, -- the min/max values of timestamps overflow in Postgres so selecting these would throw an error
+    timestamp_ms, -- the min/max values of timestamps overflow in Postgres so selecting these would throw an error
+    timestamp_ns, -- the min/max values of timestamps overflow in Postgres so selecting these would throw an error
+    timestamp_tz -- the min/max values of timestamps overflow in Postgres so selecting these would throw an error
+)
+$$)
+-[ RECORD 1 ]-------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+bool                | f
+tinyint             | -128
+smallint            | -32768
+int                 | -2147483648
+bigint              | -9223372036854775808
+hugeint             | 0
+uhugeint            | 0
+utinyint            | 0
+usmallint           | 0
+uint                | 0
+ubigint             | 0
+bignum              | -179769313486231570814527423731704356798070567525844996598917476803157260780028538760589558632766878171540458953514382464234321326889464182768467546703537516986049910576551282076245490090389328944075868508455133942304583236903222948165808559332123348274797826204144723168738177180919299881250404026184124858368
+time                | 00:00:00
+time_tz             | 00:00:00+15:59:59
+float               | -3.4028235e+38
+double              | -1.7976931348623157e+308
+dec_4_1             | -999.9
+dec_9_4             | -99999.9999
+dec_18_6            | -999999999999.999999
+dec38_10            | -9999999999999999999999999999.9999999999
+uuid                | 00000000-0000-0000-0000-000000000000
+interval            | @ 0
+varchar             | 🦆🦆🦆🦆🦆🦆
+blob                | thisisalongblob\000withnullbytes
+bit                 | 0010001001011100010101011010111
+int_array           | {}
+double_array        | {}
+date_array          | {}
+timestamp_array     | {}
+timestamptz_array   | {}
+varchar_array       | {}
+map                 | {}
+union               | Frank
+fixed_int_array     | {NULL,2,3}
+fixed_varchar_array | {a,NULL,c}
+-[ RECORD 2 ]-------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+bool                | t
+tinyint             | 127
+smallint            | 32767
+int                 | 2147483647
+bigint              | 9223372036854775807
+hugeint             | 170141183460469231731687303715884105727
+uhugeint            | 340282366920938463463374607431768211455
+utinyint            | 255
+usmallint           | 65535
+uint                | 4294967295
+ubigint             | 18446744073709551615
+bignum              | 179769313486231570814527423731704356798070567525844996598917476803157260780028538760589558632766878171540458953514382464234321326889464182768467546703537516986049910576551282076245490090389328944075868508455133942304583236903222948165808559332123348274797826204144723168738177180919299881250404026184124858368
+time                | 24:00:00
+time_tz             | 24:00:00-15:59:59
+float               | 3.4028235e+38
+double              | 1.7976931348623157e+308
+dec_4_1             | 999.9
+dec_9_4             | 99999.9999
+dec_18_6            | 999999999999.999999
+dec38_10            | 9999999999999999999999999999.9999999999
+uuid                | ffffffff-ffff-ffff-ffff-ffffffffffff
+interval            | @ 83 years 3 mons 999 days 16 mins 39.999999 secs
+varchar             | goo
+blob                | \000\000\000a
+bit                 | 10101
+int_array           | {42,999,NULL,NULL,-42}
+double_array        | {42,NaN,Infinity,-Infinity,NULL,-42}
+date_array          | {01-01-1970,infinity,-infinity,NULL,05-12-2022}
+timestamp_array     | {"Thu Jan 01 00:00:00 1970",infinity,-infinity,NULL,"Thu May 12 16:23:45 2022"}
+timestamptz_array   | {"Wed Dec 31 16:00:00 1969 PST",infinity,-infinity,NULL,"Thu May 12 16:23:45 2022 PDT"}
+varchar_array       | {🦆🦆🦆🦆🦆🦆,goose,NULL,""}
+map                 | {key1=🦆🦆🦆🦆🦆🦆, key2=goose}
+union               | 5
+fixed_int_array     | {4,5,6}
+fixed_varchar_array | {d,e,f}
+-[ RECORD 3 ]-------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+bool                | 
+tinyint             | 
+smallint            | 
+int                 | 
+bigint              | 
+hugeint             | 
+uhugeint            | 
+utinyint            | 
+usmallint           | 
+uint                | 
+ubigint             | 
+bignum              | 
+time                | 
+time_tz             | 
+float               | 
+double              | 
+dec_4_1             | 
+dec_9_4             | 
+dec_18_6            | 
+dec38_10            | 
+uuid                | 
+interval            | 
+varchar             | 
+blob                | 
+bit                 | 
+int_array           | 
+double_array        | 
+date_array          | 
+timestamp_array     | 
+timestamptz_array   | 
+varchar_array       | 
+map                 | 
+union               | 
+fixed_int_array     | 
+fixed_varchar_array | 
+

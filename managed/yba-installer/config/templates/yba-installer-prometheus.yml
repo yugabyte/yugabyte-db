@@ -1,6 +1,6 @@
-  services:
+services:
   - name: prometheusConfig
-    fileName: '{{ .ConfFileLocation }}'
+    fileName: "{{ .ConfFileLocation }}"
     contents: |
       # Copyright (c) YugabyteDB, Inc.
 
@@ -66,6 +66,29 @@
         file_sd_configs:
           - files:
               - '{{ .DataDir }}/swamper_targets/otel.*.json'
+
+      {{- if eq (yamlPath "nodeExporter.enabled") "true" }}
+      - job_name: 'yba-node-exporter'
+        scrape_interval: {{ yamlPath "prometheus.scrapeInterval" }}
+        scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}
+        {{ if eq (yamlPath "nodeExporter.scheme") "https" }}
+        scheme: https
+        tls_config:
+          insecure_skip_verify: true
+        {{ end }}
+        {{ if eq (yamlPath "nodeExporter.enableAuth") "true" }}
+        basic_auth:
+          username: {{ yamlPath "nodeExporter.authUsername" }}
+          password: {{ yamlPath "nodeExporter.authPassword" }}
+        {{ end }}
+        static_configs:
+          - targets: ['{{ index (splitInput (yamlPath "host")) 0 }}:{{ yamlPath "nodeExporter.port" }}']
+        metric_relabel_configs:
+        - source_labels: ["__name__"]
+          regex: "(.*)"
+          target_label: "saved_name"
+          replacement: "$1"
+      {{- end }}
 
       - job_name: "node"
         scheme: {{ yamlPath "prometheus.scrapeConfig.node.scheme" }}
@@ -208,6 +231,7 @@
       --web.console.libraries={{ .PromDir }}/console_libraries \
       --web.enable-admin-api \
       --web.enable-lifecycle \
+      --web.enable-remote-write-receiver \
       --web.config.file={{ .WebConfFile }} \
       --web.listen-address=:{{ yamlPath "prometheus.port" }} \
       --query.max-concurrency={{ yamlPath "prometheus.maxConcurrency" }} \
@@ -237,7 +261,7 @@
         {{ end }}
       {{ end }}
   - name: prometheusLogrotate
-    fileName: '{{ logrotateD }}/prometheus'
+    fileName: "{{ logrotateD }}/prometheus"
     contents: |
       {{ .LogDir }}/prometheus.log {
           daily

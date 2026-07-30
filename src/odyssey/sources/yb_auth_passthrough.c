@@ -102,7 +102,7 @@ static int yb_server_write_auth_passthrough_request_pkt(od_client_t *client,
 		       0);
 
 	char yb_logical_conn_type[2] = "x";
-	yb_logical_conn_type[0] = client->tls ? YB_LOGICAL_ENCRYPTED_CONN :
+	yb_logical_conn_type[0] = client->startup.yb_ssl_established ? YB_LOGICAL_ENCRYPTED_CONN :
 						YB_LOGICAL_UNENCRYPTED_CONN;
 
 	msg = yb_kiwi_fe_write_authentication(NULL);
@@ -193,15 +193,23 @@ static machine_msg_t *yb_read_auth_pkt_from_server(od_client_t *client,
 {
 	machine_msg_t *msg = NULL;
 
-	msg = od_read(&server->io, UINT32_MAX);
+	const uint32_t login_timeout_ms = client->config_listen->client_login_timeout;
+
+	msg = od_read(&server->io, login_timeout_ms);
 	if (msg == NULL) {
 		if (!machine_timedout()) {
 			od_error(&instance->logger, CONTEXT_AUTH_PASSTHROUGH,
 				 server->client, server,
 				 "read error from server: %s",
 				 od_io_error(&server->io));
-			return NULL;
+		} else {
+			od_error(
+				&instance->logger, CONTEXT_AUTH_PASSTHROUGH,
+				client, server,
+				"Timeout during auth packet read from server (%"PRIu32" ms). Closing connection",
+				login_timeout_ms);
 		}
+		return NULL;
 	}
 
 	return msg;
@@ -259,9 +267,32 @@ static int yb_forward_auth_pkt_client_to_server(od_client_t *client,
 	kiwi_fe_type_t type;
 	int rc = -1;
 
+	const int login_timeout_ms = client->config_listen->client_login_timeout;
+
 	/* Wait for password response packet from the client. */
+	uint64_t start_ts = machine_time_us();
 	while (true) {
-		msg = od_read(&client->io, UINT32_MAX);
+		msg = od_read(&client->io, login_timeout_ms);
+
+		/*
+		 * YB: Unconditionally exit if the client has not given a relevant
+		 * (KIWI_FE_PASSWORD_MESSAGE) response within the timeout. This avoids a
+		 * malicious client keeping the connection open by sending irrelevant
+		 * packets.
+		 */
+		uint64_t now_ts = machine_time_us();
+		if (now_ts - start_ts > login_timeout_ms * ((uint64_t)1000)) {
+			od_error(
+				&instance->logger, CONTEXT_AUTH_PASSTHROUGH,
+				client, server,
+				"Timeout during auth packet read from client (%"PRIu64" ms). Closing connection",
+				(now_ts - start_ts) / 1000);
+			yb_client_exit_mid_passthrough(server, instance);
+			if (msg != NULL)
+				machine_msg_free(msg);
+			return -1;
+		}
+
 		if (msg == NULL) {
 			od_error(&instance->logger, CONTEXT_AUTH_PASSTHROUGH,
 				 client, NULL, "read error in middleware: %s",
@@ -391,7 +422,7 @@ yb_forward_auth_pkt_server_to_client(od_client_t *client, od_server_t *server,
 				progress = YB_CLI_AUTH_SUCCESS;
 			else if(auth_pkt_type == 12)  /* SCRAM Fin: wait for AuthOK */
 				progress = YB_CLI_AUTH_AWAIT_FIN;
-			else 
+			else
 				progress = YB_CLI_AUTH_PROGRESS;
 
 			rc = yb_client_write_pkt(client, server, instance, msg,
@@ -460,7 +491,7 @@ static int yb_route_auth_packets(od_server_t *server, od_client_t *client)
 		case YB_CLI_AUTH_SUCCESS:
 			return 0;
 		case YB_CLI_AUTH_AWAIT_FIN:
-			/* 
+			/*
 			 * In case of mechanisms like SCRAM, the server sends
 			 * the last packet before sending the AuthOK packet.
 			 * Thus, we need to forward two consecutive packets from
@@ -510,6 +541,19 @@ static int yb_read_client_id_from_notice_pkt(od_client_t *client,
 		return 0;
 	}
 	return -1;
+}
+
+static inline int64_t yb_parse_logical_client_version(char *value)
+{
+	char *endptr;
+	long long parsed_lcv;
+
+	errno = 0;
+	parsed_lcv = strtoll(value, &endptr, 10);
+	if (errno != 0 || endptr == value || *endptr != '\0')
+		return -1;
+
+	return (int64_t)parsed_lcv;
 }
 
 int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
@@ -629,9 +673,24 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 				name_len, name, value_len, value, flags);
 
 			/* Parse the yb_logical_client_version to store it in server */
-			if (name_len == sizeof("yb_logical_client_version") &&
-			    strcmp("yb_logical_client_version", name) == 0) {
-				client->logical_client_version = atoi(value);
+			if (name_len == sizeof(YB_LOGICAL_CLIENT_VERSION_STR) &&
+			    strcmp(YB_LOGICAL_CLIENT_VERSION_STR, name) == 0) {
+				int64_t parsed_lcv =
+					yb_parse_logical_client_version(value);
+				if (parsed_lcv == -1) {
+					od_error(
+						&instance->logger, "startup",
+						NULL, server,
+						"failed to parse yb_logical_client_version: %.*s",
+						value_len, value);
+					machine_msg_free(msg);
+					return -1;
+				}
+
+				client->yb_logical_client_version = parsed_lcv;
+				yb_od_router_expire_stale_lcv_servers(
+					client->global->router,
+					client->yb_logical_client_version);
 				machine_msg_free(msg);
 				break;
 			}
@@ -665,31 +724,16 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 				}
 			}
 
-			/*
-			 * TODO(arpit.saxena|vikram.damle) (#20603): If flags & YB_GUC_CONTEXT_BACKEND, then we have to
-			 * ensure that either the auth backend stays or we make a new sticky backend
-			 * and pass the external client's startup settings. This is because client
-			 * has set a variable through the startup packet which can't be set using
-			 * SET statements
-			 */
-
-			if (flags &
-			    (YB_PARAM_STATUS_CONTEXT_BACKEND |
-			     YB_PARAM_STATUS_USERSET_OR_SUSET_SOURCE_STARTUP)) {
+			if (flags & YB_PARAM_STATUS_SOURCE_STARTUP) {
 				/*
 				 * The parameters here are the ones set by the startup packet in
 				 * the auth backend (here, passthrough). These are the parameters
 				 * that have to be replayed in a transactional backend to get the
 				 * same impact as the client's startup packet.
 				 * See od_frontend_setup_params() for more details.
-				 * TODO (vikram.damle) (#29178): Check what has to be done for GUC name
-				 * casing now that we are "fixing" auth passthrough.
 				 */
-				kiwi_vars_update(
-					&client->yb_vars_startup, name,
-					name_len, value, value_len,
-					yb_od_instance_should_lowercase_guc_name(
-						instance));
+				kiwi_vars_update(&client->yb_vars_startup, name,
+						 name_len, value, value_len);
 			}
 
 			machine_msg_free(msg);
@@ -743,4 +787,9 @@ void yb_handle_fatalforlogicalconnection_pkt(od_client_t *client,
 
 	yb_forward_fatal_msg(client, msg);
 	machine_msg_free(msg);
+}
+
+bool yb_is_control_pool(od_route_t *route)
+{
+	return route->rule->pool->routing == OD_RULE_POOL_INTERVAL;
 }

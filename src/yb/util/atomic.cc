@@ -32,24 +32,8 @@
 
 #include "yb/util/atomic.h"
 
-#include <stdint.h>
-
-#include "yb/util/logging.h"
-
 namespace yb {
 
-template<typename T>
-AtomicInt<T>::AtomicInt(T initial_value) {
-  Store(initial_value, kMemOrderNoBarrier);
-}
-
-template<typename T>
-void AtomicInt<T>::FatalMemOrderNotSupported(const char* caller,
-                                             const char* requested,
-                                             const char* supported) {
-  LOG(FATAL) << caller << " does not support " << requested << ": only "
-             << supported << " are supported.";
-}
 
 template
 class AtomicInt<int32_t>;

@@ -1,0 +1,10 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_test:
+	make install
+	adduser --disabled-password --gecos "" documentdb
+	chown -R documentdb:documentdb .
+	su documentdb -c "make check"

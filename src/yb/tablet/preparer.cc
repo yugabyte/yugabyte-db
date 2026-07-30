@@ -36,6 +36,7 @@
 #include "yb/util/lockfree.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/threadpool.h"
 
 DEFINE_UNKNOWN_uint64(max_group_replicate_batch_size, 16,
@@ -224,7 +225,7 @@ Status PreparerImpl::Submit(OperationDriver* operation_driver) {
 
 void PreparerImpl::Run() {
   VLOG(2) << "Starting prepare task:" << this;
-  while (GetAtomicFlag(&FLAGS_TEST_block_prepare_batch)) {
+  while (FLAGS_TEST_block_prepare_batch) {
       std::this_thread::sleep_for(100ms);
   }
   for (;;) {
@@ -494,6 +495,12 @@ ThreadPoolToken* Preparer::PoolToken() {
 
 void Preparer::DumpStatusHtml(std::ostream& out) {
   return impl_->DumpStatusHtml(out);
+}
+
+void Preparer::SetPerDbCgroup(Cgroup* cgroup) {
+  if (impl_->PoolToken()) {
+    impl_->PoolToken()->SetTaskCgroup(cgroup);
+  }
 }
 
 }  // namespace tablet

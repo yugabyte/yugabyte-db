@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import { connect, useDispatch, useSelector } from 'react-redux';
-import { toast } from 'react-toastify';
-import { useQueryClient } from 'react-query';
+import { useQuery, useQueryClient } from 'react-query';
 
 import { FirstStep } from './FirstStep/FirstStep';
 import {
@@ -15,6 +14,7 @@ import {
 } from './SecondStep/SecondStep';
 import { ThirdStep } from './ThirdStep/ThirdStep';
 import { ROOT_URL } from '../../../config';
+import { PerfAdvisorAPI, QUERY_KEY } from '@app/redesign/features/PerfAdvisor/api';
 import { getSupportBundles } from '../../../selector/supportBundle';
 import {
   createSupportBundle,
@@ -24,8 +24,6 @@ import {
 import { filterTypes } from '../../metrics/MetricsComparisonModal/ComparisonFilterContextProvider';
 import { getIsKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { getUniverseStatus } from '../helpers/universeHelpers';
-import { RBAC_ERR_MSG_NO_PERM } from '../../../redesign/features/rbac/common/validator/ValidatorUtils';
-import { createErrorMessage } from '../../../utils/ObjectUtils';
 import { YBModal } from '../../../redesign/components';
 
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
@@ -45,6 +43,7 @@ export const UniverseSupportBundleModal = (props) => {
     modal: { showModal, visibleModal }
   } = props;
   const [steps, setSteps] = useState(stepsObj.firstStep);
+  const [registrationStatus, setRegistrationStatus] = useState(false);
   const defaultOptions = updateOptions(
     filterTypes[0],
     [true, true, true, true, true, true, true, true, true, true, true],
@@ -58,6 +57,20 @@ export const UniverseSupportBundleModal = (props) => {
   const dispatch = useDispatch();
   const [supportBundles] = useSelector(getSupportBundles);
   const queryClient = useQueryClient();
+
+  const getUniversePaRegistrationStatus = useQuery(
+    QUERY_KEY.fetchUniverseRegistrationDetails,
+    // or not show Perf Advisor option in Support Bundle
+    () => PerfAdvisorAPI.fetchUniverseRegistrationDetails(universeDetails.universeUUID),
+    {
+      onSuccess: (data) => {
+        setRegistrationStatus(data?.success);
+      },
+      onError: (error) => {
+        error.request.status === 404 && setRegistrationStatus(false);
+      }
+    }
+  );
 
   const resetSteps = () => {
     if (supportBundles && Array.isArray(supportBundles) && supportBundles.length === 0) {
@@ -169,6 +182,7 @@ export const UniverseSupportBundleModal = (props) => {
                 setPayload(defaultOptions);
               }
             }}
+            isPerfAdvisorRegistered={registrationStatus}
             payload={payload}
             universeUUID={universeDetails.universeUUID}
             isK8sUniverse={isK8sUniverse}

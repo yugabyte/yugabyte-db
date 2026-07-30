@@ -1,14 +1,45 @@
 import { Cluster, Universe } from '@app/redesign/helpers/dtos';
 import { getPrimaryCluster } from '@app/utils/universeUtilsTyped';
-import { TelemetryProviderItem, TelemetryProviderType } from './types';
+import { HeaderKeyValue, TelemetryProviderItem, TelemetryProviderType } from './types';
 import { TelemetryProvider } from './dtos';
 import { assertUnreachableCase } from '@app/utils/errorHandlingUtils';
+
+export const headerRecordToItems = (headers?: Record<string, string>): HeaderKeyValue[] => {
+  if (!headers) {
+    return [];
+  }
+  return Object.entries(headers).map(([key, value]) => ({ key, value }));
+};
+
+export const headerItemsToRecord = (
+  headerItems?: HeaderKeyValue[]
+): Record<string, string> | undefined => {
+  if (!headerItems?.length) {
+    return undefined;
+  }
+  const headers: Record<string, string> = {};
+  headerItems.forEach((headerItem) => {
+    const headerKey = headerItem.key?.trim();
+    if (!headerKey) {
+      return;
+    }
+    headers[headerKey] = headerItem.value ?? '';
+  });
+  return Object.keys(headers).length > 0 ? headers : undefined;
+};
 /**
  * Although we support more than one universe log exporter config from the backend,
  * the designed UI for YBA supports only a single log exporter config per universe.
  */
 export const getClusterAuditLogConfig = (cluster: Cluster) =>
   cluster.userIntent.auditLogConfig?.universeLogsExporterConfig?.[0];
+
+/**
+ * Although we support more than one universe query log exporter config from the backend,
+ * the designed UI for YBA supports only a single query log exporter config per universe.
+ */
+export const getClusterQueryLogConfig = (cluster: Cluster) =>
+  cluster.userIntent.queryLogConfig?.universeLogsExporterConfig?.[0];
 
 /**
  * Although we support more than one universe metrics exporter config from the backend,
@@ -26,13 +57,13 @@ export const getIsMetricsExportSupported = (telemetryProvider: TelemetryProvider
   switch (telemetryProvider.config.type) {
     case TelemetryProviderType.DATA_DOG:
     case TelemetryProviderType.DYNATRACE:
+    case TelemetryProviderType.OTLP:
       return true;
     case TelemetryProviderType.AWS_CLOUDWATCH:
     case TelemetryProviderType.GCP_CLOUD_MONITORING:
     case TelemetryProviderType.LOKI:
     case TelemetryProviderType.SPLUNK:
     case TelemetryProviderType.S3:
-    case TelemetryProviderType.OTLP:
       return false;
     default:
       return assertUnreachableCase(telemetryProvider.config.type);
@@ -79,7 +110,8 @@ export const getLinkedUniverses = (
 
       if (
         primaryCluster &&
-        getClusterAuditLogConfig(primaryCluster)?.exporterUuid === exporterUuid
+        (getClusterAuditLogConfig(primaryCluster)?.exporterUuid === exporterUuid ||
+          getClusterQueryLogConfig(primaryCluster)?.exporterUuid === exporterUuid)
       ) {
         linkedUniverses.universesWithLogExporter.push(universe);
       }

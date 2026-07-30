@@ -1,6 +1,7 @@
 title: PaginationResp
 description: Pagination information in page API responses.
 type: object
+x-parent: true
 properties:
   has_next:
     description: There are more next records if true.

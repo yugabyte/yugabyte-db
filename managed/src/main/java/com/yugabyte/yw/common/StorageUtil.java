@@ -13,6 +13,7 @@ import com.yugabyte.yw.forms.backuprestore.AdvancedRestorePreflightParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.Collection;
@@ -73,6 +74,10 @@ public interface StorageUtil {
     return false;
   }
 
+  public default boolean isImmutableStorageEnabled(CustomerConfig config) {
+    return ((CustomerConfigStorageData) config.getDataObject()).immutableStorage;
+  }
+
   public default org.yb.ybc.ProxyConfig createYbcProxyConfig(
       Universe universe, CustomerConfigData configData) {
     return null;
@@ -112,7 +117,6 @@ public interface StorageUtil {
    */
   public default void validateStorageConfig(CustomerConfigData configData) {
     Map<String, String> configLocationMap = getRegionLocationsMap(configData);
-    // TODO: Check all permissions instead of listing here.
     if (!canCredentialListObjects(configData, configLocationMap)) {
       throw new PlatformServiceException(
           PRECONDITION_FAILED, "Storage config credentials cannot list objects");

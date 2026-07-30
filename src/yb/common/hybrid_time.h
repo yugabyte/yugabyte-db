@@ -34,15 +34,15 @@
 
 #pragma once
 
-#include <inttypes.h>
-
 #include <limits>
 #include <string>
 
-#include "yb/util/status_fwd.h"
 #include "yb/util/faststring.h"
+#include "yb/util/kv_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/physical_time.h"
+#include "yb/util/status_fwd.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 
@@ -93,27 +93,27 @@ class HybridTime {
   // ----------------------------------------------------------------------------------------------
   // Constructors / static factories
 
-  HybridTime() noexcept : v(kInvalidHybridTimeValue) {}
+  constexpr HybridTime() noexcept : v(kInvalidHybridTimeValue) {}
 
-  HybridTime(MicrosTime micros, LogicalTimeComponent logical_value) {
+  constexpr HybridTime(MicrosTime micros, LogicalTimeComponent logical_value) {
     v = (micros << kBitsForLogicalComponent) + logical_value;
   }
 
-  static inline HybridTime FromMicrosecondsAndLogicalValue(
+  static constexpr HybridTime FromMicrosecondsAndLogicalValue(
       MicrosTime micros, LogicalTimeComponent logical_value) {
     return HybridTime(micros, logical_value);
   }
 
-  static inline HybridTime FromMicros(MicrosTime micros) {
+  static constexpr HybridTime FromMicros(MicrosTime micros) {
     return HybridTime(micros, 0);
   }
 
-  explicit HybridTime(uint64_t val) : v(val) {}
+  constexpr explicit HybridTime(uint64_t val) : v(val) {}
 
-  bool operator ==(const HybridTime &other) const {
+  constexpr bool operator ==(const HybridTime &other) const {
     return v == other.v;
   }
-  bool operator !=(const HybridTime &other) const {
+  constexpr bool operator !=(const HybridTime &other) const {
     return v != other.v;
   }
 
@@ -126,7 +126,7 @@ class HybridTime {
   void AppendAsUint64To(faststring *dst) const;
   void AppendAsUint64To(std::string* dst) const;
 
-  int CompareTo(const HybridTime &other) const;
+  constexpr int CompareTo(const HybridTime &other) const;
 
   std::string ToString() const;
 
@@ -137,19 +137,19 @@ class HybridTime {
 
   // Return the highest value of a HybridTime that is lower than this. If called on kMin, returns
   // kMin itself, because it cannot be decremented.
-  HybridTime Decremented() const {
+  constexpr HybridTime Decremented() const {
     if (v == 0) return *this;
     return HybridTime(v - 1);
   }
 
   // Returns the hybrid time value by the smallest possible amount. For invalid / max hybrid time,
   // returns the unmodified value.
-  HybridTime Incremented() const {
+  constexpr HybridTime Incremented() const {
     if (v >= kInvalidHybridTimeValue) return *this;
     return HybridTime(v + 1);
   }
 
-  HybridTime AddMicroseconds(MicrosTime micros) const {
+  constexpr HybridTime AddMicroseconds(MicrosTime micros) const {
     if (is_special()) return *this;
     return HybridTime(v + (micros << kBitsForLogicalComponent));
   }
@@ -169,22 +169,22 @@ class HybridTime {
   // Sets this hybrid time from 'value'
   Status FromUint64(uint64_t value);
 
-  static HybridTime FromPB(uint64_t value) {
+  static constexpr HybridTime FromPB(uint64_t value) {
     return value ? HybridTime(value) : HybridTime();
   }
 
-  uint64_t ToPB() const {
+  constexpr uint64_t ToPB() const {
     return *this ? v : 0;
   }
 
-  HybridTimeRepr value() const { return v; }
+  constexpr HybridTimeRepr value() const { return v; }
 
   // Returns this HybridTime if valid, otherwise returns the one provided.
-  HybridTime GetValueOr(const HybridTime& other) const {
+  constexpr HybridTime GetValueOr(const HybridTime& other) const {
     return is_valid() ? *this : other;
   }
 
-  bool is_special() const {
+  constexpr bool is_special() const {
     switch (v) {
       case kMinHybridTimeValue: FALLTHROUGH_INTENDED;
       case kMaxHybridTimeValue: FALLTHROUGH_INTENDED;
@@ -195,24 +195,24 @@ class HybridTime {
     }
   }
 
-  bool operator <(const HybridTime& other) const {
+  constexpr bool operator <(const HybridTime& other) const {
     return CompareTo(other) < 0;
   }
 
-  bool operator >(const HybridTime& other) const {
+  constexpr bool operator >(const HybridTime& other) const {
     return CompareTo(other) > 0;
   }
 
-  bool operator <=(const HybridTime& other) const {
+  constexpr bool operator <=(const HybridTime& other) const {
     return CompareTo(other) <= 0;
   }
 
-  bool operator >=(const HybridTime& other) const {
+  constexpr bool operator >=(const HybridTime& other) const {
     return CompareTo(other) >= 0;
   }
 
   // Returns the physical value embedded in this HybridTime, in microseconds.
-  inline MicrosTime GetPhysicalValueMicros() const {
+  constexpr MicrosTime GetPhysicalValueMicros() const {
     return v >> kBitsForLogicalComponent;
   }
 
@@ -226,13 +226,13 @@ class HybridTime {
         static_cast<int64_t>(GetPhysicalValueMicros() - other.GetPhysicalValueMicros()));
   }
 
-  inline LogicalTimeComponent GetLogicalValue() const {
+  constexpr LogicalTimeComponent GetLogicalValue() const {
     return v & kLogicalBitMask;
   }
 
-  inline bool is_valid() const { return v != kInvalidHybridTimeValue; }
+  constexpr bool is_valid() const { return v != kInvalidHybridTimeValue; }
 
-  explicit operator bool() const { return is_valid(); }
+  constexpr explicit operator bool() const { return is_valid(); }
 
   void MakeAtLeast(HybridTime rhs) {
     if (rhs.is_valid()) {
@@ -261,6 +261,11 @@ class HybridTime {
   HybridTimeRepr v;
 };
 
+inline constexpr HybridTime HybridTime::kMin(kMinHybridTimeValue);
+inline constexpr HybridTime HybridTime::kMax(kMaxHybridTimeValue);
+inline constexpr HybridTime HybridTime::kInitial{kInitialHybridTimeValue};
+inline constexpr HybridTime HybridTime::kInvalid(kInvalidHybridTimeValue);
+
 // The maximum microsecond value possible so that the corresponding HybridTime can still fit into a
 // uint64_t.
 constexpr MicrosTime kMaxHybridTimePhysicalMicros{
@@ -270,7 +275,7 @@ class faststring;
 
 class Slice;
 
-inline int HybridTime::CompareTo(const HybridTime &other) const {
+constexpr int HybridTime::CompareTo(const HybridTime &other) const {
   if (v < other.v) {
     return -1;
   } else if (v > other.v) {
@@ -290,7 +295,7 @@ inline std::ostream &operator <<(std::ostream &o, const HybridTime &hybridTime) 
 
 namespace hybrid_time_literals {
 
-inline HybridTime operator""_usec_ht(unsigned long long microseconds) { // NOLINT
+constexpr HybridTime operator""_usec_ht(unsigned long long microseconds) { // NOLINT
   return HybridTime::FromMicros(microseconds);
 }
 
@@ -300,7 +305,7 @@ using hybrid_time_literals::operator""_usec_ht;
 
 struct ReadRestartData {
   HybridTime restart_time;
-  std::string key;
+  KeyBuffer key;
 
   bool is_valid() const {
     return restart_time.is_valid();

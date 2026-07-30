@@ -20,6 +20,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
@@ -75,6 +76,7 @@ import play.libs.Json;
  *
  * <p>NOTE #1: The regions can potentially be present in different clouds.
  */
+@Slf4j
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonDeserialize(converter = UniverseDefinitionTaskParams.BaseConverter.class)
 public class UniverseDefinitionTaskParams extends UniverseTaskParams {
@@ -92,7 +94,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       ImmutableSet.of(
           SoftwareUpgradeState.Upgrading,
           SoftwareUpgradeState.RollingBack,
-          SoftwareUpgradeState.Finalizing);
+          SoftwareUpgradeState.Finalizing,
+          SoftwareUpgradeState.Paused);
 
   @Constraints.Required()
   @Size(min = 1)
@@ -150,6 +153,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // operation.
   @ApiModelProperty public boolean updateSucceeded = true;
 
+  // Set to true the first time a CreateUniverse task successfully finishes on this universe. Once
+  // true it is never reset, so it distinguishes "universe was brought up at least once" from "the
+  // most recent operation on this universe succeeded" (which is what updateSucceeded tracks).
+  // Consumers such as HealthChecker and AlertConfigurationService use this to skip work for
+  // universes that never made it past the initial creation task. Existing universes are backfilled
+  // to true by a data migration.
+  @ApiModelProperty public boolean creationSucceeded = false;
+
   // This tracks whether the universe is in the paused state or not.
   @ApiModelProperty public boolean universePaused = false;
 
@@ -181,6 +192,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     UpgradeFailed,
     @EnumValue("PreFinalize")
     PreFinalize,
+    @EnumValue("Paused")
+    Paused,
     @EnumValue("Finalizing")
     Finalizing,
     @EnumValue("FinalizeFailed")
@@ -218,6 +231,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // set during universe creation. Default is set to false for
   // backward compatibility.
   @ApiModelProperty public boolean useNewHelmNamingStyle = false;
+
+  @ApiModelProperty public UniverseSettings universeSettings = null;
 
   // Place all masters into default region flag.
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2025.2")
@@ -342,6 +357,17 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.27.0.0")
   private CapacityReservationState capacityReservationState;
 
+  @Setter
+  @Getter
+  @ApiModelProperty(value = "YbaApi Internal. PA Collector UUID")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
+  private UUID paCollectorUuid = null;
+
+  @Data
+  public static class UniverseSettings {
+    @ApiModelProperty public boolean expertMode = false;
+  }
+
   @Data
   public static class PerInstanceTypeReservation {
     private String instanceType;
@@ -357,6 +383,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @Data
   public static class AwsZoneReservation {
+    private UUID providerUUID;
+    private String zone;
+    private String region;
+    private String reservationName;
+    private Map<String, PerInstanceTypeReservation> reservationsByType = new HashMap<>();
+  }
+
+  @Data
+  public static class GcpZoneReservation {
     private UUID providerUUID;
     private String zone;
     private String region;
@@ -386,15 +421,23 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   }
 
   @Data
+  public static class GcpReservationInfo implements ReservationInfo {
+    private Map<String, GcpZoneReservation> reservationsByZoneMap = new HashMap<>();
+  }
+
+  @Data
   public static class CapacityReservationState {
     private Map<UUID, AzureReservationInfo> azureReservationInfos = new HashMap<>();
     private Map<UUID, AwsReservationInfo> awsReservationInfos = new HashMap<>();
+    private Map<UUID, GcpReservationInfo> gcpReservationInfos = new HashMap<>();
 
     // other reservation types
 
     @JsonIgnore
     public boolean isEmpty() {
-      return azureReservationInfos.isEmpty() && awsReservationInfos.isEmpty();
+      return azureReservationInfos.isEmpty()
+          && awsReservationInfos.isEmpty()
+          && gcpReservationInfos.isEmpty();
     }
   }
 
@@ -451,12 +494,40 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.27.0.0")
     private CapacityReservationState capacityReservationState;
 
+    @Setter
+    @Getter
+    @ApiModelProperty(hidden = true, value = "YbaApi Internal. Saved pre-disk size")
+    private Map<UUID, Map<ServerType, Integer>> originalDiskSize;
+
+    // Current batch index for full move operations in Kubernetes universes.
+    // Used for retryability to resume from the correct batch.
+    @Setter
+    @Getter
+    @ApiModelProperty(hidden = true, value = "YbaApi Internal. Saved full move batch index for TS")
+    private int currentTsFullMoveBatchIndex = -1;
+
+    @Setter
+    @Getter
+    @ApiModelProperty(
+        hidden = true,
+        value = "YbaApi Internal. Saved full move batch index for Master")
+    private int currentMasterFullMoveBatchIndex = -1;
+
     @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.27.0.0")
     @Getter
     @Setter
     @ApiModelProperty(
-        value = "WARNING: This is a preview API that could change. Geo partitions for cluster")
+        value = "List of current partitions. " + "WARNING: This is a preview API that could change")
     private List<PartitionInfo> partitions;
+
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.27.0.0")
+    @Getter
+    @Setter
+    @ApiModelProperty(
+        value =
+            "Property indicating that tablespaces are created for partitions."
+                + "WARNING: This is a preview API that could change")
+    private boolean geoPartitioned;
 
     /** Default to PRIMARY. */
     private Cluster() {
@@ -490,11 +561,21 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return uuid.equals(other.uuid);
     }
 
-    @JsonIgnore
-    public int getExpectedNumberOfNodes() {
-      return userIntent.dedicatedNodes
-          ? userIntent.numNodes + userIntent.replicationFactor
-          : userIntent.numNodes;
+    public UUID getProviderUUIDForNode(NodeDetails node) {
+      return getProviderUUIDByAZ(node.azUuid);
+    }
+
+    public UUID getProviderUUIDByAZ(UUID azUuid) {
+      return searchProviderUUIDByAz(azUuid).orElseGet(() -> Util.getProviderByAz(azUuid).getUuid());
+    }
+
+    public CloudType getProviderCloudType(NodeDetails nodeDetails) {
+      if (!userIntent.isMulticloudSupport()) {
+        return userIntent.providerType;
+      }
+      UUID providerUUID = getProviderUUIDForNode(nodeDetails);
+      return userIntent.getProviderSpecProperty(
+          providerUUID, spec -> spec.providerType, u -> u.providerType);
     }
 
     /**
@@ -508,7 +589,20 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (cluster == null) {
         throw new IllegalArgumentException("Invalid cluster to compare.");
       }
-
+      if (userIntent.isMulticloudSupport()) {
+        for (ProviderSpecification providerSpecification : userIntent.providerSpecifications) {
+          if (!Provider.InstanceTagsModificationEnabledProviders.contains(
+              providerSpecification.providerType)) {
+            continue;
+          }
+          if (!Objects.equals(
+              providerSpecification.instanceTags,
+              cluster.userIntent.getInstanceTagsForProvider(providerSpecification.providerUUID))) {
+            return false;
+          }
+        }
+        return true;
+      }
       if (!cluster.userIntent.providerType.equals(userIntent.providerType)) {
         throw new IllegalArgumentException(
             "Mismatched provider types, expected "
@@ -516,7 +610,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
                 + " but got "
                 + cluster.userIntent.providerType.name());
       }
-
       // Check if Provider supports instance tags and the instance tags match.
       if (!Provider.InstanceTagsModificationEnabledProviders.contains(userIntent.providerType)
           || userIntent.instanceTags.equals(cluster.userIntent.instanceTags)) {
@@ -526,34 +619,100 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return false;
     }
 
+    private void validateDeviceInfo(
+        CloudType cloudType,
+        DeviceInfo deviceInfo,
+        DeviceInfo masterDeviceInfo,
+        Collection<NodeDetails> nodes) {
+      checkDeviceInfo(deviceInfo, cloudType);
+      if (masterDeviceInfo != null && userIntent.dedicatedNodes) {
+        checkDeviceInfo(masterDeviceInfo, cloudType);
+        checkStorageType(
+            deviceInfo,
+            cloudType,
+            nodes.stream()
+                .filter(n -> n.dedicatedTo == UniverseTaskBase.ServerType.TSERVER)
+                .collect(Collectors.toSet()));
+        checkStorageType(
+            masterDeviceInfo,
+            cloudType,
+            nodes.stream()
+                .filter(n -> n.dedicatedTo == UniverseTaskBase.ServerType.MASTER)
+                .collect(Collectors.toSet()));
+      } else {
+        checkStorageType(deviceInfo, cloudType, nodes);
+      }
+    }
+
     public void validate(
-        boolean validateGFlagsConsistency, boolean isAuthEnforced, Set<NodeDetails> nodes) {
+        boolean validateGFlagsConsistency,
+        boolean isAuthEnforced,
+        boolean isFipsEnabled,
+        Set<NodeDetails> nodes) {
       if (uuid == null) {
         throw new IllegalStateException("Cluster uuid should not be null");
       }
       if (placementInfo == null && CollectionUtils.isEmpty(partitions)) {
         throw new IllegalStateException("Placement should be provided");
       }
-      checkDeviceInfo(userIntent.deviceInfo);
-      if (userIntent.masterDeviceInfo != null && userIntent.dedicatedNodes) {
-        checkDeviceInfo(userIntent.masterDeviceInfo);
-        checkStorageType(
-            userIntent.deviceInfo,
-            nodes.stream()
-                .filter(n -> n.dedicatedTo == UniverseTaskBase.ServerType.TSERVER)
-                .collect(Collectors.toSet()));
-        checkStorageType(
-            userIntent.masterDeviceInfo,
-            nodes.stream()
-                .filter(n -> n.dedicatedTo == UniverseTaskBase.ServerType.MASTER)
-                .collect(Collectors.toSet()));
+      if (!(userIntent.enableYSQL || userIntent.enableYCQL)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Enable at least one endpoint among YSQL and YCQL");
+      }
+      if (!userIntent.enableYSQL && userIntent.enableYSQLAuth) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot enable YSQL Authentication if YSQL endpoint is disabled.");
+      }
+      if (!userIntent.enableYCQL && userIntent.enableYCQLAuth) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "Cannot enable YCQL Authentication if YCQL endpoint is disabled.");
+      }
+      if (userIntent.isMulticloudSupport()) {
+        Util.validateSpecificationsIfPresent(userIntent.providerSpecifications, false);
+        Map<UUID, List<NodeDetails>> byAzUUID =
+            nodes.stream().collect(Collectors.groupingBy(n -> n.getAzUuid()));
+        byAzUUID.forEach(
+            (azUUID, nds) -> {
+              UUID providerUUID = searchProviderUUIDByAz(azUUID).orElseThrow();
+
+              ProviderSpecification providerSpecification =
+                  userIntent.getProviderSpecification(providerUUID);
+
+              HierarchicalNodesSpec.NodeSpec tserverSpecification =
+                  providerSpecification
+                      .calculateNodesSpecification(ServerType.TSERVER, azUUID)
+                      .getNodeSpec();
+              DeviceInfo masterDeviceInfo = null;
+              if (userIntent.dedicatedNodes) {
+                HierarchicalNodesSpec.NodeSpec masterSpecification =
+                    providerSpecification
+                        .calculateNodesSpecification(ServerType.MASTER, azUUID)
+                        .getNodeSpec();
+                if (masterSpecification.getDeviceInfo() != null
+                    && !masterSpecification.getDeviceInfo().allNull()) {
+                  masterDeviceInfo = masterSpecification.getDeviceInfo();
+                }
+              }
+              validateDeviceInfo(
+                  providerSpecification.providerType,
+                  tserverSpecification.getDeviceInfo(),
+                  masterDeviceInfo,
+                  nds);
+            });
+      } else if ((userIntent.masterDeviceInfo != null || userIntent.masterInstanceType != null)
+          && !userIntent.dedicatedNodes) {
+        throw new IllegalStateException(
+            "masterDeviceInfo and masterInstanceType can only be set when dedicated nodes for "
+                + "master and tserver are selected.");
       } else {
-        checkStorageType(userIntent.deviceInfo, nodes);
+        validateDeviceInfo(
+            userIntent.providerType, userIntent.deviceInfo, userIntent.masterDeviceInfo, nodes);
       }
       validateAuth(isAuthEnforced);
       if (validateGFlagsConsistency) {
         GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
       }
+      GFlagsUtil.validateFipsCompliancy(userIntent, isFipsEnabled);
       if (userIntent.specificGFlags != null) {
         if (clusterType == ClusterType.PRIMARY
             && userIntent.specificGFlags.isInheritFromPrimary()) {
@@ -602,8 +761,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
     }
 
-    private void checkDeviceInfo(DeviceInfo deviceInfo) {
-      CloudType cloudType = userIntent.providerType;
+    private void checkDeviceInfo(DeviceInfo deviceInfo, CloudType cloudType) {
       if (cloudType.isRequiresDeviceInfo()) {
         if (deviceInfo == null) {
           throw new PlatformServiceException(
@@ -617,11 +775,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
     }
 
-    private void checkStorageType(DeviceInfo deviceInfo, Set<NodeDetails> nodes) {
+    private void checkStorageType(
+        DeviceInfo deviceInfo, CloudType cloudType, Collection<NodeDetails> nodes) {
       if (deviceInfo == null) {
         return;
       }
-      CloudType cloudType = userIntent.providerType;
       boolean hasEphemeralStorage =
           nodes.stream()
               .filter(n -> hasEphemeralStorage(cloudType, n.cloudInfo.instance_type, deviceInfo))
@@ -653,15 +811,34 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     @JsonIgnore
-    public boolean isGeoPartitioned() {
-      return partitions != null && partitions.size() > 1;
-    }
-
-    @JsonIgnore
     public PartitionInfo getDefaultPartition() {
       return partitions == null
           ? null
           : partitions.stream().filter(g -> g.defaultPartition).findFirst().get();
+    }
+
+    public Optional<UUID> searchProviderUUIDByAz(UUID azUUID) {
+      if (!CollectionUtils.isEmpty(partitions)) {
+        for (PartitionInfo partition : partitions) {
+          Optional<UUID> ret = searchProviderUUIDByAz(azUUID, partition.getPlacement());
+          if (ret.isPresent()) {
+            return ret;
+          }
+        }
+        return Optional.empty();
+      }
+      return searchProviderUUIDByAz(azUUID, getOverallPlacement());
+    }
+
+    public static Optional<UUID> searchProviderUUIDByAz(UUID azUUID, PlacementInfo placementInfo) {
+      if (placementInfo == null) {
+        return Optional.empty();
+      }
+      return placementInfo
+          .azInfoStream()
+          .filter(az -> az.placementAZ.uuid.equals(azUUID))
+          .findFirst()
+          .map(az -> az.cloud.uuid);
     }
 
     @JsonIgnore
@@ -690,14 +867,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     if (CollectionUtils.isEmpty(params.nodeDetailsSet)) {
       return false;
     }
+    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(params);
     for (Cluster cluster : params.clusters) {
       for (NodeDetails node : params.nodeDetailsSet) {
         if (!node.isInPlacement(cluster.uuid)) {
           continue;
         }
         DeviceInfo deviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
-        if (hasEphemeralStorage(
-            cluster.userIntent.providerType, node.cloudInfo.instance_type, deviceInfo)) {
+        Provider provider = providerGetter.apply(node);
+        CloudType providerType = provider.getCloudCode();
+        if (hasEphemeralStorage(providerType, node.cloudInfo.instance_type, deviceInfo)) {
           return true;
         }
       }
@@ -749,7 +928,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (other == null) {
         return;
       }
-      if (other.getDeviceInfo() != null) {
+      if (other.getDeviceInfo() != null && !other.getDeviceInfo().allNull()) {
         this.setDeviceInfo(other.getDeviceInfo());
       }
       if (other.getInstanceType() != null) {
@@ -766,6 +945,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         }
       }
       return result;
+    }
+
+    public boolean allNull() {
+      return Stream.of(this.getDeviceInfo(), this.getInstanceType()).allMatch(Objects::isNull);
+    }
+
+    @JsonIgnore
+    public void reset() {
+      this.setDeviceInfo(null);
+      this.setInstanceType(null);
     }
   }
 
@@ -815,6 +1004,42 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
               this.getInstanceType())
           .allMatch(Objects::isNull);
     }
+
+    @JsonIgnore
+    public void updatePerProcess(
+        ServerType serverType, Consumer<PerProcessDetails> perProcessConsumer) {
+      if (perProcess == null) {
+        perProcess = new HashMap<>();
+      }
+      perProcess.compute(
+          serverType,
+          (k, v) -> {
+            if (v == null) {
+              v = new PerProcessDetails();
+            }
+            perProcessConsumer.accept(v);
+            if (v != null && v.allNull()) {
+              v = null;
+            }
+            return v;
+          });
+      if (perProcess.containsKey(serverType)
+          && (perProcess.get(serverType) == null || perProcess.get(serverType).allNull())) {
+        perProcess.remove(serverType);
+      }
+      if (MapUtils.isEmpty(perProcess)) {
+        perProcess = null;
+      }
+    }
+
+    @JsonIgnore
+    public void reset() {
+      this.setPerProcess(null);
+      this.setCgroupSize(null);
+      this.setProxyConfig(null);
+      this.setDeviceInfo(null);
+      this.setInstanceType(null);
+    }
   }
 
   @ApiModel(
@@ -835,7 +1060,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
 
     @JsonIgnore
-    public Map<UUID, ProxyConfig> getAZProxyConfigMap() {
+    private Map<UUID, ProxyConfig> getAZProxyConfigMap() {
       if (azOverrides != null) {
         return azOverrides.entrySet().stream()
             .filter(e -> e.getValue().getProxyConfig() != null)
@@ -856,17 +1081,35 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
               v = new AZOverrides();
             }
             azOverridesConsumer.accept(v);
-            if (v.allNull()) {
+            if (v != null && v.allNull()) {
               v = null;
             }
             return v;
           });
-      if (azOverrides.containsKey(azUUID) && azOverrides.get(azUUID) == null) {
+      if (azOverrides.containsKey(azUUID)
+          && (azOverrides.get(azUUID) == null || azOverrides.get(azUUID).allNull())) {
         azOverrides.remove(azUUID);
       }
       if (MapUtils.isEmpty(azOverrides)) {
         azOverrides = null;
       }
+    }
+
+    @JsonIgnore
+    public void unsetCgroupSize() {
+      Consumer<AZOverrides> azOverridesConsumer = azO -> azO.setCgroupSize(null);
+      if (MapUtils.isNotEmpty(azOverrides)) {
+        Set<UUID> azUUIDs = new HashSet<UUID>(azOverrides.keySet());
+        azUUIDs.stream().forEach(azUUID -> updateAZOverride(azUUID, azOverridesConsumer));
+      }
+    }
+
+    @JsonIgnore
+    public void removeNonRequiredAZs(Set<UUID> usedAZs) {
+      if (MapUtils.isEmpty(azOverrides)) {
+        return;
+      }
+      azOverrides.keySet().retainAll(usedAZs);
     }
 
     @JsonIgnore
@@ -885,6 +1128,77 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty private boolean defaultPartition;
     @ApiModelProperty private PlacementInfo placement;
     @ApiModelProperty private int replicationFactor;
+    @ApiModelProperty private String tablespaceName;
+  }
+
+  @Data
+  public static class K8sProviderSpecification {
+    @ApiModelProperty protected boolean enableLoadBalancer;
+
+    @ApiModelProperty
+    protected ExposingServiceState exposingServiceState = ExposingServiceState.UNEXPOSED;
+
+    @ApiModelProperty protected String helmOverrides;
+    @ApiModelProperty protected Map<String, String> azHelmOverrides;
+  }
+
+  @Data
+  public static class ProviderSpecification extends K8sProviderSpecification {
+    @ApiModelProperty @NotNull private UUID providerUUID;
+    @ApiModelProperty @NotNull private CloudType providerType;
+    @ApiModelProperty private String accessKeyCode;
+    @ApiModelProperty private String awsInstanceProfile;
+    @ApiModelProperty private UUID imageBundleUUID;
+    @ApiModelProperty private Map<String, String> instanceTags = new HashMap<>();
+    @ApiModelProperty @NotNull private HierarchicalNodesSpec.RootNodesSpec nodesSpecs;
+
+    @JsonIgnore
+    public ProviderSpecification clone() {
+      JsonNode details = Json.toJson(this);
+      return Json.fromJson(details, ProviderSpecification.class);
+    }
+
+    @JsonIgnore
+    public HierarchicalNodesSpec.NodeSpecInfo calculateNodesSpecification(
+        ServerType serverType, UUID azUUID) {
+      return HierarchicalNodesSpec.getSpecification(nodesSpecs, serverType, azUUID);
+    }
+
+    /**
+     * Merges nodes specifications over hierarchy (for each hierarchy node). If source or target
+     * doesn't have node in hierarchy, but the opposite has - we will create empty node.
+     *
+     * @param spec provider specification
+     * @param merger merging logic
+     */
+    public void mergeNodesSpecification(
+        ProviderSpecification spec, Consumer<HierarchicalNodesSpec.NodesSpecsMergeItem> merger) {
+      HierarchicalNodesSpec.merge(nodesSpecs, spec.nodesSpecs, merger);
+    }
+
+    /**
+     * Validates all the required fields for ProviderSpecification.
+     *
+     * @param isPartialUpdate Whether that state would be used to partially update basic state.
+     */
+    public void validate(boolean isPartialUpdate) {
+      if (providerUUID == null) {
+        throw new PlatformServiceException(BAD_REQUEST, "providerUUID must be set");
+      }
+      if (providerType == null) {
+        throw new PlatformServiceException(BAD_REQUEST, "providerType must be set");
+      }
+      if (nodesSpecs == null) {
+        throw new PlatformServiceException(BAD_REQUEST, "nodesSpecs must be set");
+      }
+      if (!isPartialUpdate) {
+        if (nodesSpecs.getTserverSpecification() == null) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, "nodesSpecs.tserverSpecification must be set");
+        }
+      }
+      nodesSpecs.validate();
+    }
   }
 
   /** The user defined intent for the universe. */
@@ -901,6 +1215,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // The cloud provider type as an enum. This is set in the middleware from the provider UUID
     // field above.
     @ApiModelProperty public CloudType providerType = CloudType.unknown;
+
+    @ApiModelProperty public List<ProviderSpecification> providerSpecifications;
 
     // The replication factor.
     @Constraints.Min(1)
@@ -1002,8 +1318,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty() public boolean enableConnectionPooling = false;
 
-    @ApiModelProperty(notes = "default: true")
-    public boolean enableYEDIS = true;
+    @ApiModelProperty(notes = "default: false")
+    public boolean enableYEDIS = false;
 
     @ApiModelProperty() public boolean enableNodeToNodeEncrypt = false;
 
@@ -1150,6 +1466,59 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty(value = "YbaApi Internal. Use clockbound as time source")
     private boolean useClockbound = false;
 
+    @Data
+    @ApiModel(description = "Multi-tenancy configuration for QoS")
+    public static class MultiTenancyConfig {
+      @ApiModelProperty(value = "Enable QoS-based multi-tenancy (sets enable_qos gflag)")
+      private boolean enableQos = false;
+
+      @ApiModelProperty(value = "Maximum per-database CPU percentage")
+      @Nullable
+      private Double qosMaxDbCpuPercent;
+
+      @ApiModelProperty(value = "Maximum number of databases allowed")
+      @Nullable
+      private Integer qosMaxDbCount;
+
+      @Override
+      public MultiTenancyConfig clone() {
+        MultiTenancyConfig newConfig = new MultiTenancyConfig();
+        newConfig.enableQos = enableQos;
+        newConfig.qosMaxDbCount = qosMaxDbCount;
+        newConfig.qosMaxDbCpuPercent = qosMaxDbCpuPercent;
+        return newConfig;
+      }
+
+      @Override
+      public boolean equals(Object other) {
+        if (other == null) {
+          return false;
+        }
+        if (other.getClass() != this.getClass()) {
+          return false;
+        }
+        MultiTenancyConfig otherMt = (MultiTenancyConfig) other;
+        return enableQos == otherMt.enableQos
+            && Objects.equals(qosMaxDbCount, otherMt.getQosMaxDbCount())
+            && Objects.equals(qosMaxDbCpuPercent, otherMt.getQosMaxDbCpuPercent());
+      }
+    }
+
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0.0")
+    @Getter
+    @Setter
+    @Nullable
+    @ApiModelProperty(
+        value = "WARNING: This is a preview API that could change. Multi-tenancy configuration")
+    private MultiTenancyConfig multiTenancy;
+
+    @ApiModelProperty(
+        hidden = true,
+        value = "YbaApi Internal. Universe provisioned with cpu cgroup")
+    @Getter
+    @Setter
+    private boolean cpuCgroupConfigured;
+
     @Getter
     @Setter
     @Nullable
@@ -1164,6 +1533,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
             "WARNING: This is a preview API that could change. Use YBDB inbuilt YBC for K8s"
                 + " universe")
     private boolean useYbdbInbuiltYbc = false;
+
+    @JsonIgnore
+    public boolean isQosEnabled() {
+      return multiTenancy != null && multiTenancy.isEnableQos();
+    }
 
     @Override
     public String toString() {
@@ -1190,6 +1564,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       sb.append(", masterInstanceType=").append(masterInstanceType);
       sb.append(", imageBundleUUID=").append(imageBundleUUID);
       sb.append(", kubernetesOperatorVersion=").append(kubernetesOperatorVersion);
+      sb.append(", providerSpecifications=").append(providerSpecifications);
       return sb.toString();
     }
 
@@ -1251,8 +1626,388 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         newUserIntent.tserverK8SNodeResourceSpec = tserverK8SNodeResourceSpec.clone();
       }
       newUserIntent.useClockbound = useClockbound;
+      if (multiTenancy != null) {
+        newUserIntent.multiTenancy = multiTenancy.clone();
+      }
       newUserIntent.useYbdbInbuiltYbc = useYbdbInbuiltYbc;
+      if (!CollectionUtils.isEmpty(providerSpecifications)) {
+        newUserIntent.providerSpecifications = new ArrayList<>();
+        for (ProviderSpecification providerSpecification : providerSpecifications) {
+          newUserIntent.providerSpecifications.add(providerSpecification.clone());
+        }
+      }
       return newUserIntent;
+    }
+
+    @JsonIgnore
+    public boolean isMulticloudSupport() {
+      return !CollectionUtils.isEmpty(providerSpecifications);
+    }
+
+    public ProviderSpecification getProviderSpecification(UUID providerUUID) {
+      if (providerSpecifications == null) {
+        throw new IllegalStateException("Provider specifications is null");
+      }
+      return providerSpecifications.stream()
+          .filter(p -> p.providerUUID.equals(providerUUID))
+          .findFirst()
+          .orElse(null);
+    }
+
+    public String getAccessKeyCodeForProvider(UUID providerUUID) {
+      return getProviderSpecProperty(
+          providerUUID, spec -> spec.accessKeyCode, u -> u.accessKeyCode);
+    }
+
+    public UUID getImageBundleUUIDForProvider(UUID providerUUID) {
+      return getProviderSpecProperty(
+          providerUUID, spec -> spec.imageBundleUUID, u -> u.imageBundleUUID);
+    }
+
+    public Map<String, String> getInstanceTagsForProvider(UUID providerUUID) {
+      return getProviderSpecProperty(providerUUID, spec -> spec.instanceTags, u -> u.instanceTags);
+    }
+
+    public void setProviderAccessKey(UUID providerUUID, String newAccessKeyCode) {
+      setProviderSpecProperty(
+          providerUUID,
+          pc -> pc.accessKeyCode = newAccessKeyCode,
+          u -> u.accessKeyCode = newAccessKeyCode);
+    }
+
+    public void setProviderImageBundleUUID(UUID providerUUID, UUID imageBundleUUID) {
+      setProviderSpecProperty(
+          providerUUID,
+          pc -> pc.imageBundleUUID = imageBundleUUID,
+          u -> u.imageBundleUUID = imageBundleUUID);
+    }
+
+    private <T> void setProviderSpecProperty(
+        UUID providerUUID,
+        Consumer<ProviderSpecification> specSetter,
+        Consumer<UserIntent> oldSetter) {
+      if (isMulticloudSupport()) {
+        ProviderSpecification providerSpecification = getProviderSpecification(providerUUID);
+        if (providerSpecification == null) {
+          throw new IllegalArgumentException(
+              "There is no provider specification for " + providerUUID);
+        }
+        specSetter.accept(providerSpecification);
+        return;
+      }
+      if (!provider.equals(providerUUID.toString())) {
+        throw new IllegalArgumentException("Incorrect provider UUID " + providerUUID);
+      }
+      oldSetter.accept(this);
+    }
+
+    private <T> T getProviderSpecProperty(
+        UUID providerUUID,
+        Function<ProviderSpecification, T> specGetter,
+        Function<UserIntent, T> oldGetter) {
+      if (isMulticloudSupport()) {
+        ProviderSpecification providerSpecification = getProviderSpecification(providerUUID);
+        if (providerSpecification == null) {
+          throw new IllegalArgumentException(
+              "There is no provider specification for " + providerUUID);
+        }
+        return specGetter.apply(providerSpecification);
+      }
+      if (!provider.equals(providerUUID.toString())) {
+        throw new IllegalArgumentException(
+            "Incorrect provider UUID " + providerUUID + " should be " + provider);
+      }
+      return oldGetter.apply(this);
+    }
+
+    @JsonIgnore
+    public Optional<UUID> maybeGetSingleProviderUUID() {
+      if (isMulticloudSupport()) {
+        if (providerSpecifications.size() == 1) {
+          return Optional.of(providerSpecifications.iterator().next().providerUUID);
+        }
+        return Optional.empty();
+      }
+      return Optional.of(UUID.fromString(provider));
+    }
+
+    private <T> T getNodeSpecProperty(
+        UUID azUUID, ServerType serverType, Function<HierarchicalNodesSpec.NodeSpec, T> getter) {
+      UUID providerUUID =
+          maybeGetSingleProviderUUID().orElseGet(() -> Util.getProviderByAz(azUUID).getUuid());
+      return getNodeSpecProperty(providerUUID, azUUID, serverType, getter);
+    }
+
+    private <T> T getNodeSpecProperty(
+        UUID providerUUID,
+        UUID azUUID,
+        ServerType serverType,
+        Function<HierarchicalNodesSpec.NodeSpec, T> getter) {
+      ProviderSpecification providerSpecification = getProviderSpecification(providerUUID);
+      HierarchicalNodesSpec.NodeSpec nodeSpecification =
+          providerSpecification.calculateNodesSpecification(serverType, azUUID).getNodeSpec();
+      return getter.apply(nodeSpecification);
+    }
+
+    public Integer getCGroupSize(@NotNull NodeDetails nodeDetails) {
+      return getCGroupSize(nodeDetails.azUuid, nodeDetails.dedicatedTo);
+    }
+
+    public Integer getCGroupSize(UUID azUUID, ServerType serverType) {
+      serverType = ensureServerType(serverType);
+      if (isMulticloudSupport()) {
+        return getNodeSpecProperty(
+            azUUID, serverType, HierarchicalNodesSpec.NodeSpec::getCgroupSize);
+      }
+      OverridenDetails overridenDetails = getOverridenDetails(azUUID);
+      if (overridenDetails.getCgroupSize() != null) {
+        return overridenDetails.getCgroupSize();
+      }
+      return cgroupSize;
+    }
+
+    @JsonIgnore
+    public Map<UUID, ProxyConfig> getProviderProxyConfigs() {
+      Map<UUID, ProxyConfig> map = new HashMap<>();
+      for (UUID providerUUID : getAllProviderUUIDs()) {
+        ProxyConfig providerConfig =
+            getProviderSpecProperty(
+                providerUUID,
+                ps -> {
+                  if (ps.getNodesSpecs().getTserverSpecification() != null) {
+                    return ps.getNodesSpecs().getTserverSpecification().getBackupProxyConfig();
+                  }
+                  return null;
+                },
+                u -> u.proxyConfig);
+        if (providerConfig != null) {
+          map.put(providerUUID, providerConfig);
+        }
+      }
+      return map;
+    }
+
+    @JsonIgnore
+    public Map<UUID, ProxyConfig> getAZProxyConfigMap() {
+      if (isMulticloudSupport()) {
+        Map<UUID, ProxyConfig> configs = new HashMap<>();
+        for (UUID providerUUID : getAllProviderUUIDs()) {
+          HierarchicalNodesSpec.traverseAZSpecs(
+              providerUUID,
+              getProviderSpecification(providerUUID).nodesSpecs,
+              (azUUID, azSpec) -> {
+                if (azSpec.getTserverSpecification() != null
+                    && azSpec.getTserverSpecification().getBackupProxyConfig() != null) {
+                  configs.put(azUUID, azSpec.getTserverSpecification().getBackupProxyConfig());
+                }
+              });
+        }
+        return configs;
+      }
+      if (userIntentOverrides != null) {
+        return userIntentOverrides.getAZProxyConfigMap();
+      }
+      return null;
+    }
+
+    private ServerType ensureServerType(ServerType serverType) {
+      if (!dedicatedNodes) {
+        return ServerType.TSERVER;
+      }
+      if (serverType != UniverseTaskBase.ServerType.MASTER
+          && serverType != UniverseTaskBase.ServerType.TSERVER) {
+        return UniverseTaskBase.ServerType.TSERVER;
+      }
+      return serverType;
+    }
+
+    @JsonIgnore
+    public String getBaseInstanceType() {
+      return getInstanceType(null);
+    }
+
+    public String getInstanceType(@Nullable UUID azUUID) {
+      return getInstanceType(null, azUUID);
+    }
+
+    public String getInstanceType(
+        @Nullable UniverseTaskBase.ServerType serverType, @Nullable UUID azUUID) {
+      serverType = ensureServerType(serverType);
+      if (isMulticloudSupport()) {
+        return getNodeSpecProperty(
+            azUUID, serverType, HierarchicalNodesSpec.NodeSpec::getInstanceType);
+      }
+      String result = instanceType;
+      if (serverType == UniverseTaskBase.ServerType.MASTER
+          && masterInstanceType != null
+          && dedicatedNodes) {
+        return masterInstanceType;
+      }
+      OverridenDetails overridenDetails = getOverridenDetails(serverType, azUUID);
+      if (overridenDetails.getInstanceType() != null) {
+        result = overridenDetails.getInstanceType();
+        log.debug("Getting overriden instance type {} for az {}", result, azUUID);
+      }
+      return result;
+    }
+
+    public String getInstanceTypeForNode(NodeDetails nodeDetails) {
+      return getInstanceType(nodeDetails.dedicatedTo, nodeDetails.getAzUuid());
+    }
+
+    public DeviceInfo getDeviceInfoForNode(NodeDetails nodeDetails) {
+      return getDeviceInfoForAz(nodeDetails.getAzUuid(), nodeDetails.dedicatedTo);
+    }
+
+    public DeviceInfo getDeviceInfoForAz(UUID azUUID, ServerType serverType) {
+      serverType = ensureServerType(serverType);
+      if (isMulticloudSupport()) {
+        return getNodeSpecProperty(
+            azUUID, serverType, HierarchicalNodesSpec.NodeSpec::getDeviceInfo);
+      }
+      if (dedicatedNodes && masterDeviceInfo != null && serverType == ServerType.MASTER) {
+        OverridenDetails overridenDetails =
+            getOverridenDetails(UniverseTaskBase.ServerType.MASTER, azUUID);
+        if (overridenDetails.getDeviceInfo() != null) {
+          // Dedicated masters use `masterDeviceInfo` (not `deviceInfo`, which describes tservers)
+          // as
+          // the base for AZ-level overrides. Using `deviceInfo` here silently drops any master-only
+          // customization (e.g. a different `volumeSize` or `numVolumes`) whenever an AZ override
+          // is
+          // configured, and can produce Helm values that disagree with what's on the cluster - most
+          // visibly during volume resize, where the resulting StatefulSet template diverges from
+          // the
+          // resized PVCs and the next helm upgrade attempts an immutable-field update.
+          return mergeDeviceInfos(masterDeviceInfo, overridenDetails.getDeviceInfo());
+        }
+        return masterDeviceInfo;
+      }
+      OverridenDetails overridenDetails =
+          getOverridenDetails(UniverseTaskBase.ServerType.TSERVER, azUUID);
+      if (overridenDetails.getDeviceInfo() != null) {
+        log.debug(
+            "Getting overriden device info {} for az {}",
+            Json.toJson(overridenDetails.getDeviceInfo()),
+            azUUID);
+        return mergeDeviceInfos(deviceInfo, overridenDetails.getDeviceInfo());
+      }
+      return deviceInfo;
+    }
+
+    public static DeviceInfo mergeDeviceInfos(
+        DeviceInfo deviceInfo, DeviceInfo overridenDeviceInfo) {
+      if (overridenDeviceInfo == null) {
+        return deviceInfo.clone();
+      }
+      if (deviceInfo == null) {
+        return overridenDeviceInfo.clone();
+      }
+      JsonNode original = Json.toJson(deviceInfo);
+      JsonNode overriden = Json.toJson(overridenDeviceInfo);
+      log.debug("Merging device info {} with {}", original, overriden);
+      CommonUtils.deepMerge(original, overriden, true);
+      log.debug("Device info after merging {}", original);
+      return Json.fromJson(original, DeviceInfo.class);
+    }
+
+    public void updateAZVolumeOverrides(
+        UserIntent other, Set<UUID> azs, Set<UUID> skipAZs, boolean isDedicatedMaster) {
+      ServerType serverType = isDedicatedMaster ? ServerType.MASTER : ServerType.TSERVER;
+      UserIntentOverrides otherOverridesClone =
+          other.userIntentOverrides == null
+              ? new UserIntentOverrides()
+              : other.userIntentOverrides.clone();
+      if (otherOverridesClone.getAzOverrides() == null) {
+        otherOverridesClone.setAzOverrides(new HashMap<>());
+      }
+
+      UserIntentOverrides originalOverridesClone =
+          this.getUserIntentOverrides() == null
+              ? new UserIntentOverrides()
+              : this.getUserIntentOverrides().clone();
+
+      azs.stream()
+          .filter(azUUID -> CollectionUtils.isEmpty(skipAZs) || !skipAZs.contains(azUUID))
+          .forEach(
+              azUUID -> {
+                Consumer<AZOverrides> applyChangesConsumer =
+                    (azO) -> {
+                      DeviceInfo deviceInfo = null;
+                      if (otherOverridesClone.getAzOverrides() != null
+                          && otherOverridesClone.getAzOverrides().get(azUUID) != null) {
+                        AZOverrides azOverrides = otherOverridesClone.getAzOverrides().get(azUUID);
+                        if (azOverrides.getDeviceInfo() != null) {
+                          deviceInfo = azOverrides.getDeviceInfo();
+                        }
+
+                        Consumer<PerProcessDetails> perProcessConsumer =
+                            (perProc) -> {
+                              DeviceInfo perProcDeviceInfo = null;
+                              if (azOverrides.getPerProcess() != null
+                                  && azOverrides.getPerProcess().containsKey(serverType)) {
+                                if (azOverrides.getPerProcess().get(serverType).getDeviceInfo()
+                                    != null) {
+                                  perProcDeviceInfo =
+                                      azOverrides.getPerProcess().get(serverType).getDeviceInfo();
+                                }
+                                perProc.setDeviceInfo(perProcDeviceInfo);
+                              } else {
+                                perProc.reset();
+                              }
+                            };
+                        azO.updatePerProcess(serverType, perProcessConsumer);
+                        azO.setDeviceInfo(deviceInfo);
+                      } else {
+                        azO.updatePerProcess(serverType, perProc -> perProc.reset());
+                      }
+                    };
+                originalOverridesClone.updateAZOverride(azUUID, applyChangesConsumer);
+              });
+      this.setUserIntentOverrides(originalOverridesClone);
+    }
+
+    public ProxyConfig getProxyConfig(@Nullable UUID azUUID) {
+      if (isMulticloudSupport()) {
+        UUID providerUUID =
+            maybeGetSingleProviderUUID().orElseGet(() -> Util.getProviderByAz(azUUID).getUuid());
+        ProviderSpecification providerSpecification = getProviderSpecification(providerUUID);
+        HierarchicalNodesSpec.NodeSpecInfo nodeSpecInfo =
+            providerSpecification.calculateNodesSpecification(ServerType.TSERVER, azUUID);
+        return nodeSpecInfo.getNodeSpec().getBackupProxyConfig();
+      }
+      OverridenDetails overridenDetails = getOverridenDetails(azUUID);
+      if (overridenDetails.getProxyConfig() != null) {
+        return overridenDetails.getProxyConfig();
+      }
+      return proxyConfig;
+    }
+
+    private <T> List<T> getAllProviderProperties(
+        Function<ProviderSpecification, T> getter, Function<UserIntent, T> oldGetter) {
+      if (isMulticloudSupport()) {
+        return providerSpecifications.stream().map(getter).collect(Collectors.toList());
+      }
+      return Collections.singletonList(oldGetter.apply(this));
+    }
+
+    @JsonIgnore
+    public List<UUID> getAllImageBundles() {
+      return getAllProviderProperties(ps -> ps.imageBundleUUID, u -> u.imageBundleUUID);
+    }
+
+    @JsonIgnore
+    public Set<UUID> getAllProviderUUIDs() {
+      // For tests to work.
+      if (!isMulticloudSupport() && provider == null) {
+        return Collections.emptySet();
+      }
+      return new HashSet<>(
+          getAllProviderProperties(ps -> ps.providerUUID, u -> UUID.fromString(u.provider)));
+    }
+
+    @JsonIgnore
+    public List<CloudType> getAllCloudTypes() {
+      return getAllProviderProperties(ps -> ps.providerType, u -> u.providerType);
     }
 
     private OverridenDetails getOverridenDetails(@Nullable UUID azUUID) {
@@ -1275,83 +2030,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         }
       }
       return res;
-    }
-
-    public Integer getCGroupSize(@NotNull NodeDetails nodeDetails) {
-      return getCGroupSize(nodeDetails.azUuid);
-    }
-
-    public Integer getCGroupSize(UUID azUUID) {
-      OverridenDetails overridenDetails = getOverridenDetails(azUUID);
-      if (overridenDetails.getCgroupSize() != null) {
-        return overridenDetails.getCgroupSize();
-      }
-      return cgroupSize;
-    }
-
-    @JsonIgnore
-    public String getBaseInstanceType() {
-      return getInstanceType(null);
-    }
-
-    public String getInstanceType(@Nullable UUID azUUID) {
-      return getInstanceType(null, azUUID);
-    }
-
-    public String getInstanceType(
-        @Nullable UniverseTaskBase.ServerType serverType, @Nullable UUID azUUID) {
-      if (serverType != UniverseTaskBase.ServerType.MASTER
-          && serverType != UniverseTaskBase.ServerType.TSERVER) {
-        serverType = UniverseTaskBase.ServerType.TSERVER;
-      }
-      String result = instanceType;
-      if (serverType == UniverseTaskBase.ServerType.MASTER
-          && masterInstanceType != null
-          && dedicatedNodes) {
-        return masterInstanceType;
-      }
-      OverridenDetails overridenDetails = getOverridenDetails(serverType, azUUID);
-      if (overridenDetails.getInstanceType() != null) {
-        result = overridenDetails.getInstanceType();
-        log.debug("Getting overriden instance type {} for az {}", result, azUUID);
-      }
-      return result;
-    }
-
-    public String getInstanceTypeForNode(NodeDetails nodeDetails) {
-      return getInstanceType(nodeDetails.dedicatedTo, nodeDetails.getAzUuid());
-    }
-
-    public DeviceInfo getDeviceInfoForNode(NodeDetails nodeDetails) {
-      if (dedicatedNodes
-          && masterDeviceInfo != null
-          && nodeDetails.dedicatedTo == UniverseTaskBase.ServerType.MASTER) {
-        return masterDeviceInfo;
-      }
-      OverridenDetails overridenDetails =
-          getOverridenDetails(UniverseTaskBase.ServerType.TSERVER, nodeDetails.getAzUuid());
-      if (overridenDetails.getDeviceInfo() != null) {
-        JsonNode original = Json.toJson(deviceInfo);
-        JsonNode overriden = Json.toJson(overridenDetails.getDeviceInfo());
-        log.debug(
-            "Getting overriden device info {} for az {}",
-            Json.toJson(overriden),
-            nodeDetails.getAzUuid());
-
-        CommonUtils.deepMerge(original, overriden);
-        log.debug("Device info after merging {}", original);
-
-        return Json.fromJson(original, DeviceInfo.class);
-      }
-      return deviceInfo;
-    }
-
-    public ProxyConfig getProxyConfig(@Nullable UUID azUUID) {
-      OverridenDetails overridenDetails = getOverridenDetails(azUUID);
-      if (overridenDetails.getProxyConfig() != null) {
-        return overridenDetails.getProxyConfig();
-      }
-      return proxyConfig;
     }
 
     @Override
@@ -1377,6 +2055,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           .append(masterInstanceType)
           .append(masterInstanceType)
           .append(userIntentOverrides)
+          .append(providerSpecifications)
           .build();
     }
 
@@ -1408,7 +2087,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && useSystemd == other.useSystemd
           && dedicatedNodes == other.dedicatedNodes
           && Objects.equals(masterInstanceType, other.masterInstanceType)
-          && Objects.equals(userIntentOverrides, other.userIntentOverrides)) {
+          && Objects.equals(userIntentOverrides, other.userIntentOverrides)
+          && Objects.equals(providerSpecifications, other.providerSpecifications)) {
         return true;
       }
       return false;
@@ -1670,6 +2350,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     return Iterables.getOnlyElement(foundClusters, null);
   }
 
+  public UUID searchProviderUUIDByAz(UUID azUUID) {
+    return clusters.stream()
+        .map(c -> c.searchProviderUUIDByAz(azUUID))
+        .filter(p -> p.isPresent())
+        .findFirst()
+        .map(o -> o.get())
+        .orElseGet(() -> AvailabilityZone.getOrBadRequest(azUUID).getProvider().getUuid());
+  }
+
   // the getter has some logic built around, as there are no other layer to
   // have such logic at a common place
   public UUID getClientRootCA() {
@@ -1767,6 +2456,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   public PrevYBSoftwareConfig prevYBSoftwareConfig;
 
   @Data
+  @JsonIgnoreProperties(ignoreUnknown = true)
   public static class PrevYBSoftwareConfig {
 
     @ApiModelProperty private String softwareVersion;
@@ -1779,6 +2469,63 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty private boolean allTserversUpgradedToYsqlMajorVersion;
 
     @ApiModelProperty private boolean canRollbackCatalogUpgrade;
+
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. True when canary upgrade is enabled"
+                + " for this upgrade (task progress API)")
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0.0-b0")
+    private boolean isCanaryUpgrade;
+
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. Canary pause state when upgrade is"
+                + " paused at a canary point")
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0.0-b0")
+    private CanaryPauseState canaryPauseState = null;
+
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. True once the canary"
+                + " pauseAfterMasters checkpoint has been reached and resumed, so it is not"
+                + " re-emitted on a subsequent abort+retry of the upgrade.")
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0.0-b0")
+    private boolean masterPauseCompleted = false;
+
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. Per-AZ master upgrade progress"
+                + " (standard and canary)")
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0.0-b0")
+    private List<AZUpgradeState> masterAZUpgradeStatesList = new ArrayList<>();
+
+    @ApiModelProperty(
+        value =
+            "WARNING: This is a preview API that could change. Per-AZ tserver upgrade progress"
+                + " (standard and canary)")
+    @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2026.1.0.0-b0")
+    private List<AZUpgradeState> tserverAZUpgradeStatesList = new ArrayList<>();
+
+    /**
+     * After YBA restart or task failure, any AZ left {@link AZUpgradeStatus#IN_PROGRESS} should be
+     * marked {@link AZUpgradeStatus#FAILED} so progress is not stuck mid-AZ.
+     */
+    public void markInProgressAzUpgradeStatusesAsFailed() {
+      if (masterAZUpgradeStatesList != null) {
+        for (AZUpgradeState s : masterAZUpgradeStatesList) {
+          if (s.getStatus() == AZUpgradeStatus.IN_PROGRESS) {
+            s.setStatus(AZUpgradeStatus.FAILED);
+          }
+        }
+      }
+      if (tserverAZUpgradeStatesList != null) {
+        for (AZUpgradeState s : tserverAZUpgradeStatesList) {
+          if (s.getStatus() == AZUpgradeStatus.IN_PROGRESS) {
+            s.setStatus(AZUpgradeStatus.FAILED);
+          }
+        }
+      }
+    }
   }
 
   // XCluster: All the xCluster related code resides in this section.

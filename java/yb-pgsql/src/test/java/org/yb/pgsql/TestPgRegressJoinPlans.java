@@ -16,12 +16,14 @@ import java.util.Map;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
+import org.yb.util.SkipOnTSAN;
 
 /**
  * Runs the pg_regress test suite on YB code.
  */
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@SkipOnTSAN
+@RunWith(value=YBTestRunner.class)
 public class TestPgRegressJoinPlans extends BasePgRegressTest {
   // (Auto-Analyze #28057) Query plans change after enabling auto analyze.
   protected Map<String, String> getTServerFlags() {

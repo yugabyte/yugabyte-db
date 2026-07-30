@@ -1,5 +1,3 @@
-CREATE EXTENSION postgres_fdw;
-
 --
 -- Test to validate behavior of 'server_type' option in foreign server.
 --
@@ -83,19 +81,25 @@ SELECT * FROM ft_test1, ft_test2, ft_test3 WHERE ft_test1.v = ft_test2.v AND ft_
 -- Modifying table level options should be allowed.
 ALTER FOREIGN TABLE ft_test1 OPTIONS (SET table_name 't_othertest');
 ALTER FOREIGN TABLE ft_test2 OPTIONS (DROP table_name, ADD batch_size '1000');
-SELECT * FROM pg_foreign_table;
+-- YB: Exclude the default gv$ foreign tables, whose OIDs vary with initdb contents.
+SELECT * FROM pg_foreign_table
+    WHERE ftserver <> (SELECT oid FROM pg_foreign_server WHERE srvname = 'yb_global_views_server');
 -- Setting an option should be disallowed if it doesn't already exist.
 ALTER FOREIGN TABLE ft_test3 OPTIONS (SET batch_size '1000', SET table_name 't_othertest');
 -- Dropping an option should be disallowed if it doesn't already exist.
 ALTER FOREIGN TABLE ft_test2 OPTIONS (DROP table_name);
 -- Adding an option should be disallowed if it already exists.
 ALTER FOREIGN TABLE ft_test1 OPTIONS (ADD table_name 't_test');
-SELECT * FROM pg_foreign_table;
+-- YB: Exclude the default gv$ foreign tables, whose OIDs vary with initdb contents.
+SELECT * FROM pg_foreign_table
+    WHERE ftserver <> (SELECT oid FROM pg_foreign_server WHERE srvname = 'yb_global_views_server');
 
 -- Restore the original table name.
 ALTER FOREIGN TABLE ft_test1 OPTIONS (SET table_name 't_test');
 ALTER FOREIGN TABLE ft_test2 OPTIONS (ADD table_name 't_test', DROP batch_size);
-SELECT * FROM pg_foreign_table;
+-- YB: Exclude the default gv$ foreign tables, whose OIDs vary with initdb contents.
+SELECT * FROM pg_foreign_table
+    WHERE ftserver <> (SELECT oid FROM pg_foreign_server WHERE srvname = 'yb_global_views_server');
 
 DROP FOREIGN TABLE ft_test1;
 DROP FOREIGN TABLE ft_test2;
@@ -211,3 +215,30 @@ WHERE s.k = 2 AND t1.v = s.v
 RETURNING *;
 
 SELECT * FROM ft_simple ORDER BY k;
+
+CREATE SERVER IF NOT EXISTS gv_server FOREIGN DATA WRAPPER postgres_fdw OPTIONS (server_type 'federatedYugabyteDB');
+
+CREATE FOREIGN TABLE IF NOT EXISTS "gv$yb_active_session_history" (
+    sample_time TIMESTAMPTZ,
+    root_request_id UUID,
+    rpc_request_id BIGINT,
+    wait_event_component TEXT,
+    wait_event_class TEXT,
+    wait_event TEXT,
+    top_level_node_id UUID,
+    query_id BIGINT,
+    pid INT,
+    client_node_ip TEXT,
+    wait_event_aux TEXT,
+    sample_weight REAL,
+    wait_event_type TEXT,
+    ysql_dbid OID,
+    wait_event_code BIGINT,
+    pss_mem_bytes BIGINT,
+    ysql_userid OID,
+    plan_id BIGINT
+)
+SERVER gv_server
+OPTIONS (schema_name 'pg_catalog', table_name 'yb_active_session_history');
+
+SELECT * FROM gv$yb_active_session_history;

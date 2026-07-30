@@ -28,11 +28,17 @@ namespace yb::pgwrapper {
 class PgSingleServerRestartTest : public LibPqTestBase {
  protected:
   void SetUp() override {
-    FLAGS_replication_factor = 1;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = 1;
     LibPqTestBase::SetUp();
   }
   int GetNumTabletServers() const override {
     return 1;
+  }
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    LibPqTestBase::UpdateMiniClusterOptions(options);
+    // Need to disable write pipelining since this test uses TEST_pause_update_majority_replicated
+    // to block writes and expects inserts to fail immediately.
+    options->extra_tserver_flags.push_back("--ysql_enable_write_pipelining=false");
   }
 };
 

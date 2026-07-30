@@ -40,7 +40,7 @@ PITR in YugabyteDB is based on a combination of the following:
 
 1. Periodic distributed snapshots
 
-    [Distributed snapshots](../snapshot-ysql) capture a lightweight zero-cost copy of database data files, including all detailed data changes, for the specified retention period. By creating and saving snapshots periodically, you effectively create a total PITR history, which is the combination of all of the individual snapshots.
+    [Distributed snapshots](../snapshot-ysql/) capture a lightweight zero-cost copy of database data files, including all detailed data changes, for the specified retention period. By creating and saving snapshots periodically, you effectively create a total PITR history, which is the combination of all of the individual snapshots.
 
 For example, if your overall retention target for PITR is three days, you can specify the following configuration:
 
@@ -230,9 +230,7 @@ PITR functionality has several limitations, primarily related to interactions wi
 
 ### CDC
 
-Using PITR and [CDC](../../../additional-features/change-data-capture/) together is currently not supported.
-
-Tracking issue: [12773](https://github.com/yugabyte/yugabyte-db/issues/12773)
+For databases and tables with [CDC](../../../additional-features/change-data-capture/) configured, you need to create new CDC streams or replication slots after the restore is complete, and start streaming from that point. Creating new streams or slots ensures that you start streaming from the correct checkpoints.
 
 ### xCluster replication
 
@@ -275,5 +273,6 @@ YugabyteDB Anywhere [supports PITR](../../../yugabyte-platform/back-up-restore-u
 
 ### Other limitations
 
-- PITR works only with _in-cluster_ distributed snapshots. PITR support for off-cluster backups is under consideration for the future. Tracking issue: [8847](https://github.com/yugabyte/yugabyte-db/issues/8847).
+- PITR works only with _in-cluster_ distributed snapshots. PITR support for off-cluster backups is under consideration for the future. See issue {{<issue 8847>}}.
 - Issuing DDLs against a database while it is being restored is not recommended.
+- Restoring to a time during which DDLs were in flight may fail or produce inconsistent results. See issue {{<issue 12797>}}.

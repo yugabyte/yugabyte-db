@@ -42,6 +42,7 @@
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
 
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/intent.h"
 #include "yb/dockv/subdocument.h"
@@ -145,12 +146,11 @@ Result<DetermineKeysToLockResult<SharedLockManager>> DetermineKeysToLock(
     boost::tribool pk_is_known = doc_op->OpType() == DocOperationType::PGSQL_WRITE_OPERATION ?
         boost::tribool(down_cast<const docdb::PgsqlWriteOperation&>(*doc_op).pk_is_known()) :
         boost::indeterminate;
-    // When skip_prefix_locks is enabled, if a PK is not specified in a serializable txn, the empty
-    // key must be locked to cover the locks of the pk. This is a coarser lock and can result in
-    // blocking many other transactions.
+    // When skip_prefix_locks is enabled, for a serializable txn, we always take a strong lock
+    // on the top level key. This is a coarser lock and can result in blocking many other
+    // transactions.
     const bool top_level_key_takes_strong_locks =
-        isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION && skip_prefix_locks &&
-        !static_cast<bool>(pk_is_known);
+        isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION && skip_prefix_locks;
     VLOG_WITH_FUNC(4) << "isolation_level:" << isolation_level << ", skip_prefix_locks:"
                       << skip_prefix_locks << ", pk_is_known:" << static_cast<bool>(pk_is_known);
 
@@ -260,7 +260,7 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     bool write_transaction_metadata,
     CoarseTimePoint deadline,
     dockv::PartialRangeKeyIntents partial_range_key_intents,
-    SharedLockManager *lock_manager,
+    SharedLockManager* lock_manager,
     dockv::SkipPrefixLocks skip_prefix_locks) {
   PrepareDocWriteOperationResult result;
 
@@ -340,7 +340,7 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
       // Ensure we set appropriate error in the response object for QL errors.
       const auto& resp = down_cast<QLWriteOperation*>(doc_op.get())->response();
       resp->set_status(QLResponsePB::YQL_STATUS_QUERY_ERROR);
-      resp->set_error_message(std::move(error_msg));
+      resp->dup_error_message(error_msg);
       continue;
     }
 
@@ -404,9 +404,13 @@ Result<ApplyTransactionState> GetIntentsBatchForCDC(
     if (!key_slice.starts_with(key_prefix)) {
       break;
     }
-    // If the key ends at the transaction id then it is transaction metadata (status tablet,
-    // isolation level etc.).
-    if (key_slice.size() > txn_reverse_index_prefix.size()) {
+    // Skip metadata records:
+    // - transaction id: transaction metadata
+    // - transaction id + transaction metadata update time: transaction metadata update
+    // - transaction id + 00: post-apply metadata
+    if (key_slice.size() > txn_reverse_index_prefix.size() &&
+        key_slice[txn_reverse_index_prefix.size() - 1] !=
+            dockv::KeyEntryTypeAsChar::kTransactionMetadataUpdateTime) {
       auto reverse_index_value = reverse_index_iter.value();
 
       // The intents with kDeleteVectorIds value type correspond to the tombstones added for
@@ -458,6 +462,15 @@ Result<ApplyTransactionState> GetIntentsBatchForCDC(
             // Skip intents from aborted subtransactions (Ex: From rolled-back savepoints).
             // These writes were never committed and should not be streamed to CDC.
             if (aborted.Test(decoded_value.subtransaction_id)) {
+              reverse_index_iter.Next();
+              continue;
+            }
+
+            // Skip colocated table tombstone intents (DELETEs with no primary key).
+            // These are generated during colocated table rewrites and should not be
+            // streamed by CDC.
+            dockv::DocKeyDecoder decoder(intent.doc_path);
+            if (VERIFY_RESULT(decoder.DecodeColocationId()) && decoder.GroupEnded()) {
               reverse_index_iter.Next();
               continue;
             }

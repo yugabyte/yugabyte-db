@@ -34,6 +34,8 @@
 #include "funcapi.h"
 #include "libpq/libpq-be.h"
 #include "miscadmin.h"
+#include "optimizer/planner.h"
+#include "parser/analyze.h"
 #include "parser/scansup.h"
 #include "pg_yb_utils.h"
 #include "pgstat.h"
@@ -64,14 +66,12 @@
 #define ACTIVE_SESSION_HISTORY_COLS_V4 15
 #define ACTIVE_SESSION_HISTORY_COLS_V5 16
 #define ACTIVE_SESSION_HISTORY_COLS_V6 17
+#define ACTIVE_SESSION_HISTORY_COLS_V7 18
 
 #define ACTIVE_SESSION_HISTORY_IN_PARAMS_V1 0
 #define ACTIVE_SESSION_HISTORY_IN_PARAMS_V2 2
 
 #define MAX_NESTED_QUERY_LEVEL 64
-
-#define set_query_id() (nested_level == 0 || \
-	(yb_ash_track_nested_queries != NULL && yb_ash_track_nested_queries()))
 
 /* GUC variables */
 bool		yb_enable_ash;
@@ -85,6 +85,7 @@ static ExecutorRun_hook_type prev_ExecutorRun = NULL;
 static ExecutorFinish_hook_type prev_ExecutorFinish = NULL;
 static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
+static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
 
 YbAshTrackNestedQueries yb_ash_track_nested_queries = NULL;
 
@@ -96,31 +97,90 @@ typedef struct YbAsh
 	YbcAshSample circular_buffer[FLEXIBLE_ARRAY_MEMBER];
 } YbAsh;
 
-typedef struct YbAshNestedQueryIdStack
+typedef struct
 {
 	int			top_index;		/* top index of the stack, -1 for empty stack */
-	/* number of query ids not pushed due to the stack size being full */
-	int			num_query_ids_not_pushed;
-	uint64		query_ids[MAX_NESTED_QUERY_LEVEL];
-} YbAshNestedQueryIdStack;
+	/* number of entries not pushed due to the stack size being full */
+	int			num_entries_not_pushed;
+	YbcAshQueryPlanPair qp_pairs[MAX_NESTED_QUERY_LEVEL];
+} YbAshQueryPlanPairStack;
 
 static YbAsh *yb_ash = NULL;
-static YbAshNestedQueryIdStack query_id_stack;
+static YbAshQueryPlanPairStack qp_pair_stack;
 static int	nested_level = 0;
-static bool pop_query_id_before_push = false;
-static uint64 query_id_to_be_popped_before_push = 0;
+static bool pop_qp_pair_before_push = false;
+static YbcAshQueryPlanPair qp_pair_to_be_popped_before_push =
+	{YB_ASH_INVALID_QUERY_ID, YB_ASH_DEFAULT_PLAN_ID};
+
+/*
+ * Coordinate query_id tracking between exec_parse_message and the
+ * post_parse_analyze hook.  Parse cannot push the queryid at entry because
+ * the id is not yet known; the hook pushes it once JumbleQuery runs, and
+ * exec_parse_message pops it on exit using yb_ash_parse_qp_pair.
+ *
+ * Bind and Execute do not need this mechanism: their query_id is available
+ * at message entry, so a straightforward push/pop in the message handler
+ * suffices.
+ *
+ * yb_ash_in_parse_message – true while exec_parse_message is on the call
+ *   stack; guards the hook from pushing a query_id outside a Parse context.
+ * yb_ash_parse_qp_pushed  – true if the hook successfully pushed a qp_pair;
+ *   tells exec_parse_message whether to pop on exit.
+ * yb_ash_parse_qp_pair    – the qp_pair saved by the hook so that
+ *   exec_parse_message can pop it on exit.
+ */
+static bool yb_ash_in_parse_message = false;
+static bool yb_ash_parse_qp_pushed = false;
+static YbcAshQueryPlanPair yb_ash_parse_qp_pair =
+	{YB_ASH_INVALID_QUERY_ID, YB_ASH_DEFAULT_PLAN_ID};
+
+/*
+ * Whether ASH should track the query-plan pair for the current execution
+ * context. The decision is gated on the pg_stat_statements.track GUC
+ * (exposed via the yb_ash_track_nested_queries hook) because ASH samples
+ * are joined with pg_stat_statements on query_id. If PGSS does not assign
+ * a query_id, storing one in ASH would produce samples that cannot be
+ * correlated, breaking Performance Advisor and similar consumers.
+ *
+ * For top-level queries (nested_level == 0) the pair is always tracked
+ * because PGSS always assigns a query_id at the top level.
+ *
+ * For nested queries (e.g. trigger-fired SQL, nested_level > 0):
+ *   pgss=all,  qpm=all  -> query_id tracked by PGSS, plan_id resolved
+ *   pgss=all,  qpm=top  -> query_id tracked by PGSS, plan_id NOT resolved
+ *   pgss=top,  qpm=all  -> query_id NOT assigned by PGSS, pair not tracked
+ *   pgss=top,  qpm=top  -> query_id NOT assigned by PGSS, pair not tracked
+ *
+ * Note: when pgss=top skips a nested query, QPM tracking for that query is
+ * also suppressed here regardless of the qpm setting, because without a
+ * query_id the plan_id alone is not useful.
+ */
+static inline bool
+ShouldTrackQueryPlanPair(void)
+{
+	return nested_level == 0 ||
+		(yb_ash_track_nested_queries != NULL && yb_ash_track_nested_queries());
+}
+
+static inline bool
+ShouldResolvePlanId(void)
+{
+	return yb_qpm_configuration.track == YB_QPM_TRACK_ALL ||
+		(yb_qpm_configuration.track == YB_QPM_TRACK_TOP && nested_level == 0);
+}
 
 static void YbAshInstallHooks(void);
 static int	yb_ash_cb_max_entries(void);
-static void YbAshSetQueryId(uint64 query_id);
-static void YbAshResetQueryId(uint64 query_id);
+static void YbAshSetQueryPlanPair(YbcAshQueryPlanPair qp_pair);
+static void YbAshResetQueryPlanPair(YbcAshQueryPlanPair qp_pair);
+static void YbAshFlushDeferredPop(void);
 static uint64 yb_ash_utility_query_id(const char *query, int query_len,
 									  int query_location,
 									  bool is_sensitive_stmt);
 static void YbAshAcquireBufferLock(bool exclusive);
 static void YbAshReleaseBufferLock();
-static bool YbAshNestedQueryIdStackPush(uint64 query_id);
-static uint64 YbAshNestedQueryIdStackPop(uint64 query_id);
+static bool YbAshQueryPlanPairStackPush(YbcAshQueryPlanPair qp_pair);
+static YbcAshQueryPlanPair YbAshQueryPlanPairStackPop(YbcAshQueryPlanPair expected_qp_pair);
 
 static void yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags);
 static void yb_ash_ExecutorRun(QueryDesc *queryDesc,
@@ -133,8 +193,9 @@ static void yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 								  ProcessUtilityContext context, ParamListInfo params,
 								  QueryEnvironment *queryEnv, DestReceiver *dest,
 								  QueryCompletion *qc);
+static void yb_ash_post_parse_analyze(ParseState *pstate, Query *query,
+									  JumbleState *jstate);
 
-static const unsigned char *get_top_level_node_id();
 static void YbAshMaybeReplaceSample(PGPROC *proc, int num_procs, TimestampTz sample_time,
 									int samples_considered);
 static YbcWaitEventInfo YbGetWaitEventInfo(const PGPROC *proc);
@@ -184,9 +245,11 @@ YbAshInit(void)
 {
 	YbAshInstallHooks();
 	/* Keep the default query id in the stack */
-	query_id_stack.top_index = 0;
-	query_id_stack.query_ids[0] = YbAshGetConstQueryId();
-	query_id_stack.num_query_ids_not_pushed = 0;
+	qp_pair_stack.top_index = 0;
+	qp_pair_stack.qp_pairs[0] =
+		(YbcAshQueryPlanPair){YbAshGetConstQueryId(),
+		YB_ASH_DEFAULT_PLAN_ID};
+	qp_pair_stack.num_entries_not_pushed = 0;
 
 	EnableQueryId();
 }
@@ -194,6 +257,9 @@ YbAshInit(void)
 void
 YbAshInstallHooks(void)
 {
+	prev_post_parse_analyze_hook = post_parse_analyze_hook;
+	post_parse_analyze_hook = yb_ash_post_parse_analyze;
+
 	prev_ExecutorStart = ExecutorStart_hook;
 	ExecutorStart_hook = yb_ash_ExecutorStart;
 
@@ -229,51 +295,63 @@ yb_ash_cb_max_entries(void)
 }
 
 /*
- * Push a query id to the stack. In case the stack is full, we increment
- * a counter to maintain the number of query ids which were supposed to be
- * pushed but couldn't be pushed. So that later, when we are supposed to pop
- * from the stack, we know how many no-op pop operations we have to perform.
+ * Push a (query_id, plan_id) qp_pair to the stack. In case the stack is full,
+ * we increment a counter to maintain the number of entries which were
+ * supposed to be pushed but couldn't be. So that later, when we are supposed
+ * to pop from the stack, we know how many no-op pop operations to perform.
  */
 static bool
-YbAshNestedQueryIdStackPush(uint64 query_id)
+YbAshQueryPlanPairStackPush(YbcAshQueryPlanPair qp_pair)
 {
-	if (query_id_stack.top_index < MAX_NESTED_QUERY_LEVEL - 1)
+	if (qp_pair_stack.top_index < MAX_NESTED_QUERY_LEVEL - 1)
 	{
-		query_id_stack.query_ids[++query_id_stack.top_index] = query_id;
+		qp_pair_stack.qp_pairs[++qp_pair_stack.top_index] = qp_pair;
 		return true;
 	}
 
 	ereport(LOG,
-			(errmsg("ASH stack for nested query ids is full")));
-	++query_id_stack.num_query_ids_not_pushed;
+			(errmsg("ASH stack for nested query and plan id pairs is full")));
+	++qp_pair_stack.num_entries_not_pushed;
 	return false;
 }
 
 /*
- * Pop and return the top query id from the stack
+ * Pop the top entry from the stack and return the previous (query_id, plan_id).
+ * Returns an invalid pair when nothing was popped.
  */
-static uint64
-YbAshNestedQueryIdStackPop(uint64 query_id)
+static YbcAshQueryPlanPair
+YbAshQueryPlanPairStackPop(YbcAshQueryPlanPair expected_qp_pair)
 {
-	if (query_id_stack.num_query_ids_not_pushed > 0)
+	YbcAshQueryPlanPair result = {YB_ASH_INVALID_QUERY_ID, YB_ASH_DEFAULT_PLAN_ID};
+	YbcAshQueryPlanPair *top;
+	bool		top_matches;
+
+	if (qp_pair_stack.num_entries_not_pushed > 0)
 	{
-		--query_id_stack.num_query_ids_not_pushed;
-		return 0;
+		--qp_pair_stack.num_entries_not_pushed;
+		return result;
 	}
 
-	if (pop_query_id_before_push && query_id == query_id_to_be_popped_before_push)
-		Assert(query_id_stack.top_index > 0 &&
-			   query_id_stack.query_ids[query_id_stack.top_index] == query_id);
+	if (qp_pair_stack.top_index <= 0)
+		return result;
+
+	top = &qp_pair_stack.qp_pairs[qp_pair_stack.top_index];
+	top_matches = top->query_id == expected_qp_pair.query_id &&
+		top->plan_id == expected_qp_pair.plan_id;
+
+	if (pop_qp_pair_before_push &&
+		expected_qp_pair.query_id == qp_pair_to_be_popped_before_push.query_id &&
+		expected_qp_pair.plan_id == qp_pair_to_be_popped_before_push.plan_id)
+		Assert(top_matches);
 
 	/*
 	 * When an extra ExecutorEnd is called during PortalCleanup,
-	 * we shouldn't pop the incorrect query_id from the stack.
+	 * we shouldn't pop an incorrect entry from the stack.
 	 */
-	if (query_id_stack.top_index > 0 &&
-		query_id_stack.query_ids[query_id_stack.top_index] == query_id)
-		return query_id_stack.query_ids[--query_id_stack.top_index];
+	if (top_matches)
+		result = qp_pair_stack.qp_pairs[--qp_pair_stack.top_index];
 
-	return 0;
+	return result;
 }
 
 /*
@@ -314,21 +392,69 @@ YbAshShmemInit(void)
 	}
 }
 
+static YbcAshQueryPlanPair
+ybAshGetQpPair(QueryDesc *queryDesc)
+{
+	YbcAshQueryPlanPair qp_pair = {YB_ASH_INVALID_QUERY_ID, YB_ASH_DEFAULT_PLAN_ID};
+
+	/* Query id can be zero here only if pg_stat_statements is disabled */
+	qp_pair.query_id = (queryDesc->plannedstmt->queryId != 0 ?
+					   queryDesc->plannedstmt->queryId :
+					   yb_ash_utility_query_id(queryDesc->sourceText,
+											   queryDesc->plannedstmt->stmt_len,
+											   queryDesc->plannedstmt->stmt_location,
+											   false /* is_sensitive_stmt */ ));
+	if (ShouldResolvePlanId())
+		qp_pair.plan_id = ybGetPlanId(queryDesc->plannedstmt);
+	return qp_pair;
+}
+
+/*
+ * post_parse_analyze hook. When called from exec_parse_message, pushes the
+ * just-computed query_id so post-analysis work (rewriting, plan caching)
+ * attributes correctly. The push is paired with the pop in
+ * YbAshResetQueryPlanPairForMessage at exec_parse_message exit.
+ *
+ * Skips other call sites (exec_simple_query, SPI sub-parse, nested contexts)
+ * because they manage query_id via executor/utility hooks and an unmatched
+ * push here would leak onto the stack.
+ * TODO(#31445): Extend to exec_simple_query and SPI sub-parse by
+ * detecting the call context and issuing a matched push/pop, so Parse-phase
+ * catalog reads are correctly attributed in all code paths.
+ */
+static void
+yb_ash_post_parse_analyze(ParseState *pstate, Query *query, JumbleState *jstate)
+{
+	if (prev_post_parse_analyze_hook)
+		prev_post_parse_analyze_hook(pstate, query, jstate);
+
+	if (!yb_enable_ash)
+		return;
+
+	if (!yb_ash_in_parse_message || yb_ash_parse_qp_pushed)
+		return;
+
+	if (nested_level > 0)
+		return;
+
+	if (query->queryId == YB_ASH_INVALID_QUERY_ID)
+		return;
+
+	yb_ash_parse_qp_pair =
+		(YbcAshQueryPlanPair){query->queryId, YB_ASH_DEFAULT_PLAN_ID};
+	YbAshSetQueryPlanPair(yb_ash_parse_qp_pair);
+	yb_ash_parse_qp_pushed = true;
+}
+
 static void
 yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
-	uint64		query_id;
+	YbcAshQueryPlanPair qp_pair = {YB_ASH_INVALID_QUERY_ID, YB_ASH_DEFAULT_PLAN_ID};
 
 	if (yb_enable_ash)
 	{
-		/* Query id can be zero here only if pg_stat_statements is disabled */
-		query_id = (queryDesc->plannedstmt->queryId != 0 ?
-					queryDesc->plannedstmt->queryId :
-					yb_ash_utility_query_id(queryDesc->sourceText,
-											queryDesc->plannedstmt->stmt_len,
-											queryDesc->plannedstmt->stmt_location,
-											false /* is_sensitive_stmt */ ));
-		YbAshSetQueryId(query_id);
+		qp_pair = ybAshGetQpPair(queryDesc);
+		YbAshSetQueryPlanPair(qp_pair);
 	}
 
 	PG_TRY();
@@ -341,7 +467,7 @@ yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	PG_CATCH();
 	{
 		if (yb_enable_ash)
-			YbAshResetQueryId(query_id);
+			YbAshResetQueryPlanPair(qp_pair);
 
 		PG_RE_THROW();
 	}
@@ -352,6 +478,11 @@ static void
 yb_ash_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uint64 count,
 				   bool execute_once)
 {
+	YbcAshQueryPlanPair qp_pair = {YB_ASH_INVALID_QUERY_ID, YB_ASH_DEFAULT_PLAN_ID};
+
+	if (yb_enable_ash)
+		qp_pair = ybAshGetQpPair(queryDesc);
+
 	++nested_level;
 	PG_TRY();
 	{
@@ -366,7 +497,7 @@ yb_ash_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uint64 count,
 		--nested_level;
 
 		if (yb_enable_ash)
-			YbAshResetQueryId(queryDesc->plannedstmt->queryId);
+			YbAshResetQueryPlanPair(qp_pair);
 
 		PG_RE_THROW();
 	}
@@ -376,6 +507,11 @@ yb_ash_ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, uint64 count,
 static void
 yb_ash_ExecutorFinish(QueryDesc *queryDesc)
 {
+	YbcAshQueryPlanPair qp_pair = {YB_ASH_INVALID_QUERY_ID, YB_ASH_DEFAULT_PLAN_ID};
+
+	if (yb_enable_ash)
+		qp_pair = ybAshGetQpPair(queryDesc);
+
 	++nested_level;
 	PG_TRY();
 	{
@@ -390,7 +526,7 @@ yb_ash_ExecutorFinish(QueryDesc *queryDesc)
 		--nested_level;
 
 		if (yb_enable_ash)
-			YbAshResetQueryId(queryDesc->plannedstmt->queryId);
+			YbAshResetQueryPlanPair(qp_pair);
 
 		PG_RE_THROW();
 	}
@@ -400,6 +536,11 @@ yb_ash_ExecutorFinish(QueryDesc *queryDesc)
 static void
 yb_ash_ExecutorEnd(QueryDesc *queryDesc)
 {
+	YbcAshQueryPlanPair qp_pair = {YB_ASH_INVALID_QUERY_ID, YB_ASH_DEFAULT_PLAN_ID};
+
+	if (yb_enable_ash)
+		qp_pair = ybAshGetQpPair(queryDesc);
+
 	PG_TRY();
 	{
 		if (prev_ExecutorEnd)
@@ -408,12 +549,12 @@ yb_ash_ExecutorEnd(QueryDesc *queryDesc)
 			standard_ExecutorEnd(queryDesc);
 
 		if (yb_enable_ash)
-			YbAshResetQueryId(queryDesc->plannedstmt->queryId);
+			YbAshResetQueryPlanPair(qp_pair);
 	}
 	PG_CATCH();
 	{
 		if (yb_enable_ash)
-			YbAshResetQueryId(queryDesc->plannedstmt->queryId);
+			YbAshResetQueryPlanPair(qp_pair);
 
 		PG_RE_THROW();
 	}
@@ -427,7 +568,7 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 					  QueryEnvironment *queryEnv, DestReceiver *dest,
 					  QueryCompletion *qc)
 {
-	uint64		query_id;
+	YbcAshQueryPlanPair qp_pair = {YB_ASH_INVALID_QUERY_ID, YB_ASH_DEFAULT_PLAN_ID};
 	bool		skip_nested_level;
 	Node	   *parsetree = pstmt->utilityStmt;
 
@@ -448,13 +589,13 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 			 * UTILITY statements can have password tokens that require
 			 * redaction
 			 */
-			query_id = (pstmt->queryId != 0 ?
-						pstmt->queryId :
-						yb_ash_utility_query_id(queryString,
-												pstmt->stmt_len,
-												pstmt->stmt_location,
-												true /* is_sensitive_stmt */ ));
-			YbAshSetQueryId(query_id);
+			qp_pair.query_id = (pstmt->queryId != 0 ?
+								pstmt->queryId :
+								yb_ash_utility_query_id(queryString,
+														pstmt->stmt_len,
+														pstmt->stmt_location,
+														true /* is_sensitive_stmt */ ));
+			YbAshSetQueryPlanPair(qp_pair);
 		}
 		++nested_level;
 	}
@@ -475,7 +616,7 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		{
 			--nested_level;
 			if (yb_enable_ash)
-				YbAshResetQueryId(query_id);
+				YbAshResetQueryPlanPair(qp_pair);
 		}
 	}
 	PG_CATCH();
@@ -484,7 +625,7 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		{
 			--nested_level;
 			if (yb_enable_ash)
-				YbAshResetQueryId(query_id);
+				YbAshResetQueryPlanPair(qp_pair);
 		}
 		PG_RE_THROW();
 	}
@@ -505,44 +646,48 @@ YbAshGetConstQueryId()
 }
 
 static void
-YbAshSetQueryId(uint64 query_id)
+YbAshSetQueryPlanPair(YbcAshQueryPlanPair qp_pair)
 {
-	if (set_query_id())
+	if (ShouldTrackQueryPlanPair())
 	{
-		if (pop_query_id_before_push)
+		if (pop_qp_pair_before_push)
 		{
-			YbAshNestedQueryIdStackPop(query_id_to_be_popped_before_push);
-			pop_query_id_before_push = false;
-			query_id_to_be_popped_before_push = 0;
+			YbAshQueryPlanPairStackPop(qp_pair_to_be_popped_before_push);
+			pop_qp_pair_before_push = false;
+			qp_pair_to_be_popped_before_push =
+				(YbcAshQueryPlanPair){YB_ASH_INVALID_QUERY_ID,
+				YB_ASH_DEFAULT_PLAN_ID};
 		}
-		if (YbAshNestedQueryIdStackPush(query_id))
+		if (YbAshQueryPlanPairStackPush(qp_pair))
 		{
 			LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
-			MyProc->yb_ash_metadata.query_id = query_id;
+			MyProc->yb_ash_metadata.qp = qp_pair;
 			LWLockRelease(&MyProc->yb_ash_metadata_lock);
 		}
 	}
 }
 
 static void
-YbAshResetQueryId(uint64 query_id)
+YbAshResetQueryPlanPair(YbcAshQueryPlanPair qp_pair)
 {
-	if (set_query_id())
+	if (ShouldTrackQueryPlanPair())
 	{
-		uint64		prev_query_id = YbAshNestedQueryIdStackPop(query_id);
+		YbcAshQueryPlanPair prev_qp_pair = YbAshQueryPlanPairStackPop(qp_pair);
 
-		if (prev_query_id != 0)
+		if (!YbAshIsInvalidQpPair(prev_qp_pair))
 		{
-			if (prev_query_id == YbAshGetConstQueryId())
+			/* Check for the default stack entry */
+			if (prev_qp_pair.query_id == YbAshGetConstQueryId() &&
+				prev_qp_pair.plan_id == YB_ASH_DEFAULT_PLAN_ID)
 			{
-				query_id_to_be_popped_before_push = query_id;
-				pop_query_id_before_push = true;
-				YbAshNestedQueryIdStackPush(query_id);
+				qp_pair_to_be_popped_before_push = qp_pair;
+				pop_qp_pair_before_push = true;
+				YbAshQueryPlanPairStackPush(qp_pair);
 			}
 			else
 			{
 				LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
-				MyProc->yb_ash_metadata.query_id = prev_query_id;
+				MyProc->yb_ash_metadata.qp = prev_qp_pair;
 				LWLockRelease(&MyProc->yb_ash_metadata_lock);
 			}
 		}
@@ -557,7 +702,7 @@ void
 YbAshSetMetadata(void)
 {
 	/* The stack should have the default query id at the start of a request */
-	Assert(query_id_stack.top_index == 0);
+	Assert(qp_pair_stack.top_index == 0);
 	Assert(MyProc->yb_is_ash_metadata_set == false);
 
 	YBCGenerateAshRootRequestId(MyProc->yb_ash_metadata.root_request_id);
@@ -566,36 +711,117 @@ YbAshSetMetadata(void)
 	MyProc->yb_ash_metadata.user_id = GetUserId();
 }
 
+/*
+ * Drain a pending deferred pop. Used by YbAshUnsetMetadata and by the
+ * per-message helpers to evict a previous statement's query_id before a new
+ * extended-protocol message starts.
+ */
+static void
+YbAshFlushDeferredPop(void)
+{
+	if (!pop_qp_pair_before_push)
+		return;
+
+	YbcAshQueryPlanPair prev_qp_pair =
+		YbAshQueryPlanPairStackPop(qp_pair_to_be_popped_before_push);
+
+	pop_qp_pair_before_push = false;
+	qp_pair_to_be_popped_before_push =
+		(YbcAshQueryPlanPair){YB_ASH_INVALID_QUERY_ID,
+		YB_ASH_DEFAULT_PLAN_ID};
+
+	if (!YbAshIsInvalidQpPair(prev_qp_pair))
+	{
+		LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
+		MyProc->yb_ash_metadata.qp = prev_qp_pair;
+		LWLockRelease(&MyProc->yb_ash_metadata_lock);
+	}
+}
+
 void
 YbAshUnsetMetadata(void)
 {
 	/*
-	 * Some queryids may not be popped from the stack if YbAshResetQueryId
+	 * Some queryids may not be popped from the stack if YbAshResetQueryPlanPair
 	 * returns an error. Reset the stack here. We can remove this if we
 	 * make query_id atomic
 	 */
-	if (pop_query_id_before_push)
-	{
-		uint64		prev_query_id = YbAshNestedQueryIdStackPop(query_id_to_be_popped_before_push);
+	YbAshFlushDeferredPop();
 
-		pop_query_id_before_push = false;
-		query_id_to_be_popped_before_push = 0;
+	qp_pair_stack.top_index = 0;
+	qp_pair_stack.num_entries_not_pushed = 0;
 
-		if (prev_query_id != 0)
-		{
-			LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
-			MyProc->yb_ash_metadata.query_id = prev_query_id;
-			LWLockRelease(&MyProc->yb_ash_metadata_lock);
-		}
-	}
-
-	query_id_stack.top_index = 0;
-	query_id_stack.num_query_ids_not_pushed = 0;
+	/* Reset parse-message state in case an error skipped the matching reset. */
+	yb_ash_in_parse_message = false;
+	yb_ash_parse_qp_pushed = false;
+	yb_ash_parse_qp_pair =
+		(YbcAshQueryPlanPair){YB_ASH_INVALID_QUERY_ID,
+		YB_ASH_DEFAULT_PLAN_ID};
 
 	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
 	MemSet(MyProc->yb_ash_metadata.root_request_id, 0,
 		   sizeof(MyProc->yb_ash_metadata.root_request_id));
+	MyProc->yb_ash_metadata.qp.query_id = YbAshGetConstQueryId();
 	LWLockRelease(&MyProc->yb_ash_metadata_lock);
+}
+
+/*
+ * Begin handling an extended-protocol message: drain any deferred pop and
+ * push the message's query_id if known. Parse callers pass the default
+ * sentinel (YbAshGetConstQueryId()); the post_parse_analyze hook pushes
+ * the real id later. Bind/Describe/Execute pass the cached query_id.
+ */
+void
+YbAshSetQueryPlanPairForMessage(uint64 query_id)
+{
+	if (!yb_enable_ash)
+		return;
+
+	YbAshFlushDeferredPop();
+
+	if (query_id != YbAshGetConstQueryId())
+	{
+		YbcAshQueryPlanPair qp_pair = {query_id, YB_ASH_DEFAULT_PLAN_ID};
+		YbAshSetQueryPlanPair(qp_pair);
+	}
+	else
+	{
+		yb_ash_in_parse_message = true;
+		yb_ash_parse_qp_pushed = false;
+		yb_ash_parse_qp_pair =
+			(YbcAshQueryPlanPair){YB_ASH_INVALID_QUERY_ID, YB_ASH_DEFAULT_PLAN_ID};
+	}
+}
+
+/*
+ * Symmetric counterpart of YbAshSetQueryPlanPairForMessage. For Parse
+ * (query_id == YbAshGetConstQueryId()), pops whatever the
+ * post_parse_analyze hook pushed (if anything); safe to call when the hook
+ * never fired.
+ */
+void
+YbAshResetQueryPlanPairForMessage(uint64 query_id)
+{
+	if (!yb_enable_ash)
+		return;
+
+	if (query_id == YbAshGetConstQueryId())
+	{
+		yb_ash_in_parse_message = false;
+		if (yb_ash_parse_qp_pushed)
+		{
+			YbAshResetQueryPlanPair(yb_ash_parse_qp_pair);
+			yb_ash_parse_qp_pushed = false;
+			yb_ash_parse_qp_pair =
+				(YbcAshQueryPlanPair){YB_ASH_INVALID_QUERY_ID,
+				YB_ASH_DEFAULT_PLAN_ID};
+		}
+		return;
+	}
+
+	YbcAshQueryPlanPair qp_pair = {query_id, YB_ASH_DEFAULT_PLAN_ID};
+
+	YbAshResetQueryPlanPair(qp_pair);
 }
 
 /*
@@ -673,8 +899,9 @@ void
 YbAshSetMetadataForBgworkers(void)
 {
 	YBCGenerateAshRootRequestId(MyProc->yb_ash_metadata.root_request_id);
-	MyProc->yb_ash_metadata.query_id =
-		YBCGetConstQueryId(QUERY_ID_TYPE_BACKGROUND_WORKER);
+	MyProc->yb_ash_metadata.qp = (YbcAshQueryPlanPair){
+			YBCGetConstQueryId(QUERY_ID_TYPE_BACKGROUND_WORKER),
+			YB_ASH_DEFAULT_PLAN_ID};
 	MyProc->yb_is_ash_metadata_set = true;
 }
 
@@ -800,16 +1027,6 @@ YbAshMain(Datum main_arg)
 	proc_exit(0);
 }
 
-static const unsigned char *
-get_top_level_node_id()
-{
-	static const unsigned char *local_tserver_uuid = NULL;
-
-	if (!local_tserver_uuid && IsYugaByteEnabled())
-		local_tserver_uuid = YBCGetLocalTserverUuid();
-	return local_tserver_uuid;
-}
-
 /*
  * Increments the index to insert in the circular buffer.
  */
@@ -918,10 +1135,9 @@ copy_non_pgproc_sample_fields(TimestampTz sample_time, int index)
 	int64_t		pss_mem_bytes = 0;
 
 	/* top_level_node_id is constant for all PG samples */
-	if (get_top_level_node_id())
-		memcpy(cb_sample->top_level_node_id,
-			   get_top_level_node_id(),
-			   sizeof(cb_sample->top_level_node_id));
+	Assert(YbGetLocalTServerUuid() != NULL);
+	memcpy(cb_sample->top_level_node_id, YbGetLocalTServerUuid(),
+		   sizeof(cb_sample->top_level_node_id));
 
 	/* rpc_request_id is 0 for PG samples */
 	cb_sample->rpc_request_id = 0;
@@ -1112,7 +1328,7 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("ysql_yb_enable_ash gflag must be enabled")));
 
-	if (ncols < ACTIVE_SESSION_HISTORY_COLS_V6)
+	if (ncols < ACTIVE_SESSION_HISTORY_COLS_V7)
 		ncols = YbGetNumberOfFunctionOutputColumns(F_YB_ACTIVE_SESSION_HISTORY);
 
 	/* Stuff done only on the first call of the function */
@@ -1166,7 +1382,7 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		uchar_to_uuid(sample->top_level_node_id, &top_level_node_id);
 		values[j++] = UUIDPGetDatum(&top_level_node_id);
 
-		values[j++] = UInt64GetDatum(metadata->query_id);
+		values[j++] = UInt64GetDatum(metadata->qp.query_id);
 		values[j++] = Int32GetDatum(metadata->pid);
 
 		if (metadata->addr_family == AF_INET || metadata->addr_family == AF_INET6)
@@ -1219,6 +1435,9 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 
 		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V6)
 			values[j++] = ObjectIdGetDatum(metadata->user_id);
+
+		if (ncols >= ACTIVE_SESSION_HISTORY_COLS_V7)
+			values[j++] = UInt64GetDatum(metadata->qp.plan_id);
 
 		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
 

@@ -210,7 +210,7 @@ export const handleFormSubmitServerError = (
       });
     } else {
       const keyArr = key?.split('[');
-      const topLevelKey = `${errFormFieldsMap[keyArr?.[0]]}[${(keyArr?.[1]).split(']')[0]}]`;
+      const topLevelKey = `${errFormFieldsMap[keyArr?.[0]]}[${(keyArr?.[1] ?? '').split(']')[0]}]`;
       const prevError = get(formMethods.formState.errors, topLevelKey);
 
       formMethods.setError(topLevelKey, {
@@ -226,6 +226,7 @@ const ProviderValidationRuntimeConfigKeys = {
   [CloudType.aws]: 'yb.provider.aws_provider_validation',
   [CloudType.gcp]: 'yb.provider.gcp_provider_validation',
   [CloudType.azu]: 'yb.provider.azure_provider_validation',
+  [CloudType.oci]: 'yb.provider.oci_provider_validation',
   [CloudType.kubernetes]: 'yb.provider.kubernetes_provider_validation',
   [CloudType.onprem]: 'yb.provider.onprem_provider_validation'
 };
@@ -240,6 +241,7 @@ export function useIsProviderValidationEnabled(
     CloudType.aws,
     CloudType.azu,
     CloudType.gcp,
+    CloudType.oci,
     CloudType.kubernetes,
     CloudType.onprem
   ].includes(provider);

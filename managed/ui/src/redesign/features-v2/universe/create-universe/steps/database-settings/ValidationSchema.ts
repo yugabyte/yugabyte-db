@@ -1,9 +1,10 @@
 import * as Yup from 'yup';
 import { useTranslation } from 'react-i18next';
 import { DatabaseSettingsProps } from './dtos';
-import { YSQL_FIELD } from '../../fields';
+import { YSQL_FIELD } from '../../fields/FieldNames';
 
-const PASSWORD_REGEX = /^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/;
+const PASSWORD_REGEX =
+  /^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/;
 
 export const DatabaseValidationSchema = () => {
   const { t } = useTranslation();
@@ -14,19 +15,19 @@ export const DatabaseValidationSchema = () => {
         is: true,
         then: Yup.string()
           .required(
-            t('universeForm.validation.required', {
-              field: t('universeForm.securityConfig.authSettings.ysqlAuthPassword')
+            t('createUniverseV2.validation.required', {
+              field: t('createUniverseV2.databaseSettings.ysqlSettings.authPwd')
             }) as string
           )
-          .matches(PASSWORD_REGEX, t('universeForm.validation.passwordStrength')),
+          .matches(PASSWORD_REGEX, t('createUniverseV2.validation.passwordStrength')),
         otherwise: Yup.string().notRequired()
       }),
-      confirm_pwd: Yup.string().when('password', (password, field) => {
-        return password
-          ? field
-              .required('Please re-enter your password')
-              .oneOf([Yup.ref('password')], t('universeForm.validation.confirmPassword'))
-          : field;
+      confirm_pwd: Yup.string().when(['enable_auth', 'enable'], {
+        is: true,
+        then: Yup.string()
+          .required('Please re-enter your password')
+          .oneOf([Yup.ref('password')], t('createUniverseV2.validation.confirmPassword')),
+        otherwise: Yup.string().notRequired()
       })
     }),
     ycql: Yup.object({
@@ -34,19 +35,19 @@ export const DatabaseValidationSchema = () => {
         is: true,
         then: Yup.string()
           .required(
-            t('universeForm.validation.required', {
-              field: t('universeForm.securityConfig.authSettings.ycqlAuthPassword')
+            t('createUniverseV2.validation.required', {
+              field: t('createUniverseV2.databaseSettings.ycqlSettings.authPwd')
             }) as string
           )
-          .matches(PASSWORD_REGEX, t('universeForm.validation.passwordStrength')),
+          .matches(PASSWORD_REGEX, t('createUniverseV2.validation.passwordStrength')),
         otherwise: Yup.string().notRequired()
       }),
-      confirm_pwd: Yup.string().when('password', (password, field) => {
-        return password
-          ? field
-              .required('Please re-enter your password')
-              .oneOf([Yup.ref('password')], t('universeForm.validation.confirmPassword'))
-          : field;
+      confirm_pwd: Yup.string().when(['enable_auth', 'enable'], {
+        is: true,
+        then: Yup.string()
+          .required('Please re-enter your password')
+          .oneOf([Yup.ref('password')], t('createUniverseV2.validation.confirmPassword')),
+        otherwise: Yup.string().notRequired()
       })
     })
   }).test(

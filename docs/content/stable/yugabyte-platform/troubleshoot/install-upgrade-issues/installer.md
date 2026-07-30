@@ -77,14 +77,6 @@ Affected releases: All
 
 Workaround: If you want to configure the new settings to non-default values, manually add the keys and values to `/opt/yba-ctl/yba-ctl.yml`. Otherwise, no action is needed.
 
-## High availability on Replicated installation with HTTP no longer works after migration
-
-If you have a Replicated installation that uses HTTP and you migrate to YBA Installer, your [high availability](../../../administer-yugabyte-platform/high-availability/) (HA) setup will no longer work after the migration. This is because YBA Installer always uses HTTPS. YBA Installer will attempt to block the migration if it detects a Replicated installation with HA enabled that uses HTTP.
-
-Affected releases: All
-
-Workaround: Refer to [Migration and high availability](/v2.20/yugabyte-platform/install-yugabyte-platform/migrate-replicated/#in-place-migration-and-high-availability).
-
 ## Running low on free disk space
 
 If you are running out of disk space on your YugabyteDB Anywhere node, check the size of the Prometheus directory (default location is `/opt/yugabyte/data/prometheus`) using the following command:

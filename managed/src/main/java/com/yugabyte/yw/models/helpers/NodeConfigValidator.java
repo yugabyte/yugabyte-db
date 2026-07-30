@@ -191,7 +191,7 @@ public class NodeConfigValidator {
       case PROMETHEUS_SPACE:
         {
           int value =
-              getFromConfig(CONFIG_INT_SUPPLIER, provider, ProviderConfKeys.minPrometheusSpaceMb);
+              getFromConfig(CONFIG_INT_SUPPLIER, provider, ProviderConfKeys.minPrometheusSpaceGb);
           return Integer.parseInt(nodeConfig.getValue()) >= value;
         }
       case USER:
@@ -208,7 +208,7 @@ public class NodeConfigValidator {
       case HOME_DIR_SPACE:
         {
           int value =
-              getFromConfig(CONFIG_INT_SUPPLIER, provider, ProviderConfKeys.minHomeDirSpaceMb);
+              getFromConfig(CONFIG_INT_SUPPLIER, provider, ProviderConfKeys.minHomeDirSpaceGb);
           return Integer.parseInt(nodeConfig.getValue()) >= value;
         }
       case RAM_SIZE:
@@ -226,7 +226,7 @@ public class NodeConfigValidator {
       case TMP_DIR_SPACE:
         {
           int value =
-              getFromConfig(CONFIG_INT_SUPPLIER, provider, ProviderConfKeys.minTempDirSpaceMb);
+              getFromConfig(CONFIG_INT_SUPPLIER, provider, ProviderConfKeys.minTempDirSpaceGb);
           return Integer.parseInt(nodeConfig.getValue()) >= value;
         }
       case PAM_LIMITS_WRITABLE:
@@ -251,7 +251,7 @@ public class NodeConfigValidator {
         {
           int value =
               getFromConfig(
-                  CONFIG_INT_SUPPLIER, provider, ProviderConfKeys.minMountPointDirSpaceMb);
+                  CONFIG_INT_SUPPLIER, provider, ProviderConfKeys.minMountPointDirSpaceGb);
           return checkJsonFieldsGreaterEquals(nodeConfig.getValue(), value);
         }
       case ULIMIT_CORE:

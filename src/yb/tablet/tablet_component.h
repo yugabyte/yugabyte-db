@@ -19,6 +19,7 @@
 
 #include "yb/docdb/docdb_fwd.h"
 
+#include "yb/rocksdb/listener.h"
 #include "yb/rocksdb/rocksdb_fwd.h"
 
 #include "yb/tablet/tablet_fwd.h"
@@ -27,6 +28,7 @@
 
 namespace yb {
 
+class Env;
 class RWOperationCounter;
 
 namespace tablet {
@@ -56,7 +58,11 @@ class TabletComponent {
 
   std::string LogPrefix() const;
 
-  Status Flush(FlushMode mode, FlushFlags flags = FlushFlags::kAllDbs);
+  Status Flush(FlushMode mode, FlushFlags flags, rocksdb::FlushReason rocksdb_flush_reason);
+
+  Status Flush(FlushMode mode, rocksdb::FlushReason rocksdb_flush_reason) {
+    return Flush(mode, FlushFlags::kAllDbs, rocksdb_flush_reason);
+  }
 
   RaftGroupMetadata& metadata() const;
 
@@ -76,11 +82,13 @@ class TabletComponent {
 
   std::mutex& create_checkpoint_lock() const;
 
+  Env& env() const;
+
   rocksdb::Env& rocksdb_env() const;
 
   void RefreshYBMetaDataCache();
 
-  docdb::DocVectorIndexesPtr VectorIndexesList() const;
+  VectorIndexList VectorIndexesList() const;
 
  private:
   Tablet& tablet_;

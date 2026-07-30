@@ -99,11 +99,11 @@ public class AzureProviderValidator extends ProviderFieldsValidator {
       AZUResourceGroupApiClient client = new AZUResourceGroupApiClient(cloudInfo);
       AzureResourceManager azure = client.getResourceManager(cloudInfo, 0);
       for (ResourceGroup rg : azure.resourceGroups().list()) {
-        String rgName = rg.name();
+        log.trace("RG: {} ", rg.name());
       }
     } catch (Exception e) {
       String error = e.getMessage().toLowerCase();
-      log.error("Exception validating Azure provider: {}", error);
+      log.error("Exception validating Azure provider", e);
       String clientJsonPath = cloudInfoJson.get("azuClientId").get("jsonPath").asText();
       // secret can be null in case of managed identity so create path from client jsonPath
       String secretJsonPath = clientJsonPath.replace("azuClientId", "azuClientSecret");

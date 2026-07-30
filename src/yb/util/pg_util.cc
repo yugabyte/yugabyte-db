@@ -13,13 +13,8 @@
 
 #include "yb/util/pg_util.h"
 
-#include <algorithm>
-
-#include <regex>
 #include <string>
 #include <boost/algorithm/string/replace.hpp>
-
-#include "yb/util/logging.h"
 
 #include "yb/util/format.h"
 #include "yb/util/hash_util.h"
@@ -112,40 +107,6 @@ std::string PgDeriveSocketDir(const HostPort& host_port) {
 std::string PgDeriveSocketLockFile(const HostPort& host_port) {
   return JoinPathSegments(
       PgDeriveSocketDir(host_port), Format(".s.PGSQL.$0.lock", host_port.port()));
-}
-
-Status ReadCSVValues(const std::string& csv, std::vector<std::string>* lines) {
-  // Function reads CSV string in the following format:
-  // - fields are divided with comma (,)
-  // - fields with comma (,) or double-quote (") are quoted with double-quote (")
-  // - pair of double-quote ("") in quoted field represents single double-quote (")
-  //
-  // Examples:
-  // 1,"two, 2","three ""3""", four , -> ['1', 'two, 2', 'three "3"', ' four ', '']
-  // 1,"two                           -> Malformed CSV (quoted field 'two' is not closed)
-  // 1, "two"                         -> Malformed CSV (quoted field 'two' has leading spaces)
-  // 1,two "2"                        -> Malformed CSV (field with " must be quoted)
-  // 1,"tw"o"                         -> Malformed CSV (no separator after quoted field 'tw')
-
-  const std::regex exp(R"(^(?:([^,"]+)|(?:"((?:[^"]|(?:""))*)\"))(?:(?:,)|(?:$)))");
-  auto i = csv.begin();
-  const auto end = csv.end();
-  std::smatch match;
-  while (i != end && std::regex_search(i, end, match, exp)) {
-    // Replace pair of double-quote ("") with single double-quote (") in quoted field.
-    if (match[2].length() > 0) {
-      lines->emplace_back(match[2].first, match[2].second);
-      boost::algorithm::replace_all(lines->back(), "\"\"", "\"");
-    } else {
-      lines->emplace_back(match[1].first, match[1].second);
-    }
-    i += match.length();
-  }
-  SCHECK(i == end, InvalidArgument, Format("Malformed CSV '$0'", csv));
-  if (!csv.empty() && csv.back() == ',') {
-    lines->emplace_back();
-  }
-  return Status::OK();
 }
 
 } // namespace yb

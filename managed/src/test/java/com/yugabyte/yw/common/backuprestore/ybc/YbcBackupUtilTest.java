@@ -9,6 +9,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
@@ -444,6 +445,8 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     when(mockAWSUtil.getRegionLocationsMap(any())).thenCallRealMethod();
     when(mockAWSUtil.getCloudLocationInfo(nullable(String.class), any(), nullable(String.class)))
         .thenCallRealMethod();
+    String appId = "APN_1.1/fortestingpurposes44$";
+    when(mockAWSUtil.getAwsSdkUaAppId()).thenReturn(appId);
     CloudStoreConfig csConfig =
         ybcBackupUtil.createBackupConfig(storageConfig, commonDir, defaultUniverse);
     Map<String, String> s3DefaultCredsMap =
@@ -453,6 +456,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
             put("AWS_SECRET_ACCESS_KEY", "A-SECRET");
             put("AWS_ENDPOINT", "s3.us-east-1.amazonaws.com");
             put("AWS_DEFAULT_REGION", "us-east-1");
+            put("AWS_SDK_UA_APP_ID", appId);
           }
         };
     Map<String, String> s3Region_1CredsMap =
@@ -462,6 +466,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
             put("AWS_SECRET_ACCESS_KEY", "A-SECRET");
             put("AWS_ENDPOINT", "s3.ap-south-1.amazonaws.com");
             put("AWS_DEFAULT_REGION", "ap-south-1");
+            put("AWS_SDK_UA_APP_ID", appId);
           }
         };
     Map<String, String> s3Region_2CredsMap =
@@ -471,6 +476,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
             put("AWS_SECRET_ACCESS_KEY", "A-SECRET");
             put("AWS_ENDPOINT", "s3.eu-south-1.amazonaws.com");
             put("AWS_DEFAULT_REGION", "eu-south-1");
+            put("AWS_SDK_UA_APP_ID", appId);
           }
         };
     assertTrue(csConfig.getDefaultSpec().getCredsMap().equals(s3DefaultCredsMap));
@@ -480,6 +486,55 @@ public class YbcBackupUtilTest extends FakeDBApplication {
         csConfig.getRegionSpecMapMap().get("us-west2").getCredsMap().equals(s3Region_2CredsMap));
     String expectedDir = commonDir.concat("/");
     assertEquals(expectedDir, csConfig.getDefaultSpec().getCloudDir());
+  }
+
+  @Test
+  public void testCreateBackupConfigNfsWithVolumes() {
+    List<String> nfsVolumes = Arrays.asList("/mnt/nfs/vol1", "/mnt/nfs/vol2");
+    CustomerConfig nfsConfig =
+        ModelFactory.createNfsStorageConfig(
+            testCustomer, "test-NFS-vol", "/tmp/nfs", "yugabyte_backup", nfsVolumes);
+    UUID uniUUID = UUID.randomUUID();
+    String commonDir = "univ-" + uniUUID + "/backup-timestamp/keyspace-foo";
+    when(mockStorageUtilFactory.getStorageUtil(eq("NFS"))).thenReturn(mockNfsUtil);
+    when(mockNfsUtil.createCloudStoreSpec(
+            anyString(), anyString(), nullable(String.class), any(), any()))
+        .thenCallRealMethod();
+    when(mockNfsUtil.getRegionLocationsMap(any())).thenCallRealMethod();
+    CloudStoreConfig csConfig =
+        ybcBackupUtil.createBackupConfig(nfsConfig, commonDir, defaultUniverse);
+    assertEquals(nfsVolumes, csConfig.getDefaultSpec().getNfsVolumesList());
+    assertEquals("/tmp/nfs", csConfig.getDefaultSpec().getCredsMap().get("YBC_NFS_DIR"));
+    assertEquals("yugabyte_backup", csConfig.getDefaultSpec().getBucket());
+    String expectedDir = commonDir.concat("/");
+    assertEquals(expectedDir, csConfig.getDefaultSpec().getCloudDir());
+  }
+
+  @Test
+  public void testCreateRestoreConfigNfsWithVolumes() {
+    List<String> nfsVolumes = Arrays.asList("/mnt/nfs/vol1", "/mnt/nfs/vol2");
+    CustomerConfig nfsConfig =
+        ModelFactory.createNfsStorageConfig(
+            testCustomer, "test-NFS-restore", "/tmp/nfs", "yugabyte_backup", nfsVolumes);
+    when(mockStorageUtilFactory.getStorageUtil(eq("NFS"))).thenReturn(mockNfsUtil);
+    when(mockNfsUtil.createRestoreCloudStoreSpec(
+            anyString(), anyString(), any(), anyBoolean(), any()))
+        .thenCallRealMethod();
+    when(mockNfsUtil.getRegionLocationsMap(any())).thenCallRealMethod();
+
+    BucketLocation defaultBucketLocation = new BucketLocation();
+    defaultBucketLocation.bucket = "yugabyte_backup";
+    defaultBucketLocation.cloudDir = "univ-000/backup/keyspace-bar/";
+    YbcBackupResponse successMarker = new YbcBackupResponse();
+    successMarker.responseCloudStoreSpec = new ResponseCloudStoreSpec();
+    successMarker.responseCloudStoreSpec.defaultLocation = defaultBucketLocation;
+
+    CloudStoreConfig csConfig =
+        ybcBackupUtil.createRestoreConfig(nfsConfig, successMarker, defaultUniverse);
+    assertEquals(nfsVolumes, csConfig.getDefaultSpec().getNfsVolumesList());
+    assertEquals("/tmp/nfs", csConfig.getDefaultSpec().getCredsMap().get("YBC_NFS_DIR"));
+    assertEquals("yugabyte_backup", csConfig.getDefaultSpec().getBucket());
+    assertEquals("univ-000/backup/keyspace-bar/", csConfig.getDefaultSpec().getCloudDir());
   }
 
   @Test

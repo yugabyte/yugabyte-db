@@ -392,4 +392,22 @@ TEST_F(YsqlMajorExtensionUpgradeTest, YbYcqlUtils) {
   ASSERT_NO_FATALS(check_query(kAnyTserver));
 }
 
+TEST_F(YsqlMajorExtensionUpgradeTest, PgCryptoSchema) {
+  const std::vector<std::string> expected_error = {
+      "In database: yugabyte",
+      "  pgcrypto installed in pg_catalog schema",
+      "Your installation contains the 'pgcrypto' extension in the",
+      "conflicting 'pg_catalog' schema. To proceed with the upgrade, please",
+      "uninstall the extension using DROP EXTENSION, and reinstall it into",
+      "a different schema (e.g. public).",
+  };
+
+  // Seems like pg_catalog schema prohibutes alter extension, so we need to drop and recreate
+  ASSERT_OK(ExecuteStatement(Format("CREATE EXTENSION pgcrypto SCHEMA pg_catalog")));
+  ASSERT_OK(ValidateUpgradeCompatibilityFailure(expected_error));
+  ASSERT_OK(ExecuteStatement("DROP EXTENSION pgcrypto"));
+  ASSERT_OK(ExecuteStatement("CREATE EXTENSION pgcrypto SCHEMA public"));
+  ASSERT_OK(UpgradeClusterToCurrentVersion());
+}
+
 } // namespace yb

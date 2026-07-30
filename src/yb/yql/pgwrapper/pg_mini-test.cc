@@ -21,6 +21,9 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/client/client.h"
+#include "yb/client/schema.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
 
@@ -58,6 +61,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
 #include "yb/util/metrics.h"
@@ -72,6 +76,7 @@
 
 #include "yb/yql/pggate/pggate_flags.h"
 
+#include "yb/yql/pgwrapper/libpq_test_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
@@ -101,6 +106,7 @@ DECLARE_bool(ysql_yb_enable_replica_identity);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
@@ -115,6 +121,7 @@ DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
 DECLARE_int32(tracing_level);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+DECLARE_int32(tablet_creation_timeout_ms);
 DECLARE_int32(txn_max_apply_batch_records);
 DECLARE_int32(yb_num_shards_per_tserver);
 DECLARE_int32(ysql_yb_ash_sample_size);
@@ -151,25 +158,17 @@ METRIC_DECLARE_gauge_uint64(wal_replayable_applied_transactions);
 namespace yb::pgwrapper {
 namespace {
 
-Result<int64_t> GetCatalogVersion(PGConn* conn) {
-  if (FLAGS_ysql_enable_db_catalog_version_mode) {
-    const auto db_oid = VERIFY_RESULT(conn->FetchRow<PGOid>(Format(
-        "SELECT oid FROM pg_database WHERE datname = '$0'", PQdb(conn->get()))));
-    return conn->FetchRow<PGUint64>(
-        Format("SELECT current_version FROM pg_yb_catalog_version where db_oid = $0", db_oid));
-  }
-  return conn->FetchRow<PGUint64>("SELECT current_version FROM pg_yb_catalog_version");
-}
-
 Result<bool> IsCatalogVersionChangedDuringDdl(PGConn* conn, const std::string& ddl_query) {
-  const auto initial_version = VERIFY_RESULT(GetCatalogVersion(conn));
+  auto version_getter =
+      [conn]() { return GetCatalogVersion(conn); };
+  const auto initial_version = VERIFY_RESULT(version_getter());
   RETURN_NOT_OK(conn->Execute(ddl_query));
-  return initial_version != VERIFY_RESULT(GetCatalogVersion(conn));
+  return initial_version != VERIFY_RESULT(version_getter());
 }
 
 Status IsReplicaIdentityPopulatedInTabletPeers(
-    PgReplicaIdentity expected_replica_identity, std::vector<tablet::TabletPeerPtr> tablet_peers,
-    std::string table_id) {
+    PgReplicaIdentity expected_replica_identity,
+    const std::vector<tablet::TabletPeerPtr>& tablet_peers, const std::string& table_id) {
   for (const auto& peer : tablet_peers) {
     auto replica_identity =
         peer->tablet_metadata()->schema(table_id)->table_properties().replica_identity();
@@ -600,13 +599,15 @@ TEST_P(PgMiniTestTracing, Tracing) {
     std::atomic<size_t> last_logged_bytes_{0};
   };
 
-  TraceLogSink trace_log_sink;
 
+  TraceLogSink trace_log_sink;
   google::AddLogSink(&trace_log_sink);
   size_t last_logged_trace_size;
 
-  auto conn = ASSERT_RESULT(Connect());
+  // Wait for all tablet servers to be registered at the master.
+  ASSERT_OK(cluster_->WaitForTabletServerCount(cluster_->num_tablet_servers()));
 
+  auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value TEXT, value2 TEXT)"));
 
   LOG(INFO) << "Doing Insert";
@@ -725,7 +726,7 @@ TEST_F(PgMiniTest, WriteRetry) {
 
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
 
-  SetAtomicFlag(0.25, &FLAGS_TEST_respond_write_failed_probability);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_respond_write_failed_probability) = 0.25;
 
   LOG(INFO) << "Insert " << kKeys << " keys";
   for (int key = 0; key != kKeys; ++key) {
@@ -734,7 +735,7 @@ TEST_F(PgMiniTest, WriteRetry) {
                 status.ToString().find("Duplicate request") != std::string::npos) << status;
   }
 
-  SetAtomicFlag(0, &FLAGS_TEST_respond_write_failed_probability);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_respond_write_failed_probability) = 0;
 
   auto result = ASSERT_RESULT(conn.FetchMatrix("SELECT * FROM t ORDER BY key", kKeys, 1));
   for (int key = 0; key != kKeys; ++key) {
@@ -846,7 +847,7 @@ class PgMiniLargeClockSkewTest : public PgMiniTest {
   void SetUp() override {
     server::SkewedClock::Register();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_time_source) = server::SkewedClock::kName;
-    SetAtomicFlag(250000ULL, &FLAGS_max_clock_skew_usec);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 250000ULL;
     PgMiniTestBase::SetUp();
   }
 };
@@ -984,12 +985,12 @@ TEST_F(PgMiniTest, TruncateColocatedBigTable) {
   // Insert 2 rows, and flush.
   ASSERT_OK(conn.Execute("insert into t1 values (1)"));
   ASSERT_OK(conn.Execute("insert into t1 values (2)"));
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   // Truncate the table, and flush. Tabletombstone should be in a seperate sst file.
   ASSERT_OK(conn.Execute("TRUNCATE t1"));
   SleepFor(1s);
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   // Check if the row still visible.
   ASSERT_OK(conn.FetchMatrix("select k from t1 where k = 1", 0, 1));
@@ -1023,14 +1024,13 @@ TEST_F_EX(PgMiniTest, BulkCopyWithRestart, PgMiniSmallWriteBufferTest) {
     });
 
     while (!stop.load(std::memory_order_acquire) && key < kBatchSize * kTotalBatches) {
-      ASSERT_OK(connection.CopyBegin(Format("COPY $0 FROM STDIN WITH BINARY", kTableName)));
-      for (int j = 0; j != kBatchSize; ++j) {
-        connection.CopyStartRow(2);
-        connection.CopyPutInt32(++key);
-        connection.CopyPutString(RandomHumanReadableString(kValueSize));
-      }
-
-      ASSERT_OK(connection.CopyEnd());
+      ASSERT_OK(connection.CopyFromStdin(
+          kTableName,
+          [&key](PGConn::RowMaker<int32_t, std::string_view>& row) {
+            for (int j = 0; j != kBatchSize; ++j) {
+              row(++key, RandomHumanReadableString(kValueSize));
+            }
+          }));
     }
   });
 
@@ -1311,7 +1311,7 @@ TEST_F(PgMiniTest, MoveMaster) {
 }
 
 TEST_F(PgMiniTest, DDLWithRestart) {
-  SetAtomicFlag(1.0, &FLAGS_TEST_transaction_ignore_applying_probability);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_ignore_applying_probability) = 1.0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_force_master_leader_resolution) = true;
 
   auto conn = ASSERT_RESULT(Connect());
@@ -2368,14 +2368,14 @@ TEST_F(PgMiniTest, CompactionAfterDBDrop) {
   auto sys_catalog_tablet =
       ASSERT_RESULT(catalog_manager.sys_catalog()->tablet_peer()->shared_tablet());
 
-  ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
   ASSERT_OK(sys_catalog_tablet->ForceManualRocksDBCompact());
   uint64_t base_file_size = sys_catalog_tablet->GetCurrentVersionSstFilesUncompressedSize();;
 
   PGConn conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDatabaseName));
   ASSERT_OK(conn.ExecuteFormat("DROP DATABASE $0", kDatabaseName));
-  ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(sys_catalog_tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   // Make sure compaction works without error for the hybrid_time > history_cutoff case.
   ASSERT_OK(sys_catalog_tablet->ForceManualRocksDBCompact());
@@ -2461,7 +2461,16 @@ TEST_F(PgMiniTest, ReadHugeRow) {
   ASSERT_STR_CONTAINS(res.status().ToString(), "Sending too long RPC message");
 }
 
-// Check that fetch of data amount exceeding the message size automatically paginates and succeeds
+// Check that fetch of data amount exceeding the message size automatically paginates and succeeds.
+//
+// The IndexScan path here also exercises the batched-ybctid mid-batch pagination contract:
+// the index emits 1000 ybctids in `i` order, the main-table fetch is via batched ybctid with
+// per-arg order tags (keep_order=true), and the wide rows force response_size_limit to trigger
+// mid-batch - driving response.batch_arg_count < batch_arguments.size() and the client's
+// pop_front-based pagination loop. The content checks below catch any skip/duplicate or
+// ordering regression introduced by the wire-order vs processed-order contract (e.g., a
+// reintroduced server-side sort, or sorting batch_arguments while keep_order is set, which
+// would break the k-way merge in MergingPgDocOpFetchStream).
 TEST_F(PgMiniTest, ReadHugeRows) {
   // kNumRows should be less than default yb_fetch_row_limit, but not too low, so system can work
   constexpr size_t kNumRows = 1000;
@@ -2481,10 +2490,67 @@ TEST_F(PgMiniTest, ReadHugeRows) {
         "INSERT INTO test VALUES($0, $0 * 2, repeat('0', $1))", i, kColumnSize));
   }
 
-  // SeqScan, direct fetch from the main table
-  ASSERT_OK(conn.Fetch("SELECT * FROM test"));
-  // IndexScan, fetch from the main table by ybctids
-  ASSERT_OK(conn.Fetch("SELECT * FROM test ORDER BY i"));
+  // SeqScan, direct fetch from the main table. Verify every pk is present exactly once.
+  {
+    auto pks = ASSERT_RESULT(conn.FetchRows<int32_t>("SELECT pk FROM test ORDER BY pk"));
+    ASSERT_EQ(pks.size(), kNumRows);
+    for (size_t i = 0; i < kNumRows; ++i) {
+      ASSERT_EQ(pks[i], i);
+    }
+    pks = ASSERT_RESULT(conn.FetchRows<int32_t>("SELECT pk FROM test ORDER BY pk DESC"));
+    ASSERT_EQ(pks.size(), kNumRows);
+    for (size_t i = 0; i < kNumRows; ++i) {
+      ASSERT_EQ(pks[i], kNumRows - 1 - i);
+    }
+    pks = ASSERT_RESULT(conn.FetchRows<int32_t>("SELECT pk FROM test ORDER BY pk % 100, pk"));
+    ASSERT_EQ(pks.size(), kNumRows);
+    int32_t pk = 0;
+    for (size_t i = 0; i < kNumRows; ++i) {
+      ASSERT_EQ(pks[i], pk);
+      pk += 100;
+      if (std::cmp_greater_equal(pk, kNumRows)) {
+        pk = pk % 100 + 1;
+      }
+    }
+  }
+
+  // IndexScan, fetch from the main table by ybctids. Each row carries i = pk * 2; verifying
+  // that all (pk, i) pairs arrive in i order proves:
+  //   - no row was dropped (mid-batch pagination didn't skip)
+  //   - no row was duplicated (wire-order vs processed-order contract holds)
+  //   - the MergingPgDocOpFetchStream's k-way merge produced globally-ordered results
+  {
+    auto rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>(
+      ("SELECT pk, i FROM test ORDER BY i"))));
+    ASSERT_EQ(rows.size(), static_cast<size_t>(kNumRows));
+    for (size_t i = 0; i < kNumRows; ++i) {
+      const auto& [pk, idx] = rows[i];
+      ASSERT_EQ(pk, i);
+      ASSERT_EQ(idx, i * 2);
+    }
+    rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>(
+      ("SELECT pk, i FROM test ORDER BY i DESC"))));
+    ASSERT_EQ(rows.size(), static_cast<size_t>(kNumRows));
+    for (size_t i = 0; i < kNumRows; ++i) {
+      const auto& [pk, idx] = rows[i];
+      const auto expected_pk = kNumRows - 1 - i;
+      ASSERT_EQ(pk, expected_pk);
+      ASSERT_EQ(idx, expected_pk * 2);
+    }
+    rows = ASSERT_RESULT((conn.FetchRows<int32_t, int32_t>(
+      ("SELECT pk, i FROM test ORDER BY i % 100, i"))));
+    ASSERT_EQ(rows.size(), static_cast<size_t>(kNumRows));
+    int32_t expected_pk = 0;
+    for (size_t i = 0; i < kNumRows; ++i) {
+      const auto& [pk, idx] = rows[i];
+      ASSERT_EQ(pk, expected_pk);
+      ASSERT_EQ(idx, expected_pk * 2);
+      expected_pk += 50;
+      if (std::cmp_greater_equal(expected_pk, kNumRows)) {
+        expected_pk = expected_pk % 50 + 1;
+      }
+    }
+  }
 }
 
 // Test that ANALYZE on tables with different row width does not exceed the RPC size limit
@@ -2579,8 +2645,9 @@ TEST_F(PgMiniTest, BloomFilterBackwardScanTest) {
 class PgMiniStreamCompressionTest : public PgMiniTest {
  public:
   void SetUp() override {
-    FLAGS_stream_compression_algo = 1; // gzip
-    FLAGS_gzip_stream_compression_level = 6; // old default compression level
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_stream_compression_algo) = 1; // gzip
+    // old default compression level
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_gzip_stream_compression_level) = 6;
     PgMiniTest::SetUp();
   }
 };
@@ -2592,14 +2659,13 @@ TEST_F_EX(PgMiniTest, DISABLED_ReadsDuringRBS, PgMiniStreamCompressionTest) {
 
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value BYTEA) SPLIT INTO 1 TABLETS"));
-  ASSERT_OK(conn.CopyBegin("COPY t FROM STDIN WITH BINARY"));
-  for (auto key : Range(kNumRows)) {
-    conn.CopyStartRow(2);
-    conn.CopyPutInt32(key);
-    conn.CopyPutString(RandomString(kValueSize));
-  }
-  ASSERT_OK(conn.CopyEnd());
-
+  ASSERT_OK(conn.CopyFromStdin(
+      "t",
+      [](PGConn::RowMaker<int32_t, std::string_view>& row) {
+        for (auto key : Range(kNumRows)) {
+          row(key, RandomString(kValueSize));
+        }
+      }));
   FlushAndCompactTablets();
 
   LOG(INFO) << "Rows: " << ASSERT_RESULT(conn.FetchAllAsString("SELECT key FROM t"));
@@ -2729,14 +2795,14 @@ TEST_F(PgMiniTestSingleNode, TestBootstrapOnAppliedTransactionWithIntents) {
   ASSERT_OK(conn1.Execute("INSERT INTO test(a) VALUES (0)"));
 
   LOG(INFO) << "Flush";
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   LOG(INFO) << "T2 - BEGIN/INSERT";
   ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn2.Execute("INSERT INTO test(a) VALUES (1)"));
 
   LOG(INFO) << "Flush";
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   LOG(INFO) << "T1 - Commit";
   ASSERT_OK(conn1.CommitTransaction());
@@ -2801,7 +2867,7 @@ TEST_F(PgMiniTestSingleNode, TestBootstrapFilterOldTransactionNewWrite) {
   ASSERT_OK(conn1.Execute("INSERT INTO test1(a) VALUES(21)"));
 
   LOG(INFO) << "Flush";
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   LOG(INFO) << "T1 - Commit";
   ASSERT_OK(conn1.CommitTransaction());
@@ -2848,7 +2914,7 @@ TEST_F(PgMiniTestSingleNode, TestAppliedTransactionsStateReadOnly) {
   ASSERT_OK(conn.Execute("INSERT INTO test1(a) VALUES (0)"));
   ASSERT_OK(conn.CommitTransaction());
 
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
   ASSERT_OK(test1_peer->FlushBootstrapState());
 
   ASSERT_OK(conn.Execute("CREATE TABLE test2(a int references test1(a)) SPLIT INTO 1 TABLETS"));
@@ -2941,7 +3007,7 @@ TEST_F(PgMiniTest, TestAppliedTransactionsStateInFlight) {
   ASSERT_OK(conn3.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   ASSERT_OK(conn3.FetchRow<PGUint32>("SELECT a FROM test WHERE a = 0 FOR KEY SHARE"));
 
-  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
+  ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync, rocksdb::FlushReason::kTestOnly));
 
   ASSERT_OK(tablet_server->Restart());
   ASSERT_OK(tablet_server->WaitStarted());
@@ -3245,7 +3311,7 @@ TEST_F(PgMiniTest, TabletMetadataCorrectnessWithHashPartitioning) {
   // Find which tablet this hash falls into using yb_tablet_metadata
   auto tablet_from_metadata = ASSERT_RESULT(pg_conn.FetchRow<std::string>(
       yb::Format("SELECT tablet_id FROM yb_tablet_metadata "
-             "WHERE relname = 'hash_test_table' "
+             "WHERE db_name = current_database() AND relname = 'hash_test_table' "
              "AND $0 >= start_hash_code AND $0 < end_hash_code", hash_code)));
   LOG(INFO) << "Tablet ID from yb_tablet_metadata: " << tablet_from_metadata;
 
@@ -3261,7 +3327,7 @@ TEST_F(PgMiniTest, TabletMetadataCorrectnessWithHashPartitioning) {
     auto partition = tablet->metadata()->partition();
 
     // Check if this tablet contains our hash code
-    auto hash_bounds = dockv::PartitionSchema::GetHashPartitionBounds(*partition);
+    auto hash_bounds = ASSERT_RESULT(partition->GetKeysAsHashBoundsInclusive());
     uint16_t start_hash = hash_bounds.first;
     uint16_t end_hash = hash_bounds.second;
 
@@ -3300,15 +3366,282 @@ TEST_F(PgMiniTest, TabletMetadataCorrectnessWithHashPartitioning) {
 
 TEST_F(PgMiniTest, TabletMetadataOidMatchesPgClass) {
   auto pg_conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(pg_conn.Execute(
-      "CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT)"));
-  auto pg_class_oid = ASSERT_RESULT(pg_conn.FetchRow<pgwrapper::PGOid>(
+  // Create the table without a primary key, then ADD PRIMARY KEY to force a
+  // table rewrite. The rewrite preserves the table's PG OID but assigns it a new
+  // relfilenode (a new DocDB table whose UUID encodes that relfilenode), so
+  // oid != relfilenode afterwards.
+  ASSERT_OK(pg_conn.Execute("CREATE TABLE test_table (id INT, name TEXT)"));
+  ASSERT_OK(pg_conn.Execute("ALTER TABLE test_table ADD PRIMARY KEY (id)"));
+
+  const auto pg_class_oid = ASSERT_RESULT(pg_conn.FetchRow<pgwrapper::PGOid>(
       "SELECT oid FROM pg_class WHERE relname = 'test_table'"));
-  auto tablet_metadata_oid = ASSERT_RESULT(pg_conn.FetchRow<pgwrapper::PGOid>(
-      "SELECT oid FROM yb_tablet_metadata WHERE relname = 'test_table' LIMIT 1;"));
-  ASSERT_EQ(pg_class_oid, tablet_metadata_oid)
-      << "OID mismatch: pg_class returned " << pg_class_oid
-      << " but yb_tablet_metadata returned " << tablet_metadata_oid;
+  const auto pg_class_relfilenode = ASSERT_RESULT(pg_conn.FetchRow<pgwrapper::PGOid>(
+      "SELECT relfilenode FROM pg_class WHERE relname = 'test_table'"));
+
+  // Guard the test's premise: the rewrite must actually have moved the storage,
+  // otherwise relfilenode == oid and this test would not distinguish them.
+  ASSERT_NE(pg_class_oid, pg_class_relfilenode)
+      << "ALTER TABLE ADD PRIMARY KEY did not rewrite test_table; oid and "
+      << "relfilenode are both " << pg_class_oid;
+
+  // Look the table up in the view by (db_name, relname) and confirm it reports
+  // pg_class's stable oid -- which survives the rewrite -- and not the now
+  // diverged relfilenode.
+  ASSERT_OK(WaitFor([&pg_conn, pg_class_oid]() -> Result<bool> {
+    return pg_conn.FetchRow<bool>(Format(
+        "SELECT EXISTS (SELECT 1 FROM yb_tablet_metadata "
+        "WHERE db_name = current_database() AND relname = 'test_table' "
+        "AND oid = $0)", pg_class_oid));
+  }, 30s, "yb_tablet_metadata exposes test_table's stable oid"));
+}
+
+TEST_F(PgMiniTest, TabletMetadataMaskingSurvivesRewrite) {
+  // A role holding SELECT on a table sees that table's yb_tablet_metadata rows
+  // unmasked. A table rewrite assigns a new relfilenode but preserves the
+  // pg_class OID.
+  const std::string kTable = "rewrite_range_grant";
+  const std::string kRole = "tmeta_unpriv";
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Range-sharded so start_range/end_range carry real bounds.
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (k INT NOT NULL, v INT, PRIMARY KEY (k ASC)) "
+      "SPLIT AT VALUES ((5), (10))", kTable));
+  ASSERT_OK(conn.ExecuteFormat("CREATE ROLE $0", kRole));
+  ASSERT_OK(conn.ExecuteFormat("GRANT SELECT ON $0 TO $1", kTable, kRole));
+
+  const auto oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT oid FROM pg_class WHERE relname = '$0'", kTable)));
+  const auto relfilenode_before = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT relfilenode FROM pg_class WHERE relname = '$0'", kTable)));
+  // A freshly created table's relfilenode equals its OID.
+  ASSERT_EQ(oid, relfilenode_before);
+
+  // Trigger a table rewrite via a volatile column default: new relfilenode, same OID.
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLE $0 ADD COLUMN w float DEFAULT random()", kTable));
+
+  const auto oid_after = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT oid FROM pg_class WHERE relname = '$0'", kTable)));
+  const auto relfilenode_after = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      Format("SELECT relfilenode FROM pg_class WHERE relname = '$0'", kTable)));
+  ASSERT_EQ(oid_after, oid) << "rewrite must not change the pg_class OID";
+  ASSERT_NE(relfilenode_after, relfilenode_before)
+      << "ALTER TABLE ... ADD COLUMN DEFAULT random() did not rewrite the table";
+
+  // After the rewrite the granted role must still see the table unmasked,
+  // because the ACL check uses the stable OID, not the changed relfilenode.
+  ASSERT_OK(conn.ExecuteFormat("SET ROLE $0", kRole));
+
+  // Wait for all three tablets of the rewritten range table to surface.
+  ASSERT_OK(WaitFor([&conn, oid]() -> Result<bool> {
+    return VERIFY_RESULT(conn.FetchRow<int64_t>(Format(
+        "SELECT count(*) FROM yb_tablet_metadata "
+        "WHERE oid = $0 AND db_name = current_database()",
+        oid))) == 3;
+  }, 30s, "all 3 tablets of the rewritten range table are visible"));
+
+  // relname is the real name on every row, not the masked placeholder.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<std::string>(Format(
+      "SELECT DISTINCT relname FROM yb_tablet_metadata "
+      "WHERE oid = $0 AND db_name = current_database()",
+      oid))), kTable);
+
+  // No relname/start_range/end_range cell is masked.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
+      "SELECT count(*) FROM yb_tablet_metadata "
+      "WHERE oid = $0 AND db_name = current_database() "
+      "AND '<insufficient privilege>' IN (relname, start_range, end_range)",
+      oid))), 0) << "a cell was masked for a role that holds SELECT";
+
+  // The middle [5,10) tablet exposes real (non-NULL) range bounds.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(Format(
+      "SELECT count(*) FROM yb_tablet_metadata "
+      "WHERE oid = $0 AND db_name = current_database() "
+      "AND start_range IS NOT NULL AND end_range IS NOT NULL",
+      oid))), 1) << "expected the [5,10) tablet to expose real range bounds";
+
+  ASSERT_OK(conn.Execute("RESET ROLE"));
+}
+
+TEST_F(PgMiniTest, TabletMetadataStateColumn) {
+  auto pg_conn = ASSERT_RESULT(Connect());
+
+  // ======== RUNNING ========
+  // Create a table and verify all its tablets report RUNNING.
+  ASSERT_OK(pg_conn.Execute(
+      "CREATE TABLE state_test (id INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+
+  auto running_count = ASSERT_RESULT(pg_conn.FetchRow<int64_t>(
+      "SELECT count(*) FROM yb_get_tablet_metadata() "
+      "WHERE object_name = 'state_test' AND tablet_state = 'RUNNING'"));
+  ASSERT_EQ(running_count, 1);
+  LOG(INFO) << "RUNNING state verified";
+
+  // ======== DELETED via DROP TABLE ========
+  // Create a second table, record its tablet ID, then drop it.
+  ASSERT_OK(pg_conn.Execute(
+      "CREATE TABLE delete_test (id INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+
+  auto delete_table_id = ASSERT_RESULT(GetTableIDFromTableName("delete_test"));
+  auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), delete_table_id);
+  ASSERT_EQ(peers.size(), 1);
+  auto deleted_tablet_id = peers[0]->tablet_id();
+
+  ASSERT_OK(pg_conn.Execute("DROP TABLE delete_test"));
+
+  // DROP returns once the tablets are deleted, but the master keeps the tablet in
+  // tablet_map_ in DELETED state until the background CleanUpDeletedTables task erases
+  // it on its next cycle. Poll within that window to observe the DELETED state.
+  ASSERT_OK(LoggedWaitFor(
+      [&pg_conn, &deleted_tablet_id]() -> Result<bool> {
+        auto count = VERIFY_RESULT(pg_conn.FetchRow<int64_t>(Format(
+            "SELECT count(*) FROM yb_get_tablet_metadata() "
+            "WHERE tablet_id = '$0' AND tablet_state = 'DELETED'", deleted_tablet_id)));
+        return count > 0;
+      },
+      30s * kTimeMultiplier, "Wait for DELETED tablet state after DROP TABLE"));
+  LOG(INFO) << "DELETED state verified for tablet " << deleted_tablet_id;
+
+  // ======== REPLACED via creation timeout ========
+  // Set a very low creation timeout, shut down 2 of 3 tservers so new tablets can't
+  // get a quorum, and create a CQL table (non-blocking). The master will mark the
+  // timed-out tablets as REPLACED.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_creation_timeout_ms) = 1000;
+
+  cluster_->mini_tablet_server(1)->Shutdown();
+  cluster_->mini_tablet_server(2)->Shutdown();
+
+  ASSERT_OK(client_->CreateNamespaceIfNotExists("test_ks", YQLDatabase::YQL_DATABASE_CQL));
+
+  client::YBSchemaBuilder builder;
+  builder.AddColumn("id")->Type(DataType::INT32)->NotNull()->HashPrimaryKey();
+  client::YBSchema schema;
+  ASSERT_OK(builder.Build(&schema));
+
+  auto table_name = client::YBTableName(YQL_DATABASE_CQL, "test_ks", "replaced_test");
+  ASSERT_OK(client_->NewTableCreator()
+      ->table_name(table_name)
+      .schema(&schema)
+      .num_tablets(1)
+      .wait(false)
+      .Create());
+
+  // Wait for creation timeout to trigger REPLACED.
+  ASSERT_OK(LoggedWaitFor(
+      [&pg_conn]() -> Result<bool> {
+        auto count = VERIFY_RESULT(pg_conn.FetchRow<int64_t>(
+            "SELECT count(*) FROM yb_get_tablet_metadata() "
+            "WHERE object_name = 'replaced_test' AND tablet_state = 'REPLACED'"));
+        return count > 0;
+      },
+      30s * kTimeMultiplier, "Wait for REPLACED tablet state"));
+  LOG(INFO) << "REPLACED state verified";
+
+  // Restart stopped tservers and shut down cluster to prevent consistency check
+  // from failing on the partially-created CQL table.
+  ASSERT_OK(cluster_->mini_tablet_server(1)->RestartStoppedServer());
+  ASSERT_OK(cluster_->mini_tablet_server(2)->RestartStoppedServer());
+  cluster_->Shutdown();
+}
+
+TEST_F(PgMiniTest, TestYbGetLocalTserverUuid) {
+  auto pg_conn = ASSERT_RESULT(Connect());
+  auto local_tserver_uuid = ASSERT_RESULT(pg_conn.FetchRow<Uuid>(
+      "SELECT yb_get_local_tserver_uuid()"));
+  auto expected_uuid = ASSERT_RESULT(
+      Uuid::FromHexStringBigEndian(cluster_->mini_tablet_server(0)->server()->permanent_uuid()));
+  ASSERT_EQ(local_tserver_uuid, expected_uuid)
+      << "Local tserver UUID mismatch";
+}
+
+// Despite the call to the stored procedure failing and the client issuing a commit, assert that
+// the transaction abort is initiated inline with the commit request in addition to returning the
+// failure status.
+//
+// Without the explicit abort, we expect the strong references of YBTransaction to drop to 0 and
+// the txn heartbeat thread to stop, causing the status tablet to clean up the transaction due
+// to missed heartbeats. But we observed a case of a stale transaction being left behind in the
+// system, and weren't able to track down the leaked strong reference. Hence, we now initiate the
+// abort inline and ensure that the transaction eventually gets cleaned up.
+TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(TestAbortTxnErroredWithReadRestartOnCommit),
+          PgMiniLargeClockSkewTest) {
+  google::SetVLOGLevel("transaction*", 2);
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE t1 (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE t2 (k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO t1 select generate_series(1, 10), 0"));
+  ASSERT_OK(setup_conn.Execute(R"#(
+CREATE OR REPLACE PROCEDURE test_proc()
+ LANGUAGE plpgsql
+AS $procedure$
+DECLARE
+    i int;
+BEGIN
+    BEGIN
+        DELETE FROM t1 WHERE k <= 10;
+    END;
+    BEGIN
+        FOREACH i IN ARRAY ARRAY[1, 2, 3, 4, 5, 6, 7, 8, 9, 10] LOOP
+            BEGIN
+                PERFORM SUM(v) FROM t2 WHERE k < 500 OR k > 1200;
+                INSERT INTO t1 VALUES(i, 0);
+            EXCEPTION WHEN OTHERS THEN
+                RAISE NOTICE 'INSERT FAILED WITH %', SQLERRM;
+                RETURN;
+            END;
+        END LOOP;
+    END;
+END;
+$procedure$
+  )#"));
+
+  constexpr std::chrono::milliseconds kClockSkew = -100ms;
+  constexpr CoarseDuration kWaitTime = 30s;
+  auto delta_changers = SkewClocks(cluster_.get(), kClockSkew);
+  TestThreadHolder thread_holder;
+  std::atomic<int> num_read_restarts(0);
+  thread_holder.AddThreadFunctor([this, &num_read_restarts, &stop = thread_holder.stop_flag()] {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("SET statement_timeout='60s'"));
+    for (int iter = 0; !stop.load(std::memory_order_acquire); iter++) {
+      ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+      ASSERT_OK(conn.ExecuteFormat("INSERT INTO t1 VALUES($0, $0)", 100 + iter));
+      auto txn_id = ASSERT_RESULT(conn.FetchRow<Uuid>("SELECT yb_get_current_transaction()"));
+      ASSERT_OK(conn.Execute("CALL test_proc()"));
+      RegexWaiterLogSink log_waiter(Format(R"#(.*$0.*Abort)#", txn_id.ToString()));
+      auto status = conn.Execute("COMMIT");
+      if (!status.ok()) {
+        ASSERT_NOK_STR_CONTAINS(
+            status, "Commit of transaction that requires restart is not allowed");
+        num_read_restarts++;
+        ASSERT_OK(log_waiter.WaitFor(1s * kTimeMultiplier));
+      }
+    }
+  });
+
+  for (int i = 0; i < 2; ++i) {
+    thread_holder.AddThreadFunctor([this, i, &stop = thread_holder.stop_flag()] {
+      auto conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(conn.Execute("SET statement_timeout='60s'"));
+      const auto start_key = i * 1000 + 1;
+      const auto end_key = (i + 1) * 1000;
+      while (!stop.load(std::memory_order_acquire)) {
+        ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+        ASSERT_OK(conn.ExecuteFormat(
+            "INSERT INTO t2 select generate_series($0, $1), 0", start_key, end_key));
+        ASSERT_OK(conn.Execute("COMMIT"));
+        ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
+        ASSERT_OK(conn.ExecuteFormat(
+            "DELETE FROM t2 WHERE k >= $0 AND k <= $1", start_key, end_key));
+        ASSERT_OK(conn.Execute("COMMIT"));
+      }
+    });
+  }
+
+  thread_holder.WaitAndStop(kWaitTime);
+  ASSERT_GT(num_read_restarts, 0);
 }
 
 }  // namespace yb::pgwrapper

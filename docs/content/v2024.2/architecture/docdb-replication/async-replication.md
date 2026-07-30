@@ -244,7 +244,7 @@ The following limitations apply to all xCluster modes and deployment scenarios:
 
 - Table rewrites
 
-  `ALTER TABLE` DDLs that involve table rewrites (see [Alter table operations that involve a table rewrite](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite)) may not be performed while replication is running; you will need to drop replication, perform those DDL(s) on the source universe, then create replication again.
+  You cannot run [ALTER TABLE DDLs that involve table rewrites](../../../api/ysql/the-sql-language/statements/ddl_alter_table/#alter-table-operations-that-involve-a-table-rewrite) (including those that rewrite only the associated indexes, or both the table and associated indexes) while replication is running. You will need to drop replication, perform those DDL(s) on the source universe, then create replication again.
 
 Limitations specific to each scenario and mode are listed below:
 

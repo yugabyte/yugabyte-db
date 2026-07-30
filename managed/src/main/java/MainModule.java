@@ -18,12 +18,14 @@ import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
+import com.yugabyte.yw.commissioner.GcpCapacityReservationGC;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.NodeAgentEnabler.NodeAgentInstaller;
 import com.yugabyte.yw.commissioner.NodeAgentInstallerImpl;
 import com.yugabyte.yw.commissioner.PerfAdvisorNodeManager;
 import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
+import com.yugabyte.yw.commissioner.RedactSecretsFromAudit;
 import com.yugabyte.yw.commissioner.RefreshKmsService;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
@@ -58,6 +60,7 @@ import com.yugabyte.yw.common.TemplateManager;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.YBALifeCycle;
 import com.yugabyte.yw.common.YamlWrapper;
+import com.yugabyte.yw.common.YbaOidcCallbackUrlResolver;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
@@ -68,6 +71,7 @@ import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfigCache;
+import com.yugabyte.yw.common.config.RuntimeConfigCacheInvalidator;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -81,6 +85,7 @@ import com.yugabyte.yw.common.kms.util.EncryptionAtRestUniverseKeyCache;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
+import com.yugabyte.yw.common.operator.OperatorResourceRestorer;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.operator.YBInformerFactory;
 import com.yugabyte.yw.common.operator.YBReconcilerFactory;
@@ -90,6 +95,7 @@ import com.yugabyte.yw.common.operator.utils.UniverseImporter;
 import com.yugabyte.yw.common.rbac.PermissionUtil;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.rbac.RoleUtil;
+import com.yugabyte.yw.common.rollback.TaskRollbackModule;
 import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
@@ -215,8 +221,21 @@ public class MainModule extends AbstractModule {
       System.clearProperty(TMPDIR_PROPERTY);
     }
 
+    // snappy-java extracts libsnappyjava.so into java.io.tmpdir on first use and
+    // dlopen()s it. When /tmp is mounted with noexec that load fails with
+    // UnsatisfiedLinkError, breaking Prometheus Remote Read (see RemoteReadClient).
+    // Point snappy-java at the same storage-path region we already use for BC FIPS
+    // natives (guaranteed exec-safe).
+    Path snappyTempPath = storagePath.resolve("snappy");
+    if (!snappyTempPath.toFile().exists() && !snappyTempPath.toFile().mkdirs()) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Failed to create snappy temp dir " + snappyTempPath);
+    }
+    System.setProperty("org.xerial.snappy.tempdir", snappyTempPath.toAbsolutePath().toString());
+
     TLSConfig.modifyTLSDisabledAlgorithms(config);
     bind(RuntimeConfigFactory.class).to(SettableRuntimeConfigFactory.class).asEagerSingleton();
+    bind(RuntimeConfigCacheInvalidator.class).asEagerSingleton();
     install(new CustomerConfKeys());
     install(new ProviderConfKeys());
     install(new GlobalConfKeys());
@@ -224,6 +243,7 @@ public class MainModule extends AbstractModule {
     bind(RuntimeConfigCache.class).asEagerSingleton();
 
     install(new CloudModules());
+    install(new TaskRollbackModule());
     PrometheusRegistry.defaultRegistry.clear();
     try {
       DomainValidator.updateTLDOverride(DomainValidator.ArrayType.LOCAL_PLUS, TLD_OVERRIDE);
@@ -262,10 +282,12 @@ public class MainModule extends AbstractModule {
     bind(PitrConfigPoller.class).asEagerSingleton();
     bind(AutoMasterFailover.class).asEagerSingleton();
     bind(BackupGarbageCollector.class).asEagerSingleton();
+    bind(GcpCapacityReservationGC.class).asEagerSingleton();
     bind(SupportBundleCleanup.class).asEagerSingleton();
     bind(EncryptionAtRestManager.class).asEagerSingleton();
     bind(EncryptionAtRestUniverseKeyCache.class).asEagerSingleton();
     bind(SetUniverseKey.class).asEagerSingleton();
+    bind(RedactSecretsFromAudit.class).asEagerSingleton();
     bind(RefreshKmsService.class).asEagerSingleton();
     bind(CustomerTaskManager.class).asEagerSingleton();
     bind(YamlWrapper.class).asEagerSingleton();
@@ -306,6 +328,7 @@ public class MainModule extends AbstractModule {
     bind(SoftwareUpgradeHelper.class).asEagerSingleton();
     bind(KubernetesClientFactory.class).asEagerSingleton();
     bind(UniverseImporter.class).asEagerSingleton();
+    bind(OperatorResourceRestorer.class).asEagerSingleton();
 
     // Destroy current session on SSO logout.
     final LogoutController logoutController = new LogoutController();
@@ -403,9 +426,12 @@ public class MainModule extends AbstractModule {
 
   @Provides
   protected org.pac4j.core.config.Config providePac4jConfig(
-      OidcClient oidcClient, SessionStore sessionStore) {
+      OidcClient oidcClient,
+      SessionStore sessionStore,
+      YbaOidcCallbackUrlResolver callbackUrlResolver) {
     final Clients clients = new Clients("/api/v1/callback", oidcClient);
     clients.setUrlResolver(new DefaultUrlResolver(true));
+    clients.setCallbackUrlResolver(callbackUrlResolver);
     final org.pac4j.core.config.Config config = new org.pac4j.core.config.Config(clients);
     config.setHttpActionAdapter(new PlatformHttpActionAdapter());
     config.setSessionStoreFactory(p -> sessionStore);

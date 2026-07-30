@@ -40,7 +40,7 @@ public class KubernetesInfo implements CloudInfoInterface {
   private String kubernetesImageRegistry;
 
   @JsonAlias("KUBECONFIG_IMAGE_PULL_SECRET_NAME")
-  @EditableInUseProvider(name = "Kubernetes Image Pull Secret Name", allowed = false)
+  @EditableInUseProvider(name = "Kubernetes Image Pull Secret Name", allowed = true)
   @ApiModelProperty
   private String kubernetesImagePullSecretName;
 
@@ -71,12 +71,12 @@ public class KubernetesInfo implements CloudInfoInterface {
 
   @JsonAlias("KUBECONFIG_PULL_SECRET_CONTENT")
   @ApiModelProperty
-  @EditableInUseProvider(name = "Kubernetes Pull Secret", allowed = false)
+  @EditableInUseProvider(name = "Kubernetes Pull Secret", allowed = true)
   private String kubernetesPullSecretContent;
 
   @JsonAlias("KUBECONFIG_PULL_SECRET_NAME")
   @ApiModelProperty
-  @EditableInUseProvider(name = "Kubernetes Pull Secret Name", allowed = false)
+  @EditableInUseProvider(name = "Kubernetes Pull Secret Name", allowed = true)
   private String kubernetesPullSecretName;
 
   @ApiModelProperty(accessMode = AccessMode.READ_ONLY)

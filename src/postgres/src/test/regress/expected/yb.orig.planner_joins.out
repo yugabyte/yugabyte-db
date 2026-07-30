@@ -199,15 +199,13 @@ ORDER BY t3.v3 DESC;
          Join Filter: (t1.h = t2.h)
          ->  Merge Join
                Merge Cond: (t1.h = t3.h)
-               ->  Sort
-                     Sort Key: t1.h
-                     ->  Index Scan using t1_pkey on t1
-                           Index Cond: ((yb_hash_code(h) = 4624) AND (r = 2))
+               ->  Index Scan using t1_pkey on t1
+                     Index Cond: ((yb_hash_code(h) = 4624) AND (r = 2))
                ->  Index Scan using t3_pkey on t3
                      Index Cond: (r = 2)
          ->  Index Scan using t2_pkey on t2
                Index Cond: ((h = ANY (ARRAY[t3.h, $1, $2, ..., $1023])) AND (r = 2))
-(14 rows)
+(12 rows)
 
 SELECT *
 FROM t1

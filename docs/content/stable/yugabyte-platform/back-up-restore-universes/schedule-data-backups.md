@@ -39,6 +39,8 @@ Before scheduling a backup of your universe data, create a policy, as follows:
 
     For YCQL, you can choose to back up all tables or a selection of tables. Click **Select a subset of tables** to display the **Select Tables** dialog, where you can select one or more tables to back up, and click **Confirm**.
 
+1. To back up database roles (YSQL only), choose the **Backup global roles** option.
+
     When finished, click **Next**.
 
 1. Select a backup strategy:

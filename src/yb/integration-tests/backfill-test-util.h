@@ -25,9 +25,32 @@
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/metrics.h"
 #include "yb/util/result.h"
 
+METRIC_DECLARE_entity(tablet);
+METRIC_DECLARE_counter(backfill_reads_rejected_below_history_cutoff);
+
 namespace yb {
+
+// Sums backfill_reads_rejected_below_history_cutoff over all tablets of all tservers.
+Result<int64_t> TotalBackfillReadsRejectedBelowHistoryCutoff(ExternalMiniCluster* cluster) {
+  int64_t total = 0;
+  for (auto* tserver : cluster->tserver_daemons()) {
+    for (const auto& tablet_id : VERIFY_RESULT(cluster->GetTabletIds(tserver))) {
+      auto value = tserver->GetMetric<int64>(
+          &METRIC_ENTITY_tablet, tablet_id.c_str(),
+          &METRIC_backfill_reads_rejected_below_history_cutoff, "value");
+      // A listed tablet may have no live metric entity (still bootstrapping or already deleted).
+      // Skip those: since callers assert a lower bound, skipping can only under-count and cannot
+      // turn a wiring bug into a false pass.
+      if (value.ok()) {
+        total += *value;
+      }
+    }
+  }
+  return total;
+}
 
 Result<master::BackfillJobPB> GetBackfillJobs(
     const master::MasterDdlProxy& proxy,

@@ -44,6 +44,7 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/common_types.fwd.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/retryable_request.h"
 #include "yb/common/snapshot.h"
@@ -55,14 +56,20 @@
 
 #include "yb/gutil/macros.h"
 
+#include "yb/master/catalog_entity_info.fwd.h"
+#include "yb/master/master_backup.fwd.h"
 #include "yb/master/master_client.fwd.h"
+#include "yb/master/master_ddl.fwd.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/master_types.pb.h"
-#include "yb/tablet/tablet.pb.h"
+#include "yb/master/master_replication.fwd.h"
+#include "yb/master/master_types.fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/server/clock.h"
+#include "yb/tablet/operations.fwd.h"
+#include "yb/tablet/tablet.fwd.h"
+
+#include "yb/server/server_fwd.h"
 
 #include "yb/tserver/pg_client.fwd.h"
 
@@ -80,9 +87,11 @@ namespace yb {
 
 class CloudInfoPB;
 class JsonWriter;
+class Cgroup;
 class MemTracker;
 class MetricEntity;
 class ThreadPool;
+class ThreadPoolToken;
 
 namespace master {
 class TabletLocationsPB;
@@ -103,11 +112,13 @@ namespace client {
 
 YB_STRONGLY_TYPED_BOOL(IncludeNonrunningNamespaces);
 
-struct NamespaceInfo {
-    master::NamespaceIdentifierPB id;
-    master::SysNamespaceEntryPB_State state;
-    bool colocated;
-};
+// Returns the default CDCSDK dynamic-tables option value
+// (CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED). Declared here so that
+// CreateCDCSDKStreamForNamespace can use it as a default argument without
+// dragging yb/common/common_types.pb.h into this header.
+const CDCSDKDynamicTablesOption& DefaultDynamicTablesOption();
+
+struct NamespaceInfo;
 
 struct CDCSDKStreamInfo {
   std::string stream_id;
@@ -116,6 +127,7 @@ struct CDCSDKStreamInfo {
   std::string cdcsdk_ysql_replication_slot_plugin_name;
   tserver::PGReplicationSlotLsnType replication_slot_lsn_type;
   bool allow_tables_without_primary_key;
+  bool detect_publication_changes_implicitly;
   std::unordered_map<std::string, std::string> options;
 
   template <class PB>
@@ -132,6 +144,7 @@ struct CDCSDKStreamInfo {
       pb->set_yb_lsn_type(replication_slot_lsn_type);
     }
     pb->set_allow_tables_without_primary_key(allow_tables_without_primary_key);
+    pb->set_detect_publication_changes_implicitly(detect_publication_changes_implicitly);
   }
 
   template <class PB>
@@ -152,6 +165,7 @@ struct CDCSDKStreamInfo {
         .replication_slot_lsn_type = GetPGReplicationSlotLsnType(
             pb.cdc_stream_info_options().cdcsdk_ysql_replication_slot_lsn_type()),
         .allow_tables_without_primary_key = pb.allow_tables_without_primary_key(),
+        .detect_publication_changes_implicitly = pb.detect_publication_changes_implicitly(),
         .options = std::move(options)};
 
     return stream_info;
@@ -171,15 +185,10 @@ using OpenTableAsyncCallback = std::function<void(const Result<YBTablePtr>&)>;
 using CreateSnapshotCallback = std::function<void(Result<TxnSnapshotId>)>;
 using MasterAddressSource = std::function<std::vector<std::string>()>;
 
-struct TransactionStatusTablets {
-  std::vector<TabletId> global_tablets;
-  std::vector<TabletId> region_local_tablets;
-  struct TablespaceInfo {
-    PlacementInfoPB placement_info;
-    std::vector<TabletId> tablets;
-  };
-  std::unordered_map<PgOid, TablespaceInfo> tablespaces;
-};
+// Defined in yb/client/transaction_status_tablets.h. Forward-declared here so this header
+// does not need to drag in yb/common/common_net.pb.h (and the rest of the common.pb.h chain)
+// for the sole sake of PlacementInfoPB in the nested TablespaceInfo struct.
+struct TransactionStatusTablets;
 
 struct TabletReplicaFullCompactionStatus {
   TabletServerId ts_id;
@@ -346,7 +355,10 @@ class YBClient {
 
   // Backfill the specified index table.  This is only supported for YSQL at the moment.
   Status BackfillIndex(
-      const TableId& table_id, bool wait = true, CoarseTimePoint deadline = CoarseTimePoint());
+      const TableId& table_id,
+      std::optional<TransactionMetadata> requester_transaction,
+      bool wait = true,
+      CoarseTimePoint deadline = CoarseTimePoint());
 
   Status GetIndexBackfillProgress(
       const TableIds& index_ids,
@@ -354,7 +366,9 @@ class YBClient {
           num_rows_read_from_table_for_backfill,
       google::protobuf::RepeatedField<double>* num_rows_backfilled_in_index);
 
-  Result<google::protobuf::RepeatedPtrField<tablet::TabletStatusPB>> GetTabletsMetadata();
+  Result<google::protobuf::RepeatedPtrField<tablet::TabletStatusPB>> GetTabletsMetadata(
+      std::optional<std::string> table_id = std::nullopt,
+      std::optional<std::string> partition_key = std::nullopt);
 
   Result<master::GetBackfillStatusResponsePB> GetBackfillStatus(
       const std::vector<std::string_view>& table_ids);
@@ -534,6 +548,9 @@ class YBClient {
       bool use_secondary_space, uint32_t* begin_oid, uint32_t* end_oid,
       uint32_t* oid_cache_invalidations_count = nullptr);
 
+  Status GetYsqlYbSystemTableInfo(
+      PgOid namespace_oid, const TableName& table_name, PgOid* oid, PgOid* relfilenode);
+
   // Deprecated. Use instead per-db version below.
   Status DEPRECATED_GetYsqlCatalogMasterVersion(uint64_t *ysql_catalog_version);
 
@@ -654,11 +671,11 @@ class YBClient {
       const std::optional<std::string>& replication_slot_plugin_name = std::nullopt,
       const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option = std::nullopt,
       CoarseTimePoint deadline = CoarseTimePoint(),
-      const CDCSDKDynamicTablesOption& dynamic_tables_option =
-          CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED,
+      const CDCSDKDynamicTablesOption& dynamic_tables_option = DefaultDynamicTablesOption(),
       uint64_t* consistent_snapshot_time_out = nullptr,
       const std::optional<ReplicationSlotLsnType>& lsn_type = std::nullopt,
-      const std::optional<ReplicationSlotOrderingMode>& ordering_mode = std::nullopt);
+      const std::optional<ReplicationSlotOrderingMode>& ordering_mode = std::nullopt,
+      const std::vector<TableId>& bound_table_ids = {});
 
   // Delete multiple CDC streams.
   Status DeleteCDCStream(
@@ -702,7 +719,10 @@ class YBClient {
       std::optional<std::string>* replication_slot_name = nullptr,
       std::vector<TableId>* unqualified_table_ids = nullptr,
       std::optional<ReplicationSlotLsnType>* lsn_type = nullptr,
-      std::optional<ReplicationSlotOrderingMode>* ordering_mode = nullptr);
+      std::optional<ReplicationSlotOrderingMode>* ordering_mode = nullptr,
+      std::optional<bool>* detect_publication_changes_implicitly = nullptr,
+      std::optional<std::string>* replication_slot_plugin_name = nullptr,
+      bool* is_notification_slot = nullptr);
 
   Result<CDCSDKStreamInfo> GetCDCStream(
       const ReplicationSlotName& replication_slot_name,
@@ -725,6 +745,9 @@ class YBClient {
   void ReleaseObjectLocksGlobalAsync(
       const master::ReleaseObjectLocksGlobalRequestPB& request, StdStatusCallback callback,
       CoarseTimePoint deadline);
+  void WaitForLockersMultipleGlobalAsync(
+      const master::WaitForLockersMultipleGlobalRequestPB& request, StdStatusCallback callback,
+      CoarseTimePoint deadline);
 
   // Update a CDC stream's options.
   Status UpdateCDCStream(
@@ -736,6 +759,8 @@ class YBClient {
       const xrepl::StreamId stream_id);
 
   Result<bool> IsObjectPartOfXRepl(const TableId& table_id);
+
+  Result<bool> IsNamespacePartOfCDCSDK(const NamespaceId& namespace_id);
 
   Result<bool> IsBootstrapRequired(
       const TableIds& table_ids,
@@ -791,6 +816,11 @@ class YBClient {
       const std::shared_ptr<tserver::TabletServerServiceProxy>& proxy,
       const tserver::LocalTabletServer* local_tserver);
 
+  // Registers a provider that maps a thread pool tag (DB OID) to a per-DB cgroup.
+  // When set, Batcher callbacks are submitted via a per-tag token so each DB's
+  // callback work runs in its own cgroup rather than the shared @system-med pool.
+  void SetCallbackCgroupProvider(std::function<Cgroup*(uint64_t)> provider);
+
   const internal::RemoteTabletServer* GetLocalTabletServer() const;
 
   // List only those tables whose names pass a substring match on 'filter'.
@@ -844,16 +874,14 @@ class YBClient {
       RequireTabletsRunning require_tablets_running = RequireTabletsRunning::kFalse,
       master::IncludeInactive include_inactive = master::IncludeInactive::kFalse);
 
-  Status GetTabletsAndUpdateCache(
-      const YBTableName& table_name,
-      int32_t max_tablets,
-      std::vector<TabletId>* tablet_uuids,
-      std::vector<std::string>* ranges = nullptr,
-      std::vector<master::TabletLocationsPB>* locations = nullptr);
+  Status GetLocationsByTableIdAndUpdateCache(
+      const TableId& table_id,
+      std::vector<master::TabletLocationsPB>& locations);
 
   Status GetTabletsFromTableId(
       const TableId& table_id, int32_t max_tablets,
-      google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets);
+      google::protobuf::RepeatedPtrField<master::TabletLocationsPB>* tablets,
+      PartitionListVersion* partition_list_version = nullptr);
 
   Status GetTabletsFromTableId(
       const TableId& table_id,
@@ -1030,6 +1058,10 @@ class YBClient {
 
   Result<bool> CheckIfPitrActive();
 
+  // Returns table id from the table name or lookups the table id from the master and returns it,
+  // putting the result into the scratch.
+  Result<const TableId&> LookupTableId(const YBTableName& table_name, TableId& scratch);
+
   void LookupTabletByKey(
       const YBTablePtr& table,
       const PartitionKey& partition_key,
@@ -1116,11 +1148,16 @@ class YBClient {
 
   Status ClearMetacache(const std::string& namespace_id);
 
+  void MarkTServersAsFollowers(const std::vector<std::string>& ts_uuids);
+
   // Uses the TabletConsensusInfo piggybacked from a response to
   // refresh a RemoteTablet in metacache. Returns true if the
   // RemoteTablet was indeed refreshed, false otherwise.
   bool RefreshTabletInfoWithConsensusInfo(
       const tserver::TabletConsensusInfoPB& newly_received_info);
+
+  bool RefreshTabletInfoWithConsensusInfo(
+      const tserver::LWTabletConsensusInfoPB& newly_received_info);
 
   int64_t GetRaftConfigOpidIndex(const TabletId& tablet_id);
 
@@ -1154,6 +1191,9 @@ class YBClient {
   FRIEND_TEST(ClientTest, TestGetTabletServerBlacklist);
   FRIEND_TEST(ClientTest, TestMasterDown);
   FRIEND_TEST(ClientTest, TestMasterLookupPermits);
+  FRIEND_TEST(ClientTest, MetaCacheIgnoreNonTargetTable);
+  FRIEND_TEST(ClientTest, MetaCacheAllowsMissingTargetTableForDeletedLocation);
+  FRIEND_TEST(ClientTest, MetaCacheVectorLookupKeepsMainTableLookupUsable);
   FRIEND_TEST(ClientTest, TestMetacacheRefreshWhenSentToWrongLeader);
   FRIEND_TEST(ClientTest, TestReplicatedTabletWritesAndAltersWithLeaderElection);
   FRIEND_TEST(ClientTest, TestScanFaultTolerance);
@@ -1191,6 +1231,13 @@ class YBClient {
   YBClient();
 
   ThreadPool* callback_threadpool();
+  // Returns a per-tag token (creating one on first call) so that callbacks for
+  // a given DB OID are submitted with per-task cgroup switching. Returns nullptr
+  // when no cgroup provider is registered or the tag has no associated cgroup.
+  ThreadPoolToken* GetOrCreateCallbackToken(uint64_t tag);
+
+  template <class PB>
+  bool DoRefreshTabletInfoWithConsensusInfo(const PB& newly_received_info);
 
   std::unique_ptr<Data> data_;
 

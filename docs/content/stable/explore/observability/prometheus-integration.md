@@ -116,7 +116,7 @@ Open the Prometheus UI at <http://localhost:9090> and then navigate to the **Tar
 
 ## Analyze key metrics
 
-On the Prometheus Graph UI, you can plot the read or write throughput and latency for the `CassandraKeyValue` sample application. Because the [source code](https://github.com/yugabyte/yugabyte-db/blob/master/java/yb-loadtester/src/main/java/com/yugabyte/sample/apps/CassandraKeyValue.java) of the application uses only SELECT statements for reads and INSERT statements for writes (aside from the initial CREATE TABLE), you can measure throughput and latency by using the metrics corresponding to the SELECT and INSERT statements.
+On the Prometheus Graph UI, you can plot the read or write throughput and latency for the `CassandraKeyValue` sample application. Because the [source code](https://github.com/yugabyte/yb-sample-apps/blob/master/src/main/java/com/yugabyte/sample/apps/CassandraKeyValue.java) of the application uses only SELECT statements for reads and INSERT statements for writes (aside from the initial CREATE TABLE), you can measure throughput and latency by using the metrics corresponding to the SELECT and INSERT statements.
 
 Paste the following expressions into the **Expression** box and click **Execute** followed by **Add Graph**.
 

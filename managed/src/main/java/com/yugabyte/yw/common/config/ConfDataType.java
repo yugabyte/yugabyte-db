@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.LdapUtil.TlsProtocol;
 import com.yugabyte.yw.common.NodeManager.SkipCertValidationType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.YbaOidcCallbackUrlResolver.OidcCallbackMode;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.models.Users.Role;
 import java.time.Duration;
@@ -61,6 +62,15 @@ public class ConfDataType<T> {
           Config::getString,
           (s) -> {
             return parseString(s);
+          });
+  static ConfDataType<String> RawStringType =
+      new ConfDataType<>(
+          "Raw String",
+          String.class,
+          Config::getString,
+          (s) -> {
+            // Skip HOCON parsing, accept the string as-is
+            return s;
           });
   static ConfDataType<Long> LongType =
       new ConfDataType<>(
@@ -168,6 +178,19 @@ public class ConfDataType<T> {
               return VersionCheckMode.valueOf(s);
             } catch (Exception e) {
               String failMsg = String.format("%s is not a valid value for desired key\n", s);
+              throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
+            }
+          });
+  static ConfDataType<OidcCallbackMode> OidcCallbackModeEnum =
+      new ConfDataType<>(
+          "OidcCallbackMode",
+          OidcCallbackMode.class,
+          (config, path) -> OidcCallbackMode.fromConfigValue(config.getString(path)),
+          (s) -> {
+            try {
+              return OidcCallbackMode.fromConfigValue(parseString(s));
+            } catch (Exception e) {
+              String failMsg = String.format("%s is not a valid OIDC callback mode\n", s);
               throw new PlatformServiceException(BAD_REQUEST, failMsg + e.getMessage());
             }
           });

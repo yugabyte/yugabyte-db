@@ -25,8 +25,10 @@
 
 #include "yb/common/ql_value.h"
 
-#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.messages.h"
+#include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/log.h"
+#include "yb/consensus/raft_consensus.h"
 
 #include "yb/rocksdb/db.h"
 
@@ -37,6 +39,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
+#include "yb/tablet/operations/operation_driver.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/server_main_util.h"
@@ -49,6 +52,7 @@
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 
@@ -59,32 +63,34 @@ using namespace std::literals;
 
 using yb::tablet::GetTransactionTimeout;
 
-DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
-DECLARE_bool(TEST_fail_in_apply_if_no_metadata);
-DECLARE_bool(TEST_master_fail_transactional_tablet_lookups);
-DECLARE_bool(TEST_transaction_allow_rerequest_status);
 DECLARE_bool(delete_intents_sst_files);
 DECLARE_bool(enable_load_balancing);
+DECLARE_bool(enable_ondisk_compression);
 DECLARE_bool(fail_on_out_of_range_clock_skew);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(rocksdb_disable_compactions);
-DECLARE_bool(enable_ondisk_compression);
-DECLARE_int32(TEST_delay_init_tablet_peer_ms);
-DECLARE_int32(log_min_seconds_to_retain);
-DECLARE_int32(intents_flush_max_delay_ms);
-DECLARE_int32(remote_bootstrap_max_chunk_size);
-DECLARE_int64(transaction_rpc_timeout_ms);
-DECLARE_int64(db_block_cache_size_bytes);
-DECLARE_int64(db_write_buffer_size);
-DECLARE_uint64(TEST_transaction_delay_status_reply_usec_in_tests);
-DECLARE_uint64(aborted_intent_cleanup_ms);
-DECLARE_uint64(max_clock_skew_usec);
-DECLARE_uint64(transaction_heartbeat_usec);
+DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
+DECLARE_bool(TEST_fail_in_apply_if_no_metadata);
 DECLARE_bool(TEST_load_transactions_sync);
-DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
+DECLARE_bool(TEST_master_fail_transactional_tablet_lookups);
 DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_skip_remove_intent);
+DECLARE_bool(TEST_transaction_allow_rerequest_status);
+DECLARE_int32(intents_flush_max_delay_ms);
+DECLARE_int32(log_min_seconds_to_retain);
+DECLARE_int32(remote_bootstrap_max_chunk_size);
+DECLARE_int32(TEST_delay_init_tablet_peer_ms);
+DECLARE_int32(TEST_inject_load_transaction_delay_ms);
+DECLARE_int64(db_block_cache_size_bytes);
+DECLARE_int64(db_write_buffer_size);
+DECLARE_int64(transaction_rpc_timeout_ms);
+DECLARE_uint64(aborted_intent_cleanup_ms);
 DECLARE_uint64(log_segment_size_bytes);
+DECLARE_uint64(max_clock_skew_usec);
+DECLARE_uint64(TEST_inject_sleep_before_applying_intents_ms);
+DECLARE_uint64(TEST_transaction_delay_status_reply_usec_in_tests);
+DECLARE_uint64(transaction_heartbeat_usec);
+DECLARE_uint64(transaction_resend_applying_interval_usec);
 
 namespace yb {
 namespace client {
@@ -175,7 +181,7 @@ TEST_F(QLTransactionTest, WriteSameKeyWithIntents) {
 
 // Commit flags says whether we should commit write txn during this test.
 void QLTransactionTest::TestReadRestart(bool commit) {
-  SetAtomicFlag(250000ULL, &FLAGS_max_clock_skew_usec);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 250000ULL;
 
   {
     auto write_txn = CreateTransaction();
@@ -237,7 +243,7 @@ TEST_F(QLTransactionTest, ReadRestartWithPendingIntents) {
 TEST_F(QLTransactionTest, ReadRestartNonTransactional) {
   const auto kClockSkew = 500ms;
 
-  SetAtomicFlag(1000000ULL, &FLAGS_max_clock_skew_usec);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 1000000ULL;
   DisableTransactionTimeout();
 
   auto delta_changers = SkewClocks(cluster_.get(), kClockSkew);
@@ -260,7 +266,7 @@ TEST_F(QLTransactionTest, ReadRestartNonTransactional) {
 }
 
 TEST_F(QLTransactionTest, WriteRestart) {
-  SetAtomicFlag(250000ULL, &FLAGS_max_clock_skew_usec);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 250000ULL;
 
   const std::string kExtraColumn = "v2";
   std::unique_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
@@ -277,7 +283,7 @@ TEST_F(QLTransactionTest, WriteRestart) {
   auto session = CreateSession(txn1);
   for (bool retry : {false, true}) {
     for (size_t r = 0; r != kNumRows; ++r) {
-      const auto op = table_.NewWriteOp(QLWriteRequestPB::QL_STMT_UPDATE);
+      const auto op = table_.NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_UPDATE);
       auto* const req = op->mutable_request();
       auto key = KeyForTransactionAndIndex(0, r);
       auto old_value = ValueForTransactionAndIndex(0, r, WriteOpType::INSERT);
@@ -312,7 +318,7 @@ TEST_F(QLTransactionTest, WriteRestart) {
 // Check that we could write to transaction that were restarted.
 TEST_F(QLTransactionTest, WriteAfterReadRestart) {
   const auto kClockDelta = 100ms;
-  SetAtomicFlag(250000ULL, &FLAGS_max_clock_skew_usec);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 250000ULL;
 
   auto write_txn = CreateTransaction();
   ASSERT_OK(WriteRows(CreateSession(write_txn)));
@@ -369,7 +375,7 @@ TEST_F(QLTransactionTest, Child) {
 }
 
 TEST_F(QLTransactionTest, ChildReadRestart) {
-  SetAtomicFlag(250000ULL, &FLAGS_max_clock_skew_usec);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 250000ULL;
 
   {
     auto write_txn = CreateTransaction();
@@ -691,7 +697,7 @@ void QLTransactionTest::TestWriteConflicts(const WriteConflictsOptions& options)
         active_txn.transaction = CreateTransaction();
       }
       active_txn.session = CreateSession(active_txn.transaction);
-      const auto op = table_.NewInsertOp();
+      const auto op = table_.NewInsertOp(active_txn.session->arena());
       auto* const req = op->mutable_request();
       QLAddInt32HashValue(req, key);
       const auto val = ++value;
@@ -791,7 +797,8 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadUpdateRead) {
 }
 
 TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
-  SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
+  // To avoid read restart in this test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 0ULL;
   DisableApplyingIntents();
 
   // Write { 1 -> 1, 2 -> 2 }.
@@ -838,7 +845,8 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadWithinTransactionAndRollback) {
 }
 
 TEST_F(QLTransactionTest, CheckCompactionAbortCleanup) {
-  SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
+  // To avoid read restart in this test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 0ULL;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_proactive_txn_cleanup_on_abort) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000; // 1 sec
 
@@ -893,7 +901,8 @@ class QLTransactionTestWithDisabledCompactions : public QLTransactionTest {
 };
 
 TEST_F_EX(QLTransactionTest, IntentsCleanupAfterRestart, QLTransactionTestWithDisabledCompactions) {
-  SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
+  // To avoid read restart in this test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 0ULL;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_proactive_txn_cleanup_on_abort) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000; // 1 sec
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_delete_intents_sst_files) = false;
@@ -960,7 +969,8 @@ TEST_F_EX(QLTransactionTest, IntentsCleanupAfterRestart, QLTransactionTestWithDi
 }
 
 TEST_F(QLTransactionTest, ResolveIntentsWriteReadBeforeAndAfterCommit) {
-  SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
+  // To avoid read restart in this test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 0ULL;
   DisableApplyingIntents();
 
   // Write { 1 -> 1, 2 -> 2 }.
@@ -1006,7 +1016,8 @@ TEST_F(QLTransactionTest, ResolveIntentsWriteReadBeforeAndAfterCommit) {
 }
 
 TEST_F(QLTransactionTest, ResolveIntentsCheckConsistency) {
-  SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
+  // To avoid read restart in this test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 0ULL;
   DisableApplyingIntents();
 
   // Write { 1 -> 1, 2 -> 2 }.
@@ -1069,7 +1080,8 @@ TEST_F_EX(QLTransactionTest, CorrectStatusRequestBatching, QLTransactionBigLogSe
   constexpr size_t kConcurrentReads = RegularBuildVsSanitizers<size_t>(20, 5);
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_transaction_delay_status_reply_usec_in_tests) = 200000;
-  SetAtomicFlag(std::chrono::microseconds(kClockSkew).count() * 3, &FLAGS_max_clock_skew_usec);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) =
+      std::chrono::microseconds(kClockSkew).count() * 3;
 
   auto delta_changers = SkewClocks(cluster_.get(), kClockSkew);
 
@@ -1309,7 +1321,8 @@ TEST_F_EX(QLTransactionTest, WaitRead, QLTransactionBigLogSegmentSizeTest) {
   constexpr size_t kCycles = 100;
   constexpr size_t kConcurrentReads = 4;
 
-  SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec); // To avoid read restart in this test.
+  // To avoid read restart in this test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 0ULL;
 
   TestThreadHolder thread_holder;
 
@@ -1609,7 +1622,8 @@ TEST_F_EX(QLTransactionTest, PickReadTimeAtServer, QLTransactionBigLogSegmentSiz
 
 // Test that we could init transaction after it was originally created.
 TEST_F(QLTransactionTest, DelayedInit) {
-  SetAtomicFlag(0ULL, &FLAGS_max_clock_skew_usec);  // To avoid read restart in this test.
+  // To avoid read restart in this test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_clock_skew_usec) = 0ULL;
 
   auto txn1 = std::make_shared<YBTransaction>(&transaction_manager_.value());
   auto txn2 = std::make_shared<YBTransaction>(&transaction_manager_.value());
@@ -1951,6 +1965,91 @@ TEST_F_EX(QLTransactionTest, TransactionsEarlyLoadedTest, QLTransactionTestSingl
   AssertNoRunningTransactions();
 }
 
+TEST_F_EX(QLTransactionTest, YB_DEBUG_ONLY_TEST(WriteBatchDuringShutdown),
+          QLTransactionTestSingleTablet) {
+  tablet::TabletPeer* follower;
+  {
+    auto peers = ASSERT_RESULT(ListTabletPeersForTableName(
+        cluster_.get(), table_->name().table_name(), ListPeersFilter::kNonLeaders));
+    ASSERT_GE(peers.size(), 1);
+    follower = peers.front().get();
+  }
+  ASSERT_NE(follower, nullptr);
+  auto follower_uuid = follower->permanent_uuid();
+  auto tablet_id = follower->tablet_id();
+
+  auto& sync_point = *SyncPoint::GetInstance();
+  CountDownLatch start_shutdown_latch(1);
+  CountDownLatch write_batch_latch(1);
+  sync_point.SetCallBack(
+      "TransactionParticipant::Impl::StartShutdown",
+      [follower, &start_shutdown_latch](void* arg) {
+    auto* context = static_cast<tablet::TransactionParticipantContext*>(arg);
+    if (implicit_cast<tablet::TransactionParticipantContext*>(follower) == context) {
+      LOG(INFO) << "TransactionParticipant::Impl::StartShutdown";
+      start_shutdown_latch.CountDown();
+    }
+  });
+  OpId apply_op_id;
+  sync_point.SetCallBack(
+      "RaftConsensus::UpdateReplica",
+      [follower, &write_batch_latch, &start_shutdown_latch, &apply_op_id](void* arg) {
+    auto* request = static_cast<consensus::LWConsensusRequestPB*>(arg);
+    if (request->dest_uuid() != follower->permanent_uuid() ||
+        request->tablet_id() != follower->tablet_id()) {
+      return;
+    }
+    LOG(INFO) << "RaftConsensus::UpdateReplica: " << request->ShortDebugString();
+    for (const auto& op : request->ops()) {
+      if (op.op_type() == consensus::UPDATE_TRANSACTION_OP &&
+          op.transaction_state().status() == TransactionStatus::APPLYING) {
+        apply_op_id = OpId::FromPB(op.id());
+      }
+    }
+    if (!apply_op_id.empty() && request->committed_op_id().index() == apply_op_id.index) {
+      write_batch_latch.CountDown();
+      LOG(INFO) << "RaftConsensus::UpdateReplica: " << request->ShortDebugString();
+      start_shutdown_latch.Wait();
+      LOG(INFO) << "RaftConsensus::UpdateReplica: done";
+    } else if (request->committed_op_id().index() > 4) {
+      request->mutable_committed_op_id()->set_index(4);
+    }
+  });
+
+  sync_point.EnableProcessing();
+
+  TestThreadHolder thread_holder;
+
+  CountDownLatch latch(1);
+  thread_holder.AddThread([this, &latch] {
+    auto txn = CreateTransaction();
+    ASSERT_OK(WriteRows(CreateSession(txn)));
+    ASSERT_OK(txn->CommitFuture().get());
+    latch.CountDown();
+  });
+  write_batch_latch.Wait();
+
+  LOG(INFO) << "RESTART BEGIN";
+  auto mini_tserver = cluster_->find_tablet_server(follower_uuid);
+  mini_tserver->Shutdown();
+  LOG(INFO) << "RESTART MID";
+  sync_point.DisableProcessing();
+  follower = nullptr;
+  ASSERT_OK(mini_tserver->Start());
+  LOG(INFO) << "RESTART END";
+  latch.Wait();
+  {
+    auto peers = ASSERT_RESULT(ListTabletPeersForTableName(
+        cluster_.get(), table_->name().table_name(), ListPeersFilter::kLeaders));
+    ASSERT_EQ(peers.size(), 1);
+    LOG(INFO) << "STEP DOWN";
+    ASSERT_OK(TransferLeadership(cluster_.get(), tablet_id, follower_uuid));
+  }
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  LOG(INFO) << "VERIFY";
+  ASSERT_NO_FATALS(VerifyRows(CreateSession()));
+}
+
 TEST_F(QLTransactionTest, DeleteTableDuringWrite) {
   DisableApplyingIntents();
   ASSERT_NO_FATALS(WriteData());
@@ -1965,7 +2064,7 @@ class QLTransactionTestSmallWriteBuffer :
     public TransactionCustomLogSegmentSizeTest<64_KB, QLTransactionTest> {
  public:
   void SetUp() override {
-    FLAGS_db_write_buffer_size = 4_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_write_buffer_size) = 4_KB;
     QLTransactionTest::SetUp();
   }
 
@@ -1984,6 +2083,35 @@ TEST_F_EX(QLTransactionTest, FlushBecauseOfWriteStop, QLTransactionTestSmallWrit
     ASSERT_OK(WriteRows(session, txn_idx++));
     ASSERT_OK(write_txn->CommitFuture().get());
   }
+}
+
+TEST_F_EX(QLTransactionTest, ShutdownWhileLoadingTransactions, QLTransactionTestSingleTablet) {
+  constexpr int kNumTransactions = 30;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_load_transaction_delay_ms) = 200;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_resend_applying_interval_usec) = 100000;
+  DisableApplyingIntents();
+
+  auto* ts = cluster_->mini_tablet_server(0);
+
+  for (int i = 0; i != kNumTransactions; ++i) {
+    auto txn = CreateTransaction();
+    ASSERT_OK(WriteRows(CreateSession(txn), i));
+    ASSERT_OK(txn->CommitFuture().get());
+  }
+
+  LOG(INFO) << "Shutting down tserver";
+  ts->Shutdown();
+
+  SetIgnoreApplyingProbability(0.0);
+
+  LOG(INFO) << "Starting tserver";
+  ASSERT_OK(ts->Start(tserver::WaitTabletsBootstrapped::kFalse));
+  std::this_thread::sleep_for(1s);
+
+  LOG(INFO) << "Restarting tserver";
+  ASSERT_OK(ts->Restart(tserver::WaitTabletsBootstrapped::kFalse));
+
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get(), 30s * kTimeMultiplier));
 }
 
 } // namespace client

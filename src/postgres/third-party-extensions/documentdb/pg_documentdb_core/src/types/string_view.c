@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/bson/types/string_view.c
+ * src/types/string_view.c
  *
  * Utilities that operate substring views on strings (that are not guaranteed to be
  * null terminated).

@@ -30,7 +30,7 @@ For more information on replication and deployment strategies for YugabyteDB, se
 
 - [DocDB replication layer](../../../architecture/docdb-replication/)
 - [Multi-region deployments](../../../explore/multi-region-deployments/)
-- [Engineering Around the Physics of Latency](https://vimeo.com/548171949)
+- [Engineering Around the Physics of Latency](https://www.youtube.com/watch?v=LyOU9v7yXLE)
 - [9 Techniques to Build Cloud-Native, Geo-Distributed SQL Apps with Low Latency](https://www.yugabyte.com/blog/9-techniques-to-build-cloud-native-geo-distributed-sql-apps-with-low-latency/)
 - [Geo-partitioning of Data in YugabyteDB](https://www.yugabyte.com/blog/geo-partitioning-of-data-in-yugabytedb/)
 
@@ -94,7 +94,7 @@ As a mitigation, you can enable [follower reads](../../../explore/going-beyond-s
 **Tradeoffs**
 
 - Write latency can be high (depends on the distance/network packet transfer times)
-- [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql) trade off consistency for latency
+- [Follower reads](../../../explore/going-beyond-sql/follower-reads-ysql/) trade off consistency for latency
 
 **Fault tolerance**
 

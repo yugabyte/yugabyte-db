@@ -50,8 +50,7 @@
 DEFINE_RUNTIME_bool(check_bootstrap_required, false,
     "Is it necessary to check whether bootstrap is required for Universe Replication.");
 
-DEFINE_RUNTIME_uint32(
-    xcluster_ensure_sequence_updates_in_wal_timeout_sec, 3 * 60,
+DEFINE_RUNTIME_uint32(xcluster_ensure_sequence_updates_in_wal_timeout_sec, 3 * 60,
     "Timeout for XClusterEnsureSequenceUpdatesAreInWal RPCs.");
 DEFINE_validator(xcluster_ensure_sequence_updates_in_wal_timeout_sec, FLAG_GT_VALUE_VALIDATOR(0));
 
@@ -208,6 +207,12 @@ Status XClusterInboundReplicationGroupSetupTask::ValidateInputArguments() {
     SCHECK_FORMAT(
         !IsColocatedDbParentTableId(source_table_id), NotSupported,
         "Pre GA colocated databases are not supported with xCluster replication: $0",
+        source_table_id);
+    SCHECK_FORMAT(
+        is_db_scoped_ ||
+        xcluster::StripSequencesDataAliasIfPresent(source_table_id) != kPgSequencesDataTableId,
+        NotSupported,
+        "Replication of the sequences_data table is not supported: $0",
         source_table_id);
     SCHECK(source_table_ids.insert(source_table_id).second, InvalidArgument,
            "Duplicate table source table id: $0", data_.source_table_ids);
@@ -520,8 +525,6 @@ Status XClusterInboundReplicationGroupSetupTask::SetupReplicationGroup() {
   LOG_WITH_PREFIX(INFO) << "Replication Map: "
                         << cluster_config_producer_map.at(original_id.ToString()).DebugString();
 
-  cluster_config_l.Commit();
-
   if (universe_lock) {
     universe_lock->Commit();
   } else {
@@ -540,6 +543,8 @@ Status XClusterInboundReplicationGroupSetupTask::SetupReplicationGroup() {
   }
 
   xcluster_manager_.SyncConsumerReplicationStatusMap(original_id, cluster_config_producer_map);
+
+  cluster_config_l.Commit();
 
   xcluster_manager_.CreateXClusterSafeTimeTableAndStartService();
 
@@ -879,7 +884,7 @@ Result<GetTableSchemaResponsePB> XClusterTableSetupTask::ValidateSourceSchemaAnd
     const client::YBTableInfo& source_table_info) {
   bool is_ysql_table = source_table_info.table_type == client::YBTableType::PGSQL_TABLE_TYPE;
   if (parent_task_->data_.transactional &&
-      !GetAtomicFlag(&FLAGS_TEST_allow_ycql_transactional_xcluster) && !is_ysql_table) {
+      !FLAGS_TEST_allow_ycql_transactional_xcluster && !is_ysql_table) {
     return STATUS_FORMAT(
         NotSupported, "Transactional replication is not supported for non-YSQL tables: $0",
         source_table_info.table_name.ToString());
@@ -997,6 +1002,7 @@ Result<GetTableSchemaResponsePB> XClusterTableSetupTask::ValidateSourceSchemaAnd
             VERIFY_RESULT(parent_task_->ConvertSourceToTargetNamespace(
                 VERIFY_RESULT(xcluster::GetReplicationNamespaceBelongsTo(source_table_id_))))));
   }
+
   return table_schema_resp;
 }
 

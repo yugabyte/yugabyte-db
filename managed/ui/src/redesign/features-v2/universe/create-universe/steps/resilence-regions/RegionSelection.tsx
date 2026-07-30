@@ -21,17 +21,34 @@ import { api, QUERY_KEY } from '../../../../../features/universe/universe-form/u
 import { canSelectMultipleRegions } from '../../CreateUniverseUtils';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
 import { Region } from '../../../../../features/universe/universe-form/utils/dto';
-import { FaultToleranceType, ResilienceAndRegionsProps, ResilienceType } from './dtos';
+import { FaultToleranceType, ResilienceAndRegionsProps, ResilienceFormMode, ResilienceType } from './dtos';
 import {
   NODE_COUNT,
   REGIONS_FIELD,
+  RESILIENCE_FORM_MODE,
   RESILIENCE_TYPE,
   SINGLE_AVAILABILITY_ZONE
 } from '../../fields/FieldNames';
+import { getFlagFromRegion } from '../../helpers/RegionToFlagUtils';
+import pluralize from 'pluralize';
 
-const { Box } = mui;
+const { Box, MenuItem, styled, Typography } = mui;
 
-export const RegionSelection = () => {
+const StyledMenu = styled(MenuItem)({
+  display: 'flex',
+  flexDirection: 'row',
+  justifyContent: 'flex-start',
+  padding: '4px 16px',
+  height: 'auto !important',
+  minHeight: '52px !important'
+});
+
+
+interface RegionSelectionProps {
+  showErrorsAfterSubmit?: boolean;
+}
+
+export const RegionSelection = ({ showErrorsAfterSubmit = true }: RegionSelectionProps) => {
   const [{ generalSettings }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
@@ -63,10 +80,11 @@ export const RegionSelection = () => {
   const regions = watch(REGIONS_FIELD);
   const resilienceType = watch(RESILIENCE_TYPE);
   const faultToleranceType = watch('faultToleranceType');
-
+  const formMode = watch(RESILIENCE_FORM_MODE);
+  
   const icon = useGetMapIcons({ type: MarkerType.REGION_SELECTED });
   const allowmultipleRegionsSelection =
-    canSelectMultipleRegions(resilienceType) && faultToleranceType !== FaultToleranceType.NONE;
+    canSelectMultipleRegions(resilienceType) && (faultToleranceType !== FaultToleranceType.NONE || formMode === ResilienceFormMode.EXPERT_MODE);
 
   const mapCoordinates = useCallback(() => {
     const coordinates = regions?.map((region) => [region.latitude ?? [0], region.longitude ?? [0]]);
@@ -101,13 +119,32 @@ export const RegionSelection = () => {
           <YBAutoComplete
             ybInputProps={{
               placeholder: t('selectRegion'),
-              error: !!errors[REGIONS_FIELD],
-              helperText: errors[REGIONS_FIELD]?.message,
+              error: showErrorsAfterSubmit && !!errors[REGIONS_FIELD],
+              helperText: showErrorsAfterSubmit ? errors[REGIONS_FIELD]?.message : undefined,
               dataTestId: 'region-selection-autocomplete'
             }}
             dataTestId="region-selection-autocomplete-parent"
             options={((regionsList as unknown) as Record<string, string>[]) ?? []}
             getOptionLabel={(r) => (typeof r === 'string' ? r : r.name ?? '')}
+            filterSelectedOptions={true}
+            isOptionEqualToValue={(option, value) => option.code === value.code}
+            renderOption={(props, row) => {
+              return (
+                <StyledMenu {...props}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <Box>
+                      {getFlagFromRegion(row.code)}
+                      <span style={{ marginLeft: '4px' }}>{row.name}</span>
+                    </Box>
+                    <Typography variant='subtitle1' color='textSecondary'>
+                      {
+                        pluralize(t('availabilityZonesCount', { count: row.zones?.length ?? 0 }), row.zones?.length)
+                      }
+                    </Typography>
+                  </Box>
+                </StyledMenu>
+              );
+            }}
             sx={{ marginRight: '24px' }}
             size="large"
             loading={isFetching}
@@ -117,14 +154,16 @@ export const RegionSelection = () => {
                 Array.isArray(option) ? option : option === null ? [] : [option],
                 'name'
               );
-              setValue(REGIONS_FIELD, (value as unknown) as Region[], { shouldValidate: true });
+              setValue(REGIONS_FIELD, (value as unknown) as Region[], {
+                shouldValidate: true
+              });
             }}
             value={
               allowmultipleRegionsSelection
                 ? ((regions as unknown) as Record<string, string>[])
                 : isEmpty(regions)
-                ? null
-                : ((regions[0] as unknown) as Record<string, string>)
+                  ? null
+                  : ((regions[0] as unknown) as Record<string, string>)
             }
           />
         </Box>
@@ -155,53 +194,55 @@ export const RegionSelection = () => {
             />
           </div>
         )}
-        <YBMaps
-          mapHeight={345}
-          dataTestId="yb-maps-region-selection"
-          coordinates={mapCoordinates()}
-          initialBounds={[[37.3688, -122.0363]]}
-          mapContainerProps={{
-            scrollWheelZoom: false,
-            zoom: 2,
-            center: [0, 0]
-          }}
-        >
-          {
-            regions?.map((region: Region) => {
-              return (
-                <YBMapMarker
-                  key={region.code}
-                  position={[region.latitude, region.longitude]}
-                  type={MarkerType.REGION_SELECTED}
-                  tooltip={<>{region.name}</>}
-                />
-              );
-            }) as any
-          }
-          <>
-            {(regionsList ?? [])
-              .filter((region) => !regions?.some((r) => r.code === region.code))
-              .map((region) => (
-                <YBMapMarker
-                  key={region.code}
-                  position={[region.latitude, region.longitude]}
-                  type={
-                    regions.includes(region)
-                      ? MarkerType.REGION_SELECTED
-                      : MarkerType.REGION_NOT_SELECTED
-                  }
-                  tooltip={<>{region.name}</>}
-                />
-              ))}
-          </>
-          {regions?.length > 0 ? (
-            <MapLegend
-              mapLegendItems={[<MapLegendItem icon={<>{icon.normal}</>} label={'Region'} />]}
-            />
-          ) : (
-            <span />
-          )}
-        </YBMaps>
+        <Box sx={{ margin: '0px -25px -25px -25px' }}>
+          <YBMaps
+            mapHeight={345}
+            dataTestId="yb-maps-region-selection"
+            coordinates={mapCoordinates()}
+            initialBounds={[[37.3688, -122.0363]]}
+            mapContainerProps={{
+              scrollWheelZoom: false,
+              zoom: 2,
+              center: [0, 0]
+            }}
+          >
+            {
+              regions?.map((region: Region) => {
+                return (
+                  <YBMapMarker
+                    key={region.code}
+                    position={[region.latitude, region.longitude]}
+                    type={MarkerType.REGION_SELECTED}
+                    tooltip={<>{region.name}</>}
+                  />
+                );
+              }) as any
+            }
+            <>
+              {(regionsList ?? [])
+                .filter((region) => !regions?.some((r) => r.code === region.code))
+                .map((region) => (
+                  <YBMapMarker
+                    key={region.code}
+                    position={[region.latitude, region.longitude]}
+                    type={
+                      regions.includes(region)
+                        ? MarkerType.REGION_SELECTED
+                        : MarkerType.REGION_NOT_SELECTED
+                    }
+                    tooltip={<>{region.name}</>}
+                  />
+                ))}
+            </>
+            {regions?.length > 0 ? (
+              <MapLegend
+                mapLegendItems={[<MapLegendItem icon={<>{icon.normal}</>} label={'Region'} />]}
+              />
+            ) : (
+              <span />
+            )}
+          </YBMaps>
+        </Box>
       </StyledContent>
     </div>
   );

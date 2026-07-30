@@ -48,6 +48,13 @@ class ConsensusContext {
 
   virtual bool ShouldApplyWrite() = 0;
 
+  // Returns true if writes are hard-stopped on any backing store (regular_db or intents_db).
+  // Unlike ShouldApplyWrite(), this only checks for hard stops (not delays) and is safe
+  // to call outside ReplicaState's lock. Used by RaftConsensus::Update() to reject
+  // UpdateConsensus RPCs before acquiring update_mutex_, preventing RPC thread pile-up
+  // when a DB is stalled. See #30728.
+  virtual bool AreWritesStopped() = 0;
+
   // Performs steps to prepare request for peer.
   // For instance it could enqueue some operations to the Raft.
   //

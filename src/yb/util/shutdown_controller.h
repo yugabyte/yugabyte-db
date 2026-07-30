@@ -14,11 +14,14 @@
 #pragma once
 
 #include <atomic>
+#include <utility>
+
+#include "yb/gutil/macros.h"
 
 #include "yb/util/concepts.h"
 #include "yb/util/logging.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 
@@ -31,11 +34,20 @@ namespace yb {
 // Each phase passes via two states to be able to guarantee the stage is triggered only one time:
 // 0) kRunning - the inital state set during instantiation.
 // 1) kShutdownRequested, kShutdownStarted - used by StartShutdown(), should be triggered
-//    from kRunning state. Returns ShutdownInProgress if shutting down has been already started.
+//    from kRunning state. If shutting down has been already started by a concurrent caller, blocks
+//    until that caller finishes starting shutdown (state leaves kShutdownRequested) and then
+//    returns ShutdownInProgress.
 // 2) kShutdownCompleting, kShutdownCompleted - used by CompleteShutdown(), should be triggered
-//    from kShutdownStarted state. Returns IllegalState is the state is less than kShutdownStarted,
-//    returns ShutdownInProgress if completion of shutdown has been already triggered.
+//    from kShutdownStarted state. Returns IllegalState if the state is less than kShutdownStarted.
+//    If completion of shutdown has been already triggered by a concurrent caller, blocks until that
+//    caller finishes completing shutdown (state reaches kShutdownCompleted) and then returns
+//    ShutdownInProgress.
 // 3) kRunning - used by Start(), should be triggered from kShutdownCompleted.
+//
+// Blocking the loser of a phase race until the winner finishes that phase guarantees that a caller
+// which drives both phases back-to-back (e.g. StartShutdown() immediately followed by
+// CompleteShutdown()) never observes an in-progress start when it completes, and never proceeds
+// past CompleteShutdown() while another caller is still tearing the object down.
 //
 // Each method returns a Scope object which handles the state change on leaving the scope.
 //
@@ -49,12 +61,29 @@ class ShutdownController {
     kShutdownCompleted
   };
 
-  template <InvocableAs<Status()> Begin, InvocableAs<void()> End>
+  class StartShutdownTag;
+  class CompleteShutdownTag;
+
+  template <class Tag>
   class Scope {
    public:
-    ~Scope() = default;
-    Scope(Scope&&) = default;
-    Scope& operator=(Scope&&) = default;
+    // Transfers ownership of the phase to the new object and nulls the source, so exactly one Scope
+    // runs the End() callback. Without this a moved-from Scope would invoke End() a second time on
+    // destruction.
+    Scope(Scope&& rhs) noexcept
+        : controller_(rhs.controller_), status_(std::move(rhs.status_)) {
+      rhs.controller_ = nullptr;
+    }
+
+    // Scope is move-constructible but not move-assignable: nothing reassigns a live Scope, and a
+    // defaulted move assignment would fail to run End() on the phase being overwritten.
+    Scope& operator=(Scope&&) = delete;
+
+    ~Scope() {
+      if (controller_) {
+        controller_->End(static_cast<Tag*>(nullptr));
+      }
+    }
 
     explicit operator bool() const noexcept {
       return status_.ok();
@@ -65,82 +94,70 @@ class ShutdownController {
     }
 
    private:
-    Scope(Begin&& begin, End&& end) : status_(begin()), scope_exit_(std::move(end)) {
+    explicit Scope(ShutdownController& controller)
+        : controller_(&controller), status_(controller.Begin(static_cast<Tag*>(nullptr))) {
       if (!status_.ok()) {
-        scope_exit_.Cancel();
+        controller_ = nullptr;
       }
     }
 
+    ShutdownController* controller_;
     Status status_;
-    CancelableScopeExit<End> scope_exit_;
 
     friend class ShutdownController;
 
     DISALLOW_COPY_AND_ASSIGN(Scope);
   };
 
-  ~ShutdownController() {
-    DCHECK(state() == State::kShutdownCompleted);
+  ~ShutdownController();
+
+  Status Start();
+
+  [[nodiscard]] Scope<StartShutdownTag> StartShutdown() {
+    return Scope<StartShutdownTag>(*this);
   }
 
-  Status Start() {
-    auto expected_state = State::kShutdownCompleted;
-    if (state_.compare_exchange_strong(expected_state, State::kRunning)) {
-      return Status::OK();
-    }
-
-    // Since there's no state before Running, it is expected that Start() could be triggered
-    // on the newly-created controller.
-    if (expected_state == State::kRunning) {
-      return Status::OK();
-    }
-
-    return STATUS_FORMAT(ShutdownInProgress, "Shutting down is still in progress");
+  [[nodiscard]] Scope<CompleteShutdownTag> CompleteShutdown() {
+    return Scope<CompleteShutdownTag>(*this);
   }
 
-  [[nodiscard]] auto StartShutdown() {
-    auto shutting_down_begin = [this] {
-      auto expected_state = State::kRunning;
-      return state_.compare_exchange_strong(expected_state, State::kShutdownRequested) ?
-          Status::OK() : STATUS(ShutdownInProgress, "Shutting down already in progress");
-    };
-    auto shutting_down_end = [this] {
-      auto expected_state = State::kShutdownRequested;
-      CHECK(state_.compare_exchange_strong(expected_state, State::kShutdownStarted));
-    };
-    return Scope{ std::move(shutting_down_begin), std::move(shutting_down_end) };
+  // Convenience wrappers around StartShutdown() / CompleteShutdown() that DFATAL if the phase
+  // could not be entered for an unexpected reason (i.e. anything other than shutdown already
+  // being in progress). They let callers collapse the common pattern to:
+  //   auto scope = shutdown_controller_.CheckedStartShutdown(LogPrefix());
+  //   if (!scope) {
+  //     return;
+  //   }
+  [[nodiscard]] auto CheckedStartShutdown(const std::string& log_prefix = std::string()) {
+    return LogIfUnexpected(StartShutdown(), log_prefix);
   }
 
-  [[nodiscard]] auto CompleteShutdown() {
-    auto complete_shutdown_begin = [this] -> Status {
-      auto expected_state = State::kShutdownStarted;
-      if (state_.compare_exchange_strong(expected_state, State::kShutdownCompleting)) {
-        return Status::OK();
-      }
-
-      // Depending on the actual state, a different Status is returned.
-      if (expected_state < State::kShutdownStarted) {
-        return STATUS(IllegalState, "StartShutdown() must be triggered firstly");
-      } else {
-        return STATUS(ShutdownInProgress, "Shutdown already in progress");
-      }
-    };
-    auto complete_shutdown_end = [this] {
-      auto expected_state = State::kShutdownCompleting;
-      CHECK(state_.compare_exchange_strong(expected_state, State::kShutdownCompleted));
-    };
-    return Scope{ std::move(complete_shutdown_begin), std::move(complete_shutdown_end) };
+  [[nodiscard]] auto CheckedCompleteShutdown(const std::string& log_prefix = std::string()) {
+    return LogIfUnexpected(CompleteShutdown(), log_prefix);
   }
 
-  [[nodiscard]] State state() const {
-    return state_.load(std::memory_order_acquire);
-  }
+  [[nodiscard]] State state() const;
 
-  [[nodiscard]] bool IsRunning() const {
-    return state() == State::kRunning;
-  }
+  [[nodiscard]] bool IsRunning() const;
 
  private:
+  // Begin/End callbacks driving the StartShutdown() and CompleteShutdown() phases, selected by tag
+  // and invoked by the returned Scope on scope entry and exit respectively.
+  Status Begin(StartShutdownTag*);
+  Status Begin(CompleteShutdownTag*);
+  void End(StartShutdownTag*);
+  void End(CompleteShutdownTag*);
+
+  // Passes the scope through, DFATAL-ing if it failed for a reason other than shutdown already
+  // being in progress.
+  template <class ScopeType>
+  [[nodiscard]] static ScopeType LogIfUnexpected(ScopeType scope, const std::string& log_prefix) {
+    if (!scope) {
+      LOG_IF(DFATAL, !scope.status().IsShutdownInProgress()) << log_prefix << scope.status();
+    }
+    return scope;
+  }
+
   std::atomic<State> state_{ State::kRunning };
 };
 

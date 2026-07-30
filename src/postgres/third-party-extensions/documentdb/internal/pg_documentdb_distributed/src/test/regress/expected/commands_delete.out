@@ -2,6 +2,7 @@ SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documen
 SET citus.next_shard_id TO 639000;
 SET documentdb.next_collection_id TO 6390;
 SET documentdb.next_collection_index_id TO 6390;
+SET documentdb.EnableVariablesSupportForWriteCommands TO on;
 -- Call delete for a non existent collection.
 -- Note that this should not report any logs related to collection catalog lookup.
 SET citus.log_remote_commands TO ON;
@@ -77,37 +78,37 @@ select 1 from documentdb_api.insert_one('db', 'removeme', '{"a":10,"_id":10}');
 select documentdb_api.delete('db', NULL);
 ERROR:  delete document cannot be NULL
 select documentdb_api.delete(NULL, '{"delete":"removeme", "deletes":[{"q":{},"limit":0}]}');
-ERROR:  database name cannot be NULL
+ERROR:  Database name must not be NULL value
 select documentdb_api.delete('db', '{"deletes":[{"q":{},"limit":0}]}');
-ERROR:  BSON field 'delete.delete' is missing but a required field
+ERROR:  The required BSON field 'delete.delete' is not present in the data.
 select documentdb_api.delete('db', '{"delete":"removeme"}');
-ERROR:  BSON field 'delete.deletes' is missing but a required field
+ERROR:  The required BSON field 'delete.deletes' is not present in the data.
 select documentdb_api.delete('db', '{"delete":["removeme"], "deletes":[{"q":{},"limit":0}]}');
-ERROR:  collection name has invalid type array
+ERROR:  Collection name contains an invalid data type array
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":{"q":{},"limit":0}}');
-ERROR:  BSON field 'delete.deletes' is the wrong type 'object', expected type 'array'
+ERROR:  The BSON field 'delete.deletes' has an incorrect type 'object'; it should be of type 'array'.
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":0}], "extra":1}');
-ERROR:  BSON field 'delete.extra' is an unknown field
+ERROR:  The BSON field 'delete.extra' is not recognized as a valid field name.
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{}}]}');
-ERROR:  BSON field 'delete.deletes.limit' is missing but a required field
+ERROR:  The BSON field 'delete.deletes.limit' is not present, but it is required
 CONTEXT:  SQL statement "SELECT documentdb_api_internal.delete_worker($1, $2, $3, $4::documentdb_core.bson, $5::documentdb_core.bsonsequence, $6) FROM documentdb_data.documents_6390 WHERE shard_key_value = 6390"
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"limit":0}]}');
-ERROR:  BSON field 'delete.deletes.q' is missing but a required field
+ERROR:  The BSON field 'delete.deletes.q' is not present, but it is required
 CONTEXT:  SQL statement "SELECT documentdb_api_internal.delete_worker($1, $2, $3, $4::documentdb_core.bson, $5::documentdb_core.bsonsequence, $6) FROM documentdb_data.documents_6390 WHERE shard_key_value = 6390"
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":[],"limit":0}]}');
-ERROR:  BSON field 'delete.deletes.q' is the wrong type 'array', expected type 'object'
+ERROR:  The BSON field 'delete.deletes.q' has an incorrect type 'array'; it should be of type 'object'.
 CONTEXT:  SQL statement "SELECT documentdb_api_internal.delete_worker($1, $2, $3, $4::documentdb_core.bson, $5::documentdb_core.bsonsequence, $6) FROM documentdb_data.documents_6390 WHERE shard_key_value = 6390"
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":0,"extra":1}]}');
-ERROR:  BSON field 'delete.deletes.extra' is an unknown field
+ERROR:  The BSON field 'delete.deletes.extra' is not recognized as a valid field.
 CONTEXT:  SQL statement "SELECT documentdb_api_internal.delete_worker($1, $2, $3, $4::documentdb_core.bson, $5::documentdb_core.bsonsequence, $6) FROM documentdb_data.documents_6390 WHERE shard_key_value = 6390"
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":0}],"ordered":1}');
-ERROR:  BSON field 'delete.ordered' is the wrong type 'int', expected type 'bool'
+ERROR:  The BSON field 'delete.ordered' has an incorrect type 'int'; it should be of type 'bool'.
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":5}]}');
 ERROR:  The limit field in delete objects must be 0 or 1. Got 5
 CONTEXT:  SQL statement "SELECT documentdb_api_internal.delete_worker($1, $2, $3, $4::documentdb_core.bson, $5::documentdb_core.bsonsequence, $6) FROM documentdb_data.documents_6390 WHERE shard_key_value = 6390"
 -- Disallow writes to system.views
 select documentdb_api.delete('db', '{"delete":"system.views", "deletes":[{"q":{},"limit":0}]}');
-ERROR:  cannot write to db.system.views
+ERROR:  Unable to write data to specified location db.system.views
 -- delete all
 begin;
 SET LOCAL search_path TO '';
@@ -163,9 +164,9 @@ select documentdb_api.delete('db', '{"delete":"notexists", "deletes":[{"q":{},"l
 
 -- query syntax errors are added the response
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"a":{"$ltr":5}},"limit":0}]}');
-                                                                                                                     delete                                                                                                                      
+                                                                                                                             delete                                                                                                                             
 ---------------------------------------------------------------------
- ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""16777245"" }, ""errmsg"" : ""unknown operator: $ltr"" } ] }",f)
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""16777245"" }, ""errmsg"" : ""Unrecognized operator specified: $ltr"" } ] }",f)
 (1 row)
 
 -- when ordered, expect only first delete to be executed
@@ -298,7 +299,7 @@ begin;
 set local citus.log_remote_commands to on;
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"_id":6},"limit":1}]}');
 NOTICE:  executing the command locally: SELECT documentdb_api_internal.delete_worker($1, $2, $3, ($4)::documentdb_core.bson, ($5)::documentdb_core.bsonsequence, $6) AS delete_worker FROM documentdb_data.documents_6390_639005 documents_6390 WHERE (shard_key_value OPERATOR(pg_catalog.=) 6390)
-NOTICE:  executing the command locally: WITH s AS MATERIALIZED (SELECT documents_6390.ctid FROM documentdb_data.documents_6390_639005 documents_6390 WHERE ((documents_6390.document OPERATOR(documentdb_api_catalog.#=) '{ "_id" : { "$numberInt" : "6" } }'::documentdb_core.bsonquery) AND (documents_6390.shard_key_value OPERATOR(pg_catalog.=) $1) AND (documents_6390.object_id OPERATOR(documentdb_core.=) ($3)::documentdb_core.bson)) LIMIT 1 FOR UPDATE OF documents_6390) DELETE FROM documentdb_data.documents_6390_639005 d USING s WHERE ((d.ctid OPERATOR(pg_catalog.=) s.ctid) AND (d.shard_key_value OPERATOR(pg_catalog.=) $1)) RETURNING d.object_id
+NOTICE:  executing the command locally: WITH s AS MATERIALIZED (SELECT documents_6390.ctid FROM documentdb_data.documents_6390_639005 documents_6390 WHERE ((documents_6390.shard_key_value OPERATOR(pg_catalog.=) $1) AND ((documents_6390.document OPERATOR(documentdb_api_catalog.#=) '{ "_id" : { "$numberInt" : "6" } }'::documentdb_core.bsonquery) AND documentdb_api_catalog.bson_true_match($2::documentdb_core.bson)) AND (documents_6390.object_id OPERATOR(documentdb_core.=) ($3)::documentdb_core.bson)) LIMIT 1 FOR UPDATE OF documents_6390) DELETE FROM documentdb_data.documents_6390_639005 d USING s WHERE ((d.ctid OPERATOR(pg_catalog.=) s.ctid) AND (d.shard_key_value OPERATOR(pg_catalog.=) $1)) RETURNING d.object_id
                                          delete                                         
 ---------------------------------------------------------------------
  ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
@@ -306,7 +307,7 @@ NOTICE:  executing the command locally: WITH s AS MATERIALIZED (SELECT documents
 
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{"$and":[{"_id":6},{"_id":5}]},"limit":1}]}');
 NOTICE:  executing the command locally: SELECT documentdb_api_internal.delete_worker($1, $2, $3, ($4)::documentdb_core.bson, ($5)::documentdb_core.bsonsequence, $6) AS delete_worker FROM documentdb_data.documents_6390_639005 documents_6390 WHERE (shard_key_value OPERATOR(pg_catalog.=) 6390)
-NOTICE:  executing the command locally: WITH s AS MATERIALIZED (SELECT documents_6390.ctid FROM documentdb_data.documents_6390_639005 documents_6390 WHERE (((documents_6390.document OPERATOR(documentdb_api_catalog.#=) '{ "_id" : { "$numberInt" : "6" } }'::documentdb_core.bsonquery) AND (documents_6390.document OPERATOR(documentdb_api_catalog.#=) '{ "_id" : { "$numberInt" : "5" } }'::documentdb_core.bsonquery)) AND (documents_6390.shard_key_value OPERATOR(pg_catalog.=) $1)) LIMIT 1 FOR UPDATE OF documents_6390) DELETE FROM documentdb_data.documents_6390_639005 d USING s WHERE ((d.ctid OPERATOR(pg_catalog.=) s.ctid) AND (d.shard_key_value OPERATOR(pg_catalog.=) $1)) RETURNING d.object_id
+NOTICE:  executing the command locally: WITH s AS MATERIALIZED (SELECT documents_6390.ctid FROM documentdb_data.documents_6390_639005 documents_6390 WHERE ((documents_6390.shard_key_value OPERATOR(pg_catalog.=) $1) AND ((documents_6390.document OPERATOR(documentdb_api_catalog.#=) '{ "_id" : { "$numberInt" : "6" } }'::documentdb_core.bsonquery) AND (documents_6390.document OPERATOR(documentdb_api_catalog.#=) '{ "_id" : { "$numberInt" : "5" } }'::documentdb_core.bsonquery))) LIMIT 1 FOR UPDATE OF documents_6390) DELETE FROM documentdb_data.documents_6390_639005 d USING s WHERE ((d.ctid OPERATOR(pg_catalog.=) s.ctid) AND (d.shard_key_value OPERATOR(pg_catalog.=) $1)) RETURNING d.object_id
                                          delete                                         
 ---------------------------------------------------------------------
  ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
@@ -671,7 +672,28 @@ rollback;
 -- deletes with both specs specified 
 begin;
 select documentdb_api.delete('db', '{"delete":"removeme", "deletes": [{"q":{"a":{"$eq":5}},"limit":1}] }', '{ "":[{"q":{"a":{"$eq":5}},"limit":1}] }');
-ERROR:  Unexpected additional deletes
+ERROR:  Unexpected extra delete operations
+rollback;
+-- delete with index hint specified by name and by key object
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "removeme", "indexes": [ { "key" : { "a": 1 }, "name": "validIndex"}] }', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+begin;
+select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":0,"hint": "validIndex"}]}');
+                                         delete                                          
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""10"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+select documentdb_api.delete('db', '{"delete":"removeme", "deletes":[{"q":{},"limit":0,"hint": { "a": 1 }}]}');
+                                         delete                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
 rollback;
 select documentdb_api.drop_collection('db','removeme');
  drop_collection 
@@ -959,3 +981,343 @@ select document from documentdb_api.collection('db', 'explainTest') order by 1;
  { "_id" : { "$numberInt" : "9" }, "a" : { "$numberInt" : "9" } }
 (5 rows)
 
+-- let support
+SELECT documentdb_api.insert_one('db', 'coll_delete', '{"_id": 1, "a":"dog"}');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'coll_delete', '{"_id": 2, "a":"cat"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db', 'coll_delete', '{"_id": 3, "a":"$$varRef"}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- enableVariablesSupportForWriteCommands GUC off: ignore variableSpec
+SET documentdb.enableVariablesSupportForWriteCommands TO off;
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": {"$expr": {"$eq": ["$a", "$$varRef"] } }, "limit": 0}], "let": {"varRef": "cat"} }');
+ERROR:  'delete.let' is not yet supported
+-- enableVariablesSupportForWriteCommands GUC on: user variableSpec
+SET documentdb.enableVariablesSupportForWriteCommands TO on;
+-- variables accessed outside $expr will not evaluate to let variable value
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": {"_id": "$$varRef" }, "limit": 0}], "let": {"varRef": 2}} ');
+                                         delete                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": {"_id": "$$varRef" }, "limit": 1}], "let": {"varRef": 2}} ');
+                                         delete                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+BEGIN;
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "2" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "$$varRef" }
+(3 rows)
+
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$eq": ["$_id", "$$varRef"] } }, "limit": 1}], "let": {"varRef": 2} }');
+                                         delete                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$eq": ["$_id", "$$varRef"] } }, "limit": 1}], "let": {"varRef": 2} }');
+                                                                                                                           QUERY PLAN                                                                                                                            
+---------------------------------------------------------------------
+ Result
+   Output: delete('db'::text, '{ "delete" : "coll_delete", "deletes" : [ { "q" : { "$expr" : { "$eq" : [ "$_id", "$$varRef" ] } }, "limit" : { "$numberInt" : "1" } } ], "let" : { "varRef" : { "$numberInt" : "2" } } }'::bson, NULL::bsonsequence, NULL::text)
+(2 rows)
+
+ROLLBACK;
+BEGIN;
+--- deleteOne (1)
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "2" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "$$varRef" }
+(3 rows)
+
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$eq": ["$_id", "$$varRef"] } }, "limit": 1}], "let": {"varRef": 2} }');
+                                         delete                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$eq": ["$_id", "$$varRef"] } }, "limit": 1}], "let": {"varRef": 2} }');
+                                                                                                                           QUERY PLAN                                                                                                                            
+---------------------------------------------------------------------
+ Result
+   Output: delete('db'::text, '{ "delete" : "coll_delete", "deletes" : [ { "q" : { "$expr" : { "$eq" : [ "$_id", "$$varRef" ] } }, "limit" : { "$numberInt" : "1" } } ], "let" : { "varRef" : { "$numberInt" : "2" } } }'::bson, NULL::bsonsequence, NULL::text)
+(2 rows)
+
+ROLLBACK;
+BEGIN;
+--- deleteMany (2)
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "2" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "$$varRef" }
+(3 rows)
+
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$lte": ["$a", "$$varRef"] } }, "limit": 0}], "let": {"varRef": "zebra"}} ');
+                                         delete                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+ROLLBACK;
+BEGIN;
+-- deleteMany: when ordered, expect only first delete to be executed
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "2" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "$$varRef" }
+(3 rows)
+
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$lt": ["$a", "$$varRef1"] } }, "limit": 0}, { "q": { "$expr": {"$lte": ["$a", "$$varRef2"] } }, "limit": 0}, { "q": { "$expr": {"$lte": ["$_id", "$$varRef1"] } }, "limit": 0}], "ordered": true, "let": {"varRef1": 2, "varRef2": "kangaroo"}} ');
+                                         delete                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+ROLLBACK;
+BEGIN;
+-- deleteOne: when ordered, expect only first delete to be executed
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "2" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "$$varRef" }
+(3 rows)
+
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$lt": ["$_id", "$$varRef1"] } }, "limit": 1}, { "q": { "$expr": {"$lte": ["$_id", "$$varRef2"] } }, "limit": 1}, { "q": { "$expr": {"$lte": ["$_id", "$$varRef1"] } }, "limit": 1}], "ordered": true, "let": {"varRef1": 2, "varRef2": "kangaroo"}} ');
+                                         delete                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""2"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : "$$varRef" }
+(1 row)
+
+ROLLBACK;
+BEGIN;
+-- deleteMany: when not ordered, expect first and last delete to be executed
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "2" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "$$varRef" }
+(3 rows)
+
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$lt": ["$a", "$$varRef1"] } }, "limit": 0}, { "q": { "$expr": {"$lte": ["$a", "$$varRef2"] } }, "limit": 0}, { "q": { "$expr": {"$lte": ["$_id", "$$varRef1"] } }, "limit": 0}], "ordered": false, "let": {"varRef1": 2, "varRef2": "kangaroo"}} ');
+                                         delete                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+ROLLBACK;
+BEGIN;
+-- deleteOne: when not ordered, expect first and last delete to be executed
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "2" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "$$varRef" }
+(3 rows)
+
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$lt": ["$_id", "$$varRef1"] } }, "limit": 1}, { "q": { "$expr": {"$lte": ["$_id", "$$varRef2"] } }, "limit": 1}, { "q": { "$expr": {"$lte": ["$_id", "$$varRef1"] } }, "limit": 1}], "ordered": false, "let": {"varRef1": 2, "varRef2": "kangaroo"}} ');
+                                         delete                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""2"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "a" : "$$varRef" }
+(1 row)
+
+ROLLBACK;
+-- $in: []
+BEGIN;
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "2" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "$$varRef" }
+(3 rows)
+
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$in": [] } }, "limit": 0}], "let": {"varRef": 2} }');
+                                                                                                                                                       delete                                                                                                                                                       
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""654573597"" }, ""errmsg"" : ""The expression $in requires exactly 2 arguments, but 0 arguments were actually provided."" } ] }",f)
+(1 row)
+
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$in": [] } }, "limit": 1}], "let": {"varRef": 2} }');
+                                                                                                                                                       delete                                                                                                                                                       
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""654573597"" }, ""errmsg"" : ""The expression $in requires exactly 2 arguments, but 0 arguments were actually provided."" } ] }",f)
+(1 row)
+
+ROLLBACK;
+-- sharded collection
+SELECT documentdb_api.shard_collection('db', 'coll_delete', '{ "a": "hashed" }', false);
+ shard_collection 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+BEGIN;
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "1" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "$$varRef" }
+(3 rows)
+
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$eq": ["$a", "$$varRef"] } }, "limit": 1}], "let": {"varRef": 2} }');
+                                                                                                                                           delete                                                                                                                                           
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""1088"" }, ""errmsg"" : ""delete query with limit 1 must include either _id or shard key filter"" } ] }",f)
+(1 row)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$eq": ["$a", "$$varRef"] } }, "limit": 1}], "let": {"varRef": 2} }');
+                                                                                                                          QUERY PLAN                                                                                                                           
+---------------------------------------------------------------------
+ Result
+   Output: delete('db'::text, '{ "delete" : "coll_delete", "deletes" : [ { "q" : { "$expr" : { "$eq" : [ "$a", "$$varRef" ] } }, "limit" : { "$numberInt" : "1" } } ], "let" : { "varRef" : { "$numberInt" : "2" } } }'::bson, NULL::bsonsequence, NULL::text)
+(2 rows)
+
+ROLLBACK;
+BEGIN;
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "1" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "$$varRef" }
+(3 rows)
+
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": {"_id": 2, "$expr": {"$eq": ["$a", "$$varRef"] } }, "limit": 1}], "let": {"varRef": "cat"} }');
+                                         delete                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""1"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "$$varRef" }
+(2 rows)
+
+ROLLBACK;
+BEGIN;
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "1" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "$$varRef" }
+(3 rows)
+
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$lte": ["$a", "$$varRef"] } }, "limit": 0}], "let": {"varRef": "zebra"}} ');
+                                         delete                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+ROLLBACK;
+BEGIN;
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "1" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "$$varRef" }
+(3 rows)
+
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$lt": ["$a", "$$varRef1"] } }, "limit": 0}, { "q": { "$expr": {"$lte": ["$a", "$$varRef2"] } }, "limit": 0}, { "q": { "$expr": {"$lte": ["$_id", "$$varRef1"] } }, "limit": 0}], "ordered": true, "let": {"varRef1": 2, "varRef2": "kangaroo"}} ');
+                                         delete                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+ROLLBACK;
+-- $in: []
+BEGIN;
+SELECT document from documentdb_api.collection('db', 'coll_delete');
+                       document                       
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "a" : "cat" }
+ { "_id" : { "$numberInt" : "1" }, "a" : "dog" }
+ { "_id" : { "$numberInt" : "3" }, "a" : "$$varRef" }
+(3 rows)
+
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$in": [] } }, "limit": 0}], "let": {"varRef": 2} }');
+                                                                                                                                                       delete                                                                                                                                                       
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""654573597"" }, ""errmsg"" : ""The expression $in requires exactly 2 arguments, but 0 arguments were actually provided."" } ] }",f)
+(1 row)
+
+SELECT documentdb_api.delete('db', '{ "delete": "coll_delete", "deletes": [ { "q": { "$expr": {"$in": [] } }, "limit": 1}], "let": {"varRef": 2} }');
+                                                                                                                                           delete                                                                                                                                           
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""0"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""1088"" }, ""errmsg"" : ""delete query with limit 1 must include either _id or shard key filter"" } ] }",f)
+(1 row)
+
+ROLLBACK;
+RESET documentdb.enableVariablesSupportForWriteCommands;

@@ -188,6 +188,10 @@ void Strand::Task::Done(const Status& status) {
   }
 }
 
+void Strand::SetTaskCgroup(Cgroup* cgroup) {
+  task_->set_cgroup(cgroup);
+}
+
 void Strand::AbortTasks() {
   task_.release()->Abort();
 }

@@ -10,6 +10,7 @@ import java.util.Map;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -48,9 +49,25 @@ public class OTLPConfig extends TelemetryProviderConfig {
       value =
           "Logs endpoint. The target URL to send log data to (e.g.:"
               + " https://example.com:4318/v1/logs). If this setting is present the endpoint"
-              + " setting is ignored logs. Allowed only for HTTP protocol",
+              + " setting is ignored for logs. Allowed only for HTTP protocol",
       accessMode = READ_WRITE)
   private String logsEndpoint;
+
+  @ApiModelProperty(
+      value =
+          "Metrics endpoint. The target URL to send metric data to (e.g.:"
+              + " https://example.com:4318/v1/metrics). If this setting is present the endpoint"
+              + " setting is ignored for metrics. Allowed only for HTTP protocol",
+      accessMode = READ_WRITE)
+  private String metricsEndpoint;
+
+  @ApiModelProperty(
+      value =
+          "Optional retry-on-failure config for the Otel collector exporter. When set, overrides "
+              + "default retry settings (initial_interval, max_interval, max_elapsed_time). "
+              + "Duration format: e.g. \"30s\", \"1m\", \"60m\".",
+      accessMode = READ_WRITE)
+  private ExporterRetryConfig retryOnFailure;
 
   public enum Protocol {
     gRPC("otlp"),
@@ -94,11 +111,13 @@ public class OTLPConfig extends TelemetryProviderConfig {
 
     AuthCredentials.checkBearerToken(authType, bearerToken);
 
-    if (logsEndpoint != null && !logsEndpoint.isEmpty()) {
-      if (protocol != Protocol.HTTP) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "logsEndpoint is allowed only for HTTP protocol.");
-      }
+    if (StringUtils.isNotBlank(logsEndpoint) && !Protocol.HTTP.equals(protocol)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "logsEndpoint is allowed only for HTTP protocol.");
+    }
+    if (StringUtils.isNotBlank(metricsEndpoint) && !Protocol.HTTP.equals(protocol)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "metricsEndpoint is allowed only for HTTP protocol.");
     }
   }
 }

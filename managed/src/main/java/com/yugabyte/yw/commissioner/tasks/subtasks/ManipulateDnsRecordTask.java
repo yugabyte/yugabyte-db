@@ -14,13 +14,16 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 
@@ -57,10 +60,12 @@ public class ManipulateDnsRecordTask extends UniverseTaskBase {
       if (taskParams().serversToExclude != null) {
         toExclude.addAll(taskParams().serversToExclude);
       }
-      List<NodeDetails> tserverNodes =
-          Universe.getOrBadRequest(taskParams().getUniverseUUID()).getTServers();
+      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+      Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
+      List<NodeDetails> tserverNodes = universe.getTServers();
       String nodeIpCsv =
           tserverNodes.stream()
+              .filter(nd -> providerGetter.apply(nd).getUuid().equals(taskParams().providerUUID))
               .map(nd -> nd.cloudInfo.private_ip)
               .filter(ip -> !toExclude.contains(ip))
               .collect(Collectors.joining(","));

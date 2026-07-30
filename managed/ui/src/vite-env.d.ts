@@ -1,5 +1,3 @@
-/// <reference types="vite/client" />
-
 interface ImportMetaEnv {
   readonly VITE_YUGAWARE_API_URL?: string;
   readonly VITE_YB_MAP_URL?: string;

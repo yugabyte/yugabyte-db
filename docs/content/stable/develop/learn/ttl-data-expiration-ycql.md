@@ -14,7 +14,7 @@ type: docs
 ---
 
 {{<note>}}
-TTL is a [YCQL](/{{<version>}}/api/ycql) only feature. It is not supported in the [YSQL](/{{<version>}}/api/ysql)  API.
+TTL is a [YCQL](/{{<version>}}/api/ycql/) only feature. It is not supported in the [YSQL](/{{<version>}}/api/ysql/)  API.
 {{</note>}}
 
 There are two types of time to live (TTL) in YCQL:

@@ -20,6 +20,7 @@
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/tcmalloc_impl_util.h"
 
 namespace yb {
@@ -37,6 +38,8 @@ struct SampleInfo {
 
   // The expected value of how many times we allocated from this call stack.
   std::optional<int64_t> estimated_count;
+
+  std::string ToString() const;
 };
 
 using SampleStack = std::string;

@@ -26,16 +26,16 @@ You configure CBO using the [yb_enable_cbo](../../reference/configuration/yb-tse
 
 ## New deployments
 
-For new YSQL deployments, or when migrating from another system, to enable CBO, add the parameter to [ysql_pg_conf_csv](../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) as follows:
-
-```sh
---ysql_pg_conf_csv=yb_enable_cbo=on
-```
-
-Alternatively, set the following YB-TServer flag:
+For new YSQL deployments, or when migrating from another system, to enable CBO, set the following YB-TServer flag:
 
 ```sh
 --ysql_yb_enable_cbo=on
+```
+
+Alternatively, you can add the `yb_enable_cbo` parameter to [ysql_pg_conf_csv](../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) as follows:
+
+```sh
+--ysql_pg_conf_csv=yb_enable_cbo=on
 ```
 
 ## Existing deployments

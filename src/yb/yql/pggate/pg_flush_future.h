@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 #include "yb/yql/pggate/pg_perform_future.h"
 

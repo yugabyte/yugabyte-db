@@ -3,20 +3,16 @@
 package nodeagent
 
 import (
-	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"log"
-	"net/http"
+	"node-agent/model"
 	"node-agent/util"
 	"node-agent/ynp/config"
+	"node-agent/ynp/yba"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -33,189 +29,152 @@ func NewInstallNodeAgent(basePath string) config.Module {
 	}
 }
 
-func (m *InstallNodeAgent) getHeaders(token string) map[string]string {
-	return map[string]string{
-		"Accept":              "application/json",
-		"X-AUTH-YW-API-TOKEN": token,
-		"Content-Type":        "application/json",
-	}
-}
-
-func (m *InstallNodeAgent) getProviderURL(values map[string]any) string {
-	url := values["url"].(string)
-	customerUUID := values["customer_uuid"].(string)
-	providerName := values["provider_name"].(string)
-	return fmt.Sprintf("%s/api/v1/customers/%s/providers?name=%s", url, customerUUID, providerName)
-}
-
-func (m *InstallNodeAgent) getInstanceTypeURL(
-	ybaURL, customerUUID, providerUUID, code string,
-) string {
-	return fmt.Sprintf(
-		"%s/api/v1/customers/%s/providers/%s/instance_types/%s",
-		ybaURL,
-		customerUUID,
-		providerUUID,
-		code,
-	)
-}
-
-func (m *InstallNodeAgent) makeRequest(
-	url, method string,
-	headers map[string]string,
-	data interface{},
-	verifySSL bool,
-) ([]byte, int, error) {
-	var reqBody []byte
-	var err error
-	if data != nil {
-		reqBody, err = json.Marshal(data)
-		if err != nil {
-			return nil, 0, err
-		}
-	}
-	client := &http.Client{}
-	if !verifySSL {
-		tr := &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		}
-		client.Transport = tr
-	}
-	var req *http.Request
-	if reqBody != nil {
-		req, err = http.NewRequest(method, url, bytes.NewBuffer(reqBody))
-	} else {
-		req, err = http.NewRequest(method, url, nil)
-	}
-	if err != nil {
-		return nil, 0, err
-	}
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer resp.Body.Close()
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, resp.StatusCode, err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return respBody, resp.StatusCode, fmt.Errorf("HTTP error: %d", resp.StatusCode)
-	}
-	return respBody, resp.StatusCode, nil
-}
-
 func (m *InstallNodeAgent) generateProviderPayload(
 	values map[string]any,
-) (map[string]interface{}, error) {
+) (*model.Provider, error) {
 	timestamp := time.Now().Unix()
 	providerName := values["provider_name"].(string)
 	ybHomeDir := "/home/yugabyte"
 	if v, ok := values["yb_home_dir"].(string); ok {
 		ybHomeDir = v
 	}
-	useClockbound := "false"
-	if v, ok := values["configure_clockbound"].(string); ok {
-		useClockbound = v
-	}
+	useClockbound := config.GetBool(values, "configure_clockbound", false)
+	enableMultiTenancy := config.GetBool(values, "configure_cgroup", true)
 	regionName := values["provider_region_name"].(string)
 	zoneName := values["provider_region_zone_name"].(string)
-	region := map[string]interface{}{
-		"name": regionName,
-		"code": regionName,
-		"zones": []map[string]interface{}{
-			{"name": zoneName, "code": zoneName},
+	region := model.Region{
+		BasicInfo: model.BasicInfo{
+			Name: regionName,
+			Code: regionName,
 		},
-	}
-	if lat, ok := values["provider_region_latitude"].(string); ok {
-		if f, err := strconv.ParseFloat(lat, 64); err == nil && f >= -90 && f <= 90 {
-			region["latitude"] = f
-		}
-	}
-	if lon, ok := values["provider_region_longitude"].(string); ok {
-		if f, err := strconv.ParseFloat(lon, 64); err == nil && f >= -180 && f <= 180 {
-			region["longitude"] = f
-		}
-	}
-	providerData := map[string]interface{}{
-		"name": providerName,
-		"code": "onprem",
-		"details": map[string]interface{}{
-			"skipProvisioning": true,
-			"cloudInfo": map[string]interface{}{
-				"onprem": map[string]interface{}{
-					"ybHomeDir":     ybHomeDir,
-					"useClockbound": useClockbound,
+		Zones: []model.Zone{
+			{
+				BasicInfo: model.BasicInfo{
+					Name: zoneName,
+					Code: zoneName,
 				},
 			},
 		},
-		"regions": []interface{}{region},
+	}
+	if lat := config.GetFloat(values, "provider_region_latitude", 0.0); lat >= -90 && lat <= 90 {
+		region.Latitude = lat
+	}
+	if lon := config.GetFloat(values, "provider_region_longitude", 0.0); lon >= -180 && lon <= 180 {
+		region.Longitude = lon
+	}
+	nodeExporterPort := config.GetInt(values, "node_exporter_port", 9300)
+	var chronyServers []string
+	if str, ok := values["chrony_servers"].(string); ok {
+		for _, token := range strings.Split(str, ",") {
+			token = strings.TrimSpace(token)
+			if token != "" {
+				chronyServers = append(chronyServers, token)
+			}
+		}
+	}
+	provider := model.Provider{
+		BasicInfo: model.BasicInfo{
+			Name: providerName,
+			Code: "onprem",
+		},
+		Cuuid:         values["customer_uuid"].(string),
+		AirGapInstall: config.GetBool(values, "is_airgap", false),
+		Details: model.ProviderDetails{
+			SkipProvisioning:    true, /* Manual provisioning */
+			InstallNodeExporter: true, /* Default is true */
+			NodeExporterPort:    int(nodeExporterPort),
+			CloudInfo: model.CloudInfo{
+				Onprem: model.OnPremCloudInfo{
+					YbHomeDir:          ybHomeDir,
+					UseClockbound:      useClockbound,
+					EnableMultiTenancy: enableMultiTenancy,
+				},
+			},
+		},
+		Regions: []model.Region{region},
+	}
+	if len(chronyServers) > 0 {
+		// Populate NTP servers if provided.
+		provider.Details.NtpServers = chronyServers
 	}
 	if keyPath, ok := values["provider_access_key_path"].(string); ok && keyPath != "" {
 		keyContent, err := os.ReadFile(keyPath)
 		if err != nil {
 			return nil, err
 		}
-		providerData["allAccessKeys"] = []interface{}{
-			map[string]interface{}{
-				"keyInfo": map[string]interface{}{
-					"keyPairName":              fmt.Sprintf("onprem_key_%d.pem", timestamp),
-					"sshPrivateKeyContent":     strings.TrimSpace(string(keyContent)),
-					"skipKeyValidateAndUpload": false,
+		provider.AllAccessKeys = []model.AccessKey{
+			{
+				KeyInfo: model.KeyInfo{
+					KeyPairName:              fmt.Sprintf("onprem_key_%d.pem", timestamp),
+					SshPrivateKeyContent:     strings.TrimSpace(string(keyContent)),
+					SkipKeyValidateAndUpload: false,
 				},
 			},
 		}
 	}
-	return providerData, nil
+	return &provider, nil
 }
 
 func (m *InstallNodeAgent) generateProviderUpdatePayload(
 	values map[string]any,
-	provider map[string]interface{},
-) map[string]interface{} {
-	regions, _ := provider["regions"].([]interface{})
+	provider *model.Provider,
+) *model.Provider {
+	// Patch enableMultiTenancy onto existing on-prem cloudInfo so reprovision propagates the
+	// toggled configure_cgroup value to YBA.
+	provider.Details.CloudInfo.Onprem.EnableMultiTenancy = config.GetBool(
+		values, "configure_cgroup", true)
+
 	regionExist := false
 	regionName := values["provider_region_name"].(string)
 	zoneName := values["provider_region_zone_name"].(string)
-	for _, r := range regions {
-		region, _ := r.(map[string]interface{})
-		if region["code"] == regionName {
+	for i := range provider.Regions {
+		// Get the pointer to the region to modify its zones.
+		region := &provider.Regions[i]
+		if region.Code == regionName {
 			regionExist = true
-			zones, _ := region["zones"].([]interface{})
 			zoneExist := false
-			for _, z := range zones {
-				zone, _ := z.(map[string]interface{})
-				if zone["code"] == zoneName {
+			for _, zone := range region.Zones {
+				if zone.Code == zoneName {
 					zoneExist = true
+					break
 				}
 			}
 			if !zoneExist {
-				region["zones"] = append(zones, map[string]interface{}{
-					"name": zoneName, "code": zoneName,
+				region.Zones = append(region.Zones, model.Zone{
+					BasicInfo: model.BasicInfo{
+						Name: zoneName,
+						Code: zoneName,
+					},
 				})
 			}
 		}
 	}
 	if !regionExist {
-		regions = append(regions, map[string]interface{}{
-			"name": regionName, "code": regionName,
-			"zones": []interface{}{map[string]interface{}{"name": zoneName, "code": zoneName}},
+		provider.Regions = append(provider.Regions, model.Region{
+			BasicInfo: model.BasicInfo{
+				Name: regionName,
+				Code: regionName,
+			},
+			Zones: []model.Zone{
+				{
+					BasicInfo: model.BasicInfo{
+						Name: zoneName,
+						Code: zoneName,
+					},
+				},
+			},
 		})
 	}
-	provider["regions"] = regions
 	return provider
 }
 
 func (m *InstallNodeAgent) generateInstanceTypePayload(
 	values map[string]any,
-) (map[string]interface{}, error) {
+) (*model.NodeInstanceType, error) {
 	instanceTypeName := values["instance_type_name"].(string)
-	numCores := values["instance_type_cores"]
-	memSizeGB := values["instance_type_memory_size"]
-	volumeSizeGB := values["instance_type_volume_size"]
+	numCores := config.GetFloat(values, "instance_type_cores", 0.0)
+	memSizeGB := config.GetFloat(values, "instance_type_memory_size", 0.0)
+	volumeSizeGB := config.GetFloat(values, "instance_type_volume_size", 0.0)
 	mountPoints, ok := values["instance_type_mount_points"].(string)
 	if !ok || mountPoints == "" {
 		return nil, errors.New(
@@ -225,73 +184,78 @@ func (m *InstallNodeAgent) generateInstanceTypePayload(
 	mountPoints = strings.Trim(mountPoints, "[]")
 	mountPoints = strings.ReplaceAll(mountPoints, "'", "")
 	mps := strings.Split(mountPoints, ", ")
-	volumeDetails := []interface{}{}
+	volumeDetails := []model.VolumeDetails{}
 	for _, mp := range mps {
-		volumeDetails = append(volumeDetails, map[string]interface{}{
-			"volumeSizeGB": volumeSizeGB,
-			"volumeType":   "SSD",
-			"mountPath":    mp,
+		volumeDetails = append(volumeDetails, model.VolumeDetails{
+			VolumeType: "SSD",
+			VolumeSize: volumeSizeGB,
+			MountPath:  mp,
 		})
 	}
-	return map[string]interface{}{
-		"idKey": map[string]interface{}{
-			"instanceTypeCode": instanceTypeName,
+	return &model.NodeInstanceType{
+		IDKey: model.InstanceTypeKey{
+			InstanceTypeCode: instanceTypeName,
 		},
-		"providerUuid": "$provider_id",
-		"providerCode": "onprem",
-		"numCores":     numCores,
-		"memSizeGB":    memSizeGB,
-		"instanceTypeDetails": map[string]interface{}{
-			"volumeDetailsList": volumeDetails,
+		Active:       true,
+		ProviderUuid: "$provider_id",
+		NumCores:     numCores,
+		MemSizeGB:    memSizeGB,
+		Details: model.NodeInstanceTypeDetails{
+			VolumeDetailsList: volumeDetails,
 		},
 	}, nil
 }
 
-func (m *InstallNodeAgent) generateAddNodePayload(values map[string]any) map[string]interface{} {
-	return map[string]interface{}{
-		"nodes": []interface{}{
-			map[string]interface{}{
-				"instanceType": values["instance_type_name"],
-				"ip":           values["node_external_fqdn"],
-				"region":       values["provider_region_name"],
-				"zone":         values["provider_region_zone_name"],
-				"instanceName": values["node_name"],
+func (m *InstallNodeAgent) generateAddNodePayload(values map[string]any) *model.NodeInstances {
+	return &model.NodeInstances{
+		Nodes: []model.NodeDetails{
+			{
+				IP:           values["node_external_fqdn"].(string),
+				Region:       values["provider_region_name"].(string),
+				Zone:         values["provider_region_zone_name"].(string),
+				InstanceType: values["instance_type_name"].(string),
+				InstanceName: values["node_name"].(string),
 			},
 		},
 	}
 }
 
-func (m *InstallNodeAgent) getProvider(values map[string]any) ([]byte, error) {
-	providerURL := m.getProviderURL(values)
+func (m *InstallNodeAgent) getProvider(
+	ctx context.Context,
+	values map[string]any,
+) (*model.Provider, error) {
 	ybaURL := values["url"].(string)
-	skipTLSVerify := !strings.HasPrefix(strings.ToLower(ybaURL), "https")
-	headers := m.getHeaders(values["api_key"].(string))
-	resp, _, err := m.makeRequest(providerURL, "GET", headers, nil, skipTLSVerify)
-	return resp, err
+	apiKey := values["api_key"].(string)
+	skipTlsVerify := config.GetBool(values, "skip_tls_verify", true)
+	customerUUID := values["customer_uuid"].(string)
+	providerName := values["provider_name"].(string)
+	return yba.GetProviderByName(ctx, ybaURL, apiKey, skipTlsVerify, customerUUID, providerName)
 }
 
 func (m *InstallNodeAgent) createInstanceIfNotExists(
+	ctx context.Context,
 	values map[string]any,
-	provider map[string]interface{},
+	provider *model.Provider,
 ) error {
-	ybaURL := values["url"].(string)
-	skipTLSVerify := !strings.HasPrefix(strings.ToLower(ybaURL), "https")
-	getInstanceTypeURL := m.getInstanceTypeURL(
-		values["url"].(string),
-		values["customer_uuid"].(string),
-		provider["uuid"].(string),
-		values["instance_type_name"].(string),
+	ybaUrl := values["url"].(string)
+	apiKey := values["api_key"].(string)
+	skipTlsVerify := config.GetBool(values, "skip_tls_verify", true)
+	customerUuid := values["customer_uuid"].(string)
+	instanceTypeName := values["instance_type_name"].(string)
+	_, err := yba.GetInstanceType(ctx,
+		ybaUrl,
+		apiKey,
+		skipTlsVerify,
+		customerUuid,
+		provider.Uuid,
+		instanceTypeName,
 	)
-	headers := m.getHeaders(values["api_key"].(string))
-	resp, status, err := m.makeRequest(getInstanceTypeURL, "GET", headers, nil, skipTLSVerify)
-	if err == nil && status == 200 {
-		var data interface{}
-		if err := json.Unmarshal(resp, &data); err == nil && data != nil {
-			return nil // instance type exists
-		}
+	if err == nil {
+		// Instance type already exists, no need to create.
+		return nil
 	}
-	if status == 400 || (err != nil && strings.Contains(err.Error(), "400")) {
-		log.Println("Instance type does not exist, creating it.")
+	if err == util.ErrNotExist {
+		util.ConsoleLogger().Info(ctx, "Instance type does not exist, creating it.")
 		instanceData, err := m.generateInstanceTypePayload(values)
 		if err != nil {
 			return err
@@ -312,7 +276,81 @@ func (m *InstallNodeAgent) createInstanceIfNotExists(
 	return err
 }
 
-func (m *InstallNodeAgent) cleanup(values map[string]any) {
+func (m *InstallNodeAgent) getProviderNodeInstances(
+	ctx context.Context,
+	values map[string]any,
+) ([]model.NodeInstance, error) {
+	ybaURL := values["url"].(string)
+	apiKey := values["api_key"].(string)
+	customerUUID := values["customer_uuid"].(string)
+	providerUUID := values["provider_id"].(string)
+	skipTlsVerify := config.GetBool(values, "skip_tls_verify", true)
+	return yba.GetProviderNodeInstances(
+		ctx,
+		ybaURL,
+		apiKey,
+		skipTlsVerify,
+		customerUUID,
+		providerUUID,
+	)
+}
+
+func (m *InstallNodeAgent) checkIfNodeInstanceAlreadyExists(
+	ctx context.Context,
+	values map[string]any,
+	input *model.NodeDetails,
+) (bool, error) {
+	instances, err := m.getProviderNodeInstances(ctx, values)
+	if err != nil {
+		return false, err
+	}
+	for _, instance := range instances {
+		if instance.Details.IP == input.IP {
+			if instance.Details.Region != input.Region || instance.Details.Zone != input.Zone {
+				util.FileLogger().
+					Errorf(ctx, "Node with IP %s already exists in different region/zone: %s/%s",
+						input.IP,
+						instance.Details.Region,
+						instance.Details.Zone,
+					)
+				return false, fmt.Errorf(
+					"Node with IP %s already exists in different region/zone: %s/%s",
+					input.IP,
+					instance.Details.Region,
+					instance.Details.Zone,
+				)
+			}
+			if instance.Details.InstanceType != input.InstanceType {
+				util.FileLogger().
+					Errorf(ctx, "Node with IP %s already exists with different instance type: %s",
+						input.IP,
+						instance.Details.InstanceType,
+					)
+				return false, fmt.Errorf(
+					"Node with IP %s already exists with different instance type: %s",
+					input.IP,
+					instance.Details.InstanceType,
+				)
+			}
+			if instance.InstanceName != input.InstanceName {
+				util.FileLogger().
+					Errorf(ctx, "Node with IP %s already exists with different instance name: %s",
+						input.IP,
+						instance.InstanceName,
+					)
+				return false, fmt.Errorf(
+					"Node with IP %s already exists with different instance name: %s",
+					input.IP,
+					instance.InstanceName,
+				)
+			}
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (m *InstallNodeAgent) cleanup(ctx context.Context, values map[string]any) {
 	filesToRemove := []string{
 		"create_provider.json",
 		"update_provider.json",
@@ -321,7 +359,7 @@ func (m *InstallNodeAgent) cleanup(values map[string]any) {
 	}
 	tmpDir, ok := values["tmp_directory"].(string)
 	if !ok {
-		log.Println("Temporary directory not found")
+		util.ConsoleLogger().Info(ctx, "Temporary directory not found")
 		return
 	}
 	for _, fileName := range filesToRemove {
@@ -340,39 +378,41 @@ func (m *InstallNodeAgent) RenderTemplates(
 		// Not implemented: call base module's RenderTemplates
 		return nil, nil
 	}
-	m.cleanup(values)
-	nodeAgentEnabled := false
-	resp, err := m.getProvider(values)
-	if err != nil {
+	m.cleanup(ctx, values)
+	provider, err := m.getProvider(ctx, values)
+	if err != nil && err != util.ErrNotExist {
 		return nil, err
 	}
-	var providerData interface{}
-	if err := json.Unmarshal(resp, &providerData); err != nil {
-		return nil, err
-	}
-	var provider map[string]interface{}
-	if arr, ok := providerData.([]interface{}); ok && len(arr) > 0 {
-		provider = arr[0].(map[string]interface{})
-		providerDetails := provider["details"].(map[string]interface{})
-		regions, _ := provider["regions"].([]interface{})
+	if err == nil {
+		providerYbHomeDir := provider.Details.CloudInfo.Onprem.YbHomeDir
+		if providerYbHomeDir != "" && providerYbHomeDir != values["yb_home_dir"].(string) {
+			return nil, fmt.Errorf(
+				"Provider YugabyteDB home directory (%s) does not match the configured value (%s)",
+				providerYbHomeDir,
+				values["yb_home_dir"].(string),
+			)
+		}
 		regionExists := false
 		zoneExists := false
 		regionName := values["provider_region_name"].(string)
 		zoneName := values["provider_region_zone_name"].(string)
-		for _, r := range regions {
-			region, _ := r.(map[string]interface{})
-			if region["code"] == regionName {
+		for _, region := range provider.Regions {
+			if region.Code == regionName {
 				regionExists = true
-				zones, _ := region["zones"].([]interface{})
-				for _, z := range zones {
-					zone, _ := z.(map[string]interface{})
-					if zone["code"] == zoneName {
+				for _, zone := range region.Zones {
+					if zone.Code == zoneName {
 						zoneExists = true
+						break
 					}
 				}
+				break
 			}
 		}
-		if !regionExists || !zoneExists {
+		// Also write the update payload when configure_cgroup diverges from what YBA has,
+		// so toggling it on reprovision actually reaches the provider.
+		multiTenancyDiff := provider.Details.CloudInfo.Onprem.EnableMultiTenancy !=
+			config.GetBool(values, "configure_cgroup", true)
+		if !regionExists || !zoneExists || multiTenancyDiff {
 			updateProviderData := m.generateProviderUpdatePayload(values, provider)
 			updateProviderDataFile := filepath.Join(
 				values["tmp_directory"].(string),
@@ -389,13 +429,10 @@ func (m *InstallNodeAgent) RenderTemplates(
 				return nil, err
 			}
 		}
-		if err := m.createInstanceIfNotExists(values, provider); err != nil {
+		if err := m.createInstanceIfNotExists(ctx, values, provider); err != nil {
 			return nil, err
 		}
-		values["provider_id"] = fmt.Sprintf("%v", provider["uuid"])
-		if en, ok := providerDetails["enableNodeAgent"].(bool); ok {
-			nodeAgentEnabled = en
-		}
+		values["provider_id"] = provider.Uuid
 	} else {
 		util.ConsoleLogger().Info(ctx, "Generating provider create payload...")
 		providerPayload, err := m.generateProviderPayload(values)
@@ -428,25 +465,31 @@ func (m *InstallNodeAgent) RenderTemplates(
 		if err := enc2.Encode(instanceCreatePayload); err != nil {
 			return nil, err
 		}
-		nodeAgentEnabled = true
 	}
+	nodeAlreadyExists := false
 	addNodePayload := m.generateAddNodePayload(values)
-	addNodePayloadFile := filepath.Join(
-		values["tmp_directory"].(string),
-		"add_node_to_provider.json",
-	)
-	f3, ferr3 := os.Create(addNodePayloadFile)
-	if ferr3 != nil {
-		return nil, ferr3
+	if _, ok := values["provider_id"].(string); ok {
+		exists, err := m.checkIfNodeInstanceAlreadyExists(ctx, values, &addNodePayload.Nodes[0])
+		if err != nil {
+			return nil, err
+		}
+		nodeAlreadyExists = exists
 	}
-	defer f3.Close()
-	enc3 := json.NewEncoder(f3)
-	enc3.SetIndent("", "    ")
-	if err := enc3.Encode(addNodePayload); err != nil {
-		return nil, err
+	if !nodeAlreadyExists {
+		addNodePayloadFile := filepath.Join(
+			values["tmp_directory"].(string),
+			"add_node_to_provider.json",
+		)
+		f3, ferr3 := os.Create(addNodePayloadFile)
+		if ferr3 != nil {
+			return nil, ferr3
+		}
+		defer f3.Close()
+		enc3 := json.NewEncoder(f3)
+		enc3.SetIndent("", "    ")
+		if err := enc3.Encode(addNodePayload); err != nil {
+			return nil, err
+		}
 	}
-	if nodeAgentEnabled {
-		return m.BaseModule.RenderTemplates(ctx, values)
-	}
-	return nil, nil
+	return m.BaseModule.RenderTemplates(ctx, values)
 }

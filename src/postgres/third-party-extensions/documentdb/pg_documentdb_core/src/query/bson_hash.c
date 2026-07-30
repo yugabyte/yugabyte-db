@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/bson/bson_hash.c
+ * src/query/bson_hash.c
  *
  * Implementation of hashing of the BSON type.
  *
@@ -315,7 +315,7 @@ BsonValueHashUint32(const bson_value_t *bsonValue)
 								  sizeof(int64));
 			}
 
-			/* In MongoDB set operators aggregation, non-fixed double and Decimal128 values with the same numerical value are not considered equal.
+			/* In set operators aggregation, non-fixed double and Decimal128 values with the same numerical value are not considered equal.
 			 * For example, if we have a double value of "1.1" and a Decimal128 value of "1.1", they will not be considered equal.
 			 * To ensure that these values are not treated as equal, different hashes are generated for these values.*/
 			return hash_bytes((const unsigned char *)
@@ -341,7 +341,7 @@ BsonValueHashUint32(const bson_value_t *bsonValue)
 								  sizeof(int64));
 			}
 
-			/* In MongoDB set operators aggregation, non-fixed double and Decimal128 values with the same numerical value are not considered equal.
+			/* In set operators aggregation, non-fixed double and Decimal128 values with the same numerical value are not considered equal.
 			 * For example, if we have a double value of "1.1" and a Decimal128 value of "1.1", they will not be considered equal.
 			 * To ensure that these values are not treated as equal, different hashes are generated for these values.*/
 			return hash_bytes((const unsigned char *)
@@ -437,7 +437,7 @@ BsonValueHashUint32(const bson_value_t *bsonValue)
 		default:
 		{
 			ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							errmsg("unknown BSON type code %d",
+							errmsg("Unrecognized BSON data type code %d",
 								   bsonValue->value_type)));
 		}
 	}

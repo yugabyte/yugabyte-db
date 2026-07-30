@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -25,15 +26,31 @@ public class PlatformScheduler {
   @Inject
   public PlatformScheduler(
       ActorSystem actorSystem,
-      ExecutionContext executionContext,
+      PlatformExecutorFactory executorFactory,
       ShutdownHookHandler shutdownHookHandler) {
     this.actorSystem = actorSystem;
-    this.executionContext = executionContext;
     this.shutdownHookHandler = shutdownHookHandler;
+    // Create a separate execution context for scheduler to use its own thread pool.
+    this.executionContext =
+        ExecutionContext.fromExecutor(
+            executorFactory.createExecutor(
+                "scheduler",
+                new ThreadFactoryBuilder()
+                    .setNameFormat("platform-scheduler-%d")
+                    .setDaemon(true)
+                    .build()));
   }
 
   private Cancellable createShutdownAwareSchedule(
       String name, Runnable runnable, Function<Runnable, Cancellable> scheduleFactory) {
+    return createShutdownAwareSchedule(name, runnable, scheduleFactory, false);
+  }
+
+  private Cancellable createShutdownAwareSchedule(
+      String name,
+      Runnable runnable,
+      Function<Runnable, Cancellable> scheduleFactory,
+      boolean runOnFollower) {
     final AtomicBoolean isRunning = new AtomicBoolean();
     final Object lock = new Object();
     Runnable wrappedRunnable =
@@ -43,7 +60,7 @@ public class PlatformScheduler {
             // Synchronized block in shutdown and this should be serialized.
             shouldRun =
                 !shutdownHookHandler.isShutdown()
-                    && !HighAvailabilityConfig.isFollower()
+                    && (runOnFollower || !HighAvailabilityConfig.isFollower())
                     && isRunning.compareAndSet(false, true);
           }
           if (shouldRun) {
@@ -97,6 +114,23 @@ public class PlatformScheduler {
             actorSystem
                 .scheduler()
                 .scheduleWithFixedDelay(initialDelay, interval, r, executionContext));
+  }
+
+  /**
+   * Same as {@link #schedule} but the runnable is executed even when the YBA instance is an HA
+   * follower. Use only for tasks that must run on standby YBAs (e.g. propagating the local embedded
+   * PA configuration to the local standby PA).
+   */
+  public Cancellable scheduleAlwaysOn(
+      String name, Duration initialDelay, Duration interval, Runnable runnable) {
+    return createShutdownAwareSchedule(
+        name,
+        runnable,
+        r ->
+            actorSystem
+                .scheduler()
+                .scheduleWithFixedDelay(initialDelay, interval, r, executionContext),
+        true);
   }
 
   public Cancellable scheduleOnce(String name, Duration initialDelay, Runnable runnable) {

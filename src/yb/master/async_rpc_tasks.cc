@@ -28,6 +28,8 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 
 using namespace std::literals;
@@ -500,6 +502,7 @@ bool AsyncDeleteReplica::RetryTaskAfterRPCFailure(const Status& status) {
 //  Class AsyncAlterTable.
 // ============================================================================
 void AsyncAlterTable::HandleResponse(int attempt) {
+  ADOPT_WAIT_STATE(wait_state_);
   if (PREDICT_FALSE(FLAGS_TEST_slowdown_alter_table_rpcs_ms > 0)) {
     VLOG_WITH_PREFIX(1) << "Sleeping for " << tablet_->tablet_id()
                         << FLAGS_TEST_slowdown_alter_table_rpcs_ms
@@ -575,7 +578,18 @@ TableType AsyncAlterTable::table_type() const {
   return tablet_->table()->GetTableType();
 }
 
+void AsyncAlterTable::Finished(const Status& status) {
+  // Notify the CDC-SDK batch tracker (if any) so the CreateCDCStream dispatcher can move
+  // on to the next batch once all of this batch's per-tablet RPCs have reached a terminal
+  // state. RetryingRpcTask::Finished() fires exactly once per task at terminal state, so
+  // it's safe to call OnComplete here without worrying about per-attempt double-counting.
+  if (cdc_alter_batch_tracker_) {
+    cdc_alter_batch_tracker_->OnComplete(status);
+  }
+}
+
 bool AsyncAlterTable::SendRequest(int attempt) {
+  ADOPT_WAIT_STATE(wait_state_);
   VLOG_WITH_PREFIX(1) << "Send alter table request to " << permanent_uuid() << " for "
                       << tablet_->tablet_id() << " waiting for a read lock.";
 
@@ -779,7 +793,8 @@ TabletId CommonInfoForRaftTask::tablet_id() const {
 std::string AsyncChangeConfigTask::description() const {
   return Format(
       "$0 RPC for tablet $1 ($2) on peer $3 with cas_config_opid_index $4. Reason: $5", type_name(),
-      tablet_->tablet_id(), table_name(), permanent_uuid(), cstate_.config().opid_index(), reason_);
+      tablet_->tablet_id(), table_name(), permanent_uuid(),
+      cstate_.config().committed_op_index(), reason_);
 }
 
 bool AsyncChangeConfigTask::SendRequest(int attempt) {
@@ -787,7 +802,7 @@ bool AsyncChangeConfigTask::SendRequest(int attempt) {
   int64_t latest_index;
   {
     auto tablet_lock = tablet_->LockForRead();
-    latest_index = tablet_lock->pb.committed_consensus_state().config().opid_index();
+    latest_index = tablet_lock->pb.committed_consensus_state().config().committed_op_index();
     // Adding this logic for a race condition that occurs in this scenario:
     // 1. CatalogManager receives a DeleteTable request and sends DeleteTablet requests to the
     // tservers, but doesn't yet update the tablet in memory state to not running.
@@ -803,11 +818,11 @@ bool AsyncChangeConfigTask::SendRequest(int attempt) {
       return false;
     }
   }
-  if (latest_index > cstate_.config().opid_index()) {
+  if (latest_index > cstate_.config().committed_op_index()) {
     auto status = STATUS_FORMAT(
         Aborted,
         "Latest config for has opid_index of $0 while this task has opid_index of $1",
-        latest_index, cstate_.config().opid_index());
+        latest_index, cstate_.config().committed_op_index());
     LOG_WITH_PREFIX(INFO) << status;
     AbortTask(status);
     return false;
@@ -841,6 +856,7 @@ void AsyncChangeConfigTask::HandleResponse(int attempt) {
     case TabletServerErrorPB::CAS_FAILED:
     case TabletServerErrorPB::ADD_CHANGE_CONFIG_ALREADY_PRESENT:
     case TabletServerErrorPB::REMOVE_CHANGE_CONFIG_NOT_PRESENT:
+    case TabletServerErrorPB::LEADER_NEEDS_STEP_DOWN:
     case TabletServerErrorPB::NOT_THE_LEADER:
       LOG_WITH_PREFIX(WARNING) << "ChangeConfig() failed on leader " << permanent_uuid()
                                << ". No further retry: " << status.ToString();
@@ -886,7 +902,7 @@ Status AsyncAddServerTask::PrepareRequest(int attempt) {
   req_.set_dest_uuid(permanent_uuid());
   req_.set_tablet_id(tablet_->tablet_id());
   req_.set_type(consensus::ADD_SERVER);
-  req_.set_cas_config_opid_index(cstate_.config().opid_index());
+  req_.set_cas_config_opid_index(cstate_.config().committed_op_index());
   RaftPeerPB* peer = req_.mutable_server();
   peer->set_permanent_uuid(replacement_replica->permanent_uuid());
   peer->set_member_type(member_type_);
@@ -927,7 +943,7 @@ Status AsyncRemoveServerTask::PrepareRequest(int attempt) {
   req_.set_dest_uuid(permanent_uuid());
   req_.set_tablet_id(tablet_->tablet_id());
   req_.set_type(consensus::REMOVE_SERVER);
-  req_.set_cas_config_opid_index(cstate_.config().opid_index());
+  req_.set_cas_config_opid_index(cstate_.config().committed_op_index());
   RaftPeerPB* peer = req_.mutable_server();
   peer->set_permanent_uuid(change_config_ts_uuid_);
 
@@ -1001,9 +1017,9 @@ void AsyncTryStepDown::HandleResponse(int attempt) {
                                stepdown_resp_.error().status().code() != AppStatusPB::OK;
   LOG_WITH_PREFIX(INFO) << Format(
       "Leader step down done attempt=$0, leader_uuid=$1, change_uuid=$2, "
-      "error=$3, failed=$4, should_remove=$5 for tablet $6.",
+      "error=$3, failed=$4, also_remove_replica=$5 for tablet $6.",
       attempt, permanent_uuid(), change_config_ts_uuid_, stepdown_resp_.error(),
-      stepdown_failed, should_remove_, tablet_->tablet_id());
+      stepdown_failed, also_remove_replica_, tablet_->tablet_id());
 
   if (stepdown_failed) {
     tablet_->RegisterLeaderStepDownFailure(change_config_ts_uuid_,
@@ -1011,7 +1027,7 @@ void AsyncTryStepDown::HandleResponse(int attempt) {
                                     stepdown_resp_.time_since_election_failure_ms() : 0));
   }
 
-  if (should_remove_) {
+  if (also_remove_replica_) {
     auto task = std::make_shared<AsyncRemoveServerTask>(
         master_, callback_pool_, tablet_, cstate_, change_config_ts_uuid_, epoch(),
         Format("Done stepping down leader. Now removing replica as requested: $0", reason_));
@@ -1027,13 +1043,15 @@ void AsyncTryStepDown::HandleResponse(int attempt) {
 AsyncAddTableToTablet::AsyncAddTableToTablet(
     Master* master, ThreadPool* callback_pool, const TabletInfoPtr& tablet,
     const scoped_refptr<TableInfo>& table, LeaderEpoch epoch,
-    const std::shared_ptr<std::atomic<size_t>>& task_counter)
+    const std::shared_ptr<std::atomic<size_t>>& task_counter,
+    std::function<void(const Status&)> on_done)
     : RetryingTSRpcTaskWithTable(
           master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), table.get(),
           std::move(epoch), /* async_task_throttler */ nullptr),
       tablet_(tablet),
       tablet_id_(tablet->tablet_id()),
-      task_counter_(task_counter) {
+      task_counter_(task_counter),
+      callback_(std::move(on_done)) {
   req_.set_tablet_id(tablet->id());
   auto& add_table = *req_.mutable_add_table();
   add_table.set_table_id(table_->id());
@@ -1118,6 +1136,14 @@ bool AsyncAddTableToTablet::SendRequest(int attempt) {
   VLOG_WITH_PREFIX(1)
       << "Send AddTableToTablet request (attempt " << attempt << "):\n" << req_.DebugString();
   return true;
+}
+
+void AsyncAddTableToTablet::UnregisterAsyncTaskCallback() {
+  if (callback_) {
+    // GetStatus() returns Status::OK() for kComplete and the saved failure status for kFailed /
+    // kAborted (both set via SaveFinalStatusAndCallFinished in TransitionToTerminalState).
+    callback_(GetStatus());
+  }
 }
 
 // ============================================================================

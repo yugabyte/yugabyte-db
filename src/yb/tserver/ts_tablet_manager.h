@@ -69,6 +69,7 @@
 #include "yb/tablet/tablet_splitter.h"
 
 #include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_admin.fwd.h"
 #include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/tserver/ts_data_size_metrics.h"
@@ -89,8 +90,6 @@ class HostPort;
 class Schema;
 class BackgroundTask;
 class XClusterSafeTimeTest;
-
-YB_STRONGLY_TYPED_BOOL(UserTabletsOnly);
 
 namespace consensus {
 class RaftConfigPB;
@@ -191,6 +190,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Completes shutdown process and waits for it's completeness.
   void CompleteShutdown();
 
+  rpc::ThreadPoolTag PoolTagForTablet(const tablet::TabletPtr& tablet);
+
   ThreadPool* tablet_prepare_pool() const { return tablet_prepare_pool_.get(); }
   ThreadPool* raft_pool() const { return raft_pool_.get(); }
   rpc::ThreadPool* raft_notifications_pool() const {
@@ -213,6 +214,13 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   //
   // If another tablet already exists with this ID, logs a DFATAL
   // and returns a bad Status.
+
+  // Tiered storage
+  // 'target_storage_tier', when non-empty, is a tiered-storage tier label (e.g. "ssd", "hdd")
+  // that this tablet's home directory (path_id 0) should be placed on. Derived
+  // from the storage_tier of the tablespace the tablet's table belongs to. If the requested
+  // tier has no disks configured on this node, we fall back to the node's default disk
+  // selection policy rather than failing tablet creation.
   Result<tablet::TabletPeerPtr> CreateNewTablet(
       const tablet::TableInfoPtr& table_info,
       const std::string& tablet_id,
@@ -220,7 +228,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
       consensus::RaftConfigPB config,
       const bool colocated = false,
       const std::vector<SnapshotScheduleId>& snapshot_schedules = {},
-      const std::unordered_set<StatefulServiceKind>& hosted_services = {});
+      const std::unordered_set<StatefulServiceKind>& hosted_services = {},
+      const std::string& target_storage_tier = std::string());
 
   Status ApplyTabletSplit(
       tablet::SplitOperation* operation, log::Log* raft_log,
@@ -240,12 +249,15 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // returned.
   // If `hide_only` is true, then just hide tablet instead of deleting it.
   // If `keep_data` is true, then on disk data is not deleted.
+  // If `resp` is non-null, it is populated with metadata about the deleted
+  // tablet (directories involved in the delete)
   Status DeleteTablet(
       const TabletId& tablet_id, tablet::TabletDataState delete_type,
       tablet::ShouldAbortActiveTransactions should_abort_active_txns,
       const std::optional<int64_t>& cas_config_opid_index_less_or_equal, bool hide_only,
       bool keep_data, std::optional<TabletServerErrorPB::Code>* error_code,
-      std::optional<TransactionId>&& exclude_aborting_txn_id = std::nullopt);
+      std::optional<TransactionId>&& exclude_aborting_txn_id = std::nullopt,
+      DeleteTabletResponsePB* resp = nullptr);
 
   // Lookup the given tablet peer by its ID. Returns nullptr if the tablet peer is not found.
   //
@@ -374,11 +386,39 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Creates and updates the map of table to the set of tablets assigned per table per disk
   // for both data and wal directories.
+  //
+  // 'target_tier', when non-empty, restricts data-directory candidates to disks tagged with
+  // that tier (see FsManager::GetDataRootDirsForTier), so the tablet's home dir lands on the
+  // requested tier (e.g. from a tablespace's storage_tier). WAL directory selection is always
+  // tier-agnostic, since WAL dirs are not part of tier_paths. If no disks are configured for
+  // the requested tier on this node, falls back to the default (all-disk) policy.
   void GetAndRegisterDataAndWalDir(FsManager* fs_manager,
                                    const std::string& table_id,
                                    const TabletId& tablet_id,
                                    std::string* data_root_dir,
-                                   std::string* wal_root_dir);
+                                   std::string* wal_root_dir,
+                                   const std::string& target_tier = std::string());
+
+  // Tiered Storage.
+  // Returns the path_id (index into RaftGroupMetadata::tier_paths() / RocksDB db_paths) of the
+  // least-loaded disk within target_tier for the given tablet. Uses the same per-table then
+  // per-drive min-count policy as GetAndRegisterDataAndWalDir, but restricts the candidate set
+  // to data roots tagged with target_tier in FsManager (from --fs_data_dirs parsing).
+  //
+  // This is the primitive that AlterTabletTier will call to resolve which path_id to pass to
+  // light_weight_compact when migrating SSTs to a different tier.
+  //
+  // This call is read-only: it only reads table_data_assignment_map_ / data_dirs_per_drive_
+  // (via PickMinLoadDataRootUnlocked) and does not write to them. Callers that actually
+  // place data on the returned path_id (e.g. after a successful light_weight_compact) are
+  // responsible for calling RegisterDataAndWalDir themselves to commit the assignment, so later
+  // calls to this function and to GetAndRegisterDataAndWalDir see accurate load counts.
+  //
+  // Returns NotFound if no data roots are configured for target_tier on this node.
+  Result<uint32_t> SelectPathIdForTier(
+      const tablet::RaftGroupMetadata& meta,
+      const std::string& table_id,
+      const std::string& target_tier) EXCLUDES(dir_assignment_mutex_);
   // Updates the map of table to the set of tablets assigned per table per disk
   // for both of the given data and wal directories.
   void RegisterDataAndWalDir(FsManager* fs_manager,
@@ -433,6 +473,11 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   client::YBMetaDataCache* YBMetaDataCache() const;
 
   MetricRegistry* TEST_metric_registry() const { return metric_registry_; }
+
+  // Returns the last snapshot hybrid time tracked for `schedule_id` from the most recent master
+  // heartbeat response, or HybridTime::kMin if the schedule is not (yet) known to this tserver.
+  HybridTime TEST_LastSnapshotHybridTime(const SnapshotScheduleId& schedule_id) const
+      EXCLUDES(snapshot_schedule_info_mutex_);
 
  private:
   FRIEND_TEST(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered);
@@ -581,7 +626,18 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
     return state_;
   }
 
+  // Lock-free check that StartShutdown has been entered on this tablet manager. Flips once
+  // from false to true at the top of StartShutdown and stays true afterward. Intended as a
+  // cancellation signal for long-running operations (e.g. remote bootstrap verification)
+  // that must exit promptly so shutdown can drain `remote_bootstrap_clients_` inside its
+  // 30s deadline.
+  bool IsShutdownStarted() const {
+    return shutdown_started_.load(std::memory_order_acquire);
+  }
+
   bool ClosingUnlocked() const REQUIRES_SHARED(mutex_);
+
+  bool IsOperational() const EXCLUDES(mutex_);
 
   // Initializes the RaftPeerPB for the local peer.
   // Guaranteed to include both uuid and last_seen_addr fields.
@@ -654,11 +710,19 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   template <class RemoteClient>
   std::unique_ptr<RemoteClient> InitRemoteClient(
       const std::string& log_prefix, const TabletId& tablet_id, const PeerId& source_uuid,
-      const std::string& source_addr, const std::string& debug_session_string);
+      const std::string& source_addr, const std::string& debug_session_string,
+      std::function<bool()> is_cancelled = {});
 
   void UpdateCompactFlushRateLimitBytesPerSec();
   void UpdateAllowCompactionFailures();
   void UpdateVectorIndexCompactionLimit();
+
+  // Returns the data root from candidate_dirs with the fewest tablets for table_id (tie-break:
+  // fewest tablets overall on that drive). candidate_dirs must be a subset of the dirs tracked in
+  // table_data_assignment_map_. Caller must hold dir_assignment_mutex_.
+  std::string PickMinLoadDataRootUnlocked(
+      const std::string& table_id,
+      const std::vector<std::string>& candidate_dirs) REQUIRES(dir_assignment_mutex_);
 
   rpc::ThreadPool* VectorIndexThreadPool(tablet::VectorIndexThreadPoolType type);
   PriorityThreadPoolTokenPtr VectorIndexCompactionToken();
@@ -720,6 +784,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   MetricRegistry* metric_registry_;
 
   TSTabletManagerStatePB state_ GUARDED_BY(mutex_);
+
+  // Lock-free mirror of state_ transitioning to MANAGER_QUIESCING. See IsShutdownStarted.
+  std::atomic<bool> shutdown_started_{false};
 
   // Thread pool used to perform fsync operations corresponding to log::Log of each tablet_peer
   std::unique_ptr<ThreadPool> log_sync_pool_;
@@ -814,16 +881,21 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Gauge tracking number of peers on this tserver actively undergoing RBS.
   scoped_refptr<yb::AtomicGauge<uint64_t>> num_tablet_peers_undergoing_rbs_;
 
-  mutable simple_spinlock snapshot_schedule_allowed_history_cutoff_mutex_;
-  std::unordered_map<SnapshotScheduleId, HybridTime, SnapshotScheduleIdHash>
-      snapshot_schedule_allowed_history_cutoff_
-      GUARDED_BY(snapshot_schedule_allowed_history_cutoff_mutex_);
+  struct SnapshotScheduleInfo {
+    HybridTime last_snapshot_ht;
+    uint64_t retention_duration_sec = 0;
+  };
+
+  mutable simple_spinlock snapshot_schedule_info_mutex_;
+  std::unordered_map<SnapshotScheduleId, SnapshotScheduleInfo, SnapshotScheduleIdHash>
+      snapshot_schedule_info_
+      GUARDED_BY(snapshot_schedule_info_mutex_);
   // Store snapshot schedules that were missing on previous calls to AllowedHistoryCutoff.
   std::unordered_map<SnapshotScheduleId, int64_t, SnapshotScheduleIdHash>
       missing_snapshot_schedules_
-      GUARDED_BY(snapshot_schedule_allowed_history_cutoff_mutex_);
-  int64_t snapshot_schedules_version_ = 0;
-  HybridTime last_restorations_update_ht_;
+      GUARDED_BY(snapshot_schedule_info_mutex_);
+  int64_t snapshot_schedules_version_ GUARDED_BY(snapshot_schedule_info_mutex_) = 0;
+  HybridTime last_restorations_update_ht_ GUARDED_BY(snapshot_schedule_info_mutex_);
 
   // Background task for periodically flushing the superblocks.
   std::unique_ptr<BackgroundTask> superblock_flush_bg_task_;

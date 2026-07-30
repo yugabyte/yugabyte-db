@@ -39,8 +39,14 @@
 #include <boost/date_time/posix_time/time_formatters.hpp>
 
 #include "yb/util/date_time.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/memcmpable_varint.h"
 #include "yb/util/result.h"
+
+DEFINE_RUNTIME_bool(no_pretty_hybrid_times, false,
+    "If true, hybrid times converted to human readable form will always formatted as plain "
+    "numbers.");
 
 using std::string;
 
@@ -48,14 +54,10 @@ namespace yb {
 
 namespace {
 
+// This is overridden by FLAGS_no_pretty_hybrid_times when that flag is true.
 std::atomic<bool> pretty_to_string_mode_{false};
 
 }
-
-const HybridTime HybridTime::kMin(kMinHybridTimeValue);
-const HybridTime HybridTime::kMax(kMaxHybridTimeValue);
-const HybridTime HybridTime::kInitial(kInitialHybridTimeValue);
-const HybridTime HybridTime::kInvalid(kInvalidHybridTimeValue);
 
 bool HybridTime::DecodeFrom(Slice *input) {
   return GetMemcmpableVarint64(input, &v).ok();
@@ -81,7 +83,7 @@ string HybridTime::ToString() const {
       return "<initial>";
     default:
       auto logical = GetLogicalValue();
-      if (!pretty_to_string_mode_.load(std::memory_order_acquire)) {
+      if (FLAGS_no_pretty_hybrid_times || !pretty_to_string_mode_.load(std::memory_order_acquire)) {
         if (logical) {
           return Format("{ physical: $0 logical: $1 }", GetPhysicalValueMicros(), logical);
         } else {
@@ -98,13 +100,13 @@ string HybridTime::ToString() const {
           boost::date_time::c_local_adjustor<boost::posix_time::ptime>::utc_to_local(utc_time);
       auto date = local_time.date();
       auto time_of_day = local_time.time_of_day();
-      auto days = (boost::posix_time::ptime(date) - start).hours() / 24;
+      int years = static_cast<int>(date.year()) - start.date().year();
+      int days = date.day_of_year() - start.date().day_of_year();
       auto time_of_day_str = boost::posix_time::to_simple_string(time_of_day);
-      if (logical) {
-        return Format("{ days: $0 time: $1 logical: $2 }", days, time_of_day_str, logical);
-      } else {
-        return Format("{ days: $0 time: $1 }", days, time_of_day_str);
-      }
+      string years_prefix = years > 0 ? Format("years: $0 ", years) : "";
+      string logical_suffix = logical ? Format(" logical: $0", logical) : "";
+      return Format(
+          "{ $0days: $1 time: $2$3 }", years_prefix, days, time_of_day_str, logical_suffix);
   }
 }
 
@@ -139,7 +141,6 @@ MicrosTime HybridTime::CeilPhysicalValueMicros() const {
 Result<HybridTime> HybridTime::ParseHybridTime(std::string input) {
   boost::trim(input);
 
-  HybridTime ht;
   // The HybridTime is given in microseconds and will contain 16 chars.
   static const std::regex int_regex("[0-9]{16}");
   if (std::regex_match(input, int_regex)) {

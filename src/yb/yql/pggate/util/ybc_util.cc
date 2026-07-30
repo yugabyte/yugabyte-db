@@ -15,6 +15,8 @@
 #include <stdarg.h>
 
 #include <fstream>
+#include <string>
+#include <string_view>
 
 #include "catalog/pg_type_d.h"
 
@@ -26,11 +28,13 @@
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/stringprintf.h"
 
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/cgroups.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
 #include "yb/util/env.h"
@@ -49,6 +53,8 @@ using std::string;
 DEFINE_test_flag(string, process_info_dir, string(),
                  "Directory where all postgres process will writes their PIDs and executable name");
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_auto_analyze_infra);
+DECLARE_bool(ysql_enable_auto_analyze);
 
 namespace yb::pggate {
 
@@ -230,7 +236,17 @@ const char* NoPrefixName(Enum value) {
   return name + 1;
 }
 
-} // anonymous namespace
+YbcUpdateInitPostgresMetricsFn update_init_postgres_metrics_fn = nullptr;
+
+Slice YBCStatusMsg(YbcStatus s) {
+  return StatusWrapper(s)->message();
+}
+
+const char* YBCPAllocNonEmptyStdString(std::string_view s) {
+  return s.empty() ? nullptr : YBCPAllocStdString(s);
+}
+
+} // namespace
 
 extern "C" {
 
@@ -257,16 +273,16 @@ bool YBCStatusIsTryAgain(YbcStatus s) {
   return StatusWrapper(s)->IsTryAgain();
 }
 
+bool YBCStatusIsTimedOut(YbcStatus s) {
+  return StatusWrapper(s)->IsTimedOut();
+}
+
 bool YBCStatusIsAlreadyPresent(YbcStatus s) {
   return StatusWrapper(s)->IsAlreadyPresent();
 }
 
 bool YBCStatusIsReplicationSlotLimitReached(YbcStatus s) {
   return StatusWrapper(s)->IsReplicationSlotLimitReached();
-}
-
-bool YBCStatusIsFatalError(YbcStatus s) {
-  return YBCStatusIsUnknownSession(s);
 }
 
 uint32_t YBCStatusPgsqlError(YbcStatus s) {
@@ -277,33 +293,20 @@ void YBCFreeStatus(YbcStatus s) {
   FreeYBCStatus(s);
 }
 
-const char* YBCStatusFilename(YbcStatus s) {
-  return YBCPAllocStdString(StatusWrapper(s)->file_name());
-}
-
-int YBCStatusLineNumber(YbcStatus s) {
-  return StatusWrapper(s)->line_number();
-}
-
-const char* YBCStatusFuncname(YbcStatus s) {
-  const auto funcname = FuncName::ValueFromStatus(*StatusWrapper(s));
-  return funcname ? YBCPAllocStdString(*funcname) : nullptr;
-}
-
-size_t YBCStatusMessageLen(YbcStatus s) {
-  return StatusWrapper(s)->message().size();
+YbcStatusErrorLocationInfo YBCStatusErrorLocation(YbcStatus s) {
+  StatusWrapper status{s};
+  return {
+      YBCPAllocNonEmptyStdString(status->file_name()),
+      status->line_number(),
+      YBCPAllocNonEmptyStdString(FuncName::ValueFromStatus(*status).value_or(std::string{}))};
 }
 
 const char* YBCStatusMessageBegin(YbcStatus s) {
-  return StatusWrapper(s)->message().cdata();
+  return YBCStatusMsg(s).cdata();
 }
 
 const char* YBCMessageAsCString(YbcStatus s) {
-  size_t msg_size = YBCStatusMessageLen(s);
-  char* msg_buf = static_cast<char*>(YBCPAlloc(msg_size + 1));
-  memcpy(msg_buf, YBCStatusMessageBegin(s), msg_size);
-  msg_buf[msg_size] = 0;
-  return msg_buf;
+  return YBCPAllocStdString(YBCStatusMsg(s));
 }
 
 unsigned int YBCStatusRelationOid(YbcStatus s) {
@@ -868,10 +871,6 @@ const char *YBCGetOutFuncName(YbcPgOid typid) {
   }
 }
 
-namespace {
-YbcUpdateInitPostgresMetricsFn update_init_postgres_metrics_fn = nullptr;
-}  // namespace
-
 void
 YBCSetUpdateInitPostgresMetricsFn(YbcUpdateInitPostgresMetricsFn update_init_postgres_metrics) {
   CHECK_NOTNULL(update_init_postgres_metrics);
@@ -889,42 +888,46 @@ void YBCUpdateInitPostgresMetrics() {
 
 uint16_t YBCDecodeMultiColumnHashLeftBound(const char* partition_key, size_t key_len) {
   yb::Slice slice(partition_key, key_len);
-  return dockv::PartitionSchema::DecodeMultiColumnHashLeftBound(slice);
+  return dockv::PartitionSchema::DecodePartitionKeyStartAsHashLeftBoundInclusive(slice);
 }
 
 uint16_t YBCDecodeMultiColumnHashRightBound(const char* partition_key, size_t key_len) {
   yb::Slice slice(partition_key, key_len);
-  return dockv::PartitionSchema::DecodeMultiColumnHashRightBound(slice);
+  return CHECK_RESULT(
+      dockv::PartitionSchema::DecodePartitionKeyEndAsHashRightBoundInclusive(slice));
 }
 
-bool
-YBCIsLegacyModeForCatalogOps() {
-  //
-  // If object locking is enabled:
-  //
-  // (1) Catalog writes will use the CatalogSnapshot's read time serial number instead of the
-  //     TransactionSnapshot's read time serial number (which is the legacy pre-object locking
-  //     behavior). This is required to allow concurrent DDLs by not causing write-write conflicts
-  //     based on overlapping [transaction read time, commit time] windows. The serialization of
-  //     catalog modifications via DDLs is now handled by object locks. Catalog writes were using
-  //     the kTransactional session type pre-object locking and that stays the same.
-  //
-  // (2) Catalog reads will always use the kTransactional session type. This is done so that they
-  //     can also use the CatalogSnapshot's read time serial number to read the latest data (and)
-  //     see the catalog data modified by the current active transaction (this is required because
-  //     transactional DDL is enabled if object locking is enabled).
-  //
-  //     In the pre-object locking mode, catalog reads for DML transactions go via the kCatalog
-  //     session type which has a single catalog_read_time_ (see pg_session.h). Catalog reads
-  //     executed as part of a DDL transaction (or) after a DDL in a DDL-DML transaction block
-  //     (i.e., with transactional DDL enabled) go via the kTransactional session type and would use
-  //     the TransactionSnapshot's read time serial number.
-  //
-  return !YBCIsObjectLockingEnabled() || yb_fallback_to_legacy_catalog_read_time;
+// Decodes a range-sharded tablet's partition key into a string of the form
+// "[v1, v2, ...]". Values are rendered in DocDB representation via
+// KeyEntryValue::ToString() -- i.e., types like timestamp, date, numeric, and
+// uuid appear in their internal/encoded form rather than the PostgreSQL output
+// representation (e.g., timestamps as int64 microseconds since epoch, not 'YYYY-MM-DD
+// HH:MM:SS'). This matches what the master UI's tablet listing showcases.
+// Memory is allocated via palloc; the caller owns the returned buffer.
+// Returns nullptr for empty keys or on decode failure.
+char* YBCDecodeRangePartitionKey(const char* partition_key, size_t key_len) {
+  if (partition_key == nullptr || key_len == 0) {
+    return nullptr;
+  }
+
+  yb::Slice slice(partition_key, key_len);
+  dockv::DocKey doc_key;
+  auto decode_result = doc_key.DecodeFrom(
+      slice, dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue);
+  if (!decode_result.ok()) {
+    LOG(WARNING) << "Failed to decode range partition key: " << decode_result.status();
+    return nullptr;
+  }
+
+  return YBCPAllocStdString(ToString(doc_key.range_group()));
 }
 
 bool YBCIsObjectLockingEnabled() {
   return FLAGS_enable_object_locking_for_table_locks && enable_object_locking_infra;
+}
+
+bool YBCIsAutoAnalyzeEnabled() {
+  return FLAGS_ysql_enable_auto_analyze_infra && FLAGS_ysql_enable_auto_analyze;
 }
 
 } // extern "C"

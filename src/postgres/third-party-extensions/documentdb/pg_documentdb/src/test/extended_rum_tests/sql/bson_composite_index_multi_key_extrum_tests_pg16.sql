@@ -1,0 +1,1 @@
+\i sql/bson_composite_index_multi_key_extrum_tests.sql

@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/bson/types/decimal128.c
+ * src/types/decimal128.c
  *
  * Decimal128 support for documentdb extension
  * Referrences:
@@ -37,9 +37,9 @@
 /*
  * From bid_internal.h
  */
-#define INFINITY_MASK64         0x7800000000000000ull
-#define SINFINITY_MASK64        0xf800000000000000ull
-#define NAN_MASK64              0x7c00000000000000ull
+#define INFINITY_MASK64 0x7800000000000000ull
+#define SINFINITY_MASK64 0xf800000000000000ull
+#define NAN_MASK64 0x7c00000000000000ull
 
 /*
  * Used to shift the exponent bits in their respective place based on the dec128 format requirement.
@@ -164,7 +164,7 @@ static bson_decimal128_t GetBsonValueAsDecimal128Core(const bson_value_t *value,
 /*
  * Get the decimal 128 value as int32.
  *
- * This method throws `MongoConversionFailure` if :
+ * This method throws `ERRCODE_DOCUMENTDB_CONVERSIONFAILURE` if :
  *    - NaN is attempted in conversion
  *    - converted result overflows the int32 range
  */
@@ -190,7 +190,7 @@ GetBsonDecimal128AsInt32(const bson_value_t *value, ConversionRoundingMode round
 	 *      2- bidValue is (+/-) Infinity
 	 *      3- Converted value cannot fit in the range of int32
 	 *
-	 *  Conversion can also signal inexact exception which is ignored as similar to Native Mongo
+	 *  Conversion can also signal inexact exception which is ignored
 	 */
 	if (!IsOperationSuccess(exceptionFlags) && IsOperationInvalid(exceptionFlags))
 	{
@@ -213,7 +213,7 @@ GetBsonDecimal128AsInt32(const bson_value_t *value, ConversionRoundingMode round
 /*
  * Get the decimal 128 value as int64.
  *
- * This method throws `MongoConversionFailure` error if NaN is attempted in conversion or converted result overflows
+ * This method throws `ConversionFailure` error if NaN is attempted in conversion or converted result overflows
  * the int64 range
  */
 int64_t
@@ -238,7 +238,7 @@ GetBsonDecimal128AsInt64(const bson_value_t *value, ConversionRoundingMode round
 	 *      2- bidValue is (+/-) Infinity
 	 *      3- Converted value cannot fit in the range of int64
 	 *
-	 *  Conversion can also signal inexact exception which is ignored as similar to Native Mongo
+	 *  Conversion can also signal inexact exception which is ignored
 	 */
 	if (!IsOperationSuccess(exceptionFlags))
 	{
@@ -261,7 +261,7 @@ GetBsonDecimal128AsInt64(const bson_value_t *value, ConversionRoundingMode round
 /*
  * Get the decimal 128 value as double.
  *
- * This method throws `MongoConversionFailure` error if converted result overflows
+ * This method throws `ConversionFailure` error if converted result overflows
  * the double range
  */
 double
@@ -280,7 +280,7 @@ GetBsonDecimal128AsDouble(const bson_value_t *value)
 		if (IsOperationOverflow(exceptionFlags) || IsOperationUnderflow(exceptionFlags))
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
-							errmsg("Conversion would overflow target type")));
+							errmsg("Conversion would exceed target type limit")));
 		}
 		else
 		{
@@ -324,7 +324,7 @@ GetBsonDecimal128AsDoubleQuiet(const bson_value_t *value)
 /*
  * Get the decimal 128 value as long double.
  *
- * This method throws `MongoConversionFailure` error if converted result overflows
+ * This method throws `ConversionFailure` error if converted result overflows
  * the int80 range
  */
 long double
@@ -343,7 +343,7 @@ GetBsonDecimal128AsLongDouble(const bson_value_t *value)
 		if (IsOperationOverflow(exceptionFlags) || IsOperationUnderflow(exceptionFlags))
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
-							errmsg("Conversion would overflow target type")));
+							errmsg("Conversion would exceed target type limit")));
 		}
 		else
 		{
@@ -665,7 +665,7 @@ CompareBsonDecimal128(const bson_value_t *left, const bson_value_t *right,
 /*
  * Rounds the decimal value to the closest larger value and stores the outcome in result.
  *
- * EXCEPTION_HANDLING: All the exceptions are ignored and logged because similar test cases don't produce any errors in Mongo Protocol
+ * EXCEPTION_HANDLING: All the exceptions are ignored and logged because this aligns with existing test cases.
  */
 Decimal128Result
 CeilDecimal128Number(const bson_value_t *value, bson_value_t *result)
@@ -678,7 +678,7 @@ CeilDecimal128Number(const bson_value_t *value, bson_value_t *result)
 /*
  * Rounds the decimal value to the closest smaller value and stores the outcome in the result.
  *
- * EXCEPTION_HANDLING: All the exceptions are ignored and logged because similar test cases don't produce any errors in Mongo Protocol
+ * EXCEPTION_HANDLING: All the exceptions are ignored and logged because this aligns with existing test cases.
  */
 Decimal128Result
 FloorDecimal128Number(const bson_value_t *value, bson_value_t *result)
@@ -694,7 +694,7 @@ FloorDecimal128Number(const bson_value_t *value, bson_value_t *result)
  * Note: If the result of the exp operation is beyond the range of decimal128, then result is converted to Infinity / -Infinity
  * Range of the decimal128 number is ±0.000000000000000000000000000000000×10e−6143 to ±9.999999999999999999999999999999999×10e6144.
  *
- * EXCEPTION_HANDLING: All the exceptions are ignored and logged because similar test cases don't produce any errors in Mongo Protocol
+ * EXCEPTION_HANDLING: All the exceptions are ignored and logged because this aligns with existing test cases.
  */
 Decimal128Result
 EulerExpDecimal128(const bson_value_t *power, bson_value_t *result)
@@ -707,7 +707,7 @@ EulerExpDecimal128(const bson_value_t *power, bson_value_t *result)
 /*
  * Calculates the square root of value and stores the outcome in result.
  *
- * EXCEPTION_HANDLING: All the exceptions are ignored and logged because similar test cases don't produce any errors in Mongo Protocol
+ * EXCEPTION_HANDLING: All the exceptions are ignored and logged because this aligns with existing test cases.
  */
 Decimal128Result
 SqrtDecimal128Number(const bson_value_t *value, bson_value_t *result)
@@ -723,7 +723,7 @@ SqrtDecimal128Number(const bson_value_t *value, bson_value_t *result)
  * Note: If the result of the abs operation is beyond the range of decimal128, then result is converted to Infinity / -Infinity
  * Range of the decimal128 number is ±0.000000000000000000000000000000000×10e−6143 to ±9.999999999999999999999999999999999×10e6144.
  *
- * EXCEPTION_HANDLING: All the exceptions are ignored and logged because similar test cases don't produce any errors in Mongo Protocol
+ * EXCEPTION_HANDLING: All the exceptions are ignored and logged because this aligns with existing test cases.
  */
 Decimal128Result
 AbsDecimal128Number(const bson_value_t *value, bson_value_t *result)
@@ -736,7 +736,7 @@ AbsDecimal128Number(const bson_value_t *value, bson_value_t *result)
 /*
  * Calculates the logarithm base 10 of value and stores the outcome in result.
  *
- * EXCEPTION_HANDLING: All the exceptions are ignored and logged because similar test cases don't produce any errors in Mongo Protocol
+ * EXCEPTION_HANDLING: All the exceptions are ignored and logged because this aligns with existing test cases.
  */
 Decimal128Result
 Log10Decimal128Number(const bson_value_t *value, bson_value_t *result)
@@ -749,7 +749,7 @@ Log10Decimal128Number(const bson_value_t *value, bson_value_t *result)
 /*
  * Calculates the natural logarithm of value and stores the outcome in result.
  *
- * EXCEPTION_HANDLING: All the exceptions are ignored and logged because similar test cases don't produce any errors in Mongo Protocol
+ * EXCEPTION_HANDLING: All the exceptions are ignored and logged because this aligns with existing test cases.
  */
 Decimal128Result
 NaturalLogarithmDecimal128Number(const bson_value_t *value, bson_value_t *result)
@@ -765,7 +765,7 @@ NaturalLogarithmDecimal128Number(const bson_value_t *value, bson_value_t *result
  * Note: If the result of the log operation is beyond the range of decimal128, then result is converted to Infinity / -Infinity
  * Range of the decimal128 number is ±0.000000000000000000000000000000000×10e−6143 to ±9.999999999999999999999999999999999×10e6144.
  *
- * EXCEPTION_HANDLING: All the exceptions are ignored and logged because similar test cases don't produce any errors in Mongo Protocol
+ * EXCEPTION_HANDLING: All the exceptions are ignored and logged because this aligns with existing test cases.
  */
 Decimal128Result
 LogDecimal128Number(const bson_value_t *value, const bson_value_t *base,
@@ -782,7 +782,7 @@ LogDecimal128Number(const bson_value_t *value, const bson_value_t *base,
  * Note: If the result of the pow operation is beyond the range of decimal128, then result is converted to Infinity / -Infinity
  * Range of the decimal128 number is ±0.000000000000000000000000000000000×10e−6143 to ±9.999999999999999999999999999999999×10e6144.
  *
- * EXCEPTION_HANDLING: All the exceptions are ignored and logged because similar test cases don't produce any errors in Mongo Protocol
+ * EXCEPTION_HANDLING: All the exceptions are ignored and logged because this aligns with existing test cases.
  */
 Decimal128Result
 PowDecimal128Number(const bson_value_t *base, const bson_value_t *exponent,
@@ -799,7 +799,7 @@ PowDecimal128Number(const bson_value_t *base, const bson_value_t *exponent,
  * Note: If the result of the multiplication operation is beyond the range of decimal128, then result is converted to Infinity / -Infinity
  * Range of the decimal128 number is ±0.000000000000000000000000000000000×10e−6143 to ±9.999999999999999999999999999999999×10e6144.
  *
- * EXCEPTION_HANDLING: All the exceptions are ignored and logged because similar test cases don't produce any errors in Mongo Protocol
+ * EXCEPTION_HANDLING: All the exceptions are ignored and logged because this aligns with existing test cases.
  */
 Decimal128Result
 MultiplyDecimal128Numbers(const bson_value_t *x, const bson_value_t *y,
@@ -816,7 +816,7 @@ MultiplyDecimal128Numbers(const bson_value_t *x, const bson_value_t *y,
  * Note: If the result of the addition operation is beyond the range of decimal128, then result is converted to Infinity / -Infinity
  * Range of the decimal128 number is ±0.000000000000000000000000000000000×10e−6143 to ±9.999999999999999999999999999999999×10e6144.
  *
- * EXCEPTION_HANDLING: All the exceptions are ignored and logged because similar test cases don't produce any errors in Mongo Protocol
+ * EXCEPTION_HANDLING: All the exceptions are ignored and logged because this aligns with existing test cases.
  */
 Decimal128Result
 AddDecimal128Numbers(const bson_value_t *x, const bson_value_t *y, bson_value_t *result)
@@ -832,7 +832,7 @@ AddDecimal128Numbers(const bson_value_t *x, const bson_value_t *y, bson_value_t 
  * Note: If the result of the difference operation is beyond the range of decimal128, then result is converted to Infinity / -Infinity
  * Range of the decimal128 number is ±0.000000000000000000000000000000000×10e−6143 to ±9.999999999999999999999999999999999×10e6144.
  *
- * EXCEPTION_HANDLING: All the exceptions are ignored and logged because similar test cases don't produce any errors in Mongo Protocol
+ * EXCEPTION_HANDLING: All the exceptions are ignored and logged because this aligns with existing test cases.
  */
 Decimal128Result
 SubtractDecimal128Numbers(const bson_value_t *x, const bson_value_t *y,
@@ -849,7 +849,7 @@ SubtractDecimal128Numbers(const bson_value_t *x, const bson_value_t *y,
  * Note: If the result of the divide operation is beyond the range of decimal128, then result is converted to Infinity / -Infinity
  * Range of the decimal128 number is ±0.000000000000000000000000000000000×10e−6143 to ±9.999999999999999999999999999999999×10e6144.
  *
- * EXCEPTION_HANDLING: All the exceptions are ignored and logged because similar test cases don't produce any errors in Mongo Protocol
+ * EXCEPTION_HANDLING: All the exceptions are ignored and logged because this aligns with existing test cases.
  */
 Decimal128Result
 DivideDecimal128Numbers(const bson_value_t *x, const bson_value_t *y,
@@ -866,7 +866,7 @@ DivideDecimal128Numbers(const bson_value_t *x, const bson_value_t *y,
  * Note: If the result of the mod operation is beyond the range of decimal128, then result is converted to Infinity / -Infinity
  * Range of the decimal128 number is ±0.000000000000000000000000000000000×10e−6143 to ±9.999999999999999999999999999999999×10e6144.
  *
- * EXCEPTION_HANDLING: All the exceptions are ignored and logged because similar test cases don't produce any errors in Mongo Protocol
+ * EXCEPTION_HANDLING: All the exceptions are ignored and logged because this aligns with existing test cases.
  */
 Decimal128Result
 ModDecimal128Numbers(const bson_value_t *x, const bson_value_t *y,
@@ -1165,7 +1165,7 @@ Decimal128MathematicalOperation2Operands(const bson_value_t *x, const bson_value
 			zeroAllBits.w[BID_LOW_BITS] = 0;
 
 			/* We add 0 to the power result to include all decimal digits in the result,
-			 * this is to match mongo. i.e: 10^-2=0.01000000000000000000000000000000000
+			 * i.e: 10^-2=0.01000000000000000000000000000000000
 			 * or 2^2=4.000000000000000000000000000000000. */
 			zBid = bid128_add(powerBid, zeroAllBits, Decimal128RoundingMode_NearestEven,
 							  &exceptionFlag);
@@ -1359,7 +1359,7 @@ Decimal128MathematicalOperation1Operand(const bson_value_t *value, bson_value_t 
 	if (!IsOperationSuccess(exceptionFlag))
 	{
 		/* Log and ignore all exceptions */
-		LogWith1Operand("Decimal128 math operation signaled exception", &valueBid,
+		LogWith1Operand("Decimal128 arithmetic process triggered exception", &valueBid,
 						&exceptionFlag);
 	}
 
@@ -1412,7 +1412,6 @@ CheckDecimal128Type(const bson_value_t *value)
 
 /*
  * Logs the message in server logs in the format "{logMessage} | Operands: 1e1 [and 1e2] | Exception: 8"
- * These logs are maintained where Native mongo for the same exception works fine
  */
 static void
 LogWith2Operands(const char *logMessage, const BID_UINT128 *op1, const BID_UINT128 *op2,
@@ -1458,7 +1457,7 @@ Decimal128Result
 GetDecimal128ResultFromFlag(_IDEC_flags flag)
 {
 	/* Sometimes many operations can signal 2 exception in conjunction with inexact execption
-	 * Usually inexact exception is seen to be ignored in the test cases for native mongo.
+	 * Usually inexact exception is seen to be ignored in the test cases.
 	 * So we also ignore inexact in case of multiple exception
 	 */
 	if ((flag & BID_INEXACT_EXCEPTION) && ((flag ^ BID_INEXACT_EXCEPTION) != 0))
@@ -1535,11 +1534,11 @@ ThrowConversionFailureError(const BID_UINT128 value)
 	}
 	else
 	{
-		/* Native mongo shows overflow in both overflow / underflow cases,
+		/* It shows overflow in both overflow / underflow cases,
 		 * also intel math lib doesn't indicate overflow / underflow in exception flag
 		 */
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE),
-						errmsg("Conversion would overflow target type")));
+						errmsg("Conversion would exceed target type limit")));
 	}
 }
 
@@ -1609,7 +1608,7 @@ GetDecimal128FromInt64(int64_t value)
  *
  * Quantize(X, Y) => Returns a quantized decimal128 which has same numerical value as X and exponent as Y
  */
-static bson_decimal128_t
+bson_decimal128_t
 GetBsonValueAsDecimal128Core(const bson_value_t *value, bool shouldQuantizeDouble)
 {
 	if (!BsonValueIsNumberOrBool(value) && value->value_type != BSON_TYPE_DATE_TIME)
@@ -1721,7 +1720,7 @@ GetBsonValueAsDecimal128Core(const bson_value_t *value, bool shouldQuantizeDoubl
 				}
 			}
 
-			/* Above conversion can signal inexact and invalid exception and both are ignored when compared to native mongo */
+			/* Above conversion can signal inexact and invalid exception and both are ignored */
 			if (!IsOperationSuccess(exceptionFlag))
 			{
 				LogWith1Operand("Decimal128 conversion from double signalled exception",

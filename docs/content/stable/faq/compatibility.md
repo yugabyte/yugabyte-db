@@ -11,6 +11,8 @@ menu:
     identifier: faq-api-compatibility
     parent: faq
     weight: 60
+    params:
+      classes: separator
 type: docs
 unversioned: true
 rightNav:
@@ -99,7 +101,7 @@ The [YSQL](../../api/ysql/) API is compatible with PostgreSQL. This means Postgr
 
 ### What is the extent of compatibility with PostgreSQL?
 
-As highlighted in [Distributed PostgreSQL on a Google Spanner Architecture – Query Layer](https://www.yugabyte.com/blog/distributed-postgresql-on-a-google-spanner-architecture-query-layer/), YSQL reuses the open source PostgreSQL query layer (written in C) as much as possible and as a result is wire-compatible with PostgreSQL dialect and client drivers. Specifically, YSQL in v2.25 is based on PostgreSQL version 15, and versions prior to v2.25 are based on PostgreSQL version 11.2. Following are some of the currently supported features:
+As highlighted in [Distributed PostgreSQL on a Google Spanner Architecture – Query Layer](https://www.yugabyte.com/blog/distributed-postgresql-on-a-google-spanner-architecture-query-layer/), YSQL reuses the open source PostgreSQL query layer (written in C) as much as possible and as a result is wire-compatible with PostgreSQL dialect and client drivers. Specifically, YSQL in v2025.1 and later is based on PostgreSQL version 15, while earlier versions are based on PostgreSQL version 11.2. Following are some of the currently supported features:
 
 - DDL statements: CREATE, DROP, and TRUNCATE tables
 - Data types: All primitive types including numeric types (integers and floats), text data types, byte arrays, date-time types, UUID, SERIAL, as well as JSONB
@@ -127,12 +129,12 @@ YCQL is compatible with v3.4 of Apache Cassandra QL (CQL). Following questions h
 ### Features present in YCQL but not present in CQL
 
 1. Strongly-consistent reads and writes for a single row as an absolute guarantee. This is because YugabyteDB is a Consistent & Partition-tolerant (CP) database as opposed to Apache Cassandra which is an Available & Partition-tolerant (AP) database. [Official Jepsen tests](https://www.yugabyte.com/blog/yugabyte-db-1-2-passes-jepsen-testing/) prove this correctness aspect under extreme failure conditions.
-1. [JSONB](../../explore/ycql-language/jsonb-ycql) column type for modeling document data.
+1. [JSONB](../../explore/ycql-language/jsonb-ycql/) column type for modeling document data.
 1. [Distributed transactions](../../develop/learn/transactions/acid-transactions-ysql/) for multi-row ACID transactions.
 
 ### Features present in both YCQL and CQL but YCQL provides stricter guarantees
 
-1. [Secondary indexes](../../develop/data-modeling/secondary-indexes-ycql) are by default strongly consistent because internally they use distributed transactions.
+1. [Secondary indexes](../../develop/data-modeling/secondary-indexes-ycql/) are by default strongly consistent because internally they use distributed transactions.
 1. [INTEGER](../../api/ycql/type_int/) and [COUNTER](../../api/ycql/type_int/) data types are equivalent and both can be incremented without any lightweight transactions.
 1. Timeline-consistent tunably-stale reads that maintain ordering guarantees from either a follower replica in the primary cluster or a observer replica in the read replica cluster.
 

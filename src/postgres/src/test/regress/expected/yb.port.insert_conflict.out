@@ -858,17 +858,10 @@ create trigger parted_conflict_update
     referencing new table as inserted
     for each statement
     execute procedure parted_conflict_update_func();
-ERROR:  REFERENCING clause (transition tables) not supported yet
-LINE 3:     referencing new table as inserted
-            ^
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/1668. React with thumbs up to raise its priority
-/* YB: Disabled as create trigger above fails
 truncate parted_conflict;
-
 insert into parted_conflict values (0, 'cero', 1);
-
 insert into parted_conflict values(0, 'cero', 1)
   on conflict (a,b) do update set c = parted_conflict.c + 1;
-*/ -- YB
+NOTICE:  a = 0, b = cero, c = 2
 drop table parted_conflict;
 drop function parted_conflict_update_func();

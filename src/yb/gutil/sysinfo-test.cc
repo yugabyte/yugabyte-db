@@ -17,24 +17,36 @@ class SysInfoTest : public YBTest {
   void SetUp() override {
     YBTest::SetUp();
     InitGoogleLoggingSafe("SysInfoTest");
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_cpus) = 0;
   }
 
   void TearDown() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_cpus) = 0;
     YBTest::TearDown();
   }
 };
 
-// Test num_cpus defaults to hardware_concurrency value
-// and is equal to gutil's original NumCPUs function.
-TEST_F(SysInfoTest, NumCpusZeroTest) {
+// Test that with default flags, NumCPUs returns the hardware CPU count.
+TEST_F(SysInfoTest, NumCpusDefaultMatchesHardware) {
   ASSERT_EQ(base::NumCPUs(), std::thread::hardware_concurrency());
   ASSERT_EQ(base::NumCPUs(), base::RawNumCPUs());
 }
 
-// Test gflag value changes are reflected in NumCPUs function
-TEST_F(SysInfoTest, NumCpusChangedTest) {
+// Test that --num_cpus flag overrides auto-detected value.
+TEST_F(SysInfoTest, NumCpusFlagOverride) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_cpus) = 20;
   ASSERT_EQ(base::NumCPUs(), 20);
+}
+
+// Test that --num_cpus flag takes priority in both directions relative to auto-detected.
+// RawNumCPUs is never affected by the flag.
+TEST_F(SysInfoTest, NumCpusFlagBothDirections) {
+  int raw = base::RawNumCPUs();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_cpus) = raw + 10;
+  ASSERT_EQ(base::NumCPUs(), raw + 10);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_cpus) = 1;
+  ASSERT_EQ(base::NumCPUs(), 1);
+  ASSERT_EQ(base::RawNumCPUs(), raw);
 }
 
 }   // namespace gutil

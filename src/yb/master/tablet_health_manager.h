@@ -17,7 +17,7 @@
 
 #include "yb/master/catalog_manager_if.h"
 #include "yb/tserver/tserver.pb.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace master {

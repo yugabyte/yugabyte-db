@@ -30,14 +30,19 @@ Use YugabyteDB Aeon [Alerts](cloud-alerts/) to be automatically notified of pote
 
 ### Performance monitoring
 
-Monitor database and cluster performance in real time. Access performance monitoring from the cluster **Perf Advisor** tab.
+Monitor database and cluster performance in real time. Access performance monitoring from the cluster **Performance** tab.
 
-| Feature | Description |
+| <div style="width:100px">Feature</div> | Description |
 | :--- | :--- |
-| [Metrics](overview/) | The cluster **Overview** and **Performance Metrics** tabs show a variety of performance metrics charted over time. Use cluster performance metrics to ensure the cluster configuration matches its performance requirements, and [scale the cluster vertically or horizontally](../cloud-clusters/configure-clusters/) as your requirements change. |
-| [Live queries](cloud-queries-live/) | The cluster **Live Queries** tab shows the queries that are currently "in-flight" on your cluster. |
-| [Slow queries](cloud-queries-slow/) | The cluster **YSQL Slow  Queries** tab shows queries run on the cluster, sorted by running time. Evaluate the slowest running YSQL queries that have been run on the cluster. |
+| [Metrics](overview/) | The cluster **Overview** and **Performance>Metrics** tabs show a variety of performance metrics charted over time. Use cluster performance metrics to ensure the cluster configuration matches its performance requirements, and [scale the cluster vertically or horizontally](../cloud-clusters/configure-clusters/) as your requirements change. |
+| [Slow queries](cloud-queries-slow/) | The **Queries>Slow Queries** tab shows YSQL queries run on the cluster, sorted by running time. Evaluate the slowest running YSQL queries that have been run on the cluster. |
+| [Live queries](cloud-queries-live/) | The **Queries>Live Queries** tab shows the queries that are currently "in-flight" on your cluster. |
+| [Cluster Load](monitor-load/) | The **Cluster Load** tab shows the load on the cluster at a glance. Use this view to answer the question _Was the system overloaded, and why_. |
 | [Insights](cloud-advisor/) | Scan clusters for performance optimizations, including index and schema changes, and detect potentially hot nodes. |
+
+### Detect anomalies
+
+Detect performance anomalies on the **Perf Advisor** tab. [Anomalies](aeon-anomalies/) shows potential performance impacting anomalies and allows you to drill down and perform root cause analysis. Use this view to answer the question _When did problems occur, and what changed at that time_.
 
 ### Integrations
 
@@ -55,7 +60,7 @@ View cluster tables and their tablets, nodes and their status, and audit cluster
 
 | Feature | Description |
 | :--- | :--- |
-| [Tables and Tablets](monitor-tables/) | Use the cluster **Tables** tab to view the cluster tables and their sizes. Select a table to view its tablets. |
+| [Tables and Tablets](monitor-tables/) | Use the cluster **Databases** tab to view the cluster tables and their sizes. Select a table to view its tablets. |
 | [Nodes](monitor-nodes/) | Use the cluster **Nodes** tab to see the nodes in the cluster, their status, and a variety of performance metrics. |
 | [Activity log](monitor-activity/) | The cluster **Activity** tab provides a running audit of changes made to the cluster. |
 

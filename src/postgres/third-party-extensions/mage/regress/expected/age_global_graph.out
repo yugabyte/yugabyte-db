@@ -1,0 +1,410 @@
+LOAD 'age';
+SET search_path TO ag_catalog;
+--
+-- delete_specific_GRAPH_global_contexts
+--
+--
+SELECT * FROM create_graph('ag_graph_1');
+NOTICE:  graph "ag_graph_1" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('ag_graph_1', $$ CREATE (v:vertex1) RETURN v  $$) AS (v agtype);
+                                   v                                   
+-----------------------------------------------------------------------
+ {"id": 844424930131969, "label": "vertex1", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM create_graph('ag_graph_2');
+NOTICE:  graph "ag_graph_2" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('ag_graph_2', $$ CREATE (v:vertex2) RETURN v  $$) AS (v agtype);
+                                   v                                   
+-----------------------------------------------------------------------
+ {"id": 844424930131969, "label": "vertex2", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM create_graph('ag_graph_3');
+NOTICE:  graph "ag_graph_3" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('ag_graph_3', $$ CREATE (v:vertex3) RETURN v  $$) AS (v agtype);
+                                   v                                   
+-----------------------------------------------------------------------
+ {"id": 844424930131969, "label": "vertex3", "properties": {}}::vertex
+(1 row)
+
+-- load contexts using the vertex_stats command
+SELECT * FROM cypher('ag_graph_3', $$ MATCH (u) RETURN vertex_stats(u) $$) AS (result agtype);
+                                            result                                             
+-----------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "vertex3", "in_degree": 0, "out_degree": 0, "self_loops": 0}
+(1 row)
+
+SELECT * FROM cypher('ag_graph_2', $$ MATCH (u) RETURN vertex_stats(u) $$) AS (result agtype);
+                                            result                                             
+-----------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "vertex2", "in_degree": 0, "out_degree": 0, "self_loops": 0}
+(1 row)
+
+SELECT * FROM cypher('ag_graph_1', $$ MATCH (u) RETURN vertex_stats(u) $$) AS (result agtype);
+                                            result                                             
+-----------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "vertex1", "in_degree": 0, "out_degree": 0, "self_loops": 0}
+(1 row)
+
+--- loading undefined contexts
+--- should throw exception - graph "ag_graph_4" does not exist
+SELECT * FROM cypher('ag_graph_4', $$ MATCH (u) RETURN vertex_stats(u) $$) AS (result agtype);
+ERROR:  graph "ag_graph_4" does not exist
+LINE 1: SELECT * FROM cypher('ag_graph_4', $$ MATCH (u) RETURN verte...
+                             ^
+--- delete with invalid parameter
+---should return false
+SELECT * FROM cypher('ag_graph_2', $$ RETURN delete_global_graphs('E1337') $$) AS (result agtype);
+ result 
+--------
+ false
+(1 row)
+
+-- delete ag_graph_2's context
+-- should return true
+SELECT * FROM cypher('ag_graph_2', $$ RETURN delete_global_graphs('ag_graph_2') $$) AS (result agtype);
+ result 
+--------
+ true
+(1 row)
+
+-- delete ag_graph_1's context
+-- should return true(succeed) because the previous command should not delete the 1st graph's context
+SELECT * FROM cypher('ag_graph_1', $$ RETURN delete_global_graphs('ag_graph_1') $$) AS (result agtype);
+ result 
+--------
+ true
+(1 row)
+
+-- delete ag_graph_3's context
+-- should return true(succeed) because the previous commands should not delete the 3rd graph's context
+SELECT * FROM cypher('ag_graph_3', $$ RETURN delete_global_graphs('ag_graph_3') $$) AS (result agtype);
+ result 
+--------
+ true
+(1 row)
+
+-- delete all graphs' context again
+-- should return false (did not succeed) for all of them because they are already removed
+SELECT * FROM cypher('ag_graph_2', $$ RETURN delete_global_graphs('ag_graph_2') $$) AS (result agtype);
+ result 
+--------
+ false
+(1 row)
+
+SELECT * FROM cypher('ag_graph_1', $$ RETURN delete_global_graphs('ag_graph_1') $$) AS (result agtype);
+ result 
+--------
+ false
+(1 row)
+
+SELECT * FROM cypher('ag_graph_3', $$ RETURN delete_global_graphs('ag_graph_3') $$) AS (result agtype);
+ result 
+--------
+ false
+(1 row)
+
+--- delete uninitialized graph context
+--- should throw exception graph "ag_graph_4" does not exist
+SELECT * FROM cypher('ag_graph_4', $$ RETURN delete_global_graphs('ag_graph_4') $$) AS (result agtype);
+ERROR:  graph "ag_graph_4" does not exist
+LINE 1: SELECT * FROM cypher('ag_graph_4', $$ RETURN delete_global_g...
+                             ^
+--
+-- delete_GRAPH_global_contexts
+--
+-- load contexts again
+SELECT * FROM cypher('ag_graph_3', $$ MATCH (u) RETURN vertex_stats(u) $$) AS (result agtype);
+                                            result                                             
+-----------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "vertex3", "in_degree": 0, "out_degree": 0, "self_loops": 0}
+(1 row)
+
+SELECT * FROM cypher('ag_graph_2', $$ MATCH (u) RETURN vertex_stats(u) $$) AS (result agtype);
+                                            result                                             
+-----------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "vertex2", "in_degree": 0, "out_degree": 0, "self_loops": 0}
+(1 row)
+
+SELECT * FROM cypher('ag_graph_1', $$ MATCH (u) RETURN vertex_stats(u) $$) AS (result agtype);
+                                            result                                             
+-----------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "vertex1", "in_degree": 0, "out_degree": 0, "self_loops": 0}
+(1 row)
+
+-- delete all graph contexts
+-- should return true
+SELECT * FROM cypher('ag_graph_1', $$ RETURN delete_global_graphs(NULL) $$) AS (result agtype);
+ result 
+--------
+ true
+(1 row)
+
+-- delete all graphs' context individually
+-- should return false for all of them because already removed
+SELECT * FROM cypher('ag_graph_1', $$ RETURN delete_global_graphs('ag_graph_1') $$) AS (result agtype);
+ result 
+--------
+ false
+(1 row)
+
+SELECT * FROM cypher('ag_graph_2', $$ RETURN delete_global_graphs('ag_graph_2') $$) AS (result agtype);
+ result 
+--------
+ false
+(1 row)
+
+SELECT * FROM cypher('ag_graph_3', $$ RETURN delete_global_graphs('ag_graph_3') $$) AS (result agtype);
+ result 
+--------
+ false
+(1 row)
+
+--
+-- age_vertex_stats
+--
+--checking validity of vertex_stats
+--adding unlabelled vertices to ag_graph_1
+SELECT * FROM cypher('ag_graph_1', $$ CREATE (n), (m) $$) as (v agtype);
+ v 
+---
+(0 rows)
+
+--adding labelled vertice to graph 2
+SELECT * FROM cypher('ag_graph_2', $$ CREATE (:Person) $$) as (v agtype);
+ v 
+---
+(0 rows)
+
+---adding edges between nodes
+SELECT * FROM cypher('ag_graph_2', $$ MATCH (a:Person), (b:Person) WHERE a.name = 'A' AND b.name = 'B' CREATE (a)-[e:RELTYPE]->(b) RETURN e $$) as (e agtype);
+ e 
+---
+(0 rows)
+
+--checking if vertex stats have been updated along with the new label
+--should return 3 vertices
+SELECT * FROM cypher('ag_graph_1', $$ MATCH (n) RETURN vertex_stats(n) $$) AS (result agtype);
+                                            result                                             
+-----------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "in_degree": 0, "out_degree": 0, "self_loops": 0}
+ {"id": 281474976710658, "label": "", "in_degree": 0, "out_degree": 0, "self_loops": 0}
+ {"id": 844424930131969, "label": "vertex1", "in_degree": 0, "out_degree": 0, "self_loops": 0}
+(3 rows)
+
+--should return 1 vertice and 1 label
+SELECT * FROM cypher('ag_graph_2', $$ MATCH (a) RETURN vertex_stats(a) $$) AS (result agtype);
+                                            result                                             
+-----------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "vertex2", "in_degree": 0, "out_degree": 0, "self_loops": 0}
+ {"id": 1125899906842625, "label": "Person", "in_degree": 0, "out_degree": 0, "self_loops": 0}
+(2 rows)
+
+--
+-- graph_stats command
+--
+-- what's in the current graphs?
+SELECT * FROM cypher('ag_graph_1', $$ RETURN graph_stats('ag_graph_1') $$) AS (result agtype);
+                                  result                                  
+--------------------------------------------------------------------------
+ {"graph": "ag_graph_1", "num_loaded_edges": 0, "num_loaded_vertices": 3}
+(1 row)
+
+SELECT * FROM cypher('ag_graph_1', $$ RETURN graph_stats('ag_graph_2') $$) AS (result agtype);
+                                  result                                  
+--------------------------------------------------------------------------
+ {"graph": "ag_graph_2", "num_loaded_edges": 0, "num_loaded_vertices": 2}
+(1 row)
+
+SELECT * FROM cypher('ag_graph_1', $$ RETURN graph_stats('ag_graph_3') $$) AS (result agtype);
+                                  result                                  
+--------------------------------------------------------------------------
+ {"graph": "ag_graph_3", "num_loaded_edges": 0, "num_loaded_vertices": 1}
+(1 row)
+
+-- add some edges
+SELECT * FROM cypher('ag_graph_1', $$ CREATE ()-[:knows]->() $$) AS (results agtype);
+ results 
+---------
+(0 rows)
+
+SELECT * FROM cypher('ag_graph_1', $$ CREATE ()-[:knows]->() $$) AS (results agtype);
+ results 
+---------
+(0 rows)
+
+SELECT * FROM cypher('ag_graph_1', $$ CREATE ()-[:knows]->() $$) AS (results agtype);
+ results 
+---------
+(0 rows)
+
+SELECT * FROM cypher('ag_graph_1', $$ CREATE ()-[:knows]->() $$) AS (results agtype);
+ results 
+---------
+(0 rows)
+
+-- what is there now?
+SELECT * FROM cypher('ag_graph_1', $$ RETURN graph_stats('ag_graph_1') $$) AS (result agtype);
+                                  result                                   
+---------------------------------------------------------------------------
+ {"graph": "ag_graph_1", "num_loaded_edges": 4, "num_loaded_vertices": 11}
+(1 row)
+
+-- add some more
+SELECT * FROM cypher('ag_graph_1', $$ MATCH (u)-[]->(v) SET u.id = id(u)
+                                                        SET v.id = id(v)
+                                                        SET u.name = 'u'
+                                                        SET v.name = 'v'
+                                      RETURN u,v $$) AS (u agtype, v agtype);
+                                                u                                                 |                                                v                                                 
+--------------------------------------------------------------------------------------------------+--------------------------------------------------------------------------------------------------
+ {"id": 281474976710659, "label": "", "properties": {"id": 281474976710659, "name": "u"}}::vertex | {"id": 281474976710660, "label": "", "properties": {"id": 281474976710660, "name": "v"}}::vertex
+ {"id": 281474976710661, "label": "", "properties": {"id": 281474976710661, "name": "u"}}::vertex | {"id": 281474976710662, "label": "", "properties": {"id": 281474976710662, "name": "v"}}::vertex
+ {"id": 281474976710663, "label": "", "properties": {"id": 281474976710663, "name": "u"}}::vertex | {"id": 281474976710664, "label": "", "properties": {"id": 281474976710664, "name": "v"}}::vertex
+ {"id": 281474976710665, "label": "", "properties": {"id": 281474976710665, "name": "u"}}::vertex | {"id": 281474976710666, "label": "", "properties": {"id": 281474976710666, "name": "v"}}::vertex
+(4 rows)
+
+SELECT * FROM cypher('ag_graph_1', $$ MATCH (u)-[]->(v) MERGE (v)-[:stalks]->(u) $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('ag_graph_1', $$ MATCH (u)-[e]->(v) RETURN u, e, v $$) AS (u agtype, e agtype, v agtype);
+                                                u                                                 |                                                              e                                                              |                                                v                                                 
+--------------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------------------------------+--------------------------------------------------------------------------------------------------
+ {"id": 281474976710660, "label": "", "properties": {"id": 281474976710660, "name": "v"}}::vertex | {"id": 1407374883553281, "label": "stalks", "end_id": 281474976710659, "start_id": 281474976710660, "properties": {}}::edge | {"id": 281474976710659, "label": "", "properties": {"id": 281474976710659, "name": "u"}}::vertex
+ {"id": 281474976710659, "label": "", "properties": {"id": 281474976710659, "name": "u"}}::vertex | {"id": 1125899906842625, "label": "knows", "end_id": 281474976710660, "start_id": 281474976710659, "properties": {}}::edge  | {"id": 281474976710660, "label": "", "properties": {"id": 281474976710660, "name": "v"}}::vertex
+ {"id": 281474976710662, "label": "", "properties": {"id": 281474976710662, "name": "v"}}::vertex | {"id": 1407374883553282, "label": "stalks", "end_id": 281474976710661, "start_id": 281474976710662, "properties": {}}::edge | {"id": 281474976710661, "label": "", "properties": {"id": 281474976710661, "name": "u"}}::vertex
+ {"id": 281474976710661, "label": "", "properties": {"id": 281474976710661, "name": "u"}}::vertex | {"id": 1125899906842626, "label": "knows", "end_id": 281474976710662, "start_id": 281474976710661, "properties": {}}::edge  | {"id": 281474976710662, "label": "", "properties": {"id": 281474976710662, "name": "v"}}::vertex
+ {"id": 281474976710664, "label": "", "properties": {"id": 281474976710664, "name": "v"}}::vertex | {"id": 1407374883553283, "label": "stalks", "end_id": 281474976710663, "start_id": 281474976710664, "properties": {}}::edge | {"id": 281474976710663, "label": "", "properties": {"id": 281474976710663, "name": "u"}}::vertex
+ {"id": 281474976710663, "label": "", "properties": {"id": 281474976710663, "name": "u"}}::vertex | {"id": 1125899906842627, "label": "knows", "end_id": 281474976710664, "start_id": 281474976710663, "properties": {}}::edge  | {"id": 281474976710664, "label": "", "properties": {"id": 281474976710664, "name": "v"}}::vertex
+ {"id": 281474976710666, "label": "", "properties": {"id": 281474976710666, "name": "v"}}::vertex | {"id": 1407374883553284, "label": "stalks", "end_id": 281474976710665, "start_id": 281474976710666, "properties": {}}::edge | {"id": 281474976710665, "label": "", "properties": {"id": 281474976710665, "name": "u"}}::vertex
+ {"id": 281474976710665, "label": "", "properties": {"id": 281474976710665, "name": "u"}}::vertex | {"id": 1125899906842628, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710665, "properties": {}}::edge  | {"id": 281474976710666, "label": "", "properties": {"id": 281474976710666, "name": "v"}}::vertex
+(8 rows)
+
+-- what is there now?
+SELECT * FROM cypher('ag_graph_1', $$ RETURN graph_stats('ag_graph_1') $$) AS (result agtype);
+                                  result                                   
+---------------------------------------------------------------------------
+ {"graph": "ag_graph_1", "num_loaded_edges": 8, "num_loaded_vertices": 11}
+(1 row)
+
+-- remove some vertices
+SELECT * FROM ag_graph_1._ag_label_vertex;
+       id        |              properties              
+-----------------+--------------------------------------
+ 281474976710657 | {}
+ 281474976710658 | {}
+ 281474976710659 | {"id": 281474976710659, "name": "u"}
+ 281474976710660 | {"id": 281474976710660, "name": "v"}
+ 281474976710661 | {"id": 281474976710661, "name": "u"}
+ 281474976710662 | {"id": 281474976710662, "name": "v"}
+ 281474976710663 | {"id": 281474976710663, "name": "u"}
+ 281474976710664 | {"id": 281474976710664, "name": "v"}
+ 281474976710665 | {"id": 281474976710665, "name": "u"}
+ 281474976710666 | {"id": 281474976710666, "name": "v"}
+ 844424930131969 | {}
+(11 rows)
+
+DELETE FROM ag_graph_1._ag_label_vertex WHERE id::text = '281474976710661';
+DELETE FROM ag_graph_1._ag_label_vertex WHERE id::text = '281474976710662';
+DELETE FROM ag_graph_1._ag_label_vertex WHERE id::text = '281474976710664';
+SELECT * FROM ag_graph_1._ag_label_vertex;
+       id        |              properties              
+-----------------+--------------------------------------
+ 281474976710657 | {}
+ 281474976710658 | {}
+ 281474976710659 | {"id": 281474976710659, "name": "u"}
+ 281474976710660 | {"id": 281474976710660, "name": "v"}
+ 281474976710663 | {"id": 281474976710663, "name": "u"}
+ 281474976710665 | {"id": 281474976710665, "name": "u"}
+ 281474976710666 | {"id": 281474976710666, "name": "v"}
+ 844424930131969 | {}
+(8 rows)
+
+SELECT * FROM ag_graph_1._ag_label_edge;
+        id        |    start_id     |     end_id      | properties 
+------------------+-----------------+-----------------+------------
+ 1125899906842625 | 281474976710659 | 281474976710660 | {}
+ 1125899906842626 | 281474976710661 | 281474976710662 | {}
+ 1125899906842627 | 281474976710663 | 281474976710664 | {}
+ 1125899906842628 | 281474976710665 | 281474976710666 | {}
+ 1407374883553281 | 281474976710660 | 281474976710659 | {}
+ 1407374883553282 | 281474976710662 | 281474976710661 | {}
+ 1407374883553283 | 281474976710664 | 281474976710663 | {}
+ 1407374883553284 | 281474976710666 | 281474976710665 | {}
+(8 rows)
+
+-- there should be warning messages
+SELECT * FROM cypher('ag_graph_1', $$ RETURN graph_stats('ag_graph_1') $$) AS (result agtype);
+WARNING:  edge: [id: 1125899906842626, start: 281474976710661, end: 281474976710662, label: knows] start and end vertices not found
+WARNING:  ignored malformed or dangling edge
+WARNING:  edge: [id: 1125899906842627, start: 281474976710663, end: 281474976710664, label: knows] end vertex not found
+WARNING:  ignored malformed or dangling edge
+WARNING:  edge: [id: 1407374883553282, start: 281474976710662, end: 281474976710661, label: stalks] start and end vertices not found
+WARNING:  ignored malformed or dangling edge
+WARNING:  edge: [id: 1407374883553283, start: 281474976710664, end: 281474976710663, label: stalks] start vertex not found
+WARNING:  ignored malformed or dangling edge
+                                  result                                  
+--------------------------------------------------------------------------
+ {"graph": "ag_graph_1", "num_loaded_edges": 8, "num_loaded_vertices": 8}
+(1 row)
+
+--drop graphs
+SELECT * FROM drop_graph('ag_graph_1', true);
+NOTICE:  drop cascades to 5 other objects
+DETAIL:  drop cascades to table ag_graph_1._ag_label_vertex
+drop cascades to table ag_graph_1._ag_label_edge
+drop cascades to table ag_graph_1.vertex1
+drop cascades to table ag_graph_1.knows
+drop cascades to table ag_graph_1.stalks
+NOTICE:  graph "ag_graph_1" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT * FROM drop_graph('ag_graph_2', true);
+NOTICE:  drop cascades to 5 other objects
+DETAIL:  drop cascades to table ag_graph_2._ag_label_vertex
+drop cascades to table ag_graph_2._ag_label_edge
+drop cascades to table ag_graph_2.vertex2
+drop cascades to table ag_graph_2."Person"
+drop cascades to table ag_graph_2."RELTYPE"
+NOTICE:  graph "ag_graph_2" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT * FROM drop_graph('ag_graph_3', true);
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table ag_graph_3._ag_label_vertex
+drop cascades to table ag_graph_3._ag_label_edge
+drop cascades to table ag_graph_3.vertex3
+NOTICE:  graph "ag_graph_3" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+-----------------------------------------------------------------------------------------------------------------------------
+--
+-- End of tests
+--

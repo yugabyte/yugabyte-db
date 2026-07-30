@@ -14,6 +14,7 @@ import {
   YBToggle,
   YBToggleField,
   YBSelectField,
+  YBInputField,
   YBModal
 } from '../../../../../components';
 import { api, telemetryProviderQueryKey } from '@app/redesign/helpers/api';
@@ -319,6 +320,21 @@ export const AuditLogSettings: FC<AuditLogSettingProps> = ({
                 'pgaudit.log_statement_once',
                 t('dbAuitLog.tooltips.logStatementOnce')
               )}
+              <Box className={classes.logOption}>
+                <LabelWithTooltip
+                  label={t('dbAuitLog.settingsModal.logRetentionDaysLabel')}
+                  tooltip={t('dbAuitLog.tooltips.logRetentionDays')}
+                />
+                <YBInputField
+                  control={control}
+                  name="logRetentionDays"
+                  type="number"
+                  inputProps={{
+                    min: 0,
+                    'data-testid': 'AuditLogSettings-LogRetentionDays'
+                  }}
+                />
+              </Box>
             </Box>
           </Box>
           <Box display={'flex'} flexDirection={'column'} mt={4.5}>

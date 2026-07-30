@@ -1,0 +1,1 @@
+\i sql/bson_aggregation_stage_lookup_inner_join_composite_tests.sql

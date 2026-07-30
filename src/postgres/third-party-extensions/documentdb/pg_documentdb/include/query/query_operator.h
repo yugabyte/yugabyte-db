@@ -110,6 +110,8 @@ typedef struct BsonQueryOperatorContext
 
 Var * MakeSimpleDocumentVar(void);
 Node * ReplaceBsonQueryOperators(Query *node, ParamListInfo boundParams);
+
+void ValidateQueryDocumentValue(const bson_value_t *queryDocumentValue);
 void ValidateQueryDocument(pgbson *queryDocument);
 bool QueryDocumentsAreEquivalent(const pgbson *leftQueryDocument,
 								 const pgbson *rightQueryDocument);
@@ -117,7 +119,8 @@ List * CreateQualsFromQueryDocIterator(bson_iter_t *queryDocIterator,
 									   BsonQueryOperatorContext *context);
 Node * EvaluateBoundParameters(Node *expression, ParamListInfo boundParams);
 
-List * CreateQualsForBsonValueTopLevelQuery(const pgbson *query);
+List * CreateQualsForBsonValueTopLevelQueryIter(bson_iter_t *queryIter,
+												const char *collationString);
 Expr * CreateQualForBsonValueExpression(const bson_value_t *expression, const
 										char *collationString);
 Expr * CreateQualForBsonValueArrayExpression(const bson_value_t *expression);
@@ -128,11 +131,15 @@ Expr * CreateQualForBsonExpression(const bson_value_t *expression, const char *q
 Expr * CreateNonShardedShardKeyValueFilter(int collectionVarNo, const
 										   MongoCollection *collection);
 Expr * CreateShardKeyFiltersForQuery(const bson_value_t *queryDocument, pgbson *shardKey,
-									 uint64_t collectionId,
-									 Index collectionVarno);
+									 uint64_t collectionId, Index collectionVarno,
+									 bool *isShardKeyCollationAware);
 Expr * CreateIdFilterForQuery(List *existingQuals,
 							  Index collectionVarno, bool *isCollationAware,
 							  bool *isPointRead);
+Expr * MakeSimpleIdExpr(const bson_value_t *filterValue, Index collectionVarno, Oid
+						operatorId);
+Expr * MakeLowerBoundIdExpr(const bson_value_t *filterValue, Index collectionVarno);
+Expr * MakeUpperBoundIdExpr(const bson_value_t *filterValue, Index collectionVarno);
 
 bool ValidateOrderbyExpressionAndGetIsAscending(pgbson *orderby);
 

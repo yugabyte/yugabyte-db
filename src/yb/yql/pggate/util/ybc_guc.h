@@ -13,7 +13,11 @@
 // the License.
 //
 
-#pragma once
+// YB: include guard instead of pragma once: this header is installed into
+// the PostgreSQL server include directory, and pragma once does not
+// deduplicate identical copies of a header visible via two paths.
+#ifndef YB_YQL_PGGATE_UTIL_YBC_GUC_H
+#define YB_YQL_PGGATE_UTIL_YBC_GUC_H
 
 #include <stdbool.h>  // Needed for bool in C.
 #include <stdint.h>
@@ -58,16 +62,6 @@ extern bool yb_force_tablespace_locality;
  * if 0 (default value).
  */
 extern uint32_t yb_force_tablespace_locality_oid;
-
-/*
- * Guc that toggles whether strict inequalities are pushed down.
- */
-extern bool yb_pushdown_strict_inequality;
-
-/*
- * Guc that toggles whether IS NOT NULL is pushed down.
- */
-extern bool yb_pushdown_is_not_null;
 
 /*
  * Guc that toggles the pg_locks view on/off.
@@ -140,9 +134,20 @@ extern bool yb_enable_add_column_missing_default;
 extern bool yb_enable_replication_commands;
 
 /*
+ * GUC variable that enables pg_export_snapshot and SET TRANSACTION SNAPSHOT.
+ */
+extern bool yb_enable_pg_export_snapshot;
+
+/*
  * Guc variable that enables replication slot consumption.
  */
 extern bool yb_enable_replication_slot_consumption;
+
+/*
+ * Guc variable that enables the query API (pull model) for logical replication
+ * via pg_logical_slot_get/peek_changes and their binary variants.
+ */
+extern bool yb_enable_replication_slot_query_api;
 
 /*
  * GUC variable that enables ALTER TABLE rewrite operations.
@@ -176,19 +181,28 @@ extern char* yb_default_replica_identity;
 extern bool yb_enable_consistent_replication_from_hash_range;
 
 /*
+ * GUC variable that enables acquiring a cluster-wide exclusive advisory lock while a replication
+ * slot is in use, so that only one consumer can use it at a time across the universe.
+ */
+extern bool yb_enable_replication_slot_exclusive_lock;
+
+/*
  * GUC variable that enables streaming tables without primary key to CDCSDK logical replication
  * streams.
  */
 extern bool yb_cdcsdk_stream_tables_without_primary_key;
 
+/*
+ * GUC variable that allows UPDATE/DELETE on tables under a publication with REPLICA IDENTITY
+ * DEFAULT or CHANGE that do not have a primary key.
+ */
+extern bool yb_cdcsdk_allow_dml_without_pk;
+
 extern bool enable_object_locking_infra;
 
 extern bool yb_enable_ddl_savepoint_infra;
 
-/*
- * Refer YBCIsLegacyModeForCatalogOps() for details.
- */
-extern bool yb_fallback_to_legacy_catalog_read_time;
+extern bool yb_skip_ensure_read_time_in_parallel_execution;
 
 /*
  * xcluster consistency level
@@ -258,6 +272,7 @@ extern int yb_reorderbuffer_max_changes_in_memory;
  * Allows for customizing the maximum size of a batch of explicit row lock operations.
  */
 extern int yb_explicit_row_locking_batch_size;
+extern int yb_explicit_row_lock_skip_locked_max_read_ahead;
 
 /*
  * Ease transition to YSQL by reducing read restart errors for new apps.
@@ -321,6 +336,8 @@ extern bool yb_disable_ddl_transaction_block_for_read_committed;
 
 extern bool yb_allow_dockey_bounds;
 
+extern bool yb_dump_presplit_in_create;
+
 extern bool yb_ignore_read_time_in_walsender;
 
 extern bool yb_disable_pg_snapshot_mgmt_in_repeatable_read;
@@ -337,6 +354,14 @@ extern int yb_fk_references_cache_limit;
 
 extern bool yb_xcluster_target_ddl_bypass;
 
+/*
+ * If true, when no tablespace is assigned to table, use cluster replication info to estimate
+ * network costs.
+ */
+extern bool yb_use_cluster_config_for_geolocation_costing;
+
 #ifdef __cplusplus
-} // extern "C"
+}  // extern "C"
 #endif
+
+#endif  // YB_YQL_PGGATE_UTIL_YBC_GUC_H

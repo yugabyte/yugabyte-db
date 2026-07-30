@@ -22,7 +22,7 @@ headerTitle: Doc-Page-Title
 linkTitle: Navigation-Link
 description: SEO-Meta-Description
 headcontent: Brief-description
-image: Icon-For-Page-Title
+image: Icon-For-Page-Title # Rarely used
 menu:
   stable:
     identifier: page-identifier

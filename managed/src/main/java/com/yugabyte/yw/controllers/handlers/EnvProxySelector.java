@@ -11,6 +11,7 @@
 package com.yugabyte.yw.controllers.handlers;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import inet.ipaddr.IPAddress;
 import inet.ipaddr.IPAddressString;
 import java.io.IOException;
@@ -43,6 +44,14 @@ public class EnvProxySelector extends ProxySelector {
 
   public EnvProxySelector() {
     this(System::getenv);
+    CommonUtils.logEnvVar("http_proxy");
+    CommonUtils.logEnvVar("https_proxy");
+    CommonUtils.logEnvVar("no_proxy");
+    CommonUtils.logSystemProperty("http.proxyHost");
+    CommonUtils.logSystemProperty("http.proxyPort");
+    CommonUtils.logSystemProperty("https.proxyHost");
+    CommonUtils.logSystemProperty("https.proxyPort");
+    CommonUtils.logSystemProperty("http.nonProxyHosts");
   }
 
   @VisibleForTesting

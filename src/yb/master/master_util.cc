@@ -13,7 +13,10 @@
 
 #include "yb/master/master_util.h"
 
-#include <deque>
+#include <condition_variable>
+#include <memory>
+#include <mutex>
+#include <vector>
 
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/wire_protocol.h"
@@ -27,12 +30,11 @@
 
 #include "yb/rpc/rpc_controller.h"
 
-#include "yb/util/countdown_latch.h"
 #include "yb/util/format.h"
+#include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
-#include "yb/util/string_util.h"
 
 namespace yb {
 
@@ -71,6 +73,30 @@ struct GetMasterRegistrationData {
       : proxy(proxy_cache, hp) {}
 };
 
+struct GetMasterRegistrationState {
+  GetMasterRegistrationState(rpc::ProxyCache* proxy_cache, const std::vector<HostPort>& host_ports)
+      : num_pending_rpcs(host_ports.size()) {
+    registration_data.reserve(host_ports.size());
+    for (const auto& host_port : host_ports) {
+      registration_data.emplace_back(proxy_cache, host_port);
+    }
+  }
+
+  std::vector<GetMasterRegistrationData> registration_data;
+
+  std::mutex mutex;
+  // Following fields are protected by mutex.
+  std::condition_variable is_done_condition;
+  GetMasterRegistrationData* first_success = nullptr;
+  GetMasterRegistrationData* last_registration = nullptr;
+  size_t num_pending_rpcs;
+
+  // Returns true once we have a result: either a success or all RPCs completed.
+  bool IsDone() const {
+    return first_success != nullptr || num_pending_rpcs == 0;
+  }
+};
+
 bool DoesRegistrationMatch(
     const ServerRegistrationPB& registration, std::function<bool(const HostPortPB&)> predicate) {
   if (std::find_if(
@@ -93,41 +119,51 @@ bool DoesRegistrationMatch(
 Status GetMasterEntryForHosts(rpc::ProxyCache* proxy_cache,
                               const std::vector<HostPort>& hostports,
                               MonoDelta timeout,
-                              ServerEntryPB* e) {
+                              ServerEntryPB* server_entry) {
   CHECK(!hostports.empty());
 
-  std::deque<GetMasterRegistrationData> datas;
-  std::atomic<GetMasterRegistrationData*> last_data{nullptr};
-  CountDownLatch latch(hostports.size());
-  for (size_t i = 0; i != hostports.size(); ++i) {
-    datas.emplace_back(proxy_cache, hostports[i]);
-    auto& data = datas.back();
+  auto state = std::make_shared<GetMasterRegistrationState>(proxy_cache, hostports);
+
+  for (auto& data : state->registration_data) {
     data.controller.set_timeout(timeout);
-    data.proxy.GetMasterRegistrationAsync(
-        data.req, &data.resp, &data.controller,
-        [&data, &latch, &last_data] {
-      last_data.store(&data, std::memory_order_release);
-      latch.CountDown();
+    data.proxy.GetMasterRegistrationAsync(data.req, &data.resp, &data.controller, [&data, state] {
+      std::lock_guard lock(state->mutex);
+
+      bool already_done = state->IsDone();
+
+      state->num_pending_rpcs--;
+      state->last_registration = &data;
+
+      if (data.controller.status().ok() && !data.resp.has_error()) {
+        if (!state->first_success) {
+          state->first_success = &data;
+        }
+      }
+
+      // Only notify the first time we have a result.
+      if (!already_done && state->IsDone()) {
+        state->is_done_condition.notify_one();
+      }
     });
   }
 
-  latch.Wait();
+  // Wait for first success or all RPCs to complete.
+  std::unique_lock lock(state->mutex);
+  while (!state->IsDone()) {
+    state->is_done_condition.wait(lock);
+  }
 
-  for (const auto& data : datas) {
-    if (!data.controller.status().ok() || data.resp.has_error()) {
-      continue;
-    }
-    e->mutable_instance_id()->CopyFrom(data.resp.instance_id());
-    e->mutable_registration()->CopyFrom(data.resp.registration());
-    e->set_role(data.resp.role());
+  if (state->first_success) {
+    server_entry->mutable_instance_id()->CopyFrom(state->first_success->resp.instance_id());
+    server_entry->mutable_registration()->CopyFrom(state->first_success->resp.registration());
+    server_entry->set_role(state->first_success->resp.role());
     return Status::OK();
   }
 
-  auto last_data_value = last_data.load(std::memory_order_acquire);
-  if (last_data_value->controller.status().ok()) {
-    return StatusFromPB(last_data_value->resp.error().status());
+  if (state->last_registration->controller.status().ok()) {
+    return StatusFromPB(state->last_registration->resp.error().status());
   } else {
-    return last_data_value->controller.status();
+    return state->last_registration->controller.status();
   }
 }
 

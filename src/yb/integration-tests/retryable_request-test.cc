@@ -62,8 +62,8 @@ using tablet::TabletPeerPtr;
 class RetryableRequestTest : public YBTableTestBase {
  protected:
   void BeforeStartCluster() override {
-    FLAGS_enable_load_balancing = false;
-    FLAGS_enable_flush_retryable_requests = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
   }
   bool use_external_mini_cluster() override { return false; }
 
@@ -80,7 +80,7 @@ class RetryableRequestTest : public YBTableTestBase {
   }
 
   void ShutdownTabletPeer(const std::shared_ptr<tablet::TabletPeer> &tablet_peer) {
-    ASSERT_OK(tablet_peer->Shutdown(tablet::ShouldAbortActiveTransactions::kTrue,
+    ASSERT_OK(tablet_peer->TEST_Shutdown(tablet::ShouldAbortActiveTransactions::kTrue,
                                     tablet::DisableFlushOnShutdown::kFalse));
   }
 

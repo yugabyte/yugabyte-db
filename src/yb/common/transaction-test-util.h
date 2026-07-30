@@ -58,7 +58,7 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
     return Status::OK();
   }
 
-  Result<int64_t> RegisterRequest() override {
+  Result<int64_t> RegisterRequest(bool allow_when_closing) override {
     return 0;
   }
 

@@ -288,11 +288,15 @@ Note that in general these flags will have different values for TServer and Mast
 
 Maximum amount of memory this process should use in bytes, that is, its hard memory limit.  A value of `0` specifies to instead use a percentage of the total system memory; see [--default_memory_limit_to_ram_ratio](#default-memory-limit-to-ram-ratio) for the percentage used.  A value of `-1` disables all memory limiting.
 
+For Kubernetes deployments, this flag is automatically set from the Kubernetes pod memory limits specified in the Helm chart configuration. See [Memory limits for Kubernetes deployments](../../../deploy/kubernetes/single-zone/oss/helm-chart/#memory-limits-for-kubernetes-deployments) for details.
+
 Default: `0`
 
 ##### --default_memory_limit_to_ram_ratio
 
 The percentage of available RAM to use for this process if [--memory_limit_hard_bytes](#memory-limit-hard-bytes) is `0`.  The special value `-1000` means to instead use the default value for this flag.  Available RAM excludes memory reserved by the kernel.
+
+This flag does not apply to Kubernetes universes. Memory limits are controlled via Kubernetes resource specifications in the Helm chart, and `--memory_limit_hard_bytes` is automatically set from those limits. See [Memory limits for Kubernetes deployments](../../../deploy/kubernetes/single-zone/oss/helm-chart/#memory-limits-for-kubernetes-deployments) for details.
 
 Default: `0.85` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
 
@@ -596,7 +600,7 @@ Default: `0` for no limit.
 
 The number of tablet replicas that each GiB reserved by YB-TServers for tablet overheads can support.
 
-Default: 1024 * (7/10) (corresponding to an overhead of roughly 700 KiB per tablet)
+Default: `1462`
 
 ## Geo-distribution flags
 
@@ -808,7 +812,7 @@ Valid values are `connection` and `server`.
 
 This flag requires the YB-TServer `yb_enable_sequence_pushdown` flag to be true (the default). Otherwise, the default behavior will occur regardless of this flag's value.
 
-For details on caching values on the server and switching between cache methods, see the semantics on the [nextval](../../../api/ysql/exprs/func_nextval/) page.
+For details on caching values on the server and switching between cache methods, see the semantics on the [nextval](../../../api/ysql/exprs/sequence_functions/func_nextval/) page.
 
 Default: `connection`
 
@@ -824,7 +828,7 @@ Default: `100`
 
 ##### --ysql_yb_fetch_size_limit
 
-{{<tags/feature/tp>}} Specifies the maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit.
+Specifies the maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit.
 
 You can also specify the value as a string. For example, you can set it to `'10MB'`.
 
@@ -838,7 +842,7 @@ Default: 0
 
 ##### --ysql_yb_fetch_row_limit
 
-{{<tags/feature/tp>}} Specifies the maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
+Specifies the maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
 
 You should have at least one of row limit or size limit set.
 
@@ -935,7 +939,7 @@ Default: `false`
 
 ##### --ycql_require_drop_privs_for_truncate
 
-Set this flag to `true` to reject [`TRUNCATE`](../../../api/ycql/dml_truncate) statements unless allowed by [`DROP TABLE`](../../../api/ycql/ddl_drop_table) privileges.
+Set this flag to `true` to reject [`TRUNCATE`](../../../api/ycql/dml_truncate/) statements unless allowed by [`DROP TABLE`](../../../api/ycql/ddl_drop_table/) privileges.
 
 Default: `false`
 
@@ -943,7 +947,7 @@ Default: `false`
 
 Set this flag to `true` to enable audit logging for the universe.
 
-For details, see [Audit logging for the YCQL API](../../../secure/audit-logging/audit-logging-ycql).
+For details, see [Audit logging for the YCQL API](../../../secure/audit-logging/audit-logging-ycql/).
 
 ##### --ycql_allow_non_authenticated_password_reset
 
@@ -1260,7 +1264,7 @@ Default: `50`
 
 Maximum number of intent records allowed in a single CDC batch.
 
-Default: `1000`
+Default: `1680`
 
 ##### --cdc_snapshot_batch_size
 
@@ -1362,7 +1366,7 @@ Default: `4194304` (4MB)
 
 Max size (in bytes) of changes sent from CDC Service to [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication)(VWAL) for a particular tablet.
 
-Default: `1 MB`
+Default: `1048576` (1MB)
 
 ##### --ysql_cdc_active_replication_slot_window_ms
 
@@ -1373,6 +1377,16 @@ Default: `60000`
 ##### --cdc_send_null_before_image_if_not_exists
 
 When true, the CDC service returns a null before-image if it is not able to find one.
+
+Default: `false`
+
+##### --cdc_enable_intra_transactional_before_image
+
+Available in v2024.2.9.1 and later, v2025.2.4.0 and later.
+
+When true, CDC populates before-image values for DML operations that occur within the same transaction. For example, if a row is inserted and then updated or deleted in one transaction, each UPDATE or DELETE change record includes the row values immediately before that operation within the transaction (not only the pre-transaction state).
+
+This flag requires a YB-TServer restart. Enable it on all YB-TServers in the universe when you need accurate before images for intra-transactional changes with logical replication or gRPC CDC.
 
 Default: `false`
 
@@ -1691,7 +1705,7 @@ Default: 86400000 (1 day)
 
 The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.
 
-Default: -1, where the system automatically calculates the value to be approximately 1 second.
+Default: -1, where the system automatically calculates the margin. For YSQL index backfill the baseline is 3 minutes (180000 ms); for YCQL the baseline is approximately 1 second (1000 ms). The effective margin is the greater of that baseline and a value derived from backfill_index_write_batch_size and backfill_index_rate_rows_per_sec.
 
 ##### backfill_index_write_batch_size
 
@@ -1834,7 +1848,9 @@ Default: true
 
 ##### yb_enable_bitmapscan
 
-{{<tags/feature/ea idea="1092">}} Enables or disables the query planner's use of bitmap scans for YugabyteDB relations. Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
+{{<tags/feature/ea idea="1092">}} Enables or disables the query planner's use of bitmap scans for YugabyteDB relations.
+
+Both [enable_bitmapscan](#enable-bitmapscan) (enabled by default) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
 
 | enable_bitmapscan | yb_enable_bitmapscan | Result |
 | :--- | :---  | :--- |
@@ -1881,13 +1897,13 @@ Default: false
 
 ##### yb_enable_optimizer_statistics
 
-{{<tags/feature/tp>}} Enables use of the PostgreSQL selectivity estimation, which uses table statistics collected with ANALYZE.
+{{<tags/feature/ea idea="483">}} Enables use of the PostgreSQL selectivity estimation, which uses table statistics collected with ANALYZE.
 
 Default: false
 
 ##### yb_fetch_size_limit
 
-{{<tags/feature/tp>}} Maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `yb_fetch_row_limit` should be set to 0.
+Maximum size (in bytes) of total data returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no size limit. To enable size based limit, `yb_fetch_row_limit` should be set to 0.
 
 If both `yb_fetch_row_limit` and `yb_fetch_size_limit` are set then limit is taken as the lower bound of the two values.
 
@@ -1897,7 +1913,7 @@ Default: 0
 
 ##### yb_fetch_row_limit
 
-{{<tags/feature/tp>}} Maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
+Maximum number of rows returned in one response when the query layer fetches rows of a table from DocDB. Used to bound how many rows can be returned in one request. Set to 0 to have no row limit.
 
 See also the [--ysql_yb_fetch_row_limit](#ysql-yb-fetch-row-limit) flag. If the flag is set, this parameter takes precedence.
 

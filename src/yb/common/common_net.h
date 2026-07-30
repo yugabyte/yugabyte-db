@@ -30,6 +30,12 @@ bool CloudInfoContainsCloudInfo(const CloudInfoPB& lhs, const CloudInfoPB& rhs);
 bool PlacementInfoContainsCloudInfo(
     const PlacementInfoPB& placement_info, const CloudInfoPB& cloud_info);
 
+// Returns true if the cloud_info matches any placement block in either direction: the cloud_info
+// is a prefix of the block, or the block is a prefix of the cloud_info. Either side may use
+// wildcards (missing fields).
+bool CloudInfoMatchesPlacementInfo(
+    const CloudInfoPB& cloud_info, const PlacementInfoPB& placement_info);
+
 bool PlacementInfoSpansMultipleRegions(const PlacementInfoPB& placement_info);
 
 bool PlacementInfoContainsPlacementInfo(const PlacementInfoPB& lhs, const PlacementInfoPB& rhs);

@@ -21,7 +21,7 @@ To create your Sandbox cluster:
 
 ![Create a Sandbox cluster](/images/yb-cloud/cloud-add-free-cluster.gif)
 
-1. Click **Create a Free cluster** on the welcome screen, or click **Add Cluster** on the **Clusters** page to open the **Create Cluster** wizard.
+1. Click **Create Cluster** on the welcome screen, or click **Add Cluster** on the **Clusters** page to open the **Create Cluster** wizard.
 
 1. Select Sandbox and click **Choose**.
 
@@ -77,7 +77,7 @@ To connect to your cluster, do the following:
 
 > The command line interface (CLI) being used is called [ysqlsh](/stable/api/ysqlsh/). ysqlsh is the CLI for interacting with YugabyteDB using the PostgreSQL-compatible [YSQL API](/stable/api/ysql/). Cloud Shell also supports [ycqlsh](/stable/api/ycqlsh/), a CLI for the [YCQL API](/stable/api/ycql/).
 >
-> For information on other ways to connect to your cluster, refer to [Connect to clusters](/stable/yugabyte-cloud/cloud-connect).
+> For information on other ways to connect to your cluster, refer to [Connect to clusters](/stable/yugabyte-cloud/cloud-connect/).
 
 ## Explore distributed SQL
 

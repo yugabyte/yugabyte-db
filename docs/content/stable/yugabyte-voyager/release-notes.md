@@ -17,6 +17,203 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## Source database support changes
+
+| Source | Migration type | Status | Effective date |
+| :----- | :------------- | :----- | :------------- |
+| Oracle | [Live migration](../migrate/live-migrate/), including<br>[fall-forward](../migrate/live-fall-forward/) and [fall-back](../migrate/live-fall-back/) | Not supported | - |
+| Oracle | [Offline migration](../migrate/migrate-steps/) | Deprecated | Support ends October 13, 2026 |
+| MySQL | [Offline migration](../migrate/migrate-steps/) | Deprecated | Support ends October 13, 2026 |
+
+Oracle and MySQL [offline migration](../migrate/migrate-steps/) was deprecated on July 13, 2026. PostgreSQL migrations are unaffected.
+
+Contact {{% support-general %}} to discuss alternative tools and migration approaches.
+
+## v2026.7.2 - July 22, 2026
+
+### Enhancements
+
+- Enhanced Live migration (CDC). Resolved unique-key NULL-NULL conflict handling accurately depending on the  NULLS DISTINCT / NULLS NOT DISTINCT property, using unique-index information read from the target database. This unblocks complex data patterns and speeds up the CDC phase.
+
+- Resuming import data file for Amazon S3 files now seeks directly to the last byte offset instead of re-reading and discarding previously imported lines, making resumption faster.
+
+- CLI help and configuration templates now warn that disabling `run-guardrails-checks` is unsafe because it skips critical pre-migration validations.
+
+## v2026.7.1 - July 7, 2026
+
+{{< note title="Important: Breaking change" >}}
+
+This release includes breaking changes for Voyager migrations. Migrations started with earlier Voyager versions cannot be continued with this version. To proceed, either continue the migration using the same Voyager version you started with, or start a new migration using v2026.7.1.
+
+{{< /note >}}
+
+### Enhancements
+
+- Added `--target-db-type` CLI flag to select the target database engine for offline and basic live migrations from PostgreSQL.
+- Added a guardrail that fails fast with a clear error when a `start-clean` import is attempted after the relevant queue segments have already been archived.
+
+### Bug fixes
+
+- Fixed an issue where unsupported query constructs were not detected during migration assessment when run with `--run-guardrails-checks=false`, even though [pg_stat_statements](../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/) was installed and enabled.
+- Fixed unique-key conflict detection for multi-column unique indexes during live migration.
+- Fixed live migration reporting false unique-key conflicts for tables using the table CDC partitioning strategy.
+- Fixed a validation issue where `--use-partition-root` incorrectly evaluated the target engine instead of the source database, ensuring non-PostgreSQL sources are properly rejected.
+
+## v2026.6.2 - June 24, 2026
+
+### Enhancements
+
+- Added a warning to [export data from target](../reference/data-migration/export-data/) when the target YugabyteDB server version is newer than the bundled [YugabyteDB logical replication connector](../../additional-features/change-data-capture/using-logical-replication/).
+- Improved [assess-migration](../reference/assess-migration/) and [analyze-schema](../reference/schema-migration/analyze-schema/) reports to show Tech Preview and Early Access maturity details, including required feature flags for supported YugabyteDB features.
+- Improved fatal error output so interactive console errors stand out, while keeping logs and redirected stderr as plain text.
+
+### Bug fixes
+
+- Fixed an issue that allowed equivalent commands, such as `export data` and `export data from source` to run concurrently for the same migration.
+- Fixed an issue where failures before logging initialization could print duplicate errors or send errors to stdout.
+- Fixed an issue where `assess-migration` and `analyze-schema` incorrectly reported PL/pgSQL %TYPE declarations as unsupported.
+- Fixed an issue where import schema could fail for PL/pgSQL functions using unqualified %TYPE references.
+
+## v2026.6.1 - June 9, 2026
+
+### Enhancement
+
+- Updated the bundled [YugabyteDB logical replication connector](../../additional-features/change-data-capture/using-logical-replication/) to version `dz.2.5.2.yb.2025.2.3`.
+
+### Bug fixes
+
+- Fixed an issue where [import data](../reference/data-migration/import-data/) could intermittently fail against multi-node YugabyteDB targets with a _syntax error at or near…_ error referencing a prepared-statement name.
+
+- Fixed an issue where migration assessment for PostgreSQL sources with read replicas could fail when [pg_stat_statements](../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/) was not enabled on all replicas. Voyager now checks its availability on each replica independently, instead of assuming replicas match the primary.
+
+- Fixed an issue where the [assess-migration](../reference/assess-migration/) progress display showed an inconsistent step count.
+
+- Fixed an issue where interrupting live migration could cause incorrect sequence restoration on the target after cutover.
+
+- Fixed an issue where [import data](../reference/data-migration/import-data/) could hang silently when `--adaptive-parallelism-max` was set less than the default `parallel-jobs` value.
+
+## v2026.5.2 - May 26, 2026
+
+### Enhancements
+
+- Redesigned output for the [assess-migration](../reference/assess-migration/) command. The output is now organized into three clear phases:
+  1. A **Preflight Checks** block that summarizes guardrail validations.
+  1. An **Assessment Pipeline** that shows live progress for metadata gathering, usage analysis, sizing, and report generation via a spinner and step counter.
+  1. A final **Summary** block.
+
+- Added a new guardrail in the [export data from target](../reference/data-migration/export-data/) flow (live migration with fall-back/fall-forward from YugabyteDB) that verifies every exported YugabyteDB table has its replica identity set to CHANGE. Tables missing the required replica identity are now reported under "Tables missing replica identity CHANGE" so they can be corrected before streaming begins, instead of failing later during CDC.
+
+### Bug fixes
+
+- Fixed an issue where [import data](../reference/data-migration/import-data/) and [import data file](../reference/data-migration/import-data/#import-data-file) run with `--truncate-tables true` (and `--start-clean true`) would fail with "cannot truncate a table referenced in a foreign key constraint" when the target had a non-empty parent table and an empty child table linked by a foreign key. The TRUNCATE statement now includes all tables in the import scope, keeping foreign key-dependent siblings consistent in the same statement.
+
+- Fixed a transient failure during multi-table TRUNCATE on YugabyteDB targets that occasionally surfaced as "Restart read required (SQLSTATE 40001)" under distributed read-snapshot contention. Voyager now retries the TRUNCATE up to four times with linear backoff (2s, 4s, 6s, 8s) before surfacing the error.
+
+## v2026.5.1 - May 15, 2026
+
+### New feature
+
+- Support PostgreSQL live migration for partitioned tables whose root has no primary key, but every child partition does. Use [--use-partition-root false](../reference/data-migration/import-data/#arguments) with the `import data` command so CDC events are ingested directly into the matching child partition on the target rather than the root.
+
+## v2026.4.2 - April 28, 2026
+
+### Enhancement
+
+- Improved import data resumption experience. When resuming an interrupted import data command, the CLI now clearly indicates it is resuming (with the number of previously imported rows per table) rather than showing a generic "import started" message. Progress bars are also properly shut down before printing interrupt/signal messages, preventing garbled terminal output.
+
+### Bug fixes
+
+- Fixed Oracle identity column handling during live migration snapshot import. Oracle GENERATED ALWAYS AS IDENTITY columns are now correctly converted to GENERATED BY DEFAULT before snapshot import in live migration fall-back/fall-forward workflows, fixing a regression that caused import failures.
+
+- Fixed import data file failure on empty data files. The import data file command no longer fails when a CSV file contains only a header row with no data rows. Such files are now correctly skipped.
+
+## v2026.4.1 - April 14, 2026
+
+### Enhancements
+
+- Improved the [archive changes](../reference/cutover-archive/archive-changes/#arguments) command for live migration fallback workflows with [multiple iterations](../reference/iterative-cutover/). When run from the parent migration export directory, the command now continues archiving change segments across all iterations.
+
+- Improved [import data](../reference/data-migration/import-data/) error reporting when a batch fails with unique-constraint (SQLSTATE 23505) or foreign-key (SQLSTATE 23503) errors. Voyager now classifies these failures and suggests a more appropriate next step (for example, distinguishing primary-key conflicts, other unique violations, and foreign-key failures that often relate to permissions such as session_replication_role) instead of defaulting to generic error reporting.
+
+### Bug fix
+
+- Fixed an issue where [end migration](../reference/end-migration/) did not reliably resumae in the live migration fallback workflow with multiple iterations. You can now re-run the command to complete shutdown if it stops before completion.
+
+## v2026.3.3 - March 31, 2026
+
+{{< note title="Important: Breaking change" >}}
+
+This release includes breaking changes for Voyager migrations. Migrations started with earlier Voyager versions cannot be continued with this version. To proceed, either continue the migration using the same Voyager version you started with, or start a new migration using v2026.3.3.
+
+{{< /note >}}
+
+### New feature
+
+- Added support for multiple iterations of the PostgreSQL to YugabyteDB to PostgreSQL in live migration with fall-back workflow, so you can run repeated fall-back cycles without having to restart the migration from scratch.
+
+### Enhancements
+
+- Improved the [archive changes](../reference/cutover-archive/archive-changes/#arguments) command configuration options with explicit policies and flags. You must set the `--policy` flag to `delete` or `archive`. For `archive`, set the `--archive-dir` flag to the directory where processed change segments are copied before the originals are removed.
+
+- The `export-data` processing step of the cutover process is resumable. If export-data fails before cutover is marked as processed, it can be retried by re-running the command.
+
+### Bug fix
+
+- Fixed a bug where xCluster configuration was not being properly detected on the target YugabyteDB, leading to missing guardrails during `import-data`.
+
+## v2026.3.2 - March 17, 2026
+
+### Enhancements
+
+- YugabyteDB CDC savepoint and read-committed isolation limitations for live migration with fall-forward/fall-back are reported for YugabyteDB versions that lack support.
+- Improved performance for import data and import data file when resuming local data files for large tables.
+
+### Bug fixes
+
+- Fixed duplicate table entries in the [yugabyted UI](../migrate/migrate-steps/#configure-yugabyted-ui) (Control Plane UI) by standardizing table name formatting between the initialization and progress reporting of data imports.
+- Fixed a spurious password prompt when running `assess-migration` with `--assessment-metadata-dir` for offline assessments that do not require source database connectivity.
+- Refined the colocated database warning during `import-schema` to only appear when the assessment has recommended colocated tables, rather than whenever the target database is non-colocated.
+
+## v2026.3.1 - March 2, 2026
+
+### Enhancements
+
+- Assessment report now includes recommended partial index SQL for columns with high-frequency values, or a high percentage of NULL values to improve performance on YugabyteDB.
+- Increased default `--adaptive-parallelism-max` from total N/2 to N total cores. This change enables better CPU utilization during data migration, with improved core detection for load-balanced and managed clusters.
+
+### Bug fixes
+
+- Reduced excessive logging in import data when no batch is available, preventing log flooding and unnecessary CPU usage during slower batch production.
+- Commands executed after cutover to target now correctly use the provided config file and forward flags.
+
+## v2026.2.2 - February 17, 2026
+
+### Enhancements
+
+- TIMETZ (time with time zone) and pgvector columns are now flagged as unsupported for live migration in the assessment report, and the corresponding columns are automatically excluded from live migration.
+
+### Bug fixes
+
+- Fixed an issue where `export schema` could hang while fetching redundant index information during schema export.
+- Fixed a potential data loss issue in live migration where events could be marked as processed before being durably written to disk.
+- Corrected the default value of the `use-yb-grpc-connector` parameter in configuration templates from true to false.
+
+## v2026.2.1 - February 3, 2026
+
+{{< note title="Important: Breaking change" >}}
+
+This release includes breaking changes for Voyager migrations. Migrations started with earlier Voyager versions cannot be continued with this version. To proceed, either continue the migration using the same Voyager version you started with, or start a new migration using v2026.2.1.
+
+{{< /note >}}
+
+### New feature
+
+- Support for case-sensitive schema names in PostgreSQL migrations. PostgreSQL schemas that use quoted identifiers (for example, `"pg-schema"`, `"Schema"`) are now correctly handled in all migration workflows: assessment, export schema, export data, live migration, and also the grant-migration-permissions script. The `--source-db-schema` or `schema_list` parameter accepts schema names with or without quotes. Quoted names are preserved and matched correctly.
+
+### Enhancement
+
+- Voyager now automatically re-runs the internal assessment during export schema with the `--start-clean` flag if the `assess-migration` command was skipped. This ensures metadata remains in sync after a clean start and avoids stale assessment data.
+
 ## v2026.1.1 - January 20, 2026
 
 ### Enhancements
@@ -151,7 +348,7 @@ Use the [skip-performance-recommendations](../reference/schema-migration/export-
 
 - Fixed import schema to properly handle session variables during connection retries, ensuring DDL state consistency.
 - Fixed import data or import data file to allow users to run without the `--start-clean` flag, after creating missing tables following guardrail failures.
-- Fixed a scenario where compare-performance fails to generate a JSON report if there are some entries in `pg_stat_statements` having zero calls.
+- Fixed a scenario where compare-performance fails to generate a JSON report if there are some entries in [pg_stat_statements](../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/) having zero calls.
 
 ## v2025.9.3 - September 30, 2025
 
@@ -536,7 +733,7 @@ Use the [skip-performance-recommendations](../reference/schema-migration/export-
   - In the Schema analysis report (html/text), changed the following field names to improve readability: Invalid Count to Objects with Issues; Total Count to Total Objects; and Valid Count to Objects without Issues. The logic determining when an object is considered to have issues or not has also been improved.
   - Stop reporting [Unlogged tables](../known-issues/postgresql/#unlogged-table-is-not-supported) as an issue in assessment and schema analysis reports by default, as UNLOGGED no longer results in a syntax error in YugabyteDB {{<release "2024.2.0.0">}}.
   - Stop reporting [ALTER PARTITIONED TABLE ADD PRIMARY KEY](https://github.com/yugabyte/yb-voyager/issues/612) as an issue in assessment and schema analysis reports, as [the issue](../known-issues/postgresql/#adding-primary-key-to-a-partitioned-table-results-in-an-error) has been fixed in YugabyteDB {{<release "2024.1.0.0">}} and later.
-  - In the assessment report, only statements from `pg_stat_statements` that belong to the schemas provided by the user will be processed for detecting and reporting issues.
+  - In the assessment report, only statements from [pg_stat_statements](../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/) that belong to the schemas provided by the user will be processed for detecting and reporting issues.
 - Data Migration
   - `import data file` and `import data to source replica` now accept a new flag `truncate-tables` (in addition to `import data`), which, when used with `start-clean true`, truncates all the tables in the target/source-replica database before importing data into the tables.
 - Miscellaneous
@@ -561,7 +758,7 @@ Use the [skip-performance-recommendations](../reference/schema-migration/export-
 - Added support to report DDL issues present in the PL/pgSQL blocks of objects listed in the "Unsupported PL/pgSQL Objects" section of the `assess-migration` and `analyze-schema` commands.
 - Allow yb-voyager upgrades during migration from the recent breaking release (v1.8.5) to later versions.
 - Modified the internal HTTP port to dynamically use an available free port instead of defaulting to 8080, avoiding conflicts with commonly used services.
-- Added a guardrail check to the `assess-migration` command to verify that the `pg_stat_statements` extension is properly loaded in the source database.
+- Added a guardrail check to the `assess-migration` command to verify that the [pg_stat_statements](../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/) extension is properly loaded in the source database.
 
 ### Bug fixes
 
@@ -579,7 +776,7 @@ Use the [skip-performance-recommendations](../reference/schema-migration/export-
 
 - Using the arguments `--table-list` and `--exclude-table-list` in guardrails now checks for PostgreSQL export to determine which tables require permission checks.
 - Added a check for Java as a dependency in guardrails for PostgreSQL export during live migration.
-- Added check to verify if [pg_stat_statements](../../additional-features/pg-extensions/extension-pgstatstatements/) is in a schema not included in the specified `schema_list` and if the migration user has access to queries in the pg_stat_statements view. This is part of the guardrails for assess-migration for PostgreSQL.
+- Added check to verify if [pg_stat_statements](../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/) is in a schema not included in the specified `schema_list` and if the migration user has access to queries in the pg_stat_statements view. This is part of the guardrails for assess-migration for PostgreSQL.
 - Introduced the `--version` flag in the voyager installer script, which can be used to specify the version to install.
 - Added argument [--truncate-tables](../reference/data-migration/import-data/#arguments) to import data to target for truncating tables, applicable only when --start-clean is true.
 - Added support in the assess-migration command to detect the `XMLTABLE()` function under unsupported query constructs.
@@ -589,7 +786,7 @@ Use the [skip-performance-recommendations](../reference/schema-migration/export-
 ### Bug fixes
 
 - Fixed an [issue](https://github.com/yugabyte/yb-voyager/issues/1920) where export-data errors out if background metadata queries (count*) are still running after pg_dump completes.
-- Fixed a bug where the assess-migration command fails when gathering metadata for unsupported query constructs if the pg_stat_statements extension was installed in a non-public schema.
+- Fixed a bug where the assess-migration command fails when gathering metadata for unsupported query constructs if the [pg_stat_statements](../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/) extension was installed in a non-public schema.
 - Fixed nil pointer exceptions and index-out-of-range issues when running export data status and get data-migration-report commands before export data is properly started.
 - Fixed a bug in export data status command for accurate status reporting of partition tables during PostgreSQL data export.
 
@@ -612,7 +809,7 @@ Use the [skip-performance-recommendations](../reference/schema-migration/export-
 
 ### Known issues
 
-- The [assess-migration](../reference/assess-migration/) command will fail if the [pg_stat_statements](../../additional-features/pg-extensions/extension-pgstatstatements/) extension is created in a non-public schema, due to the "Unsupported Query Constructs" feature.
+- The [assess-migration](../reference/assess-migration/) command will fail if the [pg_stat_statements](../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/) extension is created in a non-public schema, due to the "Unsupported Query Constructs" feature.
 To bypass this issue, set the environment variable `REPORT_UNSUPPORTED_QUERY_CONSTRUCTS=false`, which disables the "Unsupported Query Constructs" feature and proceeds with the command execution.
 
 ## v1.8.4 - October 29, 2024

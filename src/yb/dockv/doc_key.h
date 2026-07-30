@@ -60,8 +60,7 @@ namespace yb::dockv {
 //     1. Each range component consists of a type byte (ValueType) followed by the encoded
 //        representation of the respective type (see PrimitiveValue's key encoding).
 //     2. ValueType::kGroupEnd terminates the sequence.
-YB_DEFINE_ENUM(
-    DocKeyPart,
+YB_DEFINE_ENUM(DocKeyPart,
     (kUpToHashCode)
     (kUpToHash)
     (kUpToId)
@@ -228,7 +227,8 @@ class DocKey {
 
   // Converts the document key to a human-readable representation.
   std::string ToString(AutoDecodeKeys auto_decode_keys = AutoDecodeKeys::kFalse) const;
-  static std::string DebugSliceToString(Slice slice);
+  static std::string DebugSliceToString(
+      Slice slice, DocKeyPart part_to_decode = DocKeyPart::kWholeDocKey);
 
   // Check if it is an empty key.
   bool empty() const {
@@ -692,7 +692,14 @@ class SubDocKey {
 
   Status FullyDecodeFromKeyWithOptionalHybridTime(const Slice& slice);
 
-  std::string ToString(AutoDecodeKeys auto_decode_keys = AutoDecodeKeys::kFalse) const;
+  std::string ToString(
+      AutoDecodeKeys auto_decode_keys = AutoDecodeKeys::kFalse,
+      IncludeWriteTime include_write_time = IncludeWriteTime::kTrue) const;
+
+  std::string ToString(IncludeWriteTime include_write_time) const {
+    return ToString(AutoDecodeKeys::kFalse, include_write_time);
+  }
+
   static std::string DebugSliceToString(Slice slice);
   static Result<std::string> DebugSliceToStringAsResult(Slice slice);
 

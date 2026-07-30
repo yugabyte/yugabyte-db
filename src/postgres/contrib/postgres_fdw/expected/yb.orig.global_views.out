@@ -1,0 +1,2361 @@
+--
+-- Tests for global views using file_fdw as the underlying data source.
+-- Each tserver has a different CSV file placed in its data directory
+-- by the test framework, simulating per-node data like pg_stat_statements.
+--
+-- Install required extensions
+CREATE EXTENSION file_fdw;
+-- Create enum type for the status column
+CREATE TYPE metric_status AS ENUM ('active', 'warning', 'critical');
+-- Create file_fdw server for reading local CSV files
+CREATE SERVER file_server FOREIGN DATA WRAPPER file_fdw;
+-- Create file_fdw foreign table reading the tserver-local CSV.
+-- The relative path resolves against each tserver's data directory,
+-- so each tserver reads its own gv_test_data.csv with unique data.
+CREATE FOREIGN TABLE local_node_metrics_csv (
+    node_id        int,
+    metric_name    varchar(30),
+    metric_value   real,
+    event_count    int,
+    total_bytes    bigint,
+    ratio          double precision,
+    is_healthy     boolean,
+    tag            char(5),
+    status         metric_status,
+    created_at     timestamp,
+    updated_at     timestamptz
+) SERVER file_server
+OPTIONS (format 'csv', filename 'gv_test_data.csv');
+-- Wrap the file_fdw foreign table in a view that exposes the local tserver
+-- UUID, since federated foreign tables require a "server_uuid" UUID column.
+CREATE VIEW local_node_metrics AS
+    SELECT yb_get_local_tserver_uuid() AS server_uuid, *
+    FROM local_node_metrics_csv;
+-- Remote global-view queries execute as the non-superuser yb_global_views_user role
+-- (a member of pg_read_all_stats), so grant it read access to the partial view.
+GRANT SELECT ON local_node_metrics TO pg_read_all_stats;
+-- Verify local data is readable (should show only this node's data)
+SELECT count(*) > 0 AS has_local_data FROM local_node_metrics;
+ has_local_data 
+----------------
+ t
+(1 row)
+
+-- Create global views server
+CREATE SERVER IF NOT EXISTS gv_server FOREIGN DATA WRAPPER postgres_fdw
+    OPTIONS (server_type 'federatedYugabyteDB');
+-- Create global view foreign table
+CREATE FOREIGN TABLE "gv$node_metrics" (
+    server_uuid   uuid,
+    node_id        int,
+    metric_name    varchar(30),
+    metric_value   real,
+    event_count    int,
+    total_bytes    bigint,
+    ratio          double precision,
+    is_healthy     boolean,
+    tag            char(5),
+    status         metric_status,
+    created_at     timestamp,
+    updated_at     timestamptz
+) SERVER gv_server
+OPTIONS (schema_name 'public', table_name 'local_node_metrics');
+--
+-- Basic SELECT: verify data from all 3 nodes (11 rows total).
+-- server_uuid is excluded because its value varies per tserver and run.
+--
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, metric_value, event_count, total_bytes,
+       ratio, is_healthy, tag, status, created_at, updated_at
+FROM "gv$node_metrics" ORDER BY node_id, metric_name;
+                                                                                                                                                                            QUERY PLAN                                                                                                                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Merge Append
+   Sort Key: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+         Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".metric_value, "gv$node_metrics_1".event_count, "gv$node_metrics_1".total_bytes, "gv$node_metrics_1".ratio, "gv$node_metrics_1".is_healthy, "gv$node_metrics_1".tag, "gv$node_metrics_1".status, "gv$node_metrics_1".created_at, "gv$node_metrics_1".updated_at
+         Remote SQL: SELECT node_id, metric_name, metric_value, event_count, total_bytes, ratio, is_healthy, tag, status, created_at, updated_at FROM public.local_node_metrics ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+         Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".metric_value, "gv$node_metrics_2".event_count, "gv$node_metrics_2".total_bytes, "gv$node_metrics_2".ratio, "gv$node_metrics_2".is_healthy, "gv$node_metrics_2".tag, "gv$node_metrics_2".status, "gv$node_metrics_2".created_at, "gv$node_metrics_2".updated_at
+         Remote SQL: SELECT node_id, metric_name, metric_value, event_count, total_bytes, ratio, is_healthy, tag, status, created_at, updated_at FROM public.local_node_metrics ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+         Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".metric_value, "gv$node_metrics_3".event_count, "gv$node_metrics_3".total_bytes, "gv$node_metrics_3".ratio, "gv$node_metrics_3".is_healthy, "gv$node_metrics_3".tag, "gv$node_metrics_3".status, "gv$node_metrics_3".created_at, "gv$node_metrics_3".updated_at
+         Remote SQL: SELECT node_id, metric_name, metric_value, event_count, total_bytes, ratio, is_healthy, tag, status, created_at, updated_at FROM public.local_node_metrics ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+(11 rows)
+
+SELECT node_id, metric_name, metric_value, event_count, total_bytes,
+       ratio, is_healthy, tag, status, created_at, updated_at
+FROM "gv$node_metrics" ORDER BY node_id, metric_name;
+ node_id | metric_name  | metric_value | event_count | total_bytes | ratio  | is_healthy |  tag  |  status  |        created_at        |          updated_at          
+---------+--------------+--------------+-------------+-------------+--------+------------+-------+----------+--------------------------+------------------------------
+       1 |              |          0.1 |          77 |         100 |  0.001 | t          | EMPTY | active   | Wed Jan 15 12:00:00 2025 | Wed Jan 15 04:00:00 2025 PST
+       1 | cpu_usage    |         45.5 |         100 |  5000000000 | 0.4551 | t          | CPU01 | active   | Wed Jan 15 10:30:00 2025 | Wed Jan 15 02:30:00 2025 PST
+       1 | disk_io      |          120 |          50 | 12000000000 | 0.6001 | t          | DSK01 | active   | Wed Jan 15 11:30:00 2025 | Wed Jan 15 08:30:00 2025 PST
+       1 | memory_usage |         72.5 |         200 |  8500000000 |  0.726 | f          | MEM01 | warning  | Wed Jan 15 11:00:00 2025 | Tue Jan 14 21:30:00 2025 PST
+       2 | cpu_usage    |         62.5 |         150 |  6200000000 | 0.6254 | t          | CPU02 | active   | Thu Feb 20 14:00:00 2025 | Thu Feb 20 06:00:00 2025 PST
+       2 | disk_io      |         89.5 |          75 |  3500000000 |  0.895 | f          | DSK02 | critical | Thu Feb 20 15:00:00 2025 | Thu Feb 20 15:00:00 2025 PST
+       2 | memory_usage |         55.5 |         180 |  9800000000 | 0.5558 | t          | MEM02 | active   | Thu Feb 20 14:30:00 2025 | Wed Feb 19 21:30:00 2025 PST
+       2 |              |          0.1 |          83 |         100 |  0.001 | t          |       | active   | Thu Feb 20 16:00:00 2025 | Thu Feb 20 08:00:00 2025 PST
+       3 | cpu_usage    |         38.5 |          90 |  4100000000 | 0.3853 | t          | CPU03 | active   | Mon Mar 10 09:00:00 2025 | Mon Mar 10 02:00:00 2025 PDT
+       3 | disk_io      |         67.5 |          60 |  7700000000 |  0.676 | t          | DSK03 | active   | Mon Mar 10 10:00:00 2025 | Mon Mar 10 08:00:00 2025 PDT
+       3 | memory_usage |         91.5 |         250 | 11000000000 | 0.9157 | f          | MEM03 | critical | Mon Mar 10 09:30:00 2025 | Sun Mar 09 21:00:00 2025 PDT
+(11 rows)
+
+--
+-- WHERE clause tests: one per type
+--
+-- int4
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name FROM "gv$node_metrics"
+WHERE node_id IN (1, 3)
+ORDER BY node_id, metric_name;
+                                                            QUERY PLAN                                                             
+-----------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
+   Sort Key: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
+   ->  Append
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+               Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name
+               Remote Filter: ("gv$node_metrics_1".node_id = ANY ('{1,3}'::integer[]))
+               Remote SQL: SELECT node_id, metric_name FROM public.local_node_metrics WHERE ((node_id = ANY ('{1,3}'::integer[])))
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+               Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name
+               Remote Filter: ("gv$node_metrics_2".node_id = ANY ('{1,3}'::integer[]))
+               Remote SQL: SELECT node_id, metric_name FROM public.local_node_metrics WHERE ((node_id = ANY ('{1,3}'::integer[])))
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+               Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name
+               Remote Filter: ("gv$node_metrics_3".node_id = ANY ('{1,3}'::integer[]))
+               Remote SQL: SELECT node_id, metric_name FROM public.local_node_metrics WHERE ((node_id = ANY ('{1,3}'::integer[])))
+(16 rows)
+
+SELECT node_id, metric_name FROM "gv$node_metrics"
+WHERE node_id IN (1, 3)
+ORDER BY node_id, metric_name;
+ node_id | metric_name  
+---------+--------------
+       1 | 
+       1 | cpu_usage
+       1 | disk_io
+       1 | memory_usage
+       3 | cpu_usage
+       3 | disk_io
+       3 | memory_usage
+(7 rows)
+
+-- float4 (real)
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, metric_value FROM "gv$node_metrics"
+WHERE metric_value > 70
+ORDER BY node_id, metric_name;
+                                                                                               QUERY PLAN                                                                                               
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Merge Append
+   Sort Key: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+         Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".metric_value
+         Remote Filter: ("gv$node_metrics_1".metric_value > '70'::double precision)
+         Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics WHERE ((metric_value > 70::double precision)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+         Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".metric_value
+         Remote Filter: ("gv$node_metrics_2".metric_value > '70'::double precision)
+         Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics WHERE ((metric_value > 70::double precision)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+         Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".metric_value
+         Remote Filter: ("gv$node_metrics_3".metric_value > '70'::double precision)
+         Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics WHERE ((metric_value > 70::double precision)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+(14 rows)
+
+SELECT node_id, metric_name, metric_value FROM "gv$node_metrics"
+WHERE metric_value > 70
+ORDER BY node_id, metric_name;
+ node_id | metric_name  | metric_value 
+---------+--------------+--------------
+       1 | disk_io      |          120
+       1 | memory_usage |         72.5
+       2 | disk_io      |         89.5
+       3 | memory_usage |         91.5
+(4 rows)
+
+-- varchar (variable-length string)
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, status FROM "gv$node_metrics"
+WHERE status = 'active'
+ORDER BY node_id, metric_name;
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".status
+   Sort Key: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
+   ->  Append
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+               Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".status
+               Filter: ("gv$node_metrics_1".status = 'active'::metric_status)
+               Remote SQL: SELECT node_id, metric_name, status FROM public.local_node_metrics
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+               Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".status
+               Filter: ("gv$node_metrics_2".status = 'active'::metric_status)
+               Remote SQL: SELECT node_id, metric_name, status FROM public.local_node_metrics
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+               Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".status
+               Filter: ("gv$node_metrics_3".status = 'active'::metric_status)
+               Remote SQL: SELECT node_id, metric_name, status FROM public.local_node_metrics
+(16 rows)
+
+SELECT node_id, metric_name, status FROM "gv$node_metrics"
+WHERE status = 'active'
+ORDER BY node_id, metric_name;
+ node_id | metric_name  | status 
+---------+--------------+--------
+       1 |              | active
+       1 | cpu_usage    | active
+       1 | disk_io      | active
+       2 | cpu_usage    | active
+       2 | memory_usage | active
+       2 |              | active
+       3 | cpu_usage    | active
+       3 | disk_io      | active
+(8 rows)
+
+-- boolean
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, is_healthy FROM "gv$node_metrics"
+WHERE is_healthy = false
+ORDER BY node_id, metric_name;
+                                                                                   QUERY PLAN                                                                                    
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Merge Append
+   Sort Key: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+         Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".is_healthy
+         Remote Filter: (NOT "gv$node_metrics_1".is_healthy)
+         Remote SQL: SELECT node_id, metric_name, is_healthy FROM public.local_node_metrics WHERE ((NOT is_healthy)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+         Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".is_healthy
+         Remote Filter: (NOT "gv$node_metrics_2".is_healthy)
+         Remote SQL: SELECT node_id, metric_name, is_healthy FROM public.local_node_metrics WHERE ((NOT is_healthy)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+         Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".is_healthy
+         Remote Filter: (NOT "gv$node_metrics_3".is_healthy)
+         Remote SQL: SELECT node_id, metric_name, is_healthy FROM public.local_node_metrics WHERE ((NOT is_healthy)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+(14 rows)
+
+SELECT node_id, metric_name, is_healthy FROM "gv$node_metrics"
+WHERE is_healthy = false
+ORDER BY node_id, metric_name;
+ node_id | metric_name  | is_healthy 
+---------+--------------+------------
+       1 | memory_usage | f
+       2 | disk_io      | f
+       3 | memory_usage | f
+(3 rows)
+
+-- int8 (bigint)
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, total_bytes FROM "gv$node_metrics"
+WHERE total_bytes > 8000000000
+ORDER BY node_id, metric_name;
+                                                                                             QUERY PLAN                                                                                             
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Merge Append
+   Sort Key: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+         Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".total_bytes
+         Remote Filter: ("gv$node_metrics_1".total_bytes > '8000000000'::bigint)
+         Remote SQL: SELECT node_id, metric_name, total_bytes FROM public.local_node_metrics WHERE ((total_bytes > 8000000000::bigint)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+         Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".total_bytes
+         Remote Filter: ("gv$node_metrics_2".total_bytes > '8000000000'::bigint)
+         Remote SQL: SELECT node_id, metric_name, total_bytes FROM public.local_node_metrics WHERE ((total_bytes > 8000000000::bigint)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+         Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".total_bytes
+         Remote Filter: ("gv$node_metrics_3".total_bytes > '8000000000'::bigint)
+         Remote SQL: SELECT node_id, metric_name, total_bytes FROM public.local_node_metrics WHERE ((total_bytes > 8000000000::bigint)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+(14 rows)
+
+SELECT node_id, metric_name, total_bytes FROM "gv$node_metrics"
+WHERE total_bytes > 8000000000
+ORDER BY node_id, metric_name;
+ node_id | metric_name  | total_bytes 
+---------+--------------+-------------
+       1 | disk_io      | 12000000000
+       1 | memory_usage |  8500000000
+       2 | memory_usage |  9800000000
+       3 | memory_usage | 11000000000
+(4 rows)
+
+-- float8 (double precision)
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, ratio FROM "gv$node_metrics"
+WHERE ratio > 0.7
+ORDER BY node_id, metric_name;
+                                                                                        QUERY PLAN                                                                                         
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Merge Append
+   Sort Key: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+         Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".ratio
+         Remote Filter: ("gv$node_metrics_1".ratio > '0.7'::double precision)
+         Remote SQL: SELECT node_id, metric_name, ratio FROM public.local_node_metrics WHERE ((ratio > 0.7::double precision)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+         Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".ratio
+         Remote Filter: ("gv$node_metrics_2".ratio > '0.7'::double precision)
+         Remote SQL: SELECT node_id, metric_name, ratio FROM public.local_node_metrics WHERE ((ratio > 0.7::double precision)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+         Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".ratio
+         Remote Filter: ("gv$node_metrics_3".ratio > '0.7'::double precision)
+         Remote SQL: SELECT node_id, metric_name, ratio FROM public.local_node_metrics WHERE ((ratio > 0.7::double precision)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+(14 rows)
+
+SELECT node_id, metric_name, ratio FROM "gv$node_metrics"
+WHERE ratio > 0.7
+ORDER BY node_id, metric_name;
+ node_id | metric_name  | ratio  
+---------+--------------+--------
+       1 | memory_usage |  0.726
+       2 | disk_io      |  0.895
+       3 | memory_usage | 0.9157
+(3 rows)
+
+-- char(5) (fixed-length string)
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, tag FROM "gv$node_metrics"
+WHERE tag LIKE 'CPU%'
+ORDER BY node_id;
+                                                       QUERY PLAN                                                        
+-------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".tag
+   Sort Key: "gv$node_metrics".node_id
+   ->  Append
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+               Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".tag
+               Remote Filter: ("gv$node_metrics_1".tag ~~ 'CPU%'::text)
+               Remote SQL: SELECT node_id, metric_name, tag FROM public.local_node_metrics WHERE ((tag ~~ 'CPU%'::text))
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+               Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".tag
+               Remote Filter: ("gv$node_metrics_2".tag ~~ 'CPU%'::text)
+               Remote SQL: SELECT node_id, metric_name, tag FROM public.local_node_metrics WHERE ((tag ~~ 'CPU%'::text))
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+               Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".tag
+               Remote Filter: ("gv$node_metrics_3".tag ~~ 'CPU%'::text)
+               Remote SQL: SELECT node_id, metric_name, tag FROM public.local_node_metrics WHERE ((tag ~~ 'CPU%'::text))
+(16 rows)
+
+SELECT node_id, metric_name, tag FROM "gv$node_metrics"
+WHERE tag LIKE 'CPU%'
+ORDER BY node_id;
+ node_id | metric_name |  tag  
+---------+-------------+-------
+       1 | cpu_usage   | CPU01
+       2 | cpu_usage   | CPU02
+       3 | cpu_usage   | CPU03
+(3 rows)
+
+-- enum
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, status FROM "gv$node_metrics"
+WHERE status = 'critical'::metric_status
+ORDER BY node_id, metric_name;
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".status
+   Sort Key: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
+   ->  Append
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+               Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".status
+               Filter: ("gv$node_metrics_1".status = 'critical'::metric_status)
+               Remote SQL: SELECT node_id, metric_name, status FROM public.local_node_metrics
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+               Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".status
+               Filter: ("gv$node_metrics_2".status = 'critical'::metric_status)
+               Remote SQL: SELECT node_id, metric_name, status FROM public.local_node_metrics
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+               Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".status
+               Filter: ("gv$node_metrics_3".status = 'critical'::metric_status)
+               Remote SQL: SELECT node_id, metric_name, status FROM public.local_node_metrics
+(16 rows)
+
+SELECT node_id, metric_name, status FROM "gv$node_metrics"
+WHERE status = 'critical'::metric_status
+ORDER BY node_id, metric_name;
+ node_id | metric_name  |  status  
+---------+--------------+----------
+       2 | disk_io      | critical
+       3 | memory_usage | critical
+(2 rows)
+
+-- timestamp (without TZ)
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, created_at FROM "gv$node_metrics"
+WHERE created_at >= '2025-02-01'::timestamp
+ORDER BY node_id, metric_name;
+                                                                                              QUERY PLAN                                                                                              
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Merge Append
+   Sort Key: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+         Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".created_at
+         Remote Filter: ("gv$node_metrics_1".created_at >= 'Sat Feb 01 00:00:00 2025'::timestamp without time zone)
+         Remote SQL: SELECT node_id, metric_name, created_at FROM public.local_node_metrics WHERE ((created_at >= '2025-02-01 00:00:00')) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+         Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".created_at
+         Remote Filter: ("gv$node_metrics_2".created_at >= 'Sat Feb 01 00:00:00 2025'::timestamp without time zone)
+         Remote SQL: SELECT node_id, metric_name, created_at FROM public.local_node_metrics WHERE ((created_at >= '2025-02-01 00:00:00')) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+         Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".created_at
+         Remote Filter: ("gv$node_metrics_3".created_at >= 'Sat Feb 01 00:00:00 2025'::timestamp without time zone)
+         Remote SQL: SELECT node_id, metric_name, created_at FROM public.local_node_metrics WHERE ((created_at >= '2025-02-01 00:00:00')) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+(14 rows)
+
+SELECT node_id, metric_name, created_at FROM "gv$node_metrics"
+WHERE created_at >= '2025-02-01'::timestamp
+ORDER BY node_id, metric_name;
+ node_id | metric_name  |        created_at        
+---------+--------------+--------------------------
+       2 | cpu_usage    | Thu Feb 20 14:00:00 2025
+       2 | disk_io      | Thu Feb 20 15:00:00 2025
+       2 | memory_usage | Thu Feb 20 14:30:00 2025
+       2 |              | Thu Feb 20 16:00:00 2025
+       3 | cpu_usage    | Mon Mar 10 09:00:00 2025
+       3 | disk_io      | Mon Mar 10 10:00:00 2025
+       3 | memory_usage | Mon Mar 10 09:30:00 2025
+(7 rows)
+
+-- timestamptz (with TZ)
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, updated_at FROM "gv$node_metrics"
+WHERE updated_at < '2025-02-01 00:00:00+00'::timestamptz
+ORDER BY node_id, updated_at;
+                                                                                              QUERY PLAN                                                                                               
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Merge Append
+   Sort Key: "gv$node_metrics".node_id, "gv$node_metrics".updated_at
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+         Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".updated_at
+         Remote Filter: ("gv$node_metrics_1".updated_at < 'Fri Jan 31 16:00:00 2025 PST'::timestamp with time zone)
+         Remote SQL: SELECT node_id, metric_name, updated_at FROM public.local_node_metrics WHERE ((updated_at < '2025-01-31 16:00:00-08')) ORDER BY node_id ASC NULLS LAST, updated_at ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+         Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".updated_at
+         Remote Filter: ("gv$node_metrics_2".updated_at < 'Fri Jan 31 16:00:00 2025 PST'::timestamp with time zone)
+         Remote SQL: SELECT node_id, metric_name, updated_at FROM public.local_node_metrics WHERE ((updated_at < '2025-01-31 16:00:00-08')) ORDER BY node_id ASC NULLS LAST, updated_at ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+         Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".updated_at
+         Remote Filter: ("gv$node_metrics_3".updated_at < 'Fri Jan 31 16:00:00 2025 PST'::timestamp with time zone)
+         Remote SQL: SELECT node_id, metric_name, updated_at FROM public.local_node_metrics WHERE ((updated_at < '2025-01-31 16:00:00-08')) ORDER BY node_id ASC NULLS LAST, updated_at ASC NULLS LAST
+(14 rows)
+
+SELECT node_id, metric_name, updated_at FROM "gv$node_metrics"
+WHERE updated_at < '2025-02-01 00:00:00+00'::timestamptz
+ORDER BY node_id, updated_at;
+ node_id | metric_name  |          updated_at          
+---------+--------------+------------------------------
+       1 | memory_usage | Tue Jan 14 21:30:00 2025 PST
+       1 | cpu_usage    | Wed Jan 15 02:30:00 2025 PST
+       1 |              | Wed Jan 15 04:00:00 2025 PST
+       1 | disk_io      | Wed Jan 15 08:30:00 2025 PST
+(4 rows)
+
+--
+-- Aggregate queries
+--
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT COUNT(*) FROM "gv$node_metrics";
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Finalize Aggregate
+   Output: count(*)
+   ->  Append
+         ->  Partial Aggregate
+               Output: PARTIAL count(*)
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+                     Remote SQL: SELECT NULL FROM public.local_node_metrics
+         ->  Partial Aggregate
+               Output: PARTIAL count(*)
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+                     Remote SQL: SELECT NULL FROM public.local_node_metrics
+         ->  Partial Aggregate
+               Output: PARTIAL count(*)
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+                     Remote SQL: SELECT NULL FROM public.local_node_metrics
+(15 rows)
+
+SELECT COUNT(*) FROM "gv$node_metrics";
+ count 
+-------
+    11
+(1 row)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT metric_name,
+       COUNT(*) AS node_count,
+       SUM(event_count) AS total_events,
+       SUM(total_bytes) AS total_bytes_sum
+FROM "gv$node_metrics"
+GROUP BY metric_name
+ORDER BY metric_name;
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: "gv$node_metrics".metric_name, (count(*)), (sum("gv$node_metrics".event_count)), (sum("gv$node_metrics".total_bytes))
+   Sort Key: "gv$node_metrics".metric_name
+   ->  HashAggregate
+         Output: "gv$node_metrics".metric_name, count(*), sum("gv$node_metrics".event_count), sum("gv$node_metrics".total_bytes)
+         Group Key: "gv$node_metrics".metric_name
+         ->  Append
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+                     Output: "gv$node_metrics_1".metric_name, "gv$node_metrics_1".event_count, "gv$node_metrics_1".total_bytes
+                     Remote SQL: SELECT metric_name, event_count, total_bytes FROM public.local_node_metrics
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+                     Output: "gv$node_metrics_2".metric_name, "gv$node_metrics_2".event_count, "gv$node_metrics_2".total_bytes
+                     Remote SQL: SELECT metric_name, event_count, total_bytes FROM public.local_node_metrics
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+                     Output: "gv$node_metrics_3".metric_name, "gv$node_metrics_3".event_count, "gv$node_metrics_3".total_bytes
+                     Remote SQL: SELECT metric_name, event_count, total_bytes FROM public.local_node_metrics
+(16 rows)
+
+SELECT metric_name,
+       COUNT(*) AS node_count,
+       SUM(event_count) AS total_events,
+       SUM(total_bytes) AS total_bytes_sum
+FROM "gv$node_metrics"
+GROUP BY metric_name
+ORDER BY metric_name;
+ metric_name  | node_count | total_events | total_bytes_sum 
+--------------+------------+--------------+-----------------
+              |          1 |           77 |             100
+ cpu_usage    |          3 |          340 |     15300000000
+ disk_io      |          3 |          185 |     23200000000
+ memory_usage |          3 |          630 |     29300000000
+              |          1 |           83 |             100
+(5 rows)
+
+-- Aggregate on boolean
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT is_healthy, COUNT(*) AS cnt
+FROM "gv$node_metrics"
+GROUP BY is_healthy
+ORDER BY is_healthy;
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Finalize GroupAggregate
+   Output: "gv$node_metrics_1".is_healthy, count(*)
+   Group Key: "gv$node_metrics_1".is_healthy
+   ->  Sort
+         Output: "gv$node_metrics_1".is_healthy, (PARTIAL count(*))
+         Sort Key: "gv$node_metrics_1".is_healthy
+         ->  Append
+               ->  Partial HashAggregate
+                     Output: "gv$node_metrics_1".is_healthy, PARTIAL count(*)
+                     Group Key: "gv$node_metrics_1".is_healthy
+                     ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+                           Output: "gv$node_metrics_1".is_healthy
+                           Remote SQL: SELECT is_healthy FROM public.local_node_metrics
+               ->  Partial HashAggregate
+                     Output: "gv$node_metrics_2".is_healthy, PARTIAL count(*)
+                     Group Key: "gv$node_metrics_2".is_healthy
+                     ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+                           Output: "gv$node_metrics_2".is_healthy
+                           Remote SQL: SELECT is_healthy FROM public.local_node_metrics
+               ->  Partial HashAggregate
+                     Output: "gv$node_metrics_3".is_healthy, PARTIAL count(*)
+                     Group Key: "gv$node_metrics_3".is_healthy
+                     ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+                           Output: "gv$node_metrics_3".is_healthy
+                           Remote SQL: SELECT is_healthy FROM public.local_node_metrics
+(25 rows)
+
+SELECT is_healthy, COUNT(*) AS cnt
+FROM "gv$node_metrics"
+GROUP BY is_healthy
+ORDER BY is_healthy;
+ is_healthy | cnt 
+------------+-----
+ f          |   3
+ t          |   8
+(2 rows)
+
+-- Aggregate on timestamp
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT MIN(created_at) AS earliest, MAX(created_at) AS latest
+FROM "gv$node_metrics";
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Finalize Aggregate
+   Output: min("gv$node_metrics_1".created_at), max("gv$node_metrics_1".created_at)
+   ->  Append
+         ->  Partial Aggregate
+               Output: PARTIAL min("gv$node_metrics_1".created_at), PARTIAL max("gv$node_metrics_1".created_at)
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+                     Output: "gv$node_metrics_1".created_at
+                     Remote SQL: SELECT created_at FROM public.local_node_metrics
+         ->  Partial Aggregate
+               Output: PARTIAL min("gv$node_metrics_2".created_at), PARTIAL max("gv$node_metrics_2".created_at)
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+                     Output: "gv$node_metrics_2".created_at
+                     Remote SQL: SELECT created_at FROM public.local_node_metrics
+         ->  Partial Aggregate
+               Output: PARTIAL min("gv$node_metrics_3".created_at), PARTIAL max("gv$node_metrics_3".created_at)
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+                     Output: "gv$node_metrics_3".created_at
+                     Remote SQL: SELECT created_at FROM public.local_node_metrics
+(18 rows)
+
+SELECT MIN(created_at) AS earliest, MAX(created_at) AS latest
+FROM "gv$node_metrics";
+         earliest         |          latest          
+--------------------------+--------------------------
+ Wed Jan 15 10:30:00 2025 | Mon Mar 10 10:00:00 2025
+(1 row)
+
+--
+-- HAVING clause
+--
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT status, COUNT(*) AS cnt
+FROM "gv$node_metrics"
+GROUP BY status
+HAVING COUNT(*) >= 2
+ORDER BY status;
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
+ Sort
+   Output: "gv$node_metrics_1".status, (count(*))
+   Sort Key: "gv$node_metrics_1".status
+   ->  Finalize HashAggregate
+         Output: "gv$node_metrics_1".status, count(*)
+         Group Key: "gv$node_metrics_1".status
+         Filter: (count(*) >= 2)
+         ->  Append
+               ->  Partial HashAggregate
+                     Output: "gv$node_metrics_1".status, PARTIAL count(*)
+                     Group Key: "gv$node_metrics_1".status
+                     ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+                           Output: "gv$node_metrics_1".status
+                           Remote SQL: SELECT status FROM public.local_node_metrics
+               ->  Partial HashAggregate
+                     Output: "gv$node_metrics_2".status, PARTIAL count(*)
+                     Group Key: "gv$node_metrics_2".status
+                     ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+                           Output: "gv$node_metrics_2".status
+                           Remote SQL: SELECT status FROM public.local_node_metrics
+               ->  Partial HashAggregate
+                     Output: "gv$node_metrics_3".status, PARTIAL count(*)
+                     Group Key: "gv$node_metrics_3".status
+                     ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+                           Output: "gv$node_metrics_3".status
+                           Remote SQL: SELECT status FROM public.local_node_metrics
+(26 rows)
+
+SELECT status, COUNT(*) AS cnt
+FROM "gv$node_metrics"
+GROUP BY status
+HAVING COUNT(*) >= 2
+ORDER BY status;
+  status  | cnt 
+----------+-----
+ active   |   8
+ critical |   2
+(2 rows)
+
+--
+-- DISTINCT
+--
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT DISTINCT metric_name FROM "gv$node_metrics" ORDER BY metric_name;
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Sort
+   Output: "gv$node_metrics".metric_name
+   Sort Key: "gv$node_metrics".metric_name
+   ->  HashAggregate
+         Output: "gv$node_metrics".metric_name
+         Group Key: "gv$node_metrics".metric_name
+         ->  Append
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+                     Output: "gv$node_metrics_1".metric_name
+                     Remote SQL: SELECT metric_name FROM public.local_node_metrics
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+                     Output: "gv$node_metrics_2".metric_name
+                     Remote SQL: SELECT metric_name FROM public.local_node_metrics
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+                     Output: "gv$node_metrics_3".metric_name
+                     Remote SQL: SELECT metric_name FROM public.local_node_metrics
+(16 rows)
+
+SELECT DISTINCT metric_name FROM "gv$node_metrics" ORDER BY metric_name;
+ metric_name  
+--------------
+ 
+ cpu_usage
+ disk_io
+ memory_usage
+ 
+(5 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT DISTINCT status FROM "gv$node_metrics" ORDER BY status;
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
+ Sort
+   Output: "gv$node_metrics".status
+   Sort Key: "gv$node_metrics".status
+   ->  HashAggregate
+         Output: "gv$node_metrics".status
+         Group Key: "gv$node_metrics".status
+         ->  Append
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+                     Output: "gv$node_metrics_1".status
+                     Remote SQL: SELECT status FROM public.local_node_metrics
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+                     Output: "gv$node_metrics_2".status
+                     Remote SQL: SELECT status FROM public.local_node_metrics
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+                     Output: "gv$node_metrics_3".status
+                     Remote SQL: SELECT status FROM public.local_node_metrics
+(16 rows)
+
+SELECT DISTINCT status FROM "gv$node_metrics" ORDER BY status;
+  status  
+----------
+ active
+ warning
+ critical
+(3 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT DISTINCT is_healthy FROM "gv$node_metrics" ORDER BY is_healthy;
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ Sort
+   Output: "gv$node_metrics".is_healthy
+   Sort Key: "gv$node_metrics".is_healthy
+   ->  HashAggregate
+         Output: "gv$node_metrics".is_healthy
+         Group Key: "gv$node_metrics".is_healthy
+         ->  Append
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+                     Output: "gv$node_metrics_1".is_healthy
+                     Remote SQL: SELECT is_healthy FROM public.local_node_metrics
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+                     Output: "gv$node_metrics_2".is_healthy
+                     Remote SQL: SELECT is_healthy FROM public.local_node_metrics
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+                     Output: "gv$node_metrics_3".is_healthy
+                     Remote SQL: SELECT is_healthy FROM public.local_node_metrics
+(16 rows)
+
+SELECT DISTINCT is_healthy FROM "gv$node_metrics" ORDER BY is_healthy;
+ is_healthy 
+------------
+ f
+ t
+(2 rows)
+
+--
+-- LIMIT
+--
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, metric_value FROM "gv$node_metrics"
+ORDER BY metric_value DESC LIMIT 3;
+                                                                QUERY PLAN                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".metric_value
+   ->  Merge Append
+         Sort Key: "gv$node_metrics".metric_value DESC
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+               Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".metric_value
+               Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics ORDER BY metric_value DESC NULLS FIRST
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+               Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".metric_value
+               Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics ORDER BY metric_value DESC NULLS FIRST
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+               Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".metric_value
+               Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics ORDER BY metric_value DESC NULLS FIRST
+(13 rows)
+
+SELECT node_id, metric_name, metric_value FROM "gv$node_metrics"
+ORDER BY metric_value DESC LIMIT 3;
+ node_id | metric_name  | metric_value 
+---------+--------------+--------------
+       1 | disk_io      |          120
+       3 | memory_usage |         91.5
+       2 | disk_io      |         89.5
+(3 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, event_count FROM "gv$node_metrics"
+ORDER BY event_count ASC LIMIT 5;
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".event_count
+   ->  Merge Append
+         Sort Key: "gv$node_metrics".event_count
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+               Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".event_count
+               Remote SQL: SELECT node_id, metric_name, event_count FROM public.local_node_metrics ORDER BY event_count ASC NULLS LAST
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+               Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".event_count
+               Remote SQL: SELECT node_id, metric_name, event_count FROM public.local_node_metrics ORDER BY event_count ASC NULLS LAST
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+               Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".event_count
+               Remote SQL: SELECT node_id, metric_name, event_count FROM public.local_node_metrics ORDER BY event_count ASC NULLS LAST
+(13 rows)
+
+SELECT node_id, metric_name, event_count FROM "gv$node_metrics"
+ORDER BY event_count ASC LIMIT 5;
+ node_id | metric_name | event_count 
+---------+-------------+-------------
+       1 | disk_io     |          50
+       3 | disk_io     |          60
+       2 | disk_io     |          75
+       1 |             |          77
+       2 |             |          83
+(5 rows)
+
+--
+-- Subqueries
+--
+-- Single parameter: scalar subquery result bound as $1
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, metric_value
+FROM "gv$node_metrics"
+WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics")
+ORDER BY node_id, metric_name;
+                                                                                               QUERY PLAN                                                                                               
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Merge Append
+   Sort Key: "gv$node_metrics_4".node_id, "gv$node_metrics_4".metric_name
+   InitPlan 1 (returns $0)
+     ->  Finalize Aggregate
+           Output: avg("gv$node_metrics_1".metric_value)
+           ->  Append
+                 ->  Partial Aggregate
+                       Output: PARTIAL avg("gv$node_metrics_1".metric_value)
+                       ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+                             Output: "gv$node_metrics_1".metric_value
+                             Remote SQL: SELECT metric_value FROM public.local_node_metrics
+                 ->  Partial Aggregate
+                       Output: PARTIAL avg("gv$node_metrics_2".metric_value)
+                       ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+                             Output: "gv$node_metrics_2".metric_value
+                             Remote SQL: SELECT metric_value FROM public.local_node_metrics
+                 ->  Partial Aggregate
+                       Output: PARTIAL avg("gv$node_metrics_3".metric_value)
+                       ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+                             Output: "gv$node_metrics_3".metric_value
+                             Remote SQL: SELECT metric_value FROM public.local_node_metrics
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_5"
+         Output: "gv$node_metrics_5".node_id, "gv$node_metrics_5".metric_name, "gv$node_metrics_5".metric_value
+         Remote Filter: ("gv$node_metrics_5".metric_value > $0)
+         Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics WHERE ((metric_value > $1::double precision)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_6"
+         Output: "gv$node_metrics_6".node_id, "gv$node_metrics_6".metric_name, "gv$node_metrics_6".metric_value
+         Remote Filter: ("gv$node_metrics_6".metric_value > $0)
+         Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics WHERE ((metric_value > $1::double precision)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_7"
+         Output: "gv$node_metrics_7".node_id, "gv$node_metrics_7".metric_name, "gv$node_metrics_7".metric_value
+         Remote Filter: ("gv$node_metrics_7".metric_value > $0)
+         Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics WHERE ((metric_value > $1::double precision)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+(33 rows)
+
+SELECT node_id, metric_name, metric_value
+FROM "gv$node_metrics"
+WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics")
+ORDER BY node_id, metric_name;
+ node_id | metric_name  | metric_value 
+---------+--------------+--------------
+       1 | disk_io      |          120
+       1 | memory_usage |         72.5
+       2 | cpu_usage    |         62.5
+       2 | disk_io      |         89.5
+       3 | disk_io      |         67.5
+       3 | memory_usage |         91.5
+(6 rows)
+
+-- Two parameters: two scalar subquery results bound as $1 and $2
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, metric_value
+FROM "gv$node_metrics"
+WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics")
+  AND event_count > (SELECT MIN(event_count) FROM "gv$node_metrics")
+ORDER BY node_id, metric_name;
+                                                                                     QUERY PLAN                                                                                     
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: "gv$node_metrics_8".node_id, "gv$node_metrics_8".metric_name, "gv$node_metrics_8".metric_value
+   Sort Key: "gv$node_metrics_8".node_id, "gv$node_metrics_8".metric_name
+   InitPlan 1 (returns $0)
+     ->  Finalize Aggregate
+           Output: avg("gv$node_metrics_1".metric_value)
+           ->  Append
+                 ->  Partial Aggregate
+                       Output: PARTIAL avg("gv$node_metrics_1".metric_value)
+                       ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+                             Output: "gv$node_metrics_1".metric_value
+                             Remote SQL: SELECT metric_value FROM public.local_node_metrics
+                 ->  Partial Aggregate
+                       Output: PARTIAL avg("gv$node_metrics_2".metric_value)
+                       ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+                             Output: "gv$node_metrics_2".metric_value
+                             Remote SQL: SELECT metric_value FROM public.local_node_metrics
+                 ->  Partial Aggregate
+                       Output: PARTIAL avg("gv$node_metrics_3".metric_value)
+                       ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+                             Output: "gv$node_metrics_3".metric_value
+                             Remote SQL: SELECT metric_value FROM public.local_node_metrics
+   InitPlan 3 (returns $2)
+     ->  Result
+           Output: $1
+           InitPlan 2 (returns $1)
+             ->  Limit
+                   Output: "gv$node_metrics".event_count
+                   ->  Merge Append
+                         Sort Key: "gv$node_metrics".event_count
+                         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1_1"
+                               Output: "gv$node_metrics_1_1".event_count
+                               Remote Filter: ("gv$node_metrics_1_1".event_count IS NOT NULL)
+                               Remote SQL: SELECT event_count FROM public.local_node_metrics WHERE ((event_count IS NOT NULL)) ORDER BY event_count ASC NULLS LAST
+                         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2_1"
+                               Output: "gv$node_metrics_2_1".event_count
+                               Remote Filter: ("gv$node_metrics_2_1".event_count IS NOT NULL)
+                               Remote SQL: SELECT event_count FROM public.local_node_metrics WHERE ((event_count IS NOT NULL)) ORDER BY event_count ASC NULLS LAST
+                         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3_1"
+                               Output: "gv$node_metrics_3_1".event_count
+                               Remote Filter: ("gv$node_metrics_3_1".event_count IS NOT NULL)
+                               Remote SQL: SELECT event_count FROM public.local_node_metrics WHERE ((event_count IS NOT NULL)) ORDER BY event_count ASC NULLS LAST
+   ->  Append
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_9"
+               Output: "gv$node_metrics_9".node_id, "gv$node_metrics_9".metric_name, "gv$node_metrics_9".metric_value
+               Remote Filter: (("gv$node_metrics_9".metric_value > $0) AND ("gv$node_metrics_9".event_count > $2))
+               Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics WHERE ((metric_value > $1::double precision)) AND ((event_count > $2::integer))
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_10"
+               Output: "gv$node_metrics_10".node_id, "gv$node_metrics_10".metric_name, "gv$node_metrics_10".metric_value
+               Remote Filter: (("gv$node_metrics_10".metric_value > $0) AND ("gv$node_metrics_10".event_count > $2))
+               Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics WHERE ((metric_value > $1::double precision)) AND ((event_count > $2::integer))
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_11"
+               Output: "gv$node_metrics_11".node_id, "gv$node_metrics_11".metric_name, "gv$node_metrics_11".metric_value
+               Remote Filter: (("gv$node_metrics_11".metric_value > $0) AND ("gv$node_metrics_11".event_count > $2))
+               Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics WHERE ((metric_value > $1::double precision)) AND ((event_count > $2::integer))
+(55 rows)
+
+SELECT node_id, metric_name, metric_value
+FROM "gv$node_metrics"
+WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics")
+  AND event_count > (SELECT MIN(event_count) FROM "gv$node_metrics")
+ORDER BY node_id, metric_name;
+ node_id | metric_name  | metric_value 
+---------+--------------+--------------
+       1 | memory_usage |         72.5
+       2 | cpu_usage    |         62.5
+       2 | disk_io      |         89.5
+       3 | disk_io      |         67.5
+       3 | memory_usage |         91.5
+(5 rows)
+
+-- NULL parameter: subquery over empty result set returns NULL
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, metric_value
+FROM "gv$node_metrics"
+WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics"
+                      WHERE node_id = 999)
+ORDER BY node_id, metric_name;
+                                                                                               QUERY PLAN                                                                                               
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Merge Append
+   Sort Key: "gv$node_metrics_4".node_id, "gv$node_metrics_4".metric_name
+   InitPlan 1 (returns $0)
+     ->  Finalize Aggregate
+           Output: avg("gv$node_metrics_1".metric_value)
+           ->  Append
+                 ->  Partial Aggregate
+                       Output: PARTIAL avg("gv$node_metrics_1".metric_value)
+                       ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+                             Output: "gv$node_metrics_1".metric_value
+                             Remote Filter: ("gv$node_metrics_1".node_id = 999)
+                             Remote SQL: SELECT metric_value FROM public.local_node_metrics WHERE ((node_id = 999))
+                 ->  Partial Aggregate
+                       Output: PARTIAL avg("gv$node_metrics_2".metric_value)
+                       ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+                             Output: "gv$node_metrics_2".metric_value
+                             Remote Filter: ("gv$node_metrics_2".node_id = 999)
+                             Remote SQL: SELECT metric_value FROM public.local_node_metrics WHERE ((node_id = 999))
+                 ->  Partial Aggregate
+                       Output: PARTIAL avg("gv$node_metrics_3".metric_value)
+                       ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+                             Output: "gv$node_metrics_3".metric_value
+                             Remote Filter: ("gv$node_metrics_3".node_id = 999)
+                             Remote SQL: SELECT metric_value FROM public.local_node_metrics WHERE ((node_id = 999))
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_5"
+         Output: "gv$node_metrics_5".node_id, "gv$node_metrics_5".metric_name, "gv$node_metrics_5".metric_value
+         Remote Filter: ("gv$node_metrics_5".metric_value > $0)
+         Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics WHERE ((metric_value > $1::double precision)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_6"
+         Output: "gv$node_metrics_6".node_id, "gv$node_metrics_6".metric_name, "gv$node_metrics_6".metric_value
+         Remote Filter: ("gv$node_metrics_6".metric_value > $0)
+         Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics WHERE ((metric_value > $1::double precision)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_7"
+         Output: "gv$node_metrics_7".node_id, "gv$node_metrics_7".metric_name, "gv$node_metrics_7".metric_value
+         Remote Filter: ("gv$node_metrics_7".metric_value > $0)
+         Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics WHERE ((metric_value > $1::double precision)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+(36 rows)
+
+SELECT node_id, metric_name, metric_value
+FROM "gv$node_metrics"
+WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics"
+                      WHERE node_id = 999)
+ORDER BY node_id, metric_name;
+ node_id | metric_name | metric_value 
+---------+-------------+--------------
+(0 rows)
+
+-- Mixed NULL and non-NULL parameters: $1 is a real value, $2 is NULL
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, metric_value
+FROM "gv$node_metrics"
+WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics")
+  AND event_count > (SELECT MIN(event_count) FROM "gv$node_metrics"
+                     WHERE node_id = 999)
+ORDER BY node_id, metric_name;
+                                                                                       QUERY PLAN                                                                                        
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: "gv$node_metrics_8".node_id, "gv$node_metrics_8".metric_name, "gv$node_metrics_8".metric_value
+   Sort Key: "gv$node_metrics_8".node_id, "gv$node_metrics_8".metric_name
+   InitPlan 1 (returns $0)
+     ->  Finalize Aggregate
+           Output: avg("gv$node_metrics_1".metric_value)
+           ->  Append
+                 ->  Partial Aggregate
+                       Output: PARTIAL avg("gv$node_metrics_1".metric_value)
+                       ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+                             Output: "gv$node_metrics_1".metric_value
+                             Remote SQL: SELECT metric_value FROM public.local_node_metrics
+                 ->  Partial Aggregate
+                       Output: PARTIAL avg("gv$node_metrics_2".metric_value)
+                       ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+                             Output: "gv$node_metrics_2".metric_value
+                             Remote SQL: SELECT metric_value FROM public.local_node_metrics
+                 ->  Partial Aggregate
+                       Output: PARTIAL avg("gv$node_metrics_3".metric_value)
+                       ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+                             Output: "gv$node_metrics_3".metric_value
+                             Remote SQL: SELECT metric_value FROM public.local_node_metrics
+   InitPlan 3 (returns $2)
+     ->  Result
+           Output: $1
+           InitPlan 2 (returns $1)
+             ->  Limit
+                   Output: "gv$node_metrics".event_count
+                   ->  Merge Append
+                         Sort Key: "gv$node_metrics".event_count
+                         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1_1"
+                               Output: "gv$node_metrics_1_1".event_count
+                               Remote Filter: (("gv$node_metrics_1_1".event_count IS NOT NULL) AND ("gv$node_metrics_1_1".node_id = 999))
+                               Remote SQL: SELECT event_count FROM public.local_node_metrics WHERE ((event_count IS NOT NULL)) AND ((node_id = 999)) ORDER BY event_count ASC NULLS LAST
+                         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2_1"
+                               Output: "gv$node_metrics_2_1".event_count
+                               Remote Filter: (("gv$node_metrics_2_1".event_count IS NOT NULL) AND ("gv$node_metrics_2_1".node_id = 999))
+                               Remote SQL: SELECT event_count FROM public.local_node_metrics WHERE ((event_count IS NOT NULL)) AND ((node_id = 999)) ORDER BY event_count ASC NULLS LAST
+                         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3_1"
+                               Output: "gv$node_metrics_3_1".event_count
+                               Remote Filter: (("gv$node_metrics_3_1".event_count IS NOT NULL) AND ("gv$node_metrics_3_1".node_id = 999))
+                               Remote SQL: SELECT event_count FROM public.local_node_metrics WHERE ((event_count IS NOT NULL)) AND ((node_id = 999)) ORDER BY event_count ASC NULLS LAST
+   ->  Append
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_9"
+               Output: "gv$node_metrics_9".node_id, "gv$node_metrics_9".metric_name, "gv$node_metrics_9".metric_value
+               Remote Filter: (("gv$node_metrics_9".metric_value > $0) AND ("gv$node_metrics_9".event_count > $2))
+               Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics WHERE ((metric_value > $1::double precision)) AND ((event_count > $2::integer))
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_10"
+               Output: "gv$node_metrics_10".node_id, "gv$node_metrics_10".metric_name, "gv$node_metrics_10".metric_value
+               Remote Filter: (("gv$node_metrics_10".metric_value > $0) AND ("gv$node_metrics_10".event_count > $2))
+               Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics WHERE ((metric_value > $1::double precision)) AND ((event_count > $2::integer))
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_11"
+               Output: "gv$node_metrics_11".node_id, "gv$node_metrics_11".metric_name, "gv$node_metrics_11".metric_value
+               Remote Filter: (("gv$node_metrics_11".metric_value > $0) AND ("gv$node_metrics_11".event_count > $2))
+               Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics WHERE ((metric_value > $1::double precision)) AND ((event_count > $2::integer))
+(55 rows)
+
+SELECT node_id, metric_name, metric_value
+FROM "gv$node_metrics"
+WHERE metric_value > (SELECT AVG(metric_value) FROM "gv$node_metrics")
+  AND event_count > (SELECT MIN(event_count) FROM "gv$node_metrics"
+                     WHERE node_id = 999)
+ORDER BY node_id, metric_name;
+ node_id | metric_name | metric_value 
+---------+-------------+--------------
+(0 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name
+FROM "gv$node_metrics"
+WHERE status IN (SELECT DISTINCT status FROM "gv$node_metrics" WHERE status != 'active')
+ORDER BY node_id, metric_name;
+                                                      QUERY PLAN                                                      
+----------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
+   Sort Key: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
+   ->  Hash Join
+         Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
+         Inner Unique: true
+         Hash Cond: ("gv$node_metrics".status = "gv$node_metrics_4".status)
+         ->  Append
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+                     Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".status
+                     Remote SQL: SELECT node_id, metric_name, status FROM public.local_node_metrics
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+                     Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".status
+                     Remote SQL: SELECT node_id, metric_name, status FROM public.local_node_metrics
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+                     Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".status
+                     Remote SQL: SELECT node_id, metric_name, status FROM public.local_node_metrics
+         ->  Hash
+               Output: "gv$node_metrics_4".status
+               ->  HashAggregate
+                     Output: "gv$node_metrics_4".status
+                     Group Key: "gv$node_metrics_4".status
+                     ->  Append
+                           ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_5"
+                                 Output: "gv$node_metrics_5".status
+                                 Filter: ("gv$node_metrics_5".status <> 'active'::metric_status)
+                                 Remote SQL: SELECT status FROM public.local_node_metrics
+                           ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_6"
+                                 Output: "gv$node_metrics_6".status
+                                 Filter: ("gv$node_metrics_6".status <> 'active'::metric_status)
+                                 Remote SQL: SELECT status FROM public.local_node_metrics
+                           ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_7"
+                                 Output: "gv$node_metrics_7".status
+                                 Filter: ("gv$node_metrics_7".status <> 'active'::metric_status)
+                                 Remote SQL: SELECT status FROM public.local_node_metrics
+(35 rows)
+
+SELECT node_id, metric_name
+FROM "gv$node_metrics"
+WHERE status IN (SELECT DISTINCT status FROM "gv$node_metrics" WHERE status != 'active')
+ORDER BY node_id, metric_name;
+ node_id | metric_name  
+---------+--------------
+       1 | memory_usage
+       2 | disk_io
+       3 | memory_usage
+(3 rows)
+
+-- Empty string subquery parameter
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, tag
+FROM "gv$node_metrics"
+WHERE metric_name = (SELECT ''::varchar)
+ORDER BY node_id, metric_name;
+                                                               QUERY PLAN                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".tag
+   Sort Key: "gv$node_metrics".node_id
+   InitPlan 1 (returns $0)
+     ->  Result *RESULT*
+           Output: ''::character varying
+   ->  Append
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+               Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".tag
+               Remote Filter: (("gv$node_metrics_1".metric_name)::text = ($0)::text)
+               Remote SQL: SELECT node_id, metric_name, tag FROM public.local_node_metrics WHERE ((metric_name = $1::character varying))
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+               Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".tag
+               Remote Filter: (("gv$node_metrics_2".metric_name)::text = ($0)::text)
+               Remote SQL: SELECT node_id, metric_name, tag FROM public.local_node_metrics WHERE ((metric_name = $1::character varying))
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+               Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".tag
+               Remote Filter: (("gv$node_metrics_3".metric_name)::text = ($0)::text)
+               Remote SQL: SELECT node_id, metric_name, tag FROM public.local_node_metrics WHERE ((metric_name = $1::character varying))
+(19 rows)
+
+SELECT node_id, metric_name, tag
+FROM "gv$node_metrics"
+WHERE metric_name = (SELECT ''::varchar)
+ORDER BY node_id, metric_name;
+ node_id | metric_name |  tag  
+---------+-------------+-------
+       1 |             | EMPTY
+(1 row)
+
+-- NULL subquery parameter
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, tag
+FROM "gv$node_metrics"
+WHERE tag IS NOT DISTINCT FROM (SELECT NULL::char(5))
+ORDER BY node_id, metric_name;
+                                                                   QUERY PLAN                                                                    
+-------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".tag
+   Sort Key: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
+   InitPlan 1 (returns $0)
+     ->  Result *RESULT*
+           Output: NULL::character(5)
+   ->  Append
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+               Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".tag
+               Remote Filter: (NOT ("gv$node_metrics_1".tag IS DISTINCT FROM $0))
+               Remote SQL: SELECT node_id, metric_name, tag FROM public.local_node_metrics WHERE ((NOT (tag IS DISTINCT FROM $1::character(5))))
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+               Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".tag
+               Remote Filter: (NOT ("gv$node_metrics_2".tag IS DISTINCT FROM $0))
+               Remote SQL: SELECT node_id, metric_name, tag FROM public.local_node_metrics WHERE ((NOT (tag IS DISTINCT FROM $1::character(5))))
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+               Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".tag
+               Remote Filter: (NOT ("gv$node_metrics_3".tag IS DISTINCT FROM $0))
+               Remote SQL: SELECT node_id, metric_name, tag FROM public.local_node_metrics WHERE ((NOT (tag IS DISTINCT FROM $1::character(5))))
+(19 rows)
+
+SELECT node_id, metric_name, tag
+FROM "gv$node_metrics"
+WHERE tag IS NOT DISTINCT FROM (SELECT NULL::char(5))
+ORDER BY node_id, metric_name;
+ node_id | metric_name | tag 
+---------+-------------+-----
+       2 |             | 
+(1 row)
+
+--
+-- JOIN with an inline VALUES list
+--
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT ni.node_name, gv.metric_name, gv.event_count
+FROM "gv$node_metrics" gv
+JOIN (VALUES (1, 'alpha'), (2, 'beta'), (3, 'gamma'))
+     AS ni(node_id, node_name) ON gv.node_id = ni.node_id
+ORDER BY ni.node_name, gv.metric_name;
+                                               QUERY PLAN                                                
+---------------------------------------------------------------------------------------------------------
+ Sort
+   Output: "*VALUES*".column2, gv.metric_name, gv.event_count
+   Sort Key: "*VALUES*".column2, gv.metric_name
+   ->  Hash Join
+         Output: "*VALUES*".column2, gv.metric_name, gv.event_count
+         Hash Cond: (gv.node_id = "*VALUES*".column1)
+         ->  Append
+               ->  Foreign Scan on public."gv$node_metrics" gv_1
+                     Output: gv_1.metric_name, gv_1.event_count, gv_1.node_id
+                     Remote SQL: SELECT node_id, metric_name, event_count FROM public.local_node_metrics
+               ->  Foreign Scan on public."gv$node_metrics" gv_2
+                     Output: gv_2.metric_name, gv_2.event_count, gv_2.node_id
+                     Remote SQL: SELECT node_id, metric_name, event_count FROM public.local_node_metrics
+               ->  Foreign Scan on public."gv$node_metrics" gv_3
+                     Output: gv_3.metric_name, gv_3.event_count, gv_3.node_id
+                     Remote SQL: SELECT node_id, metric_name, event_count FROM public.local_node_metrics
+         ->  Hash
+               Output: "*VALUES*".column2, "*VALUES*".column1
+               ->  Values Scan on "*VALUES*"
+                     Output: "*VALUES*".column2, "*VALUES*".column1
+(20 rows)
+
+SELECT ni.node_name, gv.metric_name, gv.event_count
+FROM "gv$node_metrics" gv
+JOIN (VALUES (1, 'alpha'), (2, 'beta'), (3, 'gamma'))
+     AS ni(node_id, node_name) ON gv.node_id = ni.node_id
+ORDER BY ni.node_name, gv.metric_name;
+ node_name | metric_name  | event_count 
+-----------+--------------+-------------
+ alpha     |              |          77
+ alpha     | cpu_usage    |         100
+ alpha     | disk_io      |          50
+ alpha     | memory_usage |         200
+ beta      | cpu_usage    |         150
+ beta      | disk_io      |          75
+ beta      | memory_usage |         180
+ beta      |              |          83
+ gamma     | cpu_usage    |          90
+ gamma     | disk_io      |          60
+ gamma     | memory_usage |         250
+(11 rows)
+
+--
+-- UNION of filtered results
+--
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, status FROM "gv$node_metrics" WHERE status = 'critical'
+UNION ALL
+SELECT node_id, metric_name, status FROM "gv$node_metrics" WHERE status = 'warning'
+ORDER BY node_id, metric_name;
+                                                      QUERY PLAN                                                      
+----------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".status
+   Sort Key: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
+   ->  Append
+         ->  Append
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+                     Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".status
+                     Filter: ("gv$node_metrics_1".status = 'critical'::metric_status)
+                     Remote SQL: SELECT node_id, metric_name, status FROM public.local_node_metrics
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+                     Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".status
+                     Filter: ("gv$node_metrics_2".status = 'critical'::metric_status)
+                     Remote SQL: SELECT node_id, metric_name, status FROM public.local_node_metrics
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+                     Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".status
+                     Filter: ("gv$node_metrics_3".status = 'critical'::metric_status)
+                     Remote SQL: SELECT node_id, metric_name, status FROM public.local_node_metrics
+         ->  Append
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_5"
+                     Output: "gv$node_metrics_5".node_id, "gv$node_metrics_5".metric_name, "gv$node_metrics_5".status
+                     Filter: ("gv$node_metrics_5".status = 'warning'::metric_status)
+                     Remote SQL: SELECT node_id, metric_name, status FROM public.local_node_metrics
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_6"
+                     Output: "gv$node_metrics_6".node_id, "gv$node_metrics_6".metric_name, "gv$node_metrics_6".status
+                     Filter: ("gv$node_metrics_6".status = 'warning'::metric_status)
+                     Remote SQL: SELECT node_id, metric_name, status FROM public.local_node_metrics
+               ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_7"
+                     Output: "gv$node_metrics_7".node_id, "gv$node_metrics_7".metric_name, "gv$node_metrics_7".status
+                     Filter: ("gv$node_metrics_7".status = 'warning'::metric_status)
+                     Remote SQL: SELECT node_id, metric_name, status FROM public.local_node_metrics
+(30 rows)
+
+SELECT node_id, metric_name, status FROM "gv$node_metrics" WHERE status = 'critical'
+UNION ALL
+SELECT node_id, metric_name, status FROM "gv$node_metrics" WHERE status = 'warning'
+ORDER BY node_id, metric_name;
+ node_id | metric_name  |  status  
+---------+--------------+----------
+       1 | memory_usage | warning
+       2 | disk_io      | critical
+       3 | memory_usage | critical
+(3 rows)
+
+--
+-- ORDER BY with expressions
+--
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name,
+       (metric_value * event_count)::int AS weighted_value
+FROM "gv$node_metrics"
+ORDER BY weighted_value DESC
+LIMIT 5;
+                                                                                       QUERY PLAN                                                                                        
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, ((("gv$node_metrics".metric_value * ("gv$node_metrics".event_count)::double precision))::integer)
+   ->  Merge Append
+         Sort Key: ((("gv$node_metrics".metric_value * ("gv$node_metrics".event_count)::double precision))::integer) DESC
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+               Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, (("gv$node_metrics_1".metric_value * ("gv$node_metrics_1".event_count)::double precision))::integer
+               Remote SQL: SELECT node_id, metric_name, metric_value, event_count FROM public.local_node_metrics ORDER BY (metric_value * event_count)::integer DESC NULLS FIRST
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+               Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, (("gv$node_metrics_2".metric_value * ("gv$node_metrics_2".event_count)::double precision))::integer
+               Remote SQL: SELECT node_id, metric_name, metric_value, event_count FROM public.local_node_metrics ORDER BY (metric_value * event_count)::integer DESC NULLS FIRST
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+               Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, (("gv$node_metrics_3".metric_value * ("gv$node_metrics_3".event_count)::double precision))::integer
+               Remote SQL: SELECT node_id, metric_name, metric_value, event_count FROM public.local_node_metrics ORDER BY (metric_value * event_count)::integer DESC NULLS FIRST
+(13 rows)
+
+SELECT node_id, metric_name,
+       (metric_value * event_count)::int AS weighted_value
+FROM "gv$node_metrics"
+ORDER BY weighted_value DESC
+LIMIT 5;
+ node_id | metric_name  | weighted_value 
+---------+--------------+----------------
+       3 | memory_usage |          22875
+       1 | memory_usage |          14500
+       2 | memory_usage |           9990
+       2 | cpu_usage    |           9375
+       2 | disk_io      |           6712
+(5 rows)
+
+--
+-- Type-specific queries
+--
+-- Bigint arithmetic
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name,
+       total_bytes,
+       (total_bytes / 1000000000) AS total_gb
+FROM "gv$node_metrics"
+ORDER BY total_bytes DESC
+LIMIT 3;
+                                                                             QUERY PLAN                                                                              
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".total_bytes, (("gv$node_metrics".total_bytes / 1000000000))
+   ->  Merge Append
+         Sort Key: "gv$node_metrics".total_bytes DESC
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+               Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".total_bytes, ("gv$node_metrics_1".total_bytes / 1000000000)
+               Remote SQL: SELECT node_id, metric_name, total_bytes FROM public.local_node_metrics ORDER BY total_bytes DESC NULLS FIRST
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+               Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".total_bytes, ("gv$node_metrics_2".total_bytes / 1000000000)
+               Remote SQL: SELECT node_id, metric_name, total_bytes FROM public.local_node_metrics ORDER BY total_bytes DESC NULLS FIRST
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+               Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".total_bytes, ("gv$node_metrics_3".total_bytes / 1000000000)
+               Remote SQL: SELECT node_id, metric_name, total_bytes FROM public.local_node_metrics ORDER BY total_bytes DESC NULLS FIRST
+(13 rows)
+
+SELECT node_id, metric_name,
+       total_bytes,
+       (total_bytes / 1000000000) AS total_gb
+FROM "gv$node_metrics"
+ORDER BY total_bytes DESC
+LIMIT 3;
+ node_id | metric_name  | total_bytes | total_gb 
+---------+--------------+-------------+----------
+       1 | disk_io      | 12000000000 |       12
+       3 | memory_usage | 11000000000 |       11
+       2 | memory_usage |  9800000000 |        9
+(3 rows)
+
+-- Float8 rounding
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name,
+       ratio,
+       ROUND(ratio::numeric, 2) AS ratio_rounded
+FROM "gv$node_metrics"
+ORDER BY node_id, metric_name;
+                                                                       QUERY PLAN                                                                        
+---------------------------------------------------------------------------------------------------------------------------------------------------------
+ Merge Append
+   Sort Key: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+         Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".ratio, round(("gv$node_metrics_1".ratio)::numeric, 2)
+         Remote SQL: SELECT node_id, metric_name, ratio FROM public.local_node_metrics ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+         Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".ratio, round(("gv$node_metrics_2".ratio)::numeric, 2)
+         Remote SQL: SELECT node_id, metric_name, ratio FROM public.local_node_metrics ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+         Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".ratio, round(("gv$node_metrics_3".ratio)::numeric, 2)
+         Remote SQL: SELECT node_id, metric_name, ratio FROM public.local_node_metrics ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+(11 rows)
+
+SELECT node_id, metric_name,
+       ratio,
+       ROUND(ratio::numeric, 2) AS ratio_rounded
+FROM "gv$node_metrics"
+ORDER BY node_id, metric_name;
+ node_id | metric_name  | ratio  | ratio_rounded 
+---------+--------------+--------+---------------
+       1 |              |  0.001 |          0.00
+       1 | cpu_usage    | 0.4551 |          0.46
+       1 | disk_io      | 0.6001 |          0.60
+       1 | memory_usage |  0.726 |          0.73
+       2 | cpu_usage    | 0.6254 |          0.63
+       2 | disk_io      |  0.895 |          0.90
+       2 | memory_usage | 0.5558 |          0.56
+       2 |              |  0.001 |          0.00
+       3 | cpu_usage    | 0.3853 |          0.39
+       3 | disk_io      |  0.676 |          0.68
+       3 | memory_usage | 0.9157 |          0.92
+(11 rows)
+
+-- Boolean logic
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name,
+       is_healthy,
+       NOT is_healthy AS is_unhealthy
+FROM "gv$node_metrics"
+ORDER BY node_id, metric_name;
+                                                                       QUERY PLAN                                                                       
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+ Merge Append
+   Sort Key: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+         Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".is_healthy, (NOT "gv$node_metrics_1".is_healthy)
+         Remote SQL: SELECT node_id, metric_name, is_healthy FROM public.local_node_metrics ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+         Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".is_healthy, (NOT "gv$node_metrics_2".is_healthy)
+         Remote SQL: SELECT node_id, metric_name, is_healthy FROM public.local_node_metrics ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+         Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".is_healthy, (NOT "gv$node_metrics_3".is_healthy)
+         Remote SQL: SELECT node_id, metric_name, is_healthy FROM public.local_node_metrics ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+(11 rows)
+
+SELECT node_id, metric_name,
+       is_healthy,
+       NOT is_healthy AS is_unhealthy
+FROM "gv$node_metrics"
+ORDER BY node_id, metric_name;
+ node_id | metric_name  | is_healthy | is_unhealthy 
+---------+--------------+------------+--------------
+       1 |              | t          | f
+       1 | cpu_usage    | t          | f
+       1 | disk_io      | t          | f
+       1 | memory_usage | f          | t
+       2 | cpu_usage    | t          | f
+       2 | disk_io      | f          | t
+       2 | memory_usage | t          | f
+       2 |              | t          | f
+       3 | cpu_usage    | t          | f
+       3 | disk_io      | t          | f
+       3 | memory_usage | f          | t
+(11 rows)
+
+-- Char padding
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, tag,
+       LENGTH(tag) AS tag_len
+FROM "gv$node_metrics"
+ORDER BY tag;
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
+ Merge Append
+   Sort Key: "gv$node_metrics".tag
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+         Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".tag, length("gv$node_metrics_1".tag)
+         Remote SQL: SELECT node_id, tag FROM public.local_node_metrics ORDER BY tag ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+         Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".tag, length("gv$node_metrics_2".tag)
+         Remote SQL: SELECT node_id, tag FROM public.local_node_metrics ORDER BY tag ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+         Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".tag, length("gv$node_metrics_3".tag)
+         Remote SQL: SELECT node_id, tag FROM public.local_node_metrics ORDER BY tag ASC NULLS LAST
+(11 rows)
+
+SELECT node_id, tag,
+       LENGTH(tag) AS tag_len
+FROM "gv$node_metrics"
+ORDER BY tag;
+ node_id |  tag  | tag_len 
+---------+-------+---------
+       1 | CPU01 |       5
+       2 | CPU02 |       5
+       3 | CPU03 |       5
+       1 | DSK01 |       5
+       2 | DSK02 |       5
+       3 | DSK03 |       5
+       1 | EMPTY |       5
+       1 | MEM01 |       5
+       2 | MEM02 |       5
+       3 | MEM03 |       5
+       2 |       |        
+(11 rows)
+
+-- Timestamp extract
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name,
+       EXTRACT(MONTH FROM created_at) AS month,
+       EXTRACT(YEAR FROM created_at) AS year
+FROM "gv$node_metrics"
+ORDER BY created_at
+LIMIT 3;
+                                                                                                        QUERY PLAN                                                                                                         
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, (EXTRACT(month FROM "gv$node_metrics".created_at)), (EXTRACT(year FROM "gv$node_metrics".created_at)), "gv$node_metrics".created_at
+   ->  Merge Append
+         Sort Key: "gv$node_metrics".created_at
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+               Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, EXTRACT(month FROM "gv$node_metrics_1".created_at), EXTRACT(year FROM "gv$node_metrics_1".created_at), "gv$node_metrics_1".created_at
+               Remote SQL: SELECT node_id, metric_name, created_at FROM public.local_node_metrics ORDER BY created_at ASC NULLS LAST
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+               Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, EXTRACT(month FROM "gv$node_metrics_2".created_at), EXTRACT(year FROM "gv$node_metrics_2".created_at), "gv$node_metrics_2".created_at
+               Remote SQL: SELECT node_id, metric_name, created_at FROM public.local_node_metrics ORDER BY created_at ASC NULLS LAST
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+               Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, EXTRACT(month FROM "gv$node_metrics_3".created_at), EXTRACT(year FROM "gv$node_metrics_3".created_at), "gv$node_metrics_3".created_at
+               Remote SQL: SELECT node_id, metric_name, created_at FROM public.local_node_metrics ORDER BY created_at ASC NULLS LAST
+(13 rows)
+
+SELECT node_id, metric_name,
+       EXTRACT(MONTH FROM created_at) AS month,
+       EXTRACT(YEAR FROM created_at) AS year
+FROM "gv$node_metrics"
+ORDER BY created_at
+LIMIT 3;
+ node_id | metric_name  | month | year 
+---------+--------------+-------+------
+       1 | cpu_usage    |     1 | 2025
+       1 | memory_usage |     1 | 2025
+       1 | disk_io      |     1 | 2025
+(3 rows)
+
+-- Timestamptz arithmetic
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name,
+       updated_at,
+       updated_at + interval '1 hour' AS updated_at_plus_1h
+FROM "gv$node_metrics"
+ORDER BY updated_at
+LIMIT 3;
+                                                                                 QUERY PLAN                                                                                  
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".updated_at, (("gv$node_metrics".updated_at + '@ 1 hour'::interval))
+   ->  Merge Append
+         Sort Key: "gv$node_metrics".updated_at
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+               Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".updated_at, ("gv$node_metrics_1".updated_at + '@ 1 hour'::interval)
+               Remote SQL: SELECT node_id, metric_name, updated_at FROM public.local_node_metrics ORDER BY updated_at ASC NULLS LAST
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+               Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".updated_at, ("gv$node_metrics_2".updated_at + '@ 1 hour'::interval)
+               Remote SQL: SELECT node_id, metric_name, updated_at FROM public.local_node_metrics ORDER BY updated_at ASC NULLS LAST
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+               Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".updated_at, ("gv$node_metrics_3".updated_at + '@ 1 hour'::interval)
+               Remote SQL: SELECT node_id, metric_name, updated_at FROM public.local_node_metrics ORDER BY updated_at ASC NULLS LAST
+(13 rows)
+
+SELECT node_id, metric_name,
+       updated_at,
+       updated_at + interval '1 hour' AS updated_at_plus_1h
+FROM "gv$node_metrics"
+ORDER BY updated_at
+LIMIT 3;
+ node_id | metric_name  |          updated_at          |      updated_at_plus_1h      
+---------+--------------+------------------------------+------------------------------
+       1 | memory_usage | Tue Jan 14 21:30:00 2025 PST | Tue Jan 14 22:30:00 2025 PST
+       1 | cpu_usage    | Wed Jan 15 02:30:00 2025 PST | Wed Jan 15 03:30:00 2025 PST
+       1 |              | Wed Jan 15 04:00:00 2025 PST | Wed Jan 15 05:00:00 2025 PST
+(3 rows)
+
+--
+-- Function pushdown behavior
+--
+-- Stable function (NOW()) in predicate: not pushed down because
+-- contain_mutable_functions() rejects non-immutable expressions.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, updated_at FROM "gv$node_metrics"
+WHERE updated_at < NOW()
+ORDER BY node_id, metric_name;
+                                                                       QUERY PLAN                                                                       
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+ Merge Append
+   Sort Key: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+         Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".updated_at
+         Filter: ("gv$node_metrics_1".updated_at < now())
+         Remote SQL: SELECT node_id, metric_name, updated_at FROM public.local_node_metrics ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+         Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".updated_at
+         Filter: ("gv$node_metrics_2".updated_at < now())
+         Remote SQL: SELECT node_id, metric_name, updated_at FROM public.local_node_metrics ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+         Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".updated_at
+         Filter: ("gv$node_metrics_3".updated_at < now())
+         Remote SQL: SELECT node_id, metric_name, updated_at FROM public.local_node_metrics ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+(14 rows)
+
+SELECT node_id, metric_name, updated_at FROM "gv$node_metrics"
+WHERE updated_at < NOW()
+ORDER BY node_id, metric_name;
+ node_id | metric_name  |          updated_at          
+---------+--------------+------------------------------
+       1 |              | Wed Jan 15 04:00:00 2025 PST
+       1 | cpu_usage    | Wed Jan 15 02:30:00 2025 PST
+       1 | disk_io      | Wed Jan 15 08:30:00 2025 PST
+       1 | memory_usage | Tue Jan 14 21:30:00 2025 PST
+       2 | cpu_usage    | Thu Feb 20 06:00:00 2025 PST
+       2 | disk_io      | Thu Feb 20 15:00:00 2025 PST
+       2 | memory_usage | Wed Feb 19 21:30:00 2025 PST
+       2 |              | Thu Feb 20 08:00:00 2025 PST
+       3 | cpu_usage    | Mon Mar 10 02:00:00 2025 PDT
+       3 | disk_io      | Mon Mar 10 08:00:00 2025 PDT
+       3 | memory_usage | Sun Mar 09 21:00:00 2025 PDT
+(11 rows)
+
+-- Immutable built-in function (ABS) in predicate: pushed down because
+-- the function is built-in and immutable.
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, event_count FROM "gv$node_metrics"
+WHERE ABS(event_count) > 100
+ORDER BY node_id, metric_name;
+                                                                                        QUERY PLAN                                                                                        
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Merge Append
+   Sort Key: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+         Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".event_count
+         Remote Filter: (abs("gv$node_metrics_1".event_count) > 100)
+         Remote SQL: SELECT node_id, metric_name, event_count FROM public.local_node_metrics WHERE ((abs(event_count) > 100)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+         Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".event_count
+         Remote Filter: (abs("gv$node_metrics_2".event_count) > 100)
+         Remote SQL: SELECT node_id, metric_name, event_count FROM public.local_node_metrics WHERE ((abs(event_count) > 100)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+   ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+         Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".event_count
+         Remote Filter: (abs("gv$node_metrics_3".event_count) > 100)
+         Remote SQL: SELECT node_id, metric_name, event_count FROM public.local_node_metrics WHERE ((abs(event_count) > 100)) ORDER BY node_id ASC NULLS LAST, metric_name ASC NULLS LAST
+(14 rows)
+
+SELECT node_id, metric_name, event_count FROM "gv$node_metrics"
+WHERE ABS(event_count) > 100
+ORDER BY node_id, metric_name;
+ node_id | metric_name  | event_count 
+---------+--------------+-------------
+       1 | memory_usage |         200
+       2 | cpu_usage    |         150
+       2 | memory_usage |         180
+       3 | memory_usage |         250
+(4 rows)
+
+-- User-defined function in predicate: not pushed down because
+-- postgres_fdw only considers built-in functions shippable.
+CREATE FUNCTION is_high_value(val real) RETURNS boolean
+    LANGUAGE plpgsql IMMUTABLE AS $$
+BEGIN
+    RETURN val > 70::real;
+END;
+$$;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT node_id, metric_name, metric_value FROM "gv$node_metrics"
+WHERE is_high_value(metric_value)
+ORDER BY node_id, metric_name;
+                                                      QUERY PLAN                                                      
+----------------------------------------------------------------------------------------------------------------------
+ Sort
+   Output: "gv$node_metrics".node_id, "gv$node_metrics".metric_name, "gv$node_metrics".metric_value
+   Sort Key: "gv$node_metrics".node_id, "gv$node_metrics".metric_name
+   ->  Append
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+               Output: "gv$node_metrics_1".node_id, "gv$node_metrics_1".metric_name, "gv$node_metrics_1".metric_value
+               Filter: is_high_value("gv$node_metrics_1".metric_value)
+               Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+               Output: "gv$node_metrics_2".node_id, "gv$node_metrics_2".metric_name, "gv$node_metrics_2".metric_value
+               Filter: is_high_value("gv$node_metrics_2".metric_value)
+               Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+               Output: "gv$node_metrics_3".node_id, "gv$node_metrics_3".metric_name, "gv$node_metrics_3".metric_value
+               Filter: is_high_value("gv$node_metrics_3".metric_value)
+               Remote SQL: SELECT node_id, metric_name, metric_value FROM public.local_node_metrics
+(16 rows)
+
+SELECT node_id, metric_name, metric_value FROM "gv$node_metrics"
+WHERE is_high_value(metric_value)
+ORDER BY node_id, metric_name;
+ node_id | metric_name  | metric_value 
+---------+--------------+--------------
+       1 | disk_io      |          120
+       1 | memory_usage |         72.5
+       2 | disk_io      |         89.5
+       3 | memory_usage |         91.5
+(4 rows)
+
+--
+-- Global views for yb_active_session_history and pg_stat_statements.
+-- These tests only verify EXPLAIN plans (no data verification).
+--
+-- TODO(#30591): Remove the setup phase once the default views are created.
+CREATE VIEW yb_active_session_history_with_server_uuid AS
+    SELECT yb_get_local_tserver_uuid() AS server_uuid, *
+    FROM yb_active_session_history;
+CREATE VIEW pg_stat_statements_with_server_uuid AS
+    SELECT yb_get_local_tserver_uuid() AS server_uuid, *
+    FROM pg_stat_statements(true);
+CREATE FOREIGN TABLE IF NOT EXISTS "gv$yb_active_session_history" (
+    server_uuid UUID,
+    sample_time TIMESTAMPTZ,
+    root_request_id UUID,
+    rpc_request_id BIGINT,
+    wait_event_component TEXT,
+    wait_event_class TEXT,
+    wait_event TEXT,
+    top_level_node_id UUID,
+    query_id BIGINT,
+    pid INT,
+    client_node_ip TEXT,
+    wait_event_aux TEXT,
+    sample_weight REAL,
+    wait_event_type TEXT,
+    ysql_dbid OID,
+    wait_event_code BIGINT,
+    pss_mem_bytes BIGINT,
+    ysql_userid OID
+)
+SERVER gv_server
+OPTIONS (schema_name 'public', table_name 'yb_active_session_history_with_server_uuid');
+CREATE FOREIGN TABLE IF NOT EXISTS "gv$pg_stat_statements" (
+    server_uuid UUID,
+    userid OID,
+    dbid OID,
+    toplevel BOOL,
+    queryid BIGINT,
+    query TEXT,
+    plans INT8,
+    total_plan_time FLOAT8,
+    min_plan_time FLOAT8,
+    max_plan_time FLOAT8,
+    mean_plan_time FLOAT8,
+    stddev_plan_time FLOAT8,
+    calls INT8,
+    total_exec_time FLOAT8,
+    min_exec_time FLOAT8,
+    max_exec_time FLOAT8,
+    mean_exec_time FLOAT8,
+    stddev_exec_time FLOAT8,
+    rows INT8,
+    shared_blks_hit INT8,
+    shared_blks_read INT8,
+    shared_blks_dirtied INT8,
+    shared_blks_written INT8,
+    local_blks_hit INT8,
+    local_blks_read INT8,
+    local_blks_dirtied INT8,
+    local_blks_written INT8,
+    temp_blks_read INT8,
+    temp_blks_written INT8,
+    blk_read_time FLOAT8,
+    blk_write_time FLOAT8,
+    temp_blk_read_time FLOAT8,
+    temp_blk_write_time FLOAT8,
+    wal_records INT8,
+    wal_fpi INT8,
+    wal_bytes NUMERIC,
+    jit_functions INT8,
+    jit_generation_time FLOAT8,
+    jit_inlining_count INT8,
+    jit_inlining_time FLOAT8,
+    jit_optimization_count INT8,
+    jit_optimization_time FLOAT8,
+    jit_emission_count INT8,
+    jit_emission_time FLOAT8,
+    yb_latency_histogram JSONB,
+    docdb_read_rpcs INT8,
+    docdb_write_rpcs INT8,
+    catalog_wait_time FLOAT8,
+    docdb_read_operations INT8,
+    docdb_write_operations INT8,
+    docdb_rows_scanned INT8,
+    docdb_rows_returned INT8,
+    docdb_wait_time FLOAT8,
+    conflict_retries INT8,
+    read_restart_retries INT8,
+    total_retries INT8,
+    docdb_obsolete_rows_scanned INT8,
+    docdb_seeks INT8,
+    docdb_nexts INT8,
+    docdb_prevs INT8,
+    docdb_read_time FLOAT8,
+    docdb_write_time FLOAT8
+)
+SERVER gv_server
+OPTIONS (schema_name 'public', table_name 'pg_stat_statements_with_server_uuid');
+-- ASH with current_timestamp (stable, not pushed down)
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT
+    query_id,
+    wait_event_component,
+    wait_event,
+    wait_event_type,
+    COUNT(*)
+FROM
+    "gv$yb_active_session_history"
+WHERE
+    sample_time >= current_timestamp - interval '20 minutes'
+GROUP BY
+    query_id,
+    wait_event_component,
+    wait_event,
+    wait_event_type
+ORDER BY
+    query_id,
+    wait_event_component,
+    wait_event_type
+LIMIT 10;
+                                                                                                                                                 QUERY PLAN                                                                                                                                                  
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: "gv$yb_active_session_history".query_id, "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, (count(*))
+   ->  GroupAggregate
+         Output: "gv$yb_active_session_history".query_id, "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, count(*)
+         Group Key: "gv$yb_active_session_history".query_id, "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event_type, "gv$yb_active_session_history".wait_event
+         ->  Merge Append
+               Sort Key: "gv$yb_active_session_history".query_id, "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event_type, "gv$yb_active_session_history".wait_event
+               ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_1"
+                     Output: "gv$yb_active_session_history_1".query_id, "gv$yb_active_session_history_1".wait_event_component, "gv$yb_active_session_history_1".wait_event, "gv$yb_active_session_history_1".wait_event_type
+                     Filter: ("gv$yb_active_session_history_1".sample_time >= (CURRENT_TIMESTAMP - '@ 20 mins'::interval))
+                     Remote SQL: SELECT sample_time, wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid ORDER BY query_id ASC NULLS LAST, wait_event_component ASC NULLS LAST, wait_event_type ASC NULLS LAST, wait_event ASC NULLS LAST
+               ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_2"
+                     Output: "gv$yb_active_session_history_2".query_id, "gv$yb_active_session_history_2".wait_event_component, "gv$yb_active_session_history_2".wait_event, "gv$yb_active_session_history_2".wait_event_type
+                     Filter: ("gv$yb_active_session_history_2".sample_time >= (CURRENT_TIMESTAMP - '@ 20 mins'::interval))
+                     Remote SQL: SELECT sample_time, wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid ORDER BY query_id ASC NULLS LAST, wait_event_component ASC NULLS LAST, wait_event_type ASC NULLS LAST, wait_event ASC NULLS LAST
+               ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_3"
+                     Output: "gv$yb_active_session_history_3".query_id, "gv$yb_active_session_history_3".wait_event_component, "gv$yb_active_session_history_3".wait_event, "gv$yb_active_session_history_3".wait_event_type
+                     Filter: ("gv$yb_active_session_history_3".sample_time >= (CURRENT_TIMESTAMP - '@ 20 mins'::interval))
+                     Remote SQL: SELECT sample_time, wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid ORDER BY query_id ASC NULLS LAST, wait_event_component ASC NULLS LAST, wait_event_type ASC NULLS LAST, wait_event ASC NULLS LAST
+(19 rows)
+
+-- ASH with literal timestamp (immutable, pushed down)
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT
+    query_id,
+    wait_event_component,
+    wait_event,
+    wait_event_type,
+    COUNT(*)
+FROM
+    "gv$yb_active_session_history"
+WHERE
+    sample_time >= '2026-04-03 13:28:25.640388+05:30'
+GROUP BY
+    query_id,
+    wait_event_component,
+    wait_event,
+    wait_event_type
+ORDER BY
+    query_id,
+    wait_event_component,
+    wait_event_type
+LIMIT 10;
+                                                                                                                                                                       QUERY PLAN                                                                                                                                                                        
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: "gv$yb_active_session_history".query_id, "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, (count(*))
+   ->  GroupAggregate
+         Output: "gv$yb_active_session_history".query_id, "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, count(*)
+         Group Key: "gv$yb_active_session_history".query_id, "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event_type, "gv$yb_active_session_history".wait_event
+         ->  Merge Append
+               Sort Key: "gv$yb_active_session_history".query_id, "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event_type, "gv$yb_active_session_history".wait_event
+               ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_1"
+                     Output: "gv$yb_active_session_history_1".query_id, "gv$yb_active_session_history_1".wait_event_component, "gv$yb_active_session_history_1".wait_event, "gv$yb_active_session_history_1".wait_event_type
+                     Remote Filter: ("gv$yb_active_session_history_1".sample_time >= 'Fri Apr 03 00:58:25.640388 2026 PDT'::timestamp with time zone)
+                     Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07')) ORDER BY query_id ASC NULLS LAST, wait_event_component ASC NULLS LAST, wait_event_type ASC NULLS LAST, wait_event ASC NULLS LAST
+               ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_2"
+                     Output: "gv$yb_active_session_history_2".query_id, "gv$yb_active_session_history_2".wait_event_component, "gv$yb_active_session_history_2".wait_event, "gv$yb_active_session_history_2".wait_event_type
+                     Remote Filter: ("gv$yb_active_session_history_2".sample_time >= 'Fri Apr 03 00:58:25.640388 2026 PDT'::timestamp with time zone)
+                     Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07')) ORDER BY query_id ASC NULLS LAST, wait_event_component ASC NULLS LAST, wait_event_type ASC NULLS LAST, wait_event ASC NULLS LAST
+               ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_3"
+                     Output: "gv$yb_active_session_history_3".query_id, "gv$yb_active_session_history_3".wait_event_component, "gv$yb_active_session_history_3".wait_event, "gv$yb_active_session_history_3".wait_event_type
+                     Remote Filter: ("gv$yb_active_session_history_3".sample_time >= 'Fri Apr 03 00:58:25.640388 2026 PDT'::timestamp with time zone)
+                     Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07')) ORDER BY query_id ASC NULLS LAST, wait_event_component ASC NULLS LAST, wait_event_type ASC NULLS LAST, wait_event ASC NULLS LAST
+(19 rows)
+
+-- ASH JOIN pg_stat_statements with current_timestamp
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT
+    SUBSTRING(query, 1, 50) AS query,
+    wait_event_component,
+    wait_event,
+    wait_event_type,
+    COUNT(*)
+FROM
+    "gv$yb_active_session_history"
+JOIN
+    "gv$pg_stat_statements"
+ON
+    query_id = queryid
+WHERE
+    sample_time >= current_timestamp - interval '20 minutes'
+GROUP BY
+    query,
+    wait_event_component,
+    wait_event,
+    wait_event_type
+ORDER BY
+    query,
+    wait_event_component,
+    wait_event_type
+LIMIT 10;
+                                                                                                                            QUERY PLAN                                                                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: ("substring"("gv$pg_stat_statements".query, 1, 50)), "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, (count(*)), "gv$pg_stat_statements".query
+   ->  Sort
+         Output: ("substring"("gv$pg_stat_statements".query, 1, 50)), "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, (count(*)), "gv$pg_stat_statements".query
+         Sort Key: ("substring"("gv$pg_stat_statements".query, 1, 50)), "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event_type
+         ->  HashAggregate
+               Output: "substring"("gv$pg_stat_statements".query, 1, 50), "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, count(*), "gv$pg_stat_statements".query
+               Group Key: "gv$pg_stat_statements".query, "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type
+               ->  Hash Join
+                     Output: "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, "gv$pg_stat_statements".query
+                     Hash Cond: ("gv$pg_stat_statements".queryid = "gv$yb_active_session_history".query_id)
+                     ->  Append
+                           ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_1"
+                                 Output: "gv$pg_stat_statements_1".query, "gv$pg_stat_statements_1".queryid
+                                 Remote SQL: SELECT queryid, query FROM pg_catalog.pg_stat_statements_with_server_uuid
+                           ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_2"
+                                 Output: "gv$pg_stat_statements_2".query, "gv$pg_stat_statements_2".queryid
+                                 Remote SQL: SELECT queryid, query FROM pg_catalog.pg_stat_statements_with_server_uuid
+                           ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_3"
+                                 Output: "gv$pg_stat_statements_3".query, "gv$pg_stat_statements_3".queryid
+                                 Remote SQL: SELECT queryid, query FROM pg_catalog.pg_stat_statements_with_server_uuid
+                     ->  Hash
+                           Output: "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, "gv$yb_active_session_history".query_id
+                           ->  Append
+                                 ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_1"
+                                       Output: "gv$yb_active_session_history_1".wait_event_component, "gv$yb_active_session_history_1".wait_event, "gv$yb_active_session_history_1".wait_event_type, "gv$yb_active_session_history_1".query_id
+                                       Filter: ("gv$yb_active_session_history_1".sample_time >= (CURRENT_TIMESTAMP - '@ 20 mins'::interval))
+                                       Remote SQL: SELECT sample_time, wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid
+                                 ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_2"
+                                       Output: "gv$yb_active_session_history_2".wait_event_component, "gv$yb_active_session_history_2".wait_event, "gv$yb_active_session_history_2".wait_event_type, "gv$yb_active_session_history_2".query_id
+                                       Filter: ("gv$yb_active_session_history_2".sample_time >= (CURRENT_TIMESTAMP - '@ 20 mins'::interval))
+                                       Remote SQL: SELECT sample_time, wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid
+                                 ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_3"
+                                       Output: "gv$yb_active_session_history_3".wait_event_component, "gv$yb_active_session_history_3".wait_event, "gv$yb_active_session_history_3".wait_event_type, "gv$yb_active_session_history_3".query_id
+                                       Filter: ("gv$yb_active_session_history_3".sample_time >= (CURRENT_TIMESTAMP - '@ 20 mins'::interval))
+                                       Remote SQL: SELECT sample_time, wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid
+(36 rows)
+
+-- ASH JOIN pg_stat_statements with literal timestamp
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT
+    SUBSTRING(query, 1, 50) AS query,
+    wait_event_component,
+    wait_event,
+    wait_event_type,
+    COUNT(*)
+FROM
+    "gv$yb_active_session_history"
+JOIN
+    "gv$pg_stat_statements"
+ON
+    query_id = queryid
+WHERE
+    sample_time >= '2026-04-03 13:28:25.640388+05:30'
+GROUP BY
+    query,
+    wait_event_component,
+    wait_event,
+    wait_event_type
+ORDER BY
+    query,
+    wait_event_component,
+    wait_event_type
+LIMIT 10;
+                                                                                                                            QUERY PLAN                                                                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: ("substring"("gv$pg_stat_statements".query, 1, 50)), "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, (count(*)), "gv$pg_stat_statements".query
+   ->  Sort
+         Output: ("substring"("gv$pg_stat_statements".query, 1, 50)), "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, (count(*)), "gv$pg_stat_statements".query
+         Sort Key: ("substring"("gv$pg_stat_statements".query, 1, 50)), "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event_type
+         ->  HashAggregate
+               Output: "substring"("gv$pg_stat_statements".query, 1, 50), "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, count(*), "gv$pg_stat_statements".query
+               Group Key: "gv$pg_stat_statements".query, "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type
+               ->  Hash Join
+                     Output: "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, "gv$pg_stat_statements".query
+                     Hash Cond: ("gv$pg_stat_statements".queryid = "gv$yb_active_session_history".query_id)
+                     ->  Append
+                           ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_1"
+                                 Output: "gv$pg_stat_statements_1".query, "gv$pg_stat_statements_1".queryid
+                                 Remote SQL: SELECT queryid, query FROM pg_catalog.pg_stat_statements_with_server_uuid
+                           ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_2"
+                                 Output: "gv$pg_stat_statements_2".query, "gv$pg_stat_statements_2".queryid
+                                 Remote SQL: SELECT queryid, query FROM pg_catalog.pg_stat_statements_with_server_uuid
+                           ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_3"
+                                 Output: "gv$pg_stat_statements_3".query, "gv$pg_stat_statements_3".queryid
+                                 Remote SQL: SELECT queryid, query FROM pg_catalog.pg_stat_statements_with_server_uuid
+                     ->  Hash
+                           Output: "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, "gv$yb_active_session_history".query_id
+                           ->  Append
+                                 ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_1"
+                                       Output: "gv$yb_active_session_history_1".wait_event_component, "gv$yb_active_session_history_1".wait_event, "gv$yb_active_session_history_1".wait_event_type, "gv$yb_active_session_history_1".query_id
+                                       Remote Filter: ("gv$yb_active_session_history_1".sample_time >= 'Fri Apr 03 00:58:25.640388 2026 PDT'::timestamp with time zone)
+                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
+                                 ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_2"
+                                       Output: "gv$yb_active_session_history_2".wait_event_component, "gv$yb_active_session_history_2".wait_event, "gv$yb_active_session_history_2".wait_event_type, "gv$yb_active_session_history_2".query_id
+                                       Remote Filter: ("gv$yb_active_session_history_2".sample_time >= 'Fri Apr 03 00:58:25.640388 2026 PDT'::timestamp with time zone)
+                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
+                                 ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_3"
+                                       Output: "gv$yb_active_session_history_3".wait_event_component, "gv$yb_active_session_history_3".wait_event, "gv$yb_active_session_history_3".wait_event_type, "gv$yb_active_session_history_3".query_id
+                                       Remote Filter: ("gv$yb_active_session_history_3".sample_time >= 'Fri Apr 03 00:58:25.640388 2026 PDT'::timestamp with time zone)
+                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
+(36 rows)
+
+-- ASH JOIN pg_stat_statements with ORDER BY only on ASH
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT
+    SUBSTRING(query, 1, 50) AS query,
+    wait_event_component,
+    wait_event,
+    wait_event_type,
+    COUNT(*)
+FROM
+    "gv$yb_active_session_history"
+JOIN
+    "gv$pg_stat_statements"
+ON
+    query_id = queryid
+WHERE
+    sample_time >= '2026-04-03 13:28:25.640388+05:30'
+GROUP BY
+    query,
+    wait_event_component,
+    wait_event,
+    wait_event_type
+ORDER BY
+    wait_event_component,
+    wait_event_type
+LIMIT 10;
+                                                                                                                            QUERY PLAN                                                                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: ("substring"("gv$pg_stat_statements".query, 1, 50)), "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, (count(*)), "gv$pg_stat_statements".query
+   ->  Sort
+         Output: ("substring"("gv$pg_stat_statements".query, 1, 50)), "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, (count(*)), "gv$pg_stat_statements".query
+         Sort Key: "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event_type
+         ->  HashAggregate
+               Output: "substring"("gv$pg_stat_statements".query, 1, 50), "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, count(*), "gv$pg_stat_statements".query
+               Group Key: "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event_type, "gv$pg_stat_statements".query, "gv$yb_active_session_history".wait_event
+               ->  Hash Join
+                     Output: "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, "gv$pg_stat_statements".query
+                     Hash Cond: ("gv$pg_stat_statements".queryid = "gv$yb_active_session_history".query_id)
+                     ->  Append
+                           ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_1"
+                                 Output: "gv$pg_stat_statements_1".query, "gv$pg_stat_statements_1".queryid
+                                 Remote SQL: SELECT queryid, query FROM pg_catalog.pg_stat_statements_with_server_uuid
+                           ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_2"
+                                 Output: "gv$pg_stat_statements_2".query, "gv$pg_stat_statements_2".queryid
+                                 Remote SQL: SELECT queryid, query FROM pg_catalog.pg_stat_statements_with_server_uuid
+                           ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_3"
+                                 Output: "gv$pg_stat_statements_3".query, "gv$pg_stat_statements_3".queryid
+                                 Remote SQL: SELECT queryid, query FROM pg_catalog.pg_stat_statements_with_server_uuid
+                     ->  Hash
+                           Output: "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, "gv$yb_active_session_history".query_id
+                           ->  Append
+                                 ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_1"
+                                       Output: "gv$yb_active_session_history_1".wait_event_component, "gv$yb_active_session_history_1".wait_event, "gv$yb_active_session_history_1".wait_event_type, "gv$yb_active_session_history_1".query_id
+                                       Remote Filter: ("gv$yb_active_session_history_1".sample_time >= 'Fri Apr 03 00:58:25.640388 2026 PDT'::timestamp with time zone)
+                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
+                                 ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_2"
+                                       Output: "gv$yb_active_session_history_2".wait_event_component, "gv$yb_active_session_history_2".wait_event, "gv$yb_active_session_history_2".wait_event_type, "gv$yb_active_session_history_2".query_id
+                                       Remote Filter: ("gv$yb_active_session_history_2".sample_time >= 'Fri Apr 03 00:58:25.640388 2026 PDT'::timestamp with time zone)
+                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
+                                 ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_3"
+                                       Output: "gv$yb_active_session_history_3".wait_event_component, "gv$yb_active_session_history_3".wait_event, "gv$yb_active_session_history_3".wait_event_type, "gv$yb_active_session_history_3".query_id
+                                       Remote Filter: ("gv$yb_active_session_history_3".sample_time >= 'Fri Apr 03 00:58:25.640388 2026 PDT'::timestamp with time zone)
+                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
+(36 rows)
+
+-- ASH JOIN pg_stat_statements with ORDER BY only on pg_stat_statements
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT
+    SUBSTRING(query, 1, 50) AS query,
+    wait_event_component,
+    wait_event,
+    wait_event_type,
+    COUNT(*)
+FROM
+    "gv$yb_active_session_history"
+JOIN
+    "gv$pg_stat_statements"
+ON
+    query_id = queryid
+WHERE
+    sample_time >= '2026-04-03 13:28:25.640388+05:30'
+GROUP BY
+    query,
+    wait_event_component,
+    wait_event,
+    wait_event_type
+ORDER BY
+    query
+LIMIT 10;
+                                                                                                                            QUERY PLAN                                                                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: ("substring"("gv$pg_stat_statements".query, 1, 50)), "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, (count(*)), "gv$pg_stat_statements".query
+   ->  Sort
+         Output: ("substring"("gv$pg_stat_statements".query, 1, 50)), "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, (count(*)), "gv$pg_stat_statements".query
+         Sort Key: ("substring"("gv$pg_stat_statements".query, 1, 50))
+         ->  HashAggregate
+               Output: "substring"("gv$pg_stat_statements".query, 1, 50), "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, count(*), "gv$pg_stat_statements".query
+               Group Key: "gv$pg_stat_statements".query, "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type
+               ->  Hash Join
+                     Output: "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, "gv$pg_stat_statements".query
+                     Hash Cond: ("gv$pg_stat_statements".queryid = "gv$yb_active_session_history".query_id)
+                     ->  Append
+                           ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_1"
+                                 Output: "gv$pg_stat_statements_1".query, "gv$pg_stat_statements_1".queryid
+                                 Remote SQL: SELECT queryid, query FROM pg_catalog.pg_stat_statements_with_server_uuid
+                           ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_2"
+                                 Output: "gv$pg_stat_statements_2".query, "gv$pg_stat_statements_2".queryid
+                                 Remote SQL: SELECT queryid, query FROM pg_catalog.pg_stat_statements_with_server_uuid
+                           ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_3"
+                                 Output: "gv$pg_stat_statements_3".query, "gv$pg_stat_statements_3".queryid
+                                 Remote SQL: SELECT queryid, query FROM pg_catalog.pg_stat_statements_with_server_uuid
+                     ->  Hash
+                           Output: "gv$yb_active_session_history".wait_event_component, "gv$yb_active_session_history".wait_event, "gv$yb_active_session_history".wait_event_type, "gv$yb_active_session_history".query_id
+                           ->  Append
+                                 ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_1"
+                                       Output: "gv$yb_active_session_history_1".wait_event_component, "gv$yb_active_session_history_1".wait_event, "gv$yb_active_session_history_1".wait_event_type, "gv$yb_active_session_history_1".query_id
+                                       Remote Filter: ("gv$yb_active_session_history_1".sample_time >= 'Fri Apr 03 00:58:25.640388 2026 PDT'::timestamp with time zone)
+                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
+                                 ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_2"
+                                       Output: "gv$yb_active_session_history_2".wait_event_component, "gv$yb_active_session_history_2".wait_event, "gv$yb_active_session_history_2".wait_event_type, "gv$yb_active_session_history_2".query_id
+                                       Remote Filter: ("gv$yb_active_session_history_2".sample_time >= 'Fri Apr 03 00:58:25.640388 2026 PDT'::timestamp with time zone)
+                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
+                                 ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_3"
+                                       Output: "gv$yb_active_session_history_3".wait_event_component, "gv$yb_active_session_history_3".wait_event, "gv$yb_active_session_history_3".wait_event_type, "gv$yb_active_session_history_3".query_id
+                                       Remote Filter: ("gv$yb_active_session_history_3".sample_time >= 'Fri Apr 03 00:58:25.640388 2026 PDT'::timestamp with time zone)
+                                       Remote SQL: SELECT wait_event_component, wait_event, query_id, wait_event_type FROM pg_catalog.yb_active_session_history_with_server_uuid WHERE ((sample_time >= '2026-04-03 00:58:25.640388-07'))
+(36 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT query_id, queryid
+FROM "gv$yb_active_session_history"
+JOIN "gv$pg_stat_statements" ON query_id = queryid;
+                                                  QUERY PLAN                                                  
+--------------------------------------------------------------------------------------------------------------
+ Merge Join
+   Output: "gv$yb_active_session_history".query_id, "gv$pg_stat_statements".queryid
+   Merge Cond: ("gv$yb_active_session_history".query_id = "gv$pg_stat_statements".queryid)
+   ->  Sort
+         Output: "gv$yb_active_session_history".query_id
+         Sort Key: "gv$yb_active_session_history".query_id
+         ->  Append
+               ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_1"
+                     Output: "gv$yb_active_session_history_1".query_id
+                     Remote SQL: SELECT query_id FROM pg_catalog.yb_active_session_history_with_server_uuid
+               ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_2"
+                     Output: "gv$yb_active_session_history_2".query_id
+                     Remote SQL: SELECT query_id FROM pg_catalog.yb_active_session_history_with_server_uuid
+               ->  Foreign Scan on pg_catalog."gv$yb_active_session_history" "gv$yb_active_session_history_3"
+                     Output: "gv$yb_active_session_history_3".query_id
+                     Remote SQL: SELECT query_id FROM pg_catalog.yb_active_session_history_with_server_uuid
+   ->  Sort
+         Output: "gv$pg_stat_statements".queryid
+         Sort Key: "gv$pg_stat_statements".queryid
+         ->  Append
+               ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_1"
+                     Output: "gv$pg_stat_statements_1".queryid
+                     Remote SQL: SELECT queryid FROM pg_catalog.pg_stat_statements_with_server_uuid
+               ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_2"
+                     Output: "gv$pg_stat_statements_2".queryid
+                     Remote SQL: SELECT queryid FROM pg_catalog.pg_stat_statements_with_server_uuid
+               ->  Foreign Scan on pg_catalog."gv$pg_stat_statements" "gv$pg_stat_statements_3"
+                     Output: "gv$pg_stat_statements_3".queryid
+                     Remote SQL: SELECT queryid FROM pg_catalog.pg_stat_statements_with_server_uuid
+(29 rows)
+
+--
+-- Rescan correctness: Nested Loop is forced by disabling competing
+-- join strategies, so postgresReScanForeignScan is exercised.
+--
+CREATE TABLE gv_driver_nodes (node_id int, label text);
+INSERT INTO gv_driver_nodes VALUES (1, 'first'), (3, 'third');
+SET enable_hashjoin = off;
+SET enable_mergejoin = off;
+SET enable_material = off;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT d.label, gv.metric_name, gv.event_count
+FROM gv_driver_nodes d, "gv$node_metrics" gv
+WHERE gv.node_id = d.node_id
+ORDER BY d.label, gv.metric_name;
+                                               QUERY PLAN                                                
+---------------------------------------------------------------------------------------------------------
+ Sort
+   Output: d.label, gv.metric_name, gv.event_count
+   Sort Key: d.label, gv.metric_name
+   ->  Nested Loop
+         Output: d.label, gv.metric_name, gv.event_count
+         Join Filter: (d.node_id = gv.node_id)
+         ->  Append
+               ->  Foreign Scan on public."gv$node_metrics" gv_1
+                     Output: gv_1.metric_name, gv_1.event_count, gv_1.node_id
+                     Remote SQL: SELECT node_id, metric_name, event_count FROM public.local_node_metrics
+               ->  Foreign Scan on public."gv$node_metrics" gv_2
+                     Output: gv_2.metric_name, gv_2.event_count, gv_2.node_id
+                     Remote SQL: SELECT node_id, metric_name, event_count FROM public.local_node_metrics
+               ->  Foreign Scan on public."gv$node_metrics" gv_3
+                     Output: gv_3.metric_name, gv_3.event_count, gv_3.node_id
+                     Remote SQL: SELECT node_id, metric_name, event_count FROM public.local_node_metrics
+         ->  Seq Scan on public.gv_driver_nodes d
+               Output: d.label, d.node_id
+(18 rows)
+
+SELECT d.label, gv.metric_name, gv.event_count
+FROM gv_driver_nodes d, "gv$node_metrics" gv
+WHERE gv.node_id = d.node_id
+ORDER BY d.label, gv.metric_name;
+ label | metric_name  | event_count 
+-------+--------------+-------------
+ first |              |          77
+ first | cpu_usage    |         100
+ first | disk_io      |          50
+ first | memory_usage |         200
+ third | cpu_usage    |          90
+ third | disk_io      |          60
+ third | memory_usage |         250
+(7 rows)
+
+RESET enable_material;
+RESET enable_hashjoin;
+RESET enable_mergejoin;
+DROP TABLE gv_driver_nodes;
+--
+-- Non-decomposable aggregates must NOT be pushed down as partial
+-- aggregates to individual tservers. Verify the aggregate runs locally.
+--
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT string_agg(metric_name, ', ' ORDER BY metric_name)
+FROM "gv$node_metrics"
+WHERE node_id = 1;
+                                                       QUERY PLAN                                                       
+------------------------------------------------------------------------------------------------------------------------
+ Aggregate
+   Output: string_agg(("gv$node_metrics".metric_name)::text, ', '::text ORDER BY ("gv$node_metrics".metric_name)::text)
+   ->  Append
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+               Output: "gv$node_metrics_1".metric_name
+               Remote Filter: ("gv$node_metrics_1".node_id = 1)
+               Remote SQL: SELECT metric_name FROM public.local_node_metrics WHERE ((node_id = 1))
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+               Output: "gv$node_metrics_2".metric_name
+               Remote Filter: ("gv$node_metrics_2".node_id = 1)
+               Remote SQL: SELECT metric_name FROM public.local_node_metrics WHERE ((node_id = 1))
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+               Output: "gv$node_metrics_3".metric_name
+               Remote Filter: ("gv$node_metrics_3".node_id = 1)
+               Remote SQL: SELECT metric_name FROM public.local_node_metrics WHERE ((node_id = 1))
+(15 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT array_agg(DISTINCT metric_name ORDER BY metric_name)
+FROM "gv$node_metrics"
+WHERE node_id = 1;
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Aggregate
+   Output: array_agg(DISTINCT "gv$node_metrics".metric_name ORDER BY "gv$node_metrics".metric_name)
+   ->  Append
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+               Output: "gv$node_metrics_1".metric_name
+               Remote Filter: ("gv$node_metrics_1".node_id = 1)
+               Remote SQL: SELECT metric_name FROM public.local_node_metrics WHERE ((node_id = 1))
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+               Output: "gv$node_metrics_2".metric_name
+               Remote Filter: ("gv$node_metrics_2".node_id = 1)
+               Remote SQL: SELECT metric_name FROM public.local_node_metrics WHERE ((node_id = 1))
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+               Output: "gv$node_metrics_3".metric_name
+               Remote Filter: ("gv$node_metrics_3".node_id = 1)
+               Remote SQL: SELECT metric_name FROM public.local_node_metrics WHERE ((node_id = 1))
+(15 rows)
+
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT COUNT(DISTINCT metric_name)
+FROM "gv$node_metrics";
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Aggregate
+   Output: count(DISTINCT "gv$node_metrics".metric_name)
+   ->  Append
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_1"
+               Output: "gv$node_metrics_1".metric_name
+               Remote SQL: SELECT metric_name FROM public.local_node_metrics
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_2"
+               Output: "gv$node_metrics_2".metric_name
+               Remote SQL: SELECT metric_name FROM public.local_node_metrics
+         ->  Foreign Scan on public."gv$node_metrics" "gv$node_metrics_3"
+               Output: "gv$node_metrics_3".metric_name
+               Remote SQL: SELECT metric_name FROM public.local_node_metrics
+(12 rows)
+
+--
+-- Cleanup
+--
+DROP FOREIGN TABLE "gv$pg_stat_statements";
+DROP FOREIGN TABLE "gv$yb_active_session_history";
+DROP VIEW pg_stat_statements_with_server_uuid;
+DROP VIEW yb_active_session_history_with_server_uuid;
+DROP FOREIGN TABLE "gv$node_metrics";
+DROP VIEW local_node_metrics;
+DROP FOREIGN TABLE local_node_metrics_csv;
+DROP SERVER gv_server CASCADE;
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to foreign table "gv$pg_stat_statements"
+drop cascades to foreign table "gv$yb_active_session_history"
+DROP SERVER file_server CASCADE;
+DROP EXTENSION file_fdw;
+DROP TYPE metric_status;
+DROP FUNCTION is_high_value(real);

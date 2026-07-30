@@ -124,13 +124,13 @@ ERROR:  location object expected, location array not in correct format
 SELECT bson_extract_geometry('{ "a" : { "field1": { "$undefined": true } } }', 'a');
 ERROR:  location object expected, location array not in correct format
 SELECT bson_extract_geometry('{ "a" : { "field1": { "$numberInt": "1" } } }', 'a');
-ERROR:  geo field only has 1 element
+ERROR:  Geo field contains only one element
 SELECT bson_extract_geometry('{ "a" : { "field1": { "$numberLong": "1" } } }', 'a');
-ERROR:  geo field only has 1 element
+ERROR:  Geo field contains only one element
 SELECT bson_extract_geometry('{ "a" : { "field1": { "$numberDouble": "1" } } }', 'a');
-ERROR:  geo field only has 1 element
+ERROR:  Geo field contains only one element
 SELECT bson_extract_geometry('{ "a" : { "field1": { "$numberDecimal": "1" } } }', 'a');
-ERROR:  geo field only has 1 element
+ERROR:  Geo field contains only one element
 SELECT bson_extract_geometry('{ "a" : { "field1": [], "field2": 10 } }', 'a');
 ERROR:  location object expected, location array not in correct format
 SELECT bson_extract_geometry('{ "a" : { "field1": [[]], "field2": 10 } }', 'a');
@@ -140,17 +140,17 @@ ERROR:  location object expected, location array not in correct format
 SELECT bson_extract_geometry('{ "a" : { "field1": {}, "field2": 10 } }', 'a');
 ERROR:  location object expected, location array not in correct format
 SELECT bson_extract_geometry('{ "a" : { "field1": 10, "field2": "Hello" } }', 'a');
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 SELECT bson_extract_geometry('{ "a" : { "field1": 10, "field2": "Hello", "field3": 10 } }', 'a');
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 SELECT bson_extract_geometry('{ "a" : { "field1": 10, "field2": true } }', 'a');
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 SELECT bson_extract_geometry('{ "a" : { "field1": 10, "field2": false } }', 'a');
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 SELECT bson_extract_geometry('{ "a" : { "field1": 10, "field2": null } }', 'a');
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 SELECT bson_extract_geometry('{ "a" : { "field1": 10, "field2": { "$undefined": true } } }', 'a');
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 -- Case 2.1: Same Top level validations are skipped for array or object in bson_extract_geometry_runtime and returns NULL
 SELECT bson_extract_geometry_runtime('{ "a" : { "field1": "Hello" } }', 'a') IS NULL;
  ?column? 
@@ -266,15 +266,15 @@ ERROR:  location object expected, location array not in correct format
 SELECT bson_extract_geometry('{ "a" : { "b" : { "field1": [], "field2": 10 } } }', 'a.b');
 ERROR:  location object expected, location array not in correct format
 SELECT bson_extract_geometry('{ "a" : { "b" : { "field1": 10, "field2": "Hello" } } }', 'a.b');
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 SELECT bson_extract_geometry('{ "a" : { "b" : { "field1": 10, "field2": true } } }', 'a.b');
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 SELECT bson_extract_geometry('{ "a" : { "b" : { "field1": 10, "field2": false } } }', 'a.b');
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 SELECT bson_extract_geometry('{ "a" : { "b" : { "field1": 10, "field2": null } } }', 'a.b');
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 SELECT bson_extract_geometry('{ "a" : { "b" : { "field1": 10, "field2": { "$undefined": true } } } }', 'a.b');
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 -- Case 3.1: Same Top level validations are skipped for nested paths in bson_extract_geometry_runtime function and returns NULL
 SELECT bson_extract_geometry_runtime('{ "a" : { "b": ["Text", "Text"] } }', 'a.b') IS NULL;
  ?column? 
@@ -320,41 +320,41 @@ SELECT bson_extract_geometry_runtime('{ "a" : { "b" : { "field1": 10, "field2": 
 
 -- Case 4: Partial valid multipoint cases, throws error in strict mode
 SELECT bson_extract_geometry('{ "a" : [{"b": { "1": 33, "2": 33 }}, {"b": ["Text", "Text"]} ]}', 'a.b');
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 SELECT bson_extract_geometry('{ "a" : [{"b": { "1": 34, "2": 34 }}, {"b": { "field1": [], "field2": 10 } } ]}', 'a.b');
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 SELECT bson_extract_geometry('{ "a" : [{"b": { "1": 35, "2": 35 }}, {"b": { "field1": 10, "field2": "Hello" } } ]}', 'a.b');
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 SELECT bson_extract_geometry('{ "a" : [{"b": { "1": 36, "2": 36 }}, {"b": { "field1": 10, "field2": true } } ]}', 'a.b');
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 SELECT bson_extract_geometry('{ "a" : [{"b": { "1": 37, "2": 37 }}, {"b": { "field1": 10, "field2": false } } ]}', 'a.b');
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 SELECT bson_extract_geometry('{ "a" : [{"b": { "1": 38, "2": 38 }}, {"b": { "field1": 10, "field2": null } } ]}', 'a.b');
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 SELECT bson_extract_geometry('{ "a" : [{"b": { "1": 39, "2": 39 }}, {"b": { "field1": 10, "field2": { "$undefined": true } } } ]}', 'a.b');
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 SELECT bson_extract_geometry('{ "a" : [{"b": [44, 44]}, {"b": "This is ok"}, {"b": ["This is not", "ok"]}, {"b": [45,45]} ]}', 'a.b');
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 SELECT bson_extract_geometry('{ "a" : [
     { "b": [ { "long": [70, 80], "lat": 75 }, { "long": [80], "lat": 85 } ] },
     { "b": [ { "long": [90, 100], "lat": 95 }, { "long": [100], "lat": 105 } ] },
     { "b": [ { "long": [110, 120], "lat": 115 }, { "long": [120], "lat": 125 } ] } ]}', 'a.b.long');
-ERROR:  geo field only has 1 element
+ERROR:  Geo field contains only one element
 -- With GeoJson points, errors in case of strict mode
 SELECT bson_extract_geometry('{"a": {"type": "Point", "coordinates": [45,45] } }', 'a');
 ERROR:  location object expected, location array not in correct format
 SELECT bson_extract_geometry('{"a": {"extra": 10, "type": "Point", "coordinates": [46,46] } }', 'a');
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 SELECT bson_extract_geometry('{"a": {"extra": 10, "type": "Point", "coordinates": [46,46], "last": 20 } }', 'a');
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 SELECT bson_extract_geometry('{"a": {"extra": 10, "type": "point", "coordinates": [46,46], "last": 20 } }', 'a'); -- Invalid type: point (should be Point)
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 SELECT bson_extract_geometry('{"a": {"extra": 10, "Type": "point", "coordinates": [46,46], "last": 20 } }', 'a'); -- Invalid field name: Type
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 SELECT bson_extract_geometry('{"a": {"extra": 10, "type": "point", "Coordinates": [46,46], "last": 20 } }', 'a'); -- Invalid field name: Coordinates
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 SELECT bson_extract_geometry('{ "a" : [{"b": [44, 44]}, {"b": "This is ok"}, {"b": ["This is not", "ok"]}, {"b": {"type": "Point", "coordinates": [45,45]}} ]}', 'a.b');
-ERROR:  geo values must be 'legacy coordinate pairs' for 2d indexes
+ERROR:  Geo values are required to be in the 'legacy coordinate pairs' format when working with 2D indexes.
 -- Case 4.1: Partial points are returned without any error in non strict mode
 -- public.ST_ASEWKT is used to convert the geometry to Extended Well known text format of postgis
 SELECT public.ST_ASEWKT(bson_extract_geometry_runtime('{ "a" : [{"b": { "1": 33, "2": 33 }}, {"b": ["Text", "Text"]} ]}', 'a.b')) AS geoms;
@@ -854,27 +854,30 @@ BEGIN
     )::public.geography;
     EXCEPTION WHEN OTHERS THEN
         errorMessage := SQLERRM;
-        IF errorMessage LIKE '%Self-intersection at%' THEN
-            errorMessage := REGEXP_REPLACE(errorMessage, '[0-9]+(\.[0-9]+)? [0-9]+(\.[0-9]+)?', '<longitude> <latitude>');
+        IF errorMessage LIKE '%Self-intersection at%' OR errorMessage LIKE '%geometry is invalid%' THEN
+            -- We are only showing that after segmentize the geometry is invalid, the actual error message is irrelevant
+            -- because the next test shows ST_MAKEVALID fixes this
+            errorMessage := 'Invalid geometry found after segmentize.';
         END IF;
         RAISE EXCEPTION '%', errorMessage using ERRCODE = SQLSTATE;
 END $$;
-ERROR:  lwgeom_intersection_prec: GEOS Error: TopologyException: Input geom 0 is invalid: Self-intersection at -<longitude> <latitude>
-CONTEXT:  PL/pgSQL function inline_code_block line 14 at RAISE
+ERROR:  Invalid geometry found after segmentize.
+CONTEXT:  PL/pgSQL function inline_code_block line 16 at RAISE
 -- Now run this again with ST_MAKEVALID to see the difference, ST_ASTEXT is used to pretty print the output
 SELECT public.ST_ASTEXT(
     public.ST_SUBDIVIDE(
         public.ST_MAKEVALID(public.ST_SEGMENTIZE('SRID=4326;POLYGON((-180 40, -157.5 40, -157.5 55, -180 55, -180 40))'::public.geography, 500000)::public.geometry),
         8 -- 8 is the default number of max vertices a divide segment can have
-    )::public.geography
+    )::public.geography,
+    12 -- Limit output to 12 decimal digits
 );
-                                                                                                  st_astext                                                                                                   
+                                                                                     st_astext                                                                                      
 ---------------------------------------------------------------------
- POLYGON((-157.5 40.234375,-157.5 40,-160.29991441874373 40.205209224804754,-157.5 40.234375))
- POLYGON((-163.1021234145348 40.4105866220272,-160.29991441874373 40.205209224804754,-180 40,-174.39787658546524 40.4105866220272,-168.75000000000003 40.54826391836536,-163.1021234145348 40.4105866220272))
+ POLYGON((-157.5 40.234375,-157.5 40,-160.299914418744 40.205209224805,-157.5 40.234375))
+ POLYGON((-163.102123414535 40.410586622027,-160.299914418744 40.205209224805,-180 40,-174.397876585465 40.410586622027,-168.75 40.548263918365,-163.102123414535 40.410586622027))
  POLYGON((-157.5 54.765625,11.25 53.0078125,11.25 41.9921875,-157.5 40.234375,-157.5 54.765625))
- POLYGON((180 51.25000000000001,180 43.75000000000001,11.25 41.9921875,11.25 53.0078125,180 51.25000000000001))
- POLYGON((-168.75000000000003 55.520540637748496,-163.08803378528958 55.389661039662776,-157.5 55,-157.5 54.765625,-180 55,-174.41196621471047 55.389661039662776,-168.75000000000003 55.520540637748496))
+ POLYGON((180 51.25,180 43.75,11.25 41.9921875,11.25 53.0078125,180 51.25))
+ POLYGON((-168.75 55.520540637748,-163.08803378529 55.389661039663,-157.5 55,-157.5 54.765625,-180 55,-174.41196621471 55.389661039663,-168.75 55.520540637748))
 (5 rows)
 
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "segmentsTest", "indexes": [{"key": {"a": "2dsphere"}, "name": "my_2ds" }]}', true);
@@ -912,7 +915,7 @@ SELECT document FROM documentdb_api.collection('db', 'segmentsTest') WHERE docum
 (2 rows)
 
 EXPLAIN SELECT document FROM documentdb_api.collection('db', 'segmentsTest') WHERE document @@ '{"a": {"$geoIntersects": { "$geometry": { "type": "Polygon", "coordinates": [[[-180, 40], [-157.5, 40], [-157.5, 55], [-180, 55], [-180, 40]]]}}}}'; -- Polygon with points on a great circle of earth
-                                                                                                                                                                                                                                                            QUERY PLAN                                                                                                                                                                                                                                                             
+                                                                                                                                                                                                                                                                    QUERY PLAN                                                                                                                                                                                                                                                                    
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)  (cost=0.00..0.00 rows=0 width=0)
    Task Count: 1

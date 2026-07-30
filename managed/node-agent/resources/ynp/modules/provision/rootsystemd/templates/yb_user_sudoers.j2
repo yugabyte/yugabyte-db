@@ -1,0 +1,16 @@
+yugabyte ALL=(ALL:ALL) NOPASSWD: \
+/bin/systemctl start yb-*, \
+/bin/systemctl stop yb-*, \
+/bin/systemctl restart yb-*, \
+/bin/systemctl enable yb-*, \
+/bin/systemctl disable yb-*, \
+/bin/systemctl cat yb-*, \
+/bin/systemctl is-enabled yb-*, \
+/bin/systemctl start otel-collector, \
+/bin/systemctl stop otel-collector, \
+/bin/systemctl restart otel-collector, \
+/bin/systemctl enable otel-collector, \
+/bin/systemctl disable otel-collector, \
+/bin/systemctl cat otel-collector, \
+/bin/systemctl is-enabled otel-collector, \
+/bin/systemctl daemon-reload

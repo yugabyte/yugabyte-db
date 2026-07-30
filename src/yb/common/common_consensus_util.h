@@ -41,7 +41,7 @@
 
 namespace yb::consensus {
 
-const MicrosTime kInfiniteHybridTimeLeaseExpiration = HybridTime::kMax.GetPhysicalValueMicros();
+constexpr MicrosTime kInfiniteHybridTimeLeaseExpiration = HybridTime::kMax.GetPhysicalValueMicros();
 
 bool IsRaftConfigMember(std::string_view tserver_uuid, const RaftConfigPB& config);
 bool IsRaftConfigMember(std::string_view tserver_uuid, const LWRaftConfigPB& config);

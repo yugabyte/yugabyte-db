@@ -629,6 +629,7 @@ public class LdapUtil {
       }
 
       Users oldUser = Users.find.query().where().eq("email", email).findOne();
+      boolean shouldUpdateRoleBindings = true;
 
       if (oldUser != null) {
         /* If we find a valid role from LDAP then assign that to this user and disallow further
@@ -651,6 +652,10 @@ public class LdapUtil {
           log.warn("No valid role could be ascertained, defaulting to {}.", roleToAssign);
           oldUser.setRole(roleToAssign);
           oldUser.setLdapSpecifiedRole(false);
+        } else {
+          // Preserve the existing admin-set role, no need to update role bindings
+          log.debug("Using existing role: {}", oldUser.getRole().name());
+          shouldUpdateRoleBindings = false;
         }
         users = oldUser;
       } else {
@@ -674,14 +679,15 @@ public class LdapUtil {
       users.setGroupMemberships(groupMemberships);
       users.save();
 
-      if (ldapConfiguration.isUseNewRbacAuthz()) {
+      if (ldapConfiguration.isUseNewRbacAuthz() && shouldUpdateRoleBindings) {
         log.debug("Using new RBAC authorization...");
+        String roleName = users.getRole().name();
         List<RoleBinding> currentRoleBindings = RoleBinding.getAll(users.getUuid());
         currentRoleBindings.stream().forEach(rB -> rB.delete());
         com.yugabyte.yw.models.rbac.Role newRbacRole =
-            com.yugabyte.yw.models.rbac.Role.get(users.getCustomerUUID(), roleToAssign.name());
+            com.yugabyte.yw.models.rbac.Role.get(users.getCustomerUUID(), roleName);
         if (newRbacRole != null) {
-          log.debug("Found role with name: {}", roleToAssign.name());
+          log.debug("Found role with name: {}", roleName);
           ResourceGroup rG =
               ResourceGroup.getSystemDefaultResourceGroup(users.getCustomerUUID(), users);
           RoleBinding createdRoleBinding =
@@ -690,7 +696,7 @@ public class LdapUtil {
             log.debug("Created role binding: {}", createdRoleBinding);
           }
         } else {
-          throw new RuntimeException(String.format("No role with the name: %s found", role));
+          throw new RuntimeException(String.format("No role with the name: %s found", roleName));
         }
       }
       DB.commitTransaction();

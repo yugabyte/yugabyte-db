@@ -9,6 +9,8 @@ menu:
     parent: back-up-restore-universes
     identifier: configure-backup-storage
     weight: 10
+rightNav:
+  hideH4: true
 type: docs
 ---
 
@@ -20,11 +22,15 @@ Depending on your environment, you can save your YugabyteDB universe data to a v
 
 You can configure AWS S3 and S3-compatible storage as your backup target.
 
-{{< note title="S3-compatible storage requires S3 path style access" >}}
-By default, the option to use S3 path style access is not available.
+### Prerequisites
 
-To enable the feature in YugabyteDB Anywhere, set the **Enable Path Access Style for Amazon S3** Global Runtime Configuration option (config key `yb.ui.feature_flags.enable_path_style_access`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
-{{< /note >}}
+- S3-compatible storage requires S3 path style access.
+
+    By default, the option to use S3 path style access is not available.
+
+    To enable the feature in YugabyteDB Anywhere, set the **Enable Path Access Style for Amazon S3** Global Runtime Configuration option (config key `yb.ui.feature_flags.enable_path_style_access`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
+
+- To validate connections to your S3 storage using custom self-signed or CA certificates, add the certificates to the YugabyteDB Anywhere Trust Store. Refer to [Add certificates to your trust store](../../security/enable-encryption-in-transit/trust-store/).
 
 ### Create an AWS backup configuration
 
@@ -75,6 +81,16 @@ The following S3 IAM permissions are required:
 "s3:GetBucketLocation"
 ```
 
+### Using a proxy
+
+By default, **Proxy Configuration** for S3 storage is not available in the UI. To make it available, navigate to `https://<my-yugabytedb-anywhere-ip>/features` and enable the **enableS3BackupProxy** option.
+
+Configure a proxy for your S3 backup configuration by setting the following options under **Proxy Configuration**:
+
+- **Host**: The full URL or IP address of the HTTP/HTTPS proxy server.
+- **Port**: The port used by the HTTP/HTTPS proxy server.
+- **Username** and **Password**: If your proxy requires authentication, enter the Username and Password.
+
 ## Google Cloud Storage
 
 You can configure Google Cloud Storage (GCS) as your backup target.
@@ -114,6 +130,34 @@ To create a GCP backup configuration, do the following:
 
 1. Click **Save**.
 
+## Azure Storage
+
+You can configure Azure as your backup target.
+
+### Prerequisites
+
+- Azure storage account.
+- [Blob container](https://learn.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-portal#create-a-container).
+- [SAS Token](https://learn.microsoft.com/en-us/azure/storage/common/storage-sas-overview?toc=/azure/storage/blobs/toc.json&bc=/azure/storage/blobs/breadcrumb/toc.json).
+
+### Create an Azure storage configuration
+
+In YugabyteDB Anywhere:
+
+1. Navigate to **Integrations > Backup > Azure Storage**.
+
+1. Click **Create AZ Backup**.
+
+    ![Azure Configuration](/images/yp/cloud-provider-configuration-backup-azure.png)
+
+1. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
+
+1. Enter the **Container URL** of the container you created. You can obtain the container URL in Azure by navigating to **Container > Properties**.
+
+1. Provide the **SAS Token** you generated. You can copy the SAS Token directly from **Shared access signature** page in Azure.
+
+1. Click **Save**.
+
 ## Network File System
 
 You can configure Network File System (NFS) as your backup target, as follows:
@@ -133,55 +177,6 @@ You can configure Network File System (NFS) as your backup target, as follows:
 {{< warning title="Prevent back up failure due to NFS unmount on cloud VM restart" >}}
 To avoid potential backup and restore errors, add the NFS mount to `/etc/fstab` on the nodes of universes using the backup configuration. When a cloud VM is restarted, the NFS mount may get unmounted if its entry is not in `/etc/fstab`. This can lead to backup failures, and errors during [backup](../back-up-universe-data/) or [restore](../restore-universe-data/).
 {{< /warning >}}
-
-## Azure Storage
-
-You can configure Azure as your backup target.
-
-### Configure storage on Azure
-
-1. Create a storage account in Azure, as follows:
-
-    - Navigate to **Portal > Storage Account** and click **Add** (+).
-    - Complete the mandatory fields, such as **Resource group**, **Storage account name**, and **Location**, as per the following illustration:
-
-        ![Azure storage account creation](/images/yp/cloud-provider-configuration-backup-azure-account.png)
-
-1. Create a blob container, as follows:
-
-    - Open the storage account (for example, **storagetestazure**, as shown in the following illustration).
-    - Navigate to **Blob service > Containers > + Container** and then click **Create**.
-
-        ![Azure blob container creation](/images/yp/cloud-provider-configuration-backup-azure-blob-container.png)
-
-1. Generate an SAS Token, as follows:
-
-    - Navigate to **Storage account > Shared access signature**, as shown in the following illustration. (Note that you must generate the SAS Token on the Storage Account, not the Container. Generating the SAS Token on the container will prevent the configuration from being applied.)
-    - Under **Allowed resource types**, select **Container** and **Object**.
-    - Under **Allowed permissions**, select all options as shown.
-    - Click **Generate SAS and connection string** and copy the SAS token.
-
-        ![Azure Shared Access Signature page](/images/yp/cloud-provider-configuration-backup-azure-generate-token.png)
-
-### Create an Azure storage configuration
-
-In YugabyteDB Anywhere:
-
-1. Navigate to **Integrations > Backup > Azure Storage**.
-
-1. Click **Create AZ Backup**.
-
-    ![Azure Configuration](/images/yp/cloud-provider-configuration-backup-azure.png)
-
-1. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
-
-1. Enter the **Container URL** of the container you created. You can obtain the container URL in Azure by navigating to **Container > Properties**, as shown in the following illustration:
-
-    ![Azure container properties](/images/yp/cloud-provider-configuration-backup-azure-container-properties.png)
-
-1. Provide the **SAS Token** you generated. You can copy the SAS Token directly from **Shared access signature** page in Azure.
-
-1. Click **Save**.
 
 ## Local storage
 

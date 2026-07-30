@@ -2,19 +2,71 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
+import com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.AZOverrides;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.AvailabilityZoneDetails;
+import com.yugabyte.yw.models.AvailabilityZoneDetails.AZCloudInfo;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
 import java.lang.reflect.Field;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
 @RunWith(JUnitParamsRunner.class)
-public class UniverseCRUDHandlerTest {
+public class UniverseCRUDHandlerTest extends FakeDBApplication {
+
+  private static final String MASTER_FIELDS_ERROR =
+      "masterDeviceInfo and masterInstanceType can only be set when dedicated nodes for "
+          + "master and tserver are selected.";
+
+  private Customer customer;
+  private UniverseCRUDHandler universeCRUDHandler;
+  private Provider provider;
+
+  @Before
+  public void setUp() {
+    customer = ModelFactory.testCustomer();
+    provider = ModelFactory.awsProvider(customer);
+    universeCRUDHandler = app.injector().instanceOf(UniverseCRUDHandler.class);
+  }
 
   @Parameters({
     "enableYSQL",
@@ -60,6 +112,32 @@ public class UniverseCRUDHandlerTest {
     }
   }
 
+  @Test
+  public void updatePrimaryIncorrectReplicasFailTest() {
+    Universe universe = ModelFactory.createFromConfig(provider, "ahaha", "r1-az1-3-3;r2-az2-2-2");
+
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    // This will make zone with 2 nodes have 3 replicas and vica-versa.
+    primaryCluster
+        .placementInfo
+        .azStream()
+        .forEach(az -> az.replicationFactor = 5 - az.replicationFactor);
+
+    IllegalStateException ex =
+        assertThrows(
+            IllegalStateException.class,
+            () ->
+                universeCRUDHandler.update(
+                    customer,
+                    Universe.getOrBadRequest(universe.getUniverseUUID()),
+                    universe.getUniverseDetails()));
+    assertTrue(
+        ex.getLocalizedMessage(),
+        ex.getMessage()
+            .contains("Cannot have number of replicas 3 greater than the number of nodes 2"));
+  }
+
   private UniverseDefinitionTaskParams.UserIntent testIntent() {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
@@ -67,5 +145,453 @@ public class UniverseCRUDHandlerTest {
     userIntent.replicationFactor = 1;
     userIntent.ybSoftwareVersion = "yb-version";
     return userIntent;
+  }
+
+  @Test
+  public void checkInstanceTypeConsistency_passWhenNodesMatchIntent() {
+    Universe u = ModelFactory.createUniverse(customer.getId());
+    u = ModelFactory.addNodesToUniverse(u.getUniverseUUID(), 3);
+    UUID primaryUuid = u.getUniverseDetails().getPrimaryCluster().uuid;
+    Universe.saveDetails(
+        u.getUniverseUUID(),
+        univ -> {
+          UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          intent.instanceType = "c5.4xlarge";
+          for (NodeDetails n : univ.getUniverseDetails().getNodesInCluster(primaryUuid)) {
+            n.cloudInfo.instance_type = "c5.4xlarge";
+          }
+          univ.setUniverseDetails(univ.getUniverseDetails());
+        },
+        false);
+    u = Universe.getOrBadRequest(u.getUniverseUUID());
+    UniverseCRUDHandler.checkInstanceTypeConsistency(u);
+  }
+
+  @Test
+  public void checkInstanceTypeConsistency_failsOnDrift() {
+    Universe u = ModelFactory.createUniverse(customer.getId());
+    u = ModelFactory.addNodesToUniverse(u.getUniverseUUID(), 3);
+    final UUID universeUuid = u.getUniverseUUID();
+    UUID primaryUuid = u.getUniverseDetails().getPrimaryCluster().uuid;
+    Universe.saveDetails(
+        universeUuid,
+        univ -> {
+          UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          intent.instanceType = "c5.4xlarge";
+          List<NodeDetails> nodes =
+              univ.getUniverseDetails().getNodesInCluster(primaryUuid).stream()
+                  .collect(Collectors.toList());
+          nodes.get(0).cloudInfo.instance_type = "c5.4xlarge";
+          nodes.get(1).cloudInfo.instance_type = "c5.9xlarge";
+          nodes.get(2).cloudInfo.instance_type = "c5.9xlarge";
+          nodes.get(0).nodeName = "host-n0";
+          nodes.get(1).nodeName = "host-n1";
+          nodes.get(2).nodeName = "host-n2";
+          univ.setUniverseDetails(univ.getUniverseDetails());
+        },
+        false);
+    final Universe universeAfterSave = Universe.getOrBadRequest(universeUuid);
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> UniverseCRUDHandler.checkInstanceTypeConsistency(universeAfterSave));
+    assertEquals(BAD_REQUEST, ex.getHttpStatus());
+    assertTrue(ex.getUserVisibleMessage().contains("host-n1"));
+    assertTrue(ex.getUserVisibleMessage().contains("c5.9xlarge"));
+    assertTrue(ex.getUserVisibleMessage().contains("c5.4xlarge"));
+  }
+
+  @Test
+  public void checkInstanceTypeConsistency_passWithAzOverride() {
+    Universe u = ModelFactory.createUniverse(customer.getId());
+    u = ModelFactory.addNodesToUniverse(u.getUniverseUUID(), 2);
+    UUID primaryUuid = u.getUniverseDetails().getPrimaryCluster().uuid;
+    UUID azUuid = UUID.randomUUID();
+    Universe.saveDetails(
+        u.getUniverseUUID(),
+        univ -> {
+          Cluster primary = univ.getUniverseDetails().getPrimaryCluster();
+          primary.userIntent.instanceType = "c5.4xlarge";
+          UserIntentOverrides overrides = new UserIntentOverrides();
+          AZOverrides azOverrides = new AZOverrides();
+          azOverrides.setInstanceType("c5.9xlarge");
+          overrides.setAzOverrides(new HashMap<>(Map.of(azUuid, azOverrides)));
+          primary.userIntent.setUserIntentOverrides(overrides);
+          for (NodeDetails n : univ.getUniverseDetails().getNodesInCluster(primaryUuid)) {
+            n.azUuid = azUuid;
+            n.cloudInfo.instance_type = "c5.9xlarge";
+          }
+          univ.setUniverseDetails(univ.getUniverseDetails());
+        },
+        false);
+    u = Universe.getOrBadRequest(u.getUniverseUUID());
+    UniverseCRUDHandler.checkInstanceTypeConsistency(u);
+  }
+
+  @Test
+  public void checkInstanceTypeConsistency_failsWhenNodeDoesNotMatchAzOverride() {
+    Universe u = ModelFactory.createUniverse(customer.getId());
+    u = ModelFactory.addNodesToUniverse(u.getUniverseUUID(), 1);
+    final UUID universeUuid = u.getUniverseUUID();
+    UUID primaryUuid = u.getUniverseDetails().getPrimaryCluster().uuid;
+    UUID azUuid = UUID.randomUUID();
+    Universe.saveDetails(
+        universeUuid,
+        univ -> {
+          Cluster primary = univ.getUniverseDetails().getPrimaryCluster();
+          primary.userIntent.instanceType = "c5.4xlarge";
+          UserIntentOverrides overrides = new UserIntentOverrides();
+          AZOverrides azOverrides = new AZOverrides();
+          azOverrides.setInstanceType("c5.9xlarge");
+          overrides.setAzOverrides(new HashMap<>(Map.of(azUuid, azOverrides)));
+          primary.userIntent.setUserIntentOverrides(overrides);
+          NodeDetails n =
+              univ.getUniverseDetails().getNodesInCluster(primaryUuid).iterator().next();
+          n.azUuid = azUuid;
+          n.nodeName = "host-n0";
+          n.cloudInfo.instance_type = "m5.large";
+          univ.setUniverseDetails(univ.getUniverseDetails());
+        },
+        false);
+    final Universe universeAfterSave = Universe.getOrBadRequest(universeUuid);
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> UniverseCRUDHandler.checkInstanceTypeConsistency(universeAfterSave));
+    assertEquals(BAD_REQUEST, ex.getHttpStatus());
+    assertTrue(ex.getUserVisibleMessage().contains("m5.large"));
+    assertTrue(ex.getUserVisibleMessage().contains("c5.9xlarge"));
+  }
+
+  @Test
+  public void checkInstanceTypeConsistency_passDedicatedMaster() {
+    Universe u = ModelFactory.createUniverse(customer.getId());
+    u = ModelFactory.addNodesToUniverse(u.getUniverseUUID(), 2);
+    UUID primaryUuid = u.getUniverseDetails().getPrimaryCluster().uuid;
+    List<NodeDetails> nodes =
+        u.getUniverseDetails().getNodesInCluster(primaryUuid).stream().collect(Collectors.toList());
+    Universe.saveDetails(
+        u.getUniverseUUID(),
+        univ -> {
+          UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          intent.instanceType = "c5.4xlarge";
+          intent.masterInstanceType = "m5.2xlarge";
+          intent.dedicatedNodes = true;
+          NodeDetails master = nodes.get(0);
+          master.nodeName = "host-master";
+          master.isMaster = true;
+          master.dedicatedTo = ServerType.MASTER;
+          master.cloudInfo.instance_type = "m5.2xlarge";
+          NodeDetails ts = nodes.get(1);
+          ts.nodeName = "host-ts";
+          ts.isTserver = true;
+          ts.cloudInfo.instance_type = "c5.4xlarge";
+          univ.setUniverseDetails(univ.getUniverseDetails());
+        },
+        false);
+    u = Universe.getOrBadRequest(u.getUniverseUUID());
+    UniverseCRUDHandler.checkInstanceTypeConsistency(u);
+  }
+
+  @Test
+  public void checkInstanceTypeConsistency_skipsKubernetes() {
+    ModelFactory.newProvider(customer, Common.CloudType.kubernetes);
+    Universe u =
+        ModelFactory.createUniverse(
+            "k8s-u", UUID.randomUUID(), customer.getId(), Common.CloudType.kubernetes);
+    u = ModelFactory.addNodesToUniverse(u.getUniverseUUID(), 2);
+    UUID primaryUuid = u.getUniverseDetails().getPrimaryCluster().uuid;
+    Universe.saveDetails(
+        u.getUniverseUUID(),
+        univ -> {
+          UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          intent.instanceType = "small";
+          for (NodeDetails n : univ.getUniverseDetails().getNodesInCluster(primaryUuid)) {
+            n.cloudInfo.instance_type = "huge";
+          }
+          univ.setUniverseDetails(univ.getUniverseDetails());
+        },
+        false);
+    u = Universe.getOrBadRequest(u.getUniverseUUID());
+    UniverseCRUDHandler.checkInstanceTypeConsistency(u);
+  }
+
+  @Parameters({
+    // enableYSQL, enableYCQL, skipYcqlPrecheck, expectError, expectedFragment
+    "true,  false, false, false, ",
+    "true,  false, true,  false, ",
+    "true,  true,  false, true,  YCQL API should be disabled",
+    "true,  true,  true,  false, ",
+    "false, false, false, true,  YSQL API should be enabled",
+    "false, false, true,  true,  YSQL API should be enabled",
+    "false, true,  false, true,  YSQL API should be enabled",
+    "false, true,  true,  true,  YSQL API should be enabled",
+  })
+  @Test
+  public void validateMultiTenancyApiConfig_truthTable(
+      boolean enableYSQL,
+      boolean enableYCQL,
+      boolean skipYcqlPrecheck,
+      boolean expectError,
+      String expectedFragment) {
+    if (!expectError) {
+      UniverseCRUDHandler.validateMultiTenancyApiConfig(enableYSQL, enableYCQL, skipYcqlPrecheck);
+      return;
+    }
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                UniverseCRUDHandler.validateMultiTenancyApiConfig(
+                    enableYSQL, enableYCQL, skipYcqlPrecheck));
+    assertEquals(BAD_REQUEST, ex.getHttpStatus());
+    assertTrue(
+        "Expected message to contain '"
+            + expectedFragment
+            + "', got: "
+            + ex.getUserVisibleMessage(),
+        ex.getUserVisibleMessage().contains(expectedFragment));
+  }
+
+  @Test
+  public void validateMultiTenancyApiConfig_skipYcqlPrecheckBypassesYcqlOn() {
+    // The regression case: skipYcqlPrecheck=true with YSQL on and YCQL on must pass.
+    UniverseCRUDHandler.validateMultiTenancyApiConfig(
+        true /* enableYSQL */, true /* enableYCQL */, true /* skipYcqlPrecheck */);
+  }
+
+  @Test
+  public void validateMultiTenancyApiConfig_ysqlOffReportsYsqlError() {
+    // Even when skipYcqlPrecheck would bypass the YCQL check, YSQL-off must still fail,
+    // and the error message must point at YSQL (not the legacy combined string).
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                UniverseCRUDHandler.validateMultiTenancyApiConfig(
+                    false /* enableYSQL */, false /* enableYCQL */, true /* skipYcqlPrecheck */));
+    assertEquals(BAD_REQUEST, ex.getHttpStatus());
+    assertTrue(ex.getUserVisibleMessage().contains("YSQL API should be enabled"));
+  }
+
+  @Test
+  public void configureRejectsMasterDeviceInfoWhenDedicatedNodesDisabled() {
+    UniverseConfigureTaskParams taskParams = buildConfigureTaskParams(false, true, false);
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> universeCRUDHandler.configure(customer, taskParams));
+
+    assertEquals(BAD_REQUEST, ex.getHttpStatus());
+    assertTrue(ex.getUserVisibleMessage().contains(MASTER_FIELDS_ERROR));
+  }
+
+  @Test
+  public void configureRejectsMasterInstanceTypeWhenDedicatedNodesDisabled() {
+    UniverseConfigureTaskParams taskParams = buildConfigureTaskParams(false, false, true);
+
+    PlatformServiceException ex =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> universeCRUDHandler.configure(customer, taskParams));
+
+    assertEquals(BAD_REQUEST, ex.getHttpStatus());
+    assertTrue(ex.getUserVisibleMessage().contains(MASTER_FIELDS_ERROR));
+  }
+
+  @Test
+  public void checkInstanceTypeConsistency_skipsToBeAddedAndToBeRemoved() {
+    Universe u = ModelFactory.createUniverse(customer.getId());
+    u = ModelFactory.addNodesToUniverse(u.getUniverseUUID(), 1);
+    UUID primaryUuid = u.getUniverseDetails().getPrimaryCluster().uuid;
+    Universe.saveDetails(
+        u.getUniverseUUID(),
+        univ -> {
+          UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          intent.instanceType = "c5.4xlarge";
+          NodeDetails live =
+              univ.getUniverseDetails().getNodesInCluster(primaryUuid).iterator().next();
+          live.nodeName = "host-live";
+          live.state = NodeState.Live;
+          live.cloudInfo.instance_type = "c5.4xlarge";
+          NodeDetails toAdd = new NodeDetails();
+          toAdd.nodeName = "host-add";
+          toAdd.state = NodeState.ToBeAdded;
+          toAdd.placementUuid = primaryUuid;
+          toAdd.cloudInfo = new CloudSpecificInfo();
+          toAdd.cloudInfo.instance_type = "wrong";
+          toAdd.azUuid = live.azUuid;
+          univ.getUniverseDetails().nodeDetailsSet.add(toAdd);
+          NodeDetails toRemove = new NodeDetails();
+          toRemove.nodeName = "host-rem";
+          toRemove.state = NodeState.ToBeRemoved;
+          toRemove.placementUuid = primaryUuid;
+          toRemove.cloudInfo = new CloudSpecificInfo();
+          toRemove.cloudInfo.instance_type = "wrong";
+          toRemove.azUuid = live.azUuid;
+          univ.getUniverseDetails().nodeDetailsSet.add(toRemove);
+          univ.setUniverseDetails(univ.getUniverseDetails());
+        },
+        false);
+    u = Universe.getOrBadRequest(u.getUniverseUUID());
+    UniverseCRUDHandler.checkInstanceTypeConsistency(u);
+  }
+
+  /*--- Tests for validateAndInitKubernetesCluster volume-override handling ---*/
+
+  /**
+   * Builds a Kubernetes AZ whose KubernetesRegionInfo carries the given storage class, so that
+   * {@code CloudInfoInterface.fetchEnvVars(zone)} surfaces it as {@code STORAGE_CLASS} - the value
+   * the default {@code applyVolumeChanges} fallback picks up.
+   */
+  private AvailabilityZone createK8sAZ(Region region, String code, String storageClass) {
+    AvailabilityZone az =
+        AvailabilityZone.createOrThrow(region, code, code.toUpperCase(), "subnet-" + code);
+    az.setDetails(new AvailabilityZoneDetails());
+    az.getDetails().setCloudInfo(new AZCloudInfo());
+    KubernetesRegionInfo k8sInfo = new KubernetesRegionInfo();
+    if (storageClass != null) {
+      k8sInfo.setKubernetesStorageClass(storageClass);
+    }
+    az.getDetails().getCloudInfo().setKubernetes(k8sInfo);
+    az.save();
+    return az;
+  }
+
+  private UserIntent buildK8sUserIntent(Provider k8sProvider) {
+    UserIntent userIntent = new UserIntent();
+    userIntent.universeName = "k8s-univ";
+    userIntent.provider = k8sProvider.getUuid().toString();
+    userIntent.providerType = Common.CloudType.kubernetes;
+    userIntent.deviceInfo = new DeviceInfo();
+    userIntent.deviceInfo.volumeSize = 100;
+    userIntent.deviceInfo.numVolumes = 1;
+    userIntent.masterDeviceInfo = new DeviceInfo();
+    userIntent.masterDeviceInfo.volumeSize = 50;
+    userIntent.masterDeviceInfo.numVolumes = 1;
+    return userIntent;
+  }
+
+  /**
+   * Seeds a single-AZ TSERVER per-AZ override onto the userIntent, as the operator would compute.
+   */
+  private void seedTserverAZOverride(
+      UserIntent userIntent, UUID azUuid, int volumeSize, String storageClass) {
+    UserIntentOverrides overrides = new UserIntentOverrides();
+    Map<UUID, AZOverrides> azMap = new HashMap<>();
+    AZOverrides azOv = new AZOverrides();
+    Map<ServerType, PerProcessDetails> perProcess = new HashMap<>();
+    PerProcessDetails details = new PerProcessDetails();
+    DeviceInfo di = new DeviceInfo();
+    di.volumeSize = volumeSize;
+    di.storageClass = storageClass;
+    details.setDeviceInfo(di);
+    perProcess.put(ServerType.TSERVER, details);
+    azOv.setPerProcess(perProcess);
+    azMap.put(azUuid, azOv);
+    overrides.setAzOverrides(azMap);
+    userIntent.setUserIntentOverrides(overrides);
+  }
+
+  private UniverseConfigureTaskParams buildPrimaryK8sTaskParams(
+      UserIntent userIntent, boolean operatorControlled, AvailabilityZone... zones) {
+    Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
+    Map<UUID, Integer> azToNodes = new HashMap<>();
+    for (AvailabilityZone z : zones) {
+      azToNodes.put(z.getUuid(), 1);
+    }
+    cluster.placementInfo = ModelFactory.constructPlacementInfoObject(azToNodes);
+    UniverseConfigureTaskParams taskParams = new UniverseConfigureTaskParams();
+    taskParams.currentClusterType = ClusterType.PRIMARY;
+    taskParams.clusterOperation = ClusterOperationType.CREATE;
+    taskParams.isKubernetesOperatorControlled = operatorControlled;
+    taskParams.clusters.add(cluster);
+    return taskParams;
+  }
+
+  // PLAT-21725: volume/userIntentOverrides handling was moved out of
+  // validateAndInitKubernetesCluster - it now happens later in createUniverse, once the placement
+  // is finalized and guarded so operator universes are not touched. This test locks in that
+  // validateAndInitKubernetesCluster does NOT compute or clobber userIntentOverrides for an
+  // operator-controlled universe: the reconciler-computed override for az-1 survives and no
+  // provider-storage-class override is materialized for az-2.
+  @Test
+  public void validateAndInitKubernetesClusterOperatorPreservesUserIntentOverrides() {
+    Provider k8sProvider = ModelFactory.kubernetesProvider(customer);
+    Region region = Region.create(k8sProvider, "region-1", "Region 1", "default-image");
+    AvailabilityZone az1 = createK8sAZ(region, "az-1", "provider-sc");
+    AvailabilityZone az2 = createK8sAZ(region, "az-2", "provider-sc");
+
+    UserIntent userIntent = buildK8sUserIntent(k8sProvider);
+    // Operator pre-computed a per-AZ override for az-1 only.
+    seedTserverAZOverride(userIntent, az1.getUuid(), 250, "az1-special-sc");
+
+    UniverseConfigureTaskParams taskParams =
+        buildPrimaryK8sTaskParams(userIntent, true /* operatorControlled */, az1, az2);
+
+    universeCRUDHandler.validateAndInitKubernetesCluster(
+        taskParams.getPrimaryCluster(), taskParams);
+
+    UserIntentOverrides result = taskParams.getPrimaryCluster().userIntent.getUserIntentOverrides();
+    assertNotNull(result);
+    Map<UUID, AZOverrides> azOverrides = result.getAzOverrides();
+    assertNotNull(azOverrides);
+    // Only az-1 must be present; az-2 must NOT have been added from provider storage class.
+    assertEquals(Set.of(az1.getUuid()), azOverrides.keySet());
+    DeviceInfo az1Di =
+        azOverrides.get(az1.getUuid()).getPerProcess().get(ServerType.TSERVER).getDeviceInfo();
+    assertEquals(250, az1Di.volumeSize.intValue());
+    assertEquals("az1-special-sc", az1Di.storageClass);
+    assertNull(azOverrides.get(az2.getUuid()));
+  }
+
+  // PLAT-21725: validateAndInitKubernetesCluster must not compute volume overrides for the regular
+  // (non-operator) k8s path either - that is done by the single applyVolumeChanges call later in
+  // createUniverse after the placement is finalized. Even though az-2 has a provider storage class,
+  // validateAndInitKubernetesCluster leaves userIntentOverrides untouched (az-2 is not added).
+  @Test
+  public void validateAndInitKubernetesClusterNonOperatorDoesNotComputeVolumeOverrides() {
+    Provider k8sProvider = ModelFactory.kubernetesProvider(customer);
+    Region region = Region.create(k8sProvider, "region-1", "Region 1", "default-image");
+    AvailabilityZone az1 = createK8sAZ(region, "az-1", "provider-sc");
+    AvailabilityZone az2 = createK8sAZ(region, "az-2", "provider-sc");
+
+    UserIntent userIntent = buildK8sUserIntent(k8sProvider);
+    seedTserverAZOverride(userIntent, az1.getUuid(), 250, "az1-special-sc");
+
+    UniverseConfigureTaskParams taskParams =
+        buildPrimaryK8sTaskParams(userIntent, false /* operatorControlled */, az1, az2);
+
+    universeCRUDHandler.validateAndInitKubernetesCluster(
+        taskParams.getPrimaryCluster(), taskParams);
+
+    UserIntentOverrides result = taskParams.getPrimaryCluster().userIntent.getUserIntentOverrides();
+    assertNotNull(result);
+    Map<UUID, AZOverrides> azOverrides = result.getAzOverrides();
+    assertNotNull(azOverrides);
+    // az-2 must NOT have been added here; volume-override computation happens later.
+    assertEquals(Set.of(az1.getUuid()), azOverrides.keySet());
+    assertNull(azOverrides.get(az2.getUuid()));
+  }
+
+  private UniverseConfigureTaskParams buildConfigureTaskParams(
+      boolean dedicatedNodes, boolean setMasterDeviceInfo, boolean setMasterInstanceType) {
+    UserIntent userIntent = new UserIntent();
+    userIntent.dedicatedNodes = dedicatedNodes;
+    userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    if (setMasterDeviceInfo) {
+      userIntent.masterDeviceInfo = ApiUtils.getDummyDeviceInfo(1, 50);
+    }
+    if (setMasterInstanceType) {
+      userIntent.masterInstanceType = "m5.large";
+    }
+
+    Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
+    UniverseConfigureTaskParams taskParams = new UniverseConfigureTaskParams();
+    taskParams.currentClusterType = ClusterType.PRIMARY;
+    taskParams.clusterOperation = ClusterOperationType.EDIT;
+    taskParams.clusters.add(cluster);
+    return taskParams;
   }
 }

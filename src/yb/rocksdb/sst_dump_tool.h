@@ -24,7 +24,7 @@
 
 #include "yb/docdb/docdb_types.h"
 
-#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/status_fwd.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/slice.h"
@@ -38,7 +38,8 @@ class DocDBKVFormatter {
   virtual ~DocDBKVFormatter() = default;
 
   virtual std::string Format(
-      const yb::Slice&, const yb::Slice&, yb::docdb::StorageDbType) const = 0;
+      yb::Slice user_key, yb::Slice value, yb::docdb::StorageDbType,
+      const std::string& key_suffix, yb::docdb::AllowEmptyValue allow_empty_value) const = 0;
 
   virtual Status ProcessArgument(const std::string& argument) = 0;
 };

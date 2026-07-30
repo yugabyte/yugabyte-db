@@ -271,15 +271,22 @@ public class OperatorImportResource extends UniverseTaskBase {
     if (x86_64Artifact == null) {
       throw new RuntimeException("x86_64 artifact not found");
     }
+    boolean imported = false;
     try {
-      operatorUtils.createReleaseCr(
-          release, releaseArtifact, x86_64Artifact, getNamespace(), taskParams().secretName);
+      imported =
+          operatorUtils.createReleaseCr(
+              release, releaseArtifact, x86_64Artifact, getNamespace(), taskParams().secretName);
     } catch (Exception e) {
       log.error("Failed to create release: {}", taskParams().releaseVersion, e);
       throw new RuntimeException("Failed to create release", e);
     }
-    release.setIsKubernetesOperatorControlled(true);
-    log.info("Release version {} imported successfully", taskParams().releaseVersion);
+    if (imported) {
+      release.setIsKubernetesOperatorControlled(true);
+      log.info("Release version {} imported successfully", taskParams().releaseVersion);
+    } else {
+      // Local files currently are not supported in the CRD, but are still valid as releases.
+      log.warn("skipping import of release - uses local files");
+    }
   }
 
   private void importStorageConfig() {
@@ -297,9 +304,13 @@ public class OperatorImportResource extends UniverseTaskBase {
               + cfg.getType());
     }
     Set<UUID> associatedUniverseUUIDs = customerConfigService.getAssociatedUniverseUUIDS(cfg);
+    // Filter down to universes that still exist and are not operator controlled while also not
+    // being the universe that is being imported.
     Set<Universe> associatedUniverses =
         associatedUniverseUUIDs.stream()
-            .map(Universe::getOrBadRequest)
+            .map(Universe::maybeGet)
+            .filter(ou -> ou.isPresent())
+            .map(ou -> ou.get())
             .filter(u -> !u.getUniverseDetails().isKubernetesOperatorControlled)
             .filter(u -> !u.getUniverseUUID().equals(taskParams().universeUUID))
             .collect(Collectors.toSet());
@@ -381,9 +392,7 @@ public class OperatorImportResource extends UniverseTaskBase {
     log.info("Importing universe: {}", taskParams().universeUUID);
 
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-    Provider provider =
-        Provider.getOrBadRequest(
-            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
+    Provider provider = Util.getSingleProvider(universe.getUniverseDetails().getPrimaryCluster());
 
     try {
       operatorUtils.createUniverseCr(universe, provider.getName(), getNamespace());

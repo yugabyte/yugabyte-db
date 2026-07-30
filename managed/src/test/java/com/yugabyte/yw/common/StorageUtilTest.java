@@ -17,6 +17,9 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
+import java.util.Arrays;
+import java.util.List;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Before;
@@ -336,5 +339,33 @@ public class StorageUtilTest extends FakeDBApplication {
     assertEquals("//", nfsSpec.getCredsMap().get("YBC_NFS_DIR"));
     assertEquals(
         "univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar/", nfsSpec.getCloudDir());
+  }
+
+  @Test
+  public void testNfsStorageConfigPersistsNfsVolumes() {
+    List<String> nfsVolumes = Arrays.asList("/mnt/vol1", "/mnt/vol2", "/mnt/vol3");
+    CustomerConfig config =
+        ModelFactory.createNfsStorageConfig(
+            testCustomer, "TEST-NFS-VOL", "/tmp/nfs", "yugabyte_backup", nfsVolumes);
+
+    CustomerConfig retrieved = CustomerConfig.get(testCustomer.getUuid(), config.getConfigUUID());
+    CustomerConfigStorageNFSData nfsData = (CustomerConfigStorageNFSData) retrieved.getDataObject();
+
+    assertEquals("/tmp/nfs", nfsData.backupLocation);
+    assertEquals("yugabyte_backup", nfsData.nfsBucket);
+    assertEquals(nfsVolumes, nfsData.nfsVolumes);
+  }
+
+  @Test
+  public void testNfsStorageConfigPersistsWithoutNfsVolumes() {
+    CustomerConfig config =
+        ModelFactory.createNfsStorageConfig(testCustomer, "TEST-NFS-NOVOL", "/tmp/nfs");
+
+    CustomerConfig retrieved = CustomerConfig.get(testCustomer.getUuid(), config.getConfigUUID());
+    CustomerConfigStorageNFSData nfsData = (CustomerConfigStorageNFSData) retrieved.getDataObject();
+
+    assertEquals("/tmp/nfs", nfsData.backupLocation);
+    assertEquals("yugabyte_backup", nfsData.nfsBucket);
+    assertEquals(null, nfsData.nfsVolumes);
   }
 }

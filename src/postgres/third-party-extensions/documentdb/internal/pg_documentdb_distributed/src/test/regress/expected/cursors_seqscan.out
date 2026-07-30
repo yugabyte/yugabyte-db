@@ -134,7 +134,7 @@ SELECT document, bson_dollar_project(document, '{ "a.b": 1 }'), current_cursor_s
 (3 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF ) SELECT document, bson_dollar_project(document, '{ "a.b": 1 }'), current_cursor_state(document) FROM documentdb_api.collection('db', 'cursors_seqscan') WHERE documentdb_api_internal.cursor_state(document, :r2) AND document @@ '{ "a.b": { "$gt": 12 }}';
-                                                                                                                                                                                                                                                                                                                                                            QUERY PLAN                                                                                                                                                                                                                                                                                                                                                             
+                                                                                                                                                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                                                                                                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document, remote_scan.bson_dollar_project, remote_scan.current_cursor_state
@@ -148,7 +148,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF ) SELECT document, bson_dollar_project(document, 
                Page Row Count: 3 rows
                Continuation: { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAMA", "subType" : "00" } } }
                ->  Tid Range Scan on documentdb_data.documents_6710_6710001 collection
-                     Output: shard_key_value, object_id, document, creation_time
+                     Output: shard_key_value, object_id, document
                      TID Cond: (collection.ctid >= '(0,3)'::tid)
                      Filter: (documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "3" }, "continuation" : [ { "table_name" : "documents_6710_6710001", "value" : { "$binary" : { "base64" : "AAAAAAMA", "subType" : "00" } } } ] }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "12" } }'::documentdb_core.bson))
 (15 rows)
@@ -168,7 +168,7 @@ SELECT document, bson_dollar_project(document, '{ "a.b": 1 }'), current_cursor_s
 (3 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF ) SELECT document, bson_dollar_project(document, '{ "a.b": 1 }'), current_cursor_state(document) FROM documentdb_api.collection('db', 'cursors_seqscan') WHERE documentdb_api_internal.cursor_state(document, :r3) AND document @@ '{ "a.b": { "$gt": 12 }}';
-                                                                                                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                                                                                                     
+                                                                                                                                                                                                                                                                                                                                         QUERY PLAN                                                                                                                                                                                                                                                                                                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document, remote_scan.bson_dollar_project, remote_scan.current_cursor_state
@@ -181,7 +181,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF ) SELECT document, bson_dollar_project(document, 
                Output: document, documentdb_api_catalog.bson_dollar_project(document, '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson), documentdb_api_internal.current_cursor_state(document)
                Page Row Count: 3 rows
                ->  Tid Range Scan on documentdb_data.documents_6710_6710001 collection
-                     Output: shard_key_value, object_id, document, creation_time
+                     Output: shard_key_value, object_id, document
                      TID Cond: (collection.ctid >= '(0,0)'::tid)
                      Filter: (documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "3" }, "continuation" : [ { "table_name" : "someOtherTable" } ] }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "12" } }'::documentdb_core.bson))
 (14 rows)

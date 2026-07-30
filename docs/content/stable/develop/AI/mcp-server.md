@@ -31,18 +31,18 @@ Learn more about the YugabyteDB MCP Server:
 
 This tutorial walks you through using the YugabyteDB MCP Server to allow an AI application to access, query, analyze, and interpret data in your YugabyteDB database, using only natural language prompts.
 
-The tutorial uses a YugabyteDB cluster running the [Northwind dataset](../../../sample-data/northwind/). You connect [Claude](https://claude.com/product/overview) to this database using MCP, and then explore it using natural language prompts.
+The tutorial uses a YugabyteDB cluster running the [Northwind dataset](/stable/develop/sample-data/northwind/). You connect [Claude](https://claude.com/product/overview) to this database using MCP, and then explore it using natural language prompts.
 
 ## Prerequisites
 
-- YugabyteDB {{<release "2025.1">}} or later (stable), or {{<release "2.25.1">}} or later (preview)
+- YugabyteDB {{<release "2025.2">}} or later
 - Python 3.10+
 - [uv](https://docs.astral.sh/uv/) for dependency management
 - [Claude Desktop](https://claude.ai/download)
 
 ## Set up YugabyteDB MCP Server
 
-Clone the repo and install dependencies:
+Clone the repository and install dependencies:
 
 ```sh
 git clone https://github.com/yugabyte/yugabytedb-mcp-server.git
@@ -52,7 +52,7 @@ uv sync
 
 ## Set up YugabyteDB
 
-1. [Download and install](https://download.yugabyte.com) YugabyteDB {{<release "2025.1">}} or later (stable), or {{<release "2.25.1">}} or later (preview).
+1. [Download and install](https://download.yugabyte.com) YugabyteDB {{<release "2025.2">}} or later.
 
 1. Start a single-node cluster using [yugabyted](../../../reference/configuration/yugabyted/).
 
@@ -60,7 +60,7 @@ uv sync
     ./bin/yugabyted start --advertise_address=127.0.0.1
     ```
 
-1. [Install the Northwind sample database](../../../sample-data/northwind/#install-the-northwind-sample-database).
+1. [Install the Northwind sample database](/stable/develop/sample-data/northwind/#install-the-northwind-sample-database).
 
 ## Connect Claude to the server
 
@@ -72,7 +72,7 @@ uv sync
     {
         "mcpServers": {
             "yugabytedb-mcp": {
-                "command": "uv",
+                "command": "/Users/<username>/.local/bin/uv",
                 "args": [
                     "--directory",
                     "/path/to/cloned/yugabytedb-mcp-server/",

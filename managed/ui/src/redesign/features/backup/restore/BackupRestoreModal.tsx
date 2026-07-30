@@ -70,7 +70,12 @@ type BackupRestoreNewModalProps = {
   incrementalBackupProps?: IncrementalBackupProps;
 };
 
-const BackupRestoreModal: FC<BackupRestoreNewModalProps> = ({ visible, backupDetails, incrementalBackupProps, onHide }) => {
+const BackupRestoreModal: FC<BackupRestoreNewModalProps> = ({
+  visible,
+  backupDetails,
+  incrementalBackupProps,
+  onHide
+}) => {
   const classes = useStyles();
 
   const { t } = useTranslation('translation', {
@@ -114,13 +119,12 @@ const BackupRestoreModal: FC<BackupRestoreNewModalProps> = ({ visible, backupDet
   }
 
   const getCancelLabel = () => {
-    if (
-      currentPage === Page.PREFETCH_DATA ||
-      (currentPage === Page.SOURCE && !isSubmitting)
-    ) {
+    if (currentPage === Page.PREFETCH_DATA || (currentPage === Page.SOURCE && !isSubmitting)) {
       return undefined;
     }
-    return isSubmitting ? t('buttonLabels.waitingMsg', { keyPrefix: 'backup' }) : t('back', { keyPrefix: 'common' });
+    return isSubmitting
+      ? t('buttonLabels.waitingMsg', { keyPrefix: 'backup' })
+      : t('back', { keyPrefix: 'common' });
   };
 
   return (
@@ -181,7 +185,7 @@ const BackupRestoreModal: FC<BackupRestoreNewModalProps> = ({ visible, backupDet
               <SwitchRestorePages ref={currentPageRef} />
             </div>
             <div className={classes.summary}>
-              <RestoreSummary />
+              <RestoreSummary backupRoles={!!backupDetails?.useRoles} />
             </div>
           </div>
         </FormProvider>

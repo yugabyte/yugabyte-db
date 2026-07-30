@@ -4,8 +4,6 @@ headerTitle: Active Session History
 linkTitle: Active Session History
 description: Use Active Session History to get current and past views of the database system activity.
 headcontent: Get real-time and historical information about active sessions to analyze and troubleshoot performance issues
-tags:
-  feature: early-access
 menu:
   v2025.1:
     identifier: ash
@@ -18,7 +16,7 @@ Active Session History (ASH) provides a current and historical view of system ac
 
 ASH exposes session activity in the form of [SQL views](../../ysql-language-features/advanced-features/views/) so that you can run analytical queries, aggregations for analysis, and troubleshoot performance issues.
 
-Currently, ASH is available for [YSQL](../../../api/ysql/), [YCQL](../../../api/ycql/), and [YB-TServer](../../../architecture/yb-tserver/). ASH facilitates analysis by recording wait events related to YSQL, YCQL, or YB-TServer requests while they are being executed. These wait events belong to the categories including but not limited to _CPU_, _WaitOnCondition_, _Network_, and _Disk IO_.
+Currently, ASH is available for [YSQL](../../../api/ysql/), [YCQL](../../../api/ycql/), and [YB-TServer](../../../architecture/yb-tserver/). ASH facilitates analysis by recording wait events related to YSQL, YCQL, or YB-TServer requests while they are being executed. These wait events belong to the categories including but not limited to _CPU_, _WaitOnCondition_, _RPCWait_, and _Disk IO_.
 
 Analyzing the wait events and wait event types lets you troubleshoot, answer the following questions, and subsequently tune performance:
 
@@ -82,14 +80,14 @@ ORDER BY
  -1970690938654296136 | TServer              | Raft_WaitingForReplication         | RPCWait         |   194
  -1970690938654296136 | TServer              | Rpc_Done                           | WaitOnCondition |    18
  -1970690938654296136 | TServer              | MVCC_WaitForSafeTime               | WaitOnCondition |     5
- -1970690938654296136 | YSQL                 | QueryProcessing                    | Cpu             |  1023
+ -1970690938654296136 | YSQL                 | OnCpu_Active                       | Cpu             |  1023
                     0 | TServer              | OnCpu_Passive                      | Cpu             |    10
                     0 | TServer              | OnCpu_Active                       | Cpu             |     9
   6107501747146929242 | TServer              | OnCpu_Active                       | Cpu             |   208
   6107501747146929242 | TServer              | RocksDB_NewIterator                | DiskIO          |     5
   6107501747146929242 | TServer              | MVCC_WaitForSafeTime               | WaitOnCondition |    10
   6107501747146929242 | TServer              | Rpc_Done                           | WaitOnCondition |    15
-  6107501747146929242 | YSQL                 | QueryProcessing                    | Cpu             |   285
+  6107501747146929242 | YSQL                 | OnCpu_Active                       | Cpu             |   285
   6107501747146929242 | YSQL                 | TableRead                          | RPCWait         |   658
   6107501747146929242 | YSQL                 | CatalogRead                        | RPCWait         |     1
 ```
@@ -136,12 +134,12 @@ ORDER BY
  UPDATE test_table set v = v + $1 where k = $2 | TServer              | ConflictResolution_WaitOnConflictingTxns | WaitOnCondition |  1359
  UPDATE test_table set v = v + $1 where k = $2 | TServer              | Rpc_Done                                 | WaitOnCondition |     5
  UPDATE test_table set v = v + $1 where k = $2 | TServer              | LockedBatchEntry_Lock                    | WaitOnCondition |   141
- UPDATE test_table set v = v + $1 where k = $2 | YSQL                 | QueryProcessing                          | Cpu             |  1929
+ UPDATE test_table set v = v + $1 where k = $2 | YSQL                 | OnCpu_Active                             | Cpu             |  1929
 ```
 
 ### Detect a hot shard
 
-In this example, you can see that a particular tablet is getting a lot of requests as compared to the other tablets. The `wait_event_aux` field contains the `tablet_id` in case of YB-TServer events.
+In this example, a particular tablet is getting many more requests than others. For TServer events tied to a tablet, `wait_event_aux` contains the first 15 characters of the tablet ID.
 
 ```sql
 SELECT
@@ -359,7 +357,7 @@ GROUP BY
 ```
 
 ```output
-                       query                        |          top_level_node_id           |   host    | port | cloud | region  |    zone    | count 
+                       query                        |          top_level_node_id           |   host    | port | cloud | region  |    zone    | count
 ----------------------------------------------------+--------------------------------------+-----------+------+-------+---------+------------+-------
  COMMIT                                             | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |     2
  ANALYZE "public"."postgresqlkeyvalue"              | 6b556919-0198-4617-a7bc-42b84c965ec4 | 127.0.0.1 | 5433 | aws   | us-west | us-west-2a |    44

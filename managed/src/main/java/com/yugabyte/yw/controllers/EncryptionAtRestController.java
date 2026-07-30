@@ -15,13 +15,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.CloudAPI;
-import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.commissioner.tasks.params.KMSConfigTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.kms.KMSConfigHelper;
 import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil;
@@ -34,6 +33,8 @@ import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil.GcpKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.common.kms.util.OciEARServiceUtil;
+import com.yugabyte.yw.common.kms.util.OciEARServiceUtil.OciKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -43,7 +44,6 @@ import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.KmsHistoryId;
@@ -51,7 +51,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -90,12 +89,15 @@ public class EncryptionAtRestController extends AuthenticatedController {
       AwsKmsAuthConfigField.getNonEditableFields();
   public static final List<String> cipherTrustKmsNonEditableFields =
       CipherTrustKmsAuthConfigField.getNonEditableFields();
+  public static final List<String> ociKmsNonEditableFields =
+      OciKmsAuthConfigField.getNonEditableFields();
 
   // Below KMS fields can be editable. If no new field is specified, use the same old one.
   public static final List<String> awsKmsEditableFields = AwsKmsAuthConfigField.getEditableFields();
   public static final List<String> editableFieldsCipherTrust =
       CipherTrustKmsAuthConfigField.getEditableFields();
 
+  public static final List<String> ociKmsEditableFields = OciKmsAuthConfigField.getEditableFields();
   private static Set<String> API_URL =
       ImmutableSet.of("api.amer.smartkey.io", "api.eu.smartkey.io", "api.uk.smartkey.io");
 
@@ -104,13 +106,15 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
   @Inject EncryptionAtRestManager keyManager;
 
-  @Inject Commissioner commissioner;
+  @Inject KMSConfigHelper kmsConfigHelper;
 
   @Inject CloudAPI.Factory cloudAPIFactory;
 
   @Inject GcpEARServiceUtil gcpEARServiceUtil;
 
   @Inject AzuEARServiceUtil azuEARServiceUtil;
+
+  @Inject OciEARServiceUtil ociEARServiceUtil;
 
   @Inject CiphertrustEARServiceUtil ciphertrustEARServiceUtil;
 
@@ -128,6 +132,19 @@ public class EncryptionAtRestController extends AuthenticatedController {
   private void validateKMSProviderConfigFormData(
       ObjectNode formData, String keyProvider, UUID customerUUID) {
     switch (KeyProvider.valueOf(keyProvider.toUpperCase())) {
+      case OCI:
+        try {
+          ociEARServiceUtil.validateKMSProviderConfigFormData(formData);
+          LOG.info(
+              "Finished validating OCI provider config form data for vault = "
+                  + formData.path(OciKmsAuthConfigField.ociVaultId.fieldName).asText()
+                  + ", key name = "
+                  + formData.path(OciKmsAuthConfigField.ociKeyName.fieldName).asText());
+        } catch (Exception e) {
+          LOG.warn("Could not finish validating OCI provider config form data.");
+          throw new PlatformServiceException(BAD_REQUEST, e.toString());
+        }
+        break;
       case AWS:
         CloudAPI cloudAPI = cloudAPIFactory.get(KeyProvider.AWS.toString().toLowerCase());
         if (cloudAPI == null) {
@@ -232,6 +249,18 @@ public class EncryptionAtRestController extends AuthenticatedController {
     }
 
     switch (keyProvider) {
+      case OCI:
+        for (String field : ociKmsNonEditableFields) {
+          if (formData.has(field)) {
+            if (!authconfig.has(field)
+                || (authconfig.has(field) && !authconfig.get(field).equals(formData.get(field)))) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST, String.format("OCI KmsConfig field '%s' cannot be changed.", field));
+            }
+          }
+        }
+        LOG.info("Verified that all the fields in the OCI edit request are editable.");
+        break;
       case AWS:
         for (String field : awsKmsNonEditableFields) {
           if (formData.has(field)) {
@@ -335,6 +364,22 @@ public class EncryptionAtRestController extends AuthenticatedController {
       ObjectNode formData, UUID configUUID, KeyProvider keyProvider) {
     ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
     switch (keyProvider) {
+      case OCI:
+        // Copy all the non-editable fields from the authConfig to the formData.
+        for (String field : ociKmsNonEditableFields) {
+          if (authConfig.has(field)) {
+            formData.set(field, authConfig.get(field));
+          }
+        }
+        // Below fields can change. If no new field is specified, use the same old one.
+        List<String> editableFieldsOci = OciKmsAuthConfigField.getEditableFields();
+        for (String field : editableFieldsOci) {
+          if (!formData.has(field) && authConfig.has(field)) {
+            formData.set(field, authConfig.get(field));
+          }
+        }
+        LOG.info("Added all required OCI KMS fields to the formData to be edited");
+        break;
       case AWS:
         // Make a copy of the original authConfig object and edit the editable fields.
         ObjectNode updatedFormData = authConfig.deepCopy();
@@ -482,16 +527,28 @@ public class EncryptionAtRestController extends AuthenticatedController {
     return formData;
   }
 
-  public void checkCipherTrustRuntimeFlag(KeyProvider keyProvider) {
-    if (KeyProvider.CIPHERTRUST.equals(keyProvider)) {
-      boolean allowCiphertrustKms = confGetter.getGlobalConf(GlobalConfKeys.kmsAllowCiphertrust);
-      if (!allowCiphertrustKms) {
-        throw new PlatformServiceException(
-            BAD_REQUEST,
-            String.format(
-                "Ciphertrust KMS is not allowed. Please enable the runtime flag '%s' first.",
-                GlobalConfKeys.kmsAllowCiphertrust.getKey()));
-      }
+  public void checkRuntimeFlag(KeyProvider keyProvider) {
+    switch (keyProvider) {
+      case CIPHERTRUST:
+        if (!confGetter.getGlobalConf(GlobalConfKeys.kmsAllowCiphertrust)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "Ciphertrust KMS is not allowed. Please enable the runtime flag '%s' first.",
+                  GlobalConfKeys.kmsAllowCiphertrust.getKey()));
+        }
+        break;
+      case OCI:
+        if (!confGetter.getGlobalConf(GlobalConfKeys.kmsAllowOCI)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              String.format(
+                  "OCI KMS is not allowed. Please enable the runtime flag '%s' first.",
+                  GlobalConfKeys.kmsAllowOCI.getKey()));
+        }
+        break;
+      default:
+        break;
     }
   }
 
@@ -515,31 +572,17 @@ public class EncryptionAtRestController extends AuthenticatedController {
         String.format(
             "Creating KMS configuration for customer %s with %s",
             customerUUID.toString(), keyProvider));
-    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Customer.getOrBadRequest(customerUUID);
     try {
-      checkCipherTrustRuntimeFlag(Enum.valueOf(KeyProvider.class, keyProvider));
-      TaskType taskType = TaskType.CreateKMSConfig;
+      checkRuntimeFlag(Enum.valueOf(KeyProvider.class, keyProvider));
       ObjectNode formData = (ObjectNode) request.body().asJson();
       // checks if a already KMS Config exists with the requested name
       checkIfKMSConfigExists(customerUUID, formData);
       // Validating the KMS Provider config details.
       validateKMSProviderConfigFormData(formData, keyProvider, customerUUID);
-      KMSConfigTaskParams taskParams = new KMSConfigTaskParams();
-      taskParams.kmsProvider = Enum.valueOf(KeyProvider.class, keyProvider);
-      taskParams.providerConfig = formData;
-      taskParams.customerUUID = customerUUID;
-      taskParams.kmsConfigName = formData.get("name").asText();
-      formData.remove("name");
-      UUID taskUUID = commissioner.submit(taskType, taskParams);
-      LOG.info("Submitted create KMS config for {}, task uuid = {}.", customerUUID, taskUUID);
-      // Add this task uuid to the user universe.
-      CustomerTask.create(
-          customer,
-          customerUUID,
-          taskUUID,
-          CustomerTask.TargetType.KMSConfiguration,
-          CustomerTask.TaskType.Create,
-          taskParams.getName());
+      UUID taskUUID =
+          kmsConfigHelper.createKMSConfig(
+              customerUUID, Enum.valueOf(KeyProvider.class, keyProvider), formData);
       LOG.info(
           "Saved task uuid " + taskUUID + " in customer tasks table for customer: " + customerUUID);
 
@@ -572,7 +615,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
         String.format(
             "Editing KMS configuration %s for customer %s",
             configUUID.toString(), customerUUID.toString()));
-    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Customer.getOrBadRequest(customerUUID);
     KmsConfig config = KmsConfig.get(configUUID);
     if (config == null) {
       String errMsg =
@@ -582,9 +625,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
               + customerUUID;
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
-    checkCipherTrustRuntimeFlag(config.getKeyProvider());
+    checkRuntimeFlag(config.getKeyProvider());
     try {
-      TaskType taskType = TaskType.EditKMSConfig;
       ObjectNode formData = (ObjectNode) request.body().asJson();
       // Check for non-editable fields.
       checkEditableFields(formData, config.getKeyProvider(), configUUID);
@@ -592,23 +634,9 @@ public class EncryptionAtRestController extends AuthenticatedController {
       formData = addNonEditableFieldsData(formData, configUUID, config.getKeyProvider());
       // Validating the KMS Provider config details.
       validateKMSProviderConfigFormData(formData, config.getKeyProvider().toString(), customerUUID);
-      KMSConfigTaskParams taskParams = new KMSConfigTaskParams();
-      taskParams.configUUID = configUUID;
-      taskParams.kmsProvider = config.getKeyProvider();
-      taskParams.providerConfig = formData;
-      taskParams.kmsConfigName = config.getName();
-      taskParams.customerUUID = customerUUID;
-      formData.remove("name");
-      UUID taskUUID = commissioner.submit(taskType, taskParams);
-      LOG.info("Submitted Edit KMS config for {}, task uuid = {}.", customerUUID, taskUUID);
-      // Add this task uuid to the user universe.
-      CustomerTask.create(
-          customer,
-          customerUUID,
-          taskUUID,
-          CustomerTask.TargetType.KMSConfiguration,
-          CustomerTask.TaskType.Update,
-          taskParams.getName());
+      UUID taskUUID =
+          kmsConfigHelper.editKMSConfig(
+              customerUUID, configUUID, config.getKeyProvider(), config.getName(), formData);
       LOG.info(
           "Saved task uuid " + taskUUID + " in customer tasks table for customer: " + customerUUID);
       auditService()
@@ -639,7 +667,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
     LOG.info(String.format("Retrieving KMS configuration %s", configUUID.toString()));
     Customer.getOrBadRequest(customerUUID);
     KmsConfig config = KmsConfig.getOrBadRequest(customerUUID, configUUID);
-    checkCipherTrustRuntimeFlag(config.getKeyProvider());
+    checkRuntimeFlag(config.getKeyProvider());
     ObjectNode kmsConfig =
         keyManager.getServiceInstance(config.getKeyProvider().name()).getAuthConfig(configUUID);
     if (kmsConfig == null) {
@@ -707,26 +735,12 @@ public class EncryptionAtRestController extends AuthenticatedController {
         String.format(
             "Deleting KMS configuration %s for customer %s",
             configUUID.toString(), customerUUID.toString()));
-    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Customer.getOrBadRequest(customerUUID);
     try {
       KmsConfig config = KmsConfig.getOrBadRequest(customerUUID, configUUID);
-      checkCipherTrustRuntimeFlag(config.getKeyProvider());
-      TaskType taskType = TaskType.DeleteKMSConfig;
-      KMSConfigTaskParams taskParams = new KMSConfigTaskParams();
-      taskParams.kmsProvider = config.getKeyProvider();
-      taskParams.customerUUID = customerUUID;
-      taskParams.configUUID = configUUID;
-      UUID taskUUID = commissioner.submit(taskType, taskParams);
-      LOG.info("Submitted delete KMS config for {}, task uuid = {}.", customerUUID, taskUUID);
-
-      // Add this task uuid to the user universe.
-      CustomerTask.create(
-          customer,
-          customerUUID,
-          taskUUID,
-          CustomerTask.TargetType.KMSConfiguration,
-          CustomerTask.TaskType.Delete,
-          taskParams.getName());
+      checkRuntimeFlag(config.getKeyProvider());
+      UUID taskUUID =
+          kmsConfigHelper.deleteKMSConfig(customerUUID, configUUID, config.getKeyProvider());
       LOG.info(
           "Saved task uuid " + taskUUID + " in customer tasks table for customer: " + customerUUID);
       auditService()
@@ -765,7 +779,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
         customerUUID.toString());
     Customer.getOrBadRequest(customerUUID);
     KmsConfig kmsConfig = KmsConfig.getOrBadRequest(customerUUID, configUUID);
-    checkCipherTrustRuntimeFlag(kmsConfig.getKeyProvider());
+    checkRuntimeFlag(kmsConfig.getKeyProvider());
     keyManager.getServiceInstance(kmsConfig.getKeyProvider().name()).refreshKms(configUUID);
     auditService()
         .createAuditEntryWithReqBody(

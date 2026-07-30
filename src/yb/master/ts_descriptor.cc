@@ -50,6 +50,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/status_format.h"
 
+DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_uint32(master_ts_ysql_catalog_lease_ms);
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 
@@ -68,10 +69,10 @@ std::string PersistentTServerInfo::placement_uuid() const {
 
 TSDescriptor::TSDescriptor(const std::string& permanent_uuid,
                            RegisteredThroughHeartbeat registered_through_heartbeat,
-                           CloudInfoPB&& local_cloud_info,
+                           CloudInfoPB&& local_master_cloud_info,
                            rpc::ProxyCache* proxy_cache)
   : permanent_uuid_(permanent_uuid),
-    local_cloud_info_(std::move(local_cloud_info)),
+    local_master_cloud_info_(std::move(local_master_cloud_info)),
     proxy_cache_(proxy_cache),
     last_heartbeat_(MonoTime::NowIf(registered_through_heartbeat)),
     registered_through_heartbeat_(registered_through_heartbeat),
@@ -85,11 +86,11 @@ TSDescriptor::TSDescriptor(const std::string& permanent_uuid,
 Result<std::pair<TSDescriptorPtr, TSDescriptor::WriteLock>> TSDescriptor::CreateNew(
     const NodeInstancePB& instance,
     const TSRegistrationPB& registration,
-    CloudInfoPB&& local_cloud_info,
+    CloudInfoPB&& local_master_cloud_info,
     rpc::ProxyCache* proxy_cache,
     RegisteredThroughHeartbeat registered_through_heartbeat) {
   auto desc = std::make_shared<TSDescriptor>(
-      instance.permanent_uuid(), registered_through_heartbeat, std::move(local_cloud_info),
+      instance.permanent_uuid(), registered_through_heartbeat, std::move(local_master_cloud_info),
       proxy_cache);
   auto lock = VERIFY_RESULT(desc->UpdateRegistration(
       instance, registration, registered_through_heartbeat));
@@ -137,8 +138,11 @@ Result<TSDescriptor::WriteLock> TSDescriptor::UpdateRegistration(
 
   std::lock_guard spinlock(mutex_);
   // After re-registering, make the TS re-report its tablets.
-  has_tablet_report_ = false;
+  set_has_tablet_report_unlocked(false);
   l.mutable_data()->pb.set_instance_seqno(instance.instance_seqno());
+  if (instance.has_start_time_us()) {
+    l.mutable_data()->pb.set_start_time_us(instance.start_time_us());
+  }
   *l.mutable_data()->pb.mutable_registration() = registration.common();
   *l.mutable_data()->pb.mutable_resources() = registration.resources();
   if (registration.has_version_info()) {
@@ -152,6 +156,9 @@ Result<TSDescriptor::WriteLock> TSDescriptor::UpdateRegistration(
   latest_report_seqno_ = std::numeric_limits<int32_t>::min();
   placement_id_ = generate_placement_id(registration.common().cloud_info());
   proxies_.reset();
+  // Once a tserver is marked as faulty it remains that way until it reregisters here.
+  // If it is still faulty, then it will be marked again as part of UpdateFromHeartbeat afterwards.
+  has_faulty_drive_ = false;
   return std::move(l);
 }
 
@@ -217,6 +224,11 @@ int64_t TSDescriptor::latest_seqno() const {
   return LockForRead()->pb.instance_seqno();
 }
 
+uint64_t TSDescriptor::start_time_us() const {
+  auto l = LockForRead();
+  return l->pb.has_start_time_us() ? l->pb.start_time_us() : 0;
+}
+
 int32_t TSDescriptor::latest_report_seqno() const {
     SharedLock<decltype(mutex_)> l(mutex_);
     return latest_report_seqno_;
@@ -229,11 +241,15 @@ bool TSDescriptor::has_tablet_report() const {
 
 void TSDescriptor::set_has_tablet_report(bool has_report) {
   std::lock_guard l(mutex_);
-  has_tablet_report_ = has_report;
-  receiving_full_report_seq_no_ = 0;
+  set_has_tablet_report_unlocked(has_report);
 }
 
-int32_t TSDescriptor::receiving_full_report_seq_no() const {
+void TSDescriptor::set_has_tablet_report_unlocked(bool has_report) {
+  has_tablet_report_ = has_report;
+  receiving_full_report_seq_no_.reset();
+}
+
+std::optional<int32_t> TSDescriptor::receiving_full_report_seq_no() const {
   SharedLock lock(mutex_);
   return receiving_full_report_seq_no_;
 }
@@ -332,7 +348,7 @@ Result<HostPort> TSDescriptor::GetHostPort() const {
 
 Result<HostPort> TSDescriptor::GetHostPortUnlocked() const {
   auto l = LockForRead();
-  const auto& addr = DesiredHostPort(l->pb.registration(), local_cloud_info_);
+  const auto& addr = DesiredHostPort(l->pb.registration(), local_master_cloud_info_);
   if (addr.host().empty()) {
     return STATUS_FORMAT(NetworkError, "Unable to find the TS address for $0: $1",
                          permanent_uuid(), l->pb.registration().ShortDebugString());
@@ -381,8 +397,11 @@ void TSDescriptor::UpdateMetrics(const TServerMetricsPB& metrics) {
   ts_metrics_.uptime_seconds = metrics.uptime_seconds();
   ts_metrics_.path_metrics.clear();
   for (const auto& path_metric : metrics.path_metrics()) {
-    ts_metrics_.path_metrics[path_metric.path_id()] =
-        { path_metric.used_space(), path_metric.total_space() };
+    ts_metrics_.path_metrics[path_metric.path_id()] = {
+        path_metric.used_space(),
+        path_metric.total_space(),
+        path_metric.has_storage_tier() ? path_metric.storage_tier() : std::string(),
+    };
   }
   ts_metrics_.disable_tablet_split_if_default_ttl = metrics.disable_tablet_split_if_default_ttl();
 }
@@ -402,6 +421,9 @@ void TSDescriptor::GetMetrics(TServerMetricsPB* metrics) {
     new_path_metric->set_path_id(path_metric.first);
     new_path_metric->set_used_space(path_metric.second.used_space);
     new_path_metric->set_total_space(path_metric.second.total_space);
+    if (!path_metric.second.storage_tier.empty()) {
+      new_path_metric->set_storage_tier(path_metric.second.storage_tier);
+    }
   }
   metrics->set_disable_tablet_split_if_default_ttl(ts_metrics_.disable_tablet_split_if_default_ttl);
 }
@@ -476,7 +498,7 @@ bool TSDescriptor::IsLiveAndHasReported() const {
 
 bool TSDescriptor::HasYsqlCatalogLease() const {
   return TimeSinceHeartbeat().ToMilliseconds() <
-         GetAtomicFlag(&FLAGS_master_ts_ysql_catalog_lease_ms) && !IsReplaced();
+         FLAGS_master_ts_ysql_catalog_lease_ms && !IsReplaced();
 }
 
 std::string TSDescriptor::ToString() const {
@@ -495,11 +517,20 @@ bool TSDescriptor::IsReadOnlyTS(const ReplicationInfoPB& replication_info) const
 
 std::optional<TSDescriptor::WriteLock> TSDescriptor::MaybeUpdateLiveness(MonoTime time) {
   auto proto_lock = LockForWrite();
-  SharedLock<decltype(mutex_)> transient_lock(mutex_);
+  std::lock_guard<decltype(mutex_)> transient_lock(mutex_);
   if (proto_lock->pb.state() == SysTabletServerEntryPB::LIVE && last_heartbeat_ &&
       time.GetDeltaSince(last_heartbeat_).ToMilliseconds() >
-          GetAtomicFlag(&FLAGS_tserver_unresponsive_timeout_ms)) {
+          FLAGS_tserver_unresponsive_timeout_ms) {
     proto_lock.mutable_data()->pb.set_state(SysTabletServerEntryPB::UNRESPONSIVE);
+    // Force a full tablet report on recovery.
+    set_has_tablet_report_unlocked(false);
+    const auto& addr = DesiredHostPort(proto_lock->pb.registration(), local_master_cloud_info_);
+    LOG(WARNING) << "Marking tserver " << permanent_uuid()
+                 << " (" << addr.host() << ":" << addr.port() << ")"
+                 << " as UNRESPONSIVE: no heartbeat received for "
+                 << time.GetDeltaSince(last_heartbeat_).ToMilliseconds() << "ms"
+                 << " (threshold: " << FLAGS_tserver_unresponsive_timeout_ms
+                 << "ms)";
     return std::move(proto_lock);
   }
   return std::nullopt;

@@ -109,6 +109,10 @@ class CodeGenerator : public google::protobuf::compiler::CodeGenerator {
     return true;
   }
 
+  uint64_t GetSupportedFeatures() const override {
+    return FEATURE_PROTO3_OPTIONAL;
+  }
+
  private:
   template <class Generator, class... Args>
   void Generate(

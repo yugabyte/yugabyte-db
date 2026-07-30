@@ -57,13 +57,12 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
 (1 row)
 
 \d documentdb_data.documents_5000
-                      Table "documentdb_data.documents_5000"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_5000"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_5000" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_5001" documentdb_rum (document bson_rum_single_path_ops (path='a.b', iswildcard='true', tl='2699'))
@@ -83,7 +82,7 @@ set local documentdb.forceUseIndexIfAvailable to on;
 -- now explain queries
 -- filter on a.b - should select indexsel_path_a_b
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "a.b": { "$gte" : 1 }}';
-                                                            QUERY PLAN                                                            
+                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -97,7 +96,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "a.b.c.d": { "$gte" : 1 }}';
-                                                              QUERY PLAN                                                              
+                                                                   QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -112,7 +111,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 
 -- does not match a_b (sequential scan)
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "a.bar": { "$gte" : 1 }}';
-                                                        QUERY PLAN                                                        
+                                                             QUERY PLAN                                                             
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -127,7 +126,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (10 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "a": { "$gte" : 1 }}';
-                                                      QUERY PLAN                                                      
+                                                           QUERY PLAN                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -143,7 +142,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 
 -- path root at is not exactly 'a' - matches excl_1.
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "abc": { "$gte" : 1 }}';
-                                                            QUERY PLAN                                                            
+                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -158,7 +157,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 
 -- filter on b.c - should select indexsel_path_b_c
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "b.c": { "$gte" : 1 }}';
-                                                            QUERY PLAN                                                            
+                                                                 QUERY PLAN                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -173,7 +172,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 
 -- not a wildcard - does not match.
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "b.car": { "$gte" : 1 }}';
-                                                        QUERY PLAN                                                        
+                                                             QUERY PLAN                                                             
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -188,7 +187,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (10 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "b.c.d": { "$gte" : 1 }}';
-                                                        QUERY PLAN                                                        
+                                                             QUERY PLAN                                                             
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -203,7 +202,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (10 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "b": { "$gte" : 1 }}';
-                                                      QUERY PLAN                                                      
+                                                           QUERY PLAN                                                           
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -219,7 +218,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 
 -- wildcard matches a projection
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "d.e.f.g": { "$gte" : 1 }}';
-                                                              QUERY PLAN                                                              
+                                                                   QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -233,7 +232,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "g.1": { "$gte" : 1 }}';
-                                                       QUERY PLAN                                                       
+                                                            QUERY PLAN                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -249,7 +248,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 
 -- any other root paths or nested paths match the wildcard projection index.
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "e": { "$gte" : 1 }}';
-                                                           QUERY PLAN                                                           
+                                                                QUERY PLAN                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -263,7 +262,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "k.l.m": { "$gte" : 1 }}';
-                                                             QUERY PLAN                                                             
+                                                                  QUERY PLAN                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -277,7 +276,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "graph": { "$gte" : 1 }}';
-                                                             QUERY PLAN                                                             
+                                                                  QUERY PLAN                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -292,7 +291,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 
 -- on the overlapping indexes, last path wins.
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "r.s.t": { "$gte" : 1 }}';
-                                                             QUERY PLAN                                                             
+                                                                  QUERY PLAN                                                                  
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -306,7 +305,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (9 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "r.s.u.1": { "$gte" : 1 }}';
-                                                              QUERY PLAN                                                              
+                                                                   QUERY PLAN                                                                   
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -321,7 +320,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 
 -- intersect two indexes
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "$and": [ { "a.b.c.d": { "$gte" : 1 } }, { "b.c": 2 } ]}';
-                                                                                                               QUERY PLAN                                                                                                               
+                                                                                                                         QUERY PLAN                                                                                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -338,7 +337,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (12 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "$or": [ { "a.b.c.d": { "$gte" : 1 } }, { "b.c": 2 } ]}';
-                                                                                                              QUERY PLAN                                                                                                               
+                                                                                                                        QUERY PLAN                                                                                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -355,7 +354,7 @@ EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('d
 (12 rows)
 
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db', 'indexselection') WHERE document @@ '{ "randomPath": 1 }';
-                                                               QUERY PLAN                                                               
+                                                                    QUERY PLAN                                                                    
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1

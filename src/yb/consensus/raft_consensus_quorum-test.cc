@@ -116,7 +116,7 @@ class RaftConsensusQuorumTest : public YBTest {
   // All of the peers start as followers.
   void BuildInitialRaftConfigPB(int num) {
     config_ = BuildRaftConfigPBForTests(num);
-    config_.set_opid_index(kInvalidOpIdIndex);
+    config_.set_committed_op_index(kInvalidOpIdIndex);
     peers_.reset(new TestPeerMapManager(config_));
   }
 
@@ -198,7 +198,7 @@ class RaftConsensusQuorumTest : public YBTest {
           parent_mem_trackers_[i],
           "");
       retryable_requests.SetServerClock(clock_);
-      retryable_requests.SetRequestTimeout(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
+      retryable_requests.SetRequestTimeout(FLAGS_retryable_request_timeout_secs);
 
       shared_ptr<RaftConsensus> peer(new RaftConsensus(
           options_,

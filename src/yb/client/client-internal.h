@@ -32,8 +32,10 @@
 #pragma once
 
 #include <functional>
+#include <mutex>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -209,6 +211,7 @@ class YBClient::Data {
                        const YBTableName& table_name,
                        const TableId& table_id,
                        CoarseTimePoint deadline,
+                       std::optional<TransactionMetadata> requester_transaction,
                        bool wait = true);
   Status IsBackfillIndexInProgress(YBClient* client,
                                    const TableId& table_id,
@@ -373,6 +376,10 @@ class YBClient::Data {
   void ReleaseObjectLocksGlobalAsync(
       YBClient* client, master::ReleaseObjectLocksGlobalRequestPB request, CoarseTimePoint deadline,
       StdStatusCallback callback);
+
+  void WaitForLockersMultipleGlobalAsync(
+      YBClient* client, master::WaitForLockersMultipleGlobalRequestPB request,
+      CoarseTimePoint deadline, StdStatusCallback callback);
 
   void GetTableLocations(
       YBClient* client, const TableId& table_id, int32_t max_tablets,
@@ -623,6 +630,12 @@ class YBClient::Data {
 
   bool use_threadpool_for_callbacks_;
   std::unique_ptr<ThreadPool> threadpool_;
+  // Per-DB-OID token cache for per-task cgroup switching on callback submissions.
+  // Declared after threadpool_ so tokens are destroyed before the pool.
+  std::function<Cgroup*(uint64_t)> callback_cgroup_provider_;
+  std::mutex per_tag_tokens_mutex_;
+  std::unordered_map<uint64_t, std::unique_ptr<ThreadPoolToken>> per_tag_tokens_
+      GUARDED_BY(per_tag_tokens_mutex_);
 
   server::ClockPtr clock_;
   const ClientId id_;

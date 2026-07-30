@@ -14,6 +14,9 @@
 
 #include <limits>
 
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+
 namespace yb {
 
 AggregateStats::AggregateStats():

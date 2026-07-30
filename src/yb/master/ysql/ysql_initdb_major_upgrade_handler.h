@@ -14,10 +14,11 @@
 #pragma once
 
 #include "yb/master/master_admin.pb.h"
-#include "yb/util/status_fwd.h"
 
 #include "yb/master/master_fwd.h"
+#include "yb/util/status.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 
 namespace yb {
 
@@ -90,6 +91,11 @@ class YsqlInitDBAndMajorUpgradeHandler {
   Status RunOperationAsync(std::function<void()> func);
 
   void RunNewClusterGlobalInitDB(const LeaderEpoch& epoch);
+
+  // Test-only: spin until at least FLAGS_TEST_master_min_live_tservers_before_initdb tablet servers
+  // register, or until a 60s deadline elapses. Short-circuits when the flag is <= 0 so production
+  // is unaffected. See the .cc for the rationale and #31029.
+  void WaitForTServersBeforeInitDb();
 
   void RunMajorVersionUpgrade(const LeaderEpoch& epoch);
 

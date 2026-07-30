@@ -1,5 +1,6 @@
 export * from './AccessKeysField/AccessKeysField';
 export * from './ARNField/ARNField';
+export * from './AZOverridesField/AZOverridesField';
 export * from './AssignPublicIPField/AssignPublicIPField';
 export * from './AutoPlacementField/AutoPlacementField';
 export * from './ClientToNodeTLSField/ClientToNodeTLSField';
@@ -17,6 +18,7 @@ export * from './K8VolumeInfoField/K8VolumeInfoField';
 export * from './IPV6Field/IPV6Field';
 export * from './KMSConfigField/KMSConfigField';
 export * from './MasterPlacementField/MasterPlacementField';
+export * from './MultiTenancyField/MultiTenancyField';
 export * from './NetworkAccessField/NetworkAccessField';
 export * from './NodeToNodeTLSField/NodeToNodeTLSField';
 export * from './PGCompatibilityField/PGCompatibilityField';

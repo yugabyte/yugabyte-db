@@ -96,8 +96,6 @@ Status GetChangesForCDCSDK(
     std::optional<uint64> getchanges_resp_max_size_bytes = std::nullopt,
     CDCThroughputMetrics* throughput_metrics = nullptr);
 
-bool IsReplicationSlotStream(const StreamMetadata& stream_metadata);
-
 Status GetChangesForXCluster(const XClusterGetChangesContext& context);
 }  // namespace cdc
 }  // namespace yb

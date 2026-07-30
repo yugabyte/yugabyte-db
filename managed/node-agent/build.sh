@@ -9,8 +9,7 @@ export GO111MODULE=on
 readonly protoc_version=33.0
 readonly package_name='node-agent'
 readonly default_platforms=("linux/amd64" "linux/arm64")
-readonly skip_dirs=("third-party" "proto" "generated" "build" "resources" "ybops" "target" \
-                    "pywheels")
+readonly skip_dirs=("third-party" "proto" "generated" "build" "resources" "ybops" "target")
 
 readonly base_dir=$(dirname "$0")
 pushd "$base_dir"
@@ -142,38 +141,6 @@ prepare() {
     generate_golang_grpc_files
 }
 
-build_ynp_python() {
-    pushd "$project_dir"
-    WHEEL_DIR="./pywheels"
-    mkdir -p "$WHEEL_DIR"
-    # Read requirements.txt and download packages
-    while IFS= read -r pkg || [ -n "$pkg" ]; do
-        echo "Downloading $pkg..."
-        # Special handling for setuptools - download as wheel
-        if [[ "$pkg" == setuptools* || "$pkg" == wheel* ]]; then
-            echo "Downloading setuptools as wheel (no build dependencies)..."
-            python3 -m pip download "$pkg" --only-binary=:all: --dest "$WHEEL_DIR"
-        else
-            echo "Downloading $pkg as source distribution..."
-            python3 -m pip download "$pkg" --no-binary=:all: --dest "$WHEEL_DIR"
-        fi
-    done < ynp_requirements.txt
-
-    while IFS= read -r pkg || [ -n "$pkg" ]; do
-        echo "Downloading $pkg..."
-
-        # Special handling for setuptools - download as wheel
-        if [[ "$pkg" == setuptools* || "$pkg" == wheel* ]]; then
-            echo "Downloading setuptools as wheel (no build dependencies)..."
-            python3 -m pip download "$pkg" --only-binary=:all: --dest "$WHEEL_DIR"
-        else
-            echo "Downloading $pkg as source distribution..."
-            python3 -m pip download "$pkg" --no-binary=:all: --dest "$WHEEL_DIR"
-        fi
-    done < ynp_requirements_3.6.txt
-    popd
-}
-
 build_ynp_go() {
     local exec_name=$(get_ynp_executable_name "$os" "$arch")
     local executable="$build_output_dir/$exec_name"
@@ -191,7 +158,6 @@ build_ynp_go() {
 build_for_platform() {
     local os=$1
     local arch=$2
-    build_ynp_python
     build_ynp_go
     local exec_name=$(get_node_agent_executable_name "$os" "$arch")
     local executable="$build_output_dir/$exec_name"
@@ -238,27 +204,57 @@ format() {
     popd
 }
 
+run_test() {
+    local dir=$1
+    pushd "$project_dir"
+    echo "Running tests in ${dir}..."
+    set +e
+    go clean -testcache
+    mkdir -p "target/test-reports/${dir}"
+    local json_file="target/test-reports/${dir}/tmp_results.json"
+    local xml_file="target/test-reports/${dir}/node_agent_test_results.xml"
+    go test -json -short --tags testonly ./"$dir"/... > "$json_file"
+    if [ -s "$json_file" ]; then
+        go-junit-report -parser gojson -set-exit-code -iocopy -out "$xml_file" < "$json_file"
+    fi
+    status=$?
+    set -e
+    popd
+    return $status
+}
+
 run_tests() {
+    local testone_path="${1-}"
     # Run all tests if one fails.
     local failed_tests=()
+    go install github.com/jstemmer/go-junit-report/v2@v2.1.0
     pushd "$project_dir"
-    for dir in */ ; do
-        # Remove trailing slash.
-        dir=$(echo "${dir}" | sed 's/\/$//')
-        if [[ "${skip_dirs[@]}" =~ "${dir}" ]]; then
-            echo "Skipping directory ${dir}"
-            continue
-        fi
-        echo "Running tests in ${dir}..."
-        set +e
-        go clean -testcache && go test -short --tags testonly -v ./"$dir"/...
-        status=$?
-        if [ $status -ne 0 ]; then
-            echo "Tests failed for $dir"
-            failed_tests+=("$dir")
-        fi
-        set -e
-    done
+    mkdir -p target/test-reports
+    if [ -n "$testone_path" ]; then
+        # E.g testone app/task/module.
+        local test_files=$(find "${testone_path}" -name '*_test.go')
+        for test_file in $test_files; do
+            local test_dir=$(dirname "$test_file")
+            run_test "$test_dir"
+        done
+    else
+        for dir in */ ; do
+            # Remove trailing slash.
+            dir=$(echo "${dir}" | sed 's/\/$//')
+            if [[ "${skip_dirs[@]}" =~ "${dir}" ]]; then
+                echo "Skipping directory ${dir}"
+                continue
+            fi
+            if [ -n "$testone_path" ] && [ "$dir" != "$testone_path" ]; then
+                echo "Skipping directory ${dir} for testone"
+                continue
+            fi
+            run_test "$dir"
+            if [ $? -ne 0 ]; then
+                failed_tests+=("$dir")
+            fi
+        done
+    fi
     popd
     if [ ${#failed_tests[@]} -ne 0 ]; then
         echo "Failed tests: ${failed_tests[*]}"
@@ -294,7 +290,6 @@ package_for_platform() {
     cp -Lf ../version_metadata.json "${version_dir}"/version_metadata.json
     pushd "$project_dir/resources"
     cp -rf templates/* "$templates_dir/"
-    cp -rf ../pywheels "${script_dir}"/pywheels
     cp -rf preflight_check.sh "${script_dir}"/preflight_check.sh
     cp -rf node-agent-installer.sh "${bin_dir}"/node-agent-installer.sh
     cp -rf ynp "${script_dir}"/ynp
@@ -302,9 +297,8 @@ package_for_platform() {
     cp -rf earlyoom-installer.sh "${script_dir}"/earlyoom-installer.sh
     cp -rf configure_earlyoom_service.sh "${script_dir}"/configure_earlyoom_service.sh
     cp -rf node-agent-provision.yaml "${script_dir}"/node-agent-provision.yaml
-    cp -rf ../ynp_requirements.txt "${script_dir}"/ynp_requirements.txt
-    cp -rf ../ynp_requirements_3.6.txt "${script_dir}"/ynp_requirements_3.6.txt
     cp -rf templates/server/* "${script_dir}"/ynp/modules/provision/systemd/templates/
+    cp -rf templates/server/* "${script_dir}"/ynp/modules/provision/rootsystemd/templates/
     chmod 755 "${script_dir}"/*.sh
     chmod 755 "${bin_dir}"/*.sh
     popd
@@ -337,17 +331,19 @@ prepare=false
 build=false
 clean=false
 test=false
+testone=false
 package=false
 version=0
 update_dependencies=false
 build_pymodule=false
+testone_path=""
 
 
 show_help() {
     cat >&2 <<-EOT
 
 Usage:
-./build.sh <fmt|prepare|build|clean|test|package <version>|update-dependencies|build-pymodule>
+./build.sh <fmt|prepare|build|clean|test|testone <package>|package <version>|update-dependencies|build-pymodule>
 EOT
 exit 1
 }
@@ -371,6 +367,13 @@ while [[ $# -gt 0 ]]; do
       ;;
     test)
       test=true
+      ;;
+    testone)
+      testone=true
+      shift
+      if [[ $# -gt 0 ]]; then
+        testone_path=$1
+      fi
       ;;
     package)
       package=true
@@ -449,6 +452,17 @@ if [ "$test" == "true" ]; then
     echo "Running tests..."
     prepare
     run_tests
+fi
+
+if [ "$testone" == "true" ]; then
+    if [ -z "$testone_path"  ]; then
+        echo "Test path is not specified for testone"
+        exit 1
+    fi
+    help_needed=false
+    echo "Running test for ${testone_path}..."
+    prepare
+    run_tests "$testone_path"
 fi
 
 if [ "$package" == "true" ]; then

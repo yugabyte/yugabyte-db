@@ -1,0 +1,126 @@
+-- Test recursive DML and nested execution contexts on newly created tables.
+-- These tests ensure that storage operations (including deletions and truncations)
+-- behave correctly when both the data and the logic are uncommitted.
+-- 1. UPDATE inside a function during a SELECT
+-- Verifies "Read-Your-Own-Writes" consistency in a nested context.
+BEGIN;
+CREATE TABLE recursive_update_test (
+    id INT PRIMARY KEY,
+    val INT,
+    status TEXT DEFAULT 'original'
+);
+CREATE OR REPLACE FUNCTION update_and_return(row_id INT)
+RETURNS INT AS $$
+BEGIN
+    UPDATE recursive_update_test
+    SET val = val + 10,
+        status = 'modified_by_fn'
+    WHERE id = row_id;
+
+    RETURN row_id;
+END;
+$$ LANGUAGE plpgsql;
+INSERT INTO recursive_update_test VALUES (1, 100), (2, 200);
+-- Parent scan and nested update both targeting the same tablets.
+SELECT id, val, update_and_return(id) FROM recursive_update_test ORDER BY id;
+ id | val | update_and_return 
+----+-----+-------------------
+  1 | 100 |                 1
+  2 | 200 |                 2
+(2 rows)
+
+-- Verify modifications are visible.
+SELECT * FROM recursive_update_test ORDER BY id;
+ id | val |     status     
+----+-----+----------------
+  1 | 110 | modified_by_fn
+  2 | 210 | modified_by_fn
+(2 rows)
+
+ROLLBACK;
+-- 2. INSERT inside a function during a SELECT
+-- Verifies table growth handling during an active scan.
+BEGIN;
+CREATE TABLE recursive_insert_test (id INT PRIMARY KEY);
+CREATE OR REPLACE FUNCTION insert_another(current_id INT)
+RETURNS INT AS $$
+BEGIN
+    IF current_id < 10 THEN
+        INSERT INTO recursive_insert_test VALUES (current_id + 10);
+    END IF;
+    RETURN current_id;
+END;
+$$ LANGUAGE plpgsql;
+INSERT INTO recursive_insert_test VALUES (1);
+-- Standard visibility usually prevents the current scan from seeing the new row.
+SELECT id, insert_another(id) FROM recursive_insert_test;
+ id | insert_another 
+----+----------------
+  1 |              1
+(1 row)
+
+-- Verify the row was indeed added.
+SELECT * FROM recursive_insert_test ORDER BY id;
+ id 
+----
+  1
+ 11
+(2 rows)
+
+ROLLBACK;
+-- 3. DELETE inside a function during a SELECT
+-- Verifies that tombstones written to uncommitted tables are correctly handled.
+BEGIN;
+CREATE TABLE recursive_delete_test (
+    id INT PRIMARY KEY,
+    val TEXT
+);
+CREATE OR REPLACE FUNCTION delete_next_row(current_id INT)
+RETURNS TEXT AS $$
+BEGIN
+    -- Delete the "next" row in the sequence.
+    DELETE FROM recursive_delete_test WHERE id = current_id + 1;
+    RETURN 'processed ' || current_id;
+END;
+$$ LANGUAGE plpgsql;
+INSERT INTO recursive_delete_test VALUES (1, 'keep'), (2, 'delete me'), (3, 'keep');
+-- When processing row 1, the function deletes row 2.
+SELECT id, delete_next_row(id) FROM recursive_delete_test ORDER BY id;
+ id | delete_next_row 
+----+-----------------
+  1 | processed 1
+  2 | processed 2
+  3 | processed 3
+(3 rows)
+
+-- Verify row 2 is gone.
+SELECT * FROM recursive_delete_test ORDER BY id;
+ id | val  
+----+------
+  1 | keep
+(1 row)
+
+ROLLBACK;
+-- 4. TRUNCATE inside a function
+-- High-stress test: clearing storage mid-scan.
+BEGIN;
+CREATE TABLE truncate_recursive_test (id INT PRIMARY KEY);
+INSERT INTO truncate_recursive_test SELECT generate_series(1, 10);
+CREATE OR REPLACE FUNCTION nuke_table(input_id INT)
+RETURNS INT AS $$
+BEGIN
+    -- Only truncate on the first iteration.
+    IF input_id = 1 THEN
+        TRUNCATE truncate_recursive_test;
+    END IF;
+    RETURN input_id;
+END;
+$$ LANGUAGE plpgsql;
+-- The scan is mid-flight when the table is truncated.
+SELECT id, nuke_table(id) FROM truncate_recursive_test ORDER BY id;
+ERROR:  cannot TRUNCATE "truncate_recursive_test" because it is being used by active queries in this session
+CONTEXT:  SQL statement "TRUNCATE truncate_recursive_test"
+PL/pgSQL function nuke_table(integer) line 5 at SQL statement
+SELECT COUNT(*) FROM truncate_recursive_test;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ROLLBACK;

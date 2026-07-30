@@ -56,16 +56,20 @@ void YBRocksDBLogger::LogvWithContext(const char* file,
     print(buffer_size);
   }
 
-  google::LogMessage(file, line, YBRocksDBLogger::ConvertToGLogLevel(log_level)).stream()
-      << prefix_ << buffer;
+  google::LogMessage log_message(file, line, YBRocksDBLogger::ConvertToGLogLevel(log_level));
+  if (log_level == InfoLogLevel::DETAIL_LEVEL) {
+    log_message.stream() << YB_DETAIL_LOG_PREFIX;
+  }
+  log_message.stream() << prefix_ << buffer;
 }
 
 int YBRocksDBLogger::ConvertToGLogLevel(const rocksdb::InfoLogLevel rocksdb_log_level) {
   switch (rocksdb_log_level) {
     case InfoLogLevel::DEBUG_LEVEL:
+    case InfoLogLevel::DETAIL_LEVEL:
     case InfoLogLevel::INFO_LEVEL:
     case InfoLogLevel::HEADER_LEVEL:
-      // GLOG doesn't have separate levels for DEBUG or HEADER. Default those to INFO also.
+      // GLOG doesn't have separate levels for DEBUG, DETAIL, or HEADER. Default those to INFO also.
       return google::GLOG_INFO;
     case InfoLogLevel::WARN_LEVEL:
       return google::GLOG_WARNING;

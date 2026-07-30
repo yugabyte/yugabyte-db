@@ -915,9 +915,10 @@ starting permutation: s1_begin s2_rc s2_del_no_action_col s1_ins s2_commit s1_co
 step s1_begin: BEGIN;
 step s2_rc: BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
 step s2_del_no_action_col: DELETE FROM pk_rel WHERE v_no_action='g';
-step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g');
-ERROR:  could not serialize access due to concurrent update (yb_max_query_layer_retries set to 0 are exhausted)
+step s1_ins: INSERT INTO fk_rel VALUES (1, 'g', 'g', 'g'); <waiting ...>
 step s2_commit: COMMIT;
+step s1_ins: <... completed>
+ERROR:  could not serialize access due to concurrent update (yb_max_query_layer_retries set to 0 are exhausted)
 step s1_commit: COMMIT;
 step s2_read_fk_rel: SELECT * FROM fk_rel;
 h|v_no_action|v_restrict|v_cascade

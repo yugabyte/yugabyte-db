@@ -147,7 +147,7 @@ void YBTableTestBase::SetUp() {
         .ts_rocksdb_env = ts_rocksdb_env_ ? ts_rocksdb_env_.get() : nullptr
     };
     LOG(INFO) << "opts: " << opts.ts_env;
-    SetAtomicFlag(enable_ysql(), &FLAGS_enable_ysql);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_ysql) = enable_ysql();
 
     mini_cluster_.reset(new MiniCluster(opts));
     BeforeStartCluster();
@@ -262,7 +262,7 @@ shared_ptr<YBSession> YBTableTestBase::NewSession() {
 }
 
 Status YBTableTestBase::PutKeyValue(YBSession* session, const string& key, const string& value) {
-  auto insert = table_.NewInsertOp();
+  auto insert = table_.NewInsertOp(session->arena());
   QLAddStringHashValue(insert->mutable_request(), key);
   table_.AddStringColumnValue(insert->mutable_request(), "v", value);
   return session->TEST_ApplyAndFlush(insert);

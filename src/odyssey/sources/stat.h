@@ -161,7 +161,7 @@ static inline void od_stat_update_of(od_atomic_u64_t *prev,
 {
 	/* todo: this could be made more optimal */
 	/* prev <= current */
-	__atomic_store(prev, current, __ATOMIC_SEQ_CST);
+	__atomic_store((uint64_t *)prev, (uint64_t *)current, __ATOMIC_SEQ_CST);
 }
 
 static inline void od_stat_update(od_stat_t *dst, od_stat_t *stat)

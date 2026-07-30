@@ -44,11 +44,13 @@ type ReplicatedMigrationState struct {
 type Config struct {
 	Hostname       string `json:"hostname"`
 	SelfSignedCert bool   `json:"self_signed_cert"`
+	AsRoot         bool   `json:"as_root"`
 }
 
 type Services struct {
-	PerfAdvisor bool `json:"yb-perf-advisor"`
-	Platform    bool `json:"yb-platform"`
+	PerfAdvisor  bool `json:"yb-perf-advisor"`
+	Platform     bool `json:"yb-platform"`
+	NodeExporter bool `json:"node-exporter"`
 }
 
 func New() *State {
@@ -68,6 +70,7 @@ func New() *State {
 		CurrentStatus: UninstalledStatus,
 		Config: Config{
 			SelfSignedCert: false, // Default to false
+			AsRoot:         common.HasSudoAccess(),
 		},
 		// Initialize to false, inistall will set it to true
 		Services: Services{

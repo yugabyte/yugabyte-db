@@ -583,6 +583,6 @@ SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "
 
 /* nagetive tests */
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "tests", "pipeline": [ { "$group": { "_id": "$group", "stdDev": { "$stdDevPop": ["$num"] } } } ] }');
-ERROR:  The $stdDevPop accumulator is a unary operator
+ERROR:  The $stdDevPop accumulator functions as a single-operand operator
 SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "tests", "pipeline": [ { "$group": { "_id": "$group", "stdDev": { "$stdDevSamp": ["$num"] } } } ] }');
-ERROR:  The $stdDevSamp accumulator is a unary operator
+ERROR:  The $stdDevSamp accumulator functions as a single-operand operator

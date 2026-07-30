@@ -13,9 +13,14 @@
 
 #pragma once
 
+#include <mutex>
+
+#include "yb/gutil/thread_annotations.h"
+
 #include "yb/master/leader_epoch.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/server/monitored_task.h"
+#include "yb/util/status.h"
 #include "yb/util/status_callback.h"
 
 namespace yb {

@@ -31,25 +31,29 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/xcluster/add_index_to_bidirectional_xcluster_target_task.h"
 #include "yb/master/xcluster/add_table_to_xcluster_target_task.h"
+#include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/xcluster/handle_new_schema_for_automatic_xcluster_target_task.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_bootstrap_helper.h"
+#include "yb/master/xcluster/xcluster_failover_task.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/master/xcluster/xcluster_status.h"
 #include "yb/master/xcluster/xcluster_universe_replication_alter_helper.h"
 #include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
-#include "yb/master/xcluster_consumer_registry_service.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 using namespace std::placeholders;
 
@@ -122,12 +126,19 @@ void XClusterTargetManager::SysCatalogLoaded() {
   // Refresh the Consumer registry.
   auto cluster_config = catalog_manager_.ClusterConfig();
   if (cluster_config) {
-    auto l = cluster_config->LockForRead();
-    if (l->pb.has_consumer_registry()) {
-      auto& producer_map = l->pb.consumer_registry().producer_map();
+    auto cluster_config_lock = cluster_config->LockForRead();
+    if (cluster_config_lock->pb.has_consumer_registry()) {
+      auto& producer_map = cluster_config_lock->pb.consumer_registry().producer_map();
       for (const auto& [replication_group_id, _] : producer_map) {
         SyncReplicationStatusMap(xcluster::ReplicationGroupId(replication_group_id), producer_map);
       }
+    }
+  }
+
+  for (const auto& universe : catalog_manager_.GetAllUniverseReplications()) {
+    auto repl_info_lock = universe->LockForRead();
+    if (repl_info_lock->pb.failover_in_progress()) {
+      stale_failover_replication_groups_.push_back(universe->ReplicationGroupId());
     }
   }
 
@@ -152,6 +163,78 @@ void XClusterTargetManager::CreateXClusterSafeTimeTableAndStartService() {
       "Creation of XClusterSafeTime table failed");
 
   safe_time_service_->ScheduleTaskIfNeeded();
+}
+
+Status XClusterTargetManager::XClusterFailover(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const LeaderEpoch& epoch,
+    ThreadPool* background_tasks_thread_pool) {
+  auto replication_info = catalog_manager_.GetUniverseReplication(replication_group_id);
+  SCHECK(
+      replication_info, NotFound,
+      Format("Replication group $0 not found", replication_group_id.ToString()));
+
+  SCHECK(
+      replication_info->IsAutomaticDdlMode(),
+      InvalidArgument,
+      Format("Replication group $0 is not an xCluster target in automatic mode",
+             replication_group_id));
+
+  SCHECK(
+      background_tasks_thread_pool, IllegalState, "Background task pool unavailable");
+
+  auto* xcluster_manager = catalog_manager_.GetXClusterManagerImpl();
+  SCHECK(
+      xcluster_manager, IllegalState,
+      "XClusterManager unavailable while scheduling failover snapshot cleanup");
+
+  std::vector<NamespaceId> replication_group_namespaces;
+  {
+    auto repl_info_lock = replication_info->LockForWrite();
+
+    SCHECK_EC_FORMAT(
+        !repl_info_lock->pb.failover_in_progress(),
+        AlreadyPresent,
+        MasterError(MasterErrorPB::OBJECT_ALREADY_PRESENT),
+        "A failover operation is already in progress for replication group $0",
+        replication_group_id);
+
+    for (const auto& namespace_info :
+         repl_info_lock->pb.db_scoped_info().namespace_infos()) {
+      SCHECK(
+          !namespace_info.consumer_namespace_id().empty(), IllegalState,
+          Format("Replication group $0 contains a namespace entry without a consumer namespace id",
+                 replication_group_id));
+      replication_group_namespaces.push_back(namespace_info.consumer_namespace_id());
+    }
+
+    SCHECK(
+        !replication_group_namespaces.empty(), IllegalState,
+        Format("Replication group $0 has no namespaces to snapshot", replication_group_id));
+
+    repl_info_lock.mutable_data()->pb.set_failover_in_progress(true);
+    repl_info_lock.mutable_data()->pb.clear_last_failover_completion_status();
+    RETURN_NOT_OK_PREPEND(
+        sys_catalog_.Upsert(epoch, replication_info.get()),
+        "Persisting failover in-progress state");
+    repl_info_lock.Commit();
+  }
+
+  auto completion_callback = [replication_group_id](const Status& status) {
+    if (!status.ok()) {
+      LOG(WARNING) << "xCluster failover task for replication group " << replication_group_id
+                   << " failed: " << status;
+    }
+  };
+
+  auto failover_task = std::make_shared<XClusterFailoverTask>(
+      &master_, *background_tasks_thread_pool, *master_.messenger(),
+      *xcluster_manager, *this, replication_group_id, std::move(replication_group_namespaces),
+      epoch, completion_callback);
+
+  failover_task->Start();
+
+  return Status::OK();
 }
 
 Status XClusterTargetManager::GetXClusterSafeTime(
@@ -347,6 +430,10 @@ void XClusterTargetManager::RunBgTasks(const LeaderEpoch& epoch) {
       "Failed to remove dropped tables from consumer replication groups");
 
   WARN_NOT_OK(RefreshLocalAutoFlagConfig(epoch), "Failed refreshing local AutoFlags config");
+
+  WARN_NOT_OK(
+      CleanupStaleFailovers(epoch),
+      "Failed to clean up stale in-progress failovers");
 }
 
 Status XClusterTargetManager::RemoveDroppedTablesFromReplication(const LeaderEpoch& epoch) {
@@ -370,6 +457,35 @@ Status XClusterTargetManager::RemoveDroppedTablesFromReplication(const LeaderEpo
   RETURN_NOT_OK(RemoveDroppedTablesOnConsumer(tables_to_remove, epoch));
 
   removed_deleted_tables_from_replication_ = true;
+  return Status::OK();
+}
+
+Status XClusterTargetManager::CleanupStaleFailovers(const LeaderEpoch& epoch) {
+  if (stale_failover_replication_groups_.empty()) {
+    return Status::OK();
+  }
+
+  for (const auto& replication_group_id : stale_failover_replication_groups_) {
+    auto universe = catalog_manager_.GetUniverseReplication(replication_group_id);
+    if (!universe) {
+      continue;
+    }
+    auto repl_info_lock = universe->LockForWrite();
+    if (!repl_info_lock->pb.failover_in_progress()) {
+      continue;
+    }
+    LOG(WARNING) << "Detected stale in-progress failover for replication group "
+                 << replication_group_id
+                 << " after master leader change; marking as failed.";
+    repl_info_lock.mutable_data()->pb.set_failover_in_progress(false);
+    StatusToPB(
+        STATUS(Aborted, "Master leader changed during failover operation"),
+        repl_info_lock.mutable_data()->pb.mutable_last_failover_completion_status());
+    RETURN_NOT_OK(sys_catalog_.Upsert(epoch, universe.get()));
+    repl_info_lock.Commit();
+  }
+
+  stale_failover_replication_groups_.clear();
   return Status::OK();
 }
 
@@ -1617,6 +1733,14 @@ Status XClusterTargetManager::ProcessCreateTableReq(
   if (colocation_id == kColocationIdNotSet) {
     return Status::OK();
   }
+
+  // Vector index: skip UpdateColocatedTableWithHistoricalSchemaPackings. Colocated tables need
+  // old heap packings when rows replicate in before CREATE lands on the consumer. The index is
+  // filled by backfill, not that path.
+  if (req.has_index_info() && req.index_info().has_vector_idx_options()) {
+    return Status::OK();
+  }
+
   SCHECK(
       !IsColocationParentTableId(req.table_id()), InvalidArgument,
       "Received unexpected parent colocation table id: $0", req.table_id());

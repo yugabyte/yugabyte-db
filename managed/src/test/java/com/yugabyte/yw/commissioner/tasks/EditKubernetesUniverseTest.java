@@ -37,6 +37,7 @@ import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
@@ -50,7 +51,6 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -58,6 +58,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
+import io.fabric8.kubernetes.api.model.storage.StorageClass;
 import io.fabric8.kubernetes.client.utils.Serialization;
 import java.io.File;
 import java.io.FileInputStream;
@@ -78,6 +79,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.yaml.snakeyaml.Yaml;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.IsServerReadyResponse;
@@ -132,9 +134,13 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     } catch (Exception e) {
     }
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
+    // WaitForServer(YSQLSERVER) calls ysqlQueryExecutor.executeQueryInNodeShell; stub success.
+    when(mockYsqlQueryExecutor.executeQueryInNodeShell(
+            any(), any(), any(), anyBoolean(), anyBoolean()))
+        .thenReturn(Json.newObject());
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
-    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "true");
+    factory.globalRuntimeConf().setValue("yb.checks.leaderless_tablets.enabled", "true");
     when(mockClient.getLeaderMasterHostAndPort())
         .thenReturn(HostAndPort.fromParts("1.2.3.0", 1234));
   }
@@ -158,7 +164,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         getTestUserIntent(r, kubernetesProvider, i, 3);
     userIntent.replicationFactor = 1;
-    userIntent.dedicatedNodes = true;
+    ApiUtils.configureDedicatedMasterFields(userIntent);
     userIntent.masterGFlags = new HashMap<>();
     userIntent.tserverGFlags = new HashMap<>();
     userIntent.universeName = "demo-universe";
@@ -298,12 +304,6 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
-          TaskType.WaitForServerReady,
-          TaskType.CheckFollowerLag,
-          TaskType.CheckUnderReplicatedTablets,
-          TaskType.CheckNodesAreSafeToTakeDown,
-          TaskType.KubernetesCommandExecutor,
-          TaskType.KubernetesWaitForPod,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.CheckFollowerLag,
@@ -311,6 +311,15 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
           TaskType.CheckNodesAreSafeToTakeDown,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
+          TaskType.WaitForServer,
+          TaskType.WaitForServer,
+          TaskType.WaitForServerReady,
+          TaskType.CheckFollowerLag,
+          TaskType.CheckUnderReplicatedTablets,
+          TaskType.CheckNodesAreSafeToTakeDown,
+          TaskType.KubernetesCommandExecutor,
+          TaskType.KubernetesWaitForPod,
+          TaskType.WaitForServer,
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.CheckFollowerLag,
@@ -335,15 +344,18 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
-        Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
-        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
         Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of()),
+        Json.toJson(ImmutableMap.of("commandType", HELM_UPGRADE.name())),
+        Json.toJson(ImmutableMap.of("commandType", WAIT_FOR_POD.name())),
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -404,11 +416,23 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     }
   }
 
+  // Reads the "partition" map from the helm override file that was passed to helmUpgrade(...).
+  @SuppressWarnings("unchecked")
+  private Map<String, Object> readPartitionOverrides(String overrideFilePath) {
+    try (InputStream is = new FileInputStream(new File(overrideFilePath))) {
+      Map<String, Object> overrides = new Yaml().loadAs(is, Map.class);
+      return (Map<String, Object>) overrides.get("partition");
+    } catch (IOException e) {
+      throw new RuntimeException("Could not read helm override file: " + overrideFilePath, e);
+    }
+  }
+
   @Test
   public void testAddNode() {
     setupUniverseSingleAZ(/* Create Masters */ true);
-    RuntimeConfigEntry.upsert(
-        defaultUniverse, "yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
@@ -485,6 +509,13 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertEquals(NODE_PREFIX, expectedNamespace.getValue());
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
 
+    // Tserver scale-up (master count unchanged) is a non-rolling operation: it must not set
+    // partition to 0, otherwise a prior non-restart template change would roll all existing
+    // master/tserver pods at once. Partition must protect the existing pods.
+    Map<String, Object> partition = readPartitionOverrides(expectedOverrideFile.getValue());
+    assertEquals(1, partition.get("master"));
+    assertEquals(3, partition.get("tserver"));
+
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -495,8 +526,9 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testRemoveNode() {
     setupUniverseSingleAZ(/* Create Masters */ true);
-    RuntimeConfigEntry.upsert(
-        defaultUniverse, "yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
@@ -561,6 +593,13 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     assertEquals(NODE_PREFIX, expectedNamespace.getValue());
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
 
+    // Tserver scale-down (keepDeployment) is a non-rolling operation: it must not set partition
+    // to 0, otherwise a prior non-restart template change would roll all surviving master/tserver
+    // pods at once. Partition must equal the post-scale-down pod counts.
+    Map<String, Object> partition = readPartitionOverrides(expectedOverrideFile.getValue());
+    assertEquals(1, partition.get("master"));
+    assertEquals(2, partition.get("tserver"));
+
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -574,8 +613,9 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testChangeInstanceType() {
     setupUniverseSingleAZ(/* Create Masters */ true);
-    RuntimeConfigEntry.upsert(
-        defaultUniverse, "yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNamespace = ArgumentCaptor.forClass(String.class);
@@ -659,8 +699,9 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   //   @Test
   public void testEditKubernetesUniverseRetry() {
     setupUniverseSingleAZ(/* Create Masters */ true);
-    RuntimeConfigEntry.upsert(
-        defaultUniverse, "yb.checks.node_disk_size.target_usage_percentage", "0");
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue("yb.checks.node_disk_size.target_usage_percentage", "0");
     String podsString =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
             + "\"podIP\": \"1.2.3.1\"}, \"spec\": {\"hostname\": \"yb-master-0\"},"
@@ -780,10 +821,11 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testShrinkUniverseDiskCheckTaskFails() {
     setupUniverseMultiAZ(true, 6);
-    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
-    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
-    RuntimeConfigEntry.upsert(
-        defaultUniverse, "yb.checks.node_disk_size.target_usage_percentage", "100");
+    factory.globalRuntimeConf().setValue("yb.checks.leaderless_tablets.enabled", "false");
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue("yb.checks.node_disk_size.target_usage_percentage", "100");
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = -1;
@@ -816,10 +858,11 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testShrinkUniverseDiskCheckTaskSuccess() {
     setupUniverseMultiAZ(true, 6);
-    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
-    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
-    RuntimeConfigEntry.upsert(
-        defaultUniverse, "yb.checks.node_disk_size.target_usage_percentage", "100");
+    factory.globalRuntimeConf().setValue("yb.checks.leaderless_tablets.enabled", "false");
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue("yb.checks.node_disk_size.target_usage_percentage", "100");
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = -1;
@@ -888,10 +931,11 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   @Test
   public void testShrinkUniverseDiskCheckTaskFailsModifiedTargetUsage() {
     setupUniverseMultiAZ(true, 6);
-    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
-    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
-    RuntimeConfigEntry.upsert(
-        defaultUniverse, "yb.checks.node_disk_size.target_usage_percentage", "120");
+    factory.globalRuntimeConf().setValue("yb.checks.leaderless_tablets.enabled", "false");
+    factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
+    factory
+        .forUniverse(defaultUniverse)
+        .setValue("yb.checks.node_disk_size.target_usage_percentage", "120");
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = -1;
@@ -929,6 +973,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     userIntent.numNodes = 1;
     userIntent.replicationFactor = 1;
     userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+    userIntent.ybSoftwareVersion = "2.28.0.0";
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     userIntent.provider = kubernetesProvider.getUuid().toString();
     userIntent.providerType = Common.CloudType.kubernetes;
     userIntent.regionList =
@@ -958,7 +1004,83 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       expected = e;
     }
     assertNotNull(expected);
-    assertTrue(expected.getMessage().contains("Cannot decrease disk size in a Kubernetes cluster"));
+    assertTrue(
+        expected.getMessage().contains("Cannot perform full move in this Kubernetes cluster"));
+  }
+
+  @Test
+  public void testFullMoveNotSupportedFailsValidation() {
+    // Universe with old DB version that does not support full move
+    setupUniverseSingleAZ(/* setMasters */ true);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          u.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion = "2.28.0.0";
+        });
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = defaultUniverse.getVersion();
+    taskParams.nodePrefix = NODE_PREFIX;
+    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    Cluster primaryCluster = taskParams.getPrimaryCluster();
+    UniverseDefinitionTaskParams.UserIntent newUserIntent = primaryCluster.userIntent.clone();
+    // Change storage class to trigger full move (not just volume size change)
+    newUserIntent.deviceInfo.storageClass = "fast";
+    PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
+    taskParams.upsertPrimaryCluster(newUserIntent, null, pi);
+    taskParams.getPrimaryCluster().uuid = primaryCluster.uuid;
+
+    Exception expected = null;
+    try {
+      UUID taskUUID = commissioner.submit(TaskType.EditKubernetesUniverse, taskParams);
+      waitForTask(taskUUID);
+    } catch (Exception e) {
+      expected = e;
+    }
+    assertNotNull(expected);
+    assertTrue(
+        expected.getMessage().contains("Cannot perform full move in this Kubernetes cluster"));
+  }
+
+  @Test
+  public void testFullMoveSupportedPassesValidation() {
+    // Universe with DB version that supports full move - only volume size increase (no full move
+    // needed) to verify we don't block normal edits. validateParams runs synchronously in submit().
+    setupUniverseSingleAZ(/* setMasters */ true);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        u -> {
+          u.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion =
+              KubernetesUtil.MIN_VERSION_FULL_MOVE_SUPPORT_STABLE;
+        });
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = defaultUniverse.getVersion();
+    taskParams.nodePrefix = NODE_PREFIX;
+    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    Cluster primaryCluster = taskParams.getPrimaryCluster();
+    UniverseDefinitionTaskParams.UserIntent newUserIntent = primaryCluster.userIntent.clone();
+    // Only increase volume size - does not need full move
+    if (newUserIntent.deviceInfo.volumeSize != null) {
+      newUserIntent.deviceInfo.volumeSize = newUserIntent.deviceInfo.volumeSize + 10;
+    } else {
+      newUserIntent.deviceInfo.volumeSize = 100;
+      newUserIntent.deviceInfo.numVolumes = 1;
+    }
+    PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
+    taskParams.upsertPrimaryCluster(newUserIntent, null, pi);
+    taskParams.getPrimaryCluster().uuid = primaryCluster.uuid;
+    // submit() calls validateParams synchronously; should not throw for volume-only increase
+    UUID taskUUID = commissioner.submit(TaskType.EditKubernetesUniverse, taskParams);
+    assertNotNull(taskUUID);
   }
 
   private void mockMetrics(
@@ -972,5 +1094,67 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
     doReturn(sizeResponseList)
         .when(mockMetricQueryHelper)
         .queryDirect(contains(serverType.equals(ServerType.TSERVER) ? "yb-tserver" : "yb-master"));
+  }
+
+  private EditKubernetesUniverse createTaskWithParams(UniverseDefinitionTaskParams taskParams) {
+    EditKubernetesUniverse task =
+        new EditKubernetesUniverse(
+            mockBaseTaskDependencies,
+            mockKubernetesManagerFactory,
+            mockOperatorStatusUpdaterFactory,
+            mockYbcManager);
+    task.initialize(taskParams);
+    return task;
+  }
+
+  @Test
+  public void testValidateStorageClassesOnEditSuccess() {
+    setupUniverseSingleAZ(true);
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    UniverseDefinitionTaskParams.UserIntent newUserIntent =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    newUserIntent.deviceInfo.storageClass = "standard";
+    PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
+    taskParams.upsertPrimaryCluster(newUserIntent, null, pi);
+    taskParams.getPrimaryCluster().uuid =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
+
+    when(mockKubernetesManager.getStorageClass(any(), eq("standard")))
+        .thenReturn(mock(StorageClass.class));
+
+    EditKubernetesUniverse task = createTaskWithParams(taskParams);
+    task.validateStorageClassesOnEdit();
+  }
+
+  @Test
+  public void testValidateStorageClassesOnEditFailure() {
+    setupUniverseSingleAZ(true);
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.nodeDetailsSet = defaultUniverse.getUniverseDetails().nodeDetailsSet;
+    UniverseDefinitionTaskParams.UserIntent newUserIntent =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    newUserIntent.deviceInfo.storageClass = "nonexistent-sc";
+    PlacementInfo pi = defaultUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
+    taskParams.upsertPrimaryCluster(newUserIntent, null, pi);
+    taskParams.getPrimaryCluster().uuid =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
+
+    when(mockKubernetesManager.getStorageClass(any(), eq("nonexistent-sc")))
+        .thenThrow(new RuntimeException("storage class not found"));
+
+    EditKubernetesUniverse task = createTaskWithParams(taskParams);
+    Exception thrown = null;
+    try {
+      task.validateStorageClassesOnEdit();
+    } catch (RuntimeException e) {
+      thrown = e;
+    }
+    assertNotNull(thrown);
+    assertTrue(thrown.getMessage().contains("does not exist"));
+    assertTrue(thrown.getMessage().contains("nonexistent-sc"));
+    assertTrue(thrown.getMessage().contains("tserver"));
   }
 }

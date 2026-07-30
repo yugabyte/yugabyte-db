@@ -175,3 +175,8 @@ int64		VacuumPageDirty = 0;
 
 int			VacuumCostBalance = 0;	/* working state for vacuum */
 bool		VacuumCostActive = false;
+
+char        *YbSystemDbName = "yb_system";
+char        *PgYbNotificationsTableName = "pg_yb_notifications";
+char        *PgYbNotificationsPublicationName = "pg_yb_notifications_publication";
+char        *YbNotificationsSlotPrefix = "yb_notifications_";

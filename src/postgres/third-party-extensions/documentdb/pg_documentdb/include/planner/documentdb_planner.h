@@ -18,11 +18,13 @@
 #include <optimizer/planner.h>
 #include <optimizer/paths.h>
 #include <commands/explain.h>
+#include <optimizer/plancat.h>
 
 
 extern planner_hook_type ExtensionPreviousPlannerHook;
 extern set_rel_pathlist_hook_type ExtensionPreviousSetRelPathlistHook;
 extern explain_get_index_name_hook_type ExtensionPreviousIndexNameHook;
+extern get_relation_info_hook_type ExtensionPreviousGetRelationInfoHook;
 extern bool SimulateRecoveryState;
 extern bool DocumentDBPGReadOnlyForDiskFull;
 
@@ -32,9 +34,11 @@ PlannedStmt * DocumentDBApiPlanner(Query *parse, const char *queryString, int
 								   ParamListInfo boundParams);
 void ExtensionRelPathlistHook(PlannerInfo *root, RelOptInfo *rel, Index rti,
 							  RangeTblEntry *rte);
-bool IsMongoCollectionBasedRTE(RangeTblEntry *rte);
-bool IsResolvableMongoCollectionBasedRTE(RangeTblEntry *rte,
-										 ParamListInfo boundParams);
+void ExtensionGetRelationInfoHook(PlannerInfo *root, Oid relationObjectId,
+								  bool inhparent, RelOptInfo *rel);
+bool IsDocumentDbCollectionBasedRTE(RangeTblEntry *rte);
+bool IsResolvableDocumentDbCollectionBasedRTE(RangeTblEntry *rte,
+											  ParamListInfo boundParams);
 const char * ExtensionExplainGetIndexName(Oid indexId);
 Const * GetConstParamValue(Node *param, ParamListInfo boundParams);
 

@@ -41,7 +41,7 @@ Status Executor::PTExprToPBValidated(const PTExprPtr& expr,
 
 Status Executor::TimestampToPB(const PTDmlStmt *tnode, QLWriteRequestMsg *req) {
   if (tnode->user_timestamp_usec() != nullptr) {
-    QLExpressionPB timestamp_pb;
+    LWQLExpressionPB timestamp_pb(&req->arena());
     RETURN_NOT_OK(PTExprToPBValidated(tnode->user_timestamp_usec(), &timestamp_pb));
 
     // This should be ensured by checks before getting here.
@@ -60,7 +60,7 @@ Status Executor::TimestampToPB(const PTDmlStmt *tnode, QLWriteRequestMsg *req) {
 
 Status Executor::TtlToPB(const PTDmlStmt *tnode, QLWriteRequestMsg *req) {
   if (tnode->ttl_seconds() != nullptr) {
-    QLExpressionPB ttl_pb;
+    LWQLExpressionPB ttl_pb(&req->arena());
     RETURN_NOT_OK(PTExprToPBValidated(tnode->ttl_seconds(), &ttl_pb));
 
     // this should be ensured by checks before getting here

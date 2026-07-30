@@ -24,6 +24,7 @@
 
 #include "yb/util/hash_util.h"
 #include "yb/util/is_operation_done_result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 

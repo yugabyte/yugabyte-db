@@ -42,6 +42,7 @@
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/posix_logger.h"
 
+#include "yb/util/errno.h"
 #include "yb/util/file_system_posix.h"
 #include "yb/util/malloc.h"
 #include "yb/util/result.h"
@@ -299,7 +300,7 @@ Status PosixMmapFile::Close() {
   return s;
 }
 
-Status PosixMmapFile::Flush() { return Status::OK(); }
+Status PosixMmapFile::Flush(FlushMode mode) { return Status::OK(); }
 
 Status PosixMmapFile::Sync() {
   if (FLAGS_never_fsync) {
@@ -331,7 +332,7 @@ Status PosixMmapFile::Fsync() {
  * size that is returned from the filesystem because we use mmap
  * to extend file by map_size every time.
  */
-uint64_t PosixMmapFile::GetFileSize() {
+uint64_t PosixMmapFile::Size() const {
   size_t used = dst_ - base_;
   return file_offset_ + used;
 }

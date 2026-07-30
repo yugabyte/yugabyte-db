@@ -62,6 +62,10 @@ export const CertificateDetails = ({ certificate, visible, onHide }) => {
         certificate.type === 'CustomCertHostPath' && (
           <>
             <li>
+              <label>Root CA Certificate (on DB nodes)</label>
+              <div>{certificate.customCertInfo?.rootCertPath ?? '-'}</div>
+            </li>
+            <li>
               <label>Database Node Certificate Path</label>
               <div>{certificate.customCertInfo?.nodeCertPath ?? '-'}</div>
             </li>
@@ -94,31 +98,31 @@ export const CertificateDetails = ({ certificate, visible, onHide }) => {
       <>
         <li>
           <label>Config Name</label>
-          <div>{certificate.name}</div>
+          <div style={{ wordWrap: 'break-word' }}>{certificate.name}</div>
         </li>
         <li>
           <label>Certificate Start</label>
-          <div>{certStart}</div>
+          <div style={{ wordWrap: 'break-word' }}>{certStart}</div>
         </li>
         <li>
           <label>Certificate Expiration</label>
-          <div>{certExpiry}</div>
+          <div style={{ wordWrap: 'break-word' }}>{certExpiry}</div>
         </li>
         <li>
           <label>Vault Address</label>
-          <div>{vaultAddr}</div>
+          <div style={{ wordWrap: 'break-word' }}>{vaultAddr}</div>
         </li>
         <li>
           <label>Secret Token</label>
-          <div>{vaultToken}</div>
+          <div style={{ wordWrap: 'break-word' }}>{vaultToken}</div>
         </li>
         <li>
           <label>Secret Engine</label>
-          <div>{engine}</div>
+          <div style={{ wordWrap: 'break-word' }}>{engine}</div>
         </li>
         <li>
           <label>Mount Path</label>
-          <div>{mountPath}</div>
+          <div style={{ wordWrap: 'break-word' }}>{mountPath}</div>
         </li>
         <li>
           <label>Role</label>

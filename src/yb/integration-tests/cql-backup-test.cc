@@ -284,4 +284,30 @@ TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestFailedImportSnapshotKeep
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
+TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestBackupRestoreWithUniqueIndex)) {
+  cql("CREATE TABLE test_tbl (key INT PRIMARY KEY, value INT) "
+      "WITH TRANSACTIONS = {'enabled' : true}");
+  cql("CREATE UNIQUE INDEX test_idx ON test_tbl (value)");
+  cql("INSERT INTO test_tbl (key, value) VALUES (1, 100)");
+  ASSERT_EQ(1, getRowCount());
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir_, "--keyspace", kCqlTestKeyspace, "create"}));
+
+  cql("DROP TABLE test_tbl");
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir_, "--keyspace", kCqlTestKeyspace, "restore"}));
+
+  ASSERT_EQ(1, getRowCount());
+
+  // This INSERT exercises the unique index write path. Unique index writes enforce strict
+  // schema version checks, so this will fail with "schema version mismatch" if the index
+  // table's version was incorrectly bumped from 0 to 1 during ImportSnapshot.
+  cql("INSERT INTO test_tbl (key, value) VALUES (2, 200)");
+
+  ASSERT_EQ(2, getRowCount());
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
 }  // namespace yb

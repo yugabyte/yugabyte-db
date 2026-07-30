@@ -14,7 +14,6 @@ import org.yb.WireProtocol.ServerRegistrationPB;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.master.MasterClusterOuterClass.ListLiveTabletServersRequestPB;
 import org.yb.master.MasterClusterOuterClass.ListLiveTabletServersResponsePB;
-import org.yb.util.CommonUtil;
 import org.yb.util.Pair;
 import org.yb.util.TabletServerInfo;
 
@@ -59,10 +58,10 @@ public class ListLiveTabletServersRequest extends YRpc<ListLiveTabletServersResp
         CloudInfoPB cloudInfoPB = common.getCloudInfo();
         TabletServerInfo tserverInfo = new TabletServerInfo();
 
-        // tserverUuid() returns ByteString -> String not containing dashes.
-        UUID tserverUuid = CommonUtil.convertToUUID(instance.getPermanentUuid());
-        tserverInfo.setUuid(tserverUuid);
-
+        // Do not convert to UUID as permanent UUID is 32 bytes without dashes.
+        // Just keep as it is to avoid confusion and follow the same format as
+        // in other places where permanent UUID is used.
+        tserverInfo.setPermanentUuid(instance.getPermanentUuid().toStringUtf8());
         TabletServerInfo.CloudInfo cloudInfo = new TabletServerInfo.CloudInfo();
         cloudInfo.setCloud(cloudInfoPB.getPlacementCloud());
         cloudInfo.setRegion(cloudInfoPB.getPlacementRegion());

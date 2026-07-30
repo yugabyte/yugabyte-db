@@ -35,25 +35,25 @@
       }
       .universeStatusCell {
         display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
+        align-items: center;
+        gap: 4px;
 
         font-weight: 500;
 
         &.good {
-          color: colors.$YB_SUCCESS_COLOR;
+          color: #097345;
         }
         &.paused {
-          color: colors.$YB_WARNING_COLOR;
+          color: #6d7c88;
         }
         &.pending {
-          color: colors.$YB_PENDING_COLOR;
+          color: #1a44a5;
         }
         &.bad {
-          color: colors.$YB_FAIL_COLOR;
+          color: #da1515;
         }
         &.warning {
-          color: colors.$YB_WARNING_COLOR;
+          color: #c88900;
         }
         &.unknown {
           color: colors.$YB_PENDING_COLOR;

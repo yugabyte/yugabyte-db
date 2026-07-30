@@ -124,7 +124,7 @@ NOTICE:  creating collection
 
 -- no such index
 CALL documentdb_api.drop_indexes('db', '{"dropIndexes": "drop_by_key", "index": {"c.d": 1}}');
-ERROR:  can't find index with key: { "c.d" : 1 }
+ERROR:  Unable to locate index using the provided key: { "c.d" : 1 }
 -- cannot drop _id index
 CALL documentdb_api.drop_indexes('db', '{"dropIndexes": "drop_by_key", "index": {"_id": 1}}');
 ERROR:  cannot drop _id index
@@ -150,7 +150,7 @@ ORDER BY indexrelid;
 
 -- invalid key spec document but would just complain "no such index"
 CALL documentdb_api.drop_indexes('db', '{"dropIndexes": "drop_by_key", "index": {"$**.c.d": 1}}');
-ERROR:  can't find index with key: { "$**.c.d" : 1 }
+ERROR:  Unable to locate index using the provided key: { "$**.c.d" : 1 }
 -- only drops "idx_2"
 CALL documentdb_api.drop_indexes('db', '{"dropIndexes": "drop_by_key", "index": "*",
                                                                      "index": {"a": 1, "c.e": 1},
@@ -169,7 +169,7 @@ SELECT * FROM documentdb_distributed_test_helpers.get_collection_indexes('db', '
 
 -- incorrect ordering of the (compound) keys, so cannot match "idx_1"
 CALL documentdb_api.drop_indexes('db', '{"dropIndexes": "drop_by_key", "index": {"c.e": 1, "a": 1}}');
-ERROR:  can't find index with key: { "c.e" : 1, "a" : 1 }
+ERROR:  Unable to locate index using the provided key: { "c.e" : 1, "a" : 1 }
 -- now drop "idx_1" too, but specify collection name using "deleteIndexes"
 CALL documentdb_api.drop_indexes('db', '{"deleteIndexes": "drop_by_key", "index": {"a": 1, "c.e": 1}}');
                           retval                          

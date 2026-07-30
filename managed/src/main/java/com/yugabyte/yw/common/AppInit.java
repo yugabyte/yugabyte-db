@@ -14,17 +14,20 @@ import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.commissioner.AutoMasterFailoverScheduler;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.CallHome;
+import com.yugabyte.yw.commissioner.GcpCapacityReservationGC;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.NodeAgentEnabler;
 import com.yugabyte.yw.commissioner.NodeAgentPoller;
 import com.yugabyte.yw.commissioner.PerfAdvisorGarbageCollector;
 import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
+import com.yugabyte.yw.commissioner.RedactSecretsFromAudit;
 import com.yugabyte.yw.commissioner.RefreshKmsService;
 import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SlowQueriesAggregator;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
+import com.yugabyte.yw.commissioner.UniverseArchitectureBackfill;
 import com.yugabyte.yw.commissioner.UpdateProviderMetadata;
 import com.yugabyte.yw.commissioner.XClusterScheduler;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
@@ -42,6 +45,7 @@ import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
 import com.yugabyte.yw.common.operator.KubernetesOperator;
+import com.yugabyte.yw.common.pa.EmbeddedCollectorInitializer;
 import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.models.Customer;
@@ -107,8 +111,10 @@ public class AppInit {
       AutoMasterFailoverScheduler autoMasterFailoverScheduler,
       TaskGarbageCollector taskGC,
       SetUniverseKey setUniverseKey,
+      RedactSecretsFromAudit redactSecretsFromAudit,
       RefreshKmsService refreshKmsService,
       BackupGarbageCollector backupGC,
+      GcpCapacityReservationGC gcpCapacityReservationGC,
       PerfAdvisorScheduler perfAdvisorScheduler,
       PlatformReplicationManager replicationManager,
       AlertsGarbageCollector alertsGC,
@@ -139,12 +145,19 @@ public class AppInit {
       ReleasesUtils releasesUtils,
       JobScheduler jobScheduler,
       NodeAgentEnabler nodeAgentEnabler,
+      UniverseArchitectureBackfill universeArchitectureBackfill,
       RoleBindingUtil roleBindingUtil,
-      SlowQueriesAggregator slowQueriesAggregator)
+      SlowQueriesAggregator slowQueriesAggregator,
+      EmbeddedCollectorInitializer embeddedCollectorInitializer)
       throws ReflectiveOperationException {
     try {
       log.info("Yugaware Application has started");
       setYbaVersion(ConfigHelper.getCurrentVersion(environment));
+      String displayVersion = Util.getYbaVersion();
+      if (config.getBoolean(CommonUtils.FIPS_ENABLED)) {
+        displayVersion = displayVersion + " (FIPS)";
+      }
+      log.info("YBA version: {}", displayVersion);
       if (environment.isTest()) {
         String dbDriverKey = "db.default.driver";
         if (config.hasPath(dbDriverKey)) {
@@ -302,6 +315,9 @@ public class AppInit {
         perfRecGC.start();
 
         setUniverseKey.start();
+
+        // Start the background task to redact secrets from audit table.
+        redactSecretsFromAudit.start();
         // Refreshes all the KMS providers. Useful for renewing tokens, ttls, etc.
         refreshKmsService.start();
 
@@ -310,6 +326,9 @@ public class AppInit {
 
         // Cleanup orphan snapshots
         snapshotCleanup.start();
+
+        // Cleanup used GCP capacity reservations
+        gcpCapacityReservationGC.start();
 
         perfAdvisorScheduler.start();
 
@@ -341,6 +360,7 @@ public class AppInit {
 
         ybcUpgrade.start();
         nodeAgentEnabler.init();
+        universeArchitectureBackfill.start();
 
         prometheusConfigManager.updateK8sScrapeConfigs();
 
@@ -354,6 +374,8 @@ public class AppInit {
 
         // Add checksums for all certificates that don't have a checksum.
         CertificateHelper.createChecksums();
+
+        embeddedCollectorInitializer.start();
 
         long elapsed = (System.currentTimeMillis() - startupTime) / 1000;
         String elapsedStr = String.valueOf(elapsed);

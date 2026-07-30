@@ -59,7 +59,7 @@ set local documentdb.forceUseIndexIfAvailable to on;
 \i sql/bson_dollar_ops_basic_text_ops_tests_explain_core.sql
 /* validate explain */
 EXPLAIN (COSTS OFF) SELECT object_id, document FROM documentdb_api.collection('db','queryregexopstest') WHERE document @~ '{ "a.b": "^.+$" }';
-                                                   QUERY PLAN                                                    
+                                                        QUERY PLAN                                                         
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1

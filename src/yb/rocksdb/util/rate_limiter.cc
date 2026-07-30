@@ -33,6 +33,7 @@
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/status_format.h"
 
 using yb::IOPriority;
 
@@ -130,7 +131,8 @@ void GenericRateLimiter::RequestInternal(int64_t bytes, const yb::IOPriority pri
   assert(bytes <= refill_bytes_per_period_.load(std::memory_order_relaxed));
 
   const auto pri = std::to_underlying(priority);
-  SCOPED_WAIT_STATUS(RocksDB_RateLimiter);
+  SCOPED_WAIT_STATUS_FOR_QUERY_ID(
+      yb::ash::FixedQueryId::kQueryIdForXCluster, XCluster_RateLimiter, RocksDB_RateLimiter);
 
   MutexLock g(&request_mutex_);
   if (stop_) {

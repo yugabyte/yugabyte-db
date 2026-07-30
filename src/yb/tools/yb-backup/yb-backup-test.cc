@@ -93,20 +93,7 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLBackupWithEnum)) {
 }
 
 TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLPgBasedBackup)) {
-  DoTestYSQLRestoreBackup(std::nullopt /* db_catalog_version_mode */);
-  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
-}
-
-// TODO (#19975): Enable read committed isolation
-TEST_F(YBBackupTestWithReadCommittedDisabled,
-       YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToDBCatalogVersionMode)) {
-  DoTestYSQLRestoreBackup(true /* db_catalog_version_mode */);
-  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
-}
-
-TEST_F(YBBackupTest,
-       YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLRestoreBackupToGlobalCatalogVersionMode)) {
-  DoTestYSQLRestoreBackup(false /* db_catalog_version_mode */);
+  DoTestYSQLRestoreBackup();
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
@@ -1011,6 +998,110 @@ COUNT(*) FROM employees_hash_age_changes_25;
   SetDbName("db2");
   ASSERT_NO_FATALS(RunPsqlCommand(query, *result));
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+class YBBackupTestCboEnabled : public YBBackupTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    YBBackupTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--ysql_yb_enable_cbo=on");
+  }
+};
+
+TEST_F_EX(YBBackupTest,
+          YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLBackupRestoreStats),
+          YBBackupTestCboEnabled) {
+  const string kTableName = "stats_tbl";
+  const string restore_db = "backup_stats_restored_db";
+
+  auto cbo_value = ASSERT_RESULT(RunPsqlCommand("SHOW yb_enable_cbo"));
+  ASSERT_STR_CONTAINS(cbo_value, "on");
+
+  ASSERT_NO_FATALS(
+      CreateTable(Format("CREATE TABLE $0 (id INT PRIMARY KEY, value TEXT)",
+                         kTableName)));
+  ASSERT_NO_FATALS(CreateIndex(Format("CREATE INDEX ON $0 (value)", kTableName)));
+  ASSERT_NO_FATALS(InsertRows(
+      Format(
+          "INSERT INTO $0 (id, value) "
+          "SELECT i, md5(i::TEXT) FROM generate_series(1, 1000) AS i",
+          kTableName),
+      1000));
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("ANALYZE $0", kTableName), "ANALYZE"));
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      Format("SELECT relpages, reltuples, relallvisible "
+             "FROM pg_class WHERE oid = '$0'::regclass",
+             kTableName),
+      R"#(
+         relpages | reltuples | relallvisible
+        ----------+-----------+---------------
+                0 |      1000 |             0
+        (1 row)
+      )#"));
+
+  auto get_relation_stats = [this, kTableName]() {
+    return RunPsqlCommand(Format(
+        "SELECT relpages, reltuples, relallvisible FROM pg_class "
+        "WHERE oid = '$0'::regclass",
+        kTableName));
+  };
+
+  const auto initial_relation_stats = ASSERT_RESULT(get_relation_stats());
+  LOG(INFO) << "Relation stats before backup: " << initial_relation_stats;
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", Format("ysql.$0", restore_db), "restore"}));
+
+  SetDbName(restore_db);
+  cbo_value = ASSERT_RESULT(RunPsqlCommand("SHOW yb_enable_cbo"));
+  ASSERT_STR_CONTAINS(cbo_value, "on");
+  ASSERT_EQ(initial_relation_stats, ASSERT_RESULT(get_relation_stats()));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+class YBBackupTestShortHistoryRetention : public YBBackupTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    YBBackupTest::UpdateMiniClusterOptions(options);
+    // Make the restore's dropped-column deletion eligible for GC on the very next compaction.
+    options->extra_tserver_flags.push_back("--timestamp_history_retention_interval_sec=0");
+    options->extra_tserver_flags.push_back("--history_cutoff_propagation_interval_ms=1");
+  }
+};
+
+TEST_F(YBBackupTestShortHistoryRetention, TestDroppedMiddleColumnSurvivesCompaction) {
+  ASSERT_NO_FATALS(CreateTable("CREATE TABLE repro_tbl (a INT PRIMARY KEY, b INT, c INT)"));
+  ASSERT_NO_FATALS(RunPsqlCommand("ALTER TABLE repro_tbl DROP COLUMN b", "ALTER TABLE"));
+  ASSERT_NO_FATALS(RunPsqlCommand("TRUNCATE TABLE repro_tbl", "TRUNCATE TABLE"));
+
+  ASSERT_NO_FATALS(InsertRows(
+      "INSERT INTO repro_tbl (a, c) SELECT i, i * 1000 FROM generate_series(1, 100) i", 100));
+
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(
+      RunBackupCommand({"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+  DropPsqlDatabase("yugabyte");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "restore"}));
+
+  // The restored data is correct immediately after restore.
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT COUNT(*) FROM repro_tbl WHERE c = a * 1000", "100", /* tuples_only */ true));
+
+  // Flush + compact the restored table. Compaction drops every value under column c's DocDB id
+  // because that id is still in the tablet's del_columns.
+  const auto table_id = ASSERT_RESULT(GetTableId("repro_tbl", "post-restore", "yugabyte"));
+  ASSERT_OK(client_->FlushTables(
+      {table_id}, /* timeout */ MonoDelta::FromSeconds(60), /* add_indexes */ false));
+  ASSERT_OK(client_->CompactTables({table_id}));
+
+  ASSERT_NO_FATALS(RunPsqlCommand(
+      "SELECT COUNT(*) FROM repro_tbl WHERE c = a * 1000", "100", /* tuples_only */ true));
 }
 
 }  // namespace tools

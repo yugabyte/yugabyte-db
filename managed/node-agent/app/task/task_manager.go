@@ -320,6 +320,11 @@ func (m *TaskManager) Abort(ctx context.Context, taskID string) (string, error) 
 		return "", nil
 	}
 	tInfo := i.(*taskInfo)
+	tInfo.mutex.Lock()
+	defer tInfo.mutex.Unlock()
+	if tInfo.future == nil {
+		return "", fmt.Errorf("Invalid task %s for abort", taskID)
+	}
 	select {
 	case <-tInfo.future.Done():
 		// It is already cancelled.

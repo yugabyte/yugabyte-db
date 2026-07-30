@@ -72,110 +72,110 @@ SELECT * FROM bson_dollar_project('{}', '{"result": {"$isNumber": "$a"}}');
 
 -- $isNumber: error number of args should be 1
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$isNumber": []}}');
-ERROR:  Expression $isNumber takes exactly 1 arguments. 0 were passed in.
+ERROR:  The expression $isNumber requires exactly 1 arguments, but 0 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$isNumber": [1, 2]}}');
-ERROR:  Expression $isNumber takes exactly 1 arguments. 2 were passed in.
+ERROR:  The expression $isNumber requires exactly 1 arguments, but 2 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$isNumber": [[], 2]}}');
-ERROR:  Expression $isNumber takes exactly 1 arguments. 2 were passed in.
+ERROR:  The expression $isNumber requires exactly 1 arguments, but 2 arguments were actually provided.
 -- $type: returns expected type
-SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "1", "input": {"$numberDouble": "1.0"}, "expected": "double"}');
+SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "1", "value": {"$numberDouble": "1.0"}, "expected": "double"}');
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "2", "input": "string", "expected": "string"}');
+SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "2", "value": "string", "expected": "string"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "3", "input": {}, "expected": "object"}');
+SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "3", "value": {}, "expected": "object"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "4", "input": [], "expected": "array"}');
+SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "4", "value": [], "expected": "array"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "5", "input": {"$binary": { "base64": "bGlnaHQgdw==", "subType": "01"}}, "expected": "binData"}');
+SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "5", "value": {"$binary": { "base64": "bGlnaHQgdw==", "subType": "01"}}, "expected": "binData"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "6", "input": {"$oid" : "639926cee6bda3127f153bf1" }, "expected": "objectId"}');
+SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "6", "value": {"$oid" : "639926cee6bda3127f153bf1" }, "expected": "objectId"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "7", "input": true, "expected": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "7", "value": true, "expected": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "8", "input": {"$date": "2022-01-01T00:00:00.000Z"}, "expected": "date"}');
+SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "8", "value": {"$date": "2022-01-01T00:00:00.000Z"}, "expected": "date"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "9", "input": null, "expected": "null"}');
+SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "9", "value": null, "expected": "null"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "10", "input": { "$regex": "a.*b", "$options": "" }, "expected": "regex"}');
+SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "10", "value": { "$regex": "a.*b", "$options": "" }, "expected": "regex"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "11", "input": { "$code": "var a = 1;"}, "expected": "javascript"}');
+SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "11", "value": { "$code": "var a = 1;"}, "expected": "javascript"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "12", "input": 1, "expected": "int"}');
+SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "12", "value": 1, "expected": "int"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "13", "input": {"$timestamp" : { "t": 1670981326, "i": 1 }}, "expected": "timestamp"}');
+SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "13", "value": {"$timestamp" : { "t": 1670981326, "i": 1 }}, "expected": "timestamp"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "14", "input": {"$numberLong" : "1"}, "expected": "long"}');
+SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "14", "value": {"$numberLong" : "1"}, "expected": "long"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "15", "input": {"$numberDecimal" : "1"}, "expected": "decimal"}');
+SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "15", "value": {"$numberDecimal" : "1"}, "expected": "decimal"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "16", "input": {"$minKey" : 1}, "expected": "minKey"}');
+SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "16", "value": {"$minKey" : 1}, "expected": "minKey"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "17", "input": {"$maxKey" : 1}, "expected": "maxKey"}');
+SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "17", "value": {"$maxKey" : 1}, "expected": "maxKey"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
@@ -187,7 +187,7 @@ SELECT * from documentdb_api.insert_one('db', 'dollarType', '{"_id": "18", "expe
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT bson_dollar_project(document, '{"output": {"$type": "$input"}, "expected": 1}') FROM documentdb_api.collection('db', 'dollarType');
+SELECT bson_dollar_project(document, '{"output": {"$type": "$value"}, "expected": 1}') FROM documentdb_api.collection('db', 'dollarType');
                          bson_dollar_project                          
 ---------------------------------------------------------------------
  { "_id" : "1", "expected" : "double", "output" : "double" }
@@ -211,605 +211,1083 @@ SELECT bson_dollar_project(document, '{"output": {"$type": "$input"}, "expected"
 (18 rows)
 
 -- $convert: returns expected values
--- double input
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "1", "input": {"$numberDouble": "1.9"}, "expected": {"$numberDouble": "1.9"}, "target": "double"}');
+-- double value
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "1", "value": {"$numberDouble": "1.3"}, "expected": {"$numberDouble": "1.3"}, "convertTo": "double"}');
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "2", "input": {"$numberDouble": "1.9"}, "expected": "1.9", "target": "string"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "2", "value": {"$numberDouble": "1.3"}, "expected": "1.3", "convertTo": "string"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "3", "input": {"$numberDouble": "1.9"}, "expected": true, "target": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "3", "value": {"$numberDouble": "1.3"}, "expected": true, "convertTo": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "4", "input": {"$numberDouble": "0.0"}, "expected": false, "target": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "4", "value": {"$numberDouble": "0.0"}, "expected": false, "convertTo": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "5", "input": {"$numberDouble": "-0.1"}, "expected": true, "target": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "5", "value": {"$numberDouble": "-0.1"}, "expected": true, "convertTo": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "6", "input": {"$numberDouble": "1.9"}, "expected": {"$date": "1970-01-01T00:00:00.001Z"}, "target": "date"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "6", "value": {"$numberDouble": "1.3"}, "expected": {"$date": "1970-01-01T00:00:00.001Z"}, "convertTo": "date"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "7", "input": {"$numberDouble": "1.9"}, "expected": 1, "target": "int"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "7", "value": {"$numberDouble": "1.3"}, "expected": 1, "convertTo": "int"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "8", "input": {"$numberDouble": "1.9"}, "expected": {"$numberLong": "1"}, "target": "long"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "8", "value": {"$numberDouble": "1.3"}, "expected": {"$numberLong": "1"}, "convertTo": "long"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "9", "input": {"$numberDouble": "1.9"}, "expected": {"$numberDecimal": "1.9"}, "target": "decimal"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "9", "value": {"$numberDouble": "1.3"}, "expected": {"$numberDecimal": "1.3"}, "convertTo": "decimal"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
--- str input
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "10", "input": "myString", "expected": "myString", "target": "string"}');
+-- str value
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "10", "value": "myString", "expected": "myString", "convertTo": "string"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "11", "input": "1.9", "expected": {"$numberDouble": "1.9"}, "target": "double"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "11", "value": "1.3", "expected": {"$numberDouble": "1.3"}, "convertTo": "double"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "12", "input": "1E-2", "expected": {"$numberDouble": "0.01"}, "target": "double"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "12", "value": "1E-2", "expected": {"$numberDouble": "0.01"}, "convertTo": "double"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "13", "input": "13423423E-25", "expected": {"$numberDouble": "1.3423423e-18"}, "target": "double"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "13", "value": "13423423E-25", "expected": {"$numberDouble": "1.3423423e-18"}, "convertTo": "double"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "14", "input": "0000000.0000000", "expected": {"$numberDouble": "0.0"}, "target": "double"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "14", "value": "0000000.0000000", "expected": {"$numberDouble": "0.0"}, "convertTo": "double"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "15", "input": "1.9", "expected": {"$numberDecimal": "1.9"}, "target": "decimal"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "15", "value": "1.3", "expected": {"$numberDecimal": "1.3"}, "convertTo": "decimal"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "16", "input": "1E-2", "expected": {"$numberDecimal": "0.01"}, "target": "decimal"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "16", "value": "1E-2", "expected": {"$numberDecimal": "0.01"}, "convertTo": "decimal"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "17", "input": "-13423423E25", "expected": {"$numberDecimal": "-1.3423423E+32"}, "target": "decimal"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "17", "value": "-13423423E25", "expected": {"$numberDecimal": "-1.3423423E+32"}, "convertTo": "decimal"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "18", "input": "000000.000000", "expected": {"$numberDecimal": "0.000000"}, "target": "decimal"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "18", "value": "000000.000000", "expected": {"$numberDecimal": "0.000000"}, "convertTo": "decimal"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "19", "input": "-1232", "expected": {"$numberLong": "-1232"}, "target": "long"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "19", "value": "-1232", "expected": {"$numberLong": "-1232"}, "convertTo": "long"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "20", "input": "00053235", "expected": {"$numberLong": "53235"}, "target": "long"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "20", "value": "00053235", "expected": {"$numberLong": "53235"}, "convertTo": "long"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "21", "input": "00053235", "expected": 53235, "target": "int"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "21", "value": "00053235", "expected": 53235, "convertTo": "int"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "22", "input": "00000000000", "expected": 0, "target": "int"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "22", "value": "00000000000", "expected": 0, "convertTo": "int"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "23", "input": "0123456789abcdef01234567", "expected": {"$oid": "0123456789abcdef01234567"}, "target": "objectId"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "23", "value": "665a1c0f8a2b4f7cd317a2b4", "expected": {"$oid": "665a1c0f8a2b4f7cd317a2b4"}, "convertTo": "objectId"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "24", "input": "", "expected": true, "target": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "24", "value": "", "expected": true, "convertTo": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
--- objectId input
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "26", "input": {"$oid": "0123456789abcdef01234567"}, "expected": {"$oid": "0123456789abcdef01234567"}, "target": "objectId"}');
+-- objectId value
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "26", "value": {"$oid": "665a1c0f8a2b4f7cd317a2b4"}, "expected": {"$oid": "665a1c0f8a2b4f7cd317a2b4"}, "convertTo": "objectId"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "27", "input": {"$oid": "0123456789abcdef01234567"}, "expected": "0123456789abcdef01234567", "target": "string"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "27", "value": {"$oid": "665a1c0f8a2b4f7cd317a2b4"}, "expected": "665a1c0f8a2b4f7cd317a2b4", "convertTo": "string"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "28", "input": {"$oid": "0123456789abcdef01234567"}, "expected": true, "target": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "28", "value": {"$oid": "665a1c0f8a2b4f7cd317a2b4"}, "expected": true, "convertTo": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "29", "input": {"$oid": "0123456789abcdef01234567"}, "expected": {"$date": "1970-08-09T22:25:43Z"}, "target": "date"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "29", "value": {"$oid": "665a1c0f8a2b4f7cd317a2b4"}, "expected": {"$date": "2024-05-31T18:50:55.000Z"}, "convertTo": "date"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
--- bool input
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "30", "input": false, "expected": {"$numberDouble": "0"}, "target": "double"}');
+-- bool value
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "30", "value": false, "expected": {"$numberDouble": "0"}, "convertTo": "double"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "31", "input": true, "expected": {"$numberDouble": "1"}, "target": "double"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "31", "value": true, "expected": {"$numberDouble": "1"}, "convertTo": "double"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "32", "input": false, "expected": {"$numberDecimal": "0"}, "target": "decimal"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "32", "value": false, "expected": {"$numberDecimal": "0"}, "convertTo": "decimal"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "33", "input": true, "expected": {"$numberDecimal": "1"}, "target": "decimal"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "33", "value": true, "expected": {"$numberDecimal": "1"}, "convertTo": "decimal"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "34", "input": false, "expected": {"$numberLong": "0"}, "target": "long"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "34", "value": false, "expected": {"$numberLong": "0"}, "convertTo": "long"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "35", "input": true, "expected": {"$numberLong": "1"}, "target": "long"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "35", "value": true, "expected": {"$numberLong": "1"}, "convertTo": "long"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "36", "input": false, "expected": 0, "target": "int"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "36", "value": false, "expected": 0, "convertTo": "int"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "37", "input": true, "expected": 1, "target": "int"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "37", "value": true, "expected": 1, "convertTo": "int"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "38", "input": false, "expected": "false", "target": "string"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "38", "value": false, "expected": "false", "convertTo": "string"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "39", "input": true, "expected": "true", "target": "string"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "39", "value": true, "expected": "true", "convertTo": "string"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "40", "input": false, "expected": false, "target": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "40", "value": false, "expected": false, "convertTo": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "45", "input": true, "expected": true, "target": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "45", "value": true, "expected": true, "convertTo": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
--- date input
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "46", "input": {"$date": "1970-01-01T00:00:00.123Z"}, "expected": {"$date": "1970-01-01T00:00:00.123Z"}, "target": "date"}');
+-- date value
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "46", "value": {"$date": "2024-05-31T18:50:55.000Z"}, "expected": {"$date": "2024-05-31T18:50:55.000Z"}, "convertTo": "date"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "47", "input": {"$date": "1970-01-01T00:00:00.123Z"}, "expected": "1970-01-01T00:00:00.123Z", "target": "string"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "47", "value": {"$date": "2024-05-31T18:50:55.000Z"}, "expected": "2024-05-31T18:50:55.000Z", "convertTo": "string"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "48", "input": {"$date": "1970-01-01T00:00:00.123Z"}, "expected": true, "target": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "48", "value": {"$date": "2024-05-31T18:50:55.000Z"}, "expected": true, "convertTo": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "49", "input": {"$date": "1970-01-01T00:00:00.123Z"}, "expected": {"$numberLong": "123"}, "target": "long"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "49", "value": {"$date": "2024-05-31T18:50:55.000Z"}, "expected": {"$numberLong": "1717181455000"}, "convertTo": "long"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "50", "input": {"$date": "1970-01-01T00:00:00.123Z"}, "expected": {"$numberDouble": "123"}, "target": "double"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "50", "value": {"$date": "2024-05-31T18:50:55.000Z"}, "expected": {"$numberDouble": "1717181455000"}, "convertTo": "double"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "51", "input": {"$date": "1970-01-01T00:00:00.123Z"}, "expected": {"$numberDecimal": "123"}, "target": "decimal"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "51", "value": {"$date": "2024-05-31T18:50:55.000Z"}, "expected": {"$numberDecimal": "1717181455000"}, "convertTo": "decimal"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
--- int input
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "52", "input": 1, "expected": 1, "target": "int"}');
+-- int value
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "52", "value": 1, "expected": 1, "convertTo": "int"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "53", "input": 1, "expected": {"$numberDouble": "1"}, "target": "double"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "53", "value": 1, "expected": {"$numberDouble": "1"}, "convertTo": "double"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "54", "input": -11, "expected": {"$numberDouble": "-11"}, "target": "double"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "54", "value": -11, "expected": {"$numberDouble": "-11"}, "convertTo": "double"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "55", "input": 523453, "expected": {"$numberDecimal": "523453"}, "target": "decimal"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "55", "value": 523453, "expected": {"$numberDecimal": "523453"}, "convertTo": "decimal"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "56", "input": 523453, "expected": {"$numberLong": "523453"}, "target": "long"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "56", "value": 523453, "expected": {"$numberLong": "523453"}, "convertTo": "long"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "57", "input": 1, "expected": true, "target": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "57", "value": 1, "expected": true, "convertTo": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "58", "input": 0, "expected": false, "target": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "58", "value": 0, "expected": false, "convertTo": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "59", "input": 25, "expected": "25", "target": "string"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "59", "value": 25, "expected": "25", "convertTo": "string"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
--- long input
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "61", "input": {"$numberLong": "1" }, "expected": {"$numberLong": "1" }, "target": "long"}');
+-- long value
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "61", "value": {"$numberLong": "1" }, "expected": {"$numberLong": "1" }, "convertTo": "long"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "62", "input": {"$numberLong": "1" }, "expected": 1, "target": "int"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "62", "value": {"$numberLong": "1" }, "expected": 1, "convertTo": "int"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "63", "input": {"$numberLong": "1" }, "expected": {"$numberDouble": "1"}, "target": "double"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "63", "value": {"$numberLong": "1" }, "expected": {"$numberDouble": "1"}, "convertTo": "double"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "64", "input": {"$numberLong": "-11" }, "expected": {"$numberDouble": "-11"}, "target": "double"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "64", "value": {"$numberLong": "-11" }, "expected": {"$numberDouble": "-11"}, "convertTo": "double"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "65", "input": {"$numberLong": "523453" }, "expected": {"$numberDecimal": "523453"}, "target": "decimal"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "65", "value": {"$numberLong": "523453" }, "expected": {"$numberDecimal": "523453"}, "convertTo": "decimal"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "66", "input": {"$numberLong": "523453" }, "expected": {"$numberLong": "523453"}, "target": "long"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "66", "value": {"$numberLong": "523453" }, "expected": {"$numberLong": "523453"}, "convertTo": "long"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "67", "input": {"$numberLong": "1" }, "expected": true, "target": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "67", "value": {"$numberLong": "1" }, "expected": true, "convertTo": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "68", "input": {"$numberLong": "0" }, "expected": false, "target": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "68", "value": {"$numberLong": "0" }, "expected": false, "convertTo": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "69", "input": {"$numberLong": "25" }, "expected": "25", "target": "string"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "69", "value": {"$numberLong": "25" }, "expected": "25", "convertTo": "string"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "70", "input": {"$numberLong": "25" }, "expected": {"$date": "1970-01-01T00:00:00.025Z"}, "target": "date"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "70", "value": {"$numberLong": "25" }, "expected": {"$date": "1970-01-01T00:00:00.025Z"}, "convertTo": "date"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
--- decimal input
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "71", "input": {"$numberDecimal": "1.9"}, "expected": {"$numberDecimal": "1.9"}, "target": "decimal"}');
+-- decimal value
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "71", "value": {"$numberDecimal": "1.3"}, "expected": {"$numberDecimal": "1.3"}, "convertTo": "decimal"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "72", "input": {"$numberDecimal": "1.9"}, "expected": "1.9", "target": "string"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "72", "value": {"$numberDecimal": "1.3"}, "expected": "1.3", "convertTo": "string"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "73", "input": {"$numberDecimal": "1.9"}, "expected": true, "target": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "73", "value": {"$numberDecimal": "1.3"}, "expected": true, "convertTo": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "74", "input": {"$numberDecimal": "0.0"}, "expected": false, "target": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "74", "value": {"$numberDecimal": "0.0"}, "expected": false, "convertTo": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "75", "input": {"$numberDecimal": "-0.1"}, "expected": true, "target": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "75", "value": {"$numberDecimal": "-0.1"}, "expected": true, "convertTo": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "76", "input": {"$numberDecimal": "1.9"}, "expected": {"$date": "1970-01-01T00:00:00.001Z"}, "target": "date"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "76", "value": {"$numberDecimal": "1.3"}, "expected": {"$date": "1970-01-01T00:00:00.001Z"}, "convertTo": "date"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "77", "input": {"$numberDecimal": "1.9"}, "expected": 1, "target": "int"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "77", "value": {"$numberDecimal": "1.3"}, "expected": 1, "convertTo": "int"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "78", "input": {"$numberDecimal": "1.9"}, "expected": {"$numberLong": "1"}, "target": "long"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "78", "value": {"$numberDecimal": "1.3"}, "expected": {"$numberLong": "1"}, "convertTo": "long"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "79", "input": {"$numberDecimal": "1.9"}, "expected": {"$numberDouble": "1.9"}, "target": "double"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "79", "value": {"$numberDecimal": "1.3"}, "expected": {"$numberDouble": "1.3"}, "convertTo": "double"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- other supported types to bool
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "80", "input": {"$minKey": 1}, "expected": true, "target": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "80", "value": {"$minKey": 1}, "expected": true, "convertTo": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "81", "input": {"foo": 1}, "expected": true, "target": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "81", "value": {"foo": 1}, "expected": true, "convertTo": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "82", "input": ["foo", 1], "expected": true, "target": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "82", "value": ["foo", 1], "expected": true, "convertTo": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "83", "input": {"$binary": { "base64": "bGlnaHQgdw==", "subType": "01"}}, "expected": true, "target": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "83", "value": {"$binary": { "base64": "bGlnaHQgdw==", "subType": "01"}}, "expected": true, "convertTo": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "84", "input": { "$regex": "a.*b", "$options": "" }, "expected": true, "target": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "84", "value": { "$regex": "a.*b", "$options": "" }, "expected": true, "convertTo": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "85", "input": { "$code": "var a = 1;"}, "expected": true, "target": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "85", "value": { "$code": "var a = 1;"}, "expected": true, "convertTo": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "86", "input": {"$maxKey": 1}, "expected": true, "target": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "86", "value": {"$maxKey": 1}, "expected": true, "convertTo": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "87", "input": {"$timestamp" : { "t": 1670981326, "i": 1 }}, "expected": true, "target": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "87", "value": {"$timestamp" : { "t": 1670981326, "i": 1 }}, "expected": true, "convertTo": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "88", "input": { "$dbPointer" : { "$ref" : "db.test", "$id" : { "$oid" : "347f000000c1de008ec19ceb" }}}, "expected": true, "target": "bool"}');
+SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "88", "value": { "$dbPointer" : { "$ref" : "db.test", "$id" : { "$oid" : "347f000000c1de008ec19ceb" }}}, "expected": true, "convertTo": "bool"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
 -- str to date is not yet supported, will be added with $dateFromString
--- SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "89", "input": "1970-01-01", "expected": {"$date": "1970-01-01T00:00:00.001Z"}, "target": "date"}');
--- SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "90", "input": "1970-01-01T00:00:00.001Z", "expected": {"$date": "1970-01-01T00:00:00.001Z"}, "target": "date"}');
--- SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "91", "input": "1970-01-01T00:00:00.001+0500", "expected": {"$date": "1969-12-31T19:00:00.001Z"}, "target": "date"}');
--- SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "92", "input": "1970-01-01 00:00:00.001 +0500", "expected": {"$date": "1969-12-31T19:00:00.001Z"}, "target": "date"}');
--- SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "93", "input": "1970-01-01T00:00:00.001+5", "expected": {"$date": "1969-12-31T19:00:00.001Z"}, "target": "date"}');
--- SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "94", "input": "1970-01-01T00:00:00.001+05", "expected": {"$date": "1969-12-31T19:00:00.001Z"}, "target": "date"}');
--- SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "95", "input": "1970-01-01T00:00:00.001+050", "expected": {"$date": "1969-12-31T23:10:00.001Z"}, "target": "date"}');
--- SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "96", "input": "1970-01-01T00:00:00.001+0510", "expected": {"$date": "1969-12-31T18:50:00.001Z"}, "target": "date"}');
--- SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "97", "input": "1970-01-01T00:00:00.001+0501", "expected": {"$date": "1969-12-31T18:59:00.001Z"}, "target": "date"}');
--- call convert with the input and target type and check if the output is equal to the expected output.
-SELECT bson_dollar_project(document, '{"passed": { "$eq": [{"$convert": { "input": "$input", "to": "$target"}}, "$expected"]}}') FROM documentdb_api.collection('db', 'convertColl');
+-- SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "89", "value": "2024-05-31", "expected": {"$date": "2024-05-31T00:00:00.001Z"}, "convertTo": "date"}');
+-- SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "90", "value": "2024-05-31T00:00:00.001Z", "expected": {"$date": "2024-05-31T00:00:00.001Z"}, "convertTo": "date"}');
+-- SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "91", "value": "2024-05-31T00:00:00.001+0500", "expected": {"$date": "1969-12-31T19:00:00.001Z"}, "convertTo": "date"}');
+-- SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "92", "value": "2024-05-31 00:00:00.001 +0500", "expected": {"$date": "1969-12-31T19:00:00.001Z"}, "convertTo": "date"}');
+-- SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "93", "value": "2024-05-31T00:00:00.001+5", "expected": {"$date": "1969-12-31T19:00:00.001Z"}, "convertTo": "date"}');
+-- SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "94", "value": "2024-05-31T00:00:00.001+05", "expected": {"$date": "1969-12-31T19:00:00.001Z"}, "convertTo": "date"}');
+-- SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "95", "value": "2024-05-31T00:00:00.001+050", "expected": {"$date": "1969-12-31T23:10:00.001Z"}, "convertTo": "date"}');
+-- SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "96", "value": "2024-05-31T00:00:00.001+0510", "expected": {"$date": "1969-12-31T18:50:00.001Z"}, "convertTo": "date"}');
+-- SELECT * from documentdb_api.insert_one('db', 'convertColl', '{"_id": "97", "value": "2024-05-31T00:00:00.001+0501", "expected": {"$date": "1969-12-31T18:59:00.001Z"}, "convertTo": "date"}');
+-- call convert with the value and convertTo and check if the output is equal to the expected output.
+SELECT bson_dollar_project(document, '{"result": { "$eq": [{"$convert": { "input": "$value", "to": "$convertTo"}}, "$expected"]}}') FROM documentdb_api.collection('db', 'convertColl');
         bson_dollar_project        
 ---------------------------------------------------------------------
- { "_id" : "1", "passed" : true }
- { "_id" : "2", "passed" : true }
- { "_id" : "3", "passed" : true }
- { "_id" : "4", "passed" : true }
- { "_id" : "5", "passed" : true }
- { "_id" : "6", "passed" : true }
- { "_id" : "7", "passed" : true }
- { "_id" : "8", "passed" : true }
- { "_id" : "9", "passed" : true }
- { "_id" : "10", "passed" : true }
- { "_id" : "11", "passed" : true }
- { "_id" : "12", "passed" : true }
- { "_id" : "13", "passed" : true }
- { "_id" : "14", "passed" : true }
- { "_id" : "15", "passed" : true }
- { "_id" : "16", "passed" : true }
- { "_id" : "17", "passed" : true }
- { "_id" : "18", "passed" : true }
- { "_id" : "19", "passed" : true }
- { "_id" : "20", "passed" : true }
- { "_id" : "21", "passed" : true }
- { "_id" : "22", "passed" : true }
- { "_id" : "23", "passed" : true }
- { "_id" : "24", "passed" : true }
- { "_id" : "26", "passed" : true }
- { "_id" : "27", "passed" : true }
- { "_id" : "28", "passed" : true }
- { "_id" : "29", "passed" : true }
- { "_id" : "30", "passed" : true }
- { "_id" : "31", "passed" : true }
- { "_id" : "32", "passed" : true }
- { "_id" : "33", "passed" : true }
- { "_id" : "34", "passed" : true }
- { "_id" : "35", "passed" : true }
- { "_id" : "36", "passed" : true }
- { "_id" : "37", "passed" : true }
- { "_id" : "38", "passed" : true }
- { "_id" : "39", "passed" : true }
- { "_id" : "40", "passed" : true }
- { "_id" : "45", "passed" : true }
- { "_id" : "46", "passed" : true }
- { "_id" : "47", "passed" : true }
- { "_id" : "48", "passed" : true }
- { "_id" : "49", "passed" : true }
- { "_id" : "50", "passed" : true }
- { "_id" : "51", "passed" : true }
- { "_id" : "52", "passed" : true }
- { "_id" : "53", "passed" : true }
- { "_id" : "54", "passed" : true }
- { "_id" : "55", "passed" : true }
- { "_id" : "56", "passed" : true }
- { "_id" : "57", "passed" : true }
- { "_id" : "58", "passed" : true }
- { "_id" : "59", "passed" : true }
- { "_id" : "61", "passed" : true }
- { "_id" : "62", "passed" : true }
- { "_id" : "63", "passed" : true }
- { "_id" : "64", "passed" : true }
- { "_id" : "65", "passed" : true }
- { "_id" : "66", "passed" : true }
- { "_id" : "67", "passed" : true }
- { "_id" : "68", "passed" : true }
- { "_id" : "69", "passed" : true }
- { "_id" : "70", "passed" : true }
- { "_id" : "71", "passed" : true }
- { "_id" : "72", "passed" : true }
- { "_id" : "73", "passed" : true }
- { "_id" : "74", "passed" : true }
- { "_id" : "75", "passed" : true }
- { "_id" : "76", "passed" : true }
- { "_id" : "77", "passed" : true }
- { "_id" : "78", "passed" : true }
- { "_id" : "79", "passed" : true }
- { "_id" : "80", "passed" : true }
- { "_id" : "81", "passed" : true }
- { "_id" : "82", "passed" : true }
- { "_id" : "83", "passed" : true }
- { "_id" : "84", "passed" : true }
- { "_id" : "85", "passed" : true }
- { "_id" : "86", "passed" : true }
- { "_id" : "87", "passed" : true }
- { "_id" : "88", "passed" : true }
+ { "_id" : "1", "result" : true }
+ { "_id" : "2", "result" : true }
+ { "_id" : "3", "result" : true }
+ { "_id" : "4", "result" : true }
+ { "_id" : "5", "result" : true }
+ { "_id" : "6", "result" : true }
+ { "_id" : "7", "result" : true }
+ { "_id" : "8", "result" : true }
+ { "_id" : "9", "result" : true }
+ { "_id" : "10", "result" : true }
+ { "_id" : "11", "result" : true }
+ { "_id" : "12", "result" : true }
+ { "_id" : "13", "result" : true }
+ { "_id" : "14", "result" : true }
+ { "_id" : "15", "result" : true }
+ { "_id" : "16", "result" : true }
+ { "_id" : "17", "result" : true }
+ { "_id" : "18", "result" : true }
+ { "_id" : "19", "result" : true }
+ { "_id" : "20", "result" : true }
+ { "_id" : "21", "result" : true }
+ { "_id" : "22", "result" : true }
+ { "_id" : "23", "result" : true }
+ { "_id" : "24", "result" : true }
+ { "_id" : "26", "result" : true }
+ { "_id" : "27", "result" : true }
+ { "_id" : "28", "result" : true }
+ { "_id" : "29", "result" : true }
+ { "_id" : "30", "result" : true }
+ { "_id" : "31", "result" : true }
+ { "_id" : "32", "result" : true }
+ { "_id" : "33", "result" : true }
+ { "_id" : "34", "result" : true }
+ { "_id" : "35", "result" : true }
+ { "_id" : "36", "result" : true }
+ { "_id" : "37", "result" : true }
+ { "_id" : "38", "result" : true }
+ { "_id" : "39", "result" : true }
+ { "_id" : "40", "result" : true }
+ { "_id" : "45", "result" : true }
+ { "_id" : "46", "result" : true }
+ { "_id" : "47", "result" : true }
+ { "_id" : "48", "result" : true }
+ { "_id" : "49", "result" : true }
+ { "_id" : "50", "result" : true }
+ { "_id" : "51", "result" : true }
+ { "_id" : "52", "result" : true }
+ { "_id" : "53", "result" : true }
+ { "_id" : "54", "result" : true }
+ { "_id" : "55", "result" : true }
+ { "_id" : "56", "result" : true }
+ { "_id" : "57", "result" : true }
+ { "_id" : "58", "result" : true }
+ { "_id" : "59", "result" : true }
+ { "_id" : "61", "result" : true }
+ { "_id" : "62", "result" : true }
+ { "_id" : "63", "result" : true }
+ { "_id" : "64", "result" : true }
+ { "_id" : "65", "result" : true }
+ { "_id" : "66", "result" : true }
+ { "_id" : "67", "result" : true }
+ { "_id" : "68", "result" : true }
+ { "_id" : "69", "result" : true }
+ { "_id" : "70", "result" : true }
+ { "_id" : "71", "result" : true }
+ { "_id" : "72", "result" : true }
+ { "_id" : "73", "result" : true }
+ { "_id" : "74", "result" : true }
+ { "_id" : "75", "result" : true }
+ { "_id" : "76", "result" : true }
+ { "_id" : "77", "result" : true }
+ { "_id" : "78", "result" : true }
+ { "_id" : "79", "result" : true }
+ { "_id" : "80", "result" : true }
+ { "_id" : "81", "result" : true }
+ { "_id" : "82", "result" : true }
+ { "_id" : "83", "result" : true }
+ { "_id" : "84", "result" : true }
+ { "_id" : "85", "result" : true }
+ { "_id" : "86", "result" : true }
+ { "_id" : "87", "result" : true }
+ { "_id" : "88", "result" : true }
 (82 rows)
+
+-- $convert to BinData
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "SGVsbG8gd29ybGQh", "to": "binData", "format": "base64"}}}');
+                                bson_dollar_project                                 
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "SGVsbG8gd29ybGQh", "subType" : "00" } } }
+(1 row)
+
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "RG9jdW1lbnREQiBpcyBjb29sbGwh", "to": {"type": "binData", "subtype": 8}, "format": "base64"}}}');
+                                      bson_dollar_project                                       
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "RG9jdW1lbnREQiBpcyBjb29sbGwh", "subType" : "08" } } }
+(1 row)
+
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "SGVsbG8gd29ybGQh", "to": {"type": "binData", "subtype": 0}, "format": "base64"}}}');
+                                bson_dollar_project                                 
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "SGVsbG8gd29ybGQh", "subType" : "00" } } }
+(1 row)
+
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "RG9jdW1lbnREQiBpcyBjb29sbGwh", "to": {"type": "binData", "subtype": 0}, "format": "base64url"}}}');
+                                      bson_dollar_project                                       
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "RG9jdW1lbnREQiBpcyBjb29sbGwh", "subType" : "00" } } }
+(1 row)
+
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "UEdNb25nbyBpcyBHQSE", "to": {"type": "binData", "subtype": 0}, "format": "base64url"}}}');
+                                  bson_dollar_project                                   
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "UEdNb25nbyBpcyBHQSE=", "subType" : "00" } } }
+(1 row)
+
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "SGVsbG8gd29ybGQh", "to": {"type": "binData", "subtype": 0}, "format": "base64url"}}}');
+                                bson_dollar_project                                 
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "SGVsbG8gd29ybGQh", "subType" : "00" } } }
+(1 row)
+
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "10000000-1000-1000-1000-100000000000", "to": {"type": "binData", "subtype": 4}, "format": "uuid"}}}');
+                                    bson_dollar_project                                     
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "EAAAABAAEAAQABAAAAAAAA==", "subType" : "04" } } }
+(1 row)
+
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "451e4567-e89b-42d3-a456-556642440000", "to": {"type": "binData", "subtype": 4}, "format": "uuid"}}}');
+                                    bson_dollar_project                                     
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "RR5FZ+ibQtOkVlVmQkQAAA==", "subType" : "04" } } }
+(1 row)
+
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "4a6f686e20446f65", "to": {"type": "binData", "subtype": 0}, "format": "hex"}}}');
+                              bson_dollar_project                               
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "Sm9obiBEb2U=", "subType" : "00" } } }
+(1 row)
+
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "4a6f686e20446f65", "to": {"type": "binData", "subtype": 5}, "format": "hex"}}}');
+                              bson_dollar_project                               
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "Sm9obiBEb2U=", "subType" : "05" } } }
+(1 row)
+
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "4a6f686e20446f65", "to": {"type": "binData", "subtype": 6}, "format": "hex"}}}');
+                              bson_dollar_project                               
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "Sm9obiBEb2U=", "subType" : "06" } } }
+(1 row)
+
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "a27", "to": {"type": "binData", "subtype": 0}, "format": "utf8"}}}');
+                          bson_dollar_project                           
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "YTI3", "subType" : "00" } } }
+(1 row)
+
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "UEdNb25nbyBpcyBHQSE=", "to": {"type": "binData"}, "format": "utf8"}}}');
+                                      bson_dollar_project                                       
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "VUVkTmIyNW5ieUJwY3lCSFFTRT0=", "subType" : "00" } } }
+(1 row)
+
+SELECT * from bson_dollar_project('{"i": "167dee52-c331-484e-92d1-c56479b8e670"}', '{"result": {"$convert": { "input": "$i", "to": {"type": "binData", "subtype": 4}, "format": "uuid"}}}');
+                                    bson_dollar_project                                     
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "Fn3uUsMxSE6S0cVkebjmcA==", "subType" : "04" } } }
+(1 row)
+
+SELECT * from bson_dollar_project('{"i": "SGVsbG8gd29ybGQh", "ts": 0 }', '{"result": {"$convert": { "input": "$i", "to": {"type": "binData", "subtype": "$ts"}, "format": "base64"}}}');
+                                bson_dollar_project                                 
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "SGVsbG8gd29ybGQh", "subType" : "00" } } }
+(1 row)
+
+SELECT * from bson_dollar_project('{"tt": "binData", "f": "hex"}', '{"result": {"$convert": { "input": "4a6f686e20446f65", "to": {"type": "$tt", "subtype": 0}, "format": "$f"}}}');
+                              bson_dollar_project                               
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "Sm9obiBEb2U=", "subType" : "00" } } }
+(1 row)
+
+-- error: $convert to BinData with no format
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "SGVsbG8gd29ybGQh", "to": "binData"}}}');
+ERROR:  A specific format must be provided when attempting to convert from string into 'binData'.
+-- error: $convert to BinData with non-string input
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": 123, "to": "binData", "format": "base64"}}}');
+ERROR:  Unsupported conversion from int to binData in $convert with no onError value
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": false, "to": "binData", "format": "base64"}}}');
+ERROR:  Unsupported conversion from bool to binData in $convert with no onError value
+-- error: uuid format and uuid subtype violations
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "SGVsbG8gd29ybGQh", "to": {"type": "binData", "subtype": 4}, "format": "base64"}}}');
+ERROR:  Unable to interpret BinData 'SGVsbG8gd29ybGQh' during $convert operation due to missing onError parameter: Only the UUID subtype (4) is allowed with the 'uuid' format
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "451e4567-e89b-42d3-a456-556642440000", "to": {"type": "binData"}, "format": "uuid"}}}');
+ERROR:  Unable to interpret BinData '451e4567-e89b-42d3-a456-556642440000' during $convert operation due to missing onError parameter: Only the UUID subtype (4) is allowed with the 'uuid' format
+-- error: $convert to BinData with input-format mismatch
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "123", "to": "binData", "format": "base64"}}}');
+ERROR:  Unable to interpret BinData '123' during $convert operation due to missing onError parameter: The provided input does not represent a valid base64-encoded string.
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "hn3uUsMxSE6S0cVkebjm=fg==", "to": {"type": "binData", "subtype": 4}, "format": "base64"}}}');
+ERROR:  Unable to interpret BinData 'hn3uUsMxSE6S0cVkebjm=fg==' during $convert operation due to missing onError parameter: Only the UUID subtype (4) is allowed with the 'uuid' format
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "451e4567-e89b-42d3-a456-556642440000", "to": {"type": "binData", "subtype": 0}, "format": "base64"}}}');
+ERROR:  Unable to interpret BinData '451e4567-e89b-42d3-a456-556642440000' during $convert operation due to missing onError parameter: The provided input does not represent a valid base64-encoded string.
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "hn3u+UsMxSE6S0cVkebjmfg==", "to": {"type": "binData", "subtype": 0}, "format": "base64url"}}}');
+ERROR:  Unable to interpret BinData 'hn3u+UsMxSE6S0cVkebjmfg==' during $convert operation due to missing onError parameter: The provided input does not represent a valid base64-encoded string.
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "hn3u+UsMxSE6S0cVkebjm/fg==", "to": {"type": "binData", "subtype": 0}, "format": "base64url"}}}');
+ERROR:  Unable to interpret BinData 'hn3u+UsMxSE6S0cVkebjm/fg==' during $convert operation due to missing onError parameter: The provided input does not represent a valid base64-encoded string.
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "äöäöä", "to": {"type": "binData", "subtype": 4}, "format": "uuid"}}}');
+ERROR:  Unable to interpret BinData 'äöäöä' during $convert operation due to missing onError parameter: The provided input does not represent a properly formatted UUID string %s.
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "SGVsbG8gd29ybGQh", "to": {"type": "binData", "subtype": 4}, "format": "uuid"}}}');
+ERROR:  Unable to interpret BinData 'SGVsbG8gd29ybGQh' during $convert operation due to missing onError parameter: The provided input does not represent a properly formatted UUID string %s.
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "451e4567-e89b-42d3-a456-556642440000", "to": {"type": "binData", "subtype": 4}, "format": "hex"}}}');
+ERROR:  Unable to interpret BinData '451e4567-e89b-42d3-a456-556642440000' during $convert operation due to missing onError parameter: Only the UUID subtype (4) is allowed with the 'uuid' format
+-- error: auto format not supported for to BinData
+SELECT * from bson_dollar_project('{}', '{"result": {"$convert": { "input": "SGVsbG8gd29ybGQh", "to": {"type": "binData", "subtype": 0}, "format": "auto"}}}');
+ERROR:  Format 'auto' is not supported for string to 'binData' conversion
+-- error: auto format not supported for BinData to string yet
+SELECT * FROM bson_dollar_project('{}', '{"result": {
+    "$convert": {
+        "input": {
+            "$convert": {
+                "input": "4a6f686e20446f65",
+                "to": {"type": "binData", "subtype": 5},
+                "format": "hex"
+            }
+        },
+        "to": "string",
+        "format": "auto"
+    }
+}}');
+ERROR:  Convert to string from binData with format 'auto' is not supported yet.
+ 
+-- BinData to string using $convert
+SELECT * FROM bson_dollar_project('{}', '{"result": {
+    "$convert": {
+        "input": {
+            "$convert": {
+                "input": "SGVsbG8gd29ybGQh",
+                "to": "binData",
+                "format": "base64"
+            }
+        },
+        "to": "string",
+        "format": "base64"
+    }
+}}');
+        bson_dollar_project        
+---------------------------------------------------------------------
+ { "result" : "SGVsbG8gd29ybGQh" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {
+    "$convert": {
+        "input": {
+            "$convert": {
+                "input": "SGVsbG8gd29ybGQh",
+                "to": "binData",
+                "format": "base64"
+            }
+        },
+        "to": "string",
+        "format": "utf8"
+    }
+}}');
+      bson_dollar_project      
+---------------------------------------------------------------------
+ { "result" : "Hello world!" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {
+    "$convert": {
+        "input": {
+            "$convert": {
+                "input": "💻🤠🔫",
+                "to": "binData",
+                "format": "utf8"
+            }
+        },
+        "to": "string",
+        "format": "utf8"
+    }
+}}');
+   bson_dollar_project   
+---------------------------------------------------------------------
+ { "result" : "💻🤠🔫" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {
+    "$convert": {
+        "input": {
+            "$convert": {
+                "input": "SGVsbG8gd29ybGQh",
+                "to": "binData",
+                "format": "base64"
+            }
+        },
+        "to": "string",
+        "format": "base64url"
+    }
+}}');
+        bson_dollar_project        
+---------------------------------------------------------------------
+ { "result" : "SGVsbG8gd29ybGQh" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {
+    "$convert": {
+        "input": {
+            "$convert": {
+                "input": "167dee52-c331-484e-92d1-c56479b8e670",
+                "to": {"type": "binData", "subtype": 4},
+                "format": "uuid"
+            }
+        },
+        "to": "string",
+        "format": "uuid"
+    }
+}}');
+                  bson_dollar_project                  
+---------------------------------------------------------------------
+ { "result" : "167dee52-c331-484e-92d1-c56479b8e670" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {
+    "$convert": {
+        "input": {
+            "$convert": {
+                "input": "SGVsbG8gd29ybGQh",
+                "to": "binData",
+                "format": "base64"
+            }
+        },
+        "to": "string",
+        "format": "hex"
+    }
+}}');
+            bson_dollar_project            
+---------------------------------------------------------------------
+ { "result" : "48656C6C6F20776F726C6421" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {
+    "$convert": {
+        "input": {
+            "$convert": {
+                "input": "10000000-1000-1000-1000-100000000000",
+                "to": {"type": "binData", "subtype": 4},
+                "format": "uuid"
+            }
+        },
+        "to": "string",
+        "format": "uuid"
+    }
+}}');
+                  bson_dollar_project                  
+---------------------------------------------------------------------
+ { "result" : "10000000-1000-1000-1000-100000000000" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {
+    "$convert": {
+        "input": {
+            "$convert": {
+                "input": "4a6f686e20446f65",
+                "to": "binData",
+                "format": "hex"
+            }
+        },
+        "to": "string",
+        "format": "hex"
+    }
+}}');
+        bson_dollar_project        
+---------------------------------------------------------------------
+ { "result" : "4A6F686E20446F65" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {
+    "$convert": {
+        "input": {
+            "$convert": {
+                "input": "4a6f686e20446f65",
+                "to": {"type": "binData", "subtype": 5},
+                "format": "hex"
+            }
+        },
+        "to": "string",
+        "format": "hex"
+    }
+}}');
+        bson_dollar_project        
+---------------------------------------------------------------------
+ { "result" : "4A6F686E20446F65" }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"i": "a27", "tt": "binData", "f": "hex"}', '{"result": {
+    "$convert": {
+        "input": {
+            "$convert": {
+                "input": "$i",
+                "to": {"type": "$tt", "subtype": 0},
+                "format": "$f"
+            }
+        },
+        "to": "string",
+        "format": "$f"
+    }
+}}');
+ERROR:  invalid hexadecimal data: odd number of digits
+SELECT * FROM bson_dollar_project('{"i": "167dee52-c331-484e-92d1-c56479b8e670"}', '{"result": {
+    "$convert": {
+        "input": {
+            "$convert": {
+                "input": "$i",
+                "to": {"type": "binData", "subtype": 4},
+                "format": "uuid"
+            }
+        },
+        "to": "string",
+        "format": "uuid"
+    }
+}}');
+                  bson_dollar_project                  
+---------------------------------------------------------------------
+ { "result" : "167dee52-c331-484e-92d1-c56479b8e670" }
+(1 row)
+
+-- $convert from BinData to BinData
+SELECT * FROM bson_dollar_project('{}', '{"result": {
+    "$convert": {
+        "input": {
+            "$convert": {
+                "input": "SGVsbG8gd29ybGQh",
+                "to": "binData",
+                "format": "base64"
+            }
+        },
+        "to":  {"type": "binData", "subtype": 4}
+    }
+}}');
+                                bson_dollar_project                                 
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "SGVsbG8gd29ybGQh", "subType" : "04" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {
+    "$convert": {
+        "input": {
+            "$convert": {
+                "input": "💻🤠🔫",
+                "to": "binData",
+                "format": "utf8"
+            }
+        },
+        "to": {"type": "binData", "subtype": 0}
+    }
+}}');
+                                bson_dollar_project                                 
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "8J+Su/CfpKDwn5Sr", "subType" : "00" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {
+    "$convert": {
+        "input": {
+            "$convert": {
+                "input": "10000000-1000-1000-1000-100000000000",
+                "to": {"type": "binData", "subtype": 4},
+                "format": "uuid"
+            }
+        },
+        "to": {"type": "binData", "subtype": 0}
+    }
+}}');
+                                    bson_dollar_project                                     
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "EAAAABAAEAAQABAAAAAAAA==", "subType" : "00" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {
+    "$convert": {
+        "input": {
+            "$convert": {
+                "input": "10000000-1000-1000-1000-100000000000",
+                "to": {"type": "binData", "subtype": 4},
+                "format": "uuid"
+            }
+        },
+        "to": {"type": "binData", "subtype": 4}
+    }
+}}');
+                                    bson_dollar_project                                     
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "EAAAABAAEAAQABAAAAAAAA==", "subType" : "04" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {
+    "$convert": {
+        "input": {
+            "$convert": {
+                "input": "4a6f686e20446f65",
+                "to": "binData",
+                "format": "hex"
+            }
+        },
+        "to": {"type": "binData", "subtype": 130}
+    }
+}}');
+                              bson_dollar_project                               
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "Sm9obiBEb2U=", "subType" : "82" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"i": "SGVsbG8gd29ybGQh", "ts": 0 }', '{"result": {
+    "$convert": {
+        "input": {
+            "$convert": {
+                "input": "$i",
+                "to": {"type": "binData", "subtype": "$ts"},
+                "format": "utf8"
+            }
+        },
+        "to": {"type": "binData", "subtype": "$ts"}
+    }
+}}');
+                                    bson_dollar_project                                     
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "U0dWc2JHOGdkMjl5YkdRaA==", "subType" : "00" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"i": "167dee52-c331-484e-92d1-c56479b8e670"}', '{"result": {
+    "$convert": {
+        "input": {
+            "$convert": {
+                "input": "$i",
+                "to": {"type": "binData", "subtype": 4},
+                "format": "uuid"
+            }
+        },
+        "to": {"type": "binData", "subtype": 4}
+    }
+}}');
+                                    bson_dollar_project                                     
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "Fn3uUsMxSE6S0cVkebjmcA==", "subType" : "04" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"i": "SGVsbG8gd29ybGQh", "ts": 0 }', '{"result": {
+    "$convert": {
+        "input": {
+            "$convert": {
+                "input": "$i",
+                "to": {"type": "binData", "subtype": "$ts"},
+                "format": "utf8"
+            }
+        },
+        "to": {"type": "binData", "subtype": 0}
+    }
+}}');
+                                    bson_dollar_project                                     
+---------------------------------------------------------------------
+ { "result" : { "$binary" : { "base64" : "U0dWc2JHOGdkMjl5YkdRaA==", "subType" : "00" } } }
+(1 row)
 
 -- $convert with null to type should return null with and without onNull
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$convert": { "input": 1, "to": null}}}');
@@ -875,182 +1353,182 @@ SELECT * FROM bson_dollar_project('{}', '{"result": {"$convert": { "input": "$mi
 (1 row)
 
 -- $convert with error outside of parsing should honor onError
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "1", "input": {"$numberDouble": "1.9"}, "target": "objectId"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "1", "value": {"$numberDouble": "1.3"}, "convertTo": "objectId"}');
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "2", "input": {"$numberDouble": "1.9"}, "target": "array"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "2", "value": {"$numberDouble": "1.3"}, "convertTo": "array"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "3", "input": {"$numberDouble": "1.9"}, "target": "object"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "3", "value": {"$numberDouble": "1.3"}, "convertTo": "object"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "4", "input": { "$oid" : "347f000000c1de008ec19ceb" }, "target": "double"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "4", "value": { "$oid" : "347f000000c1de008ec19ceb" }, "convertTo": "double"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "5", "input": { "$oid" : "347f000000c1de008ec19ceb" }, "target": "int"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "5", "value": { "$oid" : "347f000000c1de008ec19ceb" }, "convertTo": "int"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "6", "input": { "$oid" : "347f000000c1de008ec19ceb" }, "target": "long"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "6", "value": { "$oid" : "347f000000c1de008ec19ceb" }, "convertTo": "long"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "7", "input": { "$oid" : "347f000000c1de008ec19ceb" }, "target": "decimal"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "7", "value": { "$oid" : "347f000000c1de008ec19ceb" }, "convertTo": "decimal"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "8", "input": true, "target": "objectId"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "8", "value": true, "convertTo": "objectId"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "9", "input": false, "target": "date"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "9", "value": false, "convertTo": "date"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "10", "input": {"$date": "1970-01-01T00:00:00.000Z"}, "target": "objectId"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "10", "value": {"$date": "2024-05-31T00:00:00.000Z"}, "convertTo": "objectId"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "11", "input": {"$date": "1970-01-01T00:00:00.000Z"}, "target": "int"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "11", "value": {"$date": "2024-05-31T00:00:00.000Z"}, "convertTo": "int"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "12", "input": 1, "target": "date"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "12", "value": 1, "convertTo": "date"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "13", "input": 1.9, "target": "minKey"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "13", "value": 1.3, "convertTo": "minKey"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "14", "input": 1.9, "target": "missing"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "14", "value": 1.3, "convertTo": "missing"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "15", "input": 1.9, "target": "object"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "15", "value": 1.3, "convertTo": "object"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "16", "input": 1.9, "target": "array"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "16", "value": 1.3, "convertTo": "array"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "17", "input": 1.9, "target": "binData"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "17", "value": 1.3, "convertTo": "binData"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "18", "input": 1.9, "target": "undefined"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "18", "value": 1.3, "convertTo": "undefined"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "19", "input": 1.9, "target": "null"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "19", "value": 1.3, "convertTo": "null"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "20", "input": 1.9, "target": "regex"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "20", "value": 1.3, "convertTo": "regex"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "21", "input": 1.9, "target": "dbPointer"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "21", "value": 1.3, "convertTo": "dbPointer"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "22", "input": 1.9, "target": "javascript"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "22", "value": 1.3, "convertTo": "javascript"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "23", "input": 1.9, "target": "symbol"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "23", "value": 1.3, "convertTo": "symbol"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "24", "input": 1.9, "target": "javascriptWithScope"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "24", "value": 1.3, "convertTo": "javascriptWithScope"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "25", "input": 1.9, "target": "timestamp"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "25", "value": 1.3, "convertTo": "timestamp"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "26", "input": 1.9, "target": "maxKey"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "26", "value": 1.3, "convertTo": "maxKey"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "27", "input": 1, "target": "objectId"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "27", "value": 1, "convertTo": "objectId"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "28", "input": {"$numberLong": "1"}, "target": "objectId"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "28", "value": {"$numberLong": "1"}, "convertTo": "objectId"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "29", "input": {"$numberDecimal": "1"}, "target": "objectId"}');
+SELECT * from documentdb_api.insert_one('db', 'convertCollWithErrors', '{"_id": "29", "value": {"$numberDecimal": "1"}, "convertTo": "objectId"}');
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT bson_dollar_project(document, '{"output": {"$convert": { "input": "$input", "to": "$target", "onError": "There was an error in $convert"}}}') FROM documentdb_api.collection('db', 'convertCollWithErrors');
+SELECT bson_dollar_project(document, '{"output": {"$convert": { "input": "$value", "to": "$convertTo", "onError": "There was an error in $convert"}}}') FROM documentdb_api.collection('db', 'convertCollWithErrors');
                       bson_dollar_project                      
 ---------------------------------------------------------------------
  { "_id" : "1", "output" : "There was an error in $convert" }
@@ -1085,7 +1563,7 @@ SELECT bson_dollar_project(document, '{"output": {"$convert": { "input": "$input
 (29 rows)
 
 -- $convert undefined/missing field used for onError should return empty result
-SELECT bson_dollar_project(document, '{"output": {"$convert": { "input": "$input", "to": "$target", "onError": "$missingField"}}}') FROM documentdb_api.collection('db', 'convertCollWithErrors');
+SELECT bson_dollar_project(document, '{"output": {"$convert": { "input": "$value", "to": "$convertTo", "onError": "$missingField"}}}') FROM documentdb_api.collection('db', 'convertCollWithErrors');
  bson_dollar_project 
 ---------------------------------------------------------------------
  { "_id" : "1" }
@@ -1121,25 +1599,25 @@ SELECT bson_dollar_project(document, '{"output": {"$convert": { "input": "$input
 
 -- $convert errors in parsing should be honored even if onError is set
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$convert": { "input": {"$divide": [1, 0]}, "to": "string", "onError": "There was an error in $convert"}}}');
-ERROR:  can't $divide by zero
+ERROR:  $divide by zero is not allowed
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$convert": "$myField"}}');
-ERROR:  $convert expects an object of named arguments but found: string
+ERROR:  $convert requires an object containing named arguments, but instead received: string
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$convert": {"input": 1, "onError": "There was an error"}}}');
-ERROR:  Missing 'to' parameter to $convert
+ERROR:  'to' parameter is missing for $convert
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$convert": {"to": 1, "onError": "There was an error"}}}');
 ERROR:  Missing 'input' parameter to $convert
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$convert": {"myCustomInput": 1, "onError": "There was an error"}}}');
-ERROR:  $convert found an unknown argument: myCustomInput
+ERROR:  $convert encountered an unrecognized argument: myCustomInput
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$convert": {"input": 1, "to": "someType", "onError": "There was an error"}}}');
-ERROR:  Unknown type name alias: someType
+ERROR:  Unrecognized data type alias: someType
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$convert": {"input": 1, "to": {"$numberDouble": "1.1"}, "onError": "There was an error"}}}');
 ERROR:  In $convert, numeric 'to' argument is not an integer
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$convert": {"input": 1, "to": {"$numberDouble": "255"}, "onError": "There was an error"}}}');
-ERROR:  In $convert, numeric value for 'to' does not correspond to a BSON type: 255
+ERROR:  During $convert, the numeric value provided for 'to' is not a valid BSON type: 255
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$convert": {"input": 1, "to": {"$numberDouble": "-2.0"}, "onError": "There was an error"}}}');
-ERROR:  In $convert, numeric value for 'to' does not correspond to a BSON type: -2
+ERROR:  During $convert, the numeric value provided for 'to' is not a valid BSON type: -2
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$convert": {"input": 1, "to": [], "onError": "There was an error"}}}');
-ERROR:  $convert's 'to' argument must be a string or number, but is array
+ERROR:  The 'to' parameter in $convert must contain either a string value or a numeric value, but it currently holds array
 -- $convert identifies the target types with numbers
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$convert": {"input": {}, "to": -1}}}');
 ERROR:  Unsupported conversion from object to minKey in $convert with no onError value
@@ -1211,109 +1689,108 @@ SELECT * FROM bson_dollar_project('{}', '{"result": {"$toLong": {"$numberDouble"
 --
 -- $to* alias tests.
 -- call the shorthand convert $to* aliases.
-WITH toQuery AS (SELECT bson_dollar_project(document,
-'{"expected": 1,
-  "output":
-    { 
-        "$switch": {
-            "branches": [
-                {"case": {"$eq": ["$target", "double"]}, "then": {"$toDouble": "$input"}},
-                {"case": {"$eq": ["$target", "string"]}, "then": {"$toString": "$input"}},
-                {"case": {"$eq": ["$target", "objectId"]}, "then": {"$toObjectId": "$input"}},
-                {"case": {"$eq": ["$target", "bool"]}, "then": {"$toBool": "$input"}},
-                {"case": {"$eq": ["$target", "date"]}, "then": {"$toDate": "$input"}},
-                {"case": {"$eq": ["$target", "int"]}, "then": {"$toInt": "$input"}},
-                {"case": {"$eq": ["$target", "long"]}, "then": {"$toLong": "$input"}},
-                {"case": {"$eq": ["$target", "decimal"]}, "then": {"$toDecimal": "$input"}}
-            ]
-        }
-    }
-}') as outDoc FROM documentdb_api.collection('db', 'convertColl'))
-SELECT bson_dollar_project(outDoc, '{"passed": {"$eq": ["$output", "$expected"]}}') FROM toQuery;
+WITH toQuery AS (SELECT bson_dollar_project(
+  document,
+  format(
+    '{"expected": 1, "output": { "$%s": "$value" } }',
+    CASE TRIM(BOTH '"' FROM document->>'convertTo')
+      WHEN 'double'  THEN 'toDouble'
+      WHEN 'string'  THEN 'toString'
+      WHEN 'objectId' THEN 'toObjectId'
+      WHEN 'bool'    THEN 'toBool'
+      WHEN 'date'    THEN 'toDate'
+      WHEN 'int'     THEN 'toInt'
+      WHEN 'long'    THEN 'toLong'
+      WHEN 'decimal' THEN 'toDecimal'
+      ELSE 'toInvalid'  -- fail for easier diagnostics
+    END
+  )::bson
+) as outDoc FROM documentdb_api.collection('db', 'convertColl'))
+SELECT bson_dollar_project(outDoc, '{"result": {"$eq": ["$output", "$expected"]}}') FROM toQuery;
         bson_dollar_project        
 ---------------------------------------------------------------------
- { "_id" : "1", "passed" : true }
- { "_id" : "2", "passed" : true }
- { "_id" : "3", "passed" : true }
- { "_id" : "4", "passed" : true }
- { "_id" : "5", "passed" : true }
- { "_id" : "6", "passed" : true }
- { "_id" : "7", "passed" : true }
- { "_id" : "8", "passed" : true }
- { "_id" : "9", "passed" : true }
- { "_id" : "10", "passed" : true }
- { "_id" : "11", "passed" : true }
- { "_id" : "12", "passed" : true }
- { "_id" : "13", "passed" : true }
- { "_id" : "14", "passed" : true }
- { "_id" : "15", "passed" : true }
- { "_id" : "16", "passed" : true }
- { "_id" : "17", "passed" : true }
- { "_id" : "18", "passed" : true }
- { "_id" : "19", "passed" : true }
- { "_id" : "20", "passed" : true }
- { "_id" : "21", "passed" : true }
- { "_id" : "22", "passed" : true }
- { "_id" : "23", "passed" : true }
- { "_id" : "24", "passed" : true }
- { "_id" : "26", "passed" : true }
- { "_id" : "27", "passed" : true }
- { "_id" : "28", "passed" : true }
- { "_id" : "29", "passed" : true }
- { "_id" : "30", "passed" : true }
- { "_id" : "31", "passed" : true }
- { "_id" : "32", "passed" : true }
- { "_id" : "33", "passed" : true }
- { "_id" : "34", "passed" : true }
- { "_id" : "35", "passed" : true }
- { "_id" : "36", "passed" : true }
- { "_id" : "37", "passed" : true }
- { "_id" : "38", "passed" : true }
- { "_id" : "39", "passed" : true }
- { "_id" : "40", "passed" : true }
- { "_id" : "45", "passed" : true }
- { "_id" : "46", "passed" : true }
- { "_id" : "47", "passed" : true }
- { "_id" : "48", "passed" : true }
- { "_id" : "49", "passed" : true }
- { "_id" : "50", "passed" : true }
- { "_id" : "51", "passed" : true }
- { "_id" : "52", "passed" : true }
- { "_id" : "53", "passed" : true }
- { "_id" : "54", "passed" : true }
- { "_id" : "55", "passed" : true }
- { "_id" : "56", "passed" : true }
- { "_id" : "57", "passed" : true }
- { "_id" : "58", "passed" : true }
- { "_id" : "59", "passed" : true }
- { "_id" : "61", "passed" : true }
- { "_id" : "62", "passed" : true }
- { "_id" : "63", "passed" : true }
- { "_id" : "64", "passed" : true }
- { "_id" : "65", "passed" : true }
- { "_id" : "66", "passed" : true }
- { "_id" : "67", "passed" : true }
- { "_id" : "68", "passed" : true }
- { "_id" : "69", "passed" : true }
- { "_id" : "70", "passed" : true }
- { "_id" : "71", "passed" : true }
- { "_id" : "72", "passed" : true }
- { "_id" : "73", "passed" : true }
- { "_id" : "74", "passed" : true }
- { "_id" : "75", "passed" : true }
- { "_id" : "76", "passed" : true }
- { "_id" : "77", "passed" : true }
- { "_id" : "78", "passed" : true }
- { "_id" : "79", "passed" : true }
- { "_id" : "80", "passed" : true }
- { "_id" : "81", "passed" : true }
- { "_id" : "82", "passed" : true }
- { "_id" : "83", "passed" : true }
- { "_id" : "84", "passed" : true }
- { "_id" : "85", "passed" : true }
- { "_id" : "86", "passed" : true }
- { "_id" : "87", "passed" : true }
- { "_id" : "88", "passed" : true }
+ { "_id" : "1", "result" : true }
+ { "_id" : "2", "result" : true }
+ { "_id" : "3", "result" : true }
+ { "_id" : "4", "result" : true }
+ { "_id" : "5", "result" : true }
+ { "_id" : "6", "result" : true }
+ { "_id" : "7", "result" : true }
+ { "_id" : "8", "result" : true }
+ { "_id" : "9", "result" : true }
+ { "_id" : "10", "result" : true }
+ { "_id" : "11", "result" : true }
+ { "_id" : "12", "result" : true }
+ { "_id" : "13", "result" : true }
+ { "_id" : "14", "result" : true }
+ { "_id" : "15", "result" : true }
+ { "_id" : "16", "result" : true }
+ { "_id" : "17", "result" : true }
+ { "_id" : "18", "result" : true }
+ { "_id" : "19", "result" : true }
+ { "_id" : "20", "result" : true }
+ { "_id" : "21", "result" : true }
+ { "_id" : "22", "result" : true }
+ { "_id" : "23", "result" : true }
+ { "_id" : "24", "result" : true }
+ { "_id" : "26", "result" : true }
+ { "_id" : "27", "result" : true }
+ { "_id" : "28", "result" : true }
+ { "_id" : "29", "result" : true }
+ { "_id" : "30", "result" : true }
+ { "_id" : "31", "result" : true }
+ { "_id" : "32", "result" : true }
+ { "_id" : "33", "result" : true }
+ { "_id" : "34", "result" : true }
+ { "_id" : "35", "result" : true }
+ { "_id" : "36", "result" : true }
+ { "_id" : "37", "result" : true }
+ { "_id" : "38", "result" : true }
+ { "_id" : "39", "result" : true }
+ { "_id" : "40", "result" : true }
+ { "_id" : "45", "result" : true }
+ { "_id" : "46", "result" : true }
+ { "_id" : "47", "result" : true }
+ { "_id" : "48", "result" : true }
+ { "_id" : "49", "result" : true }
+ { "_id" : "50", "result" : true }
+ { "_id" : "51", "result" : true }
+ { "_id" : "52", "result" : true }
+ { "_id" : "53", "result" : true }
+ { "_id" : "54", "result" : true }
+ { "_id" : "55", "result" : true }
+ { "_id" : "56", "result" : true }
+ { "_id" : "57", "result" : true }
+ { "_id" : "58", "result" : true }
+ { "_id" : "59", "result" : true }
+ { "_id" : "61", "result" : true }
+ { "_id" : "62", "result" : true }
+ { "_id" : "63", "result" : true }
+ { "_id" : "64", "result" : true }
+ { "_id" : "65", "result" : true }
+ { "_id" : "66", "result" : true }
+ { "_id" : "67", "result" : true }
+ { "_id" : "68", "result" : true }
+ { "_id" : "69", "result" : true }
+ { "_id" : "70", "result" : true }
+ { "_id" : "71", "result" : true }
+ { "_id" : "72", "result" : true }
+ { "_id" : "73", "result" : true }
+ { "_id" : "74", "result" : true }
+ { "_id" : "75", "result" : true }
+ { "_id" : "76", "result" : true }
+ { "_id" : "77", "result" : true }
+ { "_id" : "78", "result" : true }
+ { "_id" : "79", "result" : true }
+ { "_id" : "80", "result" : true }
+ { "_id" : "81", "result" : true }
+ { "_id" : "82", "result" : true }
+ { "_id" : "83", "result" : true }
+ { "_id" : "84", "result" : true }
+ { "_id" : "85", "result" : true }
+ { "_id" : "86", "result" : true }
+ { "_id" : "87", "result" : true }
+ { "_id" : "88", "result" : true }
 (82 rows)
 
 -- $toObjectId negative tests
@@ -1321,7 +1798,7 @@ SELECT bson_dollar_project(outDoc, '{"passed": {"$eq": ["$output", "$expected"]}
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toObjectId": {"input": ""}}}');
 ERROR:  Unsupported conversion from object to objectId in $convert with no onError value
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toObjectId": []}}');
-ERROR:  Expression $toObjectId takes exactly 1 arguments. 0 were passed in.
+ERROR:  The expression $toObjectId requires exactly 1 arguments, but 0 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toObjectId": "this is a string"}}');
 ERROR:  Failed to parse objectId 'this is a string' in $convert with no onError value: Invalid string length for parsing to OID, expected 24 but found 16
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toObjectId": "asdsfsdzzzzsersdfrtghtsz"}}');
@@ -1333,7 +1810,7 @@ ERROR:  Failed to parse objectId '639926cee6bda3127f153bfZ' in $convert with no 
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toInt": {"input": ""}}}');
 ERROR:  Unsupported conversion from object to int in $convert with no onError value
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toInt": []}}');
-ERROR:  Expression $toInt takes exactly 1 arguments. 0 were passed in.
+ERROR:  The expression $toInt requires exactly 1 arguments, but 0 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toInt": [{"$date": "2022-01-01T00:00:00.000Z"}]}}');
 ERROR:  Unsupported conversion from date to int in $convert with no onError value
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toInt": {"$numberDouble": "2147483648"}}}');
@@ -1355,25 +1832,25 @@ ERROR:  Conversion would overflow target type in $convert with no onError value:
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toInt": {"$numberLong": "-2147483649"}}}');
 ERROR:  Conversion would overflow target type in $convert with no onError value: -2147483649
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toInt": "-2147483649" }}');
-ERROR:  Failed to parse number '-2147483649' in $convert with no onError value: Overflow
+ERROR:  Unable to interpret number '-2147483649' within $convert, as no onError value was specified: Overflow
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toInt": "2147483648" }}');
-ERROR:  Failed to parse number '2147483648' in $convert with no onError value: Overflow
+ERROR:  Unable to interpret number '2147483648' within $convert, as no onError value was specified: Overflow
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toInt": "This contains a number: 324423" }}');
-ERROR:  Failed to parse number 'This contains a number: 324423' in $convert with no onError value: Did not consume whole string.
+ERROR:  Unable to interpret number 'This contains a number: 324423' within $convert, as no onError value was specified: Failed to process the entire string.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toInt": "    324423" }}');
-ERROR:  Failed to parse number '    324423' in $convert with no onError value: Did not consume whole string.
+ERROR:  Unable to interpret number '    324423' within $convert, as no onError value was specified: Failed to process the entire string.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toInt": "324423     " }}');
-ERROR:  Failed to parse number '324423     ' in $convert with no onError value: Did not consume whole string.
+ERROR:  Unable to interpret number '324423     ' within $convert, as no onError value was specified: Failed to process the entire string.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toInt": "0x01" }}');
-ERROR:  Illegal hexadecimal input in $convert with no onError value: 0x01
+ERROR:  Invalid hexadecimal input detected in $convert without a specified onError handler: 0x01
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toInt": "" }}');
-ERROR:  Failed to parse number '' in $convert with no onError value: No digits
+ERROR:  Unable to interpret number '' within $convert, as no onError value was specified: No digits
 -- $toLong negative tests
 -- only support numeric, date, bool or string, must not overflow/underflow. Takes exactly 1 argument.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toLong": {"input": ""}}}');
 ERROR:  Unsupported conversion from object to long in $convert with no onError value
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toLong": []}}');
-ERROR:  Expression $toLong takes exactly 1 arguments. 0 were passed in.
+ERROR:  The expression $toLong requires exactly 1 arguments, but 0 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toLong": {"$numberDouble": "9223372036854775808"}}}');
 ERROR:  Conversion would overflow target type in $convert with no onError value: 9.22337E+18
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toLong": {"$numberDouble": "Infinity"}}}');
@@ -1391,80 +1868,80 @@ ERROR:  Attempt to convert NaN value to integer type in $convert with no onError
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toLong": {"$numberDecimal": "-9223372036854775809"}}}');
 ERROR:  Conversion would overflow target type in $convert with no onError value: -9223372036854775809
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toLong": "-9223372036854775809" }}');
-ERROR:  Failed to parse number '-9223372036854775809' in $convert with no onError value: Overflow
+ERROR:  Unable to interpret number '-9223372036854775809' within $convert, as no onError value was specified: Overflow
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toLong": "9223372036854775808" }}');
-ERROR:  Failed to parse number '9223372036854775808' in $convert with no onError value: Overflow
+ERROR:  Unable to interpret number '9223372036854775808' within $convert, as no onError value was specified: Overflow
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toLong": "This contains a number: 324423" }}');
-ERROR:  Failed to parse number 'This contains a number: 324423' in $convert with no onError value: Did not consume whole string.
+ERROR:  Unable to interpret number 'This contains a number: 324423' within $convert, as no onError value was specified: Failed to process the entire string.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toLong": "    324423" }}');
-ERROR:  Failed to parse number '    324423' in $convert with no onError value: Did not consume whole string.
+ERROR:  Unable to interpret number '    324423' within $convert, as no onError value was specified: Failed to process the entire string.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toLong": "324423     " }}');
-ERROR:  Failed to parse number '324423     ' in $convert with no onError value: Did not consume whole string.
+ERROR:  Unable to interpret number '324423     ' within $convert, as no onError value was specified: Failed to process the entire string.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toLong": "0x01" }}');
-ERROR:  Illegal hexadecimal input in $convert with no onError value: 0x01
+ERROR:  Invalid hexadecimal input detected in $convert without a specified onError handler: 0x01
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toLong": "" }}');
-ERROR:  Failed to parse number '' in $convert with no onError value: No digits
+ERROR:  Unable to interpret number '' within $convert, as no onError value was specified: No digits
 -- $toDouble negative tests
 -- only support numeric, date, bool or string, must not overflow/underflow. Takes exactly 1 argument.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDouble": {"input": ""}}}');
 ERROR:  Unsupported conversion from object to double in $convert with no onError value
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDouble": []}}');
-ERROR:  Expression $toDouble takes exactly 1 arguments. 0 were passed in.
+ERROR:  The expression $toDouble requires exactly 1 arguments, but 0 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDouble": {"$numberDecimal": "1.8E309"}}}');
 ERROR:  Conversion would overflow target type in $convert with no onError value: 1.8E+309
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDouble": {"$numberDecimal": "-1.8E309"}}}');
 ERROR:  Conversion would overflow target type in $convert with no onError value: -1.8E+309
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDouble": "1.8E309" }}');
-ERROR:  Failed to parse number '1.8E309' in $convert with no onError value: Out of range
+ERROR:  Unable to interpret number '1.8E309' within $convert, as no onError value was specified: Value exceeds allowed range
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDouble": "-1.8E309" }}');
-ERROR:  Failed to parse number '-1.8E309' in $convert with no onError value: Out of range
+ERROR:  Unable to interpret number '-1.8E309' within $convert, as no onError value was specified: Value exceeds allowed range
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDouble": "This contains a number: 324423.23" }}');
-ERROR:  Failed to parse number 'This contains a number: 324423.23' in $convert with no onError value: Failed to parse string to decimal
+ERROR:  Unable to interpret number 'This contains a number: 324423.23' within $convert, as no onError value was specified: Unable to convert the provided string into a valid decimal format
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDouble": "    324423.0" }}');
-ERROR:  Failed to parse number '    324423.0' in $convert with no onError value: Failed to parse string to decimal
+ERROR:  Unable to interpret number '    324423.0' within $convert, as no onError value was specified: Unable to convert the provided string into a valid decimal format
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDouble": "324423.00001     " }}');
-ERROR:  Failed to parse number '324423.00001     ' in $convert with no onError value: Failed to parse string to decimal
+ERROR:  Unable to interpret number '324423.00001     ' within $convert, as no onError value was specified: Unable to convert the provided string into a valid decimal format
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDouble": "0x01" }}');
-ERROR:  Illegal hexadecimal input in $convert with no onError value: 0x01
+ERROR:  Invalid hexadecimal input detected in $convert without a specified onError handler: 0x01
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDouble": "" }}');
-ERROR:  Failed to parse number '' in $convert with no onError value: Empty string
+ERROR:  Unable to interpret number '' within $convert, as no onError value was specified: Empty string
 -- $toDecimal negative tests
 -- only support numeric, date, bool or string, must not overflow/underflow. Takes exactly 1 argument.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDecimal": {"input": ""}}}');
 ERROR:  Unsupported conversion from object to decimal in $convert with no onError value
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDecimal": []}}');
-ERROR:  Expression $toDecimal takes exactly 1 arguments. 0 were passed in.
+ERROR:  The expression $toDecimal requires exactly 1 arguments, but 0 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDecimal": "123423.8E6145" }}');
-ERROR:  Failed to parse number '123423.8E6145' in $convert with no onError value: Failed to parse string to decimal
+ERROR:  Unable to interpret number '123423.8E6145' within $convert, as no onError value was specified: Unable to convert the provided string into a valid decimal format
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDecimal": "-123423.8E6145" }}');
-ERROR:  Failed to parse number '-123423.8E6145' in $convert with no onError value: Failed to parse string to decimal
+ERROR:  Unable to interpret number '-123423.8E6145' within $convert, as no onError value was specified: Unable to convert the provided string into a valid decimal format
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDecimal": "This contains a number: 324423.23" }}');
-ERROR:  Failed to parse number 'This contains a number: 324423.23' in $convert with no onError value: Failed to parse string to decimal
+ERROR:  Unable to interpret number 'This contains a number: 324423.23' within $convert, as no onError value was specified: Unable to convert the provided string into a valid decimal format
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDecimal": "    324423.0" }}');
-ERROR:  Failed to parse number '    324423.0' in $convert with no onError value: Failed to parse string to decimal
+ERROR:  Unable to interpret number '    324423.0' within $convert, as no onError value was specified: Unable to convert the provided string into a valid decimal format
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDecimal": "324423.00001     " }}');
-ERROR:  Failed to parse number '324423.00001     ' in $convert with no onError value: Failed to parse string to decimal
+ERROR:  Unable to interpret number '324423.00001     ' within $convert, as no onError value was specified: Unable to convert the provided string into a valid decimal format
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDecimal": "0x01" }}');
-ERROR:  Illegal hexadecimal input in $convert with no onError value: 0x01
+ERROR:  Invalid hexadecimal input detected in $convert without a specified onError handler: 0x01
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDecimal": "" }}');
-ERROR:  Failed to parse number '' in $convert with no onError value: Empty string
+ERROR:  Unable to interpret number '' within $convert, as no onError value was specified: Empty string
 -- $toString negative tests
 -- only support numeric, date, bool, string, objectId. Takes exactly 1 argument
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toString": {"input": ""}}}');
 ERROR:  Unsupported conversion from object to string in $convert with no onError value
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toString": []}}');
-ERROR:  Expression $toString takes exactly 1 arguments. 0 were passed in.
+ERROR:  The expression $toString requires exactly 1 arguments, but 0 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toString": {"$timestamp" : { "t": 1670981326, "i": 1 }}}}');
 ERROR:  Unsupported conversion from timestamp to string in $convert with no onError value
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toString": [[]]}}');
 ERROR:  Unsupported conversion from array to string in $convert with no onError value
 -- $toDate negative tests
--- only support double, decimal128, long, objectId, timestamp, date. String support will be added with $dateFromString.
+-- Currently double, decimal128, long, objectId, timestamp, date and string are supported.
 -- Numeric, will be added to the Unix epoch 0 and shouldn't exceed int64 limits. Takes exactly 1 argument
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDate": {"input": ""}}}');
 ERROR:  Unsupported conversion from object to date in $convert with no onError value
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDate": []}}');
-ERROR:  Expression $toDate takes exactly 1 arguments. 0 were passed in.
+ERROR:  The expression $toDate requires exactly 1 arguments, but 0 arguments were actually provided.
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDate": [[]]}}');
 ERROR:  Unsupported conversion from array to date in $convert with no onError value
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDate": {"$numberDouble": "9223372036854775808"}}}');
@@ -1481,8 +1958,37 @@ SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDate": {"$numberDouble"
 
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDate": 1}}');
 ERROR:  Unsupported conversion from int to date in $convert with no onError value
+-- $toDate test for string case
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDate": "2022-01-01T00:00:00.000Z"}}');
-ERROR:  Unsupported conversion from string to date in $convert with no onError value
+                       bson_dollar_project                        
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "1641024000000" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDate": "2022-01-01 00:00:00.000"}}');
+                       bson_dollar_project                        
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "1641024000000" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDate": "2018-03-20T12:00:00+0500"}}');
+                       bson_dollar_project                        
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "1521554400000" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDate": "2018-03-20"}}');
+                       bson_dollar_project                        
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "1521529200000" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$toDate": "2017-Jul-04 noon"}}');
+                       bson_dollar_project                        
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "1499194800000" } } }
+(1 row)
+
 -- $$toHashedIndexKey tests
 --test int
 select *from bson_dollar_project('{"tests": 3}', '{"result": { "$toHashedIndexKey": "$tests" } }');
@@ -1670,10 +2176,39 @@ SELECT * FROM bson_dollar_project('{}', '{"result": {"$toUUID": ["123e4567-e89b-
 -- negative tests
 -- invalid string
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toUUID": "invalid-uuid-1234" }}');
-ERROR:  Failed to parse BinData invalid-uuid-1234 in $convert with no onError value: Invalid UUID string: invalid-uuid-1234
+ERROR:  The provided UUID string 'invalid-uuid-1234' is not valid
 -- invalid type
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toUUID": 1234 }}');
 ERROR:  Unsupported conversion from int to binData in $convert with no onError value
 -- invalid count number of array input
 SELECT * FROM bson_dollar_project('{}', '{"result": {"$toUUID": ["123e4567-e89b-12d3-a456-426614174000", "123e4567-e89b-12d3-a456-426614174000"] }}');
-ERROR:  Expression $toUUID takes exactly 1 arguments. 2 were passed in.
+ERROR:  The expression $toUUID requires exactly 1 arguments, but 2 arguments were actually provided.
+-- $convert with constant onError handling
+-- Test invalid ObjectId conversion with onError (guaranteed to fail)
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$convert": {"input": "xyz123", "to": "objectId", "onError": "CONVERSION_FAILED"}}}');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "result" : "CONVERSION_FAILED" }
+(1 row)
+
+-- Test invalid number conversion with onError
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$convert": {"input": "not_a_number_at_all", "to": "int", "onError": "ERROR_OCCURRED"}}}');
+       bson_dollar_project       
+---------------------------------------------------------------------
+ { "result" : "ERROR_OCCURRED" }
+(1 row)
+
+-- Test invalid date conversion with onError
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$convert": {"input": "invalid_date_format", "to": "date", "onError": null}}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+-- Test invalid boolean conversion with onError
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$convert": {"input": "maybe_true", "to": "bool", "onError": false}}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : true }
+(1 row)
+

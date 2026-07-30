@@ -78,15 +78,20 @@ typedef struct UpdateAggregationSpec
 		 */
 		const struct BsonProjectionQueryState *queryState;
 
-		/*
-		 * The expression data necessary to project a document (primarily used)
-		 * in the scenario of replaceRoot.
+		/* The state for replaceRoot and replaceWith stages
+		 * that is passed back to the projection execution
+		 * to produce the final output document.
+		 *
+		 * replaceWith is rewritten to replaceRoot.
 		 */
-		AggregationExpressionData expressionData;
+		struct BsonReplaceRootRedactState *replaceRootState;
 	};
 
-	/* Whether or not the state is a expression */
-	bool isExpression;
+	/* Whether or not the state is for a replaceRoot or replaceWith */
+	bool isReplaceStage;
+
+	/* variable spec */
+	const bson_value_t *variableSpec;
 } UpdateAggregationSpec;
 
 
@@ -115,6 +120,8 @@ typedef struct AggregationPipelineUpdateState
 } AggregationPipelineUpdateState;
 
 
+extern bool EnableVariablesSupportForWriteCommands;
+
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
@@ -136,7 +143,6 @@ static void HandleUpdateProjectionState(pgbson **source, const
 										UpdateAggregationSpec *updateSpec);
 static void HandleUpdateReplaceRoot(pgbson **source, const
 									UpdateAggregationSpec *updateSpec);
-static void ValidateReplaceRootElement(const bson_value_t *value);
 
 static MongoUpdateAggregationOperator AggregationOperators[] =
 {
@@ -163,17 +169,17 @@ static MongoUpdateAggregationOperator AggregationOperators[] =
  * the pipeline against documents to produce modified documents.
  */
 struct AggregationPipelineUpdateState *
-GetAggregationPipelineUpdateState(pgbson *updateSpec)
+GetAggregationPipelineUpdateState(const bson_value_t *updateSpec,
+								  const bson_value_t *variableSpec)
 {
-	bson_iter_t updateIterator;
-	PgbsonInitIteratorAtPath(updateSpec, "", &updateIterator);
-	if (!BSON_ITER_HOLDS_ARRAY(&updateIterator) ||
-		!bson_iter_recurse(&updateIterator, &updateIterator))
+	if (updateSpec->value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
 							"aggregation pipeline should be an array")));
 	}
 
+	bson_iter_t updateIterator;
+	BsonValueInitIterator(updateSpec, &updateIterator);
 	List *aggregationStages = NIL;
 	while (bson_iter_next(&updateIterator))
 	{
@@ -208,9 +214,9 @@ GetAggregationPipelineUpdateState(pgbson *updateSpec)
 			if (AggregationOperators[i].populateFunc == NULL)
 			{
 				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED), errmsg(
-									"%s not supported yet",
+									"%s is not currently supported",
 									aggregationElement.path), errdetail_log(
-									"%s not supported yet",
+									"%s is not currently supported",
 									aggregationElement.path)));
 			}
 
@@ -219,6 +225,9 @@ GetAggregationPipelineUpdateState(pgbson *updateSpec)
 			UpdateAggregationStageData *stageData = palloc0(
 				sizeof(UpdateAggregationStageData));
 			stageData->updateFunc = AggregationOperators[i].updateFunc;
+			stageData->state.variableSpec = EnableVariablesSupportForWriteCommands ?
+											variableSpec : NULL;
+
 			AggregationOperators[i].populateFunc(&aggregationElement.bsonValue,
 												 &stageData->state);
 			aggregationStages = lappend(aggregationStages, stageData);
@@ -244,8 +253,9 @@ GetAggregationPipelineUpdateState(pgbson *updateSpec)
 /*
  * ProcessAggregationPipelineUpdate takes a source document, and an update
  * specification that is an aggregation pipeline array that has the stages
- * $set, $addFields, $unset, $project, $replaceRoot or $replaceWith (only stages supported
- * by the mongo protocol) and applies the pipeline on the update document.
+ * $set, $addFields, $unset, $project, $replaceRoot or $replaceWith and applies
+ * the pipeline on the update document.
+ *
  * In this case, we apply each stage as a separate entity and rewrite the document in-between
  * stages. This is because mutations from a prior stage are visible as inputs to the next stage.
  * This may be scenarios such as - Set an array in one stage, and then set the array index
@@ -341,7 +351,7 @@ ProcessAggregationPipelineUpdate(pgbson *sourceDoc,
 static void
 HandleUpdateProjectionState(pgbson **source, const UpdateAggregationSpec *projectionValue)
 {
-	Assert(!projectionValue->isExpression);
+	Assert(!projectionValue->isReplaceStage);
 	pgbson *finalDoc = ProjectDocumentWithState(*source, projectionValue->queryState);
 	*source = finalDoc;
 }
@@ -353,7 +363,7 @@ HandleUpdateProjectionState(pgbson **source, const UpdateAggregationSpec *projec
 static void
 HandleUpdateReplaceRoot(pgbson **source, const UpdateAggregationSpec *projectionValue)
 {
-	Assert(projectionValue->isExpression);
+	Assert(projectionValue->isReplaceStage);
 
 	/*
 	 * forcing replaceRoot to project _id in the update pipeline. Without _id,
@@ -361,8 +371,10 @@ HandleUpdateReplaceRoot(pgbson **source, const UpdateAggregationSpec *projection
 	 */
 	bool forceProjectId = true;
 	pgbson *sourceDoc = *source;
-	const ExpressionVariableContext *variableContext = NULL;
-	*source = ProjectReplaceRootDocument(sourceDoc, &projectionValue->expressionData,
+	*source = ProjectReplaceRootDocument(sourceDoc,
+										 projectionValue->replaceRootState->
+										 expressionData,
+										 projectionValue->replaceRootState->
 										 variableContext,
 										 forceProjectId);
 }
@@ -389,10 +401,17 @@ PopulateDollarProjectState(const bson_value_t *projectionValue,
 
 	bool forceProjectId = true;
 	bool allowInclusionExclusion = false;
+
+	const bson_value_t *variableSpec = aggregationSpec->variableSpec;
+	pgbson *variableSpecBson = variableSpec != NULL &&
+							   variableSpec->value_type == BSON_TYPE_DOCUMENT ?
+							   PgbsonInitFromDocumentBsonValue(variableSpec) : NULL;
+
 	aggregationSpec->queryState = GetProjectionStateForBsonProject(&projectionSpec,
 																   forceProjectId,
-																   allowInclusionExclusion);
-	aggregationSpec->isExpression = false;
+																   allowInclusionExclusion,
+																   variableSpecBson);
+	aggregationSpec->isReplaceStage = false;
 }
 
 
@@ -407,7 +426,7 @@ PopulateDollarUnsetState(const bson_value_t *unsetValue,
 	bool forceProjectId = true;
 	aggregationSpec->queryState = GetProjectionStateForBsonUnset(unsetValue,
 																 forceProjectId);
-	aggregationSpec->isExpression = false;
+	aggregationSpec->isReplaceStage = false;
 }
 
 
@@ -430,8 +449,10 @@ PopulateDollarAddFieldsState(const bson_value_t *addFieldsValue,
 							 addFieldsValue->value.v_doc.data,
 							 addFieldsValue->value.v_doc.data_len);
 
-	aggregationSpec->queryState = GetProjectionStateForBsonAddFields(&addFieldsSpec);
-	aggregationSpec->isExpression = false;
+	aggregationSpec->queryState = GetProjectionStateForBsonAddFields(&addFieldsSpec,
+																	 aggregationSpec->
+																	 variableSpec);
+	aggregationSpec->isReplaceStage = false;
 }
 
 
@@ -449,20 +470,19 @@ PopulateDollarReplaceRootState(const bson_value_t *replaceRootValue,
 							"$replaceRoot should be a document")));
 	}
 
-	bson_iter_t replaceRootSpec;
-	bson_iter_init_from_data(&replaceRootSpec,
-							 replaceRootValue->value.v_doc.data,
-							 replaceRootValue->value.v_doc.data_len);
+	const bson_value_t *variableSpec = aggregationSpec->variableSpec;
+	pgbson *variableSpecBson = variableSpec != NULL &&
+							   variableSpec->value_type == BSON_TYPE_DOCUMENT ?
+							   PgbsonInitFromDocumentBsonValue(variableSpec) : NULL;
+	const char *collationString = NULL;
 
-	bson_value_t bsonValue;
-	GetBsonValueForReplaceRoot(&replaceRootSpec, &bsonValue);
-	ValidateReplaceRootElement(&bsonValue);
+	aggregationSpec->replaceRootState =
+		palloc0(sizeof(BsonReplaceRootRedactState));
+	PopulateReplaceRootExpressionDataFromSpec(aggregationSpec->replaceRootState,
+											  replaceRootValue, variableSpecBson,
+											  collationString);
 
-	/* TODO VARIABLE flow variable from update spec. */
-	ParseAggregationExpressionContext parseContext = { 0 };
-	ParseAggregationExpressionData(&aggregationSpec->expressionData, &bsonValue,
-								   &parseContext);
-	aggregationSpec->isExpression = true;
+	aggregationSpec->isReplaceStage = true;
 }
 
 
@@ -470,54 +490,30 @@ PopulateDollarReplaceRootState(const bson_value_t *replaceRootValue,
  * Sets the updateState for a $replaceWith operation.
  */
 static void
-PopulateDollarReplaceWithState(const bson_value_t *replaceRootValue,
+PopulateDollarReplaceWithState(const bson_value_t *replaceWithValue,
 							   UpdateAggregationSpec *aggregationSpec)
 {
-	ValidateReplaceRootElement(replaceRootValue);
+	ValidateReplaceRootElement(replaceWithValue);
 
-	/* TODO VARIABLE flow variable from update spec. */
-	ParseAggregationExpressionContext parseContext = { 0 };
-	ParseAggregationExpressionData(&aggregationSpec->expressionData, replaceRootValue,
-								   &parseContext);
-	aggregationSpec->isExpression = true;
-}
+	/* Convert to replaceRoot */
+	pgbson_writer writer;
+	PgbsonWriterInit(&writer);
+	PgbsonWriterAppendValue(&writer, "newRoot", 7, replaceWithValue);
+	pgbson *bson = PgbsonWriterGetPgbson(&writer);
+	bson_value_t currentValue = ConvertPgbsonToBsonValue(bson);
 
+	const bson_value_t *variableSpec = aggregationSpec->variableSpec;
+	pgbson *variableSpecBson = variableSpec != NULL &&
+							   variableSpec->value_type == BSON_TYPE_DOCUMENT ?
+							   PgbsonInitFromDocumentBsonValue(variableSpec) : NULL;
+	const char *collationString = NULL;
 
-static void
-ValidateReplaceRootElement(const bson_value_t *value)
-{
-	check_stack_depth();
-	CHECK_FOR_INTERRUPTS();
-	if (value->value_type == BSON_TYPE_DOCUMENT)
-	{
-		bson_iter_t docIter;
-		BsonValueInitIterator(value, &docIter);
-		while (bson_iter_next(&docIter))
-		{
-			StringView keyView = bson_iter_key_string_view(&docIter);
-			if (keyView.length > 0 && keyView.string[0] == '$')
-			{
-				/* Treat as expression (let expression evaluation handle the error) */
-				continue;
-			}
+	aggregationSpec->replaceRootState =
+		palloc0(sizeof(BsonReplaceRootRedactState));
 
-			if (StringViewContains(&keyView, '.'))
-			{
-				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE),
-								errmsg("FieldPath field names may not contain '.'."
-									   " Consider using $getField or $setField")));
-			}
+	PopulateReplaceRootExpressionDataFromSpec(aggregationSpec->replaceRootState,
+											  &currentValue, variableSpecBson,
+											  collationString);
 
-			ValidateReplaceRootElement(bson_iter_value(&docIter));
-		}
-	}
-	else if (value->value_type == BSON_TYPE_ARRAY)
-	{
-		bson_iter_t arrayIter;
-		BsonValueInitIterator(value, &arrayIter);
-		while (bson_iter_next(&arrayIter))
-		{
-			ValidateReplaceRootElement(bson_iter_value(&arrayIter));
-		}
-	}
+	aggregationSpec->isReplaceStage = true;
 }

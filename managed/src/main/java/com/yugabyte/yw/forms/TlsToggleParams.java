@@ -6,9 +6,9 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Universe;
@@ -98,7 +98,7 @@ public class TlsToggleParams extends UpgradeTaskParams {
 
       if (rootCA != null
           && CertificateInfo.get(rootCA).getCertType() == CertConfigType.CustomCertHostPath
-          && !userIntent.providerType.equals(CloudType.onprem)) {
+          && Util.checkAnyProviderType(userIntent, c -> c != CloudType.onprem)) {
         throw new PlatformServiceException(
             Status.BAD_REQUEST,
             "CustomCertHostPath certificates are only supported for on-prem providers.");
@@ -106,7 +106,7 @@ public class TlsToggleParams extends UpgradeTaskParams {
 
       if (clientRootCA != null
           && CertificateInfo.get(clientRootCA).getCertType() == CertConfigType.CustomCertHostPath
-          && !userIntent.providerType.equals(Common.CloudType.onprem)) {
+          && Util.checkAnyProviderType(userIntent, c -> c != CloudType.onprem)) {
         throw new PlatformServiceException(
             Http.Status.BAD_REQUEST,
             "CustomCertHostPath certificates are only supported for on-prem providers.");
@@ -115,7 +115,7 @@ public class TlsToggleParams extends UpgradeTaskParams {
       // TODO: Add check that the userIntent is to use cert-manager
       if (rootCA != null
           && CertificateInfo.get(rootCA).getCertType() == CertConfigType.K8SCertManager
-          && !userIntent.providerType.equals(CloudType.kubernetes)) {
+          && Util.checkAnyProviderType(userIntent, c -> c != CloudType.kubernetes)) {
         throw new PlatformServiceException(
             Status.BAD_REQUEST,
             "K8SCertManager certificates are only supported for k8s providers with cert-manager"
@@ -125,7 +125,7 @@ public class TlsToggleParams extends UpgradeTaskParams {
       // TODO: Add check that the userIntent is to use cert-manager
       if (clientRootCA != null
           && CertificateInfo.get(clientRootCA).getCertType() == CertConfigType.K8SCertManager
-          && !userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+          && Util.checkAnyProviderType(userIntent, c -> c != CloudType.kubernetes)) {
         throw new PlatformServiceException(
             Http.Status.BAD_REQUEST,
             "K8SCertManager certificates are only supported for k8s providers with cert-manager"

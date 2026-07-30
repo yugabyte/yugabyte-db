@@ -78,7 +78,8 @@ typedef void (*yb_assign_for_write_function) (YbcPgStatement stmt,
 extern void YBCHeapInsert(ResultRelInfo *resultRelInfo,
 						  TupleTableSlot *slot,
 						  YbcPgStatement blockInsertStmt,
-						  EState *estate);
+						  EState *estate,
+						  OnConflictAction onConflictAction);
 
 /*
  * Whether INSERT ON CONFLICT read batching is possible for the given

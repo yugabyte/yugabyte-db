@@ -17,6 +17,7 @@
 #include "yb/master/master_backup.proxy.h"
 #include "yb/tools/yb-admin_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace tools {

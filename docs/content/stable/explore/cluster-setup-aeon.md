@@ -12,6 +12,10 @@ menu:
 type: docs
 ---
 
+{{< tip title="Docs MCP Server" >}}
+Developing with YugabyteDB? Access the YugabyteDB Docs AI from your IDE or CLI. See [Docs MCP Server](../../reference/docs-mcp-server/).
+{{< /tip >}}
+
 Use the following instructions to set up universes for running the examples in Explore.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -52,6 +56,10 @@ Save your cluster credentials in a convenient location. You will use them to con
 Before you can create a multi-node cluster in YugabyteDB Aeon, you need to [add your billing profile and payment method](/stable/yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](/stable/yugabyte-cloud/managed-freetrial/).
 
 To create a single region three-node cluster, refer to [Create a single-region cluster](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-single-region/). Set **Fault tolerance** to **None** and **Nodes** to 3.
+
+To create a multi-region cluster, refer to [Replicate across regions](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/).
+
+To create a multi-region cluster using the [Global database pattern](/stable/develop/build-global-apps/global-database/) with a [replication factor](/stable/architecture/key-concepts/#replication-factor-rf) of 5, refer to [Replicate across regions](/stable/yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/); under **Data Distribution**, choose **Advanced Options** and set **Replication Factor** to RF5.
 
 Save your cluster credentials in a convenient location. You will use them to connect to your cluster.
 

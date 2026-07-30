@@ -2,7 +2,7 @@
 -- This operator class has following updates:
 --    i) This works for `bson` type instead of `geometry`
 --    ii) `compress` support function is changed to support extracting geometries and then converting them to `box2df`
---    iii) This also has `options` support which takes care of storing mongo 2d index options and validating them e.g. bounds
+--    iii) This also has `options` support which takes care of storing documentdb 2d index options and validating them e.g. bounds
 CREATE OPERATOR CLASS __API_CATALOG_SCHEMA__.bson_gist_geometry_ops_2d
 	FOR TYPE __CORE_SCHEMA__.bson USING GIST AS
         OPERATOR        23       __API_CATALOG_SCHEMA__.@|-| ,
@@ -20,7 +20,7 @@ CREATE OPERATOR CLASS __API_CATALOG_SCHEMA__.bson_gist_geometry_ops_2d
 
 -- This is a bson type operator class wrapper around `__POSTGIS_SCHEMA_NAME__.gist_geography_ops` which is implemented for geographies,
 --    i) `compress` support function is changed to support extracting geographies and then converting them to `gidx` for storage
---    ii) This also has `options` support which takes care of storing mongo 2dsphjere index options
+--    ii) This also has `options` support which takes care of storing documentdb 2dsphere index options
 CREATE OPERATOR CLASS __API_CATALOG_SCHEMA__.bson_gist_geography_ops_2d
 	FOR TYPE __CORE_SCHEMA__.bson USING GIST AS
         OPERATOR        23       __API_CATALOG_SCHEMA__.@|-| ,

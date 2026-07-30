@@ -343,6 +343,7 @@ _outPlannedStmt(StringInfo str, const PlannedStmt *node)
 	WRITE_LOCATION_FIELD(stmt_location);
 	WRITE_INT_FIELD(stmt_len);
 	WRITE_INT_FIELD(yb_num_referenced_relations);
+	WRITE_UINT64_FIELD(ybPlanId);
 }
 
 /*
@@ -371,6 +372,7 @@ _outPlanInfo(StringInfo str, const Plan *node)
 	WRITE_STRING_FIELD(ybInheritedHintAlias);
 	WRITE_BOOL_FIELD(ybIsHinted);
 	WRITE_BOOL_FIELD(ybHasHintedUid);
+	WRITE_BOOL_FIELD(ybReadAheadCapable);
 }
 
 /*
@@ -382,6 +384,9 @@ _outScanInfo(StringInfo str, const Scan *node)
 	_outPlanInfo(str, (const Plan *) node);
 
 	WRITE_UINT_FIELD(scanrelid);
+
+	/* YB */
+	WRITE_STRING_FIELD(ybScannedObjectName);
 }
 
 /*
@@ -634,6 +639,7 @@ _outIndexOnlyScan(StringInfo str, const IndexOnlyScan *node)
 	WRITE_NODE_FIELD(yb_pushdown.quals);
 	WRITE_NODE_FIELD(yb_pushdown.colrefs);
 	WRITE_INT_FIELD(yb_distinct_prefixlen);
+	WRITE_INT_FIELD(yb_num_decoded_pk_cols);
 }
 
 static void
@@ -1069,6 +1075,9 @@ _outHash(StringInfo str, const Hash *node)
 	WRITE_INT_FIELD(skewColumn);
 	WRITE_BOOL_FIELD(skewInherit);
 	WRITE_FLOAT_FIELD(rows_total, "%.0f");
+
+	/* YB */
+	WRITE_STRING_FIELD(ybSkewTableName);
 }
 
 static void
@@ -4093,18 +4102,18 @@ _outYbUpdateAffectedEntities(StringInfo str, const YbUpdateAffectedEntities *nod
 }
 
 static void
-_outYbSaopMergeInfo(StringInfo str, const YbSaopMergeInfo *node)
+_outYbMergeScanInfo(StringInfo str, const YbMergeScanInfo *node)
 {
-	WRITE_NODE_TYPE("YBSAOPMERGEINFO");
+	WRITE_NODE_TYPE("YBMERGESCANINFO");
 
 	WRITE_NODE_FIELD(saop_cols);
 	WRITE_NODE_FIELD(sort_cols);
 }
 
 static void
-_outYbSaopMergeSaopColInfo(StringInfo str, const YbSaopMergeSaopColInfo *node)
+_outYbMergeScanSaopColInfo(StringInfo str, const YbMergeScanSaopColInfo *node)
 {
-	WRITE_NODE_TYPE("YBSAOPMERGESAOPCOLINFO");
+	WRITE_NODE_TYPE("YBMERGESCANSAOPCOLINFO");
 
 	WRITE_NODE_FIELD(saop);
 	WRITE_INT_FIELD(indexcol);
@@ -4861,11 +4870,11 @@ outNode(StringInfo str, const void *obj)
 			case T_YbUpdateAffectedEntities:
 				_outYbUpdateAffectedEntities(str, obj);
 				break;
-			case T_YbSaopMergeInfo:
-				_outYbSaopMergeInfo(str, obj);
+			case T_YbMergeScanInfo:
+				_outYbMergeScanInfo(str, obj);
 				break;
-			case T_YbSaopMergeSaopColInfo:
-				_outYbSaopMergeSaopColInfo(str, obj);
+			case T_YbMergeScanSaopColInfo:
+				_outYbMergeScanSaopColInfo(str, obj);
 				break;
 			case T_YbSortInfo:
 				_outYbSortInfo(str, obj);

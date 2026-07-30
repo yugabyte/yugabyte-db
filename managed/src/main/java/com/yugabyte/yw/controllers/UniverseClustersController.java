@@ -132,7 +132,7 @@ public class UniverseClustersController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     UniverseConfigureTaskParams taskParams =
-        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class);
+        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class, universe);
 
     taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.EDIT;
     taskParams.currentClusterType = ClusterType.PRIMARY;
@@ -172,7 +172,7 @@ public class UniverseClustersController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     UniverseConfigureTaskParams taskParams =
-        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class);
+        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class, universe);
     taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
     taskParams.currentClusterType = ClusterType.ASYNC;
     universeCRUDHandler.configure(customer, taskParams);
@@ -254,7 +254,7 @@ public class UniverseClustersController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     UniverseConfigureTaskParams taskParams =
-        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class);
+        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class, universe);
 
     taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.EDIT;
     taskParams.currentClusterType = ClusterType.ASYNC;

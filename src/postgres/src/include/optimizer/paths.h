@@ -87,6 +87,7 @@ extern bool indexcol_is_bool_constant_for_query(PlannerInfo *root,
 extern bool match_index_to_operand(Node *operand, int indexcol,
 								   IndexOptInfo *index);
 extern void check_index_predicates(PlannerInfo *root, RelOptInfo *rel);
+extern bool yb_hash_code_match_index(Node *expr, IndexOptInfo *index);
 
 /*
  * tidpath.h
@@ -193,6 +194,7 @@ extern bool is_redundant_derived_clause(RestrictInfo *rinfo, List *clauselist);
 extern bool is_redundant_with_indexclauses(RestrictInfo *rinfo,
 										   List *indexclauses);
 extern EquivalenceMember *yb_find_ec_member_for_var(PlannerInfo *root, Var *var, Index relid, Index target_relid);
+extern EquivalenceClass *yb_get_eclass_for_hash_code(PlannerInfo *root, IndexOptInfo *index);
 
 /*
  * pathkeys.c
@@ -220,7 +222,7 @@ extern Path *get_cheapest_fractional_path_for_pathkeys(List *paths,
 extern Path *get_cheapest_parallel_safe_total_inner(List *paths);
 extern List *build_index_pathkeys(PlannerInfo *root, IndexOptInfo *index,
 								  ScanDirection scandir, int *yb_distinct_nkeys,
-								  List **yb_saop_merge_saop_cols);
+								  List **yb_merge_scan_saop_cols);
 extern List *build_partition_pathkeys(PlannerInfo *root, RelOptInfo *partrel,
 									  ScanDirection scandir, bool *partialkeys);
 extern List *build_expression_pathkey(PlannerInfo *root, Expr *expr,
@@ -288,5 +290,8 @@ extern int	yb_calculate_distinct_prefixlen(PlannerInfo *root,
 extern bool yb_has_sufficient_uniqkeys(PlannerInfo *root, Path *pathnode);
 extern List *yb_get_ecs_for_query_uniqkeys(PlannerInfo *root);
 extern Path *get_singleton_append_subpath(Path *path);
+extern List *yb_convert_subquery_uniqkeys(RelOptInfo *rel,
+										  List *subquery_uniqkeys,
+										  List *subquery_tlist);
 
 #endif							/* PATHS_H */

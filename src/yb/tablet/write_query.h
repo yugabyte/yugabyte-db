@@ -128,6 +128,9 @@ class WriteQuery {
   ScopedTabletMetrics scoped_tablet_metrics() { return scoped_tablet_metrics_; }
   docdb::DocDBStatistics scoped_statistics() { return scoped_statistics_; }
 
+  // Called by ReadQuery for reads that perform internal writes (e.g. row locks).
+  void set_use_async_write(bool use_async_write) { use_async_write_ = use_async_write; }
+
  private:
   friend struct UpdateQLIndexesTask;
   enum class ExecuteMode;
@@ -158,9 +161,11 @@ class WriteQuery {
 
   Status DoTransactionalConflictsResolved();
 
-  void CompleteExecute(HybridTime safe_time);
+  Status PickReadTimeIfNecessary();
 
-  Status DoCompleteExecute(HybridTime safe_time);
+  void CompleteExecute();
+
+  Status DoCompleteExecute();
 
   Result<bool> SimplePrepareExecute();
   Result<bool> RedisPrepareExecute();
@@ -186,7 +191,7 @@ class WriteQuery {
   void CompleteQLWriteBatch(const Status& status);
 
   template <class Code, class Resp>
-  void SchemaVersionMismatch(Code code, int size, Resp* resp);
+  void SchemaVersionMismatch(Code code, size_t size, Resp* resp);
 
   Result<bool> ExecuteSchemaVersionCheck();
   Result<bool> CqlCheckSchemaVersion();
@@ -271,6 +276,8 @@ class WriteQuery {
   // Set when the txn is in fast mode of serialization, snapshot, or read committed isolation
   // levels.
   FastModeTransactionScope fast_mode_txn_scope_;
+
+  bool use_async_write_ = false;
 };
 
 }  // namespace tablet

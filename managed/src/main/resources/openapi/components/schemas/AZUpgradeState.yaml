@@ -1,0 +1,40 @@
+title: AZUpgradeState
+description: Per-availability-zone software upgrade status for a cluster and server role.
+type: object
+properties:
+  az_uuid:
+    description: UUID of the availability zone.
+    type: string
+    format: uuid
+    readOnly: true
+    x-field-extra-annotation: '@com.fasterxml.jackson.annotation.JsonAlias("azUUID")'
+  az_name:
+    description: Name of the availability zone.
+    type: string
+    readOnly: true
+    x-field-extra-annotation: '@com.fasterxml.jackson.annotation.JsonAlias("azName")'
+  server_type:
+    description: Role of the YugabyteDB server being upgraded in this zone.
+    type: string
+    enum:
+      - MASTER
+      - TSERVER
+    readOnly: true
+    x-field-extra-annotation: '@com.fasterxml.jackson.annotation.JsonAlias("serverType")'
+  cluster_uuid:
+    description: UUID of the cluster being upgraded.
+    type: string
+    format: uuid
+    readOnly: true
+    x-field-extra-annotation: '@com.fasterxml.jackson.annotation.JsonAlias("clusterUUID")'
+  status:
+    description: Upgrade status for this availability zone and server role.
+    type: string
+    enum:
+      - NOT_STARTED
+      - IN_PROGRESS
+      - COMPLETED
+      - FAILED
+    readOnly: true
+x-yba-api-since: 2026.1.0.0-b0
+x-yba-api-visibility: preview

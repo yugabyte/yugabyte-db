@@ -1,0 +1,29 @@
+title: DrConfigReplicationDetailStatus
+description: Replication status of a table or database in a DR config.
+type: string
+enum:
+  - VALIDATED
+  - RUNNING
+  - UPDATING
+  - WARNING
+  - ERROR
+  - BOOTSTRAPPING
+  - FAILED
+  - UNABLE_TO_FETCH
+  - DROPPED_FROM_SOURCE
+  - DROPPED_FROM_TARGET
+  - EXTRA_TABLE_ON_SOURCE
+  - EXTRA_TABLE_ON_TARGET
+x-enum-varnames:
+  - VALIDATED
+  - REPLICATION_RUNNING
+  - UPDATING
+  - WARNING
+  - ERROR
+  - REPLICATION_BOOTSTRAPPING
+  - REPLICATION_FAILED
+  - UNABLE_TO_FETCH
+  - DROPPED_FROM_SOURCE
+  - DROPPED_FROM_TARGET
+  - EXTRA_TABLE_ON_SOURCE
+  - EXTRA_TABLE_ON_TARGET

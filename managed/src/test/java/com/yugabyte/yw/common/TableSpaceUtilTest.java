@@ -5,14 +5,18 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.common.ModelFactory.createFromConfig;
 import static com.yugabyte.yw.common.ModelFactory.generateTablespaceParams;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceInfo;
+import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceQueryResponse;
 import com.yugabyte.yw.forms.CreateTablespaceParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import java.util.ArrayList;
+import java.util.Arrays;
 import junitparams.JUnitParamsRunner;
 import org.junit.Before;
 import org.junit.Rule;
@@ -166,5 +170,28 @@ public class TableSpaceUtilTest extends FakeDBApplication {
             () -> TableSpaceUtil.validateTablespaces(params2, universe));
     assertEquals(
         "Invalid leader preferences order (current value 1, next value 3)", re.getMessage());
+  }
+
+  @Test
+  public void testParseToTableSpaceInfo_WithReadReplicaPlacement_DoesNotFail() {
+    TableSpaceQueryResponse response = new TableSpaceQueryResponse();
+    response.tableSpaceName = "ts_with_read_replicas";
+    response.tableSpaceOptions =
+        Arrays.asList(
+            "replica_placement={\"num_replicas\":3,\"placement_blocks\":"
+                + "[{\"cloud\":\"onprem\",\"region\":\"r1\",\"zone\":\"az1\",\"min_num_replicas\":1},"
+                + "{\"cloud\":\"onprem\",\"region\":\"r1\",\"zone\":\"az2\",\"min_num_replicas\":1},"
+                + "{\"cloud\":\"onprem\",\"region\":\"r1\",\"zone\":\"az3\",\"min_num_replicas\":1}]}",
+            "read_replica_placement={\"num_replicas\":1,\"placement_blocks\":"
+                + "[{\"cloud\":\"onprem\",\"region\":\"r2\",\"zone\":\"az1\",\"min_num_replicas\":1}]}");
+
+    // read_replica_placement should be skipped and not cause a syntax error.
+    TableSpaceInfo info = TableSpaceUtil.parseToTableSpaceInfo(response);
+
+    assertNotNull(info);
+    assertEquals("ts_with_read_replicas", info.name);
+    assertEquals(3, info.numReplicas);
+    assertNotNull(info.placementBlocks);
+    assertEquals(3, info.placementBlocks.size());
   }
 }

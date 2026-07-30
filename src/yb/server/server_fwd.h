@@ -15,10 +15,14 @@
 
 #pragma once
 
+#include <memory>
+#include <vector>
+
 #include "yb/gutil/ref_counted.h"
 
-namespace yb {
-namespace server {
+#include "yb/util/net/net_fwd.h"
+
+namespace yb::server {
 
 class Clock;
 class GenericServiceProxy;
@@ -28,6 +32,7 @@ class RunnableMonitoredTask;
 enum class MonitoredTaskState : int;
 
 using ClockPtr = scoped_refptr<Clock>;
+using MasterAddresses = std::vector<std::vector<HostPort>>;
+using MasterAddressesPtr = std::shared_ptr<const MasterAddresses>;
 
-} // namespace server
-} // namespace yb
+} // namespace yb::server

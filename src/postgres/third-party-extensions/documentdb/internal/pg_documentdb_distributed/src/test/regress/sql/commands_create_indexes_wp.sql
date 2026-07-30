@@ -97,8 +97,8 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test',
     }',
     true
 );
-SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('wp_test', 'ok_test_1', 'idx_1');
-SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('wp_test', 'ok_test_1', 'idx_2');
+SELECT documentdb_distributed_test_helpers.documentdb_index_get_pg_def('wp_test', 'ok_test_1', 'idx_1');
+SELECT documentdb_distributed_test_helpers.documentdb_index_get_pg_def('wp_test', 'ok_test_1', 'idx_2');
 SELECT documentdb_api.list_indexes_cursor_first_page('wp_test','{ "listIndexes": "ok_test_1" }') ORDER BY 1;
 
 -- using $ in a field path is ok unless it's the first character
@@ -114,7 +114,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test',
     }',
     true
 );
-SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('wp_test', 'ok_test_2', 'idx_1');
+SELECT documentdb_distributed_test_helpers.documentdb_index_get_pg_def('wp_test', 'ok_test_2', 'idx_1');
 
 SELECT documentdb_api.list_indexes_cursor_first_page('wp_test','{ "listIndexes": "ok_test_2" }') ORDER BY 1;
 
@@ -276,7 +276,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test',
     }',
     true
 );
-SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('wp_test', 'no_path_collision_1', 'idx_1');
+SELECT documentdb_distributed_test_helpers.documentdb_index_get_pg_def('wp_test', 'no_path_collision_1', 'idx_1');
 
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test',
     '{
@@ -290,7 +290,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test',
     }',
     true
 );
-SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('wp_test', 'no_path_collision_2', 'idx_1');
+SELECT documentdb_distributed_test_helpers.documentdb_index_get_pg_def('wp_test', 'no_path_collision_2', 'idx_1');
 
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test',
     '{
@@ -304,7 +304,7 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test',
     }',
     true
 );
-SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('wp_test', 'no_path_collision_3', 'idx_1');
+SELECT documentdb_distributed_test_helpers.documentdb_index_get_pg_def('wp_test', 'no_path_collision_3', 'idx_1');
 
 SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test',
     '{
@@ -318,4 +318,4 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('wp_test',
     }',
     true
 );
-SELECT documentdb_distributed_test_helpers.mongo_index_get_pg_def('wp_test', 'no_path_collision_4', 'idx_1');
+SELECT documentdb_distributed_test_helpers.documentdb_index_get_pg_def('wp_test', 'no_path_collision_4', 'idx_1');

@@ -52,7 +52,7 @@ Status TestEchoService::RecordRequestInTable(const std::string& message) {
   auto* table = VERIFY_RESULT(GetServiceTable());
 
   auto session = VERIFY_RESULT(GetYBSession(30s));
-  const auto op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+  const auto op = table->NewWriteOp(session->arena(), QLWriteRequestPB::QL_STMT_INSERT);
   auto* const req = op->mutable_request();
   QLAddTimestampHashValue(req, GetCurrentTimeMicros());
   table->AddStringColumnValue(req, master::kTestEchoNodeId, node_uuid_);

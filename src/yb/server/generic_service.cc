@@ -122,14 +122,56 @@ void GenericServiceImpl::GetFlag(const GetFlagRequestPB* req,
 
 void GenericServiceImpl::ValidateFlagValue(
     const ValidateFlagValueRequestPB* req, ValidateFlagValueResponsePB* resp, rpc::RpcContext rpc) {
-  auto status = flags_internal::ValidateFlagValue(req->flag_name(), req->flag_value());
-  if (status.ok()) {
-    rpc.RespondSuccess();
+  if (req->has_flag_name() && req->flags_size() > 0) {
+    rpc.RespondFailure(STATUS(
+        InvalidArgument, "Cannot specify both legacy flag_name/flag_value and batch flags fields"));
     return;
   }
 
-  LOG(WARNING) << "Flag validation failed: " << status;
-  rpc.RespondFailure(status);
+  std::vector<std::pair<string, string>> flags_to_validate;
+  for (const auto& flag : req->flags()) {
+    flags_to_validate.emplace_back(flag.name(), flag.value());
+  }
+  if (flags_to_validate.empty() && req->has_flag_name()) {
+    flags_to_validate.emplace_back(req->flag_name(), req->flag_value());
+  }
+  if (flags_to_validate.empty()) {
+    rpc.RespondFailure(STATUS(InvalidArgument, "No flags specified for validation"));
+    return;
+  }
+
+  // Legacy single-flag path: return RPC-level failure to preserve backward compatibility
+  // with callers (e.g. YBA) that rely on catching an exception on invalid values.
+  // Batch path: errors are returned in the response errors map.
+  const bool legacy_mode = req->has_flag_name();
+
+  std::map<string, string> extra_validation_flags;
+  for (const auto& [flag_name, flag_value] : flags_to_validate) {
+    auto status = flags_internal::ValidateFlagValue(flag_name, flag_value);
+    if (!status.ok()) {
+      LOG(INFO) << "Flag validation failed for " << flag_name << ": " << status;
+      if (legacy_mode) {
+        rpc.RespondFailure(status);
+        return;
+      }
+      (*resp->mutable_errors())[flag_name] = status.message().ToBuffer();
+      continue;
+    }
+    extra_validation_flags[flag_name] = flag_value;
+  }
+
+  auto extra_errors =
+      server_->ExtendedFlagValidation(extra_validation_flags, rpc.GetClientDeadline());
+  for (auto& [flag_name, error_msg] : extra_errors) {
+    LOG(INFO) << "Extra flag validation failed for " << flag_name << ": " << error_msg;
+    if (legacy_mode) {
+      rpc.RespondFailure(STATUS(InvalidArgument, error_msg));
+      return;
+    }
+    (*resp->mutable_errors())[flag_name] = std::move(error_msg);
+  }
+
+  rpc.RespondSuccess();
 }
 
 void GenericServiceImpl::FlushCoverage(const FlushCoverageRequestPB* req,

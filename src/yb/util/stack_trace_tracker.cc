@@ -23,7 +23,9 @@
 #include "yb/util/debug.h"
 #include "yb/util/flags.h"
 #include "yb/util/flags/flags_callback.h"
+#include "yb/util/result.h"
 #include "yb/util/stack_trace.h"
+#include "yb/util/status_format.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
 
@@ -95,7 +97,7 @@ class GlobalStackTraceTracker {
 static GlobalStackTraceTracker global_tracker;
 
 void TrackStackTraceToggleCallback() {
-  if (GetAtomicFlag(&FLAGS_track_stack_traces)) {
+  if (FLAGS_track_stack_traces) {
     global_tracker.ResetTrackedStackTraces();
   }
 }
@@ -192,7 +194,7 @@ void GlobalStackTraceTracker::MergeLocalTracker(ThreadStackTraceTracker* tracker
 } // namespace
 
 void TrackStackTrace(StackTraceTrackingGroup group, size_t weight) {
-  if (GetAtomicFlag(&FLAGS_track_stack_traces)) {
+  if (FLAGS_track_stack_traces) {
     thread_tracker.Trace(group, weight);
   }
 }

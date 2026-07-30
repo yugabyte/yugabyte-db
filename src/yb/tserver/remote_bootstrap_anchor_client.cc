@@ -44,8 +44,7 @@ using std::string;
 
 using namespace yb::size_literals;
 
-DEFINE_UNKNOWN_int32(
-    remote_bootstrap_anchor_session_timeout_ms, 5000,
+DEFINE_UNKNOWN_int32(remote_bootstrap_anchor_session_timeout_ms, 5000,
     "Tablet server RPC client timeout for RemoteBootstrapAnchor Service calls.");
 TAG_FLAG(remote_bootstrap_anchor_session_timeout_ms, hidden);
 
@@ -172,27 +171,6 @@ Status RemoteBootstrapAnchorClient::KeepLogAnchorAliveAsync(bool session_succeed
                 nullptr /* shared_ptr<UpdateLogAnchorResponsePB> */,
                 shared_resp_ptr));
 
-  return Status::OK();
-}
-
-Status RemoteBootstrapAnchorClient::ChangePeerRole() {
-  ChangePeerRoleRequestPB req;
-  req.set_owner_info(owner_info_);
-  req.set_requestor_uuid(rbs_client_uuid_);
-
-  ChangePeerRoleResponsePB resp;
-
-  rpc::RpcController controller;
-  controller.set_timeout(
-      MonoDelta::FromMilliseconds(FLAGS_remote_bootstrap_anchor_session_timeout_ms));
-
-  auto status = UnwindRemoteError(proxy_->ChangePeerRole(req, &resp, &controller), controller);
-
-  if (!status.ok()) {
-    status = status.CloneAndPrepend("ChangePeerRole failed for session: " + owner_info_);
-    LOG(WARNING) << status;
-    return status;
-  }
   return Status::OK();
 }
 

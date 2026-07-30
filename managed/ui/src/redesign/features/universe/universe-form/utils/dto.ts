@@ -1,6 +1,10 @@
 import { ArchitectureType } from '../../../../../components/configRedesign/providerRedesign/constants';
 import { ProviderMin } from '../form/fields/ProvidersField/ProvidersField';
 import { AuditLogConfig } from '../../universe-tabs/db-audit-logs/utils/types';
+import {
+  MULTI_TENANCY_QOS_MAX_DB_CPU_PERCENT_FALLBACK,
+  MULTI_TENANCY_QOS_MAX_DB_COUNT_FALLBACK
+} from '../../universe-actions/edit-multi-tenancy/multiTenancyQosDbCount';
 
 //This File has enum, interfaces, dto related Universe Form and divided to help in finding theme easily
 //--------------------------------------------------------- Most Used OR Common Types - Starts --------------------------------------------------------
@@ -26,12 +30,32 @@ export enum CloudType {
   aws = 'aws',
   gcp = 'gcp',
   azu = 'azu',
+  oci = 'oci',
   docker = 'docker',
   onprem = 'onprem',
   kubernetes = 'kubernetes',
   cloud = 'cloud-1',
   other = 'other'
 }
+
+/** Public cloud providers (AWS, GCP, Azure, OCI). */
+export const CloudVendorCloudTypes = [
+  CloudType.aws,
+  CloudType.gcp,
+  CloudType.azu,
+  CloudType.oci
+] as const;
+export type CloudVendorCloudType = (typeof CloudVendorCloudTypes)[number];
+
+/** Cloud providers that expose a storage type selector during universe create/edit. */
+export const StorageTypeSelectableCloudTypes = [
+  CloudType.gcp,
+  CloudType.azu,
+  CloudType.oci
+] as const;
+
+/** Cloud providers that support spot/preemptible instances during universe creation. */
+export const SpotInstanceCloudTypes = [CloudType.aws, CloudType.gcp, CloudType.azu] as const;
 
 export enum MasterPlacementMode {
   COLOCATED = 'COLOCATED',
@@ -71,16 +95,35 @@ export enum StorageType {
   PremiumV2_LRS = 'PremiumV2_LRS',
   UltraSSD_LRS = 'UltraSSD_LRS',
   Hyperdisk_Balanced = 'Hyperdisk_Balanced',
-  Hyperdisk_Extreme = 'Hyperdisk_Extreme'
+  Hyperdisk_Extreme = 'Hyperdisk_Extreme',
+  OCI_BALANCED = 'OCI_BALANCED',
+  OCI_HIGHERPERFORMANCE = 'OCI_HIGHERPERFORMANCE',
+  OCI_LOWERCOST = 'OCI_LOWERCOST'
 }
 export interface DeviceInfo {
-  volumeSize: number;
-  numVolumes: number;
+  volumeSize: number | null;
+  numVolumes: number | null;
   diskIops: number | null;
   throughput: number | null;
-  storageClass: 'standard'; // hardcoded in DeviceInfo.java
+  storageClass: string;
   mountPoints?: string | null;
   storageType: StorageType | null;
+}
+
+/** Per-AZ override for K8s: perProcess.TSERVER/MASTER each have deviceInfo (volume size/count/storage class). */
+export interface AZOverridePerProcess {
+  deviceInfo?: {
+    volumeSize?: number;
+    numVolumes?: number;
+    storageClass?: string;
+  };
+}
+
+export interface AZOverridePerAZ {
+  perProcess?: {
+    TSERVER?: AZOverridePerProcess;
+    MASTER?: AZOverridePerProcess;
+  };
 }
 
 export enum ExposingServiceTypes {
@@ -135,6 +178,7 @@ export interface UserIntent {
   enableExposingService: ExposingServiceTypes | null;
   useSystemd: boolean;
   enableConnectionPooling?: boolean;
+  multiTenancy?: { enableQos: boolean; qosMaxDbCpuPercent?: number; qosMaxDbCount?: number };
   //optional fields
   accessKeyCode?: string | null;
   dedicatedNodes?: boolean;
@@ -164,7 +208,7 @@ export interface UserIntent {
   tserverGFlags?: Record<string, any>;
   universeOverrides?: string;
   userIntentOverrides?: {
-    azOverrides?: Record<string, string>;
+    azOverrides?: Record<string, AZOverridePerAZ>;
   };
   proxyConfig?: {};
   useSpotInstance?: boolean | null;
@@ -332,11 +376,11 @@ export interface CommunicationPorts {
 }
 
 export interface DeviceInfo {
-  volumeSize: number;
-  numVolumes: number;
+  volumeSize: number | null;
+  numVolumes: number | null;
   diskIops: number | null;
   throughput: number | null;
-  storageClass: 'standard'; // hardcoded in DeviceInfo.java
+  storageClass: string;
   mountPoints?: string | null;
   storageType: StorageType | null;
   cloudVolumeEncryption?: {
@@ -346,8 +390,8 @@ export interface DeviceInfo {
 }
 
 export interface K8NodeSpec {
-  memoryGib: number;
-  cpuCoreCount: number;
+  memoryGib: number | null;
+  cpuCoreCount: number | null;
 }
 //-------------------------------------------------------- Most Used OR Common Types - Ends --------------------------------------------------------
 
@@ -408,7 +452,7 @@ export interface UserIntent {
   masterGFlags?: Record<string, any>;
   tserverGFlags?: Record<string, any>;
   universeOverrides?: string;
-  azOverrides?: Record<string, string>;
+  azOverrides?: Record<string, AZOverridePerAZ>;
 }
 
 export interface Cluster {
@@ -575,6 +619,9 @@ export interface AdvancedConfigFormValue {
   communicationPorts: CommunicationPorts;
   enablePGCompatibitilty: boolean;
   enableConnectionPooling?: boolean;
+  enableMultiTenancyQos?: boolean;
+  multiTenancyQosMaxDbCpuPercent?: number;
+  multiTenancyQosMaxDbCount?: number;
 }
 
 export interface InstanceTag {
@@ -589,6 +636,10 @@ export interface Gflag {
   MASTER?: string | boolean | number;
   TSERVER?: string | boolean | number;
   tags?: string;
+  /** True if changing this flag requires a restart/rolling restart; from gflag metadata (list_gflags). */
+  requiresRestart?: boolean;
+  /** True when the flag was added in this session via the Add GFlag modal; undefined/false for flags loaded from the universe. */
+  isNewlyAdded?: boolean;
 }
 
 export interface UniverseFormData {
@@ -599,7 +650,10 @@ export interface UniverseFormData {
   gFlags: Gflag[];
   inheritFlagsFromPrimary?: boolean;
   universeOverrides?: string;
+  /** Helm: userIntent.azOverrides (YAML strings per AZ) */
   azOverrides?: Record<string, string>;
+  /** K8s: userIntent.userIntentOverrides.azOverrides (per-AZ volume/config) */
+  k8sAzOverrides?: Record<string, AZOverridePerAZ>;
   proxyConfig?: {};
   specificGFlagsAzOverrides?: {};
 }
@@ -680,13 +734,17 @@ export const DEFAULT_ADVANCED_CONFIG: AdvancedConfigFormValue = {
   ybSoftwareVersion: null,
   communicationPorts: DEFAULT_COMMUNICATION_PORTS,
   enablePGCompatibitilty: false,
-  enableConnectionPooling: false
+  enableConnectionPooling: false,
+  enableMultiTenancyQos: false,
+  multiTenancyQosMaxDbCpuPercent: MULTI_TENANCY_QOS_MAX_DB_CPU_PERCENT_FALLBACK,
+  multiTenancyQosMaxDbCount: MULTI_TENANCY_QOS_MAX_DB_COUNT_FALLBACK
 };
 
 export const DEFAULT_USER_TAGS = [{ name: '', value: '' }];
 export const DEFAULT_GFLAGS = [];
 export const DEFAULT_UNIVERSE_OVERRIDES = '';
-export const DEFAULT_AZ_OVERRIDES = {};
+export const DEFAULT_AZ_OVERRIDES: Record<string, string> = {};
+export const DEFAULT_K8S_AZ_OVERRIDES: Record<string, AZOverridePerAZ> = {};
 
 export const DEFAULT_FORM_DATA: UniverseFormData = {
   cloudConfig: DEFAULT_CLOUD_CONFIG,
@@ -696,7 +754,8 @@ export const DEFAULT_FORM_DATA: UniverseFormData = {
   gFlags: DEFAULT_GFLAGS,
   inheritFlagsFromPrimary: true,
   universeOverrides: DEFAULT_UNIVERSE_OVERRIDES,
-  azOverrides: DEFAULT_AZ_OVERRIDES
+  azOverrides: DEFAULT_AZ_OVERRIDES,
+  k8sAzOverrides: DEFAULT_K8S_AZ_OVERRIDES
 };
 //-------------------------------------------------------- Form Data related Types - Ends -------------------------------------------------------------------
 
@@ -739,7 +798,7 @@ export interface Certificate {
   expiryDate: string;
   privateKey: string;
   certificate: string;
-  certType: 'SelfSigned' | 'CustomCertHostPath';
+  certType: 'SelfSigned' | 'CustomCertHostPath' | 'K8SCertManager';
 }
 
 export interface AccessKey {
@@ -866,6 +925,10 @@ export interface OverridesError {
 }
 export interface HelmOverridesError {
   overridesErrors: OverridesError[];
+}
+
+export interface K8sHelmOverridesError {
+  errors: OverridesError[];
 }
 
 export interface UniverseResource {

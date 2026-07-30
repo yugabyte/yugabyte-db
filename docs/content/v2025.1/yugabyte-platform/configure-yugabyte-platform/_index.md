@@ -1,8 +1,8 @@
 ---
-title: Create provider configurations
-headerTitle: Create provider configurations
-linkTitle: Create providers
-description: Create provider configurations for deploying YugabyteDB universes.
+title: Provider configurations
+headerTitle: Provider configurations
+linkTitle: Provider configurations
+description: Create and manage provider configurations for deploying YugabyteDB universes.
 menu:
   v2025.1_yugabyte-platform:
     parent: yugabytedb-anywhere
@@ -22,10 +22,16 @@ A provider configuration describes your cloud environment (such as its security 
 Not sure what type of provider to use? Refer to [Provider configurations](../yba-overview/#provider-configurations).
 {{</lead>}}
 
+{{< tip title="Automatic on-premises provisioning" >}}
+
+If you are deploying on premises (private cloud), on-premises providers are created automatically when provisioning nodes. Refer to [Automatically provision on-premises nodes](../prepare/server-nodes-software/software-on-prem/).
+
+{{< /tip >}}
+
 Before you can deploy universes using YugabyteDB Anywhere, you must create a provider configuration.
 
 | To&nbsp;Deploy&nbsp;universes&nbsp;to | Create&nbsp;provider | Description |
 | :--- | :--- | :--- |
-| Private cloud<br>Bare metal, racks<br>Cloud provider (limited SSH permissions) | [On-premises](on-premises/) | Deploy universes to your own infrastructure, or to cloud providers where (due to security policies or other restrictions) you can't provide YBA with cloud permissions or SSH access to cloud VMs.<br>Provides maximum flexibility. |
-| Cloud provider (full SSH permissions) | [AWS](aws/)<br>[GCP](gcp/)<br>[Azure](azure/) | Deploy universes to cloud providers with full automation.<br>Provides maximum automation. |
+| - Private cloud<br>- Bare metal/racks<br>- Cloud provider (limited SSH) | [On-premises](on-premises/) | Deploy universes to your own infrastructure, or to cloud providers where (due to security policies or other restrictions) you can't provide YBA with cloud permissions or SSH access to cloud VMs.<br>Provides maximum flexibility.<br>On-premises providers are created automatically when provisioning nodes. Refer to [Automatically provision on-premises nodes](../prepare/server-nodes-software/software-on-prem/). |
+| Cloud provider<br>(full SSH) | [AWS](aws/)<br>[GCP](gcp/)<br>[Azure](azure/) | Deploy universes to cloud providers where you can provide YBA with cloud permissions and SSH access to cloud VMs for full automation.<br>Provides maximum automation. |
 | Kubernetes | [Kubernetes](kubernetes/)<br>[VMware Tanzu](vmware-tanzu/)<br>[OpenShift](openshift/) | Deploy universes on Kubernetes. |

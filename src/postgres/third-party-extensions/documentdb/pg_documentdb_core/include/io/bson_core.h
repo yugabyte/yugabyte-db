@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/bson/bson_core.h
+ * include/io/bson_core.h
  *
  * Core declarations of the bson type.
  *
@@ -20,5 +20,6 @@
 #include "io/pgbsonelement.h"
 #include "utils/string_view.h"
 #include "io/bsonvalue_utils.h"
+#include "utils/documentdb_pg_compatibility.h"
 
 #endif

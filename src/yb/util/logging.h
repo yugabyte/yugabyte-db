@@ -50,6 +50,22 @@
 #include <boost/preprocessor/stringize.hpp>
 #include <glog/logging.h>
 
+// Prefix string for DETAIL level logs, shared across YB and RocksDB logging.
+// Example line: I1011 20:44:27.393563 1874145280 cdc_service.cc:410] DETAIL: message...
+#define YB_DETAIL_LOG_PREFIX "DETAIL: "
+
+// We add LOG(DETAIL) as a pseudo-severity: same as INFO with a "DETAIL: " message prefix.
+// Stock glog only supports LOG(severity) for severities that participate in COMPACT_GOOGLE_LOG_*.
+// We replace LOG while keeping the same underlying expansion (see glog's LOG definition).
+#undef LOG
+#define LOG(severity) BOOST_PP_CAT(YB_LOG_, severity)
+#define YB_LOG_INFO COMPACT_GOOGLE_LOG_INFO.stream()
+#define YB_LOG_WARNING COMPACT_GOOGLE_LOG_WARNING.stream()
+#define YB_LOG_ERROR COMPACT_GOOGLE_LOG_ERROR.stream()
+#define YB_LOG_FATAL COMPACT_GOOGLE_LOG_FATAL.stream()
+#define YB_LOG_DFATAL COMPACT_GOOGLE_LOG_DFATAL.stream()
+#define YB_LOG_DETAIL COMPACT_GOOGLE_LOG_INFO.stream() << YB_DETAIL_LOG_PREFIX
+
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/walltime.h"
@@ -129,6 +145,15 @@
 
 #define YB_LOG_WITH_PREFIX_HIGHER_SEVERITY_WHEN_TOO_MANY(severity1, severity2, duration, count) \
     YB_LOG_HIGHER_SEVERITY_WHEN_TOO_MANY(severity1, severity2, duration, count) << LogPrefix()
+
+#define LOG_COND_SEVERITY(condition, severity_true, severity_false) \
+  google::LogMessage( \
+      __FILE__, __LINE__, \
+      (condition) ? YB_GLOG_SEVERITY(severity_true) \
+                  : YB_GLOG_SEVERITY(severity_false)).stream()
+
+#define LOG_WITH_PREFIX_COND_SEVERITY(condition, severity_true, severity_false) \
+    LOG_COND_SEVERITY(condition, severity_true, severity_false) << LogPrefix()
 
 ////////////////////////////////////////////////////////////////////////////////
 // Versions of glog macros for "LOG_EVERY" and "LOG_FIRST" that annotate the
@@ -277,6 +302,13 @@ void UnregisterLoggingCallback();
 // Returns the full pathname of the symlink to the most recent log
 // file corresponding to this severity
 void GetFullLogFilename(google::LogSeverity severity, std::string* filename);
+
+// Retuns the log file path without the severity suffix
+std::string GetLogFilePathnamePrefix();
+
+// Returns the time and pid string for the given time (in microseconds) and pid
+// in the format <date>.<time>.<pid> as used in the log file names.
+std::string GetTimePidString(uint64_t now_micros, int pid);
 
 // Shuts down the google logging library. Call before exit to ensure that log files are
 // flushed.

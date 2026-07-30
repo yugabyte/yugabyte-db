@@ -1425,26 +1425,22 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 
 	/*
 	 * YB: CREATE DATABASE using templates other than template0 and template1
-	 * will always go through the DB clone workflow.
+	 * goes through the DB clone workflow, which forwards yb_clone_info to
+	 * ysql_dump on a remote tserver. ysql_dump derives the source database
+	 * owner itself from pg_database.datdba (its --rename-owner machinery
+	 * reads that column directly), so only the target owner — the new owner
+	 * for the cloned objects — is forwarded here, as a raw role name.
 	 */
 	YbcCloneInfo yb_clone_info = {
 		.clone_time = dbclonetime,
 		.src_db_name = dbtemplate,
-		.src_owner = is_clone ? GetUserNameFromId(src_owner, true /* noerr */ ) : NULL,
 		.tgt_owner = is_clone ? GetUserNameFromId(datdba, true /* noerr */ ) : NULL,
 	};
 
-	if (is_clone)
-	{
-		if (!yb_clone_info.src_owner)
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("could not get source database owner name from oid")));
-		if (!yb_clone_info.tgt_owner)
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("could not get target database owner name from oid")));
-	}
+	if (is_clone && !yb_clone_info.tgt_owner)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("could not get target database owner name from oid")));
 
 	if (IsYugaByteEnabled() &&
 		(OidIsValid(dboid) && dboid != Template0DbOid && dboid != PostgresDbOid) &&
@@ -3145,6 +3141,28 @@ get_db_info(const char *name, LOCKMODE lockmode,
 		 */
 		if (lockmode != NoLock)
 			LockSharedObject(DatabaseRelationId, dbOid, 0, lockmode);
+
+		/*
+		 * YB: Without object locking, catalog cache invalidations may not
+		 * have propagated by the time we get here (e.g. the heartbeat catalog
+		 * versions cache on master lags after a breaking DDL like ALTER
+		 * DATABASE RENAME, suppressing the per-RPC catalog-version-mismatch
+		 * signal that normally drives PG to refresh its caches). Without a
+		 * refresh, DATABASEOID still has the old name from this backend's
+		 * local cache; the scan above reads the new name from pg_database via
+		 * master; the names disagree; we loop again with the same stale local
+		 * cache; forever. Force-invalidate the cache entry before the
+		 * re-fetch so SearchSysCache1 pulls fresh tuple data from master.
+		 *
+		 * When object locking is enabled, the lock acquisition above carries
+		 * fresh catalog-version data with it (via the release-locks RPC path),
+		 * so PG's local caches are already invalidated and a manual flush is
+		 * unnecessary.
+		 */
+		if (IsYugaByteEnabled() && YBGetObjectLockMode() != YB_OBJECT_LOCK_ENABLED)
+			SysCacheInvalidate(DATABASEOID,
+							   GetSysCacheHashValue1(DATABASEOID,
+													 ObjectIdGetDatum(dbOid)));
 
 		/*
 		 * And now, re-fetch the tuple by OID.  If it's still there and still

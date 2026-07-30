@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/transaction/retryable_writes.
+ * src/commands/retryable_writes.
  *
  * Implementation of retryable write bookkeeping.
  *
@@ -40,6 +40,7 @@ FindRetryRecordInAnyShard(uint64 collectionId, text *transactionId,
 	int spiStatus PG_USED_FOR_ASSERTS_ONLY = 0;
 
 	bool retryRecordExists = false;
+	MemoryContext outerContext = CurrentMemoryContext;
 
 	SPI_connect();
 
@@ -78,11 +79,9 @@ FindRetryRecordInAnyShard(uint64 collectionId, text *transactionId,
 			if (!isNull)
 			{
 				/* copy object ID into outer memory context */
-				bool typeByValue = false;
-				int typeLength = -1;
-				objectIdDatum = SPI_datumTransfer(objectIdDatum, typeByValue, typeLength);
-
-				writeResult->objectId = (pgbson *) DatumGetPointer(objectIdDatum);
+				pgbson *objectId = DatumGetPgBson(objectIdDatum);
+				writeResult->objectId = CopyPgbsonIntoMemoryContext(objectId,
+																	outerContext);
 			}
 			else
 			{
@@ -132,6 +131,8 @@ DeleteRetryRecord(uint64 collectionId, int64 shardKeyValue,
 	int spiStatus PG_USED_FOR_ASSERTS_ONLY = 0;
 	bool foundRetryRecord = false;
 
+	MemoryContext outerContext = CurrentMemoryContext;
+
 	SPI_connect();
 
 	initStringInfo(&query);
@@ -170,11 +171,9 @@ DeleteRetryRecord(uint64 collectionId, int64 shardKeyValue,
 			if (!isNull)
 			{
 				/* copy object ID into outer memory context */
-				bool typeByValue = false;
-				int typeLength = -1;
-				objectIdDatum = SPI_datumTransfer(objectIdDatum, typeByValue, typeLength);
-
-				writeResult->objectId = (pgbson *) DatumGetPointer(objectIdDatum);
+				pgbson *objectId = DatumGetPgBson(objectIdDatum);
+				writeResult->objectId = CopyPgbsonIntoMemoryContext(objectId,
+																	outerContext);
 			}
 			else
 			{
@@ -195,13 +194,9 @@ DeleteRetryRecord(uint64 collectionId, int64 shardKeyValue,
 													  &isNull);
 			if (!isNull)
 			{
-				bool typeByValue = false;
-				int typeLength = -1;
-				resultDocumentDatum = SPI_datumTransfer(resultDocumentDatum, typeByValue,
-														typeLength);
-
-				writeResult->resultDocument =
-					(pgbson *) DatumGetPointer(resultDocumentDatum);
+				pgbson *resultDocument = DatumGetPgBson(resultDocumentDatum);
+				writeResult->resultDocument = CopyPgbsonIntoMemoryContext(resultDocument,
+																		  outerContext);
 			}
 			else
 			{

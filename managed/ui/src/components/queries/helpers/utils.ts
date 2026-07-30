@@ -1,9 +1,9 @@
 import {
   IndexAndShardingRecommendationData,
+  PerfRecommendationData,
   RecommendationType
 } from '../../../redesign/utils/dtos';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
-import { PerfRecommendationData } from '../../../redesign/utils/dtos';
 import { HistogramBucket } from './types';
 
 export const formatPerfRecommendationsData = (perfRecommendations: any) => {

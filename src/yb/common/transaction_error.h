@@ -16,6 +16,8 @@
 #include <string>
 #include <string_view>
 
+#include "yb/common/pgsql_error.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/status_ec.h"
 #include "yb/util/tostring.h"
@@ -45,5 +47,21 @@ struct TransactionErrorTag : IntegralErrorTag<TransactionErrorCode> {
 };
 
 using TransactionError = StatusErrorCodeImpl<TransactionErrorTag>;
+
+template <class... Args>
+Status CreateAbortedStatus(Args&&... args) {
+  return STATUS(
+      TryAgain, Format(std::forward<Args>(args)...), Slice(),
+      PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED)).CloneAndAddErrorCode(
+          TransactionError(TransactionErrorCode::kAborted));
+}
+
+template <class... Args>
+Status CreateExpiredStatus(Args&&... args) {
+  return STATUS(
+      Expired, Format(std::forward<Args>(args)...), Slice(),
+      PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED)).CloneAndAddErrorCode(
+          TransactionError(TransactionErrorCode::kAborted));
+}
 
 } // namespace yb

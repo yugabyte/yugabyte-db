@@ -1,4 +1,5 @@
 import algoliasearch from 'algoliasearch';
+import { getCookie } from 'browser-cookie-utils';
 
 /* eslint no-underscore-dangle: 0 */
 (function () {
@@ -7,32 +8,6 @@ import algoliasearch from 'algoliasearch';
   const algoliaIndexName = 'yugabytedb_docs';
   const ignoreClickOnMeElement = document.querySelector('body:not(.td-searchpage) .search-area');
   const searchInput = document.getElementById('search-query');
-
-  /**
-   * Decode the cookie and return the appropriate cookie value if found
-   * Otherwise empty string is returned.
-   *
-   * return string
-   */
-  function getCookie(cname) {
-    const splittedCookie = document.cookie.split(';');
-    const splittedLength = splittedCookie.length;
-
-    let fetchCookie = 0;
-    let matchedCookie = '';
-
-    while (fetchCookie < splittedLength) {
-      const cookiePair = splittedCookie[fetchCookie].split('=');
-      if (cname === cookiePair[0].trim() && cookiePair[1].trim() !== '') {
-        matchedCookie = decodeURIComponent(cookiePair[1]);
-        break;
-      }
-
-      fetchCookie += 1;
-    }
-
-    return matchedCookie;
-  }
 
   /**
    * Kapa modal Styling and add shadow on root.

@@ -291,6 +291,20 @@ TEST_F(LogCacheTest, TestAlwaysYieldsAtLeastOneMessage) {
   ASSERT_EQ(1, read_result.messages.size());
 }
 
+TEST_F(LogCacheTest, TestReadOpsWithZeroSizeLimit) {
+  ASSERT_OK(AppendReplicateMessagesToCache(1, kNumMessages));
+  ASSERT_OK(log_->WaitUntilAllFlushed());
+
+  // Evict so messages must be read from disk via ReadReplicatesInRange.
+  cache_->EvictThroughOp(kNumMessages + 10);
+
+  // With max_size_bytes=0 the loop should return only the first message.
+  auto read_result = ASSERT_RESULT(
+      cache_->ReadOps(/*after_op_index=*/0, /*max_size_bytes=*/0, log::ObeyMemoryLimit::kFalse));
+  ASSERT_EQ(1, read_result.messages.size());
+  ASSERT_EQ(true, read_result.have_more_messages);
+}
+
 class LogCacheLimitTest : public LogCacheTest {
  protected:
   int64_t GetReadWalMemoryLimit() override { return 1_MB; }

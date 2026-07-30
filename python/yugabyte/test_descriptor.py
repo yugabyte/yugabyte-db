@@ -66,7 +66,7 @@ class LanguageOfTest(enum.Enum):
 class TestDescriptor:
     """
     A "test descriptor" identifies a particular test we could run on a distributed test worker.
-    A string representation of a "test descriptor" is an optional "attempt_<index>:::" followed by
+    A string representation of a "test descriptor" is an optional ":::attempt_<index>" suffix on
     one of the options below:
     - A C++ test program name relative to the build root. This implies running all tests within
       the test program. This has the disadvantage that a failure of one of those tests will cause
@@ -99,15 +99,15 @@ class TestDescriptor:
         self.is_jvm_based = False
         is_mvn_compatible_descriptor = False
 
-        if len(self.descriptor_str.split('#')) == 2:
+        if len(self.descriptor_str_without_attempt_index.split('#')) == 2:
             self.is_jvm_based = True
             # Could be Scala, but as of 08/2018 we only have Java tests in the repository.
             self.language = 'Java'
             is_mvn_compatible_descriptor = True
-        elif self.descriptor_str.endswith('.java'):
+        elif self.descriptor_str_without_attempt_index.endswith('.java'):
             self.is_jvm_based = True
             self.language = 'Java'
-        elif self.descriptor_str.endswith('.scala'):
+        elif self.descriptor_str_without_attempt_index.endswith('.scala'):
             self.is_jvm_based = True
             self.language = 'Scala'
 
@@ -115,8 +115,8 @@ class TestDescriptor:
             # This is a Java/Scala test.
             if is_mvn_compatible_descriptor:
                 # This is a string of the form "com.yugabyte.jedis.TestYBJedis#testPool[1]".
-                self.args_for_run_test = self.descriptor_str
-                output_file_name = self.descriptor_str
+                self.args_for_run_test = self.descriptor_str_without_attempt_index
+                output_file_name = self.descriptor_str_without_attempt_index
             else:
                 # The "test descriptors string " is the Java source file path relative to the "java"
                 # directory.

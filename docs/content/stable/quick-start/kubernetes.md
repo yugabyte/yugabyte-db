@@ -8,6 +8,9 @@ aliases:
   - /quick-start-kubernetes/
   - /stable/develop/tutorials/quick-start/kubernetes/
 type: docs
+rightNav:
+  hideH3: true
+  hideH4: true
 unversioned: true
 ---
 
@@ -257,7 +260,7 @@ Type "help" for help.
 yugabyte=#
 ```
 
-To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](/stable/sample-data/retail-analytics/).
+To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](/stable/develop/sample-data/retail-analytics/).
 
 <!--## Build a Java application
 
@@ -542,6 +545,11 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
 
 ## YugabyteDB Kubernetes Operator
 
-The YugabyteDB Kubernetes Operator {{<tags/feature/ea idea="831">}} automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. It streamlines database operations, reducing manual effort for developers and operators.
+The YugabyteDB Kubernetes Operator automates the deployment, scaling, and management of YugabyteDB clusters in Kubernetes environments. It streamlines database operations, reducing manual effort for developers and operators.
 
 For more information, refer to the [YugabyteDB Kubernetes Operator](https://github.com/yugabyte/yugabyte-k8s-operator) GitHub project.
+
+## Next steps
+
+- [Explore YugabyteDB](/stable/explore/)
+- [Develop for YugabyteDB](/stable/develop/)

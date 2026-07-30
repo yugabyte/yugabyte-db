@@ -1,0 +1,13 @@
+title: UniverseResumeCanaryUpgrade
+description: |
+  UniverseResumeCanaryUpgrade
+
+  Payload to resume a paused canary software upgrade on a Universe.
+type: object
+required:
+  - task_uuid
+properties:
+  task_uuid:
+    description: UUID of the paused upgrade task to resume
+    type: string
+    format: uuid

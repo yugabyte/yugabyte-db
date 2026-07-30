@@ -952,7 +952,7 @@ SELECT document FROM documentdb_api.collection('db', 'dollarmodtests') where doc
 ROLLBACK;
 -- Error case : Divisor Zero
 SELECT document FROM documentdb_api.collection('db', 'dollarmodtests') WHERE document @@ '{ "a" : {"$mod" : [0,2]} }';
-ERROR:  divisor cannot be 0
+ERROR:  divide by 0 is not allowed
 -- Error case : Less than 2 args
 SELECT document FROM documentdb_api.collection('db', 'dollarmodtests') WHERE document @@ '{ "a" : {"$mod" : []} }';
 ERROR:  malformed mod, not enough elements

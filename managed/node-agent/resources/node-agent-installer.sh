@@ -297,11 +297,11 @@ modify_selinux() {
 
 set_systemd_user_id() {
   set +e
-  local UNIT_EXISTS=$(systemctl --user list-units | grep -F yb-node-agent.service)
+  local UNIT_EXISTS=$(systemctl --user list-units | grep -F $SERVICE_NAME)
   if [ -n "$UNIT_EXISTS" ]; then
     EXISTING_SYSTEMD_USER_ID=$CURRENT_USER_ID
   else
-    UNIT_EXISTS=$(systemctl list-units | grep -F yb-node-agent.service)
+    UNIT_EXISTS=$(systemctl list-units | grep -F $SERVICE_NAME)
     if [ -n "$UNIT_EXISTS" ]; then
       EXISTING_SYSTEMD_USER_ID=0
     fi
@@ -416,7 +416,7 @@ write_systemd_service_file() {
   WorkingDirectory=$NODE_AGENT_HOME
   LimitCORE=infinity
   LimitNOFILE=1048576
-  LimitNPROC=12000
+  LimitNPROC=64000
   ExecStart="$NODE_AGENT_PKG_PATH/bin/node-agent" server start
   Restart=always
   RestartSec=$SERVICE_RESTART_INTERVAL_SEC
@@ -430,6 +430,7 @@ write_systemd_service_file() {
 EOF
   else
     SYSTEMD_PATH="$INSTALL_USER_HOME/.config/systemd/user"
+    mkdir -p "${SYSTEMD_PATH}"
     SERVICE_FILE_PATH="$SYSTEMD_PATH/$SERVICE_NAME"
     tee "$SERVICE_FILE_PATH" <<-EOF
   [Unit]
@@ -440,7 +441,7 @@ EOF
   WorkingDirectory=$NODE_AGENT_HOME
   LimitCORE=infinity
   LimitNOFILE=1048576
-  LimitNPROC=12000
+  LimitNPROC=64000
   ExecStart="$NODE_AGENT_PKG_PATH/bin/node-agent" server start
   Restart=always
   RestartSec=$SERVICE_RESTART_INTERVAL_SEC

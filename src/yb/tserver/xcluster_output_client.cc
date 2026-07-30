@@ -50,6 +50,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stopwatch.h"
 
 DECLARE_int32(cdc_write_rpc_timeout_ms);
@@ -70,6 +71,10 @@ DECLARE_int32(cdc_read_rpc_timeout_ms);
 
 DEFINE_test_flag(bool, xcluster_consumer_fail_after_process_split_op, false,
     "Whether or not to fail after processing a replicated split_op on the consumer.");
+
+DEFINE_test_flag(bool, xcluster_increment_logical_commit_time, false,
+    "When set, increments the logical component of commit_hybrid_time in xCluster records to "
+    "ensure it is non-zero.");
 
 DECLARE_bool(TEST_running_test);
 
@@ -110,6 +115,22 @@ namespace yb {
 namespace tserver {
 
 namespace {
+
+std::optional<cdc::CDCRecordPB> TEST_MaybeModifyLogicalCommitTime(
+    const cdc::CDCRecordPB& record) {
+  if (!FLAGS_TEST_xcluster_increment_logical_commit_time || !record.has_transaction_state() ||
+      !record.transaction_state().has_commit_hybrid_time()) {
+    return std::nullopt;
+  }
+  // Increment the logical component of the commit hybrid time by 1 to ensure that it is non-zero.
+  HybridTime commit_ht(record.transaction_state().commit_hybrid_time());
+  commit_ht = HybridTime::FromMicrosecondsAndLogicalValue(
+      commit_ht.GetPhysicalValueMicros(), commit_ht.GetLogicalValue() + 1);
+  auto modified_record = record;
+  modified_record.mutable_transaction_state()->set_commit_hybrid_time(commit_ht.ToUint64());
+  return modified_record;
+}
+
 Result<ColocationId> DecodeColocationId(const cdc::CDCRecordPB& record) {
   if (record.changes().empty()) {
     return kColocationIdNotSet;
@@ -430,19 +451,24 @@ Result<cdc::XClusterSchemaVersionMap> XClusterOutputClient::GetSchemaVersionMap(
 Status XClusterOutputClient::ProcessRecord(
     const std::vector<std::string>& tablet_ids, const cdc::CDCRecordPB& record) {
   ACQUIRE_MUTEX_IF_ONLINE_ELSE_RETURN_STATUS;
-  if (is_ddl_queue_client_ && record.operation() == cdc::CDCRecordPB::APPLY) {
-    ddl_queue_commit_times_.insert(HybridTime(record.transaction_state().commit_hybrid_time()));
+
+  auto modified_record = TEST_MaybeModifyLogicalCommitTime(record);
+  const auto& record_to_process = modified_record ? *modified_record : record;
+
+  if (is_ddl_queue_client_ && record_to_process.operation() == cdc::CDCRecordPB::APPLY) {
+    ddl_queue_commit_times_.insert(
+        HybridTime(record_to_process.transaction_state().commit_hybrid_time()));
   }
   for (const auto& tablet_id : tablet_ids) {
     SCHECK(!IsOffline(), Aborted, "$0$1", LogPrefix(), "xCluster output client went offline");
 
     cdc::XClusterSchemaVersionMap schema_versions_map;
-    auto colocation_id = VERIFY_RESULT(DecodeColocationId(record));
+    auto colocation_id = VERIFY_RESULT(DecodeColocationId(record_to_process));
     if (PREDICT_TRUE(FLAGS_xcluster_enable_packed_rows_support) &&
-        !record.changes().empty() &&
-        (record.operation() == cdc::CDCRecordPB::WRITE ||
-         record.operation() == cdc::CDCRecordPB::DELETE)) {
-      schema_versions_map = VERIFY_RESULT(GetSchemaVersionMap(record, colocation_id));
+        !record_to_process.changes().empty() &&
+        (record_to_process.operation() == cdc::CDCRecordPB::WRITE ||
+         record_to_process.operation() == cdc::CDCRecordPB::DELETE)) {
+      schema_versions_map = VERIFY_RESULT(GetSchemaVersionMap(record_to_process, colocation_id));
     }
 
     auto status = write_strategy_->ProcessRecord(
@@ -450,7 +476,7 @@ Status XClusterOutputClient::ProcessRecord(
             .tablet_id = tablet_id,
             .schema_versions_map = schema_versions_map,
             .colocation_id = colocation_id},
-        record);
+        record_to_process);
     if (!status.ok()) {
       error_status_ = status;
       return status;
@@ -506,6 +532,17 @@ Result<bool> XClusterOutputClient::ProcessChangeMetadataOp(const cdc::CDCRecordP
     LOG_WITH_PREFIX(INFO)
         << "Ignoring change metadata request to add multiple/remove tables to tablet : "
         << producer_tablet_info_.tablet_id;
+    return true;
+  }
+
+  // Ignore CHANGE_METADATA add_table for vector indexes on the target: DDL replication creates the
+  // index, and apply-external-intent maintains it. Target backfill covers pre-index rows; applying
+  // this CM op through the poller would be redundant.
+  if (record.change_metadata_request().has_add_table() &&
+      record.change_metadata_request().add_table().has_index_info() &&
+      record.change_metadata_request().add_table().index_info().has_vector_idx_options()) {
+    LOG_WITH_PREFIX(INFO) << "Ignoring change metadata add_table with vector index for tablet "
+                          << producer_tablet_info_.tablet_id;
     return true;
   }
 
@@ -652,7 +689,7 @@ void XClusterOutputClient::SendNextCDCWriteToTablet(
     const std::shared_ptr<WriteRequestMsg>& write_request) {
   LOG_SLOW_EXECUTION_EVERY_N_SECS(INFO, 1 /* n_secs */, 100 /* max_expected_millis */,
       Format("Rate limiting write request for tablet $0", write_request->tablet_id())) {
-    rate_limiter_->Request(write_request->ByteSizeLong(), IOPriority::kHigh);
+    rate_limiter_->Request(write_request->SerializedSize(), IOPriority::kHigh);
   };
   // TODO: This should be parallelized for better performance with M:N setups.
   auto deadline =

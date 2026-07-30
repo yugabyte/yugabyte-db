@@ -189,7 +189,7 @@ EXECUTE q1('db', 'cursors_basic', '{ "getpage_batchCount": 7 }', '{ "a.b": { "$g
 
 -- Explain the queries.
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 1 }') AND document @@ '{ "a.b": { "$gt": 2 }}';
-                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                   
+                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                               
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -202,7 +202,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('
                Output: document
                Page Row Count: 1 rows
                ->  Bitmap Heap Scan on documentdb_data.documents_6700_6700003 collection
-                     Output: shard_key_value, object_id, document, creation_time
+                     Output: shard_key_value, object_id, document
                      Recheck Cond: (collection.shard_key_value = '6700'::bigint)
                      Filter: (documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bson))
                      ->  Bitmap Index Scan on _id_
@@ -210,7 +210,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('
 (16 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 5 }') AND document @@ '{ "a.d": { "$elemMatch": { "$gt": 2 } }}';
-                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                           
+                                                                                                                                                                                                       QUERY PLAN                                                                                                                                                                                                       
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -223,7 +223,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('
                Output: document
                Page Row Count: 5 rows
                ->  Bitmap Heap Scan on documentdb_data.documents_6700_6700003 collection
-                     Output: shard_key_value, object_id, document, creation_time
+                     Output: shard_key_value, object_id, document
                      Recheck Cond: (collection.shard_key_value = '6700'::bigint)
                      Filter: (documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@#?) '{ "a.d" : { "$gt" : { "$numberInt" : "2" } } }'::documentdb_core.bson))
                      ->  Bitmap Index Scan on _id_
@@ -231,7 +231,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('
 (16 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) EXECUTE q1('db', 'cursors_basic', '{ "getpage_batchCount": 7 }', '{ "a.b": { "$gt": 2 }}');
-                                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                                
+                                                                                                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                                                                                                      
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -244,7 +244,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) EXECUTE q1('db', 'cursors_basic', '{ "getpage_ba
                Output: document
                Page Row Count: 7 rows
                ->  Bitmap Heap Scan on documentdb_data.documents_6700_6700003 collection
-                     Output: shard_key_value, object_id, document, creation_time
+                     Output: shard_key_value, object_id, document
                      Recheck Cond: (collection.shard_key_value = '6700'::bigint)
                      Filter: (documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "7" } }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bson))
                      ->  Bitmap Index Scan on _id_
@@ -252,7 +252,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) EXECUTE q1('db', 'cursors_basic', '{ "getpage_ba
 (16 rows)
 
 EXPLAIN (VERBOSE ON, ANALYZE ON, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE q1('db', 'cursors_basic', '{ "getpage_batchCount": 7 }', '{ "a.b": { "$gt": 2 }}');
-                                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                                
+                                                                                                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                                                                                                      
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive) (actual rows=7 loops=1)
    Output: remote_scan.document
@@ -270,10 +270,10 @@ EXPLAIN (VERBOSE ON, ANALYZE ON, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE q1(
                      Output: document
                      Page Row Count: 7 rows
                      ->  Result (actual rows=8 loops=1)
-                           Output: shard_key_value, object_id, document, creation_time
+                           Output: shard_key_value, object_id, document
                            One-Time Filter: (documentdb_api_catalog.bson_true_match($3) AND documentdb_api_catalog.bson_true_match($4))
                            ->  Bitmap Heap Scan on documentdb_data.documents_6700_6700003 collection (actual rows=8 loops=1)
-                                 Output: shard_key_value, object_id, document, creation_time
+                                 Output: shard_key_value, object_id, document
                                  Recheck Cond: (collection.shard_key_value = '6700'::bigint)
                                  Filter: (documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "7" } }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bson))
                                  Heap Blocks: exact=1
@@ -283,7 +283,7 @@ EXPLAIN (VERBOSE ON, ANALYZE ON, COSTS OFF, SUMMARY OFF, TIMING OFF) EXECUTE q1(
 
 -- explain with projection (projection happens in the custom scan.)
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document, bson_dollar_project(document, '{ "a.b": 1 }') FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 5 }') AND document @@ '{ "a.d": { "$elemMatch": { "$gt": 2 } }}';
-                                                                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                                                                          
+                                                                                                                                                                                                                                                                           QUERY PLAN                                                                                                                                                                                                                                                                            
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document, remote_scan.bson_dollar_project
@@ -296,7 +296,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document, bson_dollar_project(document, '
                Output: document, documentdb_api_catalog.bson_dollar_project(document, '{ "a.b" : { "$numberInt" : "1" } }'::documentdb_core.bson)
                Page Row Count: 5 rows
                ->  Bitmap Heap Scan on documentdb_data.documents_6700_6700003 collection
-                     Output: shard_key_value, object_id, document, creation_time
+                     Output: shard_key_value, object_id, document
                      Recheck Cond: (collection.shard_key_value = '6700'::bigint)
                      Filter: (documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@#?) '{ "a.d" : { "$gt" : { "$numberInt" : "2" } } }'::documentdb_core.bson))
                      ->  Bitmap Index Scan on _id_
@@ -315,24 +315,24 @@ SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE docu
 (5 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 5 }') AND document @@ '{ "_id": { "$gt": "10" } }';
-                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                               
+                                                                                                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                                                                                                          
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
    Task Count: 1
    Tasks Shown: All
    ->  Task
-         Query: SELECT document FROM documentdb_data.documents_6700_6700003 collection WHERE (documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND ((document OPERATOR(documentdb_api_catalog.#>) '{ "_id" : "10" }'::documentdb_core.bsonquery) AND (object_id OPERATOR(documentdb_core.>) '{ "" : "10" }'::documentdb_core.bson)) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
+         Query: SELECT document FROM documentdb_data.documents_6700_6700003 collection WHERE (documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND ((document OPERATOR(documentdb_api_catalog.#>) '{ "_id" : "10" }'::documentdb_core.bsonquery) AND ((object_id OPERATOR(documentdb_core.>) '{ "" : "10" }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.<) '{ "" : {  } }'::documentdb_core.bson))) AND (shard_key_value OPERATOR(pg_catalog.=) '6700'::bigint))
          Node: host=localhost port=58070 dbname=regression
          ->  Custom Scan (DocumentDBApiScan)
                Output: document
                Page Row Count: 5 rows
                ->  Bitmap Heap Scan on documentdb_data.documents_6700_6700003 collection
-                     Output: shard_key_value, object_id, document, creation_time
-                     Recheck Cond: ((collection.shard_key_value = '6700'::bigint) AND (collection.object_id OPERATOR(documentdb_core.>) '{ "" : "10" }'::documentdb_core.bson))
+                     Output: shard_key_value, object_id, document
+                     Recheck Cond: ((collection.shard_key_value = '6700'::bigint) AND (collection.object_id OPERATOR(documentdb_core.>) '{ "" : "10" }'::documentdb_core.bson) AND (collection.object_id OPERATOR(documentdb_core.<) '{ "" : {  } }'::documentdb_core.bson))
                      Filter: (documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "_id" : "10" }'::documentdb_core.bson))
                      ->  Bitmap Index Scan on _id_
-                           Index Cond: ((collection.shard_key_value = '6700'::bigint) AND (collection.object_id OPERATOR(documentdb_core.>) '{ "" : "10" }'::documentdb_core.bson))
+                           Index Cond: ((collection.shard_key_value = '6700'::bigint) AND (collection.object_id OPERATOR(documentdb_core.>) '{ "" : "10" }'::documentdb_core.bson) AND (collection.object_id OPERATOR(documentdb_core.<) '{ "" : {  } }'::documentdb_core.bson))
 (16 rows)
 
 -- do a primary key lookup
@@ -343,7 +343,7 @@ SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE docu
 (1 row)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 5 }') AND document @@ '{ "_id": { "$eq": "10" } }';
-                                                                                                                                                                                                              QUERY PLAN                                                                                                                                                                                                               
+                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -356,7 +356,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('
                Output: document
                Page Row Count: 5 rows
                ->  Bitmap Heap Scan on documentdb_data.documents_6700_6700003 collection
-                     Output: shard_key_value, object_id, document, creation_time
+                     Output: shard_key_value, object_id, document
                      Recheck Cond: ((collection.shard_key_value = '6700'::bigint) AND (collection.object_id OPERATOR(documentdb_core.=) '{ "" : "10" }'::documentdb_core.bson))
                      Filter: documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "5" } }'::documentdb_core.bson)
                      ->  Bitmap Index Scan on _id_
@@ -415,7 +415,7 @@ EXECUTE q1('db', 'cursors_basic', '{ "getpage_batchCount": 7 }', '{ "a.b": { "$g
 
 -- Explain the queries.
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 1 }') AND document @@ '{ "a.b": { "$gt": 2 }}';
-                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                   
+                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                               
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -428,13 +428,13 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('
                Output: document
                Page Row Count: 1 rows
                ->  Tid Range Scan on documentdb_data.documents_6700_6700003 collection
-                     Output: shard_key_value, object_id, document, creation_time
+                     Output: shard_key_value, object_id, document
                      TID Cond: (collection.ctid >= '(0,0)'::tid)
                      Filter: (documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bson))
 (14 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 5 }') AND document @@ '{ "a.d": { "$elemMatch": { "$gt": 2 } }}';
-                                                                                                                                                                                          QUERY PLAN                                                                                                                                                                                           
+                                                                                                                                                                                                       QUERY PLAN                                                                                                                                                                                                       
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -447,13 +447,13 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('
                Output: document
                Page Row Count: 5 rows
                ->  Tid Range Scan on documentdb_data.documents_6700_6700003 collection
-                     Output: shard_key_value, object_id, document, creation_time
+                     Output: shard_key_value, object_id, document
                      TID Cond: (collection.ctid >= '(0,0)'::tid)
                      Filter: (documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "5" } }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@#?) '{ "a.d" : { "$gt" : { "$numberInt" : "2" } } }'::documentdb_core.bson))
 (14 rows)
 
 EXPLAIN (VERBOSE ON, COSTS OFF) EXECUTE q1('db', 'cursors_basic', '{ "getpage_batchCount": 7 }', '{ "a.b": { "$gt": 2 }}');
-                                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                                
+                                                                                                                                                                                                                                                                      QUERY PLAN                                                                                                                                                                                                                                                                      
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -466,7 +466,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) EXECUTE q1('db', 'cursors_basic', '{ "getpage_ba
                Output: document
                Page Row Count: 7 rows
                ->  Tid Range Scan on documentdb_data.documents_6700_6700003 collection
-                     Output: shard_key_value, object_id, document, creation_time
+                     Output: shard_key_value, object_id, document
                      TID Cond: (collection.ctid >= '(0,0)'::tid)
                      Filter: (documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "7" } }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bson))
 (14 rows)
@@ -494,7 +494,7 @@ set local enable_seqscan TO OFF;
 (1 row)
 
     EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 1 }') AND document @@ '{ "a.b": { "$gt": 2 }}';
-                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                   
+                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                               
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -507,7 +507,7 @@ set local enable_seqscan TO OFF;
                Output: document
                Page Row Count: 1 rows
                ->  Bitmap Heap Scan on documentdb_data.documents_6700_6700003 collection
-                     Output: shard_key_value, object_id, document, creation_time
+                     Output: shard_key_value, object_id, document
                      Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bson)
                      Filter: documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "1" } }'::documentdb_core.bson)
                      ->  Bitmap Index Scan on index_1
@@ -526,7 +526,7 @@ set local enable_indexscan TO OFF;
 (1 row)
 
     EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 1 }') AND document @@ '{ "a.b": { "$gt": 2 }}';
-                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                   
+                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                               
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -539,7 +539,7 @@ set local enable_indexscan TO OFF;
                Output: document
                Page Row Count: 1 rows
                ->  Bitmap Heap Scan on documentdb_data.documents_6700_6700003 collection
-                     Output: shard_key_value, object_id, document, creation_time
+                     Output: shard_key_value, object_id, document
                      Recheck Cond: (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bson)
                      Filter: documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "1" } }'::documentdb_core.bson)
                      ->  Bitmap Index Scan on index_1
@@ -564,7 +564,7 @@ set local parallel_setup_cost TO 0;
 set local enable_seqscan TO ON;
 set local enable_indexscan TO OFF;
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'cursors_basic') WHERE documentdb_api_internal.cursor_state(document, '{ "getpage_batchCount": 1 }') AND document @@ '{ "a.b": { "$gt": 2 }}';
-                                                                                                                                                                                  QUERY PLAN                                                                                                                                                                                   
+                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                               
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Output: remote_scan.document
@@ -577,7 +577,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api.collection('
                Output: document
                Page Row Count: 1 rows
                ->  Tid Range Scan on documentdb_data.documents_6700_6700003 collection
-                     Output: shard_key_value, object_id, document, creation_time
+                     Output: shard_key_value, object_id, document
                      TID Cond: (collection.ctid >= '(0,0)'::tid)
                      Filter: (documentdb_api_internal.cursor_state(collection.document, '{ "getpage_batchCount" : { "$numberInt" : "1" } }'::documentdb_core.bson) AND (collection.document OPERATOR(documentdb_api_catalog.@>) '{ "a.b" : { "$numberInt" : "2" } }'::documentdb_core.bson))
 (14 rows)

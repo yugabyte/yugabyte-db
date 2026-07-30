@@ -24,20 +24,55 @@ const (
 )
 
 type Args struct {
-	Command         string
-	YnpBasePath     string
-	SpecificModules []string
-	ConfigFile      string
-	PreflightCheck  bool
-	YnpConfig       map[string]map[string]any
-	DryRun          bool
-	ListModules     bool
+	Command               string
+	YnpBasePath           string
+	SpecificModules       []string
+	SkipModules           []string
+	ConfigFile            string
+	ConfigIniFile         string
+	PreflightCheck        bool
+	PreflightCheckOutFile string
+	YnpConfig             map[string]map[string]any
+	DryRun                bool
+	ListModules           bool
+	NoRoot                bool
+	Root                  bool
+}
+
+// YnpConfigPathValue retrieves a value from the YNP config based on the provided dotted path.
+func (args *Args) YnpConfigPathValue(path string) (any, error) {
+	// Path is like "yba.url" or "yba.skip_tls_verify".
+	keys := strings.Split(path, ".")
+	if len(keys) < 2 {
+		return nil, fmt.Errorf("Path must be at least two levels, separated by dots: %s", path)
+	}
+	currentMap := args.YnpConfig[keys[0]]
+	keys = keys[1:]
+	for i, key := range keys {
+		if value, ok := currentMap[key]; !ok {
+			return nil, fmt.Errorf(
+				"Invalid path: %s. Key %s not found in %+v",
+				path,
+				key,
+				currentMap,
+			)
+		} else if i == len(keys)-1 {
+			// Terminal key, return the value.
+			return value, nil
+		} else if m, ok := value.(map[string]any); ok {
+			currentMap = m
+		} else {
+			return nil, fmt.Errorf("Invalid path: %s. Expected map at key %s, found %+v", path, key, value)
+		}
+	}
+	return nil, fmt.Errorf("Invalid path: %s", path)
 }
 
 // Module represents a YNP module.
 type Module interface {
 	BasePath() string // Base path of the module.
 	Name() string     // Name of the module.
+	Validate() error  // Validates the module configuration.
 	RenderTemplates(ctx context.Context, values map[string]any) (*RenderedTemplates, error)
 }
 
@@ -105,15 +140,16 @@ func (r *RenderedTemplates) RenderedPhases() []string {
 }
 
 // CommandFactory is a factory function to create a Command.
-type CommandFactory func(context.Context, *INIConfig, Args) Command
+type CommandFactory func(context.Context, *INIConfig, *Args) Command
 
 // Command represents a command to be executed.
 type Command interface {
+	Init() error
 	Validate() error
 	DryRun() error
 	RunPreflightChecks() error
 	ListModules() error
-	Execute(specificModules []string) error
+	Execute() error
 	Cleanup()
 }
 
@@ -122,6 +158,14 @@ func NewBaseModule(name, basePath string) *BaseModule {
 		basePath: basePath,
 		name:     name, // Name of the module for resources e.g jinja files folder.
 	}
+}
+
+func (bm *BaseModule) Validate() error {
+	basePath := bm.BasePath()
+	if _, err := os.Stat(basePath); os.IsNotExist(err) {
+		return fmt.Errorf("Base path %s does not exist for module %s", basePath, bm.Name())
+	}
+	return nil
 }
 
 func (bm *BaseModule) RenderTemplates(
@@ -161,21 +205,44 @@ func (bm *BaseModule) String() string {
 	return bm.name + "@" + bm.basePath
 }
 
-func GetBool(m map[string]any, key string, defaultVal bool) bool {
+func LookupType[T any](
+	m map[string]any,
+	key string,
+	defaultVal T,
+	transformer func(string) (T, error),
+) T {
 	val, ok := m[key]
 	if !ok {
 		return defaultVal
 	}
-	if val, ok := val.(bool); ok {
-		return val
+	typedVal, ok := val.(T)
+	if ok {
+		return typedVal
 	}
-	if valStr, ok := val.(string); ok {
-		b, err := strconv.ParseBool(valStr)
-		if err == nil {
-			return b
-		}
+	strVal := fmt.Sprintf("%v", val)
+	result, err := transformer(strVal)
+	if err == nil {
+		return result
 	}
 	return defaultVal
+}
+
+func GetBool(m map[string]any, key string, defaultVal bool) bool {
+	return LookupType(m, key, defaultVal, func(s string) (bool, error) {
+		return strconv.ParseBool(s)
+	})
+}
+
+func GetInt(m map[string]any, key string, defaultVal int64) int64 {
+	return LookupType(m, key, defaultVal, func(s string) (int64, error) {
+		return strconv.ParseInt(s, 10, 64)
+	})
+}
+
+func GetFloat(m map[string]any, key string, defaultVal float64) float64 {
+	return LookupType(m, key, defaultVal, func(s string) (float64, error) {
+		return strconv.ParseFloat(s, 64)
+	})
 }
 
 func processNestedConfigs(
@@ -240,18 +307,26 @@ func processNestedConfigs(
 }
 
 // GenerateConfigINI generates the INI configuration file based on the provided arguments.
+// Override function can be used to override the INI config after it is loaded.
 // Note: Booleans are printed as True or False string.
 func GenerateConfigINI(
 	ctx context.Context,
-	args Args,
-) (*INIConfig, error) {
-	configTemplate := filepath.Join(args.YnpBasePath, "configs/config.j2")
+	args *Args,
+	overrideFunc func(context.Context, *INIConfig) error) (*INIConfig, error) {
+	var configTemplate string
+	if filepath.IsAbs(args.ConfigIniFile) {
+		configTemplate = args.ConfigIniFile
+	} else {
+		configTemplate = filepath.Join(args.YnpBasePath, args.ConfigIniFile)
+	}
 	configPath := filepath.Join(args.YnpBasePath, "configs/config.ini")
 	ynpValues := map[string]any{
-		"ynp_config": args.YnpConfig,
-		"ynp_dir":    args.YnpBasePath,
-		"start_time": time.Now().Unix(),
-		"ynp_driver": "golang",
+		"ynp_config":     args.YnpConfig,
+		"ynp_dir":        args.YnpBasePath,
+		"is_noroot_mode": args.NoRoot,
+		"is_root_mode":   args.Root,
+		"start_time":     time.Now().Unix(),
+		"ynp_driver":     "golang",
 	}
 	jsonConfig, _ := json.MarshalIndent(ynpValues, "", "  ")
 	util.FileLogger().Infof(ctx, "YNP config here: %s", string(jsonConfig))
@@ -259,7 +334,11 @@ func GenerateConfigINI(
 	if err != nil {
 		return nil, err
 	}
-	iniConfig, err := ini.Load([]byte(renderedConfig))
+	// Keep track of same keys in the same section.
+	iniConfig, err := ini.LoadSources(
+		ini.LoadOptions{AllowShadows: true, AllowDuplicateShadowValues: true},
+		[]byte(renderedConfig),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to load INI content: %w", err)
 	}
@@ -270,11 +349,22 @@ func GenerateConfigINI(
 	for _, section := range iniConfig.Sections() {
 		sectionMap := make(map[string]any)
 		for _, key := range section.Keys() {
+			// Disallow duplicate keys in the same section to prevent undetected bugs.
+			if len(key.ValueWithShadows()) > 1 {
+				return nil, fmt.Errorf("Duplicate key %s in section %s", key.Name(), section.Name())
+			}
 			sectionMap[key.Name()] = key.Value()
 		}
 		configOutput.values[section.Name()] = sectionMap
 	}
+	// Note: Parser returns map[interface{}]interface{} for values.
 	configOutput.values = FixParsedConfigMap(configOutput.values)
+	// Override the config after it is parsed, but before nested configs are processed.
+	if overrideFunc != nil {
+		if err = overrideFunc(ctx, configOutput); err != nil {
+			return nil, err
+		}
+	}
 	return processNestedConfigs(configOutput)
 }
 
@@ -290,6 +380,9 @@ func FixParsedConfigMap(input map[string]map[string]any) map[string]map[string]a
 
 func fixParsedConfig(input any) any {
 	tp := reflect.TypeOf(input)
+	if input == nil {
+		return nil
+	}
 	val := reflect.ValueOf(input)
 	if tp.Kind() == reflect.Map {
 		var fixedMap = make(map[string]any)

@@ -78,6 +78,9 @@ class ObjectLockSharedState {
   ActivationGuard Activate(const std::unordered_map<ObjectLockPrefix, LockState>& initial_intents)
       PARENT_PROCESS_ONLY;
 
+  void PauseAndReset() PARENT_PROCESS_ONLY;
+  void Resume() PARENT_PROCESS_ONLY;
+
   size_t ConsumePendingLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY;
 
   size_t ConsumeAndAcquireExclusiveLockIntents(

@@ -47,6 +47,7 @@
 #include "yb/rocksdb/util/random.h"
 
 #include "yb/util/callsite_profiling.h"
+#include "yb/util/mem_tracker_fwd.h"
 #include "yb/util/slice.h"
 
 DECLARE_bool(never_fsync);
@@ -62,6 +63,8 @@ class RocksDBTest : public ::testing::Test {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_never_fsync) = true;
   }
 };
+
+const yb::MemTrackerPtr& test_mem_tracker();
 
 namespace test {
 
@@ -210,8 +213,9 @@ class VectorIterator : public InternalIterator {
 
   bool MatchFilter(
       const IteratorFilter* filter, const QueryOptions& options, Slice user_key,
-      FilterKeyCache* cache) override {
-    return filter->Filter(options, user_key, cache, &keys_);
+      FilterKeyCache* filter_key_cache) override {
+    return filter->Filter(
+        options, user_key, filter_key_cache, /* filter_cache = */ nullptr, &keys_);
   }
 
   Status status() const override { return Status::OK(); }
@@ -251,23 +255,21 @@ class StringSink: public WritableFile {
     return Status::OK();
   }
   virtual Status Close() override { return Status::OK(); }
-  virtual Status Flush() override {
-    if (reader_contents_ != nullptr) {
-      assert(reader_contents_->size() <= last_flush_);
-      size_t offset = last_flush_ - reader_contents_->size();
-      *reader_contents_ = Slice(
-          contents_.data() + offset,
-          contents_.size() - offset);
-      last_flush_ = contents_.size();
-    }
-
+  virtual Status Flush(FlushMode mode) override {
+    PublishToReader();
     return Status::OK();
   }
   virtual Status Sync() override { return Status::OK(); }
   virtual Status Append(const Slice& slice) override {
     contents_.append(slice.cdata(), slice.size());
+    // Make appended bytes immediately visible to a reader sharing reader_contents_, mirroring a
+    // real file where written data is readable without an explicit Flush. Previously this was done
+    // only in Flush(), but rocksdb's WritableFileWriter no longer issues a per-flush underlying
+    // Flush() (it would trigger a redundant sync_file_range() writeback).
+    PublishToReader();
     return Status::OK();
   }
+  uint64_t Size() const override { return contents_.size(); }
   void Drop(size_t bytes) {
     if (reader_contents_ != nullptr) {
       contents_.resize(contents_.size() - bytes);
@@ -283,6 +285,19 @@ class StringSink: public WritableFile {
   }
 
  private:
+  // Extends reader_contents_ to cover all data appended since the last publish, preserving the
+  // portion the reader has not yet consumed.
+  void PublishToReader() {
+    if (reader_contents_ != nullptr) {
+      assert(reader_contents_->size() <= last_flush_);
+      size_t offset = last_flush_ - reader_contents_->size();
+      *reader_contents_ = Slice(
+          contents_.data() + offset,
+          contents_.size() - offset);
+      last_flush_ = contents_.size();
+    }
+  }
+
   Slice* reader_contents_;
   size_t last_flush_;
 };
@@ -328,7 +343,7 @@ class StringSource: public RandomAccessFile {
 
   const std::string& filename() const override { return filename_; }
 
-  size_t memory_footprint() const override { LOG(FATAL) << "Not supported"; }
+  size_t memory_footprint() const override;
 
   int total_reads() const { return total_reads_; }
 
@@ -512,12 +527,13 @@ class StringEnv : public EnvWrapper {
       return Status::OK();
     }
     virtual Status Close() override { return Status::OK(); }
-    virtual Status Flush() override { return Status::OK(); }
+    virtual Status Flush(FlushMode mode) override { return Status::OK(); }
     virtual Status Sync() override { return Status::OK(); }
     virtual Status Append(const Slice& slice) override {
       contents_->append(slice.cdata(), slice.size());
       return Status::OK();
     }
+    uint64_t Size() const override { return contents_->size(); }
 
     const std::string& filename() const override {
       static const std::string kFilename = "StringSink";
@@ -713,6 +729,8 @@ class ChanglingCompactionFilterFactory : public CompactionFilterFactory {
   std::string name_;
 };
 
+std::vector<CompressionType> GetSupportedCompressionTypes();
+
 CompressionType RandomCompressionType(Random* rnd);
 
 void RandomCompressionTypeVector(const size_t count,
@@ -742,95 +760,6 @@ struct BoundaryTestValues {
   UserBoundaryValue::Value max_left;
   UserBoundaryValue::Value min_right;
   UserBoundaryValue::Value max_right;
-};
-
-// A test implementation of UserFrontier, wrapper over simple int64_t value.
-class TestUserFrontier : public UserFrontier {
- public:
-  TestUserFrontier() : value_(0) {}
-  explicit TestUserFrontier(uint64_t value) : value_(value) {}
-
-  std::unique_ptr<UserFrontier> Clone() const override {
-    return std::make_unique<TestUserFrontier>(*this);
-  }
-
-  void SetValue(uint64_t value) {
-    value_ = value;
-  }
-
-  uint64_t Value() const {
-    return value_;
-  }
-
-  std::string ToString() const override;
-
-  void ToPB(google::protobuf::Any* pb) const override {
-    UserBoundaryValuePB value;
-    value.set_tag(static_cast<uint32_t>(value_));
-    pb->PackFrom(value);
-  }
-
-  bool Equals(const UserFrontier& rhs) const override {
-    return value_ == down_cast<const TestUserFrontier&>(rhs).value_;
-  }
-
-  void Update(const UserFrontier& rhs, UpdateUserValueType type) override {
-    auto rhs_value = down_cast<const TestUserFrontier&>(rhs).value_;
-    switch (type) {
-      case UpdateUserValueType::kLargest:
-        value_ = std::max(value_, rhs_value);
-        return;
-      case UpdateUserValueType::kSmallest:
-        value_ = std::min(value_, rhs_value);
-        return;
-    }
-    FATAL_INVALID_ENUM_VALUE(UpdateUserValueType, type);
-  }
-
-  bool IsUpdateValid(const UserFrontier& rhs, UpdateUserValueType type) const override {
-    auto rhs_value = down_cast<const TestUserFrontier&>(rhs).value_;
-    switch (type) {
-      case UpdateUserValueType::kLargest:
-        return rhs_value >= value_;
-      case UpdateUserValueType::kSmallest:
-        return rhs_value <= value_;
-    }
-    FATAL_INVALID_ENUM_VALUE(UpdateUserValueType, type);
-  }
-
-  void FromOpIdPBDeprecated(const yb::OpIdPB& op_id) override {}
-
-  Status FromPB(const google::protobuf::Any& pb) override {
-    UserBoundaryValuePB value;
-    pb.UnpackTo(&value);
-    value_ = value.tag();
-    return Status::OK();
-  }
-
-  Slice FilterAsSlice() override {
-    return Slice();
-  }
-
-  void ResetFilter() override {}
-
-  uint64_t GetHybridTimeAsUInt64() const override {
-    return 0;
-  }
-
- private:
-  uint64_t value_ = 0;
-};
-
-class TestUserFrontiers : public rocksdb::UserFrontiersBase<TestUserFrontier> {
- public:
-  TestUserFrontiers(uint64_t min, uint64_t max) {
-    Smallest().SetValue(min);
-    Largest().SetValue(max);
-  }
-
-  UserFrontiersPtr Clone() const {
-    return std::make_unique<TestUserFrontiers>(*this);
-  }
 };
 
 // A class which remembers the name of each flushed file.

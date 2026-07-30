@@ -24,6 +24,7 @@
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
 
 #include "yb/util/path_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
 #include "yb/yql/pggate/test/pggate_test.h"
@@ -128,8 +129,8 @@ TEST_F(PggateTestTableSize, TestSimpleTable) {
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
-      kDefaultDatabaseOid, kTabOid, kDefaultTableLocality, &pg_stmt,
-      YbcPgTransactionSetting::YB_TRANSACTIONAL));
+      kDefaultDatabaseOid, kTabOid, kDefaultTableLocality,
+      YbcPgTransactionSetting::YB_TRANSACTIONAL, false /* skip_intents_write */, &pg_stmt));
 
   // Allocate constant expressions.
   int seed = 1;
@@ -232,8 +233,8 @@ TEST_F(PggateTestTableSize, TestMissingTablets) {
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
   CHECK_YBC_STATUS(YBCPgNewInsert(
-      kDefaultDatabaseOid, kTabOid, kDefaultTableLocality, &pg_stmt,
-      YbcPgTransactionSetting::YB_TRANSACTIONAL));
+      kDefaultDatabaseOid, kTabOid, kDefaultTableLocality,
+      YbcPgTransactionSetting::YB_TRANSACTIONAL, false /* skip_intents_write */, &pg_stmt));
 
   // Allocate constant expressions.
   int seed = 1;

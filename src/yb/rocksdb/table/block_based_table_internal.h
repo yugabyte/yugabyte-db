@@ -55,7 +55,7 @@ inline Status ReadBlockFromFile(
 // We are using the fact that we know the size of the unique ID for Posix files.
 // Contains: inode + mtime (encoded with fixed32) + checksum (encoded with fixed32).
 static constexpr size_t kMaxCacheKeyPrefixSize =
-    yb::FileWithUniqueId::kPosixFileUniqueIdMaxSize + 2 * sizeof(uint32_t) + 1;
+    yb::FileWithNameAndUniqueId::kPosixFileUniqueIdMaxSize + 2 * sizeof(uint32_t) + 1;
 static constexpr size_t kCacheKeyBufferSize =
     block_based_table::kMaxCacheKeyPrefixSize + yb::kMaxVarint64Length;
 
@@ -76,7 +76,7 @@ inline Slice GetCacheKey(const CacheKeyPrefixBuffer& cache_key_prefix, const Blo
 
 // Generate a cache key prefix from the file. Used for both data and metadata files.
 inline void GenerateCachePrefix(
-    Cache* cc, yb::FileWithUniqueId* file, uint32_t meta_block_checksum,
+    Cache* cc, yb::FileWithNameAndUniqueId* file, uint32_t meta_block_checksum,
     CacheKeyPrefixBuffer* prefix) {
   // generate an id from the file
   prefix->size = file->GetUniqueId(prefix->data);
@@ -91,6 +91,8 @@ inline void GenerateCachePrefix(
     EncodeFixed32(prefix->data + prefix->size, meta_block_checksum);
     prefix->size += sizeof(uint32_t);
   }
+  LOG(INFO) << "Generated cache prefix " << Slice(prefix->data, prefix->size) << " for file "
+            << file->filename();
 }
 
 // The function is used to compute a checksum of meta-block to construct block cache key.

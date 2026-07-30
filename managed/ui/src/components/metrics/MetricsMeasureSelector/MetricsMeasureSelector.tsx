@@ -2,7 +2,7 @@ import { FC } from 'react';
 import { Button, ButtonGroup } from 'react-bootstrap';
 
 import { MetricMeasure } from '../../metrics/constants';
-import TreeIcon from '../../metrics/images/tree-icon.svg?img';
+import TreeIcon from '../../../redesign/assets/tree-icon.svg?img';
 import './MetricsMeasureSelector.scss';
 
 interface MetricMeasureSelectorData {

@@ -22,6 +22,7 @@
 
 #include "yb/util/date_time.h"
 #include "yb/util/decimal.h"
+#include "yb/util/status_log.h"
 
 namespace yb::qlexpr {
 

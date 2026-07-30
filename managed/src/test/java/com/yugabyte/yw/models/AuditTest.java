@@ -8,6 +8,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -236,6 +237,25 @@ public class AuditTest extends FakeDBApplication {
     createEntry(randUUID1, user);
     Audit entry = Audit.getFromTaskUUID(randUUID1);
     assertEquals(entry.getTaskUUID(), randUUID1);
+  }
+
+  @Test
+  public void testGetFromTaskUUIDReturnsEarliestWhenDuplicatesExist() throws InterruptedException {
+    UUID sharedTaskUuid = UUID.randomUUID();
+    Audit first =
+        Audit.create(
+            user, "/test/api/call/1", "PUT", null, null, null, null, sharedTaskUuid, null, null);
+    Audit second =
+        Audit.create(
+            user, "/test/api/call/2", "PUT", null, null, null, null, sharedTaskUuid, null, null);
+
+    Audit resolved = Audit.getFromTaskUUID(sharedTaskUuid);
+    assertNotNull(resolved);
+    assertEquals(sharedTaskUuid, resolved.getTaskUUID());
+    assertEquals(first.getId(), resolved.getId());
+    assertTrue(
+        "Expected earliest audit row by timestamp",
+        !resolved.getTimestamp().after(second.getTimestamp()));
   }
 
   @Test

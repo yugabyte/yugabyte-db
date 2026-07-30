@@ -51,6 +51,7 @@ import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -60,7 +61,6 @@ import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.data.Form;
 import play.mvc.Http;
 import play.mvc.Result;
 
@@ -228,28 +228,30 @@ public class InstanceTypeController extends AuthenticatedController {
   })
   @BlockOperatorResource(resource = OperatorResourceTypes.PROVIDER)
   public Result create(UUID customerUUID, UUID providerUUID, Http.Request request) {
-    Form<InstanceType> formData = formFactory.getFormDataOrBadRequest(request, InstanceType.class);
-
+    InstanceType input = parseJsonAndValidate(request, InstanceType.class);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     if (provider.getCloudCode() == CloudType.aws
         && confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching)) {
       // Check in case the arch is specified for the instance.
-      InstanceTypeDetails instanceDetails = formData.get().getInstanceTypeDetails();
+      InstanceTypeDetails instanceDetails = input.getInstanceTypeDetails();
       if (instanceDetails == null || instanceDetails.arch == null) {
         throw new PlatformServiceException(
             BAD_REQUEST,
             String.format(
                 "Please specify the architecture for the instance type %s",
-                formData.get().getInstanceTypeCode()));
+                input.getInstanceTypeCode()));
       }
+    }
+    if (provider.getCloudCode() == CloudType.onprem) {
+      provider.validateInstanceTypeMountPoints(Collections.singletonList(input));
     }
     InstanceType it =
         InstanceType.upsert(
             provider.getUuid(),
-            formData.get().getInstanceTypeCode(),
-            formData.get().getNumCores(),
-            formData.get().getMemSizeGB(),
-            formData.get().getInstanceTypeDetails());
+            input.getInstanceTypeCode(),
+            input.getNumCores(),
+            input.getMemSizeGB(),
+            input.getInstanceTypeDetails());
     auditService()
         .createAuditEntryWithReqBody(
             request,

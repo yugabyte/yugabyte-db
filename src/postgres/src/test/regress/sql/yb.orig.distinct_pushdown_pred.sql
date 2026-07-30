@@ -1,6 +1,9 @@
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun_distinct_pushdown.sql'
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
+\set P1 ':explain'
+\set P2
+\set explain 'EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)'
 
 -- Split at 1, ... to ensure that the value r1 = 1 is present in more than one tablet.
 -- See #18101.
@@ -55,51 +58,51 @@ INSERT INTO t (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 
 -- Do not eliminate r2, see comment (2) above.
 -- However, since r1 is equivalent to r2, the query still requests a distinct prefix regardless, see comment (7).
-\set query 'SELECT DISTINCT r2 FROM t WHERE r1 = r2'
-:explain1run1
-\set query 'SELECT DISTINCT r1, r2 FROM t WHERE r1 = r2'
-:explain1run1
+\set query ':P SELECT DISTINCT r2 FROM t WHERE r1 = r2;'
+\i :run_query
+\set query ':P SELECT DISTINCT r1, r2 FROM t WHERE r1 = r2;'
+\i :run_query
 
 -- Eliminate r3 when equal to a constant, see comment (3) above.
-\set query 'SELECT DISTINCT r3 FROM t WHERE r3 = 1'
-:explain1run1
+\set query ':P SELECT DISTINCT r3 FROM t WHERE r3 = 1;'
+\i :run_query
 -- Out-of-range predicate.
-\set query 'SELECT DISTINCT r3 FROM t WHERE r3 = 5'
-:explain1run1
+\set query ':P SELECT DISTINCT r3 FROM t WHERE r3 = 5;'
+\i :run_query
 -- Other targets.
-\set query 'SELECT DISTINCT r2, r3 FROM t WHERE r3 = 1'
-:explain1run1
-\set query 'SELECT DISTINCT r2, r3 FROM t WHERE r3 = 5'
-:explain1run1
+\set query ':P SELECT DISTINCT r2, r3 FROM t WHERE r3 = 1;'
+\i :run_query
+\set query ':P SELECT DISTINCT r2, r3 FROM t WHERE r3 = 5;'
+\i :run_query
 
 -- Can infer that r2 = r3, r3 = 1 <=> r2 = 1, r3 = 1.
 -- Thus eliminating both r2 and r3.
-\set query 'SELECT DISTINCT r2, r3 FROM t WHERE r2 = r3 AND r3 = 1'
-:explain1run1
+\set query ':P SELECT DISTINCT r2, r3 FROM t WHERE r2 = r3 AND r3 = 1;'
+\i :run_query
 
 -- Cannot eliminate a non-index key that is equal to a constant, see comment (5) above.
-\set query 'SELECT DISTINCT v FROM t WHERE v = 1'
-:explain1run1
-\set query 'SELECT DISTINCT r1, v FROM t WHERE v = 1'
-:explain1run1
+\set query ':P SELECT DISTINCT v FROM t WHERE v = 1;'
+\i :run_query
+\set query ':P SELECT DISTINCT r1, v FROM t WHERE v = 1;'
+\i :run_query
 
 -- Non-index predicates, see comment (6) above.
 -- r1 = r2 tested above is a non-index predicate as well.
 -- Here are some more tests to include more expressions.
 
 -- Support product expressions.
-\set query 'SELECT DISTINCT r1 FROM t WHERE r1 * r1 = 1'
-:explain1run1
-\set query 'SELECT DISTINCT r1 FROM t WHERE r2 * r2 = 1'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM t WHERE r1 * r1 = 1;'
+\i :run_query
+\set query ':P SELECT DISTINCT r1 FROM t WHERE r2 * r2 = 1;'
+\i :run_query
 
 -- Support expressions in targets.
-\set query 'SELECT DISTINCT r1 * r2 AS r FROM t'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 * r2 AS r FROM t;'
+\i :run_query
 
 -- Support expressions that can have duplicate values even when the arguments are DISTINCT.
-\set query 'SELECT DISTINCT 0 * r1 AS r FROM t'
-:explain1run1
+\set query ':P SELECT DISTINCT 0 * r1 AS r FROM t;'
+\i :run_query
 
 -- Do not generate distinct index paths in the presence of volatile expressions.
 -- In general, volatile expressions may have side effects, so they need to be run
@@ -108,38 +111,38 @@ EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t WHERE r1 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 * RANDOM() AS r FROM t;
 
 -- Test range clauses as well while here.
-\set query 'SELECT DISTINCT r1 FROM t WHERE r1 > 1'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM t WHERE r1 > 1;'
+\i :run_query
 -- r2 need not be part of the distinct prefix since the only clause is an index clause
 -- and index clauses currently execute before DISTINCT.
-\set query 'SELECT DISTINCT r1 FROM t WHERE r2 > 1'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM t WHERE r2 > 1;'
+\i :run_query
 -- Cannot eliminate r2 here since the query requires all distinct values of r2 and there isn't
 -- one distinct value of r2 unlike constants.
-\set query 'SELECT DISTINCT r2 FROM t WHERE r2 < 5'
-:explain1run1
+\set query ':P SELECT DISTINCT r2 FROM t WHERE r2 < 5;'
+\i :run_query
 
 -- Now, execute some scalar array operations.
-\set query 'SELECT DISTINCT r1 FROM t WHERE r1 IN (1, 2)'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM t WHERE r1 IN (1, 2);'
+\i :run_query
 -- Out-of-range query.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t WHERE r1 IN (1, 2);
 SELECT DISTINCT r1 FROM t WHERE r1 IN (3, 5);
 -- Do not include index clause references in the prefix.
-\set query 'SELECT DISTINCT r1 FROM t WHERE r2 IN (1, 2)'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM t WHERE r2 IN (1, 2);'
+\i :run_query
 -- Eliminate r2 from the prefix since it is a constant.
-\set query 'SELECT DISTINCT r1, r2 FROM t WHERE r1 IN (1, 2) AND r2 = 2'
-:explain1run1
+\set query ':P SELECT DISTINCT r1, r2 FROM t WHERE r1 IN (1, 2) AND r2 = 2;'
+\i :run_query
 
 -- LSM indexes support IN index clauses on lower key columns and still support
 -- sorting.
-\set query 'SELECT DISTINCT r1, r2 FROM t WHERE r2 IN (1, 2) ORDER BY r1, r2'
-:explain1run1
+\set query ':P SELECT DISTINCT r1, r2 FROM t WHERE r2 IN (1, 2) ORDER BY r1, r2;'
+\i :run_query
 
 -- Unique node still necessary for range columns equal to constant.
-\set query 'SELECT DISTINCT r1 FROM t WHERE r1 = 1'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM t WHERE r1 = 1;'
+\i :run_query
 
 DROP TABLE t;
 
@@ -173,48 +176,48 @@ INSERT INTO th (SELECT 2, i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i)
 -- All hash columns.
 -- Isn't necessary to stick a unique node on top since hash columns
 -- separate cleanly across tables.
-\set query 'SELECT DISTINCT h1, h2 FROM th'
-:explain1run1
+\set query ':P SELECT DISTINCT h1, h2 FROM th;'
+\i :run_query
 
 -- Strict prefix of hash columns.
-\set query 'SELECT DISTINCT h1 FROM th'
-:explain1run1
+\set query ':P SELECT DISTINCT h1 FROM th;'
+\i :run_query
 
 -- Subset of the prefix of all hash columns.
-\set query 'SELECT DISTINCT h2 FROM th'
-:explain1run1
+\set query ':P SELECT DISTINCT h2 FROM th;'
+\i :run_query
 
 -- Both hash and range columns.
 -- Prefix is still not sorted just because a range column is selected.
-\set query 'SELECT DISTINCT h1, h2, r1 FROM th'
-:explain1run1
+\set query ':P SELECT DISTINCT h1, h2, r1 FROM th;'
+\i :run_query
 
 -- Range columns only.
 -- Includes hash columns since they come first.
-\set query 'SELECT DISTINCT r1 FROM th'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM th;'
+\i :run_query
 
 -- Avoid classifying hash columns as sortable.
 -- Guard rails meant to prevent DISTINCT logic from
 -- marking hash columns as sortable.
-\set query 'SELECT DISTINCT h1 FROM th ORDER BY h1'
-:explain1run1
+\set query ':P SELECT DISTINCT h1 FROM th ORDER BY h1;'
+\i :run_query
 -- Once all the hash columns are set, range columns are returned in sorted order as usual.
-\set query 'SELECT DISTINCT r1 FROM th WHERE h1 = 1 AND h2 = 1 ORDER BY r1'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM th WHERE h1 = 1 AND h2 = 1 ORDER BY r1;'
+\i :run_query
 -- Not the case if any of the hash columns are not set.
-\set query 'SELECT DISTINCT r1 FROM th WHERE h1 = 1 ORDER BY r1'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM th WHERE h1 = 1 ORDER BY r1;'
+\i :run_query
 
 -- Hash columns constant.
-\set query 'SELECT DISTINCT h1, h2 FROM th WHERE h1 = 1 AND h2 = 1'
-:explain1run1
+\set query ':P SELECT DISTINCT h1, h2 FROM th WHERE h1 = 1 AND h2 = 1;'
+\i :run_query
 
 -- Range column constant
-\set query 'SELECT DISTINCT h1, h2 FROM th WHERE r1 = 1'
-:explain1run1
-\set query 'SELECT DISTINCT r1 FROM th WHERE r1 = 1'
-:explain1run1
+\set query ':P SELECT DISTINCT h1, h2 FROM th WHERE r1 = 1;'
+\i :run_query
+\set query ':P SELECT DISTINCT r1 FROM th WHERE r1 = 1;'
+\i :run_query
 
 DROP TABLE th;
 
@@ -307,8 +310,8 @@ CREATE TABLE sample(a int, b int, primary key(a asc, b asc));
 INSERT INTO sample VALUES (1,1), (1,2);
 DELETE FROM sample where b = 1;
 
-\set query 'SELECT DISTINCT a FROM sample WHERE a > 0'
-:explain1run1
+\set query ':P SELECT DISTINCT a FROM sample WHERE a > 0;'
+\i :run_query
 
 DROP TABLE sample;
 

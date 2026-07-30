@@ -24,11 +24,11 @@
 #include "yb/docdb/docdb_fwd.h"
 
 #include "yb/util/result.h"
-#include "yb/util/status.h"
 #include "yb/util/status_fwd.h"
 
 #include "yb/yql/pggate/pg_dml.h"
 #include "yb/yql/pggate/pg_doc_op.h"
+#include "yb/yql/pggate/pg_read_range.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_tools.h"
@@ -95,22 +95,26 @@ class PgDmlRead : public PgDml {
   // Limit scan to specific ybctid range for parallel scan.
   // Sets underlying request's bounds to specified values, also resets any psql operations
   // remaining from the previous range scan.
-  Status BindRange(
+  Status ApplyParallelRange(
       Slice lower_bound, bool lower_bound_inclusive, Slice upper_bound, bool upper_bound_inclusive);
 
   void BindBounds(
       const Slice lower_bound, bool lower_bound_inclusive, const Slice upper_bound,
       bool upper_bound_inclusive);
 
-  // Add a lower bound to the scan. If a lower bound has already been added
-  // this call will set the lower bound to the stricter of the two bounds.
-  Status AddRowLowerBound(
-      YbcPgStatement handle, int n_col_values, PgExpr** col_values, bool is_inclusive);
-
-  // Add an upper bound to the scan. If an upper bound has already been added
-  // this call will set the upper bound to the stricter of the two bounds.
-  Status AddRowUpperBound(
-      YbcPgStatement handle, int n_col_values, PgExpr** col_values, bool is_inclusive);
+  // Set the row values as the lower or upper bound of the scan.
+  // The col_values must provide the values for the relation's key, including the hash code,
+  // in the order of the key columns. The col_values can be a prefix of the full key.
+  // If value for a key column is missing, nullptr values are allowed, but ineffective, as well as
+  // the subsequent values. Prefer shorter col_values.
+  // The values are not required to make a valid key, meaning the hash code does not have to be
+  // the result of yb_hash_code calculated on the hash key values.
+  // The is_inclusive flag is only effective if the col_values make a full valid key, a prefix is
+  // effectively inclusive.
+  // The col_values must contain at least one key column value, for bare hash code bounds use the
+  // BindHashCode method.
+  Status AddRowLowerBound(std::span<PgExpr*> col_values, bool is_inclusive);
+  Status AddRowUpperBound(std::span<PgExpr*> col_values, bool is_inclusive);
 
   Status SetMergeSortKeys(int num_keys, const YbcSortKey* sort_keys);
 
@@ -142,7 +146,7 @@ class PgDmlRead : public PgDml {
   [[nodiscard]] virtual bool IsPgSelectIndex() const { return false; }
 
  protected:
-  explicit PgDmlRead(const PgSession::ScopedRefPtr& pg_session);
+  explicit PgDmlRead(const PgSessionPtr& pg_session);
 
   // Allocate column protobuf.
   Result<LWPgsqlExpressionPB*> AllocColumnBindPB(PgColumn* col, PgExpr* expr) override;
@@ -169,14 +173,12 @@ class PgDmlRead : public PgDml {
 
   // Indicates that current operation reads concrete row by specifying row's DocKey.
   [[nodiscard]] bool IsConcreteRowRead() const;
-  Status ProcessEmptyPrimaryBinds();
-  [[nodiscard]] bool IsAllPrimaryKeysBound() const;
-  Result<std::unique_ptr<YbctidProvider>> BuildYbctidsFromPrimaryBinds();
+  Status ProcessEmptyKeyBinds();
+  [[nodiscard]] bool IsAllKeyColumnsBound() const;
+  Result<std::unique_ptr<YbctidProvider>> BuildYbctidsFromKeyBinds();
 
-  Status SubstitutePrimaryBindsWithYbctids();
-  Result<dockv::DocKey> EncodeRowKeyForBound(
-      YbcPgStatement handle, size_t n_col_values, PgExpr** col_values, bool for_lower_bound);
-
+  Status SubstituteKeyBindsWithYbctids();
+  Status AddRowBound(std::span<PgExpr*> col_values, bool is_inclusive, bool is_lower);
   Status InitDocOp(const YbcPgExecParameters* params);
 
   // Check if the column at specified position participates in merge sort
@@ -195,13 +197,27 @@ class PgDmlRead : public PgDml {
     return MergeSortColumnType::kNone;
   }
 
+  // Collects the IN and equality conditions on the hash and range key columns and sets up
+  // the permutations generator. Each permutation corresponds to a set of conditions on a request
+  // making a stream of rows to merge sort with the other streams.
+  InPermutationGenerator MergeStreamPermutations();
+
+  [[nodiscard]] PgReadRange& GetScanRange() {
+    if (!scan_range_) {
+      scan_range_.emplace(bind_);
+    }
+    return *scan_range_;
+  }
+
   // Holds original doc_op_ object after call of the UpgradeDocOp method.
   // Required to prevent structures related to request from being freed.
   PgDocOp::SharedPtr original_doc_op_;
 
-  bool primary_binds_processed_ = false;
+  bool key_binds_processed_ = false;
 
   MergeSortKeysPtr merge_sort_keys_;
+
+  std::optional<PgReadRange> scan_range_;
 };
 
 }  // namespace yb::pggate

@@ -2,7 +2,7 @@
 title: Password authentication
 headerTitle: Password authentication
 linkTitle: Password authentication
-description: Use SCRAM-SHA-256 password authentication to strengthen your YugyabyteDB security.
+description: Use SCRAM-SHA-256 password authentication to strengthen your YugabyteDB security.
 menu:
   v2024.2:
     identifier: password-authentication
@@ -172,6 +172,24 @@ When you [enable SCRAM-SHA-256 authentication](#enable-scram-sha-256-authenticat
 Because all existing passwords must be changed, you can manage the migration of these user and role passwords from MD5 to SCRAM-SHA-256 by maintaining rules in the `--ysql_hba_conf_csv` setting to allow both MD5 passwords and SCRAM-SHA-256 passwords to work until all passwords have been migrated to SCRAM-SHA-256. For an example, see [Create a cluster that uses SCRAM-SHA-256 password authentication](#Create-a-cluster-that-uses-scram-sha-256-password-authentication).
 
 If you follow a similar approach for an existing cluster, you can enhance your cluster security, track and migrate passwords, and then remove the much weaker MD5 rules after all passwords have been updated.
+
+To check which passwords remain to be migrated, run the following query as a superuser (for example, the `yugabyte` user; only superusers can read from `pg_authid`):
+
+```sql
+SELECT
+  rolname,
+  CASE
+    WHEN rolpassword LIKE 'SCRAM-SHA-256%' THEN 'scram'
+    WHEN rolpassword LIKE 'md5%' THEN 'md5'
+    ELSE 'none/other'
+  END AS password_type,
+  rolvaliduntil
+FROM pg_authid
+WHERE rolcanlogin
+ORDER BY password_type, rolname;
+```
+
+For any role where `password_type` is `md5`, use [ALTER ROLE](../../../api/ysql/the-sql-language/statements/dcl_alter_role/) or the ysqlsh [\password](../../../api/ysqlsh-meta-commands/#password-username) meta-command to set a new password. The password is re-encrypted using SCRAM-SHA-256.
 
 ## Resetting user password
 

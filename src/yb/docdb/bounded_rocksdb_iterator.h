@@ -77,7 +77,7 @@ class BoundedRocksDbIterator final : public rocksdb::Iterator {
   const rocksdb::KeyValueEntry& FilterEntry(const rocksdb::KeyValueEntry& entry) const;
 
   std::unique_ptr<rocksdb::Iterator> iterator_;
-  const KeyBounds* key_bounds_;
+  const KeyBounds* key_bounds_ = nullptr;
 };
 
 } // namespace yb::docdb

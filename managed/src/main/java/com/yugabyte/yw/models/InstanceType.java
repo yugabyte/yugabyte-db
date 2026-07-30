@@ -63,19 +63,28 @@ import play.libs.Json;
 public class InstanceType extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(InstanceType.class);
 
-  // todo: https://yugabyte.atlassian.net/browse/PLAT-10505
+  // Matches Azure VM sizes with no local temporary disk (diskless).
+  // Naming convention: the presence of 'd' in the suffix (e.g. ads, ds) indicates local disk --
+  // excluded here.
+  // Suffix is intentionally optional -- e.g. Standard_D4_v5 is diskless with no suffix.
+  // DO NOT add v2 or v3 -- Standard_D2s_v3 and Standard_E48_v3 have local disks (confirmed by
+  // Azure docs and tests).
+  // DO NOT add suffix 'd'-variants (ads, ds) -- these indicate local disk presence.
+  // Ref: https://aka.ms/AAah4sj and https://azure.microsoft.com/en-us/blog/azure-vms-no-temp-disk
   private static final Pattern AZU_NO_LOCAL_DISK =
-      Pattern.compile("Standard_(D|E)[0-9]*as\\_v5|Standard_D[0-9]*s\\_v5|Standard_D[0-9]*s\\_v4");
+      Pattern.compile("\\bStandard_(D|E|F|M|B)[0-9]+(as|s|ls|ps|pls|als|es|bs|bds)?_v(4|5|6)\\b");
 
   private static final List<String> AWS_INSTANCE_PREFIXES_SUPPORTED =
       ImmutableList.of(
-          "m3.", "c5.", "c5d.", "c4.", "c3.", "i3.", "m4.", "m5.", "m5a.", "m6i.", "m6a.", "m7i.",
-          "m7a.", "c6i.", "c6a.", "c7a.", "c7i.");
+          "c3.", "c4.", "c5.", "c5d.", "c6a.", "c6i.", "c7a.", "c7i.", "i3.", "m3.", "m4.", "m5.",
+          "m5a.", "m6a.", "m6i.", "m7a.", "m7i.", "m8a.", "m8i.", "r6a.", "r6i.", "r7a.", "r7i.",
+          "r8a.", "r8i.");
   private static final List<String> GRAVITON_AWS_INSTANCE_PREFIXES_SUPPORTED =
-      ImmutableList.of("m6g.", "c6gd.", "c6g.", "t4g.", "r6g.", "r7g.", "r8g.");
+      ImmutableList.of("c6g.", "c6gd.", "m6g.", "m7g.", "m8g.", "r6g.", "r7g.", "r8g.", "t4g.");
   private static final List<String> CLOUD_AWS_INSTANCE_PREFIXES_SUPPORTED =
       ImmutableList.of(
-          "m3.", "c5.", "c5d.", "c4.", "c3.", "i3.", "t2.", "t3.", "t4g.", "m6i.", "m5.");
+          "c3.", "c4.", "c5.", "c5d.", "i3.", "m3.", "m5.", "m6i.", "m7a.", "m7i.", "m8a.", "m8i.",
+          "r7a.", "r7i.", "r8a.", "r8i.", "t2.", "t3.", "t4g.");
 
   static final String YB_AWS_DEFAULT_VOLUME_COUNT_KEY = "yb.aws.default_volume_count";
   static final String YB_AWS_DEFAULT_VOLUME_SIZE_GB_KEY = "yb.aws.default_volume_size_gb";
@@ -351,16 +360,17 @@ public class InstanceType extends Model {
         .findList();
   }
 
-  public static boolean isAzureWithLocalDisk(String instanceTypeCode) {
+  /** Returns true if the Azure VM size has no local temporary disk (diskless). */
+  public static boolean isAzureDiskless(String instanceTypeCode) {
     return AZU_NO_LOCAL_DISK.matcher(instanceTypeCode).matches();
   }
 
   @JsonIgnore
-  public boolean isAzureWithLocalDisk() {
+  public boolean isAzureDiskless() {
     if (isCloudInstanceType()) {
-      return isAzureWithLocalDisk(getInstanceTypeCode());
+      return isAzureDiskless(getInstanceTypeCode());
     }
-    return isAzureWithLocalDisk(getInstanceTypeDetails().cloudInstanceTypeCodes.get(0));
+    return isAzureDiskless(getInstanceTypeDetails().cloudInstanceTypeCodes.get(0));
   }
 
   @JsonIgnore
@@ -436,9 +446,9 @@ public class InstanceType extends Model {
             BAD_REQUEST, "Minimum of one cloud instance type must be specified");
       }
       // For Azure, instances with and without local disks cannot be mixed up.
-      boolean isLocalDisk = isAzureWithLocalDisk(uniqueSubInstanceTypeCodes.iterator().next());
+      boolean isDiskless = isAzureDiskless(uniqueSubInstanceTypeCodes.iterator().next());
       if (instanceTypeDetails.cloudInstanceTypeCodes.stream()
-          .anyMatch(c -> isAzureWithLocalDisk(c) != isLocalDisk)) {
+          .anyMatch(c -> isAzureDiskless(c) != isDiskless)) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Instance types with/without local disks cannot be mixed");
       }
@@ -499,6 +509,7 @@ public class InstanceType extends Model {
     public static final int DEFAULT_VOLUME_COUNT = 1;
     public static final int DEFAULT_GCP_VOLUME_SIZE_GB = 375;
     public static final int DEFAULT_AZU_VOLUME_SIZE_GB = 250;
+    public static final int DEFAULT_OCI_VOLUME_SIZE_GB = 250;
 
     // These instance type codes are typically the ones provided by the cloud vendor.
     @ApiModelProperty(
@@ -544,6 +555,13 @@ public class InstanceType extends Model {
       InstanceTypeDetails instanceTypeDetails = new InstanceTypeDetails();
       instanceTypeDetails.setVolumeDetailsList(
           DEFAULT_VOLUME_COUNT, DEFAULT_AZU_VOLUME_SIZE_GB, VolumeType.SSD);
+      return instanceTypeDetails;
+    }
+
+    public static InstanceTypeDetails createOCIDefault() {
+      InstanceTypeDetails instanceTypeDetails = new InstanceTypeDetails();
+      instanceTypeDetails.setVolumeDetailsList(
+          DEFAULT_VOLUME_COUNT, DEFAULT_OCI_VOLUME_SIZE_GB, VolumeType.SSD);
       return instanceTypeDetails;
     }
 

@@ -1,0 +1,93 @@
+-- Start a fresh transaction
+BEGIN;
+-- 1. Create the table inside the txn.
+CREATE TABLE toggle_test (id INT PRIMARY KEY, val TEXT);
+INSERT INTO toggle_test VALUES (1, 'Regular DB');
+-- 2. ENTER SAVEPOINT
+SAVEPOINT s1;
+INSERT INTO toggle_test VALUES (2, 'Intents DB');
+-- 3. RELEASE SAVEPOINT
+-- The sub-transaction is "merged" into the main txn.
+RELEASE SAVEPOINT s1;
+-- 4. THE SWITCHBACK CHECK
+INSERT INTO toggle_test VALUES (3, 'Regular DB');
+-- 5. TRIGGER A PARTIAL FAILURE
+-- We use a savepoint to catch a failure.
+SAVEPOINT s2;
+INSERT INTO toggle_test VALUES (4, 1/0); -- Division by zero
+ERROR:  division by zero
+ROLLBACK TO SAVEPOINT s2;
+-- 6. COMMIT THE REST
+COMMIT;
+-- FINAL VERIFICATION
+SELECT * FROM toggle_test ORDER BY id;
+ id |    val     
+----+------------
+  1 | Regular DB
+  2 | Intents DB
+  3 | Regular DB
+(3 rows)
+
+DROP TABLE toggle_test;
+-- Start a fresh transaction
+BEGIN;
+-- Table created in txn.
+CREATE TABLE toggle_test (id INT PRIMARY KEY, val TEXT);
+INSERT INTO toggle_test VALUES (1, 'Regular DB');
+-- 2. ENTER FIRST SAVEPOINT
+SAVEPOINT s1;
+INSERT INTO toggle_test VALUES (2, 'Intents DB (Sub-txn)');
+RELEASE SAVEPOINT s1;
+-- 3. THE CRITICAL TEST ZONE
+-- We create a second savepoint BEFORE ID 3.
+SAVEPOINT s2;
+INSERT INTO toggle_test VALUES (3, 'Regular DB');
+-- 4. TRIGGER FAILURE & ROLLBACK
+-- This failure forces us to revert to s2.
+INSERT INTO toggle_test VALUES (4, 1/0);
+ERROR:  division by zero
+ROLLBACK TO SAVEPOINT s2;
+-- 5. COMMIT
+COMMIT;
+-- FINAL VERIFICATION
+SELECT * FROM toggle_test ORDER BY id;
+ id |         val          
+----+----------------------
+  1 | Regular DB
+  2 | Intents DB (Sub-txn)
+(2 rows)
+
+DROP TABLE toggle_test;
+-- Start a fresh transaction
+BEGIN;
+-- 1. Create the table
+CREATE TABLE switchback_test (id INT PRIMARY KEY);
+INSERT INTO switchback_test VALUES (1);
+-- 2. Enter and Release a Savepoint
+-- This forces the session to handle Intents.
+SAVEPOINT s1;
+INSERT INTO switchback_test VALUES (2); -- Must go to Intents
+RELEASE SAVEPOINT s1;
+-- 3. THE SWITCHBACK
+-- We are back at top level.
+INSERT INTO switchback_test VALUES (3);
+-- 4. THE READ CHECK
+SELECT * FROM switchback_test ORDER BY id;
+ id 
+----
+  1
+  2
+  3
+(3 rows)
+
+-- 5. COMMIT & FINAL CHECK
+COMMIT;
+SELECT * FROM switchback_test ORDER BY id;
+ id 
+----
+  1
+  2
+  3
+(3 rows)
+
+DROP TABLE switchback_test;

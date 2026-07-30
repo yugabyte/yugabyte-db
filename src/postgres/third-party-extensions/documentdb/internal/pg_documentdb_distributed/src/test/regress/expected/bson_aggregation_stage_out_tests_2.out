@@ -4,12 +4,12 @@ SET documentdb.next_collection_id TO 9830;
 SET documentdb.next_collection_index_id TO 9830;
 -- simplest test case working with db database
 SELECT documentdb_api.insert('db', '{"insert":"source", "documents":[
-   { "_id" : 1, "employee": "Ant", "salary": 100000, "fiscal_year": 2017 },
-   { "_id" : 2, "employee": "Bee", "salary": 120000, "fiscal_year": 2017 },
-   { "_id" : 3, "employee": "Ant", "salary": 115000, "fiscal_year": 2018 },
-   { "_id" : 4, "employee": "Bee", "salary": 145000, "fiscal_year": 2018 },
-   { "_id" : 5, "employee": "Cat", "salary": 135000, "fiscal_year": 2018 },
-   { "_id" : 6, "employee": "Cat", "salary": 150000, "fiscal_year": 2019 }
+   { "_id" : 1, "movie": "Iron Man 3", "Budget": 180000000, "year": 2011 },
+   { "_id" : 2, "movie": "Captain America the winter soldier", "Budget": 170000000, "year": 2011 },
+   { "_id" : 3, "movie": "Aveneger Endgame", "Budget": 160000000, "year": 2012 },
+   { "_id" : 4, "movie": "Spider Man", "Budget": 150000000, "year": 2012 },
+   { "_id" : 5, "movie": "Iron Man 2", "Budget": 140000000, "year": 2013 },
+   { "_id" : 6, "movie": "Iron Man 1", "Budget": 130000000, "year": 2013 }
 ]}');
 NOTICE:  creating collection
                                          insert                                         
@@ -25,14 +25,14 @@ NOTICE:  creating collection
 (1 row)
 
 SELECT document FROM documentdb_api.collection('db', 'target');
-                                                                 document                                                                  
+                                                                             document                                                                              
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "employee" : "Ant", "salary" : { "$numberInt" : "100000" }, "fiscal_year" : { "$numberInt" : "2017" } }
- { "_id" : { "$numberInt" : "2" }, "employee" : "Bee", "salary" : { "$numberInt" : "120000" }, "fiscal_year" : { "$numberInt" : "2017" } }
- { "_id" : { "$numberInt" : "3" }, "employee" : "Ant", "salary" : { "$numberInt" : "115000" }, "fiscal_year" : { "$numberInt" : "2018" } }
- { "_id" : { "$numberInt" : "4" }, "employee" : "Bee", "salary" : { "$numberInt" : "145000" }, "fiscal_year" : { "$numberInt" : "2018" } }
- { "_id" : { "$numberInt" : "5" }, "employee" : "Cat", "salary" : { "$numberInt" : "135000" }, "fiscal_year" : { "$numberInt" : "2018" } }
- { "_id" : { "$numberInt" : "6" }, "employee" : "Cat", "salary" : { "$numberInt" : "150000" }, "fiscal_year" : { "$numberInt" : "2019" } }
+ { "_id" : { "$numberInt" : "1" }, "movie" : "Iron Man 3", "Budget" : { "$numberInt" : "180000000" }, "year" : { "$numberInt" : "2011" } }
+ { "_id" : { "$numberInt" : "2" }, "movie" : "Captain America the winter soldier", "Budget" : { "$numberInt" : "170000000" }, "year" : { "$numberInt" : "2011" } }
+ { "_id" : { "$numberInt" : "3" }, "movie" : "Aveneger Endgame", "Budget" : { "$numberInt" : "160000000" }, "year" : { "$numberInt" : "2012" } }
+ { "_id" : { "$numberInt" : "4" }, "movie" : "Spider Man", "Budget" : { "$numberInt" : "150000000" }, "year" : { "$numberInt" : "2012" } }
+ { "_id" : { "$numberInt" : "5" }, "movie" : "Iron Man 2", "Budget" : { "$numberInt" : "140000000" }, "year" : { "$numberInt" : "2013" } }
+ { "_id" : { "$numberInt" : "6" }, "movie" : "Iron Man 1", "Budget" : { "$numberInt" : "130000000" }, "year" : { "$numberInt" : "2013" } }
 (6 rows)
 
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "source", "pipeline": [  {"$out" : { "db" : "db", "coll" : "target2" }  } ], "cursor": { "batchSize": 1 } }', 4294967294);
@@ -43,14 +43,14 @@ NOTICE:  creating collection
 (1 row)
 
 SELECT document FROM documentdb_api.collection('db', 'target2');
-                                                                 document                                                                  
+                                                                             document                                                                              
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "employee" : "Ant", "salary" : { "$numberInt" : "100000" }, "fiscal_year" : { "$numberInt" : "2017" } }
- { "_id" : { "$numberInt" : "2" }, "employee" : "Bee", "salary" : { "$numberInt" : "120000" }, "fiscal_year" : { "$numberInt" : "2017" } }
- { "_id" : { "$numberInt" : "3" }, "employee" : "Ant", "salary" : { "$numberInt" : "115000" }, "fiscal_year" : { "$numberInt" : "2018" } }
- { "_id" : { "$numberInt" : "4" }, "employee" : "Bee", "salary" : { "$numberInt" : "145000" }, "fiscal_year" : { "$numberInt" : "2018" } }
- { "_id" : { "$numberInt" : "5" }, "employee" : "Cat", "salary" : { "$numberInt" : "135000" }, "fiscal_year" : { "$numberInt" : "2018" } }
- { "_id" : { "$numberInt" : "6" }, "employee" : "Cat", "salary" : { "$numberInt" : "150000" }, "fiscal_year" : { "$numberInt" : "2019" } }
+ { "_id" : { "$numberInt" : "1" }, "movie" : "Iron Man 3", "Budget" : { "$numberInt" : "180000000" }, "year" : { "$numberInt" : "2011" } }
+ { "_id" : { "$numberInt" : "2" }, "movie" : "Captain America the winter soldier", "Budget" : { "$numberInt" : "170000000" }, "year" : { "$numberInt" : "2011" } }
+ { "_id" : { "$numberInt" : "3" }, "movie" : "Aveneger Endgame", "Budget" : { "$numberInt" : "160000000" }, "year" : { "$numberInt" : "2012" } }
+ { "_id" : { "$numberInt" : "4" }, "movie" : "Spider Man", "Budget" : { "$numberInt" : "150000000" }, "year" : { "$numberInt" : "2012" } }
+ { "_id" : { "$numberInt" : "5" }, "movie" : "Iron Man 2", "Budget" : { "$numberInt" : "140000000" }, "year" : { "$numberInt" : "2013" } }
+ { "_id" : { "$numberInt" : "6" }, "movie" : "Iron Man 1", "Budget" : { "$numberInt" : "130000000" }, "year" : { "$numberInt" : "2013" } }
 (6 rows)
 
 SELECT documentdb_api.drop_collection('db','source');
@@ -73,12 +73,12 @@ SELECT documentdb_api.drop_collection('db','target2');
 
 -- simplest test case working
 SELECT documentdb_api.insert('newdb', '{"insert":"source", "documents":[
-   { "_id" : 1, "employee": "Ant", "salary": 100000, "fiscal_year": 2017 },
-   { "_id" : 2, "employee": "Bee", "salary": 120000, "fiscal_year": 2017 },
-   { "_id" : 3, "employee": "Ant", "salary": 115000, "fiscal_year": 2018 },
-   { "_id" : 4, "employee": "Bee", "salary": 145000, "fiscal_year": 2018 },
-   { "_id" : 5, "employee": "Cat", "salary": 135000, "fiscal_year": 2018 },
-   { "_id" : 6, "employee": "Cat", "salary": 150000, "fiscal_year": 2019 }
+   { "_id" : 1, "movie": "Iron Man 3", "Budget": 180000000, "year": 2011 },
+   { "_id" : 2, "movie": "Captain America the winter soldier", "Budget": 170000000, "year": 2011 },
+   { "_id" : 3, "movie": "Aveneger Endgame", "Budget": 160000000, "year": 2012 },
+   { "_id" : 4, "movie": "Spider Man", "Budget": 150000000, "year": 2012 },
+   { "_id" : 5, "movie": "Iron Man 2", "Budget": 140000000, "year": 2013 },
+   { "_id" : 6, "movie": "Iron Man 1", "Budget": 130000000, "year": 2013 }
 ]}');
 NOTICE:  creating collection
                                          insert                                         
@@ -94,14 +94,14 @@ NOTICE:  creating collection
 (1 row)
 
 SELECT document FROM documentdb_api.collection('newdb', 'target');
-                                                                 document                                                                  
+                                                                             document                                                                              
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "employee" : "Ant", "salary" : { "$numberInt" : "100000" }, "fiscal_year" : { "$numberInt" : "2017" } }
- { "_id" : { "$numberInt" : "2" }, "employee" : "Bee", "salary" : { "$numberInt" : "120000" }, "fiscal_year" : { "$numberInt" : "2017" } }
- { "_id" : { "$numberInt" : "3" }, "employee" : "Ant", "salary" : { "$numberInt" : "115000" }, "fiscal_year" : { "$numberInt" : "2018" } }
- { "_id" : { "$numberInt" : "4" }, "employee" : "Bee", "salary" : { "$numberInt" : "145000" }, "fiscal_year" : { "$numberInt" : "2018" } }
- { "_id" : { "$numberInt" : "5" }, "employee" : "Cat", "salary" : { "$numberInt" : "135000" }, "fiscal_year" : { "$numberInt" : "2018" } }
- { "_id" : { "$numberInt" : "6" }, "employee" : "Cat", "salary" : { "$numberInt" : "150000" }, "fiscal_year" : { "$numberInt" : "2019" } }
+ { "_id" : { "$numberInt" : "1" }, "movie" : "Iron Man 3", "Budget" : { "$numberInt" : "180000000" }, "year" : { "$numberInt" : "2011" } }
+ { "_id" : { "$numberInt" : "2" }, "movie" : "Captain America the winter soldier", "Budget" : { "$numberInt" : "170000000" }, "year" : { "$numberInt" : "2011" } }
+ { "_id" : { "$numberInt" : "3" }, "movie" : "Aveneger Endgame", "Budget" : { "$numberInt" : "160000000" }, "year" : { "$numberInt" : "2012" } }
+ { "_id" : { "$numberInt" : "4" }, "movie" : "Spider Man", "Budget" : { "$numberInt" : "150000000" }, "year" : { "$numberInt" : "2012" } }
+ { "_id" : { "$numberInt" : "5" }, "movie" : "Iron Man 2", "Budget" : { "$numberInt" : "140000000" }, "year" : { "$numberInt" : "2013" } }
+ { "_id" : { "$numberInt" : "6" }, "movie" : "Iron Man 1", "Budget" : { "$numberInt" : "130000000" }, "year" : { "$numberInt" : "2013" } }
 (6 rows)
 
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "source", "pipeline": [  {"$out" : { "db" : "newdb", "coll" : "target2" }  } ], "cursor": { "batchSize": 1 } }', 4294967294);
@@ -112,14 +112,14 @@ NOTICE:  creating collection
 (1 row)
 
 SELECT document FROM documentdb_api.collection('newdb', 'target2');
-                                                                 document                                                                  
+                                                                             document                                                                              
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "employee" : "Ant", "salary" : { "$numberInt" : "100000" }, "fiscal_year" : { "$numberInt" : "2017" } }
- { "_id" : { "$numberInt" : "2" }, "employee" : "Bee", "salary" : { "$numberInt" : "120000" }, "fiscal_year" : { "$numberInt" : "2017" } }
- { "_id" : { "$numberInt" : "3" }, "employee" : "Ant", "salary" : { "$numberInt" : "115000" }, "fiscal_year" : { "$numberInt" : "2018" } }
- { "_id" : { "$numberInt" : "4" }, "employee" : "Bee", "salary" : { "$numberInt" : "145000" }, "fiscal_year" : { "$numberInt" : "2018" } }
- { "_id" : { "$numberInt" : "5" }, "employee" : "Cat", "salary" : { "$numberInt" : "135000" }, "fiscal_year" : { "$numberInt" : "2018" } }
- { "_id" : { "$numberInt" : "6" }, "employee" : "Cat", "salary" : { "$numberInt" : "150000" }, "fiscal_year" : { "$numberInt" : "2019" } }
+ { "_id" : { "$numberInt" : "1" }, "movie" : "Iron Man 3", "Budget" : { "$numberInt" : "180000000" }, "year" : { "$numberInt" : "2011" } }
+ { "_id" : { "$numberInt" : "2" }, "movie" : "Captain America the winter soldier", "Budget" : { "$numberInt" : "170000000" }, "year" : { "$numberInt" : "2011" } }
+ { "_id" : { "$numberInt" : "3" }, "movie" : "Aveneger Endgame", "Budget" : { "$numberInt" : "160000000" }, "year" : { "$numberInt" : "2012" } }
+ { "_id" : { "$numberInt" : "4" }, "movie" : "Spider Man", "Budget" : { "$numberInt" : "150000000" }, "year" : { "$numberInt" : "2012" } }
+ { "_id" : { "$numberInt" : "5" }, "movie" : "Iron Man 2", "Budget" : { "$numberInt" : "140000000" }, "year" : { "$numberInt" : "2013" } }
+ { "_id" : { "$numberInt" : "6" }, "movie" : "Iron Man 1", "Budget" : { "$numberInt" : "130000000" }, "year" : { "$numberInt" : "2013" } }
 (6 rows)
 
 SELECT documentdb_api.drop_collection('newdb','source');
@@ -353,33 +353,33 @@ SELECT documentdb_api.drop_collection('newdb','tar');
 (1 row)
 
 -- complex query with last stage $out:
-SELECT documentdb_api.insert_one('newdb','source',' {"_id": 1, "name": "American Steak House", "food": ["filet", "sirloin"], "quantity": 100 , "beverages": ["beer", "wine"]}', NULL);
+SELECT documentdb_api.insert_one('newdb','source',' {"_id": 1, "company": "Company A", "products": ["product1", "product2"], "amount": 100 , "services": ["service1", "service2"]}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('newdb','source','{ "_id": 2, "name": "Honest John Pizza", "food": ["cheese pizza", "pepperoni pizza"], "quantity": 120, "beverages": ["soda"]}', NULL);
+SELECT documentdb_api.insert_one('newdb','source','{ "_id": 2, "company": "Company B", "products": ["product3", "product4"], "amount": 120, "services": ["service3"]}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('newdb','target','{ "_id": 1, "item": "filet", "restaurant_name": "American Steak House"}', NULL);
+SELECT documentdb_api.insert_one('newdb','target','{ "_id": 1, "item": "product1", "company_name": "Company A"}', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('newdb','target','{ "_id": 2, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "lemonade"}', NULL);
+SELECT documentdb_api.insert_one('newdb','target','{ "_id": 2, "item": "product3", "company_name": "Company B", "extra": "value1"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('newdb','target','{ "_id": 3, "item": "cheese pizza", "restaurant_name": "Honest John Pizza", "drink": "soda"}', NULL);
+SELECT documentdb_api.insert_one('newdb','target','{ "_id": 3, "item": "product3", "company_name": "Company B", "extra": "value2"}', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
@@ -393,26 +393,26 @@ SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "target",
          { 
             "from": "source", 
             "pipeline": [ { "$match": { "quantity": { "$gt": 110 } }}], 
-            "as": "matched_docs", 
-            "localField": "restaurant_name", 
-            "foreignField": "name" 
+            "as": "joined_docs", 
+            "localField": "company_name", 
+            "foreignField": "company" 
          }
       },
       {"$sort"  : {"_id" :  -1}} ,
-      {"$group" :{"_id" :  "$restaurant_name"}},
+      {"$group" :{"_id" :  "$company_name"}},
       {"$project" : {"matched_docs" : 0}}
    ], "cursor": { "batchSize": 1 } }', 4294967294);
-                                                                                  cursorpage                                                                                  |                                                                                                    continuation                                                                                                    | persistconnection |  cursorid  
+                                                                            cursorpage                                                                             |                                                                                                    continuation                                                                                                    | persistconnection |  cursorid  
 ---------------------------------------------------------------------
- { "cursor" : { "id" : { "$numberLong" : "4294967294" }, "ns" : "newdb.target", "firstBatch" : [ { "_id" : "American Steak House" } ] }, "ok" : { "$numberDouble" : "1.0" } } | { "qi" : { "$numberLong" : "4294967294" }, "qp" : true, "qk" : { "$numberInt" : "2" }, "qn" : "cursor_4294967294", "numIters" : { "$numberInt" : "0" }, "sn" : NOW_SYS_VARIABLE } | t                 | 4294967294
+ { "cursor" : { "id" : { "$numberLong" : "4294967294" }, "ns" : "newdb.target", "firstBatch" : [ { "_id" : "Company A" } ] }, "ok" : { "$numberDouble" : "1.0" } } | { "qi" : { "$numberLong" : "4294967294" }, "qp" : true, "qk" : { "$numberInt" : "2" }, "qn" : "cursor_4294967294", "numIters" : { "$numberInt" : "0" }, "sn" : NOW_SYS_VARIABLE } | t                 | 4294967294
 (1 row)
 
 SELECT document FROM documentdb_api.collection('newdb','target');
-                                                          document                                                          
+                                                 document                                                  
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "item" : "filet", "restaurant_name" : "American Steak House" }
- { "_id" : { "$numberInt" : "2" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "lemonade" }
- { "_id" : { "$numberInt" : "3" }, "item" : "cheese pizza", "restaurant_name" : "Honest John Pizza", "drink" : "soda" }
+ { "_id" : { "$numberInt" : "1" }, "item" : "product1", "company_name" : "Company A" }
+ { "_id" : { "$numberInt" : "2" }, "item" : "product3", "company_name" : "Company B", "extra" : "value1" }
+ { "_id" : { "$numberInt" : "3" }, "item" : "product3", "company_name" : "Company B", "extra" : "value2" }
 (3 rows)
 
 SELECT documentdb_api.drop_collection('newdb','source');
@@ -437,7 +437,6 @@ NOTICE:  creating collection
 
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "source", "pipeline": [ {"$project" : {"_id" : 0} } ,{"$out" : "target"  } ], "cursor": { "batchSize": 1 } }', 4294967294);
 NOTICE:  creating collection
-NOTICE:  There are open held portals. Closing them
                                                             cursorpage                                                             | continuation | persistconnection | cursorid 
 ---------------------------------------------------------------------
  { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "newdb.source", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
@@ -548,7 +547,7 @@ NOTICE:  creating collection
 (1 row)
 
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "source", "pipeline": [ {"$out" : 1 } ], "cursor": { "batchSize": 1 } }', 4294967294);
-ERROR:  $out only supports a string or object argument, but found int
+ERROR:  Expected 'string' or 'document' type but found 'int' type
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "source", "pipeline": [ {"$out" : {} } ], "cursor": { "batchSize": 1 } }', 4294967294);
 ERROR:  If an object is passed to $out it must have exactly 2 fields: 'db' and 'coll'
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "source", "pipeline": [ {"$out" : {"db" : "a"} } ], "cursor": { "batchSize": 1 } }', 4294967294);
@@ -558,7 +557,7 @@ ERROR:  If an object is passed to $out it must have exactly 2 fields: 'db' and '
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "source", "pipeline": [ {"$out" : {"db" : "a", "coll" : "a", "other" : "a"} } ], "cursor": { "batchSize": 1 } }', 4294967294);
 ERROR:  If an object is passed to $out it must have exactly 2 fields: 'db' and 'coll'
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "source", "pipeline": [ {"$out" : {"db" : "a", "coll" : 1} } ], "cursor": { "batchSize": 1 } }', 4294967294);
-ERROR:  wrong type for field (coll) int != string
+ERROR:  Field type mismatch in (coll): int expected string
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "source", "pipeline": [ {"$out" : {"db" : 1, "coll" : "a"} } ], "cursor": { "batchSize": 1 } }', 4294967294);
 ERROR:  wrong type for field (db) int != string
 -- test when target is view:
@@ -575,7 +574,7 @@ SELECT documentdb_api.create_collection_view('newdb', '{ "create": "targetView",
 (1 row)
 
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "source", "pipeline": [  {"$out" :  "targetView" } ], "cursor": { "batchSize": 1 } }', 4294967294);
-ERROR:  Namespace newdb.targetView is a view, not a collection
+ERROR:  The namespace newdb.targetView refers to a view object rather than a collection
 SELECT documentdb_api.drop_collection('newdb','source');
  drop_collection 
 ---------------------------------------------------------------------
@@ -632,7 +631,7 @@ ERROR:  Size 16777262 is larger than MaxDocumentSize 16777216
 --try to insert bad _id field
 SELECT * FROM aggregate_cursor_first_page('newdb', '{ "aggregate": "sourceDataValidation", "pipeline": [ {"$project" : {"_id" : [1,2,3]}}, {"$out" : "targetDataValidation"} ], "cursor": { "batchSize": 1 } }');
 NOTICE:  creating collection
-ERROR:  The '_id' value cannot be of type array
+ERROR:  The '_id' field value must not be a type of array
 -- Let's take a look at explain plan
 --1) colocated tables , single shard distributed
 SELECT documentdb_api.insert_one('newdb','explainsrc',' {"_id": 1, "name": "Test Case"}', NULL);
@@ -720,7 +719,7 @@ EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('
 
 -- simplest test case working with db database
 SELECT documentdb_api.insert('db', '{"insert":"source", "documents":[
-   { "_id" : 11, "employee": "Ant", "salary": 100000, "fiscal_year": 2017 }
+   { "_id" : 11, "movie": "Thor", "Budget": 123456, "year": 1987 }
 ]}');
 NOTICE:  creating collection
                                          insert                                         
@@ -730,4 +729,9 @@ NOTICE:  creating collection
 
 --validate empty collection check
 SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "source", "pipeline": [  {"$out" : ""} ], "cursor": { "batchSize": 1 } }', 4294967294);
-ERROR:  Invalid empty namespace specified
+ERROR:  An invalid and empty namespace has been specified
+-- out should fail when query has mutable function, if query non existent collection or query has $sample stage
+SELECT * FROM  aggregate_cursor_first_page('db', '{ "aggregate": "nonImmutable", "pipeline": [ {"$lookup": {"from": "bar", "as": "x", "localField": "f_id", "foreignField": "_id"}}, {"$out" :  "bar" } ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  The query references collections that do not exist. Create the missing collections and retry.
+SELECT * FROM  aggregate_cursor_first_page('db', '{ "aggregate": "nonImmutable", "pipeline": [ { "$sample": { "size": 1000000 } }, {"$out" :  "bar" } ], "cursor": { "batchSize": 1 } }', 4294967294);
+ERROR:  The $out stage is not yet supported with the $sample aggregation stage.

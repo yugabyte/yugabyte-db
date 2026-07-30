@@ -1,0 +1,12 @@
+title: CustomerConfig
+description: |
+  Customer configuration.
+
+  Contains the user-provided `spec` and system-generated `info`.
+  Returned as response payload for customer configuration list APIs.
+type: object
+properties:
+  spec:
+    $ref: "./CustomerConfigSpec.yaml"
+  info:
+    $ref: "./CustomerConfigInfo.yaml"

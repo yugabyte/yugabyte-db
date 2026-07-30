@@ -210,8 +210,14 @@ public class UniverseYbDbAdminHandler {
 
   public UUID configureYSQL(
       ConfigureDBApiParams requestParams, Customer customer, Universe universe) {
-    UniverseDefinitionTaskParams.UserIntent userIntent =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    return configureYSQL(requestParams, customer, universe, false /* validateParamsOnly */);
+  }
+
+  public UUID configureYSQL(
+      ConfigureDBApiParams requestParams,
+      Customer customer,
+      Universe universe,
+      boolean validateParamsOnly) {
 
     if (softwareUpgradeHelper.isYsqlMajorUpgradeIncomplete(universe)) {
       throw new PlatformServiceException(
@@ -253,12 +259,8 @@ public class UniverseYbDbAdminHandler {
                 CONNECTION_POOLING_STABLE_VERSION, CONNECTION_POOLING_PREVIEW_VERSION));
       }
 
-      if (universe
-          .getUniverseDetails()
-          .getPrimaryCluster()
-          .userIntent
-          .providerType
-          .equals(Common.CloudType.kubernetes)) {
+      if (Util.getSingleProvider(universe.getUniverseDetails().getPrimaryCluster()).getCloudCode()
+          == Common.CloudType.kubernetes) {
         if (requestParams.communicationPorts.ysqlServerRpcPort
             != KubernetesCommandExecutor.DEFAULT_YSQL_SERVER_RPC_PORT) {
           throw new PlatformServiceException(
@@ -278,8 +280,14 @@ public class UniverseYbDbAdminHandler {
         universe, requestParams.connectionPoolingGflags);
     requestParams.validatePassword(policyService);
     requestParams.validateYSQLTables(universe, tableHandler);
+    if (validateParamsOnly) {
+      LOG.debug(
+          "Skipping configure YSQL task submission for universe {} as validateParams is true.",
+          universe.getName());
+      return null;
+    }
     TaskType taskType =
-        userIntent.providerType.equals(Common.CloudType.kubernetes)
+        Util.isKubernetesBasedUniverse(universe)
             ? TaskType.ConfigureDBApisKubernetes
             : TaskType.ConfigureDBApis;
     UUID taskUUID = commissioner.submit(taskType, requestParams);
@@ -313,7 +321,7 @@ public class UniverseYbDbAdminHandler {
     requestParams.validatePassword(policyService);
     requestParams.validateYCQLTables(universe, tableHandler);
     TaskType taskType =
-        userIntent.providerType.equals(Common.CloudType.kubernetes)
+        Util.isKubernetesBasedUniverse(universe)
             ? TaskType.ConfigureDBApisKubernetes
             : TaskType.ConfigureDBApis;
     UUID taskUUID = commissioner.submit(taskType, requestParams);

@@ -18,6 +18,7 @@
 #include <string>
 #include <unordered_set>
 
+#include "yb/client/client.h"
 #include "yb/client/client_fwd.h"
 #include "yb/client/session.h"
 #include "yb/client/schema.h"
@@ -29,9 +30,13 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common_types.pb.h"
+
+#include "yb/consensus/consensus.h"
+
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/dynamic_annotations.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -39,11 +44,15 @@
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_bg_tasks.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/cluster_balance.h"
 #include "yb/master/master-path-handlers.h"
+#include "yb/master/master.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_util.h"
 #include "yb/master/mini_master.h"
 
 #include "yb/rpc/messenger.h"
@@ -51,6 +60,7 @@
 #include "yb/server/webui_util.h"
 
 #include "yb/tablet/tablet_types.pb.h"
+
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/tserver/mini_tablet_server.h"
@@ -59,18 +69,23 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
-#include "yb/util/jsonreader.h"
+#include "yb/util/json_document.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
+
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_string(TEST_master_extra_list_host_port);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
+DECLARE_uint64(rpc_connection_timeout_ms);
 
 DECLARE_int32(follower_unavailable_considered_failed_sec);
 
@@ -88,14 +103,14 @@ DECLARE_bool(TEST_pause_rbs_before_download_wal);
 DECLARE_int32(TEST_sleep_before_reporting_lb_ui_ms);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
 DECLARE_int32(tablet_overhead_size_percentage);
+DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
+DECLARE_uint64(ysql_operation_lease_ttl_client_buffer_ms);
 
 namespace yb::integration_tests {
 
-using std::string;
-using std::vector;
-using std::unordered_set;
-
 using namespace std::literals;
+
+static MonoDelta kTabletServerRegistrationTimeout = 60s;
 
 const std::string kKeyspaceName("my_keyspace");
 const client::YBTableName table_name(YQL_DATABASE_CQL, kKeyspaceName, "test_table");
@@ -141,6 +156,36 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
         master_http_url_ + url, html_table_tag_id, column_header);
   }
 
+  Status WaitForLeaseStatusCounts(
+      size_t expected_has_lease, size_t expected_no_lease, MonoDelta timeout) {
+    return WaitFor(
+        [&]() -> Result<bool> {
+          auto make_predicate = [](const std::string_view target) {
+            return [target](const std::string& cell) { return cell.contains(target); };
+          };
+          auto green_checker = make_predicate("Green");
+          auto red_checker = make_predicate("Red");
+          for (const auto& col_name : {"Lease Expiry", "Lease Epoch"}) {
+            auto cols =
+                VERIFY_RESULT(GetHtmlTableColumn("/tablet-servers", "[^']*_tserver", col_name));
+            size_t has_lease_count = std::ranges::count_if(cols, green_checker);
+            size_t missing_lease_count = std::ranges::count_if(cols, red_checker);
+            if (has_lease_count != expected_has_lease || missing_lease_count != expected_no_lease) {
+              LOG(INFO) << Format(
+                  "Lease counts from tablet-servers status page not as expected. For column $0, "
+                  "Has lease is $1, "
+                  "expected $2. Missing lease is $3, expected $4",
+                  col_name, has_lease_count, expected_has_lease, missing_lease_count,
+                  expected_no_lease);
+              return false;
+            }
+          }
+          return true;
+        },
+        timeout,
+        Format("Waiting for $0 HAS LEASE, $1 NO LEASE", expected_has_lease, expected_no_lease));
+  }
+
   virtual int num_tablet_servers() const {
     return kNumTservers;
   }
@@ -182,18 +227,18 @@ class MasterPathHandlersBaseItest : public YBMiniClusterTestBase<T> {
     faststring result;
     auto url = "/tablet-replication";
     RETURN_NOT_OK(GetUrl(url, &result));
-    const string& result_str = result.ToString();
+    const std::string& result_str = result.ToString();
     size_t pos_leaderless = result_str.find("Leaderless Tablets", 0);
     size_t pos_underreplicated = result_str.find("Underreplicated Tablets", 0);
-    CHECK_NE(pos_leaderless, string::npos);
-    CHECK_NE(pos_underreplicated, string::npos);
+    CHECK_NE(pos_leaderless, std::string::npos);
+    CHECK_NE(pos_underreplicated, std::string::npos);
     CHECK_GT(pos_underreplicated, pos_leaderless);
     return result_str.substr(pos_leaderless, pos_underreplicated - pos_leaderless);
   }
 
   using YBMiniClusterTestBase<T>::cluster_;
   std::unique_ptr<tools::ClusterAdminClient> yb_admin_client_;
-  string master_http_url_;
+  std::string master_http_url_;
 };
 
 class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> {
@@ -258,15 +303,15 @@ class MasterPathHandlersItest : public MasterPathHandlersBaseItest<MiniCluster> 
   std::unique_ptr<client::YBClient> client_;
 };
 
-bool verifyTServersAlive(int n, const string& result) {
+bool verifyTServersAlive(int n, const std::string& result) {
   size_t pos = 0;
   for (int i = 0; i < n; i++) {
     pos = result.find(master::kTserverAlive, pos + 1);
-    if (pos == string::npos) {
+    if (pos == std::string::npos) {
       return false;
     }
   }
-  return result.find(master::kTserverAlive, pos + 1) == string::npos;
+  return result.find(master::kTserverAlive, pos + 1) == std::string::npos;
 }
 
 TEST_F(MasterPathHandlersItest, TestMasterPathHandlers) {
@@ -289,13 +334,13 @@ TEST_F(MasterPathHandlersItest, TestDeadTServers) {
   // Check UI page.
   faststring result;
   ASSERT_OK(GetUrl("/tablet-servers", &result));
-  const string &result_str = result.ToString();
+  const std::string& result_str = result.ToString();
   ASSERT_TRUE(verifyTServersAlive(2, result_str));
 
   // Now verify dead.
   size_t pos = result_str.find(master::kTserverDead, 0);
-  ASSERT_TRUE(pos != string::npos);
-  ASSERT_TRUE(result_str.find(master::kTserverDead, pos + 1) == string::npos);
+  ASSERT_TRUE(pos != std::string::npos);
+  ASSERT_TRUE(result_str.find(master::kTserverDead, pos + 1) == std::string::npos);
 
   // Startup the tserver and wait for heartbeats.
   ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
@@ -344,27 +389,19 @@ TEST_F(MasterPathHandlersItest, TestTabletReplicationEndpoint) {
   faststring result;
   ASSERT_OK(GetUrl("/api/v1/tablet-replication", &result));
 
-  JsonReader r(result.ToString());
-  ASSERT_OK(r.Init());
-  const rapidjson::Value* json_obj = nullptr;
-  EXPECT_OK(r.ExtractObject(r.root(), nullptr, &json_obj));
-  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
-  EXPECT_TRUE(json_obj->HasMember("leaderless_tablets"));
-  EXPECT_EQ(rapidjson::kArrayType, (*json_obj)["leaderless_tablets"].GetType());
-  const rapidjson::Value::ConstArray tablets_json = (*json_obj)["leaderless_tablets"].GetArray();
-  std::vector<std::string> leaderless_tablet_uuids;
+  JsonDocument doc;
+  auto json_obj = ASSERT_RESULT(doc.Parse(result.ToString()));
+  auto tablets_json = ASSERT_RESULT(json_obj["leaderless_tablets"].GetArray());
   for (const auto& tablet_json : tablets_json) {
-    EXPECT_EQ(rapidjson::kObjectType, tablet_json.GetType());
-    EXPECT_TRUE(tablet_json.HasMember("table_uuid"));
-    EXPECT_EQ(rapidjson::kStringType, tablet_json["table_uuid"].GetType());
-    EXPECT_TRUE(tablet_json.HasMember("tablet_uuid"));
-    EXPECT_EQ(rapidjson::kStringType, tablet_json["tablet_uuid"].GetType());
+    EXPECT_TRUE(tablet_json.IsObject());
+    EXPECT_TRUE(tablet_json["table_uuid"].IsString());
+    EXPECT_TRUE(tablet_json["tablet_uuid"].IsString());
   }
 
   auto has_orphan_tablet_result = std::any_of(
       tablets_json.begin(), tablets_json.end(),
       [&orphan_tablet](const auto& tablet_json) {
-        return tablet_json["tablet_uuid"].GetString() == orphan_tablet.tablet_id();
+        return EXPECT_RESULT(tablet_json["tablet_uuid"].GetString()) == orphan_tablet.tablet_id();
       });
   EXPECT_TRUE(has_orphan_tablet_result) << "Expected to find orphan_tablet in leaderless tablets.";
 
@@ -372,117 +409,72 @@ TEST_F(MasterPathHandlersItest, TestTabletReplicationEndpoint) {
   cluster_->Shutdown();
 }
 
-void verifyBasicTestTableAttributes(const rapidjson::Value* json_obj,
+void verifyBasicTestTableAttributes(const JsonValue& json_obj,
                                     const std::shared_ptr<client::YBTable>& table,
                                     uint64_t expected_version) {
-  EXPECT_TRUE(json_obj->HasMember("table_id"));
-  EXPECT_EQ(table->id(), (*json_obj)["table_id"].GetString());
-  EXPECT_TRUE(json_obj->HasMember("table_name"));
+  EXPECT_EQ(table->id(), EXPECT_RESULT(json_obj["table_id"].GetString()));
   EXPECT_EQ(yb::server::TableLongName(kKeyspaceName, "test_table"),
-            (*json_obj)["table_name"].GetString());
-  EXPECT_TRUE(json_obj->HasMember("table_version"));
-  EXPECT_EQ((*json_obj)["table_version"].GetUint64(), expected_version);
-  EXPECT_TRUE(json_obj->HasMember("table_type"));
-  EXPECT_EQ(TableType_Name(YQL_TABLE_TYPE), (*json_obj)["table_type"].GetString());
-  EXPECT_TRUE(json_obj->HasMember("table_state"));
-  EXPECT_EQ(strcmp("Running", (*json_obj)["table_state"].GetString()), 0);
+            EXPECT_RESULT(json_obj["table_name"].GetString()));
+  EXPECT_EQ(EXPECT_RESULT(json_obj["table_version"].GetUint64()), expected_version);
+  EXPECT_EQ(TableType_Name(YQL_TABLE_TYPE), EXPECT_RESULT(json_obj["table_type"].GetString()));
+  EXPECT_EQ("Running", EXPECT_RESULT(json_obj["table_state"].GetString()));
 }
 
-void verifyTestTableSchema(const rapidjson::Value* json_obj) {
-  EXPECT_TRUE(json_obj->HasMember("columns"));
-  EXPECT_EQ(rapidjson::kArrayType, (*json_obj)["columns"].GetType());
-  const rapidjson::Value::ConstArray columns_json =
-      (*json_obj)["columns"].GetArray();
-
-  for (const auto& column_json : columns_json) {
-    EXPECT_EQ(rapidjson::kObjectType, column_json.GetType());
-    EXPECT_TRUE(column_json.HasMember("id"));
-    EXPECT_GT(strlen(column_json["id"].GetString()), 0);
-    EXPECT_TRUE(column_json.HasMember("column"));
-    if (!strcmp(column_json["column"].GetString(), "key")) {
-      EXPECT_TRUE(column_json.HasMember("type"));
-      EXPECT_EQ(strcmp("int32 NOT NULL HASH", column_json["type"].GetString()), 0);
-    } else if (!strcmp(column_json["column"].GetString(), "int_val")) {
-      EXPECT_TRUE(column_json.HasMember("type"));
-      EXPECT_EQ(strcmp("int32 NOT NULL VALUE", column_json["type"].GetString()), 0);
-    } else if (!strcmp(column_json["column"].GetString(), "string_val")) {
-      EXPECT_TRUE(column_json.HasMember("type"));
-      EXPECT_EQ(strcmp("string NULLABLE VALUE", column_json["type"].GetString()), 0);
+void verifyTestTableSchema(const JsonValue& json_obj) {
+  for (const auto& column_json : EXPECT_RESULT(json_obj["columns"].GetArray())) {
+    EXPECT_TRUE(column_json.IsObject());
+    EXPECT_FALSE(EXPECT_RESULT(column_json["id"].GetString()).empty());
+    auto column = EXPECT_RESULT(column_json["column"].GetString());
+    if (column == "key") {
+      EXPECT_EQ("int32 NOT NULL HASH", EXPECT_RESULT(column_json["type"].GetString()));
+    } else if (column == "int_val") {
+      EXPECT_EQ("int32 NOT NULL VALUE", EXPECT_RESULT(column_json["type"].GetString()));
+    } else if (column == "string_val") {
+      EXPECT_EQ("string NULLABLE VALUE", EXPECT_RESULT(column_json["type"].GetString()));
     } else {
-      FAIL() << "Unknown column: " << column_json["column"].GetString();
+      FAIL() << "Unknown column: " << column;
     }
   }
 }
 
-void verifyTestTableReplicationInfo(const JsonReader& r,
-                                    const rapidjson::Value* json_obj,
+void verifyTestTableReplicationInfo(const JsonValue& json_obj,
                                     const char* expected_zone) {
-  EXPECT_TRUE(json_obj->HasMember("table_replication_info"));
-  const rapidjson::Value* repl_info = nullptr;
-  EXPECT_OK(r.ExtractObject(json_obj, "table_replication_info", &repl_info));
-  EXPECT_TRUE(repl_info->HasMember("live_replicas"));
-  const rapidjson::Value* live_replicas = nullptr;
-  EXPECT_OK(r.ExtractObject(repl_info, "live_replicas", &live_replicas));
-  EXPECT_TRUE(live_replicas->HasMember("num_replicas"));
-  EXPECT_EQ((*live_replicas)["num_replicas"].GetUint64(), 3);
-  EXPECT_TRUE(live_replicas->HasMember("placement_uuid"));
-  EXPECT_EQ(strcmp((*live_replicas)["placement_uuid"].GetString(), "table_uuid"), 0);
-  EXPECT_TRUE(live_replicas->HasMember("placement_blocks"));
-  EXPECT_EQ(rapidjson::kArrayType, (*live_replicas)["placement_blocks"].GetType());
-  const rapidjson::Value::ConstArray placement_blocks =
-      (*live_replicas)["placement_blocks"].GetArray();
-  const auto& placement_block = placement_blocks[0];
-  EXPECT_EQ(rapidjson::kObjectType, placement_block.GetType());
-  EXPECT_TRUE(placement_block.HasMember("cloud_info"));
-  EXPECT_TRUE(placement_block["cloud_info"].HasMember("placement_cloud"));
-  EXPECT_EQ(strcmp(placement_block["cloud_info"]["placement_cloud"].GetString(), "cloud"), 0);
-  EXPECT_TRUE(placement_block["cloud_info"].HasMember("placement_region"));
-  EXPECT_EQ(strcmp(placement_block["cloud_info"]["placement_region"].GetString(), "region"), 0);
-  EXPECT_TRUE(placement_block["cloud_info"].HasMember("placement_zone"));
-  EXPECT_EQ(strcmp(placement_block["cloud_info"]["placement_zone"].GetString(), expected_zone), 0);
-  EXPECT_TRUE(placement_block.HasMember("min_num_replicas"));
-  EXPECT_EQ(placement_block["min_num_replicas"].GetUint64(), 1);
+  auto live_replicas = json_obj["table_replication_info"]["live_replicas"];
+  EXPECT_TRUE(live_replicas.IsObject());
+  EXPECT_EQ(EXPECT_RESULT(live_replicas["num_replicas"].GetUint64()), 3);
+  EXPECT_EQ(EXPECT_RESULT(live_replicas["placement_uuid"].GetString()), "table_uuid");
+  auto placement_block = live_replicas["placement_blocks"][0];
+  EXPECT_TRUE(placement_block.IsObject());
+  EXPECT_EQ(EXPECT_RESULT(placement_block["cloud_info"]["placement_cloud"].GetString()), "cloud");
+  EXPECT_EQ(EXPECT_RESULT(placement_block["cloud_info"]["placement_region"].GetString()), "region");
+  EXPECT_EQ(EXPECT_RESULT(placement_block["cloud_info"]["placement_zone"].GetString()),
+            expected_zone);
+  EXPECT_EQ(EXPECT_RESULT(placement_block["min_num_replicas"].GetUint64()), 1);
 }
 
-void verifyTestTableTablets(const rapidjson::Value* json_obj) {
-  EXPECT_TRUE(json_obj->HasMember("tablets"));
-  EXPECT_EQ(rapidjson::kArrayType, (*json_obj)["tablets"].GetType());
-  const rapidjson::Value::ConstArray tablets_json =
-      (*json_obj)["tablets"].GetArray();
-
-  for (const auto& tablet_json : tablets_json) {
-    EXPECT_EQ(rapidjson::kObjectType, tablet_json.GetType());
-    EXPECT_TRUE(tablet_json.HasMember("tablet_id"));
-    EXPECT_GT(strlen(tablet_json["tablet_id"].GetString()), 0);
-    EXPECT_TRUE(tablet_json.HasMember("partition"));
-    EXPECT_EQ(strncmp("hash_split", tablet_json["partition"].GetString(), strlen("hash_split")), 0);
-    EXPECT_TRUE(tablet_json.HasMember("split_depth"));
-    EXPECT_EQ(tablet_json["split_depth"].GetUint64(), 0);
-    EXPECT_TRUE(tablet_json.HasMember("state"));
-    EXPECT_EQ(strcmp("Running", tablet_json["state"].GetString()), 0);
-    EXPECT_TRUE(tablet_json.HasMember("hidden"));
-    EXPECT_EQ(strcmp("false", tablet_json["hidden"].GetString()), 0);
-    EXPECT_TRUE(tablet_json.HasMember("message"));
-    EXPECT_EQ(strcmp("Tablet reported with an active leader",
-                     tablet_json["message"].GetString()), 0);
-    EXPECT_TRUE(tablet_json.HasMember("locations"));
-    EXPECT_EQ(rapidjson::kArrayType, tablet_json["locations"].GetType());
-    const rapidjson::Value::ConstArray locations_json = tablet_json["locations"].GetArray();
+void verifyTestTableTablets(const JsonValue& json_obj) {
+  for (const auto& tablet_json : EXPECT_RESULT(json_obj["tablets"].GetArray())) {
+    EXPECT_TRUE(tablet_json.IsObject());
+    EXPECT_FALSE(EXPECT_RESULT(tablet_json["tablet_id"].GetString()).empty());
+    EXPECT_STR_CONTAINS(EXPECT_RESULT(tablet_json["partition"].GetString()), "hash_split");
+    EXPECT_EQ(EXPECT_RESULT(tablet_json["split_depth"].GetUint64()), 0);
+    EXPECT_EQ("Running", EXPECT_RESULT(tablet_json["state"].GetString()));
+    EXPECT_EQ("false", EXPECT_RESULT(tablet_json["hidden"].GetString()));
+    EXPECT_EQ("Tablet reported with an active leader",
+              EXPECT_RESULT(tablet_json["message"].GetString()));
 
     int num_leaders = 0;
     int num_followers = 0;
-    for (const auto& location_json : locations_json) {
-      EXPECT_TRUE(location_json.HasMember("uuid"));
-      EXPECT_EQ(strlen(location_json["uuid"].GetString()), 32);
-      EXPECT_TRUE(location_json.HasMember("location"));
-      EXPECT_GT(strlen(location_json["uuid"].GetString()), 0);
-      EXPECT_TRUE(location_json.HasMember("role"));
-      if (!strcmp(location_json["role"].GetString(), "LEADER")) {
+    for (const auto& location_json : EXPECT_RESULT(tablet_json["locations"].GetArray())) {
+      EXPECT_EQ(EXPECT_RESULT(location_json["uuid"].GetString()).size(), 32);
+      EXPECT_FALSE(EXPECT_RESULT(location_json["uuid"].GetString()).empty());
+      auto role = EXPECT_RESULT(location_json["role"].GetString());
+      if (role == "LEADER") {
         num_leaders++;
-      } else if (!strcmp(location_json["role"].GetString(), "FOLLOWER")) {
+      } else if (role == "FOLLOWER") {
         num_followers++;
       } else {
-        FAIL() << "Unknown role: " << location_json["role"].GetString();
+        FAIL() << "Unknown role: " << role;
       }
     }
     EXPECT_EQ(1, num_leaders);
@@ -506,13 +498,11 @@ TEST_F(MasterPathHandlersItest, TestTableJsonEndpointValidTableId) {
   faststring result;
   ASSERT_OK(GetUrl(Format("/api/v1/table?id=$0", table->id()), &result));
 
-  JsonReader r(result.ToString());
-  ASSERT_OK(r.Init());
-  const rapidjson::Value* json_obj = nullptr;
-  EXPECT_OK(r.ExtractObject(r.root(), nullptr, &json_obj));
-  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
+  JsonDocument doc;
+  auto json_obj = ASSERT_RESULT(doc.Parse(result.ToString()));
+  EXPECT_TRUE(json_obj.IsObject());
   verifyBasicTestTableAttributes(json_obj, table, 0);
-  verifyTestTableReplicationInfo(r, json_obj, "zone");
+  verifyTestTableReplicationInfo(json_obj, "zone");
   verifyTestTableSchema(json_obj);
   verifyTestTableTablets(json_obj);
 }
@@ -538,13 +528,11 @@ TEST_F(MasterPathHandlersItest, TestTableJsonEndpointValidTableName) {
       Format("/api/v1/table?keyspace_name=$0&table_name=$1", kKeyspaceName, "test_table"),
       &result));
 
-  JsonReader r(result.ToString());
-  ASSERT_OK(r.Init());
-  const rapidjson::Value* json_obj = nullptr;
-  EXPECT_OK(r.ExtractObject(r.root(), nullptr, &json_obj));
-  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
+  JsonDocument doc;
+  auto json_obj = ASSERT_RESULT(doc.Parse(result.ToString()));
+  EXPECT_TRUE(json_obj.IsObject());
   verifyBasicTestTableAttributes(json_obj, table, 1);
-  verifyTestTableReplicationInfo(r, json_obj, "anotherzone");
+  verifyTestTableReplicationInfo(json_obj, "anotherzone");
   verifyTestTableSchema(json_obj);
   verifyTestTableTablets(json_obj);
 }
@@ -556,13 +544,10 @@ TEST_F(MasterPathHandlersItest, TestTableJsonEndpointInvalidTableId) {
   faststring result;
   ASSERT_OK(GetUrl("/api/v1/table?id=12345", &result));
 
-  JsonReader r(result.ToString());
-  ASSERT_OK(r.Init());
-  const rapidjson::Value* json_obj = nullptr;
-  EXPECT_OK(r.ExtractObject(r.root(), nullptr, &json_obj));
-  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
-  EXPECT_TRUE(json_obj->HasMember("error"));
-  EXPECT_EQ(strcmp("Table not found!", (*json_obj)["error"].GetString()), 0);
+  JsonDocument doc;
+  auto json_obj = ASSERT_RESULT(doc.Parse(result.ToString()));
+  EXPECT_TRUE(json_obj.IsObject());
+  EXPECT_EQ("Table not found!", EXPECT_RESULT(json_obj["error"].GetString()));
 }
 
 TEST_F(MasterPathHandlersItest, TestTableJsonEndpointNoArgs) {
@@ -572,13 +557,10 @@ TEST_F(MasterPathHandlersItest, TestTableJsonEndpointNoArgs) {
   faststring result;
   ASSERT_OK(GetUrl("/api/v1/table", &result));
 
-  JsonReader r(result.ToString());
-  ASSERT_OK(r.Init());
-  const rapidjson::Value* json_obj = nullptr;
-  EXPECT_OK(r.ExtractObject(r.root(), nullptr, &json_obj));
-  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
-  EXPECT_TRUE(json_obj->HasMember("error"));
-  EXPECT_EQ(strncmp("Missing", (*json_obj)["error"].GetString(), strlen("Missing")), 0);
+  JsonDocument doc;
+  auto json_obj = ASSERT_RESULT(doc.Parse(result.ToString()));
+  EXPECT_TRUE(json_obj.IsObject());
+  EXPECT_STR_CONTAINS(EXPECT_RESULT(json_obj["error"].GetString()), "Missing");
 }
 
 TEST_F(MasterPathHandlersItest, TestTablesJsonEndpoint) {
@@ -587,46 +569,45 @@ TEST_F(MasterPathHandlersItest, TestTablesJsonEndpoint) {
   faststring result;
   ASSERT_OK(GetUrl("/api/v1/tables", &result));
 
-  JsonReader r(result.ToString());
-  ASSERT_OK(r.Init());
-  const rapidjson::Value* json_obj = nullptr;
-  EXPECT_OK(r.ExtractObject(r.root(), nullptr, &json_obj));
-  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
+  JsonDocument doc;
+  auto json_obj = ASSERT_RESULT(doc.Parse(result.ToString()));
+  EXPECT_TRUE(json_obj.IsObject());
 
   // Should have one user table, index should be empty array, system should have many tables.
-  EXPECT_EQ((*json_obj)["user"].Size(), 1);
-  EXPECT_EQ((*json_obj)["index"].Size(), 0);
-  EXPECT_GE((*json_obj)["system"].Size(), 1);
+  EXPECT_EQ(EXPECT_RESULT(json_obj["user"].size()), 1);
+  EXPECT_EQ(EXPECT_RESULT(json_obj["index"].size()), 0);
+  EXPECT_GE(EXPECT_RESULT(json_obj["system"].size()), 1);
 
   // Check that the test table is there and fields are correct.
-  const rapidjson::Value& table_obj = (*json_obj)["user"][0];
-  EXPECT_EQ(kKeyspaceName, table_obj["keyspace"].GetString());
-  EXPECT_EQ(table_name.table_name(), table_obj["table_name"].GetString());
+  auto table_obj = json_obj["user"][0];
+  EXPECT_EQ(kKeyspaceName, EXPECT_RESULT(table_obj["keyspace"].GetString()));
+  EXPECT_EQ(table_name.table_name(), EXPECT_RESULT(table_obj["table_name"].GetString()));
   EXPECT_EQ(SysTablesEntryPB_State_Name(master::SysTablesEntryPB_State_RUNNING),
-      table_obj["state"].GetString());
-  EXPECT_EQ(table_obj["message"].GetString(), string());
-  EXPECT_EQ(table->id(), table_obj["uuid"].GetString());
-  EXPECT_EQ(table_obj["ysql_oid"].GetString(), string());
-  EXPECT_FALSE(table_obj["hidden"].GetBool());
+            EXPECT_RESULT(table_obj["state"].GetString()));
+  EXPECT_TRUE(EXPECT_RESULT(table_obj["message"].GetString()).empty());
+  EXPECT_EQ(table->id(), EXPECT_RESULT(table_obj["uuid"].GetString()));
+  EXPECT_TRUE(EXPECT_RESULT(table_obj["ysql_oid"].GetString()).empty());
+  EXPECT_FALSE(EXPECT_RESULT(table_obj["hidden"].GetBool()));
+
   // Check disk size info is there.
   EXPECT_TRUE(table_obj["on_disk_size"].IsObject());
-  const rapidjson::Value& disk_size_obj = table_obj["on_disk_size"];
-  EXPECT_TRUE(disk_size_obj.HasMember("wal_files_size"));
-  EXPECT_TRUE(disk_size_obj.HasMember("wal_files_size_bytes"));
-  EXPECT_TRUE(disk_size_obj.HasMember("sst_files_size"));
-  EXPECT_TRUE(disk_size_obj.HasMember("sst_files_size_bytes"));
-  EXPECT_TRUE(disk_size_obj.HasMember("uncompressed_sst_file_size"));
-  EXPECT_TRUE(disk_size_obj.HasMember("uncompressed_sst_file_size_bytes"));
-  EXPECT_TRUE(disk_size_obj.HasMember("has_missing_size"));
+  auto disk_size_obj = table_obj["on_disk_size"];
+  EXPECT_TRUE(disk_size_obj["wal_files_size"].IsValid());
+  EXPECT_TRUE(disk_size_obj["wal_files_size_bytes"].IsValid());
+  EXPECT_TRUE(disk_size_obj["sst_files_size"].IsValid());
+  EXPECT_TRUE(disk_size_obj["sst_files_size_bytes"].IsValid());
+  EXPECT_TRUE(disk_size_obj["uncompressed_sst_file_size"].IsValid());
+  EXPECT_TRUE(disk_size_obj["uncompressed_sst_file_size_bytes"].IsValid());
+  EXPECT_TRUE(disk_size_obj["has_missing_size"].IsValid());
 }
 
-void verifyMemTrackerObject(const rapidjson::Value* json_obj) {
-  EXPECT_TRUE(json_obj->HasMember("id"));
-  EXPECT_TRUE(json_obj->HasMember("limit_bytes"));
-  EXPECT_TRUE(json_obj->HasMember("current_consumption_bytes"));
-  EXPECT_TRUE(json_obj->HasMember("peak_consumption_bytes"));
-  EXPECT_TRUE(json_obj->HasMember("children"));
-  EXPECT_EQ(rapidjson::kArrayType, (*json_obj)["children"].GetType());
+void verifyMemTrackerObject(const JsonValue& json_obj) {
+  EXPECT_TRUE(json_obj["id"].IsValid());
+  EXPECT_TRUE(json_obj["limit_bytes"].IsValid());
+  EXPECT_TRUE(json_obj["current_consumption_bytes"].IsValid());
+  EXPECT_TRUE(json_obj["peak_consumption_bytes"].IsValid());
+  EXPECT_TRUE(json_obj["children"].IsValid());
+  EXPECT_TRUE(json_obj["children"].IsArray());
 }
 
 TEST_F(MasterPathHandlersItest, TestMemTrackersJsonEndpoint) {
@@ -635,18 +616,16 @@ TEST_F(MasterPathHandlersItest, TestMemTrackersJsonEndpoint) {
   faststring result;
   ASSERT_OK(GetUrl("/api/v1/mem-trackers", &result));
 
-  JsonReader r(result.ToString());
-  ASSERT_OK(r.Init());
-  const rapidjson::Value* json_obj = nullptr;
-  EXPECT_OK(r.ExtractObject(r.root(), nullptr, &json_obj));
-  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
+  JsonDocument doc;
+  auto json_obj = ASSERT_RESULT(doc.Parse(result.ToString()));
+  EXPECT_TRUE(json_obj.IsObject());
 
   // Verify that fields are correct
   verifyMemTrackerObject(json_obj);
-  EXPECT_GE((*json_obj)["children"].Size(), 1);
+  EXPECT_GE(EXPECT_RESULT(json_obj["children"].size()), 1);
 
   // Check that the first child also has the correct fields
-  verifyMemTrackerObject(&(*json_obj)["children"][0]);
+  verifyMemTrackerObject(json_obj["children"][0]);
 }
 
 class MultiMasterPathHandlersItest : public MasterPathHandlersItest {
@@ -762,8 +741,8 @@ TEST_F_EX(
       "Wait for tablet split to complete and parent to be hidden"));
 
   SleepFor(kLeaderlessTabletAlertDelaySecs * 1s);
-  string result = ASSERT_RESULT(GetLeaderlessTabletsString());
-  ASSERT_EQ(result.find(tablet->id()), string::npos);
+  std::string result = ASSERT_RESULT(GetLeaderlessTabletsString());
+  ASSERT_EQ(result.find(tablet->id()), std::string::npos);
 }
 
 // Undeleted split parent tablets shouldn't be shown as leaderless.
@@ -787,8 +766,8 @@ TEST_F_EX(
   ASSERT_OK(catalog_manager.TEST_SplitTablet(tablet, 1 /* split_hash_code */));
 
   SleepFor(kLeaderlessTabletAlertDelaySecs * yb::kTimeMultiplier * 1s);
-  string result = ASSERT_RESULT(GetLeaderlessTabletsString());
-  ASSERT_EQ(result.find(tablet->id()), string::npos);
+  std::string result = ASSERT_RESULT(GetLeaderlessTabletsString());
+  ASSERT_EQ(result.find(tablet->id()), std::string::npos);
 }
 
 class MasterPathHandlersLeaderlessITest : public MasterPathHandlersItest {
@@ -833,8 +812,8 @@ TEST_F(MasterPathHandlersLeaderlessITest, TestRF1ChangedToRF3) {
         ts_map[leader_uuid].get(), tablet->id(), ts_map[uuid].get(), std::nullopt, 10s));
   }
   SleepFor(kLeaderlessTabletAlertDelaySecs * yb::kTimeMultiplier * 1s);
-  string result = ASSERT_RESULT(GetLeaderlessTabletsString());
-  ASSERT_EQ(result.find(tablet->id()), string::npos);
+  std::string result = ASSERT_RESULT(GetLeaderlessTabletsString());
+  ASSERT_EQ(result.find(tablet->id()), std::string::npos);
   for (const auto& replica : ts_map) {
     auto uuid = replica.second->uuid();
     if (uuid == leader_uuid) {
@@ -846,7 +825,7 @@ TEST_F(MasterPathHandlersLeaderlessITest, TestRF1ChangedToRF3) {
   }
   SleepFor(kLeaderlessTabletAlertDelaySecs * yb::kTimeMultiplier * 1s);
   result = ASSERT_RESULT(GetLeaderlessTabletsString());
-  ASSERT_EQ(result.find(tablet->id()), string::npos);
+  ASSERT_EQ(result.find(tablet->id()), std::string::npos);
 }
 
 class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<ExternalMiniCluster> {
@@ -879,6 +858,15 @@ class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<Exter
       opts_.replication_factor = 3;
     }
 
+    // The tservers are started with --placement_uuid=live, but the cluster config's live
+    // placement UUID stays empty until ModifyPlacementInfo runs below. If cluster_->Start()
+    // waits for tservers to accept YSQL connections in that window, system.transactions
+    // creation is blocked by a placement-UUID mismatch in GetTsDescsFromPlacementInfo and YSQL
+    // never becomes ready. Defer the YSQL-ready wait until after ModifyPlacementInfo.
+    const bool defer_ysql_wait =
+        opts_.enable_ysql && opts_.wait_for_tservers_to_accept_ysql_connections;
+    opts_.wait_for_tservers_to_accept_ysql_connections = false;
+
     MasterPathHandlersBaseItest<ExternalMiniCluster>::SetUp();
 
     yb_admin_client_ = std::make_unique<tools::ClusterAdminClient>(
@@ -894,11 +882,18 @@ class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<Exter
     }
     ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(placement_infos, opts_.replication_factor,
         kLivePlacementUuid));
+
+    if (defer_ysql_wait) {
+      ASSERT_OK(cluster_->WaitForTabletServersToAcceptYSQLConnection(
+          MonoTime::Now() + kTabletServerRegistrationTimeout));
+    }
   }
 
-  Status AddTabletServer(const string& zone, const string& placement_uuid,
-      const vector<string>& extra_flags = {}) {
-    vector<string> flags;
+  Status AddTabletServer(
+      const std::string& zone,
+      const std::string& placement_uuid,
+      const std::vector<std::string>& extra_flags = {}) {
+    std::vector<std::string> flags;
     flags.push_back("--placement_cloud=c");
     flags.push_back("--placement_region=r");
     flags.push_back("--placement_zone=" + zone);
@@ -909,44 +904,42 @@ class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<Exter
         ExternalMiniClusterOptions::kDefaultStartCqlProxy, flags);
   }
 
-  const string kReadReplicaPlacementUuid = "read_replica";
-  const string kLivePlacementUuid = "live";
+  const std::string kReadReplicaPlacementUuid = "read_replica";
+  const std::string kLivePlacementUuid = "live";
   std::unique_ptr<tools::ClusterAdminClient> yb_admin_client_;
 };
 
 class MasterPathHandlersUnderReplicationItest : public MasterPathHandlersExternalItest {
  protected:
   Status CheckUnderReplicatedInPlacements(
-      const unordered_set<TabletId> test_tablet_ids,
-      const unordered_set<string>& placements) {
+      const std::unordered_set<TabletId> test_tablet_ids,
+      const std::unordered_set<std::string>& placements) {
     faststring result;
     RETURN_NOT_OK(GetUrl("/api/v1/tablet-under-replication", &result));
-    JsonReader r(result.ToString());
-    RETURN_NOT_OK(r.Init());
-    const rapidjson::Value* json_obj = nullptr;
-    RETURN_NOT_OK(r.ExtractObject(r.root(), nullptr, &json_obj));
-    const rapidjson::Value::ConstArray tablets_json =
-        (*json_obj)["underreplicated_tablets"].GetArray();
+    JsonDocument doc;
+    auto json_obj = VERIFY_RESULT(doc.Parse(result.ToString()));
+    auto tablets_json = VERIFY_RESULT(json_obj["underreplicated_tablets"].GetArray());
     if (placements.empty()) {
-      SCHECK_EQ(tablets_json.Size(), 0, IllegalState, "Expected no underreplicated tablets");
+      SCHECK_EQ(tablets_json.size(), 0, IllegalState, "Expected no underreplicated tablets");
       return Status::OK();
     }
 
-    SCHECK_EQ(tablets_json.Size(), test_tablet_ids.size(), IllegalState,
+    SCHECK_EQ(tablets_json.size(), test_tablet_ids.size(), IllegalState,
         "Unexpected amount of underreplicated tablets");
-    for (auto& tablet_json : tablets_json) {
-      auto tablet_id = tablet_json["tablet_uuid"].GetString();
-      auto table_id = tablet_json["table_uuid"].GetString();
+    for (const auto& tablet_json : tablets_json) {
+      auto tablet_id = VERIFY_RESULT(tablet_json["tablet_uuid"].GetString());
+      auto table_id = VERIFY_RESULT(tablet_json["table_uuid"].GetString());
       if (!test_tablet_ids.contains(tablet_id)) {
         return STATUS_FORMAT(IllegalState, "Tablet $0 from table $1 unexpectedly underreplicated",
             tablet_id, table_id);
       }
 
-      auto underreplicated_placements = tablet_json["underreplicated_placements"].GetArray();
-      SCHECK_EQ(underreplicated_placements.Size(), placements.size(), IllegalState,
+      const auto underreplicated_placements =
+          VERIFY_RESULT(tablet_json["underreplicated_placements"].GetArray());
+      SCHECK_EQ(underreplicated_placements.size(), placements.size(), IllegalState,
           "Actual number of underreplicated placements did not match expected");
-      for (auto& placement : underreplicated_placements) {
-        auto placement_id = placement.GetString();
+      for (const auto& placement : underreplicated_placements) {
+        auto placement_id = VERIFY_RESULT(placement.GetString());
         if (!placements.contains(placement_id)) {
           return STATUS_FORMAT(IllegalState, "Placement $0 unexpectedly underreplicated",
               placement_id);
@@ -956,18 +949,18 @@ class MasterPathHandlersUnderReplicationItest : public MasterPathHandlersExterna
     return Status::OK();
   }
 
-  Status CheckNotUnderReplicated(const unordered_set<TabletId> test_tablet_ids) {
+  Status CheckNotUnderReplicated(const std::unordered_set<TabletId> test_tablet_ids) {
     return CheckUnderReplicatedInPlacements(test_tablet_ids, {} /* placements */);
   }
 
-  Result<unordered_set<TabletId>> CreateTestTableAndGetTabletIds() {
+  Result<std::unordered_set<TabletId>> CreateTestTableAndGetTabletIds() {
     table_ = CreateTestTable(kNumTablets);
 
     // Store tablet ids to check later.
     master::GetTableLocationsResponsePB table_locs;
     RETURN_NOT_OK(itest::GetTableLocations(cluster_.get(), table_->name(), 10s /* timeout */,
         RequireTabletsRunning::kFalse, &table_locs));
-    unordered_set<TabletId> test_tablet_ids;
+    std::unordered_set<TabletId> test_tablet_ids;
     for (auto& tablet : table_locs.tablet_locations()) {
       test_tablet_ids.insert(tablet.tablet_id());
     }
@@ -1070,7 +1063,7 @@ TEST_F_EX(
 
   // Start a third tserver. The load balancer will bootstrap new replicas onto this tserver to fix
   // the under-replication.
-  vector<string> extra_flags;
+  std::vector<std::string> extra_flags;
   extra_flags.push_back("--TEST_pause_rbs_before_download_wal=true");
   extra_flags.push_back("--TEST_pause_after_set_bootstrapping=true");
   ASSERT_OK(AddTabletServer("z2", kLivePlacementUuid, extra_flags));
@@ -1152,23 +1145,67 @@ TEST_F_EX(MasterPathHandlersItest, TestTablePlacementInfo, MasterPathHandlersExt
   // Verify cluster level replication info.
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("cloud.region.zone", 3, "table_uuid"));
   ASSERT_OK(GetUrl(url, &result));
-  const string& cluster_str = result.ToString();
+  const std::string& cluster_str = result.ToString();
   size_t pos = cluster_str.find("Replication Info", 0);
-  ASSERT_NE(pos, string::npos);
+  ASSERT_NE(pos, std::string::npos);
   pos = cluster_str.find("placement_zone", pos + 1);
-  ASSERT_NE(pos, string::npos);
+  ASSERT_NE(pos, std::string::npos);
   ASSERT_EQ(cluster_str.substr(pos + 22, 4), "zone");
 
   // Verify table level replication info.
   ASSERT_OK(yb_admin_client_->ModifyTablePlacementInfo(
     table->name(), "cloud.region.anotherzone", 3, "table_uuid"));
   ASSERT_OK(GetUrl(url, &result));
-  const string& table_str = result.ToString();
+  const std::string& table_str = result.ToString();
   pos = table_str.find("Replication Info", 0);
-  ASSERT_NE(pos, string::npos);
+  ASSERT_NE(pos, std::string::npos);
   pos = table_str.find("placement_zone", pos + 1);
-  ASSERT_NE(pos, string::npos);
+  ASSERT_NE(pos, std::string::npos);
   ASSERT_EQ(table_str.substr(pos + 22, 11), "anotherzone");
+}
+
+class MasterPathHandlersEarlyReturnItest : public MasterPathHandlersExternalItest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_connection_timeout_ms) = 60000;
+    opts_.extra_master_flags.push_back("--rpc_connection_timeout_ms=60000");
+    MasterPathHandlersExternalItest::SetUp();
+  }
+};
+
+TEST_F(MasterPathHandlersEarlyReturnItest, GetMasterEntryForHostsReturnsEarlyOnSuccess) {
+  auto* running_master = cluster_->master(0);
+  auto* paused_master = cluster_->master(1);
+
+  // Pause one master so that it won't respond to RPCs, causing timeout.
+  ASSERT_OK(paused_master->Pause());
+
+  // GetMasterEntryForHosts sends RPCs to all provided masters in parallel and returns once the
+  // first successful response is received, or once all RPCs complete.
+  auto start = MonoTime::Now();
+  std::vector<HostPort> hostports = {
+      running_master->bound_rpc_hostport(),
+      paused_master->bound_rpc_hostport()
+  };
+  ServerEntryPB server_entry;
+  auto status = master::GetMasterEntryForHosts(
+      &cluster_->proxy_cache(),
+      hostports,
+      MonoDelta::FromSeconds(30), // 30s request timeout for unresponsive masters.
+      &server_entry);
+  auto elapsed = MonoTime::Now().GetDeltaSince(start);
+
+  ASSERT_OK(paused_master->Resume());
+
+  ASSERT_OK(status);
+
+  // With early return: completes immediately when running_master responds.
+  // Without early return: waits for paused_master to timeout, which is
+  // min(30s request timeout, 60s rpc_connection_timeout) = 30s.
+  // Threshold of 5s catches the 30s regression while providing buffer for test overhead.
+  ASSERT_LT(elapsed.ToSeconds(), 5)
+      << "GetMasterEntryForHosts took too long (" << elapsed.ToSeconds()
+      << "s), early return not working.";
 }
 
 template <int RF>
@@ -1238,8 +1275,8 @@ TEST_F(MasterPathHandlersLeaderlessRF3ITest, TestLeaderlessTabletEndpoint) {
   auto tablet_id = GetSingleTabletId();
 
   // Verify leaderless tablets list is empty.
-  string result = ASSERT_RESULT(GetLeaderlessTabletsString());
-  ASSERT_EQ(result.find(tablet_id), string::npos);
+  std::string result = ASSERT_RESULT(GetLeaderlessTabletsString());
+  ASSERT_EQ(result.find(tablet_id), std::string::npos);
 
   const auto leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
   const auto leader = cluster_->tablet_server(leader_idx);
@@ -1255,7 +1292,7 @@ TEST_F(MasterPathHandlersLeaderlessRF3ITest, TestLeaderlessTabletEndpoint) {
   // Leaderless endpoint should catch the tablet.
   Status wait_status = WaitFor([&]() -> Result<bool> {
       std::string result = VERIFY_RESULT(GetLeaderlessTabletsString());
-    return result.find(tablet_id) != string::npos;
+    return result.find(tablet_id) != std::string::npos;
   }, 20s * kTimeMultiplier, "leaderless tablet endpoint catch the tablet");
 
   const auto new_leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
@@ -1274,7 +1311,7 @@ TEST_F(MasterPathHandlersLeaderlessRF3ITest, TestLeaderlessTabletEndpoint) {
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
         std::string result = VERIFY_RESULT(GetLeaderlessTabletsString());
-    return result.find(tablet_id) == string::npos;
+    return result.find(tablet_id) == std::string::npos;
   }, 20s * kTimeMultiplier, "leaderless tablet endpoint becomes empty"));
 
   ASSERT_OK(other_follower->Pause());
@@ -1284,7 +1321,7 @@ TEST_F(MasterPathHandlersLeaderlessRF3ITest, TestLeaderlessTabletEndpoint) {
   wait_status = WaitFor(
       [&]() -> Result<bool> {
         std::string result = VERIFY_RESULT(GetLeaderlessTabletsString());
-        return result.find(tablet_id) != string::npos;
+        return result.find(tablet_id) != std::string::npos;
       },
       20s * kTimeMultiplier, "leaderless tablet endpoint catch the tablet");
 
@@ -1295,7 +1332,7 @@ TEST_F(MasterPathHandlersLeaderlessRF3ITest, TestLeaderlessTabletEndpoint) {
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     std::string result = VERIFY_RESULT(GetLeaderlessTabletsString());
-    return result.find(tablet_id) == string::npos;
+    return result.find(tablet_id) == std::string::npos;
   }, 20s * kTimeMultiplier, "leaderless tablet endpoint becomes empty"));
 }
 
@@ -1315,8 +1352,8 @@ TEST_F(MasterPathHandlersLeaderlessRF3ITest, TestLeaderChange) {
   SleepFor(kTserverHeartbeatMetricsIntervalMs * 2ms);
 
   // Initially the leaderless tablets list should be empty.
-  string result = ASSERT_RESULT(GetLeaderlessTabletsString());
-  ASSERT_EQ(result.find(tablet_id), string::npos);
+  std::string result = ASSERT_RESULT(GetLeaderlessTabletsString());
+  ASSERT_EQ(result.find(tablet_id), std::string::npos);
 
   const auto leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
   const auto leader = cluster_->tablet_server(leader_idx);
@@ -1346,16 +1383,16 @@ TEST_F(MasterPathHandlersLeaderlessRF3ITest, TestLeaderChange) {
   // We don't expect to be leaderless even though the lease is expired because not enough
   // time has passed for us to alert.
   result = ASSERT_RESULT(GetLeaderlessTabletsString());
-  ASSERT_EQ(result.find(tablet_id), string::npos);
+  ASSERT_EQ(result.find(tablet_id), std::string::npos);
 
   SleepFor(kMaxTabletWithoutValidLeaderMs * 1ms);
   result = ASSERT_RESULT(GetLeaderlessTabletsString());
-  ASSERT_NE(result.find(tablet_id), string::npos);
+  ASSERT_NE(result.find(tablet_id), std::string::npos);
 
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_skip_processing_tablet_metadata", "false"));
   SleepFor(kTserverHeartbeatMetricsIntervalMs * 2ms);
   result = ASSERT_RESULT(GetLeaderlessTabletsString());
-  ASSERT_EQ(result.find(tablet_id), string::npos);
+  ASSERT_EQ(result.find(tablet_id), std::string::npos);
 }
 
 TEST_F(MasterPathHandlersLeaderlessRF3ITest, TestAllFollowers) {
@@ -1366,8 +1403,8 @@ TEST_F(MasterPathHandlersLeaderlessRF3ITest, TestAllFollowers) {
   auto tablet_id = GetSingleTabletId();
 
   // Initially the leaderless tablets list should be empty.
-  string result = ASSERT_RESULT(GetLeaderlessTabletsString());
-  ASSERT_EQ(result.find(tablet_id), string::npos);
+  std::string result = ASSERT_RESULT(GetLeaderlessTabletsString());
+  ASSERT_EQ(result.find(tablet_id), std::string::npos);
 
   // Disable new leader election after leader stepdown.
   ASSERT_OK(cluster_->SetFlagOnTServers("stepdown_disable_graceful_transition", "true"));
@@ -1387,19 +1424,19 @@ TEST_F(MasterPathHandlersLeaderlessRF3ITest, TestAllFollowers) {
 
   // Shouldn't report it as leaderless before kMaxTabletWithoutValidLeaderMs.
   result = ASSERT_RESULT(GetLeaderlessTabletsString());
-  ASSERT_EQ(result.find(tablet_id), string::npos);
+  ASSERT_EQ(result.find(tablet_id), std::string::npos);
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
         std::string result = VERIFY_RESULT(GetLeaderlessTabletsString());
-    return result.find(tablet_id) != string::npos &&
-           result.find("No valid leader reported") != string::npos;
+    return result.find(tablet_id) != std::string::npos &&
+           result.find("No valid leader reported") != std::string::npos;
   }, 20s * kTimeMultiplier, "leaderless tablet endpoint catch the tablet"));
 
   ASSERT_OK(cluster_->SetFlagOnTServers("TEST_skip_election_when_fail_detected", "false"));
 
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     std::string result = VERIFY_RESULT(GetLeaderlessTabletsString());
-    return result.find(tablet_id) == string::npos;
+    return result.find(tablet_id) == std::string::npos;
   }, 20s * kTimeMultiplier, "leaderless tablet endpoint becomes empty"));
 }
 
@@ -1411,13 +1448,13 @@ TEST_F(MasterPathHandlersLeaderlessRF1ITest, TestRF1) {
   auto tablet_id = GetSingleTabletId();
 
   SleepFor((kLeaderlessTabletAlertDelaySecs + 1) * 1s);
-  string result = ASSERT_RESULT(GetLeaderlessTabletsString());
-  ASSERT_EQ(result.find(tablet_id), string::npos);
+  std::string result = ASSERT_RESULT(GetLeaderlessTabletsString());
+  ASSERT_EQ(result.find(tablet_id), std::string::npos);
 
   ASSERT_OK(cluster_->tablet_server(0)->Pause());
   SleepFor((kLeaderlessTabletAlertDelaySecs + 1) * 1s);
   result = ASSERT_RESULT(GetLeaderlessTabletsString());
-  ASSERT_NE(result.find(tablet_id), string::npos);
+  ASSERT_NE(result.find(tablet_id), std::string::npos);
 
   ASSERT_OK(cluster_->tablet_server(0)->Resume());
 }
@@ -1460,11 +1497,11 @@ TEST_F(MasterPathHandlersItest, TestLeaderlessDeletedTablet) {
   replaced_lock.Commit();
 
   // Only the RUNNING tablet should be returned in the endpoint.
-  string result = ASSERT_RESULT(GetLeaderlessTabletsString());
+  std::string result = ASSERT_RESULT(GetLeaderlessTabletsString());
   LOG(INFO) << result;
-  ASSERT_NE(result.find(running_tablet->id()), string::npos);
-  ASSERT_EQ(result.find(deleted_tablet->id()), string::npos);
-  ASSERT_EQ(result.find(replaced_tablet->id()), string::npos);
+  ASSERT_NE(result.find(running_tablet->id()), std::string::npos);
+  ASSERT_EQ(result.find(deleted_tablet->id()), std::string::npos);
+  ASSERT_EQ(result.find(replaced_tablet->id()), std::string::npos);
 
   // Shutdown cluster to prevent cluster consistency check from failing because of the edited
   // tablet states.
@@ -1500,26 +1537,23 @@ TEST_F(MasterPathHandlersItest, TestVarzAutoFlag) {
   // Test the JSON API endpoint.
   ASSERT_OK(GetUrl("/api/v1/varz", &result));
 
-  JsonReader r(result.ToString());
-  ASSERT_OK(r.Init());
-  const rapidjson::Value* json_obj = nullptr;
-  ASSERT_OK(r.ExtractObject(r.root(), nullptr, &json_obj));
-  ASSERT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
-  ASSERT_TRUE(json_obj->HasMember("flags"));
-  ASSERT_EQ(rapidjson::kArrayType, (*json_obj)["flags"].GetType());
-  const rapidjson::Value::ConstArray flags = (*json_obj)["flags"].GetArray();
+  JsonDocument doc;
+  auto json_obj = ASSERT_RESULT(doc.Parse(result.ToString()));
+  ASSERT_TRUE(json_obj.IsObject());
+  auto flags = ASSERT_RESULT(json_obj["flags"].GetArray());
 
-  auto it_expected_json_flag = std::find_if(flags.Begin(), flags.End(), [](const auto& flag) {
-    return flag["name"] == kExpectedAutoFlag;
+  auto it_expected_json_flag = std::find_if(flags.begin(), flags.end(), [](const auto& flag) {
+    return EXPECT_RESULT(flag["name"].GetString()) == kExpectedAutoFlag;
   });
-  ASSERT_NE(it_expected_json_flag, flags.End());
-  ASSERT_EQ((*it_expected_json_flag)["type"], "Auto");
+  ASSERT_NE(it_expected_json_flag, flags.end());
+  ASSERT_EQ(ASSERT_RESULT((*it_expected_json_flag)["type"].GetString()), "Auto");
 
-  auto it_unexpected_json_flag = std::find_if(
-      flags.Begin(), flags.End(), [](const auto& flag) { return flag["name"] == kUnExpectedFlag; });
+  auto it_unexpected_json_flag = std::find_if(flags.begin(), flags.end(), [](const auto& flag) {
+    return EXPECT_RESULT(flag["name"].GetString()) == kUnExpectedFlag;
+  });
 
-  ASSERT_NE(it_unexpected_json_flag, flags.End());
-  ASSERT_EQ((*it_unexpected_json_flag)["type"], "Default");
+  ASSERT_NE(it_unexpected_json_flag, flags.end());
+  ASSERT_EQ(ASSERT_RESULT((*it_unexpected_json_flag)["type"].GetString()), "Default");
 }
 
 TEST_F(MasterPathHandlersItest, TestTestFlag) {
@@ -1551,32 +1585,16 @@ TEST_F(MasterPathHandlersItest, TestTestFlag) {
   ASSERT_NE(api_result_str.find(kTestFlagName), std::string::npos);
 }
 
-void VerifyMetaCacheObjectIsValid(
-    const rapidjson::Value* json_object, const JsonReader& json_reader) {
-  EXPECT_TRUE(json_object->HasMember("MainMetaCache"));
-
-  const rapidjson::Value* main_metacache = nullptr;
-  EXPECT_OK(json_reader.ExtractObject(json_object, "MainMetaCache", &main_metacache));
-  EXPECT_TRUE(main_metacache->HasMember("tablets"));
-
-  std::vector<const rapidjson::Value*> tablets;
-  ASSERT_OK(json_reader.ExtractObjectArray(main_metacache, "tablets", &tablets));
-  for (auto tablet : tablets) {
-    EXPECT_TRUE(tablet->HasMember("tablet_id"));
-    EXPECT_TRUE(tablet->HasMember("replicas"));
-  }
-}
-
 TEST_F(MasterPathHandlersItest, TestMetaCache) {
   auto table = CreateTestTable();
   faststring result;
   ASSERT_OK(GetUrl("/api/v1/meta-cache", &result));
-  JsonReader json_reader(result.ToString());
-  ASSERT_OK(json_reader.Init());
-  const rapidjson::Value* json_object = nullptr;
-  EXPECT_OK(json_reader.ExtractObject(json_reader.root(), nullptr, &json_object));
-  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_object)->GetType());
-  VerifyMetaCacheObjectIsValid(json_object, json_reader);
+  JsonDocument doc;
+  auto json_object = ASSERT_RESULT(doc.Parse(result.ToString()));
+  for (const auto& tablet : EXPECT_RESULT(json_object["MainMetaCache"]["tablets"].GetArray())) {
+    EXPECT_TRUE(tablet["tablet_id"].IsValid());
+    EXPECT_TRUE(tablet["replicas"].IsValid());
+  }
 }
 
 class MasterPathHandlersItestExtraTS : public MasterPathHandlersItest {
@@ -1597,7 +1615,39 @@ TEST_F(MasterPathHandlersItestExtraTS, LoadDistributionViewWithFailedTServer) {
   auto table = CreateTestTable(10);
   auto dead_uuid = cluster_->mini_tablet_server(0)->server()->permanent_uuid();
   ASSERT_OK(WaitAllReplicasReady(cluster_.get(), 20s * kTimeMultiplier, UserTabletsOnly::kFalse));
+  auto* load_balancer =
+    ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager()->cluster_balancer();
+  ASSERT_OK(WaitFor([load_balancer] -> Result<bool> {
+        return load_balancer->GetLatestActivityInfo().IsIdle();
+      }, MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for load balancer to become idle"));
+  // Prevent the load balancer from adding new PRE_VOTERs between our check and Shutdown(). Without
+  // this, the load balancer can add a PRE_VOTER right after the check passes, creating a config
+  // with only 2 VOTERs + 1 PRE_VOTER. If one VOTER dies before promotion, the surviving single
+  // VOTER cannot form majority and the tablet becomes permanently leaderless.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  // ASSERT_OK(WaitForBackgroundTaskRun());
+  // Wait for any in-flight PRE_VOTER promotions to complete before killing a tserver.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto peers =
+            ListTabletPeers(cluster_.get(), ListPeersFilter::kAll, UserTabletsOnly::kFalse);
+        for (const auto& peer : peers) {
+          auto consensus = VERIFY_RESULT(peer->GetConsensus());
+          auto config = consensus->CommittedConfig();
+          for (const auto& member : config.peers()) {
+            if (member.member_type() == consensus::PeerMemberType::PRE_VOTER) {
+              LOG(INFO) << "Tablet " << peer->tablet_id() << " still has PRE_VOTER "
+                        << member.permanent_uuid();
+              return false;
+            }
+          }
+        }
+        return true;
+      },
+      20s * kTimeMultiplier, "Wait for all PRE_VOTER promotions to complete"));
   cluster_->mini_tablet_server(0)->Shutdown();
+  // Re-enable load balancing so the load balancer can remove dead tserver replicas.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = true;
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         // Fetch the sys catalog and verify no tablets have a replica on the downed node.
@@ -1631,7 +1681,7 @@ TEST_F(MasterPathHandlersItestExtraTS, LoadDistributionViewWithFailedTServer) {
         }
         return true;
       },
-      20s * kTimeMultiplier, "Downed server still assigned tablet replicas"));
+      60s * kTimeMultiplier, "Downed server still assigned tablet replicas"));
   faststring out;
   ASSERT_OK(GetUrl("/load-distribution", &out));
 }
@@ -1808,6 +1858,7 @@ TEST_F(MasterPathHandlersItest, ClusterBalancerOngoingRbs) {
 TEST_F(MasterPathHandlersItest, StatefulServices) {
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   const auto service_name = StatefulServiceKind_Name(StatefulServiceKind::TEST_ECHO);
+  JsonDocument doc;
 
   faststring out;
   ASSERT_OK(GetUrl("/stateful-services", &out));
@@ -1816,15 +1867,9 @@ TEST_F(MasterPathHandlersItest, StatefulServices) {
 
   ASSERT_OK(GetUrl("/api/v1/stateful-services", &out));
   {
-    JsonReader r(out.ToString());
-    ASSERT_OK(r.Init());
-    const rapidjson::Value* json_obj = nullptr;
-    ASSERT_OK(r.ExtractObject(r.root(), nullptr, &json_obj));
-    ASSERT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
-    ASSERT_TRUE(json_obj->HasMember("stateful_services"));
-    ASSERT_EQ(rapidjson::kArrayType, (*json_obj)["stateful_services"].GetType());
-    const auto services = (*json_obj)["stateful_services"].GetArray();
-    ASSERT_EQ(services.Size(), 0);
+    auto json_obj = ASSERT_RESULT(doc.Parse(out.ToString()));
+    auto services = ASSERT_RESULT(json_obj["stateful_services"].GetArray());
+    ASSERT_EQ(services.size(), 0);
   }
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_echo_service_enabled) = true;
@@ -1837,17 +1882,10 @@ TEST_F(MasterPathHandlersItest, StatefulServices) {
 
   ASSERT_OK(GetUrl("/api/v1/stateful-services", &out));
   {
-    JsonReader r(out.ToString());
-    ASSERT_OK(r.Init());
-    const rapidjson::Value* json_obj = nullptr;
-    ASSERT_OK(r.ExtractObject(r.root(), nullptr, &json_obj));
-    ASSERT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
-    ASSERT_TRUE(json_obj->HasMember("stateful_services"));
-    ASSERT_EQ(rapidjson::kArrayType, (*json_obj)["stateful_services"].GetType());
-    const auto services = (*json_obj)["stateful_services"].GetArray();
-    ASSERT_EQ(services.Size(), 1);
-    ASSERT_TRUE(services.Begin()->HasMember("service_name"));
-    ASSERT_EQ(services.Begin()->FindMember("service_name")->value.GetString(), service_name);
+    auto json_obj = ASSERT_RESULT(doc.Parse(out.ToString()));
+    auto services = ASSERT_RESULT(json_obj["stateful_services"].GetArray());
+    ASSERT_EQ(services.size(), 1);
+    ASSERT_EQ(ASSERT_RESULT(services[0]["service_name"].GetString()), service_name);
   }
 }
 
@@ -1909,4 +1947,101 @@ TEST_F(MasterPathHandlersItest, TabletLimitsSkipBlacklistedTServers) {
       10s, "Reported tablet limit should decrease"));
 }
 
-} // namespace yb::integration_tests
+class MasterPathHandlersVectorIndexItest : public MasterPathHandlersExternalItest {
+ public:
+  void SetUp() override {
+    opts_.enable_ysql = true;
+    opts_.replication_factor = 1;
+    MasterPathHandlersExternalItest::SetUp();
+  }
+
+  int num_tablet_servers() const override { return 1; }
+  int num_masters() const override { return 1; }
+};
+
+TEST_F_EX(
+    MasterPathHandlersItest, VectorIndexPartitionDisplay,
+    MasterPathHandlersVectorIndexItest) {
+  constexpr int kNumTablets = 2;
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE test (id bigserial PRIMARY KEY, embedding vector(1)) SPLIT INTO 2 TABLETS",
+      kNumTablets));
+  ASSERT_OK(conn.Execute("CREATE INDEX vi_idx ON test USING ybhnsw (embedding vector_l2_ops)"));
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto tables = ASSERT_RESULT(client->ListTables("vi_idx"));
+  ASSERT_EQ(tables.size(), 1);
+  auto vi_table_id = tables[0].table_id();
+
+  // Verify JSON endpoint.
+  faststring result;
+  ASSERT_OK(GetUrl(Format("/api/v1/table?id=$0", vi_table_id), &result));
+  auto result_str = result.ToString();
+  ASSERT_EQ(result_str.find("Corruption"), std::string::npos)
+      << "Partition decoding error found in JSON response: " << result_str;
+
+  JsonDocument doc;
+  auto json_obj = ASSERT_RESULT(doc.Parse(result_str));
+  ASSERT_TRUE(json_obj.IsObject());
+  auto tablets = ASSERT_RESULT(json_obj["tablets"].GetArray());
+  ASSERT_EQ(tablets.size(), kNumTablets);
+  for (const auto& tablet : tablets) {
+    auto partition = ASSERT_RESULT(tablet["partition"].GetString());
+    ASSERT_EQ(std::string(partition).find("Corruption"), std::string::npos)
+        << "Partition decoding error for tablet: " << partition;
+    ASSERT_TRUE(std::string(partition).find("hash_split") != std::string::npos)
+        << "Expected hash_split partition format, got: " << partition;
+  }
+
+  // Verify HTML endpoint.
+  faststring html_result;
+  ASSERT_OK(GetUrl(Format("/table?id=$0", vi_table_id), &html_result));
+  auto html_str = html_result.ToString();
+  ASSERT_EQ(html_str.find("Corruption"), std::string::npos)
+      << "Partition decoding error found in HTML response: " << html_str;
+  ASSERT_TRUE(html_str.find("hash_split") != std::string::npos)
+      << "Expected hash_split partition format in HTML response";
+}
+
+// Validates the UI elements for the Lease Status column function correctly when starting up and
+// after a tserver is shut down
+TEST_F(MasterPathHandlersItest, TestLeaseStatusColumn) {
+  const MonoDelta kWaitTimeout = 10s;
+  const MonoDelta kLeaseTimeoutWaitBufferTime = 2s;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
+    ASSERT_OK(cluster_->mini_tablet_server(i)->server()->StartYSQLLeaseRefresher());
+  }
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
+          auto lease_info =
+              VERIFY_RESULT(cluster_->mini_tablet_server(i)->server()->GetYSQLLeaseInfo());
+          if (!lease_info.is_live) return false;
+        }
+        return true;
+      },
+      kWaitTimeout, "Waiting for all tservers to acquire leases"));
+
+  ASSERT_OK(WaitForLeaseStatusCounts(cluster_->num_tablet_servers(), 0, kWaitTimeout));
+
+  // Shutdown tserver and wait for heartbeat timeout.
+  cluster_->mini_tablet_server(0)->Shutdown();
+
+  ASSERT_OK(WaitForLeaseStatusCounts(
+      cluster_->num_tablet_servers() - 1, 1,
+      MonoDelta::FromMilliseconds(
+          FLAGS_master_ysql_operation_lease_ttl_ms +
+          FLAGS_ysql_operation_lease_ttl_client_buffer_ms) +
+          kLeaseTimeoutWaitBufferTime));
+
+  // Restart the tserver so the cluster verifier passes on teardown.
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
+
+  // refresh the lease
+  ASSERT_OK(cluster_->mini_tablet_server(0)->server()->StartYSQLLeaseRefresher());
+  ASSERT_OK(WaitForLeaseStatusCounts(cluster_->num_tablet_servers(), 0, kWaitTimeout));
+}
+
+}  // namespace yb::integration_tests

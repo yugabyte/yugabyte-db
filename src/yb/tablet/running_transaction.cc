@@ -17,6 +17,7 @@
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/tablet/transaction_participant_context.h"
@@ -208,14 +209,10 @@ void RunningTransaction::Abort(client::YBClient* client,
           nullptr /* tablet */,
           client,
           &req,
-          [status_tablet, shared_self](
+          GuardedByWeak(weak_context_, [status_tablet, shared_self](
               const Status& status, const tserver::AbortTransactionResponsePB& response) {
-            auto context_lock = shared_self->weak_context_.lock();
-            if (!context_lock) {
-              return;
-            }
             shared_self->AbortReceived(status_tablet, status, response);
-          }),
+          })),
       &abort_handle_);
 }
 
@@ -297,8 +294,11 @@ void RunningTransaction::SendStatusRequest(
           nullptr /* tablet */,
           client,
           &req,
-          std::bind(&RunningTransaction::StatusReceived, this, status_tablet, _1, _2, serial_no,
-                    shared_self)),
+          GuardedByWeak(weak_context_, [status_tablet, serial_no, shared_self](
+              const Status& status,
+              const tserver::GetTransactionStatusResponsePB& response) {
+            shared_self->StatusReceived(status_tablet, status, response, serial_no, shared_self);
+          })),
       &get_status_handle_);
 }
 
@@ -390,59 +390,71 @@ void RunningTransaction::DoStatusReceived(const TabletId& status_tablet,
   PgSessionRequestVersion pg_session_req_version = 0;
   SubtxnSet aborted_subtxn_set;
   const bool ok = status.ok();
+  const bool deleted = !ok && status.IsDeleted();
   int64_t new_request_id = -1;
   TabletId current_status_tablet;
   bool did_abort_txn = false;
+  HybridTime coordinator_safe_time;
   {
     MinRunningNotifier min_running_notifier(&context_.applier_);
     std::unique_lock<std::mutex> lock(context_.mutex_);
-    if (!ok) {
+    auto closing_status = context_.CheckClosing();
+    if (!closing_status.ok() || (!ok && !deleted)) {
       status_waiters_.swap(status_waiters);
       lock.unlock();
+      auto notify_status = ok ? closing_status : status;
       for (const auto& waiter : status_waiters) {
-        waiter.callback(status);
+        waiter.callback(notify_status);
       }
       return;
     }
 
-    if (response.status_hybrid_time().size() != 1 || response.status().size() != 1 ||
-        response.aborted_subtxn_set().size() > 1 || response.deadlock_reason().size() > 1) {
-      LOG_WITH_PREFIX(DFATAL)
-          << "Wrong number of status, status hybrid time, deadlock_reason, or aborted subtxn "
-          << "set entries, exactly one entry expected: "
-          << response.ShortDebugString();
-    } else if (PREDICT_FALSE(response.aborted_subtxn_set().empty())) {
-      YB_LOG_EVERY_N(WARNING, 1)
-          << "Empty aborted_subtxn_set in transaction status response. "
-          << "This should only happen when nodes are on different versions, e.g. during upgrade.";
+    if (deleted) {
+      transaction_status = TransactionStatus::ABORTED;
     } else {
-      auto aborted_subtxn_set_or_status = SubtxnSet::FromPB(
-          response.aborted_subtxn_set(0).set());
-      if (aborted_subtxn_set_or_status.ok()) {
-        time_of_status = HybridTime(response.status_hybrid_time()[0]);
-        transaction_status = response.status(0);
-        aborted_subtxn_set = aborted_subtxn_set_or_status.get();
-        if (!response.deadlock_reason().empty() &&
-            response.deadlock_reason(0).code() != AppStatusPB::OK) {
-          // response contains a deadlock specific error.
-          expected_deadlock_status = StatusFromPB(response.deadlock_reason(0));
-        }
-        if (!response.pg_session_req_version().empty() && response.pg_session_req_version(0)) {
-          pg_session_req_version = response.pg_session_req_version(0);
-        }
-      } else {
+      if (response.status_hybrid_time().size() != 1 || response.status().size() != 1 ||
+          response.aborted_subtxn_set().size() > 1 || response.deadlock_reason().size() > 1) {
         LOG_WITH_PREFIX(DFATAL)
-            << "Could not deserialize SubtxnSet: "
-            << "error - " << aborted_subtxn_set_or_status.status().ToString()
-            << " response - " << response.ShortDebugString();
+            << "Wrong number of status, status hybrid time, deadlock_reason, or aborted subtxn "
+            << "set entries, exactly one entry expected: "
+            << response.ShortDebugString();
+      } else if (PREDICT_FALSE(response.aborted_subtxn_set().empty())) {
+        YB_LOG_EVERY_N(WARNING, 1)
+            << "Empty aborted_subtxn_set in transaction status response. "
+            << "This should only happen when nodes are on different versions, e.g. during upgrade.";
+      } else {
+        auto aborted_subtxn_set_or_status = SubtxnSet::FromPB(
+            response.aborted_subtxn_set(0).set());
+        if (aborted_subtxn_set_or_status.ok()) {
+          time_of_status = HybridTime(response.status_hybrid_time()[0]);
+          transaction_status = response.status(0);
+          aborted_subtxn_set = aborted_subtxn_set_or_status.get();
+          if (!response.deadlock_reason().empty() &&
+              response.deadlock_reason(0).code() != AppStatusPB::OK) {
+            // response contains a deadlock specific error.
+            expected_deadlock_status = StatusFromPB(response.deadlock_reason(0));
+          }
+          if (!response.pg_session_req_version().empty() && response.pg_session_req_version(0)) {
+            pg_session_req_version = response.pg_session_req_version(0);
+          }
+        } else {
+          LOG_WITH_PREFIX(DFATAL)
+              << "Could not deserialize SubtxnSet: "
+              << "error - " << aborted_subtxn_set_or_status.status().ToString()
+              << " response - " << response.ShortDebugString();
+        }
+      }
+
+      if (const auto num_entries = response.coordinator_safe_time().size();
+          num_entries > 1) {
+        LOG_WITH_PREFIX(DFATAL)
+            << "Wrong number of coordinator safe time entries, at most one expected: "
+            << response.ShortDebugString();
+      } else if (num_entries == 1) {
+        coordinator_safe_time = HybridTime::FromPB(response.coordinator_safe_time(0));
       }
     }
 
-    LOG_IF_WITH_PREFIX(DFATAL, response.coordinator_safe_time().size() > 1)
-        << "Wrong number of coordinator safe time entries, at most one expected: "
-        << response.ShortDebugString();
-    auto coordinator_safe_time = response.coordinator_safe_time().size() == 1
-        ? HybridTime::FromPB(response.coordinator_safe_time(0)) : HybridTime();
     did_abort_txn = UpdateStatus(
         status_tablet, transaction_status, time_of_status, coordinator_safe_time,
         aborted_subtxn_set, expected_deadlock_status, pg_session_req_version);
@@ -526,14 +538,11 @@ void RunningTransaction::NotifyWaiters(int64_t serial_no, HybridTime time_of_sta
           TransactionStatus::PENDING, time_of_status, aborted_subtxn_set,
           expected_deadlock_status, pg_session_req_version});
     } else {
-      waiter.callback(STATUS(
-          TryAgain,
-          Format(
-              "Cannot determine transaction status with read_ht $0, and global_limit_ht $1, "
-              "last known: $2 at $3",
-              waiter.read_ht, waiter.global_limit_ht, TransactionStatus_Name(transaction_status),
-              time_of_status),
-          Slice(), PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED)));
+      waiter.callback(CreateAbortedStatus(
+          "Cannot determine transaction status with read_ht $0, and global_limit_ht $1, "
+          "last known: $2 at $3",
+          waiter.read_ht, waiter.global_limit_ht, TransactionStatus_Name(transaction_status),
+          time_of_status));
     }
   }
 }
@@ -580,7 +589,7 @@ void RunningTransaction::AbortReceived(const TabletId& status_tablet,
     abort_waiters_.swap(abort_waiters);
     // kMax status_time means that this status is not yet replicated and could be rejected.
     // So we could use it as reply to Abort, but cannot store it as transaction status.
-    if (result.ok() && result->status_time != HybridTime::kMax) {
+    if (!context_.Closing() && result.ok() && result->status_time != HybridTime::kMax) {
       auto coordinator_safe_time = HybridTime::FromPB(response.coordinator_safe_time());
       did_abort_txn = UpdateStatus(
           status_tablet, result->status, result->status_time, coordinator_safe_time,
@@ -608,9 +617,7 @@ std::string RunningTransaction::LogPrefix() const {
 }
 
 Status MakeAbortedStatus(const TransactionId& id) {
-  return STATUS(
-      TryAgain, Format("Transaction aborted: $0", id), Slice(),
-      PgsqlError(YBPgErrorCode::YB_PG_YB_TXN_ABORTED));
+  return CreateAbortedStatus("Transaction aborted: $0", id);
 }
 
 void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_state,
@@ -669,7 +676,7 @@ const TabletId& RunningTransaction::status_tablet() const {
   return metadata_.status_tablet;
 }
 
-void RunningTransaction::UpdateTransactionStatusLocation(const TabletId& new_status_tablet) {
+void RunningTransaction::UpdateTransactionPromoting(const TabletId& new_status_tablet) {
   metadata_.old_status_tablet = std::move(metadata_.status_tablet);
   metadata_.status_tablet = new_status_tablet;
   metadata_.locality = TransactionFullLocality::Global();

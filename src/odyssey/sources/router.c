@@ -37,19 +37,25 @@ void od_router_init(od_router_t *router, od_global_t *global)
 	router->global = global;
 
 	router->router_err_logger = od_err_logger_create_default();
+	router->yb_max_logical_client_version = 0;
+	router->yb_backends_in_use = 0;
 }
 
 static inline int od_router_immed_close_server_cb(od_server_t *server,
 						  void **argv)
 {
 	od_route_t *route = server->route;
-	/* remove server for server pool */
-	od_pg_server_pool_set(&route->server_pool, server, OD_SERVER_UNDEF);
 
 	server->route = NULL;
 	od_backend_close_connection(server);
 	od_backend_close(server);
 
+	/*
+	 * YB: Always close connection before removing server from pool
+	 * to ensure PGPROC slot is released
+	 */
+	/* remove server for server pool */
+	od_pg_server_pool_set(&route->server_pool, server, OD_SERVER_UNDEF);
 	return 0;
 }
 
@@ -236,7 +242,10 @@ static inline int od_router_expire_server_tick_cb(od_server_t *server,
 	od_list_t *expire_list = argv[0];
 	int *count = argv[1];
 	uint64_t *now_us = argv[2];
+
+	/* YB: */
 	int jitter = route->rule->yb_jitter_time == 0 ? 0 : rand() % route->rule->yb_jitter_time;
+	od_instance_t *instance = server->global->instance;
 
 	uint64_t lifetime = route->rule->server_lifetime_us;
 	uint64_t server_life = *now_us - server->init_time_us;
@@ -246,8 +255,9 @@ static inline int od_router_expire_server_tick_cb(od_server_t *server,
 		goto expire_server;
 
 	if (!server->offline) {
-		/* Expire server if is marked for closing */
-		if (server->marked_for_close)
+		/* YB: Expire server if is marked for closing or we're past its expiry time */
+		if (server->yb_marked_for_close ||
+		    *now_us >= server->yb_expiry_time_us)
 			goto expire_server;
 
 		/* advance idle time for 1 sec */
@@ -325,6 +335,108 @@ int od_router_expire(od_router_t *router, od_list_t *expire_list)
 	return count;
 }
 
+static inline int yb_od_router_expire_stale_lcv_server_cb(od_server_t *server,
+							  void **argv)
+{
+	uint64_t now_us = *(uint64_t *)argv[0];
+	uint64_t ttl_us = UINT64_C(1000) * (/* ttl_ms */ *(int *)argv[1]);
+	int64_t new_logical_client_version = *(int64_t *)argv[2];
+	od_instance_t *instance = server->global->instance;
+	od_debug(
+		&instance->logger, "lcv expire", NULL, server,
+		"now_us=%lu, ttl_us=%lu, new_logical_client_version=%ld, server_lcv=%d",
+		now_us, ttl_us, new_logical_client_version,
+		server->yb_logical_client_version);
+
+	/* We should be getting a larger LCV here, but be defensive in further checks */
+	assert(server->yb_logical_client_version <= new_logical_client_version);
+
+	/*
+	 * Nothing to be done for this server as it's already on latest LCV. assert statements
+	 * are compiled out in release builds, so we do this defensive check for safety.
+	 */
+	if (server->yb_logical_client_version >= new_logical_client_version)
+		return 0;
+
+	if (ttl_us == 0) {
+		server->yb_marked_for_close = true;
+		od_debug(&instance->logger, "lcv expire", NULL, server,
+			 "marking server for close, server lcv=%d, new lcv=%d",
+			 server->yb_logical_client_version,
+			 new_logical_client_version);
+	} else if (server->yb_expiry_time_us == UINT64_MAX) {
+		/*
+		 * server could already have expiry time due to some previous ALTER's TTL so we
+		 * don't modify that. The backend will expire before our TTL anyway.
+		 */
+		server->yb_expiry_time_us = now_us + machine_lrand48() % ttl_us;
+		od_debug(
+			&instance->logger, "lcv expire", NULL, server,
+			"setting expiry time for server, server lcv=%d, new lcv=%d, expiry_time_us=%lu",
+			server->yb_logical_client_version,
+			new_logical_client_version, server->yb_expiry_time_us);
+	}
+
+	return 0;
+}
+
+static inline int yb_od_router_expire_stale_lcv_route_cb(od_route_t *route,
+							 void **argv)
+{
+	od_route_lock(route);
+	od_server_pool_foreach(&route->server_pool, OD_SERVER_IDLE,
+			       yb_od_router_expire_stale_lcv_server_cb, argv);
+	od_server_pool_foreach(&route->server_pool, OD_SERVER_ACTIVE,
+			       yb_od_router_expire_stale_lcv_server_cb, argv);
+	od_route_unlock(route);
+	return 0;
+}
+
+void yb_od_router_expire_stale_lcv_servers(od_router_t *router,
+					   int64_t new_logical_client_version)
+{
+	od_instance_t *instance = router->global->instance;
+
+	bool larger_lcv_found;
+	while (true) {
+		int64_t max_logical_client_version = od_atomic_u64_of(
+			&router->yb_max_logical_client_version);
+		larger_lcv_found =
+			new_logical_client_version > max_logical_client_version;
+		if (!larger_lcv_found)
+			return;
+
+		/* Atomically update to this LCV, try again if some other thread updated this */
+		if (od_atomic_u64_cas(&router->yb_max_logical_client_version,
+				      max_logical_client_version,
+				      new_logical_client_version) !=
+		    (uint64_t)max_logical_client_version)
+			continue;
+
+		od_debug(
+			&instance->logger, "lcv check", NULL, NULL,
+			"Found logical client version %ld greater than current max version %ld",
+			new_logical_client_version, max_logical_client_version);
+		break;
+	}
+
+	/* Early exit if we are not going to close older backends */
+	if (instance->config.yb_alter_guc_stale_backend_ttl_ms == -1) {
+		od_debug(&instance->logger, "lcv check", NULL, NULL,
+			 "Skipping stale LCV server expiration, ttl_ms is -1");
+		return;
+	}
+
+	uint64_t now_us = machine_time_us();
+	void *argv[] = {
+		&now_us,
+		&instance->config.yb_alter_guc_stale_backend_ttl_ms,
+		&new_logical_client_version,
+	};
+
+	od_router_foreach(router, yb_od_router_expire_stale_lcv_route_cb, argv);
+}
+
 /* Mark the route as inactive for the provided db oid or user oid */
 static inline int yb_mark_route_inactive(od_route_t *route, void **argv)
 {
@@ -363,7 +475,8 @@ static inline int od_router_gc_cb(od_route_t *route, void **argv)
 	int index = route->id.yb_stats_index;
 	od_route_lock(route);
 
-	if (route->status == YB_ROUTE_INACTIVE)
+	if (route->status == YB_ROUTE_INACTIVE &&
+	    od_server_pool_active(&route->server_pool) == 0)
 		goto clean;
 
 	if (od_server_pool_total(&route->server_pool) > 0 ||
@@ -597,14 +710,18 @@ od_router_status_t od_router_route(od_router_t *router, od_client_t *client)
 		if (!is_auth_backend &&
 			(id.yb_db_oid == YB_CTRL_CONN_OID || id.yb_user_oid == YB_CTRL_CONN_OID)) {
 
-				// Set the user and database of control connection pool to "yugabyte"
-				// and "yugabyte" respectively for purpose of creating backends for
-				// auth pass through authentication in control connection pool.
-				strcpy(route->yb_database_name, YB_CTRL_CONN_DB_NAME);
-				route->yb_database_name_len = strlen(YB_CTRL_CONN_DB_NAME);
+			/*
+			 * YB: Set user and database of control connection to that of the
+			 * control conn route. These are populated from the env vars
+			 * `YB_YSQL_CONN_MGR_DB` and `YB_YSQL_CONN_MGR_USER`, which are
+			 * sourced from the gflags `ysql_conn_mgr_internal_conn_db` and
+			 * `ysql_conn_mgr_internal_conn_user` respectively.
+			 */
+			strcpy(route->yb_database_name, route->rule->storage_db);
+			route->yb_database_name_len = strlen(route->rule->storage_db);
 
-				strcpy(route->yb_user_name, YB_CTRL_CONN_USER_NAME);
-				route->yb_user_name_len = strlen(YB_CTRL_CONN_USER_NAME);
+			strcpy(route->yb_user_name, route->rule->storage_user);
+			route->yb_user_name_len = strlen(route->rule->storage_user);
 		}
 		else {
 			strcpy(route->yb_database_name, startup->database.value);
@@ -756,36 +873,6 @@ static uint32_t yb_count_all_active_routes(od_router_t *router, od_route_t *curr
 }
 
 /*
- * Calculate the number of in_use backends (aka physical connection) across all
- * routes.
- *
- * IMPORTANT: The caller must not hold any locks on any of the routes.
- */
-static uint32_t yb_calculate_all_in_use_backends(od_router_t *router) {
-	od_router_lock(router);
-
-	od_route_pool_t *pool = &router->route_pool;
-	od_list_t *i;
-	uint32_t total_in_use_backends = 0;
-	od_list_foreach(&pool->list, i)
-	{
-		od_route_t *route;
-		route = od_container_of(i, od_route_t, link);
-
-		if (yb_is_route_invalid(route) ||
-			(route->id.logical_rep))
-			continue;
-
-		od_route_lock(route);
-		total_in_use_backends += od_server_pool_total(&route->server_pool);
-		od_route_unlock(route);
-	}
-
-	od_router_unlock(router);
-	return total_in_use_backends;
-}
-
-/*
  * Return an idle server to close from a route different from the current route.
  * The route must be exceeding the per_route_quota.
  * Returns NULL if no such route is found.
@@ -839,6 +926,56 @@ static od_server_t *yb_get_idle_server_to_close(od_router_t *router,
 }
 
 /*
+ * YB: Backend slot claim/release helpers.
+ *
+ * These use a lockless atomic counter (yb_backends_in_use) on od_router_t to
+ * enforce the yb_ysql_max_connections limit across all routes.
+ */
+bool yb_try_claim_backend_slot(od_router_t *router)
+{
+	od_instance_t *instance = router->global->instance;
+	if (!instance->config.yb_enable_multi_route_pool)
+		return true;
+	uint32_t prev = od_atomic_u32_inc(&router->yb_backends_in_use);
+	if (prev >= (uint32_t)instance->config.yb_ysql_max_connections) {
+		od_atomic_u32_dec(&router->yb_backends_in_use);
+		od_debug(&instance->logger, "yb-backend-slot", NULL, NULL,
+			 "try_claim FAILED: prev=%u, max=%d, after_rollback=%u",
+			 prev, instance->config.yb_ysql_max_connections,
+			 od_atomic_u32_of(&router->yb_backends_in_use));
+		return false;
+	}
+	od_debug(&instance->logger, "yb-backend-slot", NULL, NULL,
+		 "try_claim OK: prev=%u, now=%u, max=%d", prev,
+		 od_atomic_u32_of(&router->yb_backends_in_use),
+		 instance->config.yb_ysql_max_connections);
+	return true;
+}
+
+void yb_force_claim_backend_slot(od_router_t *router)
+{
+	od_instance_t *instance = router->global->instance;
+	if (instance->config.yb_enable_multi_route_pool) {
+		uint32_t prev = od_atomic_u32_inc(&router->yb_backends_in_use);
+		od_debug(&instance->logger, "yb-backend-slot", NULL, NULL,
+			 "claim (unconditional): prev=%u, now=%u", prev,
+			 od_atomic_u32_of(&router->yb_backends_in_use));
+	}
+}
+
+void yb_release_backend_slot(od_router_t *router)
+{
+	od_instance_t *instance = router->global->instance;
+	if (instance->config.yb_enable_multi_route_pool) {
+		uint32_t prev_use =
+			od_atomic_u32_dec(&router->yb_backends_in_use);
+		od_debug(&instance->logger, "yb-backend-slot", NULL, NULL,
+			 "release: use prev=%u now=%u", prev_use,
+			 od_atomic_u32_of(&router->yb_backends_in_use));
+	}
+}
+
+/*
  * od_router_attach is a function used to attach a client object to a server object.
  * client_for_router represents the internal client used for
  * route matching and server attachment. On the other hand,
@@ -876,6 +1013,7 @@ od_router_status_t od_router_attach(od_router_t *router,
 	od_server_t *server;
 	int busyloop_sleep = 0;
 	int busyloop_retry = 0;
+	bool yb_slot_claimed = false;
 
 	const char *is_warmup_needed_flag = getenv("YB_YSQL_CONN_MGR_DOWARMUP_ALL_POOLS_MODE");
 	bool is_warmup_needed = false;
@@ -885,35 +1023,92 @@ od_router_status_t od_router_attach(od_router_t *router,
 	random_allot = is_warmup_needed && strcmp(is_warmup_needed_flag, "random") == 0;
 
 	od_debug(&instance->logger, "router-attach", client_for_router, NULL,
-		 "client_for_router logical client version = %d",
-		 client_for_router->logical_client_version);
+		 "client_for_router logical client version = %" PRId64,
+		 client_for_router->yb_logical_client_version);
 
 	for (;;) {
-		if (version_matching) {
+		/*
+		 * YB: In YB_GUC_ADOPTION_CONNECTION_STATIC mode with an outdated client version,
+		 * we cannot spawn new connections (they would get the latest version). Instead,
+		 * we must wait for an existing backend with the matching version to become idle.
+		 */
+		bool yb_spawn_new_connection_if_needed = true;
+
+		/*
+		 * YB: Do version matching if required, and don't do it for internal clients
+		 * (used for authentication) since LCV doesn't make sense for them
+		 */
+		if (instance->config.yb_alter_guc_adoption_strategy !=
+			    YB_GUC_ADOPTION_FLUCTUATING &&
+		    client_for_router->type == OD_POOL_CLIENT_EXTERNAL) {
+			/* Mirroring the logic used in warmup mode branch */
+			enum yb_idle_selection_mode selection_mode =
+				YB_IDLE_SELECT_FIRST;
+			if (is_warmup_needed)
+				selection_mode = random_allot ?
+							 YB_IDLE_SELECT_RANDOM :
+							 YB_IDLE_SELECT_LAST;
+
+			int64_t max_logical_client_version = od_atomic_u64_of(
+				&router->yb_max_logical_client_version);
 
 			server = yb_od_server_pool_idle_version_matching(
 				&route->server_pool,
-				client_for_router->logical_client_version,
-				version_matching_connect_higher_version);
+				client_for_router->yb_logical_client_version,
+				max_logical_client_version,
+				instance->config.yb_alter_guc_adoption_strategy,
+				selection_mode, is_warmup_needed);
 
-			if (server)
+			/*
+			 * We can't warmup if we're using connection_static strategy and the global
+			 * LCV has progressed beyond the one needed by this client
+			 */
+			bool yb_should_warmup =
+				is_warmup_needed &&
+				od_server_pool_total(&route->server_pool) <
+					route->rule->min_pool_size;
+			if (instance->config.yb_alter_guc_adoption_strategy ==
+				    YB_GUC_ADOPTION_CONNECTION_STATIC &&
+			    max_logical_client_version >
+				    client_for_router->yb_logical_client_version)
+				yb_should_warmup = false;
+
+			if (server && !yb_should_warmup)
 				goto attach;
-			else if (route->max_logical_client_version >
-					 client_for_router->logical_client_version &&
-				 !version_matching_connect_higher_version) {
-				od_debug(
-					&instance->logger, "router-attach",
-					client_for_router, NULL,
-					"old logical client, need to disconect, "
-					"max_logical_client_version of pool = %d, and version of client = %d",
-					route->max_logical_client_version,
-					client_for_router->logical_client_version);
-				od_route_unlock(route);
-				return OD_ROUTER_ERROR;
-			}
-		}
 
-		else if (is_warmup_needed) {
+			/*
+			 * Either we didn't find an idle server or we need to warmup. In the first
+			 * case, we need to do the check and it is redundant in the second case
+			 */
+			if (instance->config.yb_alter_guc_adoption_strategy ==
+				    YB_GUC_ADOPTION_CONNECTION_STATIC &&
+			    max_logical_client_version >
+				    client_for_router
+					    ->yb_logical_client_version) {
+				/*
+				 * We can't spawn a new connection, but wait if there
+				 * are active servers which have the same version
+				 */
+				yb_spawn_new_connection_if_needed = false;
+				if (!yb_od_server_pool_active_has_matching_version(
+					    &route->server_pool,
+					    client_for_router
+						    ->yb_logical_client_version)) {
+					od_debug(
+						&instance->logger,
+						"router-attach",
+						client_for_router, NULL,
+						"old logical client, need to disconnect: "
+						"max_logical_client_version= %" PRId64
+						", and version of client = %" PRId64,
+						max_logical_client_version,
+						client_for_router
+							->yb_logical_client_version);
+					od_route_unlock(route);
+					return OD_ROUTER_ERROR;
+				}
+			}
+		} else if (is_warmup_needed) {
 			if (random_allot)
 				server = yb_od_server_pool_idle_random(&route->server_pool);
 			else /* round_robin allotment */
@@ -923,8 +1118,7 @@ od_router_status_t od_router_attach(od_router_t *router,
 			    (od_server_pool_total(&route->server_pool) >=
 			     route->rule->min_pool_size))
 				goto attach;
-		}
-		else {
+		} else {
 			server = od_pg_server_pool_next(&route->server_pool,
 						OD_SERVER_IDLE);
 			if (server)
@@ -938,7 +1132,8 @@ od_router_status_t od_router_attach(od_router_t *router,
 				od_route_unlock(route);
 				return OD_ROUTER_ERROR_TIMEDOUT;
 			}
-		} else {
+		} else if (yb_spawn_new_connection_if_needed) {
+			/* YB: Only come here if spawning a new connection is allowed */
 			/* Maybe start new connection, if pool_size is zero */
 			/* Maybe start new connection, if we still have capacity for it */
 			int connections_in_pool =
@@ -950,17 +1145,6 @@ od_router_status_t od_router_attach(od_router_t *router,
 						       ->server_max_routing;
 
 			bool yb_is_slot_available = false;
-			if (instance->config.yb_enable_multi_route_pool) {
-				od_route_unlock(route);
-				uint32_t yb_total_acquired_slots =
-					yb_calculate_all_in_use_backends(router);
-				od_route_lock(route);
-				yb_is_slot_available =
-					yb_total_acquired_slots < (uint32_t) instance->config.yb_ysql_max_connections;
-			} else {
-				yb_is_slot_available = pool_size == 0 ||
-					connections_in_pool < pool_size;
-			}
 
 			// For replication connection, PG has a different pool from ysql connections.
 			// Replication connections are not detached after txn is committed similar to sticky
@@ -969,6 +1153,14 @@ od_router_status_t od_router_attach(od_router_t *router,
 			// postgres take care of the limits on number of backend connections.
 			if (route->id.logical_rep) {
 				yb_is_slot_available = true;
+			} else if (instance->config.yb_enable_multi_route_pool) {
+				/* YB: Atomically claim a backend slot for the multi-route pool limit */
+				yb_is_slot_available =
+					yb_try_claim_backend_slot(router);
+				yb_slot_claimed = yb_is_slot_available;
+			} else {
+				yb_is_slot_available = pool_size == 0 ||
+					connections_in_pool < pool_size;
 			}
 
 			if (yb_is_slot_available) {
@@ -980,6 +1172,10 @@ od_router_status_t od_router_attach(od_router_t *router,
 						(instance->config.yb_enable_multi_route_pool) ? 0 : pool_size,
 					    (int)currently_routing,
 					    (int)max_routing)) {
+					if (yb_slot_claimed) {
+						yb_release_backend_slot(router);
+						yb_slot_claimed = false;
+					}
 					// concurrent server connection in progress.
 					od_route_unlock(route);
 					machine_sleep(busyloop_sleep);
@@ -1015,11 +1211,24 @@ od_router_status_t od_router_attach(od_router_t *router,
 				if (idle_server) {
 					// Close the server and make space for ourselves.
 					od_route_t *idle_route = idle_server->route;
+					/*
+					 * YB: Transfer slot from idle server to new server. To do
+					 * this, we set `yb_slot_claimed` of the idle server to true
+					 * so it doesn't decrement the global counter on exit and this
+					 * slot is then taken to be transferred to the new server
+					 */
+					idle_server->yb_slot_claimed = false;
+					yb_slot_claimed = true;
+
+					/*
+					 * Close the connection first so that we attempt to make a
+					 * new connection only when PGPROC slot has been released
+					 */
+					od_backend_close_connection(idle_server);
 					od_pg_server_pool_set(&idle_route->server_pool,
 							      idle_server,
 							      OD_SERVER_UNDEF);
 					idle_server->route = NULL;
-					od_backend_close_connection(idle_server);
 					od_backend_close(idle_server);
 					od_route_unlock(idle_route);
 
@@ -1062,41 +1271,23 @@ od_router_status_t od_router_attach(od_router_t *router,
 		od_route_lock(route);
 	}
 
-	/* create new server object */
-	bool created_atleast_one = false;
-	while (is_warmup_needed &&
-		  (od_server_pool_total(&route->server_pool) < route->rule->min_pool_size))
-	{
-		server = od_server_allocate(
-		route->rule->pool->reserve_prepared_statement);
-		if (server == NULL)
-			return OD_ROUTER_ERROR;
-		od_id_generate(&server->id, "s");
-		server->global = client_for_router->global;
-		server->route = route;
-		server->client = NULL;
-		od_pg_server_pool_set(&route->server_pool, server,
-						OD_SERVER_IDLE);
-		created_atleast_one = true;
-	}
-
-	/*
-	 * If we created a server, then hold on to the lock so no other client can
-	 * acquire this server from the server pool
-	*/
-	if (created_atleast_one)
-		goto attach;
-
 	/* YB: Unlock the route since we don't need the lock when allocating server */
 	od_route_unlock(route);
 
 	server = od_server_allocate(
 		route->rule->pool->reserve_prepared_statement);
-	if (server == NULL)
+	if (server == NULL) {
+		if (yb_slot_claimed) {
+			yb_release_backend_slot(router);
+			yb_slot_claimed = false;
+		}
 		return OD_ROUTER_ERROR;
+	}
 	od_id_generate(&server->id, "s");
 	server->global = client_for_router->global;
 	server->route = route;
+	server->yb_slot_claimed = yb_slot_claimed;
+	yb_slot_claimed = false;
 
 	od_route_lock(route);
 
@@ -1110,6 +1301,16 @@ attach:
 	server->idle_time = 0;
 	server->key_client = client_for_router->key;
 
+	/*
+	 * YB: Enable/disable parse queue tracking based on the runtime
+	 * gflag `ysql_conn_mgr_enable_parse_queue_tracking`.
+	 */
+	if (route->rule->pool->reserve_prepared_statement) {
+		yb_od_parse_queue_enable(
+			&server->parse_queue,
+			instance->config.yb_enable_parse_queue_tracking);
+	}
+
 	if (route->id.logical_rep) {
 		/*
 		 * Replication connections are never detached after txn is committed
@@ -1122,7 +1323,7 @@ attach:
 		 */
 
 		server->yb_replication_connection = true;
-		if(!(route->rule->pool->routing == OD_RULE_POOL_INTERVAL)) {
+		if(!yb_is_control_pool(server->route)) {
 			route->server_pool.yb_count_sticky++;
 		}
 	}
@@ -1207,6 +1408,7 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 	(void)router;
 	od_route_t *route = client->route;
 	od_instance_t *instance = router->global->instance;
+	bool is_parse_queue_empty = true;
 	assert(route != NULL);
 
 	/* detach from current machine event loop */
@@ -1224,6 +1426,35 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 
 	client->server = NULL;
 	server->client = NULL;
+	if (route->rule->pool->reserve_prepared_statement) {
+		if (!yb_od_parse_queue_empty(&server->parse_queue)) {
+			int pq_count = yb_od_parse_queue_count(&server->parse_queue);
+			/*
+			 * Invariant: by the time the client detaches from this
+			 * server, every Parse/Bind/Describe issued in the
+			 * extended-query protocol should have been paired with
+			 * a Sync that drained the queue.  If we still have
+			 * entries here, yb_drain_parse_queue_till_sync failed to
+			 * clear them, which means the server's prepared-statement
+			 * state is now out of sync.  Don't return this server to
+			 * the pool; close it so the next attach starts from a
+			 * clean backend.
+			 */
+			od_error(&instance->logger, "router-detach", client,
+				 server,
+				 "parse queue not empty on detach: %d pending "
+				 "entries; closing server connection to discard "
+				 "partial extended-query state",
+				 pq_count);
+			is_parse_queue_empty = false;
+		}
+		/*
+		 * Empty the parse queue irrespective queue being empty or not.
+		 * This is to ensure no memory is held on to by the parse queue.
+		 */
+		yb_od_parse_queue_free(&server->parse_queue);
+	}
+
 	/*
 	 * When the server detaches after completing a transaction,
 	 * some queries are issued during the reset phase, which causes the
@@ -1233,6 +1464,16 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 	 */
 	memset(&server->yb_unnamed_prep_stmt_client_id, 0,
 	       sizeof(server->yb_unnamed_prep_stmt_client_id));
+
+	uint64_t now_us = machine_time_us();
+	bool server_expired = now_us >= server->yb_expiry_time_us;
+	if (server_expired)
+		od_debug(
+			&instance->logger, "router-detach", NULL, server,
+			"server crossed expiry time, will be closed. time now = %" PRIu64
+			", server expiry time = %" PRIu64,
+			now_us, server->yb_expiry_time_us);
+
 	/*
 	 * Drop the server connection if:
 	 * 	a. Server gets OFFLINE.
@@ -1243,13 +1484,14 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 	 *  c. Client connection is a logical or physical replication connection
 	 *     (but NOT a control connection).
 	 *  d. It took too long to reset state on the server.
+	 *  e. The current time exceeded server's expiry time
+	 *  f. The parse queue is not empty on detach.
 	 */
-	if (od_likely(!server->offline) &&
-		!server->yb_sticky_connection &&
-		!server->reset_timeout) {
+	if (od_likely(!server->offline) && !server->yb_sticky_connection &&
+	    !server->reset_timeout && !server_expired && is_parse_queue_empty) {
 		od_instance_t *instance = server->global->instance;
 		if ((route->id.physical_rep || route->id.logical_rep) &&
-		    (route->rule->pool->routing != OD_RULE_POOL_INTERVAL)) {
+		    (!yb_is_control_pool(route))) {
 			od_debug(&instance->logger, "expire-replication", NULL,
 				 server, "closing replication connection");
 			server->route = NULL;
@@ -1281,7 +1523,7 @@ void od_router_detach(od_router_t *router, od_client_t *client)
 
 void od_router_close(od_router_t *router, od_client_t *client)
 {
-	(void)router;
+	od_instance_t *instance = router->global->instance;
 	od_route_t *route = client->route;
 	assert(route != NULL);
 
@@ -1300,6 +1542,10 @@ void od_router_close(od_router_t *router, od_client_t *client)
 
 	assert(server->io.io == NULL);
 	od_server_free(server);
+
+	/* notify waiters */
+	yb_signal_all_routes(router, route,
+			     instance->config.yb_enable_multi_route_pool);
 }
 
 static inline int od_router_cancel_cmp(od_server_t *server, void **argv)

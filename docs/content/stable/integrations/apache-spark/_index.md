@@ -18,12 +18,12 @@ type: indexpage
     title="YSQL"
     body="Use Apache Spark with YugabyteDB to add data and run YSQL queries."
     href="java-ysql/"
-    icon="/images/section_icons/api/ysql.png">}}
+    icon="fa-thin fa-database">}}
 
   {{<index/item
     title="YCQL"
     body="Use Apache Spark with YugabyteDB to add data and run YCQL queries."
     href="java-ycql/"
-    icon="/images/section_icons/api/ycql.png">}}
+    icon="fa-thin fa-database">}}
 
 {{</index/block>}}

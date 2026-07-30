@@ -161,3 +161,133 @@ SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$switch": {"branches
 
 -- Does not fail for non-constant branch error expressions (eg: paths) if the default expression is matched.
 SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$switch": {"branches": [{"case": false, "then": "first branch is true"}, {"case": false, "then": {"$divide": [1, "$a"]}}], "default": "I am the default"}}}');
+
+-- short-circuit for non-constant expressions
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": {"if": true, "then": "then", "else": "$a"}}}');
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$divide": [1, "$a"]}}}}');
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$divide": ["$a", 0]}}}}');
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": {"$subtract": [1, "$a"]}, "else": {"$divide": [1, "$a"]}}}}');
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$range": [0, { "$arrayElemAt": [[], 0] } ]}   }}}');
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$range": [0, { "$arrayElemAt": ["$b", 0] } ]}   }}}');
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": {"if": false, "then": "$a", "else": "else"}}}');
+
+-- short-circuit test with all cases constant false and default (constant and non-constant)
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": false, "then": "first"}, {"case": false, "then": "second"}], "default": "default value"}}}');
+SELECT * FROM bson_dollar_project('{"a": 5}', '{"result": {"$switch": {"branches": [{"case": false, "then": "first"}, {"case": false, "then": "second"}], "default": {"$add": ["$a", 10]}}}}');
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": false, "then": {"$divide": [1, 0]}}, {"case": false, "then": "second"}], "default": "default value"}}}');
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$switch": {"branches": [{"case": false, "then": {"$divide": [1, "$a"]}}, {"case": false, "then": "second"}], "default": "default value"}}}');
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": false, "then": "first"}, {"case": true, "then": "second"}], "default": {"$divide": [1, 1]}}}}');
+
+-- enforce case order: only select a branch if branches above are all false irrespective of constant or not
+SELECT * FROM bson_dollar_project('{"a": true}', '{"result": {"$switch": {"branches": [{"case": "$a", "then": "first"}, {"case": false, "then": "second"}, {"case": true, "then": "third"}]}}}');
+
+-- error: in constant evaluation
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$divide": [1, 0]}}}}');
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": false, "then": {"$divide": [1, 0]}, "else": "else" }}}');
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": {"$divide": [1, 0]}, "else": {"$divide": [1, 0]} }}}');
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": false, "then": "then", "else": {"$range": [0, { "$arrayElemAt": [[], 0] } ]}   }}}');
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": false, "then": "then", "else": {"$range": [{ "$arrayElemAt": [[], 0] }, 10 ]}   }}}');
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": false, "then": "then", "else": {"$range": [0, 2, { "$arrayElemAt": [[], 0] }]}   }}}');
+
+-- no error: short-circuit
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$divide": [1, "$a"]}}}}');
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": false, "then": {"$divide": [1, "$a"]}, "else": "else" }}}');
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": {"$divide": [1, 1]}, "else": {"$divide": [1, "$a"]} }}}');
+SELECT * FROM bson_dollar_project('{"a": []}', '{"result": {"$cond": {"if": false, "then": {"$arrayElemAt": ["$a", 0]}, "else": {"$divide": [1, 1]} }}}');
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": {"$subtract": [1, "$a"]}, "else": {"$divide": [1, "$a"]}}}}');
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$range": [0, { "$arrayElemAt": ["$b", 0] } ]}   }}}');
+
+-- TODO: must fail for undefined variables
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$divide": [1, "$$a"]}}}}');
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$range": [0, { "$arrayElemAt": ["$$b", 0] } ]}   }}}');
+
+-- $switch
+-- error: short-circuit for constant expressions
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": true, "then": "first branch is true"}, {"case": {"$divide": [1, 0]}, "then": "false"}]}}}');
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": false, "then": "first branch is true"}, {"case": {"$divide": [1, 0]}, "then": "false"}], "default": "I am the default"}}}');
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": false, "then": "first branch is true"}, {"case": false, "then": "false"}], "default": {"$divide": [1, 0]}}}}');
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": true, "then": "first branch is true"}, {"case": true, "then": {"$ifNull": []}}]}}}');
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$switch": {"branches": [{"case": true, "then": "first branch is true"}, {"case": true, "then": {"$range": {"$arrayElemAt": [[], 0]}}}], "default": "I am the default"}}}');
+
+-- no error: short-circuit (constant evaluation after parse time)
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$switch": {"branches": [{"case": true, "then": "first branch is true"}, {"case": false, "then": "false"}], "default": {"$divide": [1, "$a"]}}}}');
+
+SELECT * FROM bson_dollar_project(
+  '{"a": 0}',
+  '{"result": {
+      "$switch": {
+        "branches": [
+          { "case": false, "then": { "$range": [{ "$arrayElemAt": ["$a", 0] }, 10] } },
+          { "case": true,  "then": "second branch is true" }
+        ],
+        "default": "I am the default"
+      }
+    }}'
+);
+
+SELECT * FROM bson_dollar_project(
+  '{"a": 0}',
+  '{"result": {
+      "$switch": {
+        "branches": [
+          { "case": false, "then": { "$divide": [1, "$a"] } },
+          { "case": true,  "then": "second branch is true" }
+        ],
+        "default": "I am the default"
+      }
+    }}'
+);
+
+SELECT * FROM bson_dollar_project(
+  '{"a": []}',
+  '{"result": {
+      "$switch": {
+        "branches": [
+          {
+            "case": { "$and": [ { "$gt": [5, 0] }, { "$lt": [5, 10] } ] },
+            "then": "first branch is true"
+          },
+          {
+            "case": true,
+            "then": { "$range": [{ "$arrayElemAt": ["$a", 0] }, 10] }
+          }
+        ],
+        "default": "I am the default"
+      }
+    }}'
+);
+
+-- $cond
+-- short-circuit for non-constant expressions
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": {"if": true, "then": "then", "else": "$a"}}}');
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$divide": [1, "$a"]}}}}');
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$divide": ["$a", 0]}}}}');
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": {"$subtract": [1, "$a"]}, "else": {"$divide": [1, "$a"]}}}}');
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$range": [0, { "$arrayElemAt": [[], 0] } ]}   }}}');
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$range": [0, { "$arrayElemAt": ["$b", 0] } ]}   }}}');
+
+SELECT * FROM bson_dollar_project('{}', '{"result": {"$cond": {"if": false, "then": "$a", "else": "else"}}}');
+
+-- error: in constant evaluation
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$divide": [1, 0]}}}}');
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": false, "then": {"$divide": [1, 0]}, "else": "else" }}}');
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": {"$divide": [1, 0]}, "else": {"$divide": [1, 0]} }}}');
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": false, "then": "then", "else": {"$range": [0, { "$arrayElemAt": [[], 0] } ]}   }}}');
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": false, "then": "then", "else": {"$range": [{ "$arrayElemAt": [[], 0] }, 10 ]}   }}}');
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": false, "then": "then", "else": {"$range": [0, 2, { "$arrayElemAt": [[], 0] }]}   }}}');
+
+-- no error: short-circuit
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$divide": [1, "$a"]}}}}');
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": false, "then": {"$divide": [1, "$a"]}, "else": "else" }}}');
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": {"$divide": [1, 1]}, "else": {"$divide": [1, "$a"]} }}}');
+SELECT * FROM bson_dollar_project('{"a": []}', '{"result": {"$cond": {"if": false, "then": {"$arrayElemAt": ["$a", 0]}, "else": {"$divide": [1, 1]} }}}');
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": {"$subtract": [1, "$a"]}, "else": {"$divide": [1, "$a"]}}}}');
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$range": [0, { "$arrayElemAt": ["$b", 0] } ]}   }}}');
+
+-- TODO: must fail for undefined variables
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$divide": [1, "$$a"]}}}}');
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$cond": {"if": true, "then": "then", "else": {"$range": [0, { "$arrayElemAt": ["$$b", 0] } ]}   }}}');
+SELECT * FROM bson_dollar_project('{"a": 0}', '{"result": {"$switch": {"branches": [{"case": true, "then": "first branch is true"}, {"case": false, "then": {"$divide": [1, "$$a"]}}]}}}');
+SELECT * FROM bson_dollar_project('{"b": []}', '{"result": {"$switch": {"branches": [{"case": false, "then": "first branch is true"}, {"case": false, "then": {"$range": [0, { "$arrayElemAt": ["$$b", 0] } ]}   }], "default": "I am the default"}}}');

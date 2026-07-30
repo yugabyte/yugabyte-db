@@ -34,6 +34,7 @@
 
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 DECLARE_bool(TEST_duplicate_create_table_request);
 
@@ -177,9 +178,7 @@ Status PgCreateTable::Exec(
 
   if (overwrite_colocation_id_ != kColocationIdNotSet) {
     table_creator->colocation_id(overwrite_colocation_id_);
-  } else if (
-      req_.optional_colocation_id_case() !=
-      PgCreateTableRequestPB::OptionalColocationIdCase::OPTIONAL_COLOCATION_ID_NOT_SET) {
+  } else if (req_.has_colocation_id()) {
     table_creator->colocation_id(req_.colocation_id());
   }
 

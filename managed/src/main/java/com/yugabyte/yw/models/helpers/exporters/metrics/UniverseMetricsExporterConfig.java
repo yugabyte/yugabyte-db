@@ -7,9 +7,11 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import lombok.ToString;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
+@ToString(callSuper = true)
 @ApiModel(description = "Metrics Exporter Configuration")
 public class UniverseMetricsExporterConfig extends UniverseExporterConfig {
 

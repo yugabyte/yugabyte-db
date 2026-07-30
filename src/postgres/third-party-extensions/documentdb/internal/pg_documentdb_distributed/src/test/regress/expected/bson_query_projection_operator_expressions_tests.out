@@ -474,12 +474,12 @@ SELECT bson_expression_get(document, '{ "field" : { "$isArray": [ [1, 2, 3 ] ] }
 
 -- isArray expressions: array declaration invalid
 SELECT bson_expression_get(document, '{ "field" : { "$isArray": [ ] } }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
-ERROR:  Expression $isArray takes exactly 1 arguments. 0 were passed in.
+ERROR:  The expression $isArray requires exactly 1 arguments, but 0 arguments were actually provided.
 SELECT bson_expression_get(document, '{ "field" : { "$isArray": [ 1, 2 ] } }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
-ERROR:  Expression $isArray takes exactly 1 arguments. 2 were passed in.
+ERROR:  The expression $isArray requires exactly 1 arguments, but 2 arguments were actually provided.
 -- unsupported operators
 SELECT bson_expression_get(document, '{ "field" : { "$unknownop": "some literal" } }') FROM documentdb_api.collection('db', 'projectexprs') ORDER BY object_id;
-ERROR:  Unknown expression $unknownop
+ERROR:  Unrecognized expression format: $unknownop
 -- Array Expression and Nested Expression evaluation tests
 SELECT bson_expression_get(document, '{ "new" : ["$_id"]}') FROM documentdb_api.collection('db', 'projectexprs');
  bson_expression_get 
@@ -580,9 +580,9 @@ SELECT bson_expression_get(document, '{ "field" : { "$isArray": [ "$a.b" ] } }')
 (9 rows)
 
 SELECT bson_expression_get(document, '{ "field" : { "$isArray": [ "$a.b" ] , "a": 1.0} }') FROM documentdb_api.collection('db', 'projectexprs');
-ERROR:  an expression operator specification must contain exactly one field, found 2 fields '$isArray' and 'a'.
+ERROR:  Expected a single field in an expression operator specification. Found: '$isArray' and 'a'.
 SELECT bson_expression_get(document, '{ "field" : { "first": 1.0, "$isArray": [ "$a.b" ]} }') FROM documentdb_api.collection('db', 'projectexprs');
-ERROR:  FieldPath field names may not start with '$'. Consider using $getField or $setField
+ERROR:  FieldPath field names cannot begin with the operators symbol '$'; you might want to use $getField or $setField instead.
 SELECT bson_expression_get(document, '{ "field" : ["$_id", ["$a", "$b"], { "arrayobj" : [{},"$_id"]}] }') FROM documentdb_api.collection('db', 'projectexprs');
                                                                                                                                                           bson_expression_get                                                                                                                                                           
 ---------------------------------------------------------------------
@@ -612,7 +612,7 @@ SELECT bson_expression_get(document, '{ "field" : [{"$literal" : 3.12}] }') FROM
 (9 rows)
 
 SELECT bson_expression_get(document, '{ "field" : [{"$isArray" : [1,2]}] }') FROM documentdb_api.collection('db', 'projectexprs');
-ERROR:  Expression $isArray takes exactly 1 arguments. 2 were passed in.
+ERROR:  The expression $isArray requires exactly 1 arguments, but 2 arguments were actually provided.
 SELECT bson_expression_get(document, '{ "field" : {"$literal" : 3.12} }') FROM documentdb_api.collection('db', 'projectexprs');
                      bson_expression_get                     
 ---------------------------------------------------------------------
@@ -750,11 +750,11 @@ SELECT bson_expression_get(document, '{"field": [ ["$a.x.y"], 2, [{"$arrayElemAt
 
 -- Error cases when a field is an empty string
 SELECT bson_expression_get(document, '{ "field" : {"" : "$a.b"} }') FROM documentdb_api.collection('db', 'projectexprs');
-ERROR:  FieldPath cannot be constructed with empty string.
+ERROR:  A FieldPath object cannot be created when the provided string is empty.
 SELECT bson_expression_get(document, '{ "new" : {"val": ["1", "2", {"": "hello"}], "val2": "$_id"}}') FROM documentdb_api.collection('db', 'projectexprs');
-ERROR:  FieldPath cannot be constructed with empty string.
+ERROR:  A FieldPath object cannot be created when the provided string is empty.
 SELECT bson_expression_get(document, '{ "field" : [{"literal" : [2, {"" : "empty"}]}] }') FROM documentdb_api.collection('db', 'projectexprs');
-ERROR:  FieldPath cannot be constructed with empty string.
+ERROR:  A FieldPath object cannot be created when the provided string is empty.
 -- Field not present or null, NullOnEmpty = false
 SELECT bson_expression_get('{}', '{ "": "$a" }', false), 
 bson_expression_get('{"a" : null}', '{ "": "$a" }', false),
@@ -778,74 +778,74 @@ bson_expression_get('{"a" : null}', '{ "": { "a" : "$a" }}', true);
 -- Document and array expressions with nested expressions that should be converted to a constant at the tree parse stage
 SET client_min_messages TO DEBUG3;
 SELECT bson_expression_get('{}', '{"result": {"a": [ { "$literal" : "foo" } ] }}');
-DEBUG:  Optimizing array expression into constant.
-DEBUG:  Optimizing document expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
+DEBUG:  Converting document expression into a fixed constant.
         bson_expression_get         
 ---------------------------------------------------------------------
  { "result" : { "a" : [ "foo" ] } }
 (1 row)
 
 SELECT bson_expression_get('{}', '{"result": [ { "$literal" : "foo" } ] }');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
    bson_expression_get    
 ---------------------------------------------------------------------
  { "result" : [ "foo" ] }
 (1 row)
 
 SELECT bson_expression_get('{}', '{"result": [ { "$undefined" : true } ] }');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
    bson_expression_get   
 ---------------------------------------------------------------------
  { "result" : [ null ] }
 (1 row)
 
 SELECT bson_expression_get('{}', '{"result": [ { "$literal" : "foo" }, {"$substr": ["wehello world", 2, -1]} ] }');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
            bson_expression_get           
 ---------------------------------------------------------------------
  { "result" : [ "foo", "hello world" ] }
 (1 row)
 
 SELECT bson_expression_get('{}', '{"result": {"a": [ { "$literal" : "foo" } ], "a": {"$const": "foo2"} }}');
-DEBUG:  Optimizing array expression into constant.
-DEBUG:  Optimizing document expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
+DEBUG:  Converting document expression into a fixed constant.
        bson_expression_get       
 ---------------------------------------------------------------------
  { "result" : { "a" : "foo2" } }
 (1 row)
 
 SELECT bson_expression_get('{}', '{"document": {"a": { "$literal" : {"a": "$$REMOVE" } }, "b": {"$const": "b is 2"} }}');
-DEBUG:  Optimizing document expression into constant.
+DEBUG:  Converting document expression into a fixed constant.
                        bson_expression_get                       
 ---------------------------------------------------------------------
  { "document" : { "a" : { "a" : "$$REMOVE" }, "b" : "b is 2" } }
 (1 row)
 
 SELECT bson_expression_get('{}', '{"document": {"a": { "b" : {"a": "foo", "d": {"$substr": ["hello world", 6, -1]}} }, "c": {"$const": "c is 2"} }}');
-DEBUG:  Optimizing document expression into constant.
+DEBUG:  Converting document expression into a fixed constant.
                                  bson_expression_get                                 
 ---------------------------------------------------------------------
  { "document" : { "a" : { "b" : { "a" : "foo", "d" : "world" } }, "c" : "c is 2" } }
 (1 row)
 
 SELECT bson_expression_get('{}', '{"document": {"a": {"d": { "$literal" : {"a": "$$REMOVE" } }, "c": [{"$literal": "$$REMOVE"}, true, false]}, "b": {"$const": "b is 2"}}}');
-DEBUG:  Optimizing array expression into constant.
-DEBUG:  Optimizing document expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
+DEBUG:  Converting document expression into a fixed constant.
                                              bson_expression_get                                              
 ---------------------------------------------------------------------
  { "document" : { "a" : { "d" : { "a" : "$$REMOVE" }, "c" : [ "$$REMOVE", true, false ] }, "b" : "b is 2" } }
 (1 row)
 
 SELECT bson_dollar_project('{}', '{"array": [{"$substr": ["hello world", 0, -1]}, "1", 2, true, false, {"$literal": [{ "$add":[1, 2] }]}], "document": {"a": { "$literal" : {"a": "$$REMOVE" } }, "b": {"$const": "b is 2"} }}');
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
                                                                                              bson_dollar_project                                                                                             
 ---------------------------------------------------------------------
  { "array" : [ "hello world", "1", { "$numberInt" : "2" }, true, false, [ { "$add" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } ] ], "document" : { "a" : { "a" : "$$REMOVE" }, "b" : "b is 2" } }
 (1 row)
 
 SELECT bson_dollar_project('{}', '{"array": [{"$substr": ["hello world", 0, -1]}, "1", 2, true, false, {"$literal": [{ "$add":[1, 2] }]}], "document": {"a": { "$literal" : {"a": "$$REMOVE" } }, "b": {"$const": "b is 2"}}, "array2": [{"$literal": "$$ROOT"}, {"$literal": "$$NOW"}, true], "document2": {"result": {"$substr": ["result is: blah", 11, -1]}}}');
-DEBUG:  Optimizing array expression into constant.
-DEBUG:  Optimizing array expression into constant.
+DEBUG:  Transforming array expression into fixed constant.
+DEBUG:  Transforming array expression into fixed constant.
                                                                                                                                    bson_dollar_project                                                                                                                                    
 ---------------------------------------------------------------------
  { "array" : [ "hello world", "1", { "$numberInt" : "2" }, true, false, [ { "$add" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } ] ], "document" : { "a" : { "a" : "$$REMOVE" }, "b" : "b is 2" }, "array2" : [ "$$ROOT", "$$NOW", true ], "document2" : { "result" : "blah" } }

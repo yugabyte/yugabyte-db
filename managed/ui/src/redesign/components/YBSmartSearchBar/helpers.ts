@@ -4,6 +4,7 @@ import { SearchToken } from './YBSmartSearchBar';
 
 export const FieldType = {
   STRING: 'string',
+  STRING_ARRAY: 'string_array',
   BOOLEAN: 'boolean',
   NUMBER: 'number'
 } as const;
@@ -12,6 +13,10 @@ export type FieldType = typeof FieldType[keyof typeof FieldType];
 interface StringField {
   value: string;
   type: typeof FieldType.STRING;
+}
+interface StringArrayField {
+  value: string[];
+  type: typeof FieldType.STRING_ARRAY;
 }
 interface BooleanField {
   value: boolean;
@@ -22,7 +27,13 @@ interface NumberField {
   type: typeof FieldType.NUMBER;
 }
 
-export type SearchCandidate = Record<string, StringField | BooleanField | NumberField>;
+export type SearchCandidate = Record<
+  string,
+  StringField | StringArrayField | BooleanField | NumberField
+>;
+
+const hasStringArraySubstringMatch = (fieldValue: string[], searchTokenValue: string) =>
+  fieldValue.some((element) => hasSubstringMatch(element, searchTokenValue));
 
 /**
  * Regex for numeric comparison
@@ -40,24 +51,42 @@ export const isMatchedBySearchToken = (
 ) => {
   if (!searchToken.modifier) {
     return substringSearchFields.some((substringSearchField) => {
-      const fieldValue = candidate[substringSearchField];
-      return (
-        fieldValue &&
-        fieldValue.type === FieldType.STRING &&
-        hasSubstringMatch(fieldValue.value, searchToken.value)
-      );
+      const { type: fieldType, value: fieldValue } = candidate[substringSearchField] ?? {};
+      if (fieldType === FieldType.STRING) {
+        return fieldValue && hasSubstringMatch(fieldValue, searchToken.value);
+      }
+      if (fieldType === FieldType.STRING_ARRAY) {
+        return (
+          Array.isArray(fieldValue) &&
+          fieldValue.length > 0 &&
+          hasStringArraySubstringMatch(fieldValue, searchToken.value)
+        );
+      }
+      return false;
     });
   }
   const { type: fieldType, value: fieldValue } = candidate[searchToken.modifier] ?? {};
+
+  // If the field value is undefined or null, we consider it not a match for all candidates.
+  if (fieldValue === undefined || fieldValue === null) {
+    return false;
+  }
+
   switch (fieldType) {
     case FieldType.STRING:
       return fieldValue && hasSubstringMatch(fieldValue, searchToken.value);
+    case FieldType.STRING_ARRAY:
+      return (
+        Array.isArray(fieldValue) &&
+        fieldValue.length > 0 &&
+        hasStringArraySubstringMatch(fieldValue, searchToken.value)
+      );
     case FieldType.BOOLEAN:
       return (
         (fieldValue && searchToken.value === 'true') ||
         (!fieldValue && searchToken.value === 'false')
       );
-    case FieldType.NUMBER:
+    case FieldType.NUMBER: {
       const match = NUMERIC_COMPARISON_REGEX.exec(searchToken.value);
       if (match) {
         const comparisonOperator = match[1] as ComparisonOperator;
@@ -75,7 +104,7 @@ export const isMatchedBySearchToken = (
           case '=':
             return fieldValue === comparisonThreshold;
           case '!=':
-            return fieldValue != comparisonThreshold;
+            return fieldValue !== comparisonThreshold;
           default:
             // This should be an unreachable case because we handled all possible
             // strings for the comparison operator.
@@ -87,6 +116,7 @@ export const isMatchedBySearchToken = (
       // If the provided search token value does not match the comparison regex,
       // we consider it not a match for all candidates.
       return false;
+    }
     default:
       return assertUnreachableCase(fieldType);
   }

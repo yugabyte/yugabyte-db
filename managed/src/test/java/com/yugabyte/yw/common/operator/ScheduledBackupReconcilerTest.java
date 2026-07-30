@@ -167,6 +167,9 @@ public class ScheduledBackupReconcilerTest extends FakeDBApplication {
     spec.setTimeBeforeDelete(84600000L);
     spec.setUniverse("test-universe");
     spec.setStorageConfig("test-storageconfig");
+    spec.setUseTablespaces(true);
+    spec.setUseRoles(true);
+    spec.setUsePrivileges(false);
     backupSchedule.setMetadata(metadata);
     backupSchedule.setSpec(spec);
     return backupSchedule;

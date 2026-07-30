@@ -10,7 +10,7 @@ CREATE EXTENSION orafce; -- should fail
 GRANT yb_extension TO regress_priv_user;
 SET SESSION AUTHORIZATION regress_priv_user;
 CREATE EXTENSION pgcrypto;
-ALTER EXTENSION pgcrypto UPDATE TO '1.3';
+ALTER EXTENSION pgcrypto UPDATE TO '1.4';
 DROP EXTENSION pgcrypto;
 CREATE EXTENSION pg_trgm WITH VERSION '1.3';
 ALTER EXTENSION pg_trgm UPDATE TO '1.4';

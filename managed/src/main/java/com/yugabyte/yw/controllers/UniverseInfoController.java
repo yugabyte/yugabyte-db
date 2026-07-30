@@ -132,7 +132,7 @@ public class UniverseInfoController extends AuthenticatedController {
     Set<CloudType> validClouds = ImmutableSet.of(CloudType.aws, CloudType.azu, CloudType.gcp);
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
 
-    if (!userIntent.useSpotInstance || !validClouds.contains(userIntent.providerType)) {
+    if (!userIntent.useSpotInstance || !validClouds.containsAll(userIntent.getAllCloudTypes())) {
       throw new PlatformServiceException(BAD_REQUEST, "The universe doesn't use spot instances.");
     }
 
@@ -441,6 +441,25 @@ public class UniverseInfoController extends AuthenticatedController {
 
     List<MasterInfo> masterInfos = universeInfoHandler.getMasterInfos(universe);
     return PlatformResults.withData(masterInfos);
+  }
+
+  @ApiOperation(
+      notes = "YbaApi Internal. Returns the in-flight state transition details for a universe.",
+      value = "Get universe state transition details",
+      nickname = "getStateTransition",
+      hidden = true,
+      response = JsonNode.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.27.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  // Optional state can be one of "source", "target" or "delta".
+  public Result getStateTransition(UUID customerUUID, UUID universeUUID, String state) {
+    return PlatformResults.withData(
+        universeInfoHandler.getStateTransition(customerUUID, universeUUID, state));
   }
 
   private List<DetailsExt> convertDetails(List<Details> details) {

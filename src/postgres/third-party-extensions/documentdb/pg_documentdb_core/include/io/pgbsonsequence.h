@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/bson/pgbsonsequence.h
+ * include/io/pgbsonsequence.h
  *
  * The BSON Sequence type serialization.
  *

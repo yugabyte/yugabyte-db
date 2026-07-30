@@ -13,9 +13,12 @@
 
 #pragma once
 
+#include <array>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -26,14 +29,21 @@
 #include "yb/common/transaction.pb.h"
 
 #include "yb/util/format.h"
+#include "yb/util/json_document.h"
+#include "yb/util/lw_function.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/type_traits.h"
 #include "yb/util/uuid.h"
 
 namespace yb::pgwrapper {
+
+YB_DEFINE_TYPED_ENUM(PGResultFormat, int,
+    ((kText, 0))
+    ((kBinary, 1)));
 
 struct PGConnClose {
   void operator()(PGconn* conn) const;
@@ -83,6 +93,7 @@ concept BasePGType =
     IsPGNonNeg<T> || IsPGIntType<T> || IsPGFloatType<T> ||
     std::is_same_v<T, bool> || std::is_same_v<T, std::string> || std::is_same_v<T, char> ||
     std::is_same_v<T, PGOid> || std::is_same_v<T, Uuid> || std::is_same_v<T, MonoDelta> ||
+    std::is_same_v<T, JsonDocument> ||
     std::is_same_v<T, std::vector<float>> || std::is_same_v<T, RowAsString>;
 
 template<class T>
@@ -155,6 +166,7 @@ Result<std::string> ToString(const PGresult* result, int row, int column);
 
 std::string PqEscapeLiteral(const std::string& input);
 std::string PqEscapeIdentifier(const std::string& input);
+std::string PqEscapeStringConn(const std::string& input);
 
 namespace libpq_utils::internal {
 
@@ -248,6 +260,55 @@ class FetchHelper<RowAsString> {
   static RowsResult FetchRows(Result<PGResultPtr>&& source);
 };
 
+struct CopyOptions {
+  std::optional<size_t> rows_per_txn{};
+};
+
+class CopyController;
+
+class RowMakerImpl {
+ public:
+  explicit RowMakerImpl(CopyController& impl) : impl_(impl) {}
+
+  template<class... Args>
+  void operator()(const Args&... args) {
+    StartRow(sizeof...(Args));
+    DoPut(args...);
+  }
+
+ private:
+  template<class T, class... Tail>
+  void DoPut(const T& v, const Tail&... tail) {
+    Put(v);
+    if constexpr (sizeof...(Tail) > 0) {
+      DoPut(tail...);
+    }
+  }
+
+  void Put(int32_t value);
+  void Put(int64_t value);
+  void Put(std::string_view value);
+  void StartRow(uint16_t columns);
+
+  CopyController& impl_;
+};
+
+template<class... Args>
+class RowMaker {
+ public:
+  explicit RowMaker(CopyController& controller) : impl_(controller) {}
+
+  void operator()(const Args&... args) { impl_(args...); }
+
+ private:
+  RowMakerImpl impl_;
+};
+
+template<class T, class... Args>
+auto MakeRowMaker(CopyController& controller, void (T::*)(RowMaker<Args...>&) const) {
+  return RowMaker<Args...>{controller};
+}
+
 } // namespace libpq_utils::internal
 
 class PGConn {
@@ -262,17 +323,22 @@ class PGConn {
   static Result<PGConn> Connect(
       const std::string& conn_str,
       bool simple_query_protocol,
-      const std::string& conn_str_for_log) {
+      const std::string& conn_str_for_log,
+      const std::function<bool()>& should_stop = {}) {
     return Connect(conn_str,
                    CoarseMonoClock::Now() + MonoDelta::FromSeconds(60) /* deadline */,
                    simple_query_protocol,
-                   conn_str_for_log);
+                   conn_str_for_log,
+                   should_stop);
   }
+  // If should_stop is provided, the retry loop gives up as soon as it returns true (e.g. the caller
+  // is shutting down). This is checked between connection attempts, not during one.
   static Result<PGConn> Connect(
       const std::string& conn_str,
       CoarseTimePoint deadline,
       bool simple_query_protocol,
-      const std::string& conn_str_for_log);
+      const std::string& conn_str_for_log,
+      const std::function<bool()>& should_stop = {});
 
   // Reconnect.
   void Reset();
@@ -293,7 +359,10 @@ class PGConn {
 
   ConnStatusType ConnStatus();
 
-  Result<PGResultPtr> Fetch(const std::string& command);
+  Result<PGResultPtr> Fetch(
+      const std::string& command,
+      std::optional<PGResultFormat> data_format = std::nullopt,
+      const std::vector<const char*>& params = {});
 
   template <class... Args>
   requires(sizeof...(Args) > 0)
@@ -304,6 +373,7 @@ class PGConn {
   // Fetches data matrix of specified size. I.e. exact number of rows and columns are expected.
   Result<PGResultPtr> FetchMatrix(const std::string& command, int rows, int columns);
 
+  // TODO (#30816): FetchRow<T> for non-string types fails on simple query protocol connections
   template <class... Args>
   auto FetchRow(const std::string& query) {
     return libpq_utils::internal::FetchHelper<Args...>::FetchRow(Fetch(query));
@@ -329,42 +399,59 @@ class PGConn {
 
   Status TestFailDdl(const std::string& ddl_to_fail);
 
+  void SetNoticeProcessor(PQnoticeProcessor proc, void* arg) {
+    PQsetNoticeProcessor(impl_.get(), proc, arg);
+  }
+
   // Would this query use an index [only] scan?
   Result<bool> HasIndexScan(const std::string& query);
   Result<bool> HasScanType(const std::string& query, const std::string expected_scan_type);
 
-  Status CopyBegin(const std::string& command);
-  Result<PGResultPtr> CopyEnd();
+  template<class... Args>
+  using RowMaker = libpq_utils::internal::RowMaker<Args...>;
+  using CopyOptions = libpq_utils::internal::CopyOptions;
+  using CopyController = libpq_utils::internal::CopyController;
 
-  void CopyStartRow(int16_t columns);
-
-  void CopyPutInt16(int16_t value);
-  void CopyPutInt32(int32_t value);
-  void CopyPutInt64(int64_t value);
-  void CopyPut(const char* value, size_t len);
-
-  void CopyPutString(const std::string& value) {
-    CopyPut(value.c_str(), value.length());
-  }
-
-  PGconn* get() {
-    return impl_.get();
+  template<class RowProvider, class... Args>
+  Status CopyFromStdin(
+      std::string_view table, const RowProvider& row_provider, const CopyOptions& options = {}) {
+    return DoCopyFromStdin(
+        table, options,
+        make_lw_function([&row_provider](CopyController& controller) {
+          auto maker = MakeRowMaker(controller, &RowProvider::operator());
+          row_provider(maker);
+        }));
   }
 
  private:
-  struct CopyData;
+  using ControllerReceiver = LWFunction<void(CopyController&)>;
+
+  Status DoCopyFromStdin(
+      std::string_view table, const CopyOptions& options, const ControllerReceiver& receiver);
 
   PGConn(PGConnPtr ptr, bool simple_query_protocol);
 
-  bool CopyEnsureBuffer(size_t len);
-  bool CopyFlushBuffer();
+  using CopyBuffer = std::array<char, 2048>;
 
   PGConnPtr impl_;
   bool simple_query_protocol_;
-  std::unique_ptr<CopyData> copy_data_;
+  std::unique_ptr<CopyBuffer> copy_buffer_;
 };
 
 // Settings to pass to PGConnBuilder.
+// Wire names for the YbInternalConnKind values from
+// src/postgres/src/include/yb_internal_conn.h. Keep this header free of any
+// postgres include just so libpq_utils stays usable from build targets that
+// don't link the postgres backend.
+//
+// To add a new kind: append the constant here AND add a descriptor row in
+// yb_internal_conn.c with the same wire name.
+namespace YbInternalConnKindWireName {
+inline constexpr std::string_view kRelcacheInit = "relcache_init";
+inline constexpr std::string_view kGlobalView = "global_view";
+inline constexpr std::string_view kAutoAnalyze = "auto_analyze";
+}  // namespace YbInternalConnKindWireName
+
 struct PGConnSettings {
   constexpr static const char* kDefaultUser = "postgres";
 
@@ -375,7 +462,13 @@ struct PGConnSettings {
   std::string password = {};
   std::string replication = {};
   size_t connect_timeout = 0;
-  bool yb_auto_analyze = false;
+  // Wire name of the YbInternalConnKind this connection should be assigned.
+  // Empty for a regular client connection.
+  std::string yb_internal_conn_kind = {};
+  // If set, the connect retry loop gives up as soon as this returns true (e.g. the owning server is
+  // shutting down). Checked between connection attempts, not during one. Carried by the builder, so
+  // it also applies to any later reconnect made from a stored builder.
+  std::function<bool()> should_stop = {};
 };
 
 class PGConnBuilder {
@@ -387,6 +480,7 @@ class PGConnBuilder {
   const std::string conn_str_;
   const std::string conn_str_for_log_;
   const size_t connect_timeout_;
+  const std::function<bool()> should_stop_;
 };
 
 Result<PGConn> Execute(Result<PGConn> connection, const std::string& query);
@@ -409,8 +503,10 @@ class PGConnPerf {
 // authentication).
 PGConnBuilder CreateInternalPGConnBuilder(
     const HostPort& pgsql_proxy_bind_address, const std::string& database_name,
-    uint64_t postgres_auth_key, const std::optional<CoarseTimePoint>& deadline,
-    bool yb_auto_analyze = false);
+    std::string_view user, uint64_t postgres_auth_key,
+    const std::optional<CoarseTimePoint>& deadline,
+    std::string_view yb_internal_conn_kind = {},
+    std::function<bool()> should_stop = {});
 
 Result<std::string> ResultAsString(
     PGresult* res, const std::string& column_sep = DefaultColumnSeparator(),

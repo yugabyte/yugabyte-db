@@ -1,5 +1,6 @@
 import { useQuery } from 'react-query';
 import { fetchLiveQueries, fetchSlowQueries } from '../../../actions/universe';
+import { isNonEmptyArray } from '@app/utils/ObjectUtils';
 
 const LIVE_QUERY_REFETCH_INTERVAL = 60000;
 
@@ -89,6 +90,9 @@ export const useSlowQueriesApi = ({ universeUUID, enabled, defaultStaleTime = 60
 };
 
 export const hasSubstringMatch = (text, pattern, caseSensitive = false) => {
+  if (typeof text !== 'string' || typeof pattern !== 'string') {
+    return false;
+  }
   if (!caseSensitive) {
     text = text.toLowerCase();
     pattern = pattern.toLowerCase();
@@ -138,6 +142,10 @@ const hasTokenMatch = (query, token, keyMap) => {
       }
       return query[column.value] === parseFloat(token.value.trim());
     } else if (column.type === 'timestamp') {
+      const rawTimestamp = query[column.value];
+      if (typeof rawTimestamp !== 'string') {
+        return false;
+      }
       /**
        * Test for date-time comparisons similar to Github search syntax above.
        * Currently do not support YYYY-MM-DD comparisons and must include the time
@@ -158,7 +166,7 @@ const hasTokenMatch = (query, token, keyMap) => {
         }
         const lowerTimeRange = match[11];
         const upperTimeRange = match[19];
-        const queryTime = new Date(query[column.value]);
+        const queryTime = new Date(rawTimestamp);
         if (upperTimeRange === '*' && lowerTimeRange !== '*') {
           return queryTime >= new Date(lowerTimeRange);
         } else if (lowerTimeRange === '*' && upperTimeRange !== '*') {
@@ -167,11 +175,13 @@ const hasTokenMatch = (query, token, keyMap) => {
           return queryTime >= new Date(lowerTimeRange) && queryTime <= new Date(upperTimeRange);
         }
       }
-      return query[column.value].includes(token.value.trim());
+      return rawTimestamp.includes(token.value.trim());
     } else if (column.type === 'stringArray') {
+      const arrayValue = query[column.value];
       return (
         column.value in query &&
-        query[column.value].some((element) => hasSubstringMatch(element, token.value))
+        isNonEmptyArray(arrayValue) &&
+        arrayValue.some((element) => hasSubstringMatch(element, token.value))
       );
     } else {
       return column.value in query && hasSubstringMatch(query[column.value], token.value);
@@ -183,7 +193,8 @@ const hasTokenMatch = (query, token, keyMap) => {
 };
 
 const comparisonRegex = /(^([><]=?)(\d+))|(^(\d+|\*)\.\.(\d+|\*))/;
-const timestampRegex = /(^([><]=?)((\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\+\d{2}:\d{2})?))|^((\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\+\d{2}:\d{2})?|\*)\.\.((\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\+\d{2}:\d{2})?|\*)/;
+const timestampRegex =
+  /(^([><]=?)((\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\+\d{2}:\d{2})?))|^((\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\+\d{2}:\d{2})?|\*)\.\.((\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\+\d{2}:\d{2})?|\*)/;
 
 export const filterBySearchTokens = (arr, searchTokens, keyMap, quickFilters = []) => {
   return arr.filter((query) => {

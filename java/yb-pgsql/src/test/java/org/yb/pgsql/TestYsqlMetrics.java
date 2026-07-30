@@ -68,17 +68,28 @@ public class TestYsqlMetrics extends BasePgSQLTest {
     //    Connection Manager query metrics should not differ from those of the
     //    Postgres port query metrics after achieving steady state.
     if (isTestRunningWithConnectionManager()) {
-      // The first query while connecting to each physical connection will
-      // require the client startup parameters provided by the JDBC driver
-      // to be sent to the server. Expect 3 queries within the
-      // OTHER_STMT_METRIC corresponding to these startup parameters, namely:
-      // 1. RESET ALL,
-      // 2. SET extra_float_digits=E'2',
-      // 3. SET DateStyle=E'ISO'
-      // Note that the connection is a global object that has been used 2 times
-      // before this block of code; remove 2 iterations of the loop.
-      for (int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT - 2; i++) {
-        verifyStatementMetric(statement, "SELECT 1", OTHER_STMT_METRIC, 3, 0, 1, true);
+      // Queries issued so far are routed round-robin across backends (S1, S2, S3, ...):
+      //   SET application_name=...      -> S1  (sets application_name)
+      //   SET extra_float_digits=...    -> S2  (sets application_name + extra_float_digits)
+      //   GRANT ALL ON SCHEMA public... -> S3  (sets application_name + extra_float_digits)
+      //   CREATE TABLE dummy_table...   -> S1  (sets extra_float_digits; application_name
+      //                                         was already set on S1's first visit)
+      //
+      // After these 4 queries S1, S2, and S3 all have both GUCs in sync with the client
+      // cache, so CONN_MGR_WARMUP_BACKEND_COUNT == 3 is already at steady state.
+      //
+      // For CONN_MGR_WARMUP_BACKEND_COUNT >= 4, backends S4..SN have never been visited,
+      // so conn mgr would set application_name and extra_float_digits (2 setup queries).
+      // Additionally, after visiting S4..SN the round-robin returns to S1, which still
+      // needs extra_float_digits (1 setup query) to bring it steady state. This is
+      // because S1 was the very first backend visited, when only application_name was
+      // in the client's GUC cache.
+      for (int i = 0; i < CONN_MGR_WARMUP_BACKEND_COUNT - 4; i++) {
+        verifyStatementMetric(statement, "SELECT 1", OTHER_STMT_METRIC, 2, 0, 1, true);
+      }
+      if (CONN_MGR_WARMUP_BACKEND_COUNT >= 4) {
+        // This will go on S1 to set extra_float_digits.
+        verifyStatementMetric(statement, "SELECT 1", OTHER_STMT_METRIC, 1, 0, 1, true);
       }
 
       // The client's GUC cache should now match each of the servers' caches.
@@ -258,13 +269,10 @@ public class TestYsqlMetrics extends BasePgSQLTest {
   }
 
   @Test
+  // Reason for bypassing Connection Manager is mentioned in the test below wherever it fails.
+  @BypassConnMgr(reason = CATALOG_CACHE_MISS_NEED_UNIQUE_PHYSICAL_CONN)
   public void testMetricRows() throws Exception {
-    // Reason for skipping the test with Connection Manager is mentioned in the test below wherever
-    // it fails.
-    skipYsqlConnMgr(CATALOG_CACHE_MISS_NEED_UNIQUE_PHYSICAL_CONN,
-          isTestRunningWithConnectionManager());
     try (Statement stmt = getConnectionBuilder()
-                          .withConnectionEndpoint(ConnectionEndpoint.DEFAULT)
                           .connect()
                           .createStatement()) {
 

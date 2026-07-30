@@ -3,50 +3,50 @@ SET citus.next_shard_id TO 9610000;
 SET documentdb.next_collection_id TO 961000;
 SET documentdb.next_collection_index_id TO 961000;
 -- Insert data
-SELECT documentdb_api.insert_one('db','facet',' { "_id" : 1, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
+SELECT documentdb_api.insert_one('db','facetTest',' { "_id" : 1, "product" : "beer", "unitPrice" : 12, "stock" : 2 }', NULL);
 NOTICE:  creating collection
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','facet',' { "_id" : 2, "item" : "pecans", "price" : 20, "quantity" : 1 }', NULL);
+SELECT documentdb_api.insert_one('db','facetTest',' { "_id" : 2, "product" : "red wine", "unitPrice" : 20, "stock" : 1 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','facet',' { "_id" : 3, "item" : "bread", "price" : 10, "quantity" : 5 }', NULL);
+SELECT documentdb_api.insert_one('db','facetTest',' { "_id" : 3, "product" : "bread", "unitPrice" : 10, "stock" : 5 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','facet',' { "_id" : 4, "item" : ["almonds", "bread", "pecans"], "price" : 10, "quantity" : 5 }', NULL);
+SELECT documentdb_api.insert_one('db','facetTest',' { "_id" : 4, "product" : ["beer", "bread", "red wine"], "unitPrice" : 10, "stock" : 5 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','facet',' { "_id" : 5, "item" : "almonds", "price" : 12, "quantity" : 2 }', NULL);
+SELECT documentdb_api.insert_one('db','facetTest',' { "_id" : 5, "product" : "beer", "unitPrice" : 12, "stock" : 2 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','facet',' { "_id" : 6, "item" : "pecans", "price" : 20, "quantity" : 1 }', NULL);
+SELECT documentdb_api.insert_one('db','facetTest',' { "_id" : 6, "product" : "red wine", "unitPrice" : 20, "stock" : 1 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','facet',' { "_id" : 7, "item" : "bread", "price" : 10, "quantity" : 5 }', NULL);
+SELECT documentdb_api.insert_one('db','facetTest',' { "_id" : 7, "product" : "bread", "unitPrice" : 10, "stock" : 5 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SELECT documentdb_api.insert_one('db','facet',' { "_id" : 8, "item" : ["almonds", "bread", "pecans"], "price" : 10, "quantity" : 5 }', NULL);
+SELECT documentdb_api.insert_one('db','facetTest',' { "_id" : 8, "product" : ["beer", "bread", "red wine"], "unitPrice" : 10, "stock" : 5 }', NULL);
                               insert_one                              
 ---------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
@@ -60,16 +60,16 @@ SELECT bson_array_agg(document, 'myarray'::text) FROM documentdb_api.collection(
 (1 row)
 
 -- Test filter generation 
-SELECT bson_array_agg(document, 'myarray'::text) FROM documentdb_api.collection('db', 'facet');
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       bson_array_agg                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
+SELECT bson_array_agg(document, 'myarray'::text) FROM documentdb_api.collection('db', 'facetTest');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     bson_array_agg                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
 ---------------------------------------------------------------------
- { "myarray" : [ { "_id" : { "$numberInt" : "1" }, "item" : "almonds", "price" : { "$numberInt" : "12" }, "quantity" : { "$numberInt" : "2" } }, { "_id" : { "$numberInt" : "2" }, "item" : "pecans", "price" : { "$numberInt" : "20" }, "quantity" : { "$numberInt" : "1" } }, { "_id" : { "$numberInt" : "3" }, "item" : "bread", "price" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "5" } }, { "_id" : { "$numberInt" : "4" }, "item" : [ "almonds", "bread", "pecans" ], "price" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "5" } }, { "_id" : { "$numberInt" : "5" }, "item" : "almonds", "price" : { "$numberInt" : "12" }, "quantity" : { "$numberInt" : "2" } }, { "_id" : { "$numberInt" : "6" }, "item" : "pecans", "price" : { "$numberInt" : "20" }, "quantity" : { "$numberInt" : "1" } }, { "_id" : { "$numberInt" : "7" }, "item" : "bread", "price" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "5" } }, { "_id" : { "$numberInt" : "8" }, "item" : [ "almonds", "bread", "pecans" ], "price" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "5" } } ] }
+ { "myarray" : [ { "_id" : { "$numberInt" : "1" }, "product" : "beer", "unitPrice" : { "$numberInt" : "12" }, "stock" : { "$numberInt" : "2" } }, { "_id" : { "$numberInt" : "2" }, "product" : "red wine", "unitPrice" : { "$numberInt" : "20" }, "stock" : { "$numberInt" : "1" } }, { "_id" : { "$numberInt" : "3" }, "product" : "bread", "unitPrice" : { "$numberInt" : "10" }, "stock" : { "$numberInt" : "5" } }, { "_id" : { "$numberInt" : "4" }, "product" : [ "beer", "bread", "red wine" ], "unitPrice" : { "$numberInt" : "10" }, "stock" : { "$numberInt" : "5" } }, { "_id" : { "$numberInt" : "5" }, "product" : "beer", "unitPrice" : { "$numberInt" : "12" }, "stock" : { "$numberInt" : "2" } }, { "_id" : { "$numberInt" : "6" }, "product" : "red wine", "unitPrice" : { "$numberInt" : "20" }, "stock" : { "$numberInt" : "1" } }, { "_id" : { "$numberInt" : "7" }, "product" : "bread", "unitPrice" : { "$numberInt" : "10" }, "stock" : { "$numberInt" : "5" } }, { "_id" : { "$numberInt" : "8" }, "product" : [ "beer", "bread", "red wine" ], "unitPrice" : { "$numberInt" : "10" }, "stock" : { "$numberInt" : "5" } } ] }
 (1 row)
 
-SELECT bson_object_agg(document) FROM documentdb_api.collection('db', 'facet');
-                                                                    bson_object_agg                                                                    
+SELECT bson_object_agg(document) FROM documentdb_api.collection('db', 'facetTest');
+                                                                     bson_object_agg                                                                      
 ---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "8" }, "item" : [ "almonds", "bread", "pecans" ], "price" : { "$numberInt" : "10" }, "quantity" : { "$numberInt" : "5" } }
+ { "_id" : { "$numberInt" : "8" }, "product" : [ "beer", "bread", "red wine" ], "unitPrice" : { "$numberInt" : "10" }, "stock" : { "$numberInt" : "5" } }
 (1 row)
 
 -- Test full facetSQL sql
@@ -77,20 +77,20 @@ WITH "stage0" as (
   SELECT 
     documentdb_api_catalog.bson_dollar_add_fields(document, '{ "name" : { "$numberInt" : "1" } }'::bson) as document 
   FROM 
-    documentdb_api.collection('db', 'facet')
+    documentdb_api.collection('db', 'facetTest')
 ), 
 "stage1" as (
   WITH FacetStage AS (
     WITH "FacetStage00" as (
       SELECT 
-        bson_expression_get(document, '{ "_id" : "$price" }'::bson, true) AS "accid", 
+        bson_expression_get(document, '{ "_id" : "$unitPrice" }'::bson, true) AS "accid", 
         BSONFIRSTONSORTED(
-          bson_expression_get(document, '{ "$first" : "$quantity" }'::bson, true)
+          bson_expression_get(document, '{ "$first" : "$stock" }'::bson, true)
         ) AS "acc0" 
       FROM 
-        documentdb_api.collection('db', 'facet')
+        documentdb_api.collection('db', 'facetTest')
       GROUP BY 
-        bson_expression_get(document, '{ "_id" : "$price" }'::bson, true)
+        bson_expression_get(document, '{ "_id" : "$unitPrice" }'::bson, true)
     ), 
     "FacetStage01" as (
       SELECT 
@@ -102,14 +102,14 @@ WITH "stage0" as (
     ), 
     "FacetStage10" as (
       SELECT 
-        bson_expression_get(document, '{ "_id" : "$price" }'::bson, true) AS "accid", 
+        bson_expression_get(document, '{ "_id" : "$unitPrice" }'::bson, true) AS "accid", 
         BSONLASTONSORTED(
-          bson_expression_get(document, '{ "$last" : "$quantity" }'::bson, true)
+          bson_expression_get(document, '{ "$last" : "$stock" }'::bson, true)
         ) AS "acc0" 
       FROM 
-        documentdb_api.collection('db', 'facet') 
+        documentdb_api.collection('db', 'facetTest') 
       GROUP BY 
-        bson_expression_get(document, '{ "_id" : "$price" }'::bson, true)
+        bson_expression_get(document, '{ "_id" : "$unitPrice" }'::bson, true)
     ), 
     "FacetStage11" as (
       SELECT 
@@ -155,20 +155,20 @@ WITH "stage0" as (
   SELECT 
     documentdb_api_catalog.bson_dollar_add_fields(document, '{ "name" : { "$numberInt" : "1" } }'::bson) as document 
   FROM 
-    documentdb_api.collection('db', 'facet')
+    documentdb_api.collection('db', 'facetTest')
 ), 
 "stage1" as (
   WITH FacetStage AS (
     WITH "FacetStage00" as (
       SELECT 
-        bson_expression_get(document, '{ "_id" : "$price" }'::bson, true) AS "accid", 
+        bson_expression_get(document, '{ "_id" : "$unitPrice" }'::bson, true) AS "accid", 
         BSONFIRSTONSORTED(
-          bson_expression_get(document, '{ "$first" : "$quantity" }'::bson, true)
+          bson_expression_get(document, '{ "$first" : "$stock" }'::bson, true)
         ) AS "acc0" 
       FROM 
-        documentdb_api.collection('db', 'facet')
+        documentdb_api.collection('db', 'facetTest')
       GROUP BY 
-        bson_expression_get(document, '{ "_id" : "$price" }'::bson, true)
+        bson_expression_get(document, '{ "_id" : "$unitPrice" }'::bson, true)
     ), 
     "FacetStage01" as (
       SELECT 
@@ -180,14 +180,14 @@ WITH "stage0" as (
     ), 
     "FacetStage10" as (
       SELECT 
-        bson_expression_get(document, '{ "_id" : "$price" }'::bson, true) AS "accid", 
+        bson_expression_get(document, '{ "_id" : "$unitPrice" }'::bson, true) AS "accid", 
         BSONLASTONSORTED(
-          bson_expression_get(document, '{ "$last" : "$quantity" }'::bson, true)
+          bson_expression_get(document, '{ "$last" : "$stock" }'::bson, true)
         ) AS "acc0" 
       FROM 
-        documentdb_api.collection('db', 'facet') 
+        documentdb_api.collection('db', 'facetTest') 
       GROUP BY 
-        bson_expression_get(document, '{ "_id" : "$price" }'::bson, true)
+        bson_expression_get(document, '{ "_id" : "$unitPrice" }'::bson, true)
     ), 
     "FacetStage11" as (
       SELECT 
@@ -213,7 +213,7 @@ WITH "stage0" as (
     FacetStage
 ) SELECT * from "stage1"
 ROLBACK;
-                                                                                  QUERY PLAN                                                                                   
+                                                                                    QUERY PLAN                                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -226,18 +226,18 @@ ROLBACK;
                      ->  Parallel Append
                            ->  Aggregate
                                  ->  GroupAggregate
-                                       Group Key: (documentdb_api_catalog.bson_expression_get(collection.document, '{ "_id" : "$price" }'::documentdb_core.bson, true))
+                                       Group Key: (documentdb_api_catalog.bson_expression_get(collection.document, '{ "_id" : "$unitPrice" }'::documentdb_core.bson, true))
                                        ->  Sort
-                                             Sort Key: (documentdb_api_catalog.bson_expression_get(collection.document, '{ "_id" : "$price" }'::documentdb_core.bson, true))
+                                             Sort Key: (documentdb_api_catalog.bson_expression_get(collection.document, '{ "_id" : "$unitPrice" }'::documentdb_core.bson, true))
                                              ->  Bitmap Heap Scan on documents_961000_9610003 collection
                                                    Recheck Cond: (shard_key_value = '961000'::bigint)
                                                    ->  Bitmap Index Scan on _id_
                                                          Index Cond: (shard_key_value = '961000'::bigint)
                            ->  Aggregate
                                  ->  GroupAggregate
-                                       Group Key: (documentdb_api_catalog.bson_expression_get(collection_1.document, '{ "_id" : "$price" }'::documentdb_core.bson, true))
+                                       Group Key: (documentdb_api_catalog.bson_expression_get(collection_1.document, '{ "_id" : "$unitPrice" }'::documentdb_core.bson, true))
                                        ->  Sort
-                                             Sort Key: (documentdb_api_catalog.bson_expression_get(collection_1.document, '{ "_id" : "$price" }'::documentdb_core.bson, true))
+                                             Sort Key: (documentdb_api_catalog.bson_expression_get(collection_1.document, '{ "_id" : "$unitPrice" }'::documentdb_core.bson, true))
                                              ->  Bitmap Heap Scan on documents_961000_9610003 collection_1
                                                    Recheck Cond: (shard_key_value = '961000'::bigint)
                                                    ->  Bitmap Index Scan on _id_

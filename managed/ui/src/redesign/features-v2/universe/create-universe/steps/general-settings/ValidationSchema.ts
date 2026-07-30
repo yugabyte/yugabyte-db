@@ -9,12 +9,15 @@ export const GeneralSettingsValidationSchema = (t: TFunction) => {
       .required(t('errMsg.universeNameRequired'))
       .test(
         'uniqueUniverseName',
-        t('errMsg.universeNameUnique'),
-        async function validateUniqueUniverseName(value) {
+        'Error',
+        async function validateUniqueUniverseName(this: Yup.TestContext, value: string | null | undefined) {
           if (!value) return true;
           try {
             const universes = await api.findUniverseByName(value);
-            return universes.length === 0;
+            if (universes.length === 0) return true;
+            return this.createError({
+              message: t('errMsg.universeNameUnique', { display_name: value })
+            });
           } catch {
             return true;
           }

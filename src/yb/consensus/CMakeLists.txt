@@ -141,6 +141,7 @@ add_dependencies(consensus gen_src_yb_tserver_tserver_service_proto)
 
 target_link_libraries(consensus
   consensus_proto
+  cdc_service_proto
   yb_common
   log
   protobuf)
@@ -181,5 +182,6 @@ target_link_libraries(log-dump
   yb_docdb
   encryption
   yb_tools_util
+  tablet_metadata
   ${YB_BASE_LIBS})
 add_dependencies(log-dump gen_src_yb_rpc_any_proto)

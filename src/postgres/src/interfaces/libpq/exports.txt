@@ -186,3 +186,5 @@ PQpipelineStatus          183
 PQsetTraceFlags           184
 PQmblenBounded            185
 PQsendFlushRequest        186
+# YugabyteDB-specific export. High ordinal to avoid conflicts with future upstream PG additions.
+YbPQsaveMessageField      10001

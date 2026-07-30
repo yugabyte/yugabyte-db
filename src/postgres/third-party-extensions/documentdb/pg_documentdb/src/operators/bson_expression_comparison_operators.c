@@ -235,7 +235,7 @@ CompareExpressionBsonValues(const bson_value_t *firstValue,
 
 /*
  * Evaluates the output of an $eq expression.
- * $eq is expressed as { "$eq": [ <expression>, <expression> ] }
+ * $eq is expressed as { "$eq": [ <>, <> ] }
  * We evaluate the inner expressions and then return a bool.
  * true if the values are equivalent, false otherwise.
  */
@@ -249,7 +249,7 @@ HandlePreParsedDollarEq(pgbson *doc, void *arguments, ExpressionResult *expressi
 
 /*
  * Parses an $eq expression and sets the parsed data in the data argument.
- * $eq is expressed as { "$eq": [ <expression>, <expression> ] }
+ * $eq is expressed as { "$eq": [ <>, <> ] }
  */
 void
 ParseDollarEq(const bson_value_t *argument, AggregationExpressionData *data,
@@ -261,7 +261,7 @@ ParseDollarEq(const bson_value_t *argument, AggregationExpressionData *data,
 
 /*
  * Evaluates the output of an $cmp expression.
- * $cmp is expressed as { "$cmp": [ <expression>, <expression> ] }
+ * $cmp is expressed as { "$cmp": [ <>, <> ] }
  * We evaluate the inner expressions and then return an int32.
  * 0 if the values are equivalent, 1 if the first expression is greater than the second
  * and -1 if the first expression is less than the second.
@@ -276,7 +276,7 @@ HandlePreParsedDollarCmp(pgbson *doc, void *arguments, ExpressionResult *express
 
 /*
  * Parses an $cmp expression and sets the parsed data in the data argument.
- * $cmp is expressed as { "$cmp": [ <expression>, <expression> ] }
+ * $cmp is expressed as { "$cmp": [ <>, <> ] }
  */
 void
 ParseDollarCmp(const bson_value_t *argument, AggregationExpressionData *data,
@@ -288,7 +288,7 @@ ParseDollarCmp(const bson_value_t *argument, AggregationExpressionData *data,
 
 /*
  * Evaluates the output of an $gt expression.
- * $gt is expressed as { "$gt": [ <expression>, <expression> ] }
+ * $gt is expressed as { "$gt": [ <>, <> ] }
  * We evaluate the inner expressions and then return a bool.
  * true if the first value is greater than the second value, false otherwise.
  */
@@ -302,7 +302,7 @@ HandlePreParsedDollarGt(pgbson *doc, void *arguments, ExpressionResult *expressi
 
 /*
  * Parses an $gt expression and sets the parsed data in the data argument.
- * $gt is expressed as { "$gt": [ <expression>, <expression> ] }
+ * $gt is expressed as { "$gt": [ <>, <> ] }
  */
 void
 ParseDollarGt(const bson_value_t *argument, AggregationExpressionData *data,
@@ -314,7 +314,7 @@ ParseDollarGt(const bson_value_t *argument, AggregationExpressionData *data,
 
 /*
  * Evaluates the output of an $gte expression.
- * $gte is expressed as { "$gte": [ <expression>, <expression> ] }
+ * $gte is expressed as { "$gte": [ <>, <> ] }
  * We evaluate the inner expressions and then return a bool.
  * true if the first value is greater or equal than the second value, false otherwise.
  */
@@ -328,7 +328,7 @@ HandlePreParsedDollarGte(pgbson *doc, void *arguments, ExpressionResult *express
 
 /*
  * Parses an $gte expression and sets the parsed data in the data argument.
- * $gte is expressed as { "$gte": [ <expression>, <expression> ] }
+ * $gte is expressed as { "$gte": [ <>, <> ] }
  */
 void
 ParseDollarGte(const bson_value_t *argument, AggregationExpressionData *data,
@@ -340,7 +340,7 @@ ParseDollarGte(const bson_value_t *argument, AggregationExpressionData *data,
 
 /*
  * Evaluates the output of an $lt expression.
- * $lt is expressed as { "$lt": [ <expression>, <expression> ] }
+ * $lt is expressed as { "$lt": [ <>, <> ] }
  * We evaluate the inner expressions and then return a bool.
  * true if the first value is less than the second value, false otherwise.
  */
@@ -354,7 +354,7 @@ HandlePreParsedDollarLt(pgbson *doc, void *arguments, ExpressionResult *expressi
 
 /*
  * Parses an $lt expression and sets the parsed data in the data argument.
- * $lt is expressed as { "$lt": [ <expression>, <expression> ] }
+ * $lt is expressed as { "$lt": [ <>, <> ] }
  */
 void
 ParseDollarLt(const bson_value_t *argument, AggregationExpressionData *data,
@@ -366,7 +366,7 @@ ParseDollarLt(const bson_value_t *argument, AggregationExpressionData *data,
 
 /*
  * Evaluates the output of an $lte expression.
- * $lte is expressed as { "$lte": [ <expression>, <expression> ] }
+ * $lte is expressed as { "$lte": [ <>, <> ] }
  * We evaluate the inner expressions and then return a bool.
  * true if the first value is less or equal than the second value, false otherwise.
  */
@@ -380,7 +380,7 @@ HandlePreParsedDollarLte(pgbson *doc, void *arguments, ExpressionResult *express
 
 /*
  * Parses an $lte expression and sets the parsed data in the data argument.
- * $lte is expressed as { "$lte": [ <expression>, <expression> ] }
+ * $lte is expressed as { "$lte": [ <>, <> ] }
  */
 void
 ParseDollarLte(const bson_value_t *argument, AggregationExpressionData *data,
@@ -392,7 +392,7 @@ ParseDollarLte(const bson_value_t *argument, AggregationExpressionData *data,
 
 /*
  * Evaluates the output of an $ne expression.
- * $ne is expressed as { "$ne": [ <expression>, <expression> ] }
+ * $ne is expressed as { "$ne": [ <>, <> ] }
  * We evaluate the inner expressions and then return a bool.
  * true if the values are not equivalent, false otherwise.
  */
@@ -406,7 +406,7 @@ HandlePreParsedDollarNe(pgbson *doc, void *arguments, ExpressionResult *expressi
 
 /*
  * Parses an $ne expression and sets the parsed data in the data argument.
- * $ne is expressed as { "$ne": [ <expression>, <expression> ] }
+ * $ne is expressed as { "$ne": [ <>, <> ] }
  */
 void
 ParseDollarNe(const bson_value_t *argument, AggregationExpressionData *data,

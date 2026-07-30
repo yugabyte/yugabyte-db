@@ -27,6 +27,7 @@
 #include "yb/master/async_rpc_tasks_base.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/master.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_snapshot_coordinator.h"
@@ -40,28 +41,29 @@
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
+#include "yb/util/tostring.h"
 #include "yb/util/unique_lock.h"
 
-using std::vector;
-
 DEFINE_RUNTIME_int32(process_split_tablet_candidates_interval_msec, 0,
-             "The minimum time between automatic splitting attempts. The actual splitting time "
-             "between runs is also affected by catalog_manager_bg_task_wait_ms, which controls how "
-             "long the bg tasks thread sleeps at the end of each loop. The top-level automatic "
-             "tablet splitting method, which checks for the time since last run, is run once per "
-             "loop.");
+    "The minimum time between automatic splitting attempts. The actual splitting time "
+    "between runs is also affected by catalog_manager_bg_task_wait_ms, which controls how "
+    "long the bg tasks thread sleeps at the end of each loop. The top-level automatic "
+    "tablet splitting method, which checks for the time since last run, is run once per "
+    "loop.");
 DEPRECATE_FLAG(int32, max_queued_split_candidates, "10_2022");
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 
 DEFINE_RUNTIME_uint64(outstanding_tablet_split_limit, 0,
-              "Limit of the number of outstanding tablet splits. Limitation is disabled if this "
-              "value is set to 0.");
+    "Limit of the number of outstanding tablet splits. Limitation is disabled if this "
+    "value is set to 0.");
 
-DEFINE_RUNTIME_uint64(outstanding_tablet_split_limit_per_tserver, 1,
-              "Limit of the number of outstanding tablet splits per node. Limitation is disabled "
-              "if this value is set to 0.");
+DEFINE_RUNTIME_uint64(outstanding_tablet_split_limit_per_tserver, 3,
+    "Limit of the number of outstanding tablet splits per node. Limitation is disabled "
+    "if this value is set to 0.");
 
 DECLARE_bool(TEST_validate_all_tablet_candidates);
 
@@ -69,21 +71,24 @@ DEFINE_RUNTIME_bool(enable_tablet_split_of_pitr_tables, true,
     "When set, it enables automatic tablet splitting of tables covered by "
     "Point In Time Restore schedules.");
 
+DEFINE_RUNTIME_AUTO_bool(enable_tablet_split_of_tables_with_vector_index, kExternal, false, true,
+    "When set, it enables automatic tablet splitting for tables with vector indexes");
+
 DEFINE_RUNTIME_uint64(tablet_split_limit_per_table, 0,
-              "Limit of the number of tablets per table for tablet splitting. Limitation is "
-              "disabled if this value is set to 0.");
+    "Limit of the number of tablets per table for tablet splitting. Limitation is "
+    "disabled if this value is set to 0.");
 
 DEFINE_RUNTIME_uint64(prevent_split_for_ttl_tables_for_seconds, 86400,
-              "Seconds between checks for whether to split a table with TTL. Checks are disabled "
-              "if this value is set to 0.");
+    "Seconds between checks for whether to split a table with TTL. Checks are disabled "
+    "if this value is set to 0.");
 
 DEFINE_RUNTIME_uint64(prevent_split_for_small_key_range_tablets_for_seconds, 300,
-              "Seconds between checks for whether to split a tablet whose key range is too small "
-              "to be split. Checks are disabled if this value is set to 0.");
+    "Seconds between checks for whether to split a tablet whose key range is too small "
+    "to be split. Checks are disabled if this value is set to 0.");
 
 DEFINE_RUNTIME_bool(sort_automatic_tablet_splitting_candidates, true,
-            "Whether we should sort candidates for new automatic tablet splits, so the largest "
-            "candidates are picked first.");
+    "Whether we should sort candidates for new automatic tablet splits, so the largest "
+    "candidates are picked first.");
 
 DEFINE_RUNTIME_double(tablet_split_min_size_ratio, 0.8,
     "If sorting by size is enabled, a tablet will only be considered for splitting if the ratio "
@@ -94,7 +99,7 @@ DEFINE_RUNTIME_double(tablet_split_min_size_ratio, 0.8,
     "(even if that means waiting for existing splits to complete).");
 
 DEFINE_test_flag(bool, skip_partitioning_version_validation, false,
-                 "When set, skips partitioning_version checks to prevent tablet splitting.");
+    "When set, skips partitioning_version checks to prevent tablet splitting.");
 
 DEFINE_RUNTIME_int32(inflight_splits_completion_timeout_secs, 600,
     "Total time to wait for all inflight splits to complete during Restore.");
@@ -109,8 +114,7 @@ DEFINE_RUNTIME_int32(pitr_split_disable_check_freq_ms, 500,
     "after which PITR restore can be performed.");
 TAG_FLAG(pitr_split_disable_check_freq_ms, advanced);
 
-DEFINE_RUNTIME_bool(
-    split_respects_tablet_replica_limits, false,
+DEFINE_RUNTIME_bool(split_respects_tablet_replica_limits, false,
     "Whether to check the universe tablet replica limit before splitting a tablet. When this flag "
     "and enforce_tablet_replica_limits are both true, the system will no longer split tablets when "
     "the limit machinery determines the universe cannot support any more tablet replicas.");
@@ -121,12 +125,22 @@ METRIC_DEFINE_gauge_uint64(server, automatic_split_manager_time,
     yb::MetricUnit::kMilliseconds,
     "Time (milliseconds) for one run of the automatic tablet split manager.");
 
-METRIC_DEFINE_counter(
-    cluster, split_tablet_too_many_tablets,
+METRIC_DEFINE_counter(cluster, split_tablet_too_many_tablets,
     "How many SplitTablet operations have failed because the cluster cannot host any more tablets",
     yb::MetricUnit::kRequests,
     "The number of SplitTablet operations failed because the cluster cannot host any more "
     "tablets.");
+
+METRIC_DEFINE_gauge_uint64(cluster, tablet_split_candidates,
+    "How many tablets are eligible for splitting",
+    yb::MetricUnit::kUnits,
+    "The number of tablets that are eligible for splitting in the current run.");
+
+METRIC_DEFINE_gauge_uint64(cluster, outstanding_tablet_splits,
+    "Current number of outstanding automatic tablet splits",
+    yb::MetricUnit::kUnits,
+    "The number of automatic tablet splits that are currently outstanding. This includes splits "
+    "with active tasks, splits with children still compacting, and splits pending scheduling.");
 
 namespace yb::master {
 
@@ -166,6 +180,10 @@ TabletSplitManager::TabletSplitManager(
     last_run_time_(CoarseDuration::zero()),
     automatic_split_manager_time_ms_(
         METRIC_automatic_split_manager_time.Instantiate(master_metrics, 0)),
+    metric_tablet_split_candidates_(
+        METRIC_tablet_split_candidates.Instantiate(cluster_metrics, 0)),
+    metric_outstanding_tablet_splits_(
+        METRIC_outstanding_tablet_splits.Instantiate(cluster_metrics, 0)),
     metric_split_tablet_too_many_tablets_(
         METRIC_split_tablet_too_many_tablets.Instantiate(cluster_metrics)) {}
 
@@ -223,7 +241,7 @@ Status TabletSplitManager::ValidatePartitioningVersion(const TableInfo& table) {
 Status TabletSplitManager::ValidateSplitCandidateTable(
     const TableInfoPtr& table,
     const IgnoreDisabledList ignore_disabled_lists,
-    const IgnoreVectorIndexes ignore_vector_indexes) {
+    const IgnoreVectorIndexesValidation ignore_vector_indexes_validation) {
   if (PREDICT_FALSE(FLAGS_TEST_validate_all_tablet_candidates)) {
     return Status::OK();
   }
@@ -247,7 +265,8 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
         *table);
   }
 
-  if (!ignore_vector_indexes) {
+  if (!ignore_vector_indexes_validation &&
+      !FLAGS_enable_tablet_split_of_tables_with_vector_index) {
     for (const auto& index : table_lock->pb.indexes()) {
       if (index.has_vector_idx_options()) {
         return STATUS_FORMAT(
@@ -299,7 +318,7 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
         *table);
   }
 
-  auto replication_info = VERIFY_RESULT(catalog_manager_.GetTableReplicationInfo(table));
+  auto replication_info = VERIFY_RESULT(catalog_manager_.GetTableReplicationInfoNoDefault(table));
   auto s = catalog_manager_.CanAddPartitionsToTable(
       table->NumPartitions() + 1, replication_info.live_replicas());
   if (s.ok() && FLAGS_split_respects_tablet_replica_limits) {
@@ -359,19 +378,22 @@ Status TabletSplitManager::ValidateSplitCandidateTablet(
     }
   }
 
-  bool has_default_ttl = false;
+  bool has_effective_ttl = false;
   {
     auto l = tablet.table()->LockForRead();
     // TODO: IMPORTANT - As of 09/15/22 the default ttl in protobuf is unsigned integer
     // while in-memory it is signed integer thus there is an implicit conversion between -1
     // and UINT64_MAX. We should look at this and fix it. Tracked in GI#14028.
-    int64_t default_ttl = l->schema().table_properties().has_default_time_to_live() ?
-        l->schema().table_properties().default_time_to_live() : kNoDefaultTtl;
-    has_default_ttl = (default_ttl != kNoDefaultTtl);
+    if (l->schema().table_properties().has_default_time_to_live()) {
+      int64_t default_ttl = l->schema().table_properties().default_time_to_live();
+      has_effective_ttl = TableProperties::IsEffectiveTTL(default_ttl);
+      VLOG_WITH_FUNC(2)
+          << "default_ttl: " << default_ttl << ", has_effective_ttl: " << has_effective_ttl;
+    }
   }
 
   auto ts_desc = VERIFY_RESULT(tablet.GetLeader());
-  if (!ignore_ttl_validation && has_default_ttl
+  if (!ignore_ttl_validation && has_effective_ttl
       && ts_desc->get_disable_tablet_split_if_default_ttl()) {
     DisableSplittingForTtlTable(tablet.table()->id());
     return STATUS_FORMAT(
@@ -475,14 +497,15 @@ void TabletSplitManager::DisableSplittingForSmallKeyRangeTablet(const TabletId& 
   }
 }
 
-Status TabletSplitManager::PrepareForPitr(const CoarseTimePoint& deadline) {
+Status TabletSplitManager::PrepareForSnapshotRestore(
+    const CoarseTimePoint& deadline, const std::string& feature_name) {
   const auto disable_duration_ms = MonoDelta::FromMilliseconds(1000 *
       (FLAGS_inflight_splits_completion_timeout_secs + FLAGS_pitr_max_restore_duration_secs));
   const auto wait_inflight_splitting_until = CoarseMonoClock::Now() +
       MonoDelta::FromMilliseconds(1000 * FLAGS_inflight_splits_completion_timeout_secs);
 
   // Disable splitting and then wait for all pending splits to complete before starting restoration.
-  DisableSplittingFor(disable_duration_ms, kPitrFeatureName);
+  DisableSplittingFor(disable_duration_ms, feature_name);
 
   bool inflight_splits_finished = false;
   while (CoarseMonoClock::Now() < std::min(wait_inflight_splitting_until, deadline)) {
@@ -495,20 +518,21 @@ Status TabletSplitManager::PrepareForPitr(const CoarseTimePoint& deadline) {
   }
 
   if (!inflight_splits_finished) {
-    ReenableSplittingFor(kPitrFeatureName);
+    ReenableSplittingFor(feature_name);
     return STATUS(TimedOut, "Timed out waiting for inflight tablet splitting to complete.");
   }
   return Status::OK();
 }
 
-Status AllReplicasHaveFinishedCompaction(const TabletReplicaMap& replicas) {
-  for (const auto& replica : replicas) {
-    if (replica.second.drive_info.may_have_orphaned_post_split_data) {
-      return STATUS_FORMAT(IllegalState,
-          "Tablet replica $0 may have orphaned post split data", replica.second.ToString());
+std::unordered_set<TabletServerId> GetReplicasWithOutstandingCompaction(
+    const TabletReplicaMap& replicas) {
+  std::unordered_set<TabletServerId> tservers_with_outstanding_compaction;
+  for (const auto& [ts_uuid, replica] : replicas) {
+    if (replica.drive_info.may_have_orphaned_post_split_data) {
+      tservers_with_outstanding_compaction.insert(ts_uuid);
     }
   }
-  return Status::OK();
+  return tservers_with_outstanding_compaction;
 }
 
 // Check if all live replicas are in RaftGroupStatePB::RUNNING state
@@ -599,13 +623,11 @@ class OutstandingSplitState {
 
   // Helper method to determine if more splits can be scheduled, or if we should exit early.
   bool CanSplitMoreGlobal() const {
-    const auto outstanding_splits =
-        splits_with_task_.size() + compacting_splits_.size() + splits_to_schedule_.size();
     if (FLAGS_outstanding_tablet_split_limit != 0 &&
-        outstanding_splits >= FLAGS_outstanding_tablet_split_limit) {
+        GetOutstandingSplitCount() >= FLAGS_outstanding_tablet_split_limit) {
       VLOG_WITH_FUNC(2) << Format(
           "Number of outstanding splits will be $0 ($1 + $2 + $3) >= $4, can't do more splits",
-          outstanding_splits, splits_with_task_.size(), compacting_splits_.size(),
+          GetOutstandingSplitCount(), splits_with_task_.size(), compacting_splits_.size(),
           splits_to_schedule_.size(), FLAGS_outstanding_tablet_split_limit);
       return false;
     }
@@ -664,7 +686,8 @@ class OutstandingSplitState {
   }
 
   void AddCompactingSplit(
-      const TabletId& split_tablet_id, const TabletInfo& split_child) {
+      const TabletId& split_tablet_id, const TabletInfo& split_child,
+      const std::unordered_set<TabletServerId>& tservers_with_outstanding_compaction) {
     // It's possible that one child subtablet leads us to insert the parent tablet id into
     // splits_to_schedule, and another leads us to insert into compacting_splits. In this
     // case, it means one of the children is live, thus both children have been created and
@@ -674,7 +697,13 @@ class OutstandingSplitState {
       VLOG(1) << Format("Found compacting split child ($0), so removing split parent "
                         "($1) from splits to schedule.", split_child.id(), split_tablet_id);
     }
-    bool inserted_compacting_split = compacting_splits_.insert(split_tablet_id).second;
+    auto [it, inserted_compacting_split] = compacting_splits_.emplace(
+        split_tablet_id, tservers_with_outstanding_compaction);
+    if (!inserted_compacting_split) {
+      it->second.insert(
+          tservers_with_outstanding_compaction.begin(),
+          tservers_with_outstanding_compaction.end());
+    }
     if (inserted_compacting_split && !was_scheduled_for_split) {
       // Track split_tablet_id as an ongoing split on its tservers. This is required since it is
       // possible that one of the split children is not running yet, but we still want to count
@@ -685,8 +714,25 @@ class OutstandingSplitState {
     TrackTserverSplits(split_tablet_id, *replica_cache_->GetOrAdd(split_child));
   }
 
+  void MaybeLogCompactingSplits() const {
+    if (compacting_splits_.empty()) {
+      return;
+    }
+    YB_LOG_EVERY_N_SECS(INFO, 900)
+        << Format("Outstanding post-split compactions (tablet id -> tservers): $0",
+                  AsString(compacting_splits_));
+  }
+
   const SplitsToScheduleMap& GetSplitsToSchedule() const {
     return splits_to_schedule_;
+  }
+
+  size_t GetCandidateCount() const {
+    return new_split_candidates_.size();
+  }
+
+  size_t GetOutstandingSplitCount() const {
+    return splits_with_task_.size() + compacting_splits_.size() + splits_to_schedule_.size();
   }
 
   void AddCandidate(TabletInfoPtr tablet, uint64_t leader_sst_size) {
@@ -747,7 +793,7 @@ class OutstandingSplitState {
   // Splits which are tracked by an AsyncGetTabletSplitKey or AsyncSplitTablet task.
   std::unordered_set<TabletId> splits_with_task_;
   // Splits for which at least one child tablet is still undergoing compaction.
-  std::unordered_set<TabletId> compacting_splits_;
+  std::unordered_map<TabletId, std::unordered_set<TabletServerId>> compacting_splits_;
   // Splits that need to be started or restarted. If the split is a new split, the map contains
   // the size of the leader tablet.
   SplitsToScheduleMap splits_to_schedule_;
@@ -797,7 +843,7 @@ void TabletSplitManager::DoSplitting(
   // splitting. This is most critical for tables that frequently switch between being valid and
   // invalid for splitting (e.g. for tables with frequent PITR schedules).
   // https://github.com/yugabyte/yugabyte-db/issues/11459
-  vector<TableInfoPtr> valid_tables;
+  std::vector<TableInfoPtr> valid_tables;
   for (const auto& table : tables) {
     Status status = ValidateSplitCandidateTable(table);
     if (!status.ok()) {
@@ -832,30 +878,25 @@ void TabletSplitManager::DoSplitting(
         YB_LOG_EVERY_N_SECS(INFO, 30) << Format(
             "Found split with ongoing task. Task type: $0. Split parent id: $1.",
             task->type_name(), tablet_id);
-        if (!state.CanSplitMoreGlobal()) {
-          return;
-        }
       }
     }
   }
 
   for (const auto& table : valid_tables) {
     VLOG(3) << Format("Processing table $0 for split", table->id());
-    auto replication_factor = catalog_manager_.GetTableReplicationFactor(table);
-    if (!replication_factor.ok()) {
+    auto replication_info = catalog_manager_.GetTableReplicationInfoNoDefault(table);
+    if (!replication_info.ok()) {
       YB_LOG_EVERY_N_SECS(WARNING, 30) << "Skipping tablet splitting for table "
                                        << table->id() << ": "
-                                       << "as fetching replication factor failed with error "
-                                       << StatusToString(replication_factor.status());
+                                       << "as fetching replication info failed with error "
+                                       << StatusToString(replication_info.status());
       continue;
     }
+    auto replication_factor = CatalogManagerUtil::GetReplicationFactor(*replication_info);
     auto tablets_result = table->GetTablets();
     if (!tablets_result) continue;
     for (const auto& tablet : *tablets_result) {
       VLOG(4) << Format("Processing tablet $0 for split", tablet->id());
-      if (!state.CanSplitMoreGlobal()) {
-        break;
-      }
       if (state.HasSplitWithTask(tablet->id())) {
         VLOG(4) << Format("Should not split tablet $0 since it already has a split task",
                           tablet->id());
@@ -884,12 +925,15 @@ void TabletSplitManager::DoSplitting(
         // If this (running) tablet is the child of a split and is still compacting, track it as a
         // compacting split but do not schedule a restart (we assume that this split will eventually
         // complete for both tablets).
-        if (Status s = AllReplicasHaveFinishedCompaction(*replica_cache.GetOrAdd(*tablet));
-            !s.ok()) {
-          VLOG(4) << Format("Should not split child tablet ($0) that is compacting. Adding parent "
-                            "($1) to list of compacting splits. ", tablet->id(), parent_id)
-                             << s;
-          state.AddCompactingSplit(parent_id, *tablet);
+        const auto tservers_with_outstanding_compaction = GetReplicasWithOutstandingCompaction(
+            *replica_cache.GetOrAdd(*tablet));
+        if (!tservers_with_outstanding_compaction.empty()) {
+          VLOG(4) << Format(
+              "Should not split child tablet ($0) that is compacting. Adding parent ($1) to list "
+              "of compacting splits. Outstanding post-split compaction on tservers: $2",
+              tablet->id(), parent_id, AsString(tservers_with_outstanding_compaction));
+          state.AddCompactingSplit(
+              parent_id, *tablet, tservers_with_outstanding_compaction);
           continue;
         }
       }
@@ -909,9 +953,14 @@ void TabletSplitManager::DoSplitting(
 
         const auto replicas = replica_cache.GetOrAdd(*tablet);
         RETURN_NOT_OK(
-            CheckLiveReplicasForSplit(tablet->tablet_id(), *replicas, replication_factor.get()));
-        RETURN_NOT_OK(AllReplicasHaveFinishedCompaction(*replicas));
-        RETURN_NOT_OK(state.CanSplitMoreOnReplicas(*replicas));
+            CheckLiveReplicasForSplit(tablet->tablet_id(), *replicas, replication_factor));
+        const auto tservers_with_outstanding_compaction =
+            GetReplicasWithOutstandingCompaction(*replicas);
+        if (!tservers_with_outstanding_compaction.empty()) {
+          return STATUS_FORMAT(IllegalState,
+              "Tablet $0 may have uncompacted post-split data on tservers: $1",
+              tablet->tablet_id(), AsString(tservers_with_outstanding_compaction));
+        }
         return drive_info_opt.get().sst_files_size;
       };
       Result<uint64_t> result = ValidateAutomaticSplitCandidateTablet();
@@ -922,24 +971,24 @@ void TabletSplitManager::DoSplitting(
       }
       state.AddCandidate(tablet, result.get());
     }
-    if (!state.CanSplitMoreGlobal()) {
-      break;
-    }
   }
 
+  metric_tablet_split_candidates_->set_value(state.GetCandidateCount());
   // Sort candidates if required and add as many desired candidates to the list of splits to
   // schedule as possible (while respecting the limits on ongoing splits).
   state.ProcessCandidates();
+  metric_outstanding_tablet_splits_->set_value(state.GetOutstandingSplitCount());
+  state.MaybeLogCompactingSplits();
   // Schedule any new splits and any splits that need to be restarted.
   ScheduleSplits(state.GetSplitsToSchedule(), epoch);
 }
 
 Status TabletSplitManager::WaitUntilIdle(CoarseTimePoint deadline) {
-  std::shared_lock l(is_running_mutex_, deadline);
-  if (!l.owns_lock()) {
-    return STATUS_FORMAT(TimedOut,
-        "Tablet split manager iteration did not complete before deadline: $0", deadline);
-  }
+  // Ideally we would take a deadline here but GCC 12 seems to have a bug where we can fail to
+  // acquire a writer lock even if there are no readers.
+  // After upgrading to a higher version of GCC and passing the deadline below, we should check if
+  // YBBackupWithAnonymizerTest.RestoreAfterRoleRenameWithAnonymizer still fails on fastdebug.
+  std::shared_lock l(is_running_mutex_);
   return Status::OK();
 }
 

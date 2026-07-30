@@ -1056,6 +1056,12 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 
 	index->relam = entry->relam;
 
+	if (IsYugaByteEnabled())
+	{
+		Assert(entry->indexname != NULL);
+		index->ybIndexName = entry->indexname;
+	}
+
 	/* General stuff */
 	index->indexoid = entry->oid;
 	index->reltablespace = rel->reltablespace;	/* same tablespace as
@@ -1537,7 +1543,8 @@ hypopg_get_indexdef(PG_FUNCTION_ARGS)
 			indexpr_item = lnext(entry->indexprs, indexpr_item);
 
 			/* Deparse */
-			str = deparse_expression(indexkey, context, false, false);
+			str = deparse_expression(indexkey, context, false, false,
+									 false, false); /* yb_pretty, yb_maskconstants */
 
 			/* Need parens if it's not a bare function call */
 			if (indexkey && IsA(indexkey, FuncExpr) &&
@@ -1626,7 +1633,8 @@ hypopg_get_indexdef(PG_FUNCTION_ARGS)
 	if (entry->indpred)
 	{
 		appendStringInfo(&buf, " WHERE %s", deparse_expression((Node *)
-															   make_ands_explicit(entry->indpred), context, false, false));
+															   make_ands_explicit(entry->indpred), context, false, false,
+															   					  false, false)); /* yb_pretty, yb_maskconstants */
 	}
 
 	PG_RETURN_TEXT_P(cstring_to_text(buf.data));

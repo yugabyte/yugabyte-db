@@ -22,6 +22,8 @@
 
 namespace yb {
 
+class Cgroup;
+
 enum class CollectionLevel { ALL, LOW, MEDIUM, HIGH };
 
 class Collector {
@@ -48,7 +50,7 @@ class Collector {
 
 class CallHome {
  public:
-  explicit CallHome(server::RpcAndWebServerBase* server);
+  explicit CallHome(server::RpcAndWebServerBase* server, Cgroup* cgroup = nullptr);
   virtual ~CallHome();
 
   void DoCallHome();

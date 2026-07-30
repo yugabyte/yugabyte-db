@@ -47,13 +47,13 @@ ANALYZE pagg_tab;
  Finalize Aggregate
    ->  Append
          ->  Noop Aggregate
-               ->  Seq Scan on pagg_tab_p1 pagg_tab
+               ->  Seq Scan on pagg_tab_p1 pagg_tab_1
                      Partial Aggregate: true
          ->  Noop Aggregate
-               ->  Seq Scan on pagg_tab_p2 pagg_tab_1
+               ->  Seq Scan on pagg_tab_p2 pagg_tab_2
                      Partial Aggregate: true
          ->  Noop Aggregate
-               ->  Seq Scan on pagg_tab_p3 pagg_tab_2
+               ->  Seq Scan on pagg_tab_p3 pagg_tab_3
                      Partial Aggregate: true
 (11 rows)
 
@@ -110,22 +110,22 @@ ANALYZE pagg_tab2;
    ->  Append
          ->  Partial Aggregate
                ->  Hash Join
-                     Hash Cond: (t1.x = t2.y)
-                     ->  Seq Scan on pagg_tab1_p1 t1
-                     ->  Hash
-                           ->  Seq Scan on pagg_tab2_p1 t2
-         ->  Partial Aggregate
-               ->  Hash Join
                      Hash Cond: (t1_1.x = t2_1.y)
-                     ->  Seq Scan on pagg_tab1_p2 t1_1
+                     ->  Seq Scan on pagg_tab1_p1 t1_1
                      ->  Hash
-                           ->  Seq Scan on pagg_tab2_p2 t2_1
+                           ->  Seq Scan on pagg_tab2_p1 t2_1
          ->  Partial Aggregate
                ->  Hash Join
                      Hash Cond: (t1_2.x = t2_2.y)
-                     ->  Seq Scan on pagg_tab1_p3 t1_2
+                     ->  Seq Scan on pagg_tab1_p2 t1_2
                      ->  Hash
-                           ->  Seq Scan on pagg_tab2_p3 t2_2
+                           ->  Seq Scan on pagg_tab2_p2 t2_2
+         ->  Partial Aggregate
+               ->  Hash Join
+                     Hash Cond: (t1_3.x = t2_3.y)
+                     ->  Seq Scan on pagg_tab1_p3 t1_3
+                     ->  Hash
+                           ->  Seq Scan on pagg_tab2_p3 t2_3
 (20 rows)
 
  sum  | count 
@@ -216,22 +216,22 @@ ANALYZE pagg_tab2;
    ->  Append
          ->  Partial Aggregate
                ->  Hash Left Join
-                     Hash Cond: (a.x = b.y)
-                     ->  Seq Scan on pagg_tab1_p1 a
-                     ->  Hash
-                           ->  Seq Scan on pagg_tab2_p1 b
-         ->  Partial Aggregate
-               ->  Hash Left Join
                      Hash Cond: (a_1.x = b_1.y)
-                     ->  Seq Scan on pagg_tab1_p2 a_1
+                     ->  Seq Scan on pagg_tab1_p1 a_1
                      ->  Hash
-                           ->  Seq Scan on pagg_tab2_p2 b_1
+                           ->  Seq Scan on pagg_tab2_p1 b_1
          ->  Partial Aggregate
                ->  Hash Left Join
                      Hash Cond: (a_2.x = b_2.y)
-                     ->  Seq Scan on pagg_tab1_p3 a_2
+                     ->  Seq Scan on pagg_tab1_p2 a_2
                      ->  Hash
-                           ->  Seq Scan on pagg_tab2_p3 b_2
+                           ->  Seq Scan on pagg_tab2_p2 b_2
+         ->  Partial Aggregate
+               ->  Hash Left Join
+                     Hash Cond: (a_3.x = b_3.y)
+                     ->  Seq Scan on pagg_tab1_p3 a_3
+                     ->  Hash
+                           ->  Seq Scan on pagg_tab2_p3 b_3
 (20 rows)
 
  sum  
@@ -275,22 +275,22 @@ ANALYZE pagg_tab2;
    ->  Append
          ->  Partial Aggregate
                ->  Hash Right Join
-                     Hash Cond: (a.x = b.y)
-                     ->  Seq Scan on pagg_tab1_p1 a
-                     ->  Hash
-                           ->  Seq Scan on pagg_tab2_p1 b
-         ->  Partial Aggregate
-               ->  Hash Right Join
                      Hash Cond: (a_1.x = b_1.y)
-                     ->  Seq Scan on pagg_tab1_p2 a_1
+                     ->  Seq Scan on pagg_tab1_p1 a_1
                      ->  Hash
-                           ->  Seq Scan on pagg_tab2_p2 b_1
+                           ->  Seq Scan on pagg_tab2_p1 b_1
          ->  Partial Aggregate
                ->  Hash Right Join
                      Hash Cond: (a_2.x = b_2.y)
-                     ->  Seq Scan on pagg_tab1_p3 a_2
+                     ->  Seq Scan on pagg_tab1_p2 a_2
                      ->  Hash
-                           ->  Seq Scan on pagg_tab2_p3 b_2
+                           ->  Seq Scan on pagg_tab2_p2 b_2
+         ->  Partial Aggregate
+               ->  Hash Right Join
+                     Hash Cond: (a_3.x = b_3.y)
+                     ->  Seq Scan on pagg_tab1_p3 a_3
+                     ->  Hash
+                           ->  Seq Scan on pagg_tab2_p3 b_3
 (20 rows)
 
  sum  
@@ -334,22 +334,22 @@ ANALYZE pagg_tab2;
    ->  Append
          ->  Partial Aggregate
                ->  Hash Full Join
-                     Hash Cond: (a.x = b.y)
-                     ->  Seq Scan on pagg_tab1_p1 a
-                     ->  Hash
-                           ->  Seq Scan on pagg_tab2_p1 b
-         ->  Partial Aggregate
-               ->  Hash Full Join
                      Hash Cond: (a_1.x = b_1.y)
-                     ->  Seq Scan on pagg_tab1_p2 a_1
+                     ->  Seq Scan on pagg_tab1_p1 a_1
                      ->  Hash
-                           ->  Seq Scan on pagg_tab2_p2 b_1
+                           ->  Seq Scan on pagg_tab2_p1 b_1
          ->  Partial Aggregate
                ->  Hash Full Join
                      Hash Cond: (a_2.x = b_2.y)
-                     ->  Seq Scan on pagg_tab1_p3 a_2
+                     ->  Seq Scan on pagg_tab1_p2 a_2
                      ->  Hash
-                           ->  Seq Scan on pagg_tab2_p3 b_2
+                           ->  Seq Scan on pagg_tab2_p2 b_2
+         ->  Partial Aggregate
+               ->  Hash Full Join
+                     Hash Cond: (a_3.x = b_3.y)
+                     ->  Seq Scan on pagg_tab1_p3 a_3
+                     ->  Hash
+                           ->  Seq Scan on pagg_tab2_p3 b_3
 (20 rows)
 
  sum  
@@ -386,13 +386,13 @@ ANALYZE pagg_tab_m;
  Finalize Aggregate
    ->  Append
          ->  Noop Aggregate
-               ->  Seq Scan on pagg_tab_m_p1 pagg_tab_m
+               ->  Seq Scan on pagg_tab_m_p1 pagg_tab_m_1
                      Partial Aggregate: true
          ->  Noop Aggregate
-               ->  Seq Scan on pagg_tab_m_p2 pagg_tab_m_1
+               ->  Seq Scan on pagg_tab_m_p2 pagg_tab_m_2
                      Partial Aggregate: true
          ->  Noop Aggregate
-               ->  Seq Scan on pagg_tab_m_p3 pagg_tab_m_2
+               ->  Seq Scan on pagg_tab_m_p3 pagg_tab_m_3
                      Partial Aggregate: true
 (11 rows)
 
@@ -437,10 +437,10 @@ SET parallel_setup_cost = 0;
          ->  Partial Aggregate
                ->  Parallel Append
                      ->  Seq Scan on pagg_tab_ml_p1 pagg_tab_ml_1
-                     ->  Seq Scan on pagg_tab_ml_p3_s1 pagg_tab_ml_4
-                     ->  Seq Scan on pagg_tab_ml_p2_s1 pagg_tab_ml_2
-                     ->  Seq Scan on pagg_tab_ml_p3_s2 pagg_tab_ml_5
-                     ->  Seq Scan on pagg_tab_ml_p2_s2 pagg_tab_ml_3
+                     ->  Seq Scan on pagg_tab_ml_p3_s1 pagg_tab_ml_6
+                     ->  Seq Scan on pagg_tab_ml_p2_s1 pagg_tab_ml_3
+                     ->  Seq Scan on pagg_tab_ml_p3_s2 pagg_tab_ml_7
+                     ->  Seq Scan on pagg_tab_ml_p2_s2 pagg_tab_ml_4
 (10 rows)
 
                              QUERY PLAN                              
@@ -450,19 +450,19 @@ SET parallel_setup_cost = 0;
          Workers Planned: 2
          ->  Parallel Append
                ->  Noop Aggregate
-                     ->  Seq Scan on pagg_tab_ml_p1 pagg_tab_ml
+                     ->  Seq Scan on pagg_tab_ml_p1 pagg_tab_ml_1
                            Partial Aggregate: true
                ->  Noop Aggregate
-                     ->  Seq Scan on pagg_tab_ml_p3_s1 pagg_tab_ml_3
+                     ->  Seq Scan on pagg_tab_ml_p3_s1 pagg_tab_ml_6
                            Partial Aggregate: true
                ->  Noop Aggregate
-                     ->  Seq Scan on pagg_tab_ml_p2_s1 pagg_tab_ml_1
+                     ->  Seq Scan on pagg_tab_ml_p2_s1 pagg_tab_ml_3
                            Partial Aggregate: true
                ->  Noop Aggregate
-                     ->  Seq Scan on pagg_tab_ml_p3_s2 pagg_tab_ml_4
+                     ->  Seq Scan on pagg_tab_ml_p3_s2 pagg_tab_ml_7
                            Partial Aggregate: true
                ->  Noop Aggregate
-                     ->  Seq Scan on pagg_tab_ml_p2_s2 pagg_tab_ml_2
+                     ->  Seq Scan on pagg_tab_ml_p2_s2 pagg_tab_ml_4
                            Partial Aggregate: true
 (19 rows)
 

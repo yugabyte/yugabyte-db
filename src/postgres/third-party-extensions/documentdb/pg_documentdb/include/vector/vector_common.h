@@ -10,7 +10,12 @@
 #ifndef VECTOR_COMMON__H
 #define VECTOR_COMMON__H
 
-#define VECTOR_MAX_DIMENSIONS 2000
+/* pgvector VECTOR_MAX_DIM: 16000 */
+/* dimensions for type vector cannot exceed 16000 */
+#define VECTOR_MAX_DIMENSIONS 16000
+#define VECTOR_MAX_DIMENSIONS_NON_COMPRESSED 2000
+#define VECTOR_MAX_DIMENSIONS_HALF_COMPRESSED 4000
+#define VECTOR_MAX_DIMENSIONS_PQ_COMPRESSED VECTOR_MAX_DIMENSIONS
 
 /* ivfflat parameters */
 #define IVFFLAT_DEFAULT_NPROBES 1
@@ -43,9 +48,12 @@
 #define VECTOR_PARAMETER_NAME_HNSW_EF_SEARCH "efSearch"
 #define VECTOR_PARAMETER_NAME_HNSW_EF_SEARCH_STR_LEN 8
 
+/* Search parameter name for iterative scan mode */
+#define VECTOR_PARAMETER_NAME_ITERATIVE_SCAN "iterativeScan"
+#define VECTOR_PARAMETER_NAME_ITERATIVE_SCAN_STR_LEN 13
+
 /* dynamic calculation of nprobes or efSearch depending on collection size */
 #define VECTOR_SEARCH_SMALL_COLLECTION_ROWS 10000
-#define VECTOR_SEARCH_1M_COLLECTION_ROWS 1000000
 
 /* metadata field names */
 #define VECTOR_METADATA_FIELD_NAME "__cosmos_meta__"
@@ -66,5 +74,20 @@ extern bool EnableVectorHNSWIndex;
 extern bool EnableVectorPreFilter;
 extern bool EnableVectorPreFilterV2;
 
+/*
+ * GUC to set the iterative scan mode for pre-filtering
+ */
+extern int VectorPreFilterIterativeScanMode;
+
+/*
+ * GUC to enable vector compression feature for vector search.
+ */
+extern bool EnableVectorCompressionHalf;
+extern bool EnableVectorCompressionPQ;
+
+/*
+ * GUC to enable vector search default search parameter calculation.
+ */
+extern bool EnableVectorCalculateDefaultSearchParameter;
 
 #endif

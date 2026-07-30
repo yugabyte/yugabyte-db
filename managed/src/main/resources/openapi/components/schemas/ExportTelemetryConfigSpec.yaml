@@ -1,0 +1,10 @@
+x-yba-api-since: 2026.1.0.0
+x-yba-api-visibility: internal
+type: object
+description: Request to configure all telemetry export configs for a universe
+properties:
+  upgrade_options:
+    $ref: "./ExportTelemetryUpgradeOptions.yaml"
+  telemetry_config:
+    description: Telemetry config. Omit a key or set to null to disable that config.
+    $ref: "./TelemetryConfig.yaml"

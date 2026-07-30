@@ -14,6 +14,21 @@ type: docs
 
 The following steps assume a multi-zone Kubernetes cluster, deployed as described in [Deploy on Google Kubernetes Engine](../../deploy/kubernetes/multi-zone/gke/helm-chart/), but you can adapt these steps to upgrade other types of deployments.
 
+{{< warning title="Upgrading to v2026.1 with cert-manager enabled" >}}
+
+If your universe uses cert-manager to manage certificates, be aware that starting in v2026.1.0.0, the `rootCA.cert` field takes precedence over the `ca.crt` provided by cert-manager. Ensure that `rootCA.cert` is set correctly before upgrading.
+
+To retain the previous behavior, set `rootCA.cert` to `""`. For example, set the following in `values.yaml`:
+
+```yaml
+rootCA:
+  cert: ""
+```
+
+In this case, the chart falls back to cert-manager's `ca.crt`.
+
+{{< /warning >}}
+
 ## Example deployment
 
 The universe is deployed across three distinct zones in us-west1: us-west1-a, us-west1-b, and us-west1-c. One Master and one TServer was provisioned in each zone using the following Helm commands.

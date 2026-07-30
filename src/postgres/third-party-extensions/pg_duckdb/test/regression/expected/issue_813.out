@@ -1,0 +1,120 @@
+CREATE TABLE t(a TEXT);
+INSERT INTO t VALUES ('a\');
+set duckdb.force_execution = true;
+-- Test with PG default escape character
+SELECT a LIKE 'a\%' FROM t;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT a ILIKE 'a\%' FROM t;
+ ?column? 
+----------
+ f
+(1 row)
+
+SELECT a NOT LIKE 'a\%' FROM t;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT a NOT ILIKE 'a\%' FROM t;
+ ?column? 
+----------
+ t
+(1 row)
+
+INSERT INTO t VALUES ('a$'), ('a%'), ('A\'), ('A$'), ('A%');
+-- With a different escape character, present in the pattern
+SELECT a, a LIKE 'a$%' ESCAPE '$' FROM t;
+ a  | ?column? 
+----+----------
+ a\ | f
+ a$ | f
+ a% | t
+ A\ | f
+ A$ | f
+ A% | f
+(6 rows)
+
+SELECT a, a ILIKE 'a$%' ESCAPE '$' FROM t;
+ a  | ?column? 
+----+----------
+ a\ | f
+ a$ | f
+ a% | t
+ A\ | f
+ A$ | f
+ A% | t
+(6 rows)
+
+SELECT a, a NOT LIKE 'a$%' ESCAPE '$' FROM t;
+ a  | ?column? 
+----+----------
+ a\ | t
+ a$ | t
+ a% | f
+ A\ | t
+ A$ | t
+ A% | t
+(6 rows)
+
+SELECT a, a NOT ILIKE 'a$%' ESCAPE '$' FROM t;
+ a  | ?column? 
+----+----------
+ a\ | t
+ a$ | t
+ a% | f
+ A\ | t
+ A$ | t
+ A% | f
+(6 rows)
+
+-- With a different escape character, not present in the pattern
+SELECT a, a LIKE 'a%' ESCAPE '$' FROM t;
+ a  | ?column? 
+----+----------
+ a\ | t
+ a$ | t
+ a% | t
+ A\ | f
+ A$ | f
+ A% | f
+(6 rows)
+
+SELECT a, a ILIKE 'a%' ESCAPE '$' FROM t;
+ a  | ?column? 
+----+----------
+ a\ | t
+ a$ | t
+ a% | t
+ A\ | t
+ A$ | t
+ A% | t
+(6 rows)
+
+SELECT a, a NOT LIKE 'a%' ESCAPE '$' FROM t;
+ a  | ?column? 
+----+----------
+ a\ | f
+ a$ | f
+ a% | f
+ A\ | t
+ A$ | t
+ A% | t
+(6 rows)
+
+SELECT a, a NOT ILIKE 'a%' ESCAPE '$' FROM t;
+ a  | ?column? 
+----+----------
+ a\ | f
+ a$ | f
+ a% | f
+ A\ | f
+ A$ | f
+ A% | f
+(6 rows)
+
+DROP TABLE t;

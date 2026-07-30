@@ -49,6 +49,7 @@ Result<bool> CheckpointReplicationGroup(
 Status CreateReplicationFromCheckpoint(
     client::YBClient& producer_client, const xcluster::ReplicationGroupId& replication_group_id,
     const std::string& target_master_addr, MonoDelta timeout) {
+  LOG(INFO) << "Starting CreateReplicationFromCheckpoint";
   auto xcluster_client = client::XClusterClient(producer_client);
   RETURN_NOT_OK(xcluster_client.CreateXClusterReplicationFromCheckpoint(
       replication_group_id, target_master_addr));
@@ -63,6 +64,8 @@ Status CreateReplicationFromCheckpoint(
         return result.done();
       },
       timeout, __func__));
+
+  LOG(INFO) << "CreateReplicationFromCheckpoint done";
 
   return Status::OK();
 }

@@ -1,0 +1,10 @@
+title: BackupPagedQuerySpec
+description: |
+  Paged list of universe backups.
+  Rows are ordered by create time. The order is descending by default.
+type: object
+allOf:
+  - $ref: "./PaginationSpec.yaml"
+properties:
+  filter:
+    $ref: "./BackupApiFilter.yaml"

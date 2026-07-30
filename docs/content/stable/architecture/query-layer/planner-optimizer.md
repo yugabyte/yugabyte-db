@@ -48,7 +48,7 @@ Even with the Auto Analyze service, for the CBO to create optimal execution plan
 For each potential execution plan, the optimizer calculates costs in terms of storage layer lookups (both cache and disk), number of network round trips, and other factors. These costs help the optimizer compare which plan is likely be the most efficient to execute given the current database state and query context.
 
 {{<tip>}}
-You can see these estimates when using the DEBUG option in the [EXPLAIN](../../../api/ysql/the-sql-language/statements/perf_explain) command, as in EXPLAIN (ANALYZE, DEBUG).
+You can see these estimates when using the DEBUG option in the [EXPLAIN](../../../api/ysql/the-sql-language/statements/perf_explain/) command, as in EXPLAIN (ANALYZE, DEBUG).
 {{</tip>}}
 
 Some of the factors that the CBO considers in the cost estimation are as follows:
@@ -84,10 +84,6 @@ After the optimal plan is determined, YugabyteDB generates a detailed execution 
 - If your table already has rows, and you create an additional index (for example, `create index i on t (k);`), you must re-run analyze to populate the index `pg_class.reltuples` with the correct row count. {{<issue 25394>}}
 
     If you need to create a new index to replace a old one while your application is running, create the new one first, run analyze, then drop the old one.
-
-- After you restore a database in YugabyteDB Anywhere or Aeon, you need to run analyze because the statistics that were in the database when it was backed up do not get restored.
-
-    For consistent RTO from restore in a cost model-enabled environment, run analyze manually after restore has finished and before you allow end users into the application. If you allow end users into the application before analyze is finished, initial execution plans won't be correctly optimized.
 
 ## Learn more
 

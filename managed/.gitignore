@@ -80,3 +80,11 @@ tmp
 # openapi generated JS API stubs
 ui/src/v2/api
 ui/src/v2/validationSchema
+
+# yalc
+.yalc
+yalc.lock
+
+
+#AI Tools
+.cursor/

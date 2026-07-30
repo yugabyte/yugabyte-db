@@ -65,7 +65,8 @@ struct MutableCFOptions {
             options.max_sequential_skip_in_iterations),
         paranoid_file_checks(options.paranoid_file_checks),
         compaction_measure_io_stats(options.compaction_measure_io_stats),
-        exclude_from_compaction(options.exclude_from_compaction) {
+        exclude_from_compaction(options.exclude_from_compaction),
+        target_path_id(options.target_path_id) {
     RefreshDerivedOptions(ioptions);
   }
 
@@ -98,7 +99,8 @@ struct MutableCFOptions {
         max_sequential_skip_in_iterations(0),
         paranoid_file_checks(false),
         compaction_measure_io_stats(false),
-        exclude_from_compaction(nullptr) {}
+        exclude_from_compaction(nullptr),
+        target_path_id(0) {}
 
   // Must be called after any change to MutableCFOptions
   void RefreshDerivedOptions(const ImmutableCFOptions& ioptions);
@@ -159,6 +161,10 @@ struct MutableCFOptions {
   bool paranoid_file_checks;
   bool compaction_measure_io_stats;
   std::shared_ptr<CompactionFileExcluder> exclude_from_compaction;
+
+  // Tiered storage: target db_paths slot for flushes and auto-compaction output.
+  // Default 0 == home disk.
+  uint32_t target_path_id;
 
   // Derived options
   // Per-level target file size.

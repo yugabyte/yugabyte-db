@@ -46,7 +46,7 @@ The following tutorial describes how to build a Scala application using the Yuga
 This tutorial assumes that you have:
 
 - YugabyteDB running. If you are new to YugabyteDB, follow the steps in [Quick start](/stable/quick-start/macos/).
-- Scala version 2.12 or later.
+- Scala version 2.12.15 or later.
 - sbt 1.3.8 or later.
 - installed the [`sbt-assembly`](https://github.com/sbt/sbt-assembly) plugin in your sbt project, as follows:
 
@@ -59,7 +59,7 @@ This tutorial assumes that you have:
 Add the following sbt dependency to your application:
 
 ```scala
-libraryDependencies += "com.yugabyte.spark" %% "spark-cassandra-connector" % "2.4-yb-3"
+libraryDependencies += "com.yugabyte.spark" %% "spark-cassandra-connector" % "3.3-yb-4"
 ```
 
 ### Create the sbt build file
@@ -69,13 +69,13 @@ Create an sbt build file (`build.sbt`) and add the following content into it.
 ```scala
 name := "CassandraSparkWordCount"
 version := "1.0"
-scalaVersion := "2.11.12"
+scalaVersion := "2.12.15"
 scalacOptions := Seq("-unchecked", "-deprecation")
 
-val sparkVersion = "2.4.4"
+val sparkVersion = "3.3.1"
 
 // maven repo at https://mvnrepository.com/artifact/com.yugabyte.spark/spark-cassandra-connector
-libraryDependencies += "com.yugabyte.spark" %% "spark-cassandra-connector" % "2.4-yb-3"
+libraryDependencies += "com.yugabyte.spark" %% "spark-cassandra-connector" % 3.3-yb-4"
 
 // maven repo at https://mvnrepository.com/artifact/org.apache.spark/spark-core
 libraryDependencies += "org.apache.spark" %% "spark-core" % sparkVersion % Provided
@@ -265,6 +265,7 @@ object CassandraSparkWordCount {
     wordCountDf
       .write
       .format("org.apache.spark.sql.cassandra")
+      .mode("append")
       .options(
         Map(
           "keyspace" -> DEFAULT_KEYSPACE, // "ybdemo".
@@ -297,7 +298,7 @@ To run the program, run the following command:
 
 ```sh
 $ spark-submit --class com.yugabyte.sample.apps.CassandraSparkWordCount \
-    target/scala-2.11/CassandraSparkWordCount-assembly-1.0.jar
+    target/scala-2.12/CassandraSparkWordCount-assembly-1.0.jar
 ```
 
 You should see a table similar to the following as the output:

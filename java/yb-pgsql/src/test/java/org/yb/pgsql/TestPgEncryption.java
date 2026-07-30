@@ -46,9 +46,6 @@ public class TestPgEncryption extends BasePgSQLTest {
 
   @Parameterized.Parameters
   public static List<ConnectionEndpoint> parameters() {
-    final String enableYsqlConnMgr = System.getenv("YB_ENABLE_YSQL_CONN_MGR_IN_TESTS");
-    if (enableYsqlConnMgr != null && enableYsqlConnMgr.equalsIgnoreCase("true"))
-      return Arrays.asList(ConnectionEndpoint.YSQL_CONN_MGR);
     if (SystemUtil.IS_LINUX)
       return Arrays.asList(ConnectionEndpoint.YSQL_CONN_MGR, ConnectionEndpoint.POSTGRES);
     else
@@ -102,8 +99,6 @@ public class TestPgEncryption extends BasePgSQLTest {
       // ysql conn mgr layer itself and returns required / below error.
       assertThat(
         sqle.getMessage(),
-        connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR ?
-        CoreMatchers.containsString("SSL is required") :
         CoreMatchers.containsString("no pg_hba.conf entry for")
       );
     }
@@ -113,8 +108,6 @@ public class TestPgEncryption extends BasePgSQLTest {
     } catch (SQLException sqle) {
       assertThat(
         sqle.getMessage(),
-        connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR ?
-        CoreMatchers.containsString("SSL is required") :
         CoreMatchers.containsString("no pg_hba.conf entry for")
       );
     }
@@ -148,8 +141,6 @@ public class TestPgEncryption extends BasePgSQLTest {
     } catch (SQLException sqle) {
       assertThat(
         sqle.getMessage(),
-        connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR ?
-        CoreMatchers.containsString("SSL is required") :
         CoreMatchers.containsString("no pg_hba.conf entry for")
       );
     }
@@ -159,8 +150,6 @@ public class TestPgEncryption extends BasePgSQLTest {
     } catch (SQLException sqle) {
       assertThat(
         sqle.getMessage(),
-        connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR ?
-        CoreMatchers.containsString("SSL is required") :
         CoreMatchers.containsString("no pg_hba.conf entry for")
       );
     }
@@ -189,6 +178,7 @@ public class TestPgEncryption extends BasePgSQLTest {
 
     // Client connection with SSL and cert -- should only allow connection with pass (+cert/SSL).
     ConnectionBuilder tsConnBldr = getConnectionBuilder().withSslMode("require")
+                                                         .withConnectionEndpoint(connectionEndpoint)
                                                          .withSslCert(sslcertFile)
                                                          .withSslKey(sslkeyFile)
                                                          .withSslRootCert(sslrootcertFile)
@@ -209,6 +199,7 @@ public class TestPgEncryption extends BasePgSQLTest {
     // (+cert/SSL). 'verify-full' will verify the server host name and root certificate chain to
     // ensure we are connecting to the right server.
     tsConnBldr = getConnectionBuilder().withSslMode("verify-full")
+                                       .withConnectionEndpoint(connectionEndpoint)
                                        .withSslCert(sslcertFile)
                                        .withSslKey(sslkeyFile)
                                        .withSslRootCert(sslrootcertFile)
@@ -226,7 +217,9 @@ public class TestPgEncryption extends BasePgSQLTest {
     }
 
     // Client connection with SSL enabled but no cert -- should *not* allow connection.
-    tsConnBldr = getConnectionBuilder().withSslMode("require").withTServer(tserver);
+    tsConnBldr = getConnectionBuilder().withSslMode("require")
+                                       .withConnectionEndpoint(connectionEndpoint)
+                                       .withTServer(tserver);
     try (Connection ignored = tsConnBldr.withUser("yugabyte").withPassword("yugabyte").connect()) {
       fail("Expected login attempt to fail");
     } catch (SQLException sqle) {
@@ -245,7 +238,9 @@ public class TestPgEncryption extends BasePgSQLTest {
     }
 
     // Client connection with SSL disabled -- should *not* allow connection (with or without pass).
-    tsConnBldr = getConnectionBuilder().withSslMode("disable").withTServer(tserver);
+    tsConnBldr = getConnectionBuilder().withSslMode("disable")
+                                       .withConnectionEndpoint(connectionEndpoint)
+                                       .withTServer(tserver);
     try (Connection ignored = tsConnBldr.withUser("yugabyte").withPassword("yugabyte").connect()) {
       fail("Expected login attempt to fail");
     } catch (SQLException sqle) {

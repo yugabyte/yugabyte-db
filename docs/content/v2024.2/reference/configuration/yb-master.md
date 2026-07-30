@@ -339,11 +339,15 @@ Note that in general these flags will have different values for TServer and mast
 
 Maximum amount of memory this process should use in bytes, that is, its hard memory limit.  A value of `0` specifies to instead use a percentage of the total system memory; see [--default_memory_limit_to_ram_ratio](#default-memory-limit-to-ram-ratio) for the percentage used.  A value of `-1` disables all memory limiting.
 
+For Kubernetes deployments, this flag is automatically set from the Kubernetes pod memory limits specified in the Helm chart configuration. See [Memory limits for Kubernetes deployments](../../../deploy/kubernetes/single-zone/oss/helm-chart/#memory-limits-for-kubernetes-deployments) for details.
+
 Default: `0`
 
 ##### --default_memory_limit_to_ram_ratio
 
 The percentage of available RAM to use for this process if [--memory_limit_hard_bytes](#memory-limit-hard-bytes) is `0`.  The special value `-1000` means to instead use the default value for this flag.  Available RAM excludes memory reserved by the kernel.
+
+This flag does not apply to Kubernetes universes. Memory limits are controlled via Kubernetes resource specifications in the Helm chart, and `--memory_limit_hard_bytes` is automatically set from those limits. See [Memory limits for Kubernetes deployments](../../../deploy/kubernetes/single-zone/oss/helm-chart/#memory-limits-for-kubernetes-deployments) for details.
 
 Default: `0.10` unless [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
 
@@ -503,13 +507,13 @@ Default: `1`
 
 Specifies the maximum number of tablet leaders on tablet servers (across the cluster) to move in any one run of the cluster balancer.
 
-Default: `2`
+Default: `100`
 
 ##### --load_balancer_max_concurrent_moves_per_table
 
 Specifies the maximum number of tablet leaders per table to move in any one run of the cluster balancer. The maximum number of tablet leader moves across the cluster is still limited by the flag `load_balancer_max_concurrent_moves`. This flag is meant to prevent a single table from using all of the leader moves quota and starving other tables. If set to -1, the number of leader moves per table is set to the global number of leader moves (`load_balancer_max_concurrent_moves`).
 
-Default: `1`
+Default: `-1`
 
 ##### --load_balancer_max_concurrent_removals
 
@@ -521,7 +525,7 @@ Default: `1`
 
 Specifies the maximum number of tablets being remote bootstrapped across the cluster.
 
-Default: `10`
+Default: `-1`
 
 ##### --load_balancer_max_concurrent_tablet_remote_bootstraps_per_table
 
@@ -531,7 +535,7 @@ Default: `2`
 
 ##### --load_balancer_max_over_replicated_tablets
 
-Specifies the maximum number of running tablet replicas that are allowed to be over the configured replication factor.
+Specifies the maximum number of running tablet replicas per table that are allowed to be over the configured replication factor. This controls the amount of space amplification in the cluster when tablet removal is slow. A value less than 0 means no limit.
 
 Default: `1`
 
@@ -652,7 +656,7 @@ Default: `0` for no limit.
 
 The number of tablet replicas that each GiB reserved by YB-TServers for tablet overheads can support.
 
-Default: 1024 * (7/10) (corresponding to an overhead of roughly 700 KiB per tablet)
+Default: `1462`
 
 ## Tablet splitting flags
 

@@ -76,6 +76,7 @@ public class CustomerConfigStorageAzureValidator extends CustomerConfigStorageVa
         CustomerConfigStorageAzureData regionConfig = new CustomerConfigStorageAzureData();
         regionConfig.azureSasToken = location.azureSasToken;
         regionConfig.useAzureIam = azureData.useAzureIam;
+        regionConfig.azureClientId = azureData.azureClientId;
         validateAzureUrl(
             regionConfig, CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location);
       }
@@ -111,7 +112,8 @@ public class CustomerConfigStorageAzureValidator extends CustomerConfigStorageVa
         BlobContainerClient blobContainerClient =
             factory.createBlobContainerClient(azureData, azUrl, container);
         ((AZUtil) (storageUtilFactory.getCloudUtil(Util.AZ)))
-            .validateOnBlobContainerClient(blobContainerClient, cloudPath, permissions);
+            .validateOnBlobContainerClient(
+                blobContainerClient, cloudPath, permissions, azureData.immutableStorage);
       } catch (BlobStorageException e) {
         String exceptionMsg = e.getMessage();
         throwBeanConfigDataValidatorError(fieldName, exceptionMsg);

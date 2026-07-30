@@ -5,9 +5,9 @@ SET documentdb.next_collection_id TO 5140;
 SET documentdb.next_collection_index_id TO 5140;
 
 SET client_min_messages=WARNING;
-SELECT documentdb_api.drop_collection('db', 'negation_tests_explain');
-SELECT documentdb_api.create_collection('db', 'negation_tests_explain');
-SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "negation_tests_explain", "indexes": [{ "key": { "$**": 1 }, "name": "myIdx1" }] }'::documentdb_core.bson, true);
+SELECT documentdb_api.drop_collection('db', 'simple_negation_tests_explain');
+SELECT documentdb_api.create_collection('db', 'simple_negation_tests_explain');
+SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "simple_negation_tests_explain", "indexes": [{ "key": { "$**": 1 }, "name": "myIdx1" }] }'::documentdb_core.bson, true);
 
 BEGIN;
 SET local search_path to documentdb_core,documentdb_api,documentdb_api_catalog,pg_catalog;

@@ -1,0 +1,60 @@
+in_memory:
+{SubDocKey(DocKey([], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], ["3"]), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), []), [kStrongRead, kStrongWrite]}
+
+
+intent_check:
+{SubDocKey(DocKey([], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], ["3"]), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), []), [kStrongRead, kStrongWrite]}
+
+
+regular_write:
+Wrote 1 key/value pairs to kRegular RocksDB:
+ 1. PutCF: SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), [HT{ days: 0 time: 0 }]) => { 14: "a" 15: "b" }
+
+
+in_memory:
+{SubDocKey(DocKey([], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], ["3"]), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), []), [kStrongRead, kStrongWrite]}
+
+
+intent_check:
+{SubDocKey(DocKey([], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], ["3"]), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), []), [kWeakRead, kWeakWrite, kStrongRead]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), [ColumnId(14)]), [kStrongRead, kStrongWrite]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), [ColumnId(15)]), [kStrongRead, kStrongWrite]}
+
+
+regular_write:
+Wrote 2 key/value pairs to kRegular RocksDB:
+ 1. PutCF: SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), [ColumnId(14); HT{ days: 0 time: 0 }]) => "b"
+ 2. PutCF: SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), [ColumnId(15); HT{ days: 0 time: 0 }]) => "a"
+
+
+in_memory:
+{SubDocKey(DocKey([], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], ["3"]), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), []), [kStrongRead, kStrongWrite]}
+
+
+intent_check:
+{SubDocKey(DocKey([], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], []), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], ["3"]), []), [kWeakRead, kWeakWrite]}
+{SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), []), [kStrongRead, kStrongWrite]}
+
+
+regular_write:
+Wrote 1 key/value pairs to kRegular RocksDB:
+ 1. PutCF: SubDocKey(DocKey(0xbdda, ["1", "2"], ["3", "4"]), [HT{ days: 0 time: 0 }]) => DEL
+
+

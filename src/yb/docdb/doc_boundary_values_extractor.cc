@@ -20,6 +20,7 @@
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
@@ -65,7 +66,7 @@ class DocBoundaryValuesExtractor : public rocksdb::BoundaryValuesExtractor {
     return Status::OK();
   }
 
-  rocksdb::UserFrontierPtr CreateFrontier() override {
+  storage::UserFrontierPtr CreateFrontier() override {
     return new docdb::ConsensusFrontier();
   }
 };

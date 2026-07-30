@@ -13,7 +13,7 @@ import functools
 import logging
 import os
 import paramiko
-import pipes
+import shlex
 import shutil
 import socket
 import stat
@@ -153,7 +153,7 @@ def run_command(args, num_retry=1, timeout=1, **kwargs):
 def quote_cmd_line_for_bash(cmd_line):
     if not isinstance(cmd_line, list) and not isinstance(cmd_line, tuple):
         raise Exception("Expected a list/tuple, got: [[ {} ]]".format(cmd_line))
-    return ' '.join([pipes.quote(str(arg)) for arg in cmd_line])
+    return ' '.join([shlex.quote(str(arg)) for arg in cmd_line])
 
 
 def sleep_or_raise(num_retry, timeout, ex):
@@ -362,9 +362,9 @@ def get_public_key_content(private_key_file):
 
 
 def get_ssh_host_port(host_info, custom_port, default_port=False):
-    """This method would return ssh_host and port which we should use for ansible. If host_info
-    includes a ssh_port key, then we return its value. Otherwise, if the default_port param is
-    True, then we return a Default SSH port (22) else, we return a custom ssh port.
+    """This method would return ssh_host and port. If host_info includes a ssh_port key,
+    then we return its value. Otherwise, if the default_port param is True, then we return
+    a Default SSH port (22) else, we return a custom ssh port.
     Args:
         host_info (dict): host_info dictionary that we fetched from inventory script, we
                           fetch the private_ip from that.

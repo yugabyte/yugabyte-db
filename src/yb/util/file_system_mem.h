@@ -82,6 +82,38 @@ class InMemorySequentialFile : public SequentialFile {
   size_t pos_;
 };
 
+class InMemoryWritableFile : public WritableFile {
+ public:
+  explicit InMemoryWritableFile(std::shared_ptr<InMemoryFileState> file)
+    : file_(std::move(file)) {}
+
+  ~InMemoryWritableFile() {}
+
+  Status PreAllocate(uint64_t size) override { return file_->PreAllocate(size); }
+
+  Status Append(const Slice& data) override { return file_->Append(data); }
+
+  // Default scatter-gather: serially append each slice.
+  Status AppendSlices(const Slice* slices, size_t num) override;
+
+  Status Truncate(uint64_t size) override { return Status::OK(); }
+
+  Status Close() override { return Status::OK(); }
+
+  Status Flush(FlushMode mode) override { return Status::OK(); }
+
+  Status Sync() override { return Status::OK(); }
+
+  uint64_t Size() const override { return file_->Size(); }
+
+  Result<uint64_t> SizeOnDisk() const override { return file_->Size(); }
+
+  const std::string& filename() const override { return file_->filename(); }
+
+ private:
+  const std::shared_ptr<InMemoryFileState> file_;
+};
+
 class InMemoryRandomAccessFile : public RandomAccessFile {
  public:
   explicit InMemoryRandomAccessFile(std::shared_ptr<InMemoryFileState> file)

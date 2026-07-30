@@ -78,7 +78,7 @@ const RestoreFinal = forwardRef<PageRef>((_, forwardRef) => {
     onPrev: () => {
       moveToPage(Page.TARGET);
     },
-    onNext: () => { }
+    onNext: () => {}
   }));
 
   return (
@@ -126,8 +126,14 @@ const preparePayload = (
         }
       }
 
-      const unSupportedTablespaces = getUnSupportedTableSpaceConfig(preflightResponse!, 'unsupportedTablespaces');
-      const conflictingTablespaces = getUnSupportedTableSpaceConfig(preflightResponse!, 'conflictingTablespaces');
+      const unSupportedTablespaces = getUnSupportedTableSpaceConfig(
+        preflightResponse!,
+        'unsupportedTablespaces'
+      );
+      const conflictingTablespaces = getUnSupportedTableSpaceConfig(
+        preflightResponse!,
+        'conflictingTablespaces'
+      );
 
       const infoList = {
         backupType: backupDetails!.backupType,
@@ -138,7 +144,7 @@ const preparePayload = (
         useRoles: useRoles
       } as any;
 
-      if (target?.useTablespaces && ( conflictingTablespaces || unSupportedTablespaces )) {
+      if (target?.useTablespaces && (conflictingTablespaces || unSupportedTablespaces)) {
         infoList['errorIfTablespacesExists'] = false;
       }
 

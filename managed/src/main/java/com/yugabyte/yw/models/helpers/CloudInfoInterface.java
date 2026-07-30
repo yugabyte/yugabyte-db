@@ -22,12 +22,14 @@ import com.yugabyte.yw.models.helpers.provider.DefaultCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.OCICloudInfo;
 import com.yugabyte.yw.models.helpers.provider.OnPremCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.AWSRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.DefaultRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
+import com.yugabyte.yw.models.helpers.provider.region.OCIRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.azs.DefaultAZCloudInfo;
 import java.util.Map;
 import java.util.Objects;
@@ -155,6 +157,16 @@ public interface CloudInfoInterface {
           azuCloudInfo.withSensitiveDataMasked();
         }
         return (T) azuCloudInfo;
+      case oci:
+        OCICloudInfo ociCloudInfo = cloudInfo.getOci();
+        if (ociCloudInfo == null) {
+          ociCloudInfo = new OCICloudInfo();
+          cloudInfo.setOci(ociCloudInfo);
+        }
+        if (ociCloudInfo != null && maskSensitiveData) {
+          ociCloudInfo.withSensitiveDataMasked();
+        }
+        return (T) ociCloudInfo;
       case kubernetes:
         KubernetesInfo kubernetesInfo = cloudInfo.getKubernetes();
         if (kubernetesInfo == null) {
@@ -221,6 +233,16 @@ public interface CloudInfoInterface {
           azuRegionCloudInfo.withSensitiveDataMasked();
         }
         return (T) azuRegionCloudInfo;
+      case oci:
+        OCIRegionCloudInfo ociRegionCloudInfo = cloudInfo.getOci();
+        if (ociRegionCloudInfo == null) {
+          ociRegionCloudInfo = new OCIRegionCloudInfo();
+          cloudInfo.setOci(ociRegionCloudInfo);
+        }
+        if (ociRegionCloudInfo != null && maskSensitiveData) {
+          ociRegionCloudInfo.withSensitiveDataMasked();
+        }
+        return (T) ociRegionCloudInfo;
       case kubernetes:
         KubernetesRegionInfo kubernetesInfo = cloudInfo.getKubernetes();
         if (kubernetesInfo == null) {
@@ -352,6 +374,10 @@ public interface CloudInfoInterface {
         AzureCloudInfo azuCloudInfo = mapper.convertValue(config, AzureCloudInfo.class);
         cloudInfo.setAzu(azuCloudInfo);
         break;
+      case oci:
+        OCICloudInfo ociCloudInfo = mapper.convertValue(config, OCICloudInfo.class);
+        cloudInfo.setOci(ociCloudInfo);
+        break;
       case kubernetes:
         KubernetesInfo kubernetesInfo = mapper.convertValue(config, KubernetesInfo.class);
         cloudInfo.setKubernetes(kubernetesInfo);
@@ -390,6 +416,11 @@ public interface CloudInfoInterface {
         AzureRegionCloudInfo azuRegionCloudInfo =
             mapper.convertValue(config, AzureRegionCloudInfo.class);
         cloudInfo.setAzu(azuRegionCloudInfo);
+        break;
+      case oci:
+        OCIRegionCloudInfo ociRegionCloudInfo =
+            mapper.convertValue(config, OCIRegionCloudInfo.class);
+        cloudInfo.setOci(ociRegionCloudInfo);
         break;
       case kubernetes:
         KubernetesRegionInfo kubernetesRegionInfo =

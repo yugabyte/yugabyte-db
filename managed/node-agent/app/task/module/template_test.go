@@ -94,3 +94,30 @@ func TestCustomBooleanTestFunc(t *testing.T) {
 		t.Logf("Output: %s", output)
 	}
 }
+
+func TestConvertBoolString(t *testing.T) {
+	testValues := []struct {
+		Input          map[string]any
+		ExpectedOutput string
+	}{
+		{map[string]any{"string_flag": "true"}, " TRUE "},
+		{map[string]any{"string_flag": "false"}, " FALSE "},
+	}
+	content := "{% if string_flag | bool %} TRUE {% else %} FALSE {% endif %}"
+	filename := writeTestTemplate(t, content)
+	defer os.Remove(filename)
+	for _, value := range testValues {
+		output, err := ResolveTemplate(
+			context.TODO(),
+			value.Input,
+			filename,
+		)
+		if err != nil {
+			t.Fatalf("Failed to copy file: %v", err)
+		}
+		if output != value.ExpectedOutput {
+			t.Fatalf("Unexpected output: %s, found %s", value.ExpectedOutput, output)
+		}
+		t.Logf("Output: %s", output)
+	}
+}

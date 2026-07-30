@@ -42,12 +42,14 @@ relation|pg_class    |{AccessShareLock}         |t      |f       |           |  
 relation|pg_class    |{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
 relation|pg_index    |{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
 relation|pg_index    |{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
+relation|pg_namespace|{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
+relation|pg_namespace|{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
 relation|pg_opclass  |{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
 relation|pg_opclass  |{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
 relation|pg_proc     |{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
 relation|pg_type     |{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
 relation|pg_type     |{AccessShareLock}         |t      |f       |           |         |          |      |         |                    
-(23 rows)
+(25 rows)
 
 step s1_commit: COMMIT;
 step s2_insert: <... completed>

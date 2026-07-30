@@ -44,8 +44,17 @@ void LogBuffer::AddLogToBuffer(
     size_t max_log_size,
     const char* format,
     va_list ap) {
-  if (!info_log_ || log_level_ < info_log_->GetInfoLogLevel()) {
-    // Skip the level because of its level.
+  AddLogToBuffer(file, line, max_log_size, log_level_, format, ap);
+}
+
+void LogBuffer::AddLogToBuffer(
+    const char* file,
+    const int line,
+    size_t max_log_size,
+    InfoLogLevel entry_log_level,
+    const char* format,
+    va_list ap) {
+  if (!info_log_ || !ShouldLog(entry_log_level, info_log_->GetInfoLogLevel())) {
     return;
   }
 
@@ -54,6 +63,7 @@ void LogBuffer::AddLogToBuffer(
   char* p = buffered_log->message;
   buffered_log->file_ = file;
   buffered_log->line_ = line;
+  buffered_log->log_level_ = entry_log_level;
   char* limit = alloc_mem + max_log_size - 1;
 
   // store the time
@@ -88,7 +98,7 @@ void LogBuffer::AddLogToBuffer(
 
 void LogBuffer::FlushBufferToLog() {
   for (BufferedLog* log : logs_) {
-    LogWithContext(log->file_, log->line_, log_level_, info_log_, "%s", log->message);
+    LogWithContext(log->file_, log->line_, log->log_level_, info_log_, "%s", log->message);
   }
   logs_.clear();
 }
@@ -119,6 +129,38 @@ void LogToBufferWithContext(
     va_list ap;
     va_start(ap, format);
     log_buffer->AddLogToBuffer(file, line, kDefaultMaxLogSize, format, ap);
+    va_end(ap);
+  }
+}
+
+void LogToBufferWithContextDetail(
+    const char* file,
+    const int line,
+    LogBuffer* log_buffer,
+    size_t max_log_size,
+    const char* format,
+    ...) {
+  if (log_buffer != nullptr) {
+    va_list ap;
+    va_start(ap, format);
+    log_buffer->AddLogToBuffer(
+        file, line, max_log_size, InfoLogLevel::DETAIL_LEVEL, format, ap);
+    va_end(ap);
+  }
+}
+
+void LogToBufferWithContextDetail(
+    const char* file,
+    const int line,
+    LogBuffer* log_buffer,
+    const char* format,
+    ...) {
+  const size_t kDefaultMaxLogSize = 512;
+  if (log_buffer != nullptr) {
+    va_list ap;
+    va_start(ap, format);
+    log_buffer->AddLogToBuffer(
+        file, line, kDefaultMaxLogSize, InfoLogLevel::DETAIL_LEVEL, format, ap);
     va_end(ap);
   }
 }

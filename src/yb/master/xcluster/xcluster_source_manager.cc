@@ -26,13 +26,15 @@
 #include "yb/common/xcluster_util.h"
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master_types.h"
 #include "yb/master/master.h"
+#include "yb/master/ts_descriptor.h"
 #include "yb/master/xcluster/add_table_to_xcluster_source_task.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_catalog_entity.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
-#include "yb/master/xcluster/xcluster_outbound_replication_group.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
+#include "yb/master/xcluster/xcluster_outbound_replication_group.h"
 #include "yb/master/xcluster/xcluster_status.h"
 #include "yb/master/ysql_sequence_util.h"
 
@@ -40,13 +42,13 @@
 
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 
 DEFINE_RUNTIME_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
     "When set, it enables automatic tablet splitting for tables that are part of an "
     "xCluster replication setup and are currently being bootstrapped for xCluster.");
 
-DEFINE_test_flag(
-    bool, simulate_EnsureSequenceUpdatesAreInWal_failure, false,
+DEFINE_test_flag(bool, simulate_EnsureSequenceUpdatesAreInWal_failure, false,
     "Simulate failure during EnsureSequenceUpdatesAreInWal RPC.");
 
 DECLARE_int32(master_yb_client_default_timeout_ms);
@@ -343,21 +345,6 @@ XClusterSourceManager::GetPostTabletCreateTasks(
   }
 
   return tasks;
-}
-
-std::optional<uint32> XClusterSourceManager::GetDefaultWalRetentionSec(
-    const NamespaceId& namespace_id) const {
-  if (namespace_id == kSystemNamespaceId) {
-    return std::nullopt;
-  }
-
-  for (const auto& outbound_replication_group : GetAllOutboundGroups()) {
-    if (outbound_replication_group->HasNamespace(namespace_id)) {
-      return FLAGS_cdc_wal_retention_time_secs;
-    }
-  }
-
-  return std::nullopt;
 }
 
 Status XClusterSourceManager::CreateOutboundReplicationGroup(

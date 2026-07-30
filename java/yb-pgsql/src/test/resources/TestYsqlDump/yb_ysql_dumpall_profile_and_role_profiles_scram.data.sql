@@ -94,6 +94,17 @@ SET standard_conforming_strings = on;
     ALTER ROLE yb_fdw WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
 \endif
 
+\set role_exists false
+\if :ignore_existing_roles
+    SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_global_views_user') AS role_exists \gset
+\endif
+\if :role_exists
+    \echo 'Role already exists:' yb_global_views_user
+\else
+    CREATE ROLE yb_global_views_user;
+    ALTER ROLE yb_global_views_user WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS;
+\endif
+
 ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD 'SCRAM-SHA-256$4096:VLK4RMaQLCvNtQ==$6YtlR4t69SguDiwFvbVgVZtuz6gpJQQqUMZ7IQJK5yI=:ps75jrHeYU4lXCcXI4O8oIdJ3eO8o2jirjruw9phBTo=';
 
 \set role_exists false
@@ -113,6 +124,11 @@ ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION
 --
 
 
+--
+-- Role memberships
+--
+
+GRANT pg_read_all_stats TO yb_global_views_user GRANTED BY postgres;
 
 
 
@@ -427,6 +443,14 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
+
+-- YB: preserve restored reltuples during index creation
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_enable_update_reltuples_after_create_index') THEN
+    EXECUTE 'SET yb_enable_update_reltuples_after_create_index TO false';
+  END IF;
+END $$;
 --
 -- Name: DATABASE system_platform; Type: COMMENT; Schema: -; Owner: postgres
 --
@@ -547,6 +571,14 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
+
+-- YB: preserve restored reltuples during index creation
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_enable_update_reltuples_after_create_index') THEN
+    EXECUTE 'SET yb_enable_update_reltuples_after_create_index TO false';
+  END IF;
+END $$;
 --
 -- Name: DATABASE yugabyte; Type: COMMENT; Schema: -; Owner: postgres
 --

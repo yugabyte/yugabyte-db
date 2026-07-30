@@ -1,0 +1,6 @@
+title: Restore
+description: Universe restore resource.
+type: object
+properties:
+  info:
+    $ref: "./RestoreInfo.yaml"

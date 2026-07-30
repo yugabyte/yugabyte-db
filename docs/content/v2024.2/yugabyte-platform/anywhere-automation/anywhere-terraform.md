@@ -3,7 +3,9 @@ title: YugabyteDB Anywhere Terraform Provider
 headerTitle: YugabyteDB Anywhere Terraform Provider
 linkTitle: Terraform Provider
 description: Terraform Provider for YugabyteDB Anywhere.
-headcontent: Manage YugabyteDB Anywhere accounts and deployments using the Terraform Provider
+headcontent: Manage your accounts and deployments using Terraform
+tags:
+  feature: early-access
 menu:
   v2024.2_yugabyte-platform:
     parent: anywhere-automation
@@ -12,14 +14,7 @@ menu:
 type: docs
 ---
 
-Use the YugabyteDB Anywhere Terraform Provider to deploy and manage universes programmatically. Some examples of what you can accomplish using this provider include:
-
-- Create and manage YugabyteDB Anywhere provider configurations
-- Deploy and manage universes
-- Pause and resume universes
-- Perform software upgrades
-- Run on-demand backups and restores
-- Resize nodes
+Use the YugabyteDB Anywhere Terraform Provider to deploy and manage universes programmatically.
 
 The provider documentation includes guides to help you get started.
 

@@ -24,10 +24,13 @@ import java.util.HashMap;
 import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestReplicationConn extends BaseYsqlConnMgr {
   private static final int YSQ_MAX_CONNECTIONS = 14;
   private static final int MAX_REPLICATION_SLOTS = 50;
@@ -80,13 +83,17 @@ public class TestReplicationConn extends BaseYsqlConnMgr {
 
   @Test
   public void testReplicationConnAuthBackend() throws Exception {
-    restartClusterWithFlags(createMasterFlags(), createTserverFlags(false, true));
+    Map<String, String> tserverFlags = createTserverFlags(false, true);
+    tserverFlags.put("ysql_cdc_active_replication_slot_window_ms", "0");
+    restartClusterWithFlags(createMasterFlags(), tserverFlags);
     runReplicationConnTest(true);
   };
 
   @Test
   public void testReplicationConnAuthPassthrough() throws Exception {
-    restartClusterWithFlags(createMasterFlags(), createTserverFlags(false, false));
+    Map<String, String> tserverFlags = createTserverFlags(false, false);
+    tserverFlags.put("ysql_cdc_active_replication_slot_window_ms", "0");
+    restartClusterWithFlags(createMasterFlags(), tserverFlags);
     runReplicationConnTest(false);
   };
 

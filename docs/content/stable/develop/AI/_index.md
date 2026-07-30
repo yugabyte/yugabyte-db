@@ -3,7 +3,6 @@ title: Artificial Intelligence with YugabyteDB
 headerTitle: Develop applications with AI and YugabyteDB
 linkTitle: AI
 description: How to Develop Applications with AI and YugabyteDB
-image:
 headcontent: Support RAG, semantic search, and AI agents at enterprise scale
 type: indexpage
 showRightNav: true
@@ -25,7 +24,7 @@ Learn more about developing GenAI and RAG applications with YugabyteDB:
 ## Get started
 
 {{<tip>}}
-Use YugabyteDB {{<release "2025.1">}} or later to get the latest vector indexing capabilities and MCP features.
+Use YugabyteDB {{<release "2025.2">}} or later to get the latest vector indexing capabilities and MCP features.
 
 No cluster? No problem. Run the [latest YugabyteDB version locally](https://download.yugabyte.com) on macOS (using Docker or the yugabyted binary) or any Linux VM to try these tutorials.
 {{</tip>}}

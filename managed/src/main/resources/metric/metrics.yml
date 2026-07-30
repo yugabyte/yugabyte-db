@@ -238,7 +238,7 @@ container_cpu_usage:
       type: "date"
     yaxis:
       alias:
-        "container_cpu_usage": "cpu_usage"
+        "container_cpu_usage": "Usage"
       ticksuffix: "&nbsp;%"
 
 container_memory_usage:
@@ -257,7 +257,7 @@ container_memory_usage:
     yaxis:
       ticksuffix: "&nbsp;GB"
       alias:
-        "container_memory_working_set_bytes": "memory_usage"
+        "container_memory_working_set_bytes": "Usage"
 
 container_volume_stats:
   metric: "kubelet_volume_stats_used_bytes"
@@ -273,7 +273,7 @@ container_volume_stats:
     yaxis:
       ticksuffix: "&nbsp;GB"
       alias:
-        "kubelet_volume_stats_used_bytes": "used"
+        "kubelet_volume_stats_used_bytes": "Used"
 
 container_volume_max_usage:
   metric: "kubelet_volume_stats_capacity_bytes"
@@ -289,7 +289,7 @@ container_volume_max_usage:
     yaxis:
       ticksuffix: "&nbsp;GB"
       alias:
-        "kubelet_volume_stats_capacity_bytes": "used"
+        "kubelet_volume_stats_capacity_bytes": "Used"
 
 container_volume_usage_percent:
   metric: "container_volume_stats/container_volume_max_usage"
@@ -302,7 +302,7 @@ container_volume_usage_percent:
       type: "date"
     yaxis:
       alias:
-        "container_volume_stats/container_volume_max_usage": "Container Usage"
+        "container_volume_stats/container_volume_max_usage": "Used"
       ticksuffix: "&nbsp;%"
 
 network_bytes:
@@ -1879,7 +1879,7 @@ lsm_rocksdb_memory_rejections:
   range: true
   filters:
     export_type: "tserver_export"
-    saved_name: "leader_memory_pressure_rejections|follower_memory_pressure_rejections|operation_memory_pressure_rejections"
+    saved_name: "leader_memory_pressure_rejections|follower_memory_pressure_rejections|operation_memory_pressure_rejections|rpc_inbound_calls_rejected_because_memory_pressure"
   group_by: "saved_name"
   panel_group: "RocksDB"
   layout:
@@ -1891,6 +1891,7 @@ lsm_rocksdb_memory_rejections:
         "leader_memory_pressure_rejections": "Leader"
         "follower_memory_pressure_rejections": "Follower"
         "operation_memory_pressure_rejections": "Operations"
+        "rpc_inbound_calls_rejected_because_memory_pressure": "RPCs"
 
 lsm_rocksdb_flush_size:
   metric: "rocksdb_flush_write_bytes"
@@ -2212,7 +2213,9 @@ ysql_conn_mgr_active_connections:
   function: "avg_over_time|sum"
   range: true
   filters:
-    saved_name: "ysql_conn_mgr_active_clients|ysql_conn_mgr_queued_clients|ysql_conn_mgr_waiting_clients|ysql_conn_mgr_clients_total"
+    saved_name: "ysql_conn_mgr_active_clients|ysql_conn_mgr_queued_clients|\
+      ysql_conn_mgr_waiting_clients|ysql_conn_mgr_clients_total|\
+      ysql_conn_mgr_sticky_connections"
   group_by: "saved_name"
   panel_group: "YSQL Ops & Latency"
   layout:
@@ -2225,6 +2228,7 @@ ysql_conn_mgr_active_connections:
         "ysql_conn_mgr_queued_clients": "Queued"
         "ysql_conn_mgr_waiting_clients": "Idle/Pending"
         "ysql_conn_mgr_clients_total": "Total"
+        "ysql_conn_mgr_sticky_connections": "Sticky"
 
 #Cassandra Metrics
 cql_server_rpc_per_second:
@@ -3611,7 +3615,7 @@ table_memory_rejections:
   range: true
   filters:
     export_type: "tserver_export"
-    saved_name: "leader_memory_pressure_rejections|follower_memory_pressure_rejections|operation_memory_pressure_rejections"
+    saved_name: "leader_memory_pressure_rejections|follower_memory_pressure_rejections|operation_memory_pressure_rejections|rpc_inbound_calls_rejected_because_memory_pressure"
     table_id: ".+"
   group_by: "saved_name"
   layout:
@@ -3623,6 +3627,7 @@ table_memory_rejections:
         "leader_memory_pressure_rejections": "Leader"
         "follower_memory_pressure_rejections": "Follower"
         "operation_memory_pressure_rejections": "Operations"
+        "rpc_inbound_calls_rejected_because_memory_pressure": "RPCs"
 
 table_compaction:
   metric: ""
@@ -3732,7 +3737,9 @@ automatic_split_manager_time:
 
 raft_leader:
   metric: "is_raft_leader"
-  function: "sum"
+  function: "sum by (saved_name, exported_instance)|sum"
+  filters:
+    export_type: "tserver_export"
   panel_group: "Tablet Server"
   layout:
     "title": "Raft Leader"
@@ -3745,6 +3752,9 @@ raft_leader:
 tserver_live_tablet_peers:
   metric: "ts_live_tablet_peers"
   function: "avg_over_time|sum"
+  range: true
+  filters:
+    export_type: "tserver_export"
   panel_group: "Tablet Server"
   layout:
     "title": "Live Tablet Peers"
@@ -3845,7 +3855,7 @@ process_user_cpu_seconds:
   range: true
   filters:
     process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
-      yb-controller-server|node_exporter|odyssey|total"
+      yb-controller-server|node_exporter|odyssey|total_count"
   group_by: "process"
   panel_group: "Per-process Metrics"
   layout:
@@ -3861,7 +3871,7 @@ process_user_cpu_seconds:
         "yb-controller-server": "YB-Controller"
         "node_exporter": "Node Exporter"
         "odyssey": "Connection Pooling Manager"
-        "total": "Total"
+        "total_count": "Total"
       ticksuffix: "&nbsp;%"
 
 process_system_cpu_seconds:
@@ -3871,7 +3881,7 @@ process_system_cpu_seconds:
   range: true
   filters:
     process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
-      yb-controller-server|node_exporter|odyssey|total"
+      yb-controller-server|node_exporter|odyssey|total_count"
   group_by: "process"
   panel_group: "Per-process Metrics"
   layout:
@@ -3887,7 +3897,7 @@ process_system_cpu_seconds:
         "yb-controller-server": "YB-Controller"
         "node_exporter": "Node Exporter"
         "odyssey": "Connection Pooling Manager"
-        "total": "Total"
+        "total_count": "Total"
       ticksuffix: "&nbsp;%"
 
 process_virtual_memory:
@@ -3897,7 +3907,7 @@ process_virtual_memory:
   operator: "/ 1024"
   filters:
     process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
-      yb-controller-server|node_exporter|odyssey|total"
+      yb-controller-server|node_exporter|odyssey|total_count"
     type: "virtual"
   group_by: "process"
   panel_group: "Per-process Metrics"
@@ -3914,7 +3924,7 @@ process_virtual_memory:
         "yb-controller-server": "YB-Controller"
         "node_exporter": "Node Exporter"
         "odyssey": "Connection Pooling Manager"
-        "total": "Total"
+        "total_count": "Total"
       ticksuffix: "&nbsp;MB"
 
 process_resident_memory:
@@ -3924,7 +3934,7 @@ process_resident_memory:
   operator: "/ 1024"
   filters:
     process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
-      yb-controller-server|node_exporter|odyssey|total"
+      yb-controller-server|node_exporter|odyssey|total_count"
     type: "resident"
   group_by: "process"
   panel_group: "Per-process Metrics"
@@ -3941,7 +3951,7 @@ process_resident_memory:
         "yb-controller-server": "YB-Controller"
         "node_exporter": "Node Exporter"
         "odyssey": "Connection Pooling Manager"
-        "total": "Total"
+        "total_count": "Total"
       ticksuffix: "&nbsp;MB"
 
 process_proportional_memory:
@@ -3951,7 +3961,7 @@ process_proportional_memory:
   operator: "/ 1024"
   filters:
     process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
-      yb-controller-server|node_exporter|odyssey|total"
+      yb-controller-server|node_exporter|odyssey|total_count"
     type: "proportional"
   group_by: "process"
   panel_group: "Per-process Metrics"
@@ -3968,7 +3978,7 @@ process_proportional_memory:
         "yb-controller-server": "YB-Controller"
         "node_exporter": "Node Exporter"
         "odyssey": "Connection Pooling Manager"
-        "total": "Total"
+        "total_count": "Total"
       ticksuffix: "&nbsp;MB"
 
 process_io_read:
@@ -3977,7 +3987,7 @@ process_io_read:
   range: true
   filters:
     process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
-      yb-controller-server|node_exporter|odyssey|total"
+      yb-controller-server|node_exporter|odyssey|total_count"
   group_by: "process"
   panel_group: "Per-process Metrics"
   layout:
@@ -3993,7 +4003,7 @@ process_io_read:
         "yb-controller-server": "YB-Controller"
         "node_exporter": "Node Exporter"
         "odyssey": "Connection Pooling Manager"
-        "total": "Total"
+        "total_count": "Total"
       ticksuffix: "&nbsp;KB"
 
 process_io_write:
@@ -4002,7 +4012,7 @@ process_io_write:
   range: true
   filters:
     process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
-      yb-controller-server|node_exporter|odyssey|total"
+      yb-controller-server|node_exporter|odyssey|total_count"
   group_by: "process"
   panel_group: "Per-process Metrics"
   layout:
@@ -4018,7 +4028,7 @@ process_io_write:
         "yb-controller-server": "YB-Controller"
         "node_exporter": "Node Exporter"
         "odyssey": "Connection Pooling Manager"
-        "total": "Total"
+        "total_count": "Total"
       ticksuffix: "&nbsp;KB"
 
 process_open_files:
@@ -4027,7 +4037,7 @@ process_open_files:
   range: true
   filters:
     process: "yb-master|yb-tserver|yb-postmaster|otelcol-contrib|\
-      yb-controller-server|node_exporter|odyssey|total"
+      yb-controller-server|node_exporter|odyssey|total_count"
   group_by: "process"
   panel_group: "Per-process Metrics"
   layout:
@@ -4043,7 +4053,7 @@ process_open_files:
         "yb-controller-server": "YB-Controller"
         "node_exporter": "Node Exporter"
         "odyssey": "Connection Pooling Manager"
-        "total": "Total"
+        "total_count": "Total"
 
 ysql_catalog_cache_misses:
   metric: "rpc_latency_count"
@@ -4063,3 +4073,176 @@ ysql_catalog_cache_misses:
     yaxis:
       alias:
         rpc_latency_count: "Catalog Cache Miss Count"
+
+# ---------------------------------------------------------------------------
+# YBA-platform host metrics (VM install).
+# Filtered by job="yba-node-exporter" so they only reflect the YBA host itself.
+# ---------------------------------------------------------------------------
+yba_node_cpu_usage:
+  metric: "node_cpu_usage_avg"
+  function: "avg_over_time|avg"
+  range: true
+  operator: "* 100"
+  filters:
+    job: "yba-node-exporter"
+    mode: "user|system|total"
+  group_by: "mode"
+  panel_group: "YBA Node Metrics"
+  layout:
+    title: "YBA Node CPU Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "user": "User"
+        "system": "System"
+        "total": "Total"
+      ticksuffix: "&nbsp;%"
+
+yba_node_memory_usage:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  operator: "/ 1073741824"
+  filters:
+    job: "yba-node-exporter"
+    saved_name: "node_memory_Cached_bytes|node_memory_Buffers_bytes|node_memory_MemFree_bytes|\
+      node_memory_MemTotal_bytes"
+  group_by: "saved_name"
+  panel_group: "YBA Node Metrics"
+  layout:
+    title: "YBA Node Memory Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_memory_Cached_bytes": "Cached"
+        "node_memory_Buffers_bytes": "Buffered"
+        "node_memory_MemFree_bytes": "Free"
+        "node_memory_MemTotal_bytes": "Total"
+      ticksuffix: "&nbsp;GB"
+
+# Per-mountpoint free/size pair used by yba_node_disk_usage_percent below.
+yba_node_disk_free:
+  metric: "node_filesystem_free_bytes"
+  function: "sum"
+  filters:
+    job: "yba-node-exporter"
+  exclude_filters:
+    fstype: "rootfs"
+    mountpoint: "/boot.*"
+  group_by: "mountpoint"
+  layout:
+    title: "YBA Node Disk Free"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;bytes"
+
+yba_node_disk_size:
+  metric: "node_filesystem_size_bytes"
+  function: "sum"
+  filters:
+    job: "yba-node-exporter"
+  exclude_filters:
+    fstype: "rootfs"
+    mountpoint: "/boot.*"
+  group_by: "mountpoint"
+  layout:
+    title: "YBA Node Disk Size"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;bytes"
+
+yba_node_disk_usage_percent:
+  metric: "yba_node_disk_free/yba_node_disk_size"
+  panel_group: "YBA Node Metrics"
+  layout:
+    title: "YBA Node Disk Usage Percent"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;%"
+
+# ---------------------------------------------------------------------------
+# YBA-platform container metrics (K8s install).
+# Filtered by pod_name=$POD_NAME, namespace=$POD_NAMESPACE so we only see the
+# containers in the YBA pod. CPU and disk graphs are grouped by container so
+# the user can tell yugaware / prometheus / postgres apart.
+# ---------------------------------------------------------------------------
+yba_container_cpu_usage:
+  metric: "container_cpu_usage_seconds_total"
+  function: "rate|avg"
+  range: true
+  filters:
+    saved_name: "container_cpu_usage_seconds_total"
+    container_name: "yugaware|prometheus|postgres"
+    pod_name: "__ybaPodName__"
+    namespace: "__ybaNamespace__"
+  group_by: "container_name"
+  panel_group: "YBA Container Metrics"
+  layout:
+    title: "YBA Container CPU Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;cores"
+
+yba_container_memory_usage:
+  metric: "container_memory_working_set_bytes"
+  function: "avg_over_time|avg"
+  range: true
+  operator: "/ 1048576"
+  filters:
+    saved_name: "container_memory_working_set_bytes"
+    container_name: "yugaware|prometheus|postgres"
+    pod_name: "__ybaPodName__"
+    namespace: "__ybaNamespace__"
+  group_by: "container_name"
+  panel_group: "YBA Container Metrics"
+  layout:
+    title: "YBA Container Memory Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;MB"
+
+# Per-PVC used/capacity pair used by yba_container_disk_usage_percent below.
+yba_container_disk_used:
+  metric: "kubelet_volume_stats_used_bytes"
+  function: "sum"
+  filters:
+    persistentvolumeclaim: "__ybaPvcName__"
+    namespace: "__ybaNamespace__"
+  group_by: "persistentvolumeclaim"
+  layout:
+    title: "YBA Container Disk Used"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;bytes"
+
+yba_container_disk_capacity:
+  metric: "kubelet_volume_stats_capacity_bytes"
+  function: "sum"
+  filters:
+    persistentvolumeclaim: "__ybaPvcName__"
+    namespace: "__ybaNamespace__"
+  group_by: "persistentvolumeclaim"
+  layout:
+    title: "YBA Container Disk Capacity"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;bytes"
+
+yba_container_disk_usage_percent:
+  metric: "yba_container_disk_used/yba_container_disk_capacity"
+  panel_group: "YBA Container Metrics"
+  layout:
+    title: "YBA Container Disk Usage Percent"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;%"

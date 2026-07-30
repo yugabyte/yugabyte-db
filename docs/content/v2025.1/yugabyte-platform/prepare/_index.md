@@ -18,6 +18,10 @@ YugabyteDB Anywhere is a control plane used to deploy and manage YugabyteDB data
 Don't install YugabyteDB Anywhere on servers that you will use for database clusters, and vice-versa.
 {{< /warning >}}
 
+{{< warning title="Antivirus and endpoint scanning" >}}
+Antivirus and endpoint scanning software can potentially impact the operation of YugabyteDB Anywhere and the universes it manages. Refer to [Antivirus and endpoint scanning](/stable/faq/antivirus/) for recommendations on using antivirus and endpoint scanning tools.
+{{< /warning >}}
+
 {{< tip title="Track your progress" >}}
 To track your progress while you prepare your infrastructure, you can use the following checklists:
 
@@ -41,8 +45,8 @@ To prepare your infrastructure for YugabyteDB Anywhere, you need to do the follo
 
   You must prepare a server where you will install YugabyteDB Anywhere. This server must meet the following prerequisites:
 
-  - Minimum hardware requirements for architecture, CPU, and disk
-  - Minimum software requirements, including Linux OS and additional software and utilities
+  - [Minimum hardware requirements](./server-yba/#hardware-requirements) for architecture, CPU, and disk
+  - [Minimum software requirements](./server-yba/#software-requirements), including Linux OS and additional software and utilities
 
 - [Prepare servers for database nodes](./server-nodes/)
 

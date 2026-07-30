@@ -1,0 +1,7 @@
+title: ImageBundleApiFilter
+description: Optional filter for listing image bundles for a provider.
+type: object
+properties:
+  arch:
+    description: only include bundles whose details match this architecture
+    type: string

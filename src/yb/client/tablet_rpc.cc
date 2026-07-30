@@ -57,14 +57,12 @@ DEFINE_UNKNOWN_int32(lookup_cache_refresh_secs, 60, "When non-zero, specifies ho
 DEFINE_test_flag(int32, assert_failed_replicas_less_than, 0,
                  "If greater than 0, this process will crash if the number of failed replicas for "
                  "a RemoteTabletServer is greater than the specified number.");
-DEFINE_test_flag(
-    bool, always_return_consensus_info_for_succeeded_rpc, yb::kIsDebug,
+DEFINE_test_flag(bool, always_return_consensus_info_for_succeeded_rpc, yb::kIsDebug,
     "If set to true, we will always pass a stale raft_config_opid_index to the request when it is "
     "possible for the request. This is turned on in debug mode to test that our metacache "
     "will always be refreshed when a successful Write/Read/TransactionStatus/GetChanges RPC "
     "responds.");
-DEFINE_RUNTIME_bool(
-    enable_metacache_partial_refresh, true,
+DEFINE_RUNTIME_bool(enable_metacache_partial_refresh, true,
     "If set, we will attempt to refresh the tablet metadata cache with a TabletConsensusInfoPB in "
     "the tablet invoker.");
 
@@ -154,7 +152,10 @@ void TabletInvoker::SelectTabletServer()  {
     // refresh has occurred. This also avoids LookupTabletByKey() going into
     // "fast path" mode and not actually performing a metadata refresh from the
     // Master when it needs to.
-    tablet_->MarkTServerAsFollower(current_ts_);
+    const auto marked_as_follower = tablet_->MarkTServerAsFollower(current_ts_);
+    DCHECK(marked_as_follower)
+        << "Tablet " << tablet_id_ << ": Specified server not found: "
+        << current_ts_->ToString() << ". Replicas: " << tablet_->ReplicasAsString();
     current_ts_ = nullptr;
   }
   if (!current_ts_) {
@@ -171,13 +172,22 @@ void TabletInvoker::SelectTabletServer()  {
       assign_new_leader_ = true;
     } else {
       YB_LOG_EVERY_N_SECS(INFO, 1)
-          << "Unable to pick leader for " << tablet_id_ << ", replicas: " << AsString(replicas)
+          << "Unable to find the leader for " << tablet_id_ << ", replicas: " << AsString(replicas)
           << ", followers: " << AsString(followers_);
     }
   } else {
     VLOG(4) << "Selected TServer " << current_ts_->ToString() << " as leader for " << tablet_id_;
   }
   VTRACE_TO(1, trace_, "Selected $0", (current_ts_ ? current_ts_->ToString() : "none"));
+}
+
+void TabletInvoker::Reset() {
+  TRACE_TO(trace_, "Reset()");
+  tablet_id_.clear();
+  tablet_.reset();
+  current_ts_ = nullptr;
+  followers_.clear();
+  assign_new_leader_ = false;
 }
 
 void TabletInvoker::Execute(TabletIdView tablet_id, bool leader_only) {
@@ -332,7 +342,7 @@ Status TabletInvoker::FailToNewReplica(const Status& reason,
     VLOG(1) << "Failing " << command_->ToString() << " to a new replica: " << reason
             << ", old replica: " << yb::ToString(current_ts_);
 
-    if (GetAtomicFlag(&FLAGS_update_all_tablets_upon_network_failure) &&
+    if (FLAGS_update_all_tablets_upon_network_failure &&
         rpc::NetworkError(reason) == rpc::NetworkErrorCode::kConnectFailed) {
       YB_LOG_EVERY_N_SECS(WARNING, 1) << "Marking TServer " << current_ts_->ToString()
                                       << " as unreachable due to " << reason.ToString();
@@ -384,7 +394,7 @@ bool TabletInvoker::Done(Status* status) {
   }
 
   bool consensus_info_refresh_succeeded = false;
-  if (status->ok() && GetAtomicFlag(&FLAGS_enable_metacache_partial_refresh)) {
+  if (status->ok() && FLAGS_enable_metacache_partial_refresh) {
     consensus_info_refresh_succeeded = rpc_->RefreshMetaCacheWithResponse();
     TEST_SYNC_POINT_CALLBACK(
         "TabletInvoker::RefreshFinishedWithOkRPCResponse", &consensus_info_refresh_succeeded);
@@ -557,6 +567,11 @@ bool TabletInvoker::RefreshTabletInfoWithConsensusInfo(
     return client_->RefreshTabletInfoWithConsensusInfo(tablet_consensus_info);
 }
 
+bool TabletInvoker::RefreshTabletInfoWithConsensusInfo(
+    const tserver::LWTabletConsensusInfoPB& tablet_consensus_info) {
+    return client_->RefreshTabletInfoWithConsensusInfo(tablet_consensus_info);
+}
+
 std::shared_ptr<tserver::TabletServerServiceProxy> TabletInvoker::proxy() const {
   return current_ts_->proxy();
 }
@@ -586,9 +601,9 @@ void TabletInvoker::LookupTabletCb(
   // We should retry the RPC regardless of the outcome of the lookup, as
   // leader election doesn't depend on the existence of a master at all.
   // Unless we know that this status is persistent.
-  // For instance if tablet was deleted, we would always receive "Not found".
+  // For instance if tablet was deleted, we would always receive "Deleted".
   if (!result.ok() &&
-      (result.status().IsNotFound() ||
+      (result.status().IsNotFound() || result.status().IsDeleted() ||
        ClientError(result.status()) == ClientErrorCode::kTablePartitionListIsStale)) {
     command_->Finished(result.status());
     return;

@@ -4,6 +4,7 @@ import static com.yugabyte.yw.common.Util.isIpAddress;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
@@ -11,6 +12,8 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.gflags.GFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -24,6 +27,7 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -72,6 +76,61 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
     GFlagsValidation.GFlagsValidationErrors gFlagsValidationErrors =
         new GFlagsValidation.GFlagsValidationErrors();
 
+    // Get primary cluster's validator nodes (one master, one tserver)
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    if (primaryCluster == null) {
+      log.warn("No primary cluster found for validating gflags.");
+      return;
+    }
+    List<NodeDetails> primaryNodes =
+        universe.getNodes().stream()
+            .filter(n -> n.placementUuid.equals(primaryCluster.uuid))
+            .filter(n -> n.cloudInfo != null && n.cloudInfo.private_ip != null)
+            .collect(Collectors.toList());
+    if (primaryNodes.isEmpty()) {
+      log.warn("No primary cluster nodes found for validating gflags.");
+      return;
+    }
+
+    NodeDetails validatorMaster =
+        primaryNodes.stream().filter(n -> n.isMaster).findFirst().orElse(null);
+
+    NodeDetails validatorTserver = null;
+    if (validatorMaster != null) {
+      // Try to find tserver validator node in same AZ
+      if (validatorMaster.azUuid != null) {
+        validatorTserver =
+            primaryNodes.stream()
+                .filter(n -> n.isTserver && validatorMaster.azUuid.equals(n.azUuid))
+                .findFirst()
+                .orElse(null);
+      }
+      // Try to find tserver validator node in same region
+      if (validatorTserver == null
+          && validatorMaster.cloudInfo != null
+          && validatorMaster.cloudInfo.region != null) {
+        validatorTserver =
+            primaryNodes.stream()
+                .filter(
+                    n ->
+                        n.isTserver
+                            && n.cloudInfo != null
+                            && validatorMaster.cloudInfo.region.equals(n.cloudInfo.region))
+                .findFirst()
+                .orElse(null);
+      }
+    }
+    // Fallback: Get any tserver validator node from primary cluster
+    if (validatorTserver == null) {
+      validatorTserver = primaryNodes.stream().filter(n -> n.isTserver).findFirst().orElse(null);
+    }
+
+    if (validatorMaster == null && validatorTserver == null) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Master or tserver node not found for dynamic gflag validation");
+    }
+
     for (UniverseDefinitionTaskParams.Cluster cluster : clusters) {
       List<NodeDetails> nodes =
           universe.getNodes().stream()
@@ -95,14 +154,22 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
                 .orElse(null);
       }
       validateClusterGFlags(
-          cluster, newCluster, universe, nodesGroupedByAZs, gFlagsValidationErrors);
+          cluster,
+          newCluster,
+          universe,
+          nodesGroupedByAZs,
+          validatorMaster,
+          validatorTserver,
+          gFlagsValidationErrors);
     }
     for (GFlagsValidation.GFlagsValidationErrorsPerAZ gFlagsValidationErrorsPerAZ :
         gFlagsValidationErrors.gFlagsValidationErrorsPerAZs) {
       if (!gFlagsValidationErrorsPerAZ.masterGFlagsErrors.isEmpty()
           || !gFlagsValidationErrorsPerAZ.tserverGFlagsErrors.isEmpty()) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, String.format("GFlags validation failed %s", gFlagsValidationErrors));
+        String errorMsg =
+            String.format("GFlags validation failed %s", gFlagsValidationErrors.toString());
+        log.error(errorMsg);
+        throw new PlatformServiceException(BAD_REQUEST, errorMsg);
       }
     }
   }
@@ -112,7 +179,20 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
       UniverseDefinitionTaskParams.Cluster newCluster,
       Universe universe,
       Map<UUID, List<NodeDetails>> nodesGroupedByAZs,
+      NodeDetails validatorMaster,
+      NodeDetails validatorTserver,
       GFlagsValidation.GFlagsValidationErrors gFlagsValidationErrors) {
+
+    // Load metadata once per server type for the whole cluster - it only depends on
+    // ybSoftwareVersion and serverType, not on AZ or node, so there is no reason to
+    // re-fetch it inside every per-AZ call to validateGFlagsWithYBServerBinary.
+    Map<String, GFlagDetails> masterGflagMeta = Collections.emptyMap();
+    Map<String, GFlagDetails> tserverGflagMeta = Collections.emptyMap();
+    // We only needed GFlags metadata for CLI binary approach to check if flag is bool
+    if (taskParams().useCLIBinary) {
+      masterGflagMeta = loadGflagMeta(ServerType.MASTER);
+      tserverGflagMeta = loadGflagMeta(ServerType.TSERVER);
+    }
 
     boolean hasAnyFailure = false;
 
@@ -122,7 +202,16 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
 
       try {
         validateGFlagsForAZ(
-            azUuid, nodesInAZ, cluster, newCluster, universe, gFlagsValidationErrors);
+            azUuid,
+            nodesInAZ,
+            cluster,
+            newCluster,
+            universe,
+            validatorMaster,
+            validatorTserver,
+            gFlagsValidationErrors,
+            masterGflagMeta,
+            tserverGflagMeta);
         log.info("Completed gflags validation for AZ {}", azUuid);
       } catch (Exception e) {
         log.warn("Failed to validate gflags in AZ {} (going to next AZ)", azUuid, e);
@@ -145,7 +234,11 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
       UniverseDefinitionTaskParams.Cluster cluster,
       UniverseDefinitionTaskParams.Cluster newCluster,
       Universe universe,
-      GFlagsValidation.GFlagsValidationErrors gFlagsValidationErrors) {
+      NodeDetails validatorMaster,
+      NodeDetails validatorTserver,
+      GFlagsValidation.GFlagsValidationErrors gFlagsValidationErrors,
+      Map<String, GFlagDetails> masterGflagMeta,
+      Map<String, GFlagDetails> tserverGflagMeta) {
 
     Map<String, String> masterGFlagsForAZ = new HashMap<>();
     Map<String, String> tserverGFlagsForAZ = new HashMap<>();
@@ -157,6 +250,7 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
     Map<String, String> masterGFlagsValidationErrors = new HashMap<>();
     Map<String, String> tserverGFlagsValidationErrors = new HashMap<>();
 
+    // Used for building gflags
     NodeDetails masterNode =
         nodesInAZ.stream()
             .filter(node -> node.isMaster)
@@ -215,17 +309,18 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
       if (!masterGFlagsForAZ.isEmpty()) {
         masterGFlagsValidationErrors.putAll(
             validateGFlagsWithYBServerBinary(
-                masterGFlagsForAZ, universe, ServerType.MASTER, masterNode));
+                masterGFlagsForAZ, universe, ServerType.MASTER, masterNode, masterGflagMeta));
       }
       if (!tserverGFlagsForAZ.isEmpty()) {
         tserverGFlagsValidationErrors.putAll(
             validateGFlagsWithYBServerBinary(
-                tserverGFlagsForAZ, universe, ServerType.TSERVER, tserverNode));
+                tserverGFlagsForAZ, universe, ServerType.TSERVER, tserverNode, tserverGflagMeta));
       }
     } else {
       if (!masterGFlagsForAZ.isEmpty()) {
         masterGFlagsValidationErrors.putAll(
-            validateGFlagsWithYBClient(masterGFlagsForAZ, universe, ServerType.MASTER));
+            validateGFlagsWithYBClient(
+                masterGFlagsForAZ, universe, ServerType.MASTER, validatorMaster));
         log.info(
             "Completed validation for all master gflags for AZ {}: {}",
             azUuid,
@@ -234,7 +329,8 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
 
       if (!tserverGFlagsForAZ.isEmpty()) {
         tserverGFlagsValidationErrors.putAll(
-            validateGFlagsWithYBClient(tserverGFlagsForAZ, universe, ServerType.TSERVER));
+            validateGFlagsWithYBClient(
+                tserverGFlagsForAZ, universe, ServerType.TSERVER, validatorTserver));
         log.info(
             "Completed validation for all tserver gflags for AZ {}: {}",
             azUuid,
@@ -387,12 +483,41 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
     return filteredGFlags;
   }
 
+  private Map<String, GFlagDetails> loadGflagMeta(ServerType serverType) {
+    Map<String, GFlagDetails> meta = new HashMap<>();
+    try {
+      for (GFlagDetails d :
+          gFlagsValidation.extractGFlags(
+              taskParams().ybSoftwareVersion, serverType.name(), false)) {
+        meta.put(d.name, d);
+      }
+    } catch (Exception e) {
+      log.error(
+          "Got error while fetching gflags metadata {} {}: {}",
+          serverType,
+          taskParams().ybSoftwareVersion,
+          e);
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          String.format(
+              "Failed to fetch gflags metadata for %s %s: %s",
+              serverType, taskParams().ybSoftwareVersion, e.getMessage()));
+    }
+    return meta;
+  }
+
   private Map<String, String> validateGFlagsWithYBClient(
-      Map<String, String> gflags, Universe universe, ServerType serverType) {
-    Map<String, String> serverGFlagsValidationErrors = new HashMap<String, String>();
+      Map<String, String> gflags, Universe universe, ServerType serverType, NodeDetails node) {
     try (YBClient client = ybClientService.getUniverseClient(universe)) {
-      serverGFlagsValidationErrors = gFlagsValidation.validateGFlags(client, gflags, serverType);
-      return serverGFlagsValidationErrors;
+      int rpcPort = serverType == ServerType.TSERVER ? node.tserverRpcPort : node.masterRpcPort;
+      HostAndPort hp = HostAndPort.fromParts(node.cloudInfo.private_ip, rpcPort);
+      log.info(
+          "Validating {} gflags via RPC against {} ({}:{})",
+          serverType,
+          node.nodeName,
+          node.cloudInfo.private_ip,
+          rpcPort);
+      return gFlagsValidation.validateGFlagsViaRpc(client, hp, gflags, serverType);
     } catch (Exception e) {
       log.error("Error in validating gflags with YBClient", e);
       throw new PlatformServiceException(
@@ -402,13 +527,14 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
   }
 
   private Map<String, String> validateGFlagsWithYBServerBinary(
-      Map<String, String> gflags, Universe universe, ServerType serverType, NodeDetails node) {
+      Map<String, String> gflags,
+      Universe universe,
+      ServerType serverType,
+      NodeDetails node,
+      Map<String, GFlagDetails> gflagMeta) {
     Map<String, String> serverGFlagsValidationErrors = new HashMap<>();
 
-    UUID providerUUID =
-        UUID.fromString(
-            universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent.provider);
-    Provider provider = Provider.getOrBadRequest(providerUUID);
+    Provider provider = Util.getProviderForNode(node, universe);
 
     String cliPath;
     if (provider.getCloudCode() == CloudType.local) {
@@ -442,15 +568,9 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
     List<String> command = new ArrayList<>();
     command.add(cliPath);
     command.add("--version");
-    for (Map.Entry<String, String> gflag : gflags.entrySet()) {
-      String flagName = gflag.getKey();
-      String flagValue = gflag.getValue();
-      if (StringUtils.isBlank(flagValue)) {
-        flagValue = "\"\"";
-      }
 
-      command.add("--" + flagName);
-      command.add(flagValue);
+    for (Map.Entry<String, String> gflag : gflags.entrySet()) {
+      appendGflagCliArg(command, gflag.getKey(), gflag.getValue(), gflagMeta.get(gflag.getKey()));
     }
 
     log.debug(
@@ -502,5 +622,28 @@ public class ValidateGFlags extends UniverseDefinitionTaskBase {
                   e.getMessage(), taskParams().ybSoftwareVersion, gFlagsValidation));
     }
     return serverGFlagsValidationErrors;
+  }
+
+  /**
+   * Non-bool: {@code --name=value}. Bool: {@code --name} / {@code --noname} or else {@code
+   * --name=value}.
+   */
+  static void appendGflagCliArg(
+      List<String> command, String name, String value, GFlagDetails meta) {
+    boolean isBool = meta != null && meta.type != null && "bool".equalsIgnoreCase(meta.type.trim());
+    // All incoming flags (YBA-set and user-set) are merged upstream in buildGFlagsForValidation
+    // and every entry reaches this point.
+    if (!isBool) {
+      command.add("--" + name + "=" + StringUtils.defaultString(value));
+      return;
+    }
+    String v = StringUtils.trimToEmpty(value);
+    if (v.isEmpty() || v.equalsIgnoreCase("false") || v.equals("0")) {
+      command.add("--no" + name);
+    } else if (v.equalsIgnoreCase("true") || v.equals("1")) {
+      command.add("--" + name);
+    } else {
+      command.add("--" + name + "=" + v);
+    }
   }
 }

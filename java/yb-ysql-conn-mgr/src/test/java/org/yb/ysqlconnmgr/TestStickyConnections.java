@@ -19,12 +19,15 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
 import org.yb.pgsql.AutoCommit;
+import org.yb.util.RequiresLinux;
 import org.yb.pgsql.ConnectionEndpoint;
 import static org.yb.AssertionWrappers.*;
 
 // TODO (rbarigidad) GH #20350: Improve tests to handle more scenarios.
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestStickyConnections extends BaseYsqlConnMgr {
     private final int NUM_THREADS = 10;
 

@@ -38,6 +38,9 @@
 #include "utils/timestamp.h"
 #include "utils/tuplestore.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 /*
  * Store label file and tablespace map during backups.
  */
@@ -230,6 +233,13 @@ pg_current_wal_lsn(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("recovery is in progress"),
 				 errhint("WAL control functions cannot be executed during recovery.")));
+
+	if (IsYugaByteEnabled())
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				errmsg("pg_current_wal_lsn() is not yet supported"),
+				errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
+						"30243. React with thumbs up to raise its priority.")));
 
 	current_recptr = GetXLogWriteRecPtr();
 

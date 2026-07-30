@@ -1,0 +1,16 @@
+services:
+  db:
+    image: pgduckdb/pgduckdb:18-main
+    ports:
+      - ${PORT:-5432}:5432
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${PASSWORD:-duckdb}
+    volumes:
+      - pgduckdb_data:/var/lib/postgresql/data
+      - ./docker/postgresql.conf:/etc/postgresql/postgresql.conf
+    command: postgres -c 'config_file=/etc/postgresql/postgresql.conf'
+    restart: always
+
+volumes:
+  pgduckdb_data:

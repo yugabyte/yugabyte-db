@@ -1,6 +1,7 @@
 // Copyright (c) YugabyteDB, Inc.
 package com.yugabyte.yw.models;
 
+import static io.swagger.annotations.ApiModelProperty.AccessMode.AUTO;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
@@ -44,7 +45,9 @@ import play.data.validation.Constraints;
 public class AvailabilityZone extends Model {
 
   @Id
-  @ApiModelProperty(value = "AZ UUID", accessMode = READ_ONLY)
+  @ApiModelProperty(
+      value = "AZ UUID. This must be specified for existing AZs on update",
+      accessMode = AUTO)
   private UUID uuid;
 
   @Column(length = 100, nullable = false)

@@ -94,6 +94,17 @@ SET standard_conforming_strings = on;
     ALTER ROLE yb_fdw WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
 \endif
 
+\set role_exists false
+\if :ignore_existing_roles
+    SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname = 'yb_global_views_user') AS role_exists \gset
+\endif
+\if :role_exists
+    \echo 'Role already exists:' yb_global_views_user
+\else
+    CREATE ROLE yb_global_views_user;
+    ALTER ROLE yb_global_views_user WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS;
+\endif
+
 ALTER ROLE yugabyte WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD 'md52c2dc7d65d3e364f08b8addff5a54bf5';
 
 \set role_exists false
@@ -124,6 +135,7 @@ ALTER ROLE regress_priv_user7 SET log_min_messages TO 'LOG';
 --
 
 GRANT pg_read_all_settings TO regress_priv_user8 WITH ADMIN OPTION GRANTED BY yugabyte_test;
+GRANT pg_read_all_stats TO yb_global_views_user GRANTED BY postgres;
 GRANT pg_write_all_data TO regress_priv_user7 GRANTED BY yugabyte_test;
 
 
@@ -142,8 +154,8 @@ CREATE PROFILE profile_3_failed LIMIT FAILED_LOGIN_ATTEMPTS 3;
 
 ALTER ROLE regress_priv_user7 PROFILE profile_3_failed;
 UPDATE pg_catalog.pg_yb_role_profile
-SET rolprfstatus = 'o',
-    rolprffailedloginattempts = 0
+SET rolprfstatus = 'l',
+    rolprffailedloginattempts = 4
 WHERE rolprfrole = (SELECT oid FROM pg_authid WHERE rolname = 'regress_priv_user7')
   AND rolprfprofile = (SELECT oid FROM pg_yb_profile WHERE prfname = 'profile_3_failed');
 
@@ -204,8 +216,8 @@ WHERE rolprfrole = (SELECT oid FROM pg_authid WHERE rolname = 'regress_priv_user
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.25.2.0-b0
--- Dumped by ysql_dump version 15.2-YB-2.25.2.0-b0
+-- Dumped from database version 15.12-YB-2.31.0.0-b0
+-- Dumped by ysql_dump version 15.12-YB-2.31.0.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -302,8 +314,8 @@ END $$;
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.25.2.0-b0
--- Dumped by ysql_dump version 15.2-YB-2.25.2.0-b0
+-- Dumped from database version 15.12-YB-2.31.0.0-b0
+-- Dumped by ysql_dump version 15.12-YB-2.31.0.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -398,8 +410,8 @@ END $$;
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.25.2.0-b0
--- Dumped by ysql_dump version 15.2-YB-2.25.2.0-b0
+-- Dumped from database version 15.12-YB-2.31.0.0-b0
+-- Dumped by ysql_dump version 15.12-YB-2.31.0.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -466,6 +478,14 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
+
+-- YB: preserve restored reltuples during index creation
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_enable_update_reltuples_after_create_index') THEN
+    EXECUTE 'SET yb_enable_update_reltuples_after_create_index TO false';
+  END IF;
+END $$;
 --
 -- Name: DATABASE system_platform; Type: COMMENT; Schema: -; Owner: postgres
 --
@@ -518,8 +538,8 @@ SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.25.2.0-b0
--- Dumped by ysql_dump version 15.2-YB-2.25.2.0-b0
+-- Dumped from database version 15.12-YB-2.31.0.0-b0
+-- Dumped by ysql_dump version 15.12-YB-2.31.0.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -586,6 +606,14 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
+
+-- YB: preserve restored reltuples during index creation
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_enable_update_reltuples_after_create_index') THEN
+    EXECUTE 'SET yb_enable_update_reltuples_after_create_index TO false';
+  END IF;
+END $$;
 --
 -- Name: DATABASE yugabyte; Type: COMMENT; Schema: -; Owner: postgres
 --
@@ -624,6 +652,14 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
+
+-- YB: preserve restored reltuples during index creation
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_settings WHERE name = 'yb_enable_update_reltuples_after_create_index') THEN
+    EXECUTE 'SET yb_enable_update_reltuples_after_create_index TO false';
+  END IF;
+END $$;
 \if :use_tablespaces
     SET default_tablespace = tsp1;
 \endif
@@ -686,6 +722,7 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16384'::pg_catalog.o
 CREATE TABLE public.table1 (
     id integer
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -717,6 +754,7 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16388'::pg_catalog.o
 CREATE TABLE public.table2 (
     name character varying
 )
+WITH (yb_presplit='')
 SPLIT INTO 3 TABLETS;
 
 
@@ -748,7 +786,7 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16394'::pg_catalog.o
 CREATE TABLE public.tbl_with_grp_with_spc (
     a integer
 )
-WITH (autovacuum_enabled='true', colocation_id='20001')
+WITH (autovacuum_enabled='true', colocation_id='20001', yb_presplit='')
 TABLEGROUP grp_with_spc;
 
 
@@ -835,7 +873,7 @@ SELECT * FROM pg_catalog.pg_restore_relation_stats(
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16387'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16387'::pg_catalog.oid);
 
-CREATE INDEX NONCONCURRENTLY idx1 ON public.table1 USING lsm (id HASH) SPLIT INTO 3 TABLETS;
+CREATE INDEX NONCONCURRENTLY idx1 ON public.table1 USING lsm (id HASH) WITH (yb_presplit='') SPLIT INTO 3 TABLETS;
 
 
 \if :use_tablespaces
@@ -851,7 +889,7 @@ CREATE INDEX NONCONCURRENTLY idx1 ON public.table1 USING lsm (id HASH) SPLIT INT
 SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16391'::pg_catalog.oid);
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16391'::pg_catalog.oid);
 
-CREATE INDEX NONCONCURRENTLY idx2 ON public.table2 USING lsm (name HASH) SPLIT INTO 3 TABLETS;
+CREATE INDEX NONCONCURRENTLY idx2 ON public.table2 USING lsm (name HASH) WITH (yb_presplit='') SPLIT INTO 3 TABLETS;
 
 
 --

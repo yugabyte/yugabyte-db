@@ -120,6 +120,12 @@ set local enable_seqscan to off;
 set local documentdb.forceUseIndexIfAvailable to on;
 SELECT BSONSUM('{ "": 1 }') FROM documentdb_api.collection('db', 'testAggregatesWithIndex');
 
+ROLLBACK;
+
+BEGIN;
+-- avoid sequential scan (likely to be preferred on small tables)
+set local enable_seqscan to off;
+set local documentdb.forceUseIndexIfAvailable to on;
 EXPLAIN (COSTS OFF) SELECT BSONSUM('{ "": 1 }') FROM documentdb_api.collection('db', 'testAggregatesWithIndex');
 ROLLBACK;
 
@@ -132,9 +138,15 @@ BEGIN;
 set local enable_seqscan to off;
 set local documentdb.forceUseIndexIfAvailable to on;
 SELECT BSONSUM('{ "": 1 }') FROM documentdb_api.collection('db', 'testAggregatesWithIndex');
+ROLLBACK;
 
+BEGIN;
+-- avoid sequential scan (likely to be preferred on small tables)
+set local enable_seqscan to off;
+set local documentdb.forceUseIndexIfAvailable to on;
 EXPLAIN (COSTS OFF) SELECT BSONSUM('{ "": 1 }') FROM documentdb_api.collection('db', 'testAggregatesWithIndex');
 ROLLBACK;
+
 
 -- now shard the collection.
 SELECT documentdb_api.shard_collection('db', 'testAggregatesWithIndex', '{ "_id": "hashed" }', false);
@@ -145,6 +157,11 @@ BEGIN;
 set local enable_seqscan to off;
 set local documentdb.forceUseIndexIfAvailable to on;
 SELECT BSONSUM('{ "": 1 }') FROM documentdb_api.collection('db', 'testAggregatesWithIndex');
+ROLLBACK;
 
+BEGIN;
+-- avoid sequential scan (likely to be preferred on small tables)
+set local enable_seqscan to off;
+set local documentdb.forceUseIndexIfAvailable to on;
 EXPLAIN (COSTS OFF) SELECT BSONSUM('{ "": 1 }') FROM documentdb_api.collection('db', 'testAggregatesWithIndex');
 ROLLBACK;

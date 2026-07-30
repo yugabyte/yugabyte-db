@@ -25,6 +25,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_types.pb.h"
 
 #include "yb/rocksdb/db.h"
@@ -38,7 +39,8 @@
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
-#include "yb/util/jsonreader.h"
+#include "yb/util/json_document.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/range.h"
 #include "yb/util/status_log.h"
@@ -56,6 +58,10 @@ DECLARE_bool(ycql_enable_packed_row);
 DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_int64(cql_processors_limit);
 DECLARE_int32(client_read_write_timeout_ms);
+DECLARE_int32(consensus_rpc_timeout_ms);
+DECLARE_int32(master_ts_rpc_timeout_ms);
+DECLARE_int64(transaction_rpc_timeout_ms);
+DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(TEST_delay_tablet_export_metadata_ms);
@@ -65,7 +71,6 @@ DECLARE_int32(yb_client_admin_rpc_timeout_sec);
 
 DECLARE_int32(cql_unprepared_stmts_entries_limit);
 DECLARE_int32(partitions_vtable_cache_refresh_secs);
-DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_bool(disable_truncate_table);
 DECLARE_bool(cql_always_return_metadata_in_execute_response);
 DECLARE_bool(cql_check_table_schema_in_paging_state);
@@ -73,6 +78,7 @@ DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_allow_non_authenticated_password_reset);
 DECLARE_bool(TEST_disable_connection_timeout);
 DECLARE_uint32(TEST_read_deadline_check_granularity);
+DECLARE_uint64(arena_warn_threshold_bytes);
 
 namespace yb {
 
@@ -89,8 +95,29 @@ class CqlTest : public CqlTestBase<MiniCluster> {
   void TestAlteredPrepareForIndexWithPaging(bool check_schema_in_paging,
                                             bool metadata_in_exec_resp = false);
   void TestPrepareWithDropTableWithPaging();
-  void TestCQLPreparedStmtStats();
+
+  void WaitForReadPermsOnAllIndexes(const string& table_name,
+                                    const std::vector<string>& index_names);
 };
+
+void CqlTest::WaitForReadPermsOnAllIndexes(const string& table_name,
+                                           const std::vector<string>& index_names) {
+  // Wait here for the indexes creation end.
+  // Note: in JAVA tests we have 'waitForReadPermsOnAllIndexes' for the same.
+  const YBTableName yb_table_name(YQL_DATABASE_CQL, kCqlTestKeyspace, table_name);
+  for (const auto& index_name : index_names) {
+    const client::YBTableName yb_index_name(YQL_DATABASE_CQL, kCqlTestKeyspace, index_name);
+    ASSERT_OK(LoggedWaitFor(
+        [this, yb_table_name, yb_index_name]() {
+          auto result = client_->WaitUntilIndexPermissionsAtLeast(
+              yb_table_name, yb_index_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+          return result.ok() && *result == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE;
+        },
+        90s,
+        "wait for create index '" + index_name + "' to complete",
+        12s));
+  }
+}
 
 TEST_F(CqlTest, ProcessorsLimit) {
   constexpr int kSessions = 10;
@@ -408,6 +435,81 @@ TEST_F(CqlTest, TestTruncateTable) {
   ASSERT_NOK(session.ExecuteQuery("TRUNCATE TABLE users"));
 }
 
+TEST_F(CqlTest, TestTruncateTableWithIndexes) {
+#ifdef __APPLE__
+  // On macOS, truncating 161 tablets (table + 5 indexes x 32 tablets) replays
+  // synchronous RocksDB destroy+reopen on the consensus apply thread, which
+  // takes ~14 s per UpdateConsensus and ~33 s end-to-end. Raise the consensus
+  // RPC timeout above the apply time so the leader-lease cascade doesn't
+  // trigger, and pass a matching per-statement timeout for the TRUNCATE so
+  // the CQL driver's default 20 s deadline doesn't fire before the server
+  // finishes. Linux apply stays under 3 s, so no override is needed there.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_consensus_rpc_timeout_ms) = 60'000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ts_rpc_timeout_ms) = 60'000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_rpc_timeout_ms) = 60'000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_failure_max_missed_heartbeat_periods) = 12.0;
+  constexpr uint32_t kTruncateTimeoutMs = 120'000;
+#else
+  // Use driver default.
+  constexpr uint32_t kTruncateTimeoutMs = 0;
+#endif
+
+  master::CatalogManager& catalog_manager = CHECK_NOTNULL(ASSERT_RESULT(
+      cluster_->GetLeaderMiniMaster()))->catalog_manager_impl();
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  auto cql = [&](const string& query, uint32_t timeout_ms = 0) {
+    ASSERT_OK(session.ExecuteQuery(query, timeout_ms));
+  };
+
+  cql("create table tbl (h1 int primary key, c1 int, c2 int, c3 int, c4 int, c5 int) "
+      "with transactions = {'enabled' : true} and tablets = 1");
+
+  constexpr int num_indexes = 5;
+  std::vector<string> index_names;
+  for (int i = 1; i <= num_indexes; ++i) {
+    const string index_name = Format("i$0", i);
+    index_names.push_back(index_name);
+    cql(Format("create index $0 on tbl (c$1) with tablets = 32", index_name, i));
+  }
+
+  // Wait here for the creation end.
+  WaitForReadPermsOnAllIndexes("tbl", index_names);
+
+  for (int j = 1; j <= 20; ++j) {
+    cql(Format("insert into tbl (h1, c1, c2, c3, c4, c5) VALUES ($0, $0, $0, $0, $0, $0)", j));
+  }
+
+  const client::YBTableName table_name(YQL_DATABASE_CQL, kCqlTestKeyspace, "tbl");
+  const TableId table_id = ASSERT_RESULT(client::GetTableId(client_.get(), table_name));
+  const master::TableInfoPtr table = ASSERT_RESULT(catalog_manager.FindTableById(table_id));
+
+  std::array<master::TableInfoPtr, num_indexes> index;
+  for (int i = 0; i < num_indexes; ++i) {
+    const client::YBTableName index_name(YQL_DATABASE_CQL, kCqlTestKeyspace, Format("i$0", i + 1));
+    const TableId index_id = ASSERT_RESULT(client::GetTableId(client_.get(), index_name));
+    index[i] = ASSERT_RESULT(catalog_manager.FindTableById(index_id));
+  }
+
+  auto check_no_truncate_tasks = [](const master::TableInfoPtr& table_info, const string& label) {
+    LOG(INFO) << "Checking " << label;
+    ASSERT_FALSE(table_info->HasTasks(server::MonitoredTaskType::kTruncateTablet));
+  };
+
+  auto check_table_and_indexes = [&](const string& comment) {
+    LOG(INFO) << comment;
+    for (int i = num_indexes - 1; i >= 0; --i) {
+        check_no_truncate_tasks(index[i], Format("index i$0", i + 1));
+    }
+    check_no_truncate_tasks(table, "main table tbl");
+  };
+
+  check_table_and_indexes("Check tasks before TRUNCATE tbl");
+  cql("truncate table tbl", kTruncateTimeoutMs);
+  check_table_and_indexes("Check tasks after TRUNCATE tbl");
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
 // This test ensure that read correctly timeout under the scenarios where many rows
 // skipped. This was previously causing unexpected long-running read.
 TEST_F(CqlTest, ReadTimeoutTest) {
@@ -449,14 +551,15 @@ TEST_F(CqlTest, ReadTimeoutTest) {
 
   ASSERT_OK(cluster_->FlushTablets());
 
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 5;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_connection_timeout) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_read_deadline_check_granularity) = 1;
   starting_time = CoarseMonoClock::now();
   auto result = session.ExecuteAndRenderToString(
       "select acctid from test_t WHERE custid = '123' AND roletitle = 'Manager'");
+  // Use a slightly lower bound to account for clock granularity and propagation latency on macOS.
   ASSERT_GE(MonoDelta(CoarseMonoClock::now() - starting_time).ToMilliseconds(),
-      FLAGS_client_read_write_timeout_ms);
+      FLAGS_client_read_write_timeout_ms - 1);
   // Verify that read operation failed due to passed deadline.
   ASSERT_NOK(result);
   ASSERT_STR_CONTAINS(result.status().message().ToBuffer(), "Deadline for query passed");
@@ -915,28 +1018,23 @@ TEST_F(CqlTest, TestCQLPreparedStmtStats) {
   }
 
   ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addrs[0])), &buf));
-  JsonReader r(buf.ToString());
-  ASSERT_OK(r.Init());
-  std::vector<const rapidjson::Value*> stmt_stats;
-  ASSERT_OK(r.ExtractObjectArray(r.root(), "prepared_statements", &stmt_stats));
-  ASSERT_EQ(2, stmt_stats.size());
+  JsonDocument doc;
+  auto root = ASSERT_RESULT(doc.Parse(buf.ToString()));
+  auto stmt_stats = root["prepared_statements"];
+  ASSERT_EQ(2, ASSERT_RESULT(stmt_stats.size()));
 
-  const rapidjson::Value* insert_stat = stmt_stats[1];
-  string insert_query;
-  ASSERT_OK(r.ExtractString(insert_stat, "query", &insert_query));
+  const auto& insert_stat = stmt_stats[1];
+  auto insert_query = ASSERT_RESULT(insert_stat["query"].GetString());
   ASSERT_EQ("INSERT INTO t1 (i, j) VALUES (?, ?)", insert_query);
 
-  int64 insert_num_calls = 0;
-  ASSERT_OK(r.ExtractInt64(insert_stat, "calls", &insert_num_calls));
+  auto insert_num_calls = ASSERT_RESULT(insert_stat["calls"].GetInt64());
   ASSERT_EQ(10, insert_num_calls);
 
-  const rapidjson::Value* select_stat = stmt_stats[0];
-  string select_query;
-  ASSERT_OK(r.ExtractString(select_stat, "query", &select_query));
+  auto select_stat = stmt_stats[0];
+  auto select_query = ASSERT_RESULT(select_stat["query"].GetString());
   ASSERT_EQ("SELECT * FROM t1 WHERE i = ?", select_query);
 
-  int64 select_num_calls = 0;
-  ASSERT_OK(r.ExtractInt64(select_stat, "calls", &select_num_calls));
+  auto select_num_calls = ASSERT_RESULT(select_stat["calls"].GetInt64());
   ASSERT_EQ(5, select_num_calls);
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
@@ -948,7 +1046,7 @@ TEST_F(CqlTest, TestCQLUnpreparedStmtStats) {
   CHECK_OK(cql_server_->web_server()->GetBoundAddresses(&addrs));
   CHECK_EQ(addrs.size(), 1);
 
-  FLAGS_cql_unprepared_stmts_entries_limit = 205;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_unprepared_stmts_entries_limit) = 205;
   const string create_table_stmt = "CREATE TABLE t1 (i INT PRIMARY KEY, j INT)";
   const string insert_stmt_1 = "INSERT INTO t1 (i, j) VALUES (1,11)";
   const string insert_stmt_2 = "INSERT INTO t1 (i, j) VALUES (2,22)";
@@ -973,29 +1071,26 @@ TEST_F(CqlTest, TestCQLUnpreparedStmtStats) {
   faststring buf;
   ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements", ToString(addrs[0])), &buf));
 
-  JsonReader r(buf.ToString());
-  ASSERT_OK(r.Init());
-  std::vector<const rapidjson::Value*> stmt_stats;
-  ASSERT_OK(r.ExtractObjectArray(r.root(), "unprepared_statements", &stmt_stats));
+  JsonDocument doc;
+  auto root = ASSERT_RESULT(doc.Parse(buf.ToString()));
 
   string query_text;
-  int64 obtained_num_calls = 0;
-  for (auto const& stmt_stat : stmt_stats) {
-    ASSERT_OK(r.ExtractString(stmt_stat, "query", &query_text));
+  for (auto const& stmt_stat : ASSERT_RESULT(root["unprepared_statements"].GetArray())) {
+    auto query_text = ASSERT_RESULT(stmt_stat["query"].GetString());
     if (query_text == create_table_stmt) {
-      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      auto obtained_num_calls = ASSERT_RESULT(stmt_stat["calls"].GetInt64());
       ASSERT_EQ(1, obtained_num_calls);
     } else if (query_text == insert_stmt_1) {
-      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      auto obtained_num_calls = ASSERT_RESULT(stmt_stat["calls"].GetInt64());
       ASSERT_EQ(1, obtained_num_calls);
     } else if (query_text == insert_stmt_2) {
-      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      auto obtained_num_calls = ASSERT_RESULT(stmt_stat["calls"].GetInt64());
       ASSERT_EQ(1, obtained_num_calls);
     } else if (query_text == select_stmt_1) {
-      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      auto obtained_num_calls = ASSERT_RESULT(stmt_stat["calls"].GetInt64());
       ASSERT_EQ(num_select_queries/2, obtained_num_calls);
     } else if (query_text == select_stmt_2) {
-      ASSERT_OK(r.ExtractInt64(stmt_stat, "calls", &obtained_num_calls));
+      auto obtained_num_calls = ASSERT_RESULT(stmt_stat["calls"].GetInt64());
       ASSERT_EQ(num_select_queries/2, obtained_num_calls);
     }
   }
@@ -1006,11 +1101,8 @@ TEST_F(CqlTest, TestCQLUnpreparedStmtStats) {
   ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements",
                                               ToString(addrs[0])), &buf));
 
-  JsonReader json_post_reset(buf.ToString());
-  ASSERT_OK(json_post_reset.Init());
-  std::vector<const rapidjson::Value*> stmt_stats_post_reset;
-  ASSERT_OK(json_post_reset.ExtractObjectArray(json_post_reset.root(), "unprepared_statements",
-                                               &stmt_stats_post_reset));
+  auto post_reset_root = ASSERT_RESULT(doc.Parse(buf.ToString()));
+  auto stmt_stats_post_reset = ASSERT_RESULT(post_reset_root["unprepared_statements"].GetArray());
   ASSERT_EQ(stmt_stats_post_reset.size(), 0);
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
@@ -1394,6 +1486,41 @@ TEST_F(CqlTest, SelectAggregateFunctions) {
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
+// Exercises the aggregate-private arena recycling path in DocExprExecutor by
+// scanning many rows whose column values would grow the arena far past the
+// arena-warn threshold if the recycling logic were not in place.
+TEST_F(CqlTest, AggregateArenaReset) {
+  constexpr int kNumRows = 1000;
+  constexpr size_t kValueLen = 1000;
+
+  // Without the aggregate-arena recycling, ~1 MB of varchar data would flow
+  // through a single arena and trip this warning. With recycling, each arena
+  // generation stays well below the threshold.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_arena_warn_threshold_bytes) = 256_KB;
+  StringWaiterLogSink arena_warning_sink("exceeded warning threshold");
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE tbl (k INT PRIMARY KEY, v TEXT) WITH tablets = 1"));
+
+  std::string expected_min;
+  for (int i = 0; i < kNumRows; ++i) {
+    auto v = RandomHumanReadableString(kValueLen);
+    if (expected_min.empty() || v < expected_min) {
+      expected_min = v;
+    }
+    ASSERT_OK(session.ExecuteQuery(
+        Format("INSERT INTO tbl (k, v) VALUES ($0, '$1')", i, v)));
+  }
+
+  CassandraStatement stmt("SELECT min(v) FROM tbl");
+  stmt.SetPageSize(100);
+  auto res = ASSERT_RESULT(session.ExecuteWithResult(stmt));
+  ASSERT_EQ(expected_min, res.RenderToString());
+
+  ASSERT_EQ(arena_warning_sink.GetEventCount(), 0);
+}
+
 TEST_F(CqlTest, CheckStateAfterDrop) {
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
   auto cql = [&](const string query) { ASSERT_OK(session.ExecuteQuery(query)); };
@@ -1405,27 +1532,16 @@ TEST_F(CqlTest, CheckStateAfterDrop) {
   }
 
   const int num_indexes = 5;
+  std::vector<string> index_names;
   // Initiate the Index Backfilling.
   for (int i = 1; i <= num_indexes; ++i) {
-    cql(Format("create index i$0 on tbl (c$0)", i));
+    const string index_name = Format("i$0", i);
+    index_names.push_back(index_name);
+    cql(Format("create index $0 on tbl (c$1)", index_name, i));
   }
 
   // Wait here for the creation end.
-  // Note: in JAVA tests we have 'waitForReadPermsOnAllIndexes' for the same.
-  const YBTableName table_name(YQL_DATABASE_CQL, kCqlTestKeyspace, "tbl");
-  for (int i = 1; i <= num_indexes; ++i) {
-    const TableName name = Format("i$0", i);
-    const client::YBTableName index_name(YQL_DATABASE_CQL, kCqlTestKeyspace, name);
-    ASSERT_OK(LoggedWaitFor(
-        [this, table_name, index_name]() {
-          auto result = client_->WaitUntilIndexPermissionsAtLeast(
-              table_name, index_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
-          return result.ok() && *result == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE;
-        },
-        90s,
-        "wait for create index '" + name + "' to complete",
-        12s));
-  }
+  WaitForReadPermsOnAllIndexes("tbl", index_names);
 
   class CheckHelper {
     master::CatalogManager& catalog_manager;
@@ -1508,6 +1624,7 @@ TEST_F(CqlTest, CheckStateAfterDrop) {
     }
   } check(cluster_.get());
 
+  const client::YBTableName table_name(YQL_DATABASE_CQL, kCqlTestKeyspace, "tbl");
   const TableId table_id = ASSERT_RESULT(client::GetTableId(client_.get(), table_name));
 
   // IsDeleteTableDone() for RUNNING table should fail.

@@ -16,6 +16,7 @@ import io.yugabyte.operator.v1alpha1.YBCertificateStatus;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.security.PrivateKey;
+import java.util.Set;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
@@ -32,6 +33,8 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
   private static final String CERT_TYPE_K8S_CERT_MANAGER = "K8S_CERT_MANAGER";
   private static final String SECRET_KEY_CERT = "ca.crt";
   private static final String SECRET_KEY_PRIVATE_KEY = "ca.key";
+  private static final String TLS_SECRET_KEY_CERT = "tls.crt";
+  private static final String TLS_SECRET_KEY_PRIVATE_KEY = "tls.key";
   private static final String STORAGE_PATH_CONFIG = "yb.storage.path";
 
   // Fields
@@ -43,6 +46,20 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
   private final String namespace;
   private final OperatorUtils operatorUtils;
   private final RuntimeConfGetter runtimeConfGetter;
+
+  private final ResourceTracker resourceTracker = new ResourceTracker();
+
+  // The current certificate resource being reconciled, for associating secret dependencies.
+  private KubernetesResourceDetails currentReconcileResource;
+  private UUID currentLocalInstanceUuid;
+
+  public Set<KubernetesResourceDetails> getTrackedResources() {
+    return resourceTracker.getTrackedResources();
+  }
+
+  public ResourceTracker getResourceTracker() {
+    return resourceTracker;
+  }
 
   public YBCertificateReconciler(
       SharedIndexInformer<YBCertificate> cmInformer,
@@ -82,6 +99,12 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
 
   @Override
   public void onAdd(YBCertificate certificate) {
+    KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(certificate);
+    currentLocalInstanceUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
+    resourceTracker.trackResource(certificate, currentLocalInstanceUuid);
+    currentReconcileResource = resourceDetails;
+    log.trace("Tracking resource {}, all tracked: {}", resourceDetails, getTrackedResources());
+
     log.info("Adding YBCertificate: {}", certificate.getMetadata().getName());
 
     try {
@@ -108,6 +131,8 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
     // Create the certificate
     String configUUID = createCertificate(certificate, cuuid);
 
+    OperatorUtils.maybeAddYbaResourceId(certificate, UUID.fromString(configUUID), resourceClient);
+
     updateStatus(certificate, true, configUUID, "Certificate created successfully");
     log.info(
         "Successfully created YBCertificate {} with UUID: {}",
@@ -129,6 +154,11 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
 
       // Query YBA database to check if certificate with this label already exists
       CertificateInfo existingCert = CertificateInfo.get(customerUUID, certificateName);
+
+      // Ensure we have the YBA resource ID annotation.
+      if (existingCert != null) {
+        OperatorUtils.maybeAddYbaResourceId(certificate, existingCert.getUuid(), resourceClient);
+      }
       return existingCert != null;
     } catch (Exception e) {
       log.warn(
@@ -178,7 +208,11 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
   private void validateCertificateContent(String rootCertificate) {
     if (rootCertificate == null || rootCertificate.trim().isEmpty()) {
       throw new IllegalArgumentException(
-          "Root certificate content not found in secret (expected '" + SECRET_KEY_CERT + "')");
+          "Root certificate content not found in secret (expected one of '"
+              + SECRET_KEY_CERT
+              + "' or '"
+              + TLS_SECRET_KEY_CERT
+              + "')");
     }
   }
 
@@ -198,10 +232,15 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
     String key = getKeyContent(certificate);
     if (key == null || key.trim().isEmpty()) {
       throw new IllegalArgumentException(
-          "Private key content not found in secret. SELF_SIGNED certificates require both '"
+          "Private key content not found in secret. SELF_SIGNED certificates require cert and key"
+              + " using one of ('"
               + SECRET_KEY_CERT
               + "' and '"
               + SECRET_KEY_PRIVATE_KEY
+              + "') or ('"
+              + TLS_SECRET_KEY_CERT
+              + "' and '"
+              + TLS_SECRET_KEY_PRIVATE_KEY
               + "'");
     }
 
@@ -246,23 +285,25 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
 
   @Override
   public void onUpdate(YBCertificate oldCertificate, YBCertificate newCertificate) {
-    log.info("Updating YBCertificate: {}", newCertificate.getMetadata().getName());
-
-    try {
-      processCertificateCreation(newCertificate);
-    } catch (Exception e) {
-      log.error(
-          "Failed to process YBCertificate update {}: {}",
-          newCertificate.getMetadata().getName(),
-          e.getMessage());
-      updateStatus(
-          newCertificate, false, "", "Failed to process certificate update: " + e.getMessage());
+    // Handle delete workflow first, as update can be delivered before onDelete.
+    if (newCertificate.getMetadata().getDeletionTimestamp() != null) {
+      onDelete(newCertificate, true);
+      return;
     }
+    log.warn(
+        "Ignoring YBCertificate update for immutable resource {}. Delete and recreate the resource;"
+            + " use universe certificate rotation for cert changes.",
+        newCertificate.getMetadata().getName());
   }
 
   @Override
   public void onDelete(YBCertificate certificate, boolean deletedFinalStateUnknown) {
     log.info("Deleting YBCertificate: {}", certificate.getMetadata().getName());
+    KubernetesResourceDetails resourceDetails = KubernetesResourceDetails.fromResource(certificate);
+    UUID localUuid = operatorUtils.getLocalPlatformInstanceUuid().orElse(null);
+    Set<KubernetesResourceDetails> orphaned =
+        resourceTracker.untrackResource(resourceDetails, localUuid);
+    log.info("Untracked certificate {} and orphaned dependencies: {}", resourceDetails, orphaned);
 
     try {
       processCertificateDeletion(certificate);
@@ -342,7 +383,7 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
    * @return the certificate content or null if not found
    */
   private String getCertificateContent(YBCertificate certificate) {
-    return getSecretContent(certificate, SECRET_KEY_CERT);
+    return getSecretContentWithFallback(certificate, SECRET_KEY_CERT, TLS_SECRET_KEY_CERT);
   }
 
   /**
@@ -352,11 +393,22 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
    * @return the private key content or null if not found
    */
   private String getKeyContent(YBCertificate certificate) {
-    String keyContent = getSecretContent(certificate, SECRET_KEY_PRIVATE_KEY);
+    String keyContent =
+        getSecretContentWithFallback(
+            certificate, SECRET_KEY_PRIVATE_KEY, TLS_SECRET_KEY_PRIVATE_KEY);
     if (keyContent != null) {
       return convertKeyToPKCS1Format(keyContent);
     }
     return keyContent;
+  }
+
+  private String getSecretContentWithFallback(
+      YBCertificate certificate, String primaryKey, String fallbackKey) {
+    String content = getSecretContent(certificate, primaryKey);
+    if (content == null || content.trim().isEmpty()) {
+      return getSecretContent(certificate, fallbackKey);
+    }
+    return content;
   }
 
   /**
@@ -370,7 +422,13 @@ public class YBCertificateReconciler implements ResourceEventHandler<YBCertifica
     if (certificate.getSpec().getCertificateSecretRef() != null) {
       String secretName = certificate.getSpec().getCertificateSecretRef().getName();
       String secretNamespace = getSecretNamespace(certificate);
-      return operatorUtils.getAndParseSecretForKey(secretName, secretNamespace, key);
+      return operatorUtils.getAndParseSecretForKey(
+          secretName,
+          secretNamespace,
+          key,
+          resourceTracker,
+          currentReconcileResource,
+          currentLocalInstanceUuid);
     }
     return null;
   }

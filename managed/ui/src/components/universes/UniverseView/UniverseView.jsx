@@ -8,12 +8,11 @@ import { useQuery } from 'react-query';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useSelector } from 'react-redux';
 import moment from 'moment';
-import _, { find } from 'lodash';
+import _ from 'lodash';
 
 import {
   getUniversePendingTask,
   getUniverseStatus,
-  getUniverseStatusIcon,
   hasPendingTasksForUniverse,
   UniverseState
 } from '../helpers/universeHelpers';
@@ -32,6 +31,7 @@ import {
 import {
   DeleteUniverseContainer,
   ToggleUniverseStateContainer,
+  UniverseStatusContainer,
   YBUniverseItem
 } from '../../universes';
 import {
@@ -51,9 +51,7 @@ import YBPagination from '../../tables/YBPagination/YBPagination';
 import { isEphemeralAwsStorageInstance } from '../UniverseDetail/UniverseDetail';
 import { YBMenuItem } from '../UniverseDetail/compounds/YBMenuItem';
 import EllipsisIcon from '../../common/media/more.svg';
-
 import { YBLoadingCircleIcon } from '../../common/indicators';
-import { UniverseAlertBadge } from '../YBUniverseItem/UniverseAlertBadge';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import {
   customPermValidateFunction,
@@ -62,6 +60,7 @@ import {
 import { Action, Resource } from '../../../redesign/features/rbac';
 import { getWrappedChildren } from '../../../redesign/features/rbac/common/validator/ValidatorUtils';
 import { userhavePermInRoleBindings } from '../../../redesign/features/rbac/common/RbacUtils';
+import { isV2CreateEditUniverseEnabled } from '@app/redesign/features-v2/universe/create-universe/CreateUniverseUtils';
 import './UniverseView.scss';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 
@@ -237,24 +236,17 @@ export const UniverseView = (props) => {
   };
 
   const formatUniverseState = (status, row) => {
-    const currentUniverseFailedTask = customerTaskList?.filter((task) => {
-      return (
-        task.targetUUID === row.universeUUID &&
-        (task.status === 'Failure' || task.status === 'Aborted')
-      );
-    });
-    const failedTask = currentUniverseFailedTask?.[0];
     return (
       <div className={`universe-status-cell ${status.className}`}>
-        <div>
-          {getUniverseStatusIcon(status)}
-          <span>
-            {status.text === 'Error' && failedTask
-              ? `${failedTask?.type} ${failedTask?.target} failed`
-              : status.text}
-          </span>
-        </div>
-        <UniverseAlertBadge universeUUID={row.universeUUID} listView />
+        <UniverseStatusContainer
+          alertBadgeListView
+          currentUniverse={row}
+          refreshUniverseData={props.fetchUniverseMetadata}
+          shouldDisplayTaskButton={false}
+          showAlertsBadge={true}
+          showLabelText={true}
+          showTaskDetails={false}
+        />
       </div>
     );
   };
@@ -586,7 +578,7 @@ export const UniverseView = (props) => {
   ) {
     return getWrappedChildren({});
   }
-
+  const isNewV2CreateUniverseUIEnabled = isV2CreateEditUniverseEnabled(runtimeConfigs?.data);
   return (
     <React.Fragment>
       <DeleteUniverseContainer
@@ -621,7 +613,7 @@ export const UniverseView = (props) => {
             }}
             isControl
           >
-            <Link to="/universes/create">
+            <Link to={isNewV2CreateUniverseUIEnabled ? '/create-universe' : '/universes/create'}>
               <YBButton
                 btnClass="universe-button btn btn-lg btn-orange"
                 disabled={isDisabled(currentCustomer.data.features, 'universe.create')}

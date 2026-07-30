@@ -83,18 +83,6 @@ export const ReplicationFactorInfoModal: FC<ReplicationFactorInfoProps> = ({ ope
           <StyledTypography variant="body1">{t('rfFactor')}</StyledTypography>
           <StyledTypography variant="body2">{t('rfFactorAns')}</StyledTypography>
         </Box>
-        <Box style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <StyledTypography variant="body1">{t('FtAndRf')}</StyledTypography>
-          <StyledTypography variant="body2">
-            <Trans t={t} i18nKey="FtAndRfAns" components={{ highlight: <Highlight /> }} />
-          </StyledTypography>
-        </Box>
-        <InfoPanel>
-          <Box>
-            <Trans t={t} i18nKey="tip" components={{ b: <b /> }} />
-          </Box>
-          <HelpImage src={RFHelpPng} />
-        </InfoPanel>
         <Box sx={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
           <BookIcon />
           <Trans
@@ -102,8 +90,7 @@ export const ReplicationFactorInfoModal: FC<ReplicationFactorInfoProps> = ({ ope
             style={{ fontSize: '11.5px', fontWeight: 400, lineHeight: '16px' }}
             i18nKey="learn"
             components={{
-              a: <Link />,
-              a2: <Link />
+              a: <Link />
             }}
           />
         </Box>

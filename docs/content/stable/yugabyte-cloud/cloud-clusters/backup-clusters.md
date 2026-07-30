@@ -79,6 +79,7 @@ To back up a cluster:
 
 1. On the **Backups** tab, click **Backup Now** to display the **Create Backup** dialog.
 1. Set the retention period for the backup.
+1. To back up database roles (YSQL only), choose the **Include roles and grants** option.
 1. Optionally, enter a description of the backup.
 1. Click **Backup Now**.
 
@@ -95,6 +96,7 @@ To manage the cluster backup policy, do the following:
 1. On the **Backups** tab, click **Scheduled Backup Settings** and choose **Edit Backup Policy** to display the **Backup Policy** dialog.
 1. Specify how often to take full backups of the database.
 1. To take incremental backups, select the **Enable incremental backup** option and specify how often to take incremental backups.
+1. To back up database roles (YSQL only), choose the **Include roles and grants** option.
 1. Set the retention period for the backup. The maximum retention is 31 days.
 1. Click **Save**.
 
@@ -114,9 +116,27 @@ To restore a backup of a cluster:
 
 1. On the **Backups** tab, select a backup in the list to display the **Backup Details** sheet.
 1. Click **Restore** to display the **Restore Backup** dialog.
-1. Choose the databases or keyspaces to restore and click **Next**.
+1. Choose the databases or keyspaces to restore.
+1. If the backup includes roles, choose the **Restore roles and grants** option to restore roles.
+
+    Note that if the target cluster [already has matching roles](#grants-and-permissions), those roles are not overwritten.
+
+1. Click **Next**.
 1. Select the target cluster.
+1. To rename databases, select the **Rename database/s before restoring** option and click **Next**.
+
+    Note that if the target cluster already has databases with the same name, you must rename databases.
+
+1. If you are renaming databases, enter a new name for the databases you want to rename in the **Assign new name** column.
 1. Click **Restore Now**.
+
+### Grants and permissions
+
+When restoring a backup that includes roles and grants, YugabyteDB Aeon reconciles roles and permissions on the target cluster as follows:
+
+- New roles are added with grants
+- Existing roles are updated with permissions/attributes if any, and not overwritten
+- Credentials are not changed for existing roles
 
 ## Remote backup replication
 

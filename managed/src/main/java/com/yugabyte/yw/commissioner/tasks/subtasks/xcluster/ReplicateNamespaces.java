@@ -86,33 +86,34 @@ public class ReplicateNamespaces extends XClusterConfigTaskBase {
     Set<UUID> visitedProviderUUIDS = new HashSet<>();
     KubernetesManager kubernetesManager = kubernetesManagerFactory.getManager();
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
-      UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
-      if (visitedProviderUUIDS.contains(providerUUID)) {
-        continue;
-      }
-      visitedProviderUUIDS.add(providerUUID);
-      Provider provider = Provider.getOrBadRequest(providerUUID);
-      if (provider.getCloudCode().equals(Common.CloudType.kubernetes)) {
-        Map<UUID, String> azKubeConfigMap = KubernetesUtil.getKubeConfigPerAZ(provider);
-        List<Region> regions = Region.getByProvider(provider.getUuid());
-        for (Region region : regions) {
-          List<AvailabilityZone> zones = AvailabilityZone.getAZsForRegion(region.getUuid());
-          for (AvailabilityZone zone : zones) {
-            String kubeConfig = azKubeConfigMap.getOrDefault(zone.getUuid(), null);
-            if (kubeConfig != null) {
-              Map<String, String> config = new HashMap<>();
-              config.put("KUBECONFIG", kubeConfig);
-              for (String namespace : namespaces) {
-                // TODO: Add annotations for created namespaces.
-                boolean namespaceExists = kubernetesManager.namespaceExists(config, namespace);
-                if (namespaceExists) {
-                  log.debug(
-                      "Namespace {} exists, kubeconfig: {}, skipping namespace creation",
-                      namespace,
-                      kubeConfig);
-                } else {
-                  log.debug("Creating namespace: {}, kubeconfig: {}", namespace, kubeConfig);
-                  kubernetesManager.createNamespace(config, namespace);
+      for (UUID providerUUID : cluster.userIntent.getAllProviderUUIDs()) {
+        if (visitedProviderUUIDS.contains(providerUUID)) {
+          continue;
+        }
+        visitedProviderUUIDS.add(providerUUID);
+        Provider provider = Provider.getOrBadRequest(providerUUID);
+        if (provider.getCloudCode().equals(Common.CloudType.kubernetes)) {
+          Map<UUID, String> azKubeConfigMap = KubernetesUtil.getKubeConfigPerAZ(provider);
+          List<Region> regions = Region.getByProvider(provider.getUuid());
+          for (Region region : regions) {
+            List<AvailabilityZone> zones = AvailabilityZone.getAZsForRegion(region.getUuid());
+            for (AvailabilityZone zone : zones) {
+              String kubeConfig = azKubeConfigMap.getOrDefault(zone.getUuid(), null);
+              if (kubeConfig != null) {
+                Map<String, String> config = new HashMap<>();
+                config.put("KUBECONFIG", kubeConfig);
+                for (String namespace : namespaces) {
+                  // TODO: Add annotations for created namespaces.
+                  boolean namespaceExists = kubernetesManager.namespaceExists(config, namespace);
+                  if (namespaceExists) {
+                    log.debug(
+                        "Namespace {} exists, kubeconfig: {}, skipping namespace creation",
+                        namespace,
+                        kubeConfig);
+                  } else {
+                    log.debug("Creating namespace: {}, kubeconfig: {}", namespace, kubeConfig);
+                    kubernetesManager.createNamespace(config, namespace);
+                  }
                 }
               }
             }

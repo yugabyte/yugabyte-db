@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "yb/common/doc_hybrid_time.h"
 #include "yb/common/read_hybrid_time.h"
 
 #include "yb/docdb/docdb_fwd.h"
@@ -28,6 +29,11 @@ struct ReadOperationData {
   DocDBStatistics* statistics = nullptr;
   bool use_ht_file_filter = true;
 
+  // Write id to use when encoding the read time for MVCC filtering.
+  // Defaults to kMaxWriteId, which means "see all writes at this HybridTime".
+  // Set to a specific value to limit visibility to writes with write_id <= this value.
+  IntraTxnWriteId write_id = kMaxWriteId;
+
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(deadline, read_time);
   }
@@ -35,6 +41,14 @@ struct ReadOperationData {
   ReadOperationData WithAlteredReadTime(const ReadHybridTime& read_time_) const {
     auto result = *this;
     result.read_time = read_time_;
+    return result;
+  }
+
+  ReadOperationData WithAlteredReadTimeAndWriteId(
+      const ReadHybridTime& read_time_, IntraTxnWriteId write_id_) const {
+    auto result = *this;
+    result.read_time = read_time_;
+    result.write_id = write_id_;
     return result;
   }
 

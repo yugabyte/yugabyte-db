@@ -64,29 +64,32 @@ typedef struct BinarySetOperatorState
 	char *collationString;
 } BinarySetOperatorState;
 
-typedef struct BsonValueHashEntry
+/*
+ * Struct to store a set element in a collation-aware hash table
+ * It extends BsonValueHashEntry in hash_utils.h
+ */
+typedef struct SetOperatorBsonValueHashEntry
 {
-	/* key for hash Entry */
+	/* key for hash Entry; must be first field */
 	bson_value_t bsonValue;
 
-	/* value for hash Entry */
+	/* collation string, if applicable; must be second field */
+	const char *collationString;
+
+	/* frequency value for hash entry */
 	int count;
 
 	/* store the number of array where element has seen last */
 	int lastSeenArray;
+} SetOperatorBsonValueHashEntry;
 
-	/* collation string to be used for comparison, if applicable */
-	const char *collationString;
-} BsonValueHashEntry;
+/* Size of the count and lastSeenArray fields in SetOperatorBsonValueHashEntry */
+#define BsonValueHashEntryExtraDataSize (2 * sizeof(int))
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
 /* --------------------------------------------------------- */
 
-static HTAB * CreateBsonValueElementHashSet(void);
-static int BsonValueHashEntryCompareFunc(const void *obj1, const void *obj2,
-										 Size objsize);
-static uint32 BsonValueHashEntryHashFunc(const void *obj, size_t objsize);
 static void ParseSetDualOperands(const bson_value_t *argument,
 								 AggregationExpressionData *data, const
 								 char *operatorName,
@@ -143,7 +146,8 @@ ParseDollarSetIntersection(const bson_value_t *argument,
 	{
 		.arrayCount = 0,
 		.isMatchWithPreviousSet = true,
-		.arrayElementsHashTable = CreateBsonValueElementHashSet(),
+		.arrayElementsHashTable = CreateBsonValueWithCollationHashSet(
+			BsonValueHashEntryExtraDataSize),
 	};
 
 	if (IsCollationApplicable(parseContext->collationString))
@@ -174,7 +178,8 @@ HandlePreParsedDollarSetIntersection(pgbson *doc, void *arguments,
 	{
 		.arrayCount = 0,
 		.isMatchWithPreviousSet = true,
-		.arrayElementsHashTable = CreateBsonValueElementHashSet(),
+		.arrayElementsHashTable = CreateBsonValueWithCollationHashSet(
+			BsonValueHashEntryExtraDataSize),
 	};
 
 	bson_value_t result;
@@ -207,7 +212,8 @@ ParseDollarSetUnion(const bson_value_t *argument,
 	{
 		.arrayCount = 0,
 		.isMatchWithPreviousSet = true,
-		.arrayElementsHashTable = CreateBsonValueElementHashSet(),
+		.arrayElementsHashTable = CreateBsonValueWithCollationHashSet(
+			BsonValueHashEntryExtraDataSize),
 	};
 
 	if (IsCollationApplicable(parseContext->collationString))
@@ -237,7 +243,8 @@ HandlePreParsedDollarSetUnion(pgbson *doc, void *arguments,
 	{
 		.arrayCount = 0,
 		.isMatchWithPreviousSet = true,
-		.arrayElementsHashTable = CreateBsonValueElementHashSet(),
+		.arrayElementsHashTable = CreateBsonValueWithCollationHashSet(
+			BsonValueHashEntryExtraDataSize),
 	};
 
 	bson_value_t result;
@@ -270,7 +277,7 @@ ParseDollarSetEquals(const bson_value_t *argument,
 	if (numArgs < 2)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION17045), errmsg(
-							"$setEquals needs at least two arguments had: %d",
+							"$setEquals requires a minimum of two arguments, but received %d",
 							numArgs)));
 	}
 
@@ -281,7 +288,8 @@ ParseDollarSetEquals(const bson_value_t *argument,
 	{
 		.arrayCount = 0,
 		.isMatchWithPreviousSet = true,
-		.arrayElementsHashTable = CreateBsonValueElementHashSet(),
+		.arrayElementsHashTable = CreateBsonValueWithCollationHashSet(
+			BsonValueHashEntryExtraDataSize),
 	};
 
 	if (IsCollationApplicable(parseContext->collationString))
@@ -312,7 +320,8 @@ HandlePreParsedDollarSetEquals(pgbson *doc, void *arguments,
 	{
 		.arrayCount = 0,
 		.isMatchWithPreviousSet = true,
-		.arrayElementsHashTable = CreateBsonValueElementHashSet(),
+		.arrayElementsHashTable = CreateBsonValueWithCollationHashSet(
+			BsonValueHashEntryExtraDataSize),
 	};
 
 	bson_value_t result;
@@ -689,7 +698,7 @@ ProcessDollarSetIntersection(const bson_value_t *currentElement, void *state,
 	if (currentElement->value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION17047), errmsg(
-							"All operands of $setIntersection must be arrays. One argument is of type: %s",
+							"All operands of $setIntersection must be arrays, but one provided argument has type: %s",
 							BsonTypeName(currentElement->value_type))));
 	}
 
@@ -711,7 +720,7 @@ ProcessDollarSetIntersectionResult(void *state, bson_value_t *result)
 	}
 
 	HASH_SEQ_STATUS seq_status;
-	BsonValueHashEntry *entry;
+	SetOperatorBsonValueHashEntry *entry;
 
 	hash_seq_init(&seq_status, intersectionState->arrayElementsHashTable);
 	pgbson_writer writer;
@@ -747,7 +756,7 @@ ProcessDollarSetUnion(const bson_value_t *currentValue, void *state, bson_value_
 	if (currentValue->value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION17043), errmsg(
-							"All operands of $setUnion must be arrays. One argument is of type: %s",
+							"All operands of $setUnion are required to be arrays, but one provided argument has the type: %s",
 							BsonTypeName(currentValue->value_type))));
 	}
 
@@ -769,7 +778,7 @@ ProcessDollarSetUnionResult(void *state, bson_value_t *result)
 	}
 
 	HASH_SEQ_STATUS seq_status;
-	BsonValueHashEntry *entry;
+	SetOperatorBsonValueHashEntry *entry;
 
 	hash_seq_init(&seq_status, unionState->arrayElementsHashTable);
 	pgbson_writer writer;
@@ -797,10 +806,8 @@ ProcessDollarSetEqualsElement(const bson_value_t *currentElement, void *state,
 	if (currentElement->value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION17044), errmsg(
-							"All operands of $setEquals must be arrays. One argument is of type: %s",
-							currentElement->value_type == BSON_TYPE_EOD ?
-							MISSING_TYPE_NAME :
-							BsonTypeName(currentElement->value_type))));
+							"All operands of $setEquals must be arrays; one provided argument is of type: %s",
+							BsonTypeNameExtended(currentElement->value_type))));
 	}
 
 	DollarSetOperatorState *setEqualsState = (DollarSetOperatorState *) state;
@@ -829,7 +836,7 @@ ProcessDollarSetEqualsResult(void *state, bson_value_t *result)
 	}
 
 	HASH_SEQ_STATUS seq_status;
-	BsonValueHashEntry *entry;
+	SetOperatorBsonValueHashEntry *entry;
 
 	hash_seq_init(&seq_status, setEqualsState->arrayElementsHashTable);
 
@@ -865,14 +872,14 @@ ProcessDollarSetDifference(void *state, const char *collationString, bson_value_
 	if (context->firstArgument.value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION17048), errmsg(
-							"both operands of $setDifference must be arrays. First argument is of type: %s",
+							"Both operands in $setDifference must be arrays, but the first provided argument is of type: %s",
 							BsonTypeName(context->firstArgument.value_type))));
 	}
 
 	if (context->secondArgument.value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION17049), errmsg(
-							"both operands of $setDifference must be arrays. Second argument is of type: %s",
+							"Both operands in $setDifference need to be arrays, but the second one has type: %s",
 							BsonTypeName(context->secondArgument.value_type))));
 	}
 
@@ -880,7 +887,8 @@ ProcessDollarSetDifference(void *state, const char *collationString, bson_value_
 	{
 		.arrayCount = 0,
 		.isMatchWithPreviousSet = true,
-		.arrayElementsHashTable = CreateBsonValueElementHashSet(),
+		.arrayElementsHashTable = CreateBsonValueWithCollationHashSet(
+			BsonValueHashEntryExtraDataSize),
 		.collationString = collationString
 	};
 
@@ -897,7 +905,7 @@ ProcessDollarSetDifference(void *state, const char *collationString, bson_value_
 	while (bson_iter_next(&arrayIterator))
 	{
 		const bson_value_t *arrayElement = bson_iter_value(&arrayIterator);
-		BsonValueHashEntry elementToFind = {
+		SetOperatorBsonValueHashEntry elementToFind = {
 			.bsonValue = *arrayElement, .collationString = collationString
 		};
 
@@ -929,33 +937,31 @@ ProcessDollarSetIsSubset(void *state, const char *collationString, bson_value_t 
 	if (context->firstArgument.value_type != BSON_TYPE_ARRAY)
 	{
 		int errorCode = ERRCODE_DOCUMENTDB_LOCATION17310;
-		char *typeName = MISSING_TYPE_NAME;
+		char *typeName = BsonTypeNameExtended(context->firstArgument.value_type);
 
 		if (context->firstArgument.value_type != BSON_TYPE_EOD)
 		{
-			typeName = BsonTypeName(context->firstArgument.value_type);
 			errorCode = ERRCODE_DOCUMENTDB_LOCATION17046;
 		}
 
 		ereport(ERROR, (errcode(errorCode), errmsg(
-							"both operands of $setIsSubset must be arrays. First argument is of type: %s",
+							"Both operands used with $setIsSubset should be arrays, but the first provided argument is of type: %s",
 							typeName)));
 	}
 
 	if (context->secondArgument.value_type != BSON_TYPE_ARRAY)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION17042), errmsg(
-							"both operands of $setIsSubset must be arrays. Second argument is of type: %s",
-							context->secondArgument.value_type == BSON_TYPE_EOD ?
-							MISSING_TYPE_NAME :
-							BsonTypeName(context->secondArgument.value_type))));
+							"Both operands in $setIsSubset must be arrays, but the second operand provided is of type: %s",
+							BsonTypeNameExtended(context->secondArgument.value_type))));
 	}
 
 	DollarSetOperatorState setIsSubsetState =
 	{
 		.arrayCount = 0,
 		.isMatchWithPreviousSet = true,
-		.arrayElementsHashTable = CreateBsonValueElementHashSet(),
+		.arrayElementsHashTable = CreateBsonValueWithCollationHashSet(
+			BsonValueHashEntryExtraDataSize),
 		.collationString = collationString
 	};
 
@@ -968,7 +974,7 @@ ProcessDollarSetIsSubset(void *state, const char *collationString, bson_value_t 
 	while (bson_iter_next(&arrayIterator))
 	{
 		const bson_value_t *arrayElement = bson_iter_value(&arrayIterator);
-		BsonValueHashEntry elementToFind = {
+		SetOperatorBsonValueHashEntry elementToFind = {
 			.bsonValue = *arrayElement, .collationString = collationString
 		};
 
@@ -1009,16 +1015,16 @@ ProcessSetElement(const bson_value_t *currentValue,
 	while (bson_iter_next(&arrayIterator))
 	{
 		const bson_value_t *arrayElement = bson_iter_value(&arrayIterator);
-		BsonValueHashEntry elementToFind = {
+		SetOperatorBsonValueHashEntry elementToFind = {
 			.bsonValue = *arrayElement, .collationString = state->collationString
 		};
 
 		bool found = false;
-		BsonValueHashEntry *foundElement =
-			(BsonValueHashEntry *) hash_search(arrayElementsHashTable,
-											   &elementToFind,
-											   HASH_ENTER,
-											   &found);
+		SetOperatorBsonValueHashEntry *foundElement =
+			(SetOperatorBsonValueHashEntry *) hash_search(arrayElementsHashTable,
+														  &elementToFind,
+														  HASH_ENTER,
+														  &found);
 
 		/* This condition ensures that the element being checked is not a duplicate in current array. */
 		if (foundElement->lastSeenArray != state->arrayCount)
@@ -1031,7 +1037,8 @@ ProcessSetElement(const bson_value_t *currentValue,
 			state->isMatchWithPreviousSet = false;
 		}
 
-		/* By assigning the current arrayCount to lastSeenArray, we can effectively disregard any subsequent occurrences of the same element in this array. */
+		/* By assigning the current arrayCount to lastSeenArray, */
+		/* we can effectively disregard any subsequent occurrences of the same element in this array. */
 		foundElement->lastSeenArray = state->arrayCount;
 	}
 }
@@ -1050,12 +1057,11 @@ ProcessDollarAllOrAnyElementsTrue(const bson_value_t *currentValue, void *state,
 	{
 		ereport(ERROR, (errcode(IsAllElementsTrueOp ? ERRCODE_DOCUMENTDB_LOCATION17040 :
 								ERRCODE_DOCUMENTDB_LOCATION17041),
-						errmsg("%s's argument must be an array, but is %s",
-							   IsAllElementsTrueOp ? "$allElementsTrue" :
-							   "$anyElementTrue",
-							   currentValue->value_type == BSON_TYPE_EOD ?
-							   MISSING_TYPE_NAME :
-							   BsonTypeName(currentValue->value_type))));
+						errmsg(
+							"The argument provided for %s must be of array type, yet it is actually %s.",
+							IsAllElementsTrueOp ? "$allElementsTrue" :
+							"$anyElementTrue",
+							BsonTypeNameExtended(currentValue->value_type))));
 	}
 
 	bson_iter_t arrayIterator;
@@ -1083,69 +1089,4 @@ ProcessDollarAllOrAnyElementsTrue(const bson_value_t *currentValue, void *state,
 	}
 
 	return true;
-}
-
-
-/*
- * BsonValueHashEntryHashFunc is the (HASHCTL.hash) callback
- * used to hash a BsonValueHashEntry object based on bsonValue
- * of the BsonValueHashEntry that it holds.
- */
-static uint32
-BsonValueHashEntryHashFunc(const void *obj, size_t objsize)
-{
-	const BsonValueHashEntry *hashEntry = obj;
-	const bson_value_t *bsonValue = &hashEntry->bsonValue;
-
-	if (bsonValue->value_type == BSON_TYPE_UTF8 &&
-		IsCollationApplicable(hashEntry->collationString))
-	{
-		char *key = bsonValue->value.v_utf8.str;
-		char *sortKey = GetCollationSortKey(hashEntry->collationString, key, strlen(key));
-		uint32 hash = hash_bytes((unsigned char *) sortKey, strlen(sortKey));
-
-		pfree(sortKey);
-		return hash;
-	}
-	return BsonValueHashUint32(&hashEntry->bsonValue);
-}
-
-
-/*
- * BsonValueHashEntryCompareFunc is the (HASHCTL.match) callback (based
- * on BsonValueEquals()) used to determine if two bsonValue are same.
- *
- * Returns 0 if those two bsonValue are same, 1 otherwise.
- */
-static int
-BsonValueHashEntryCompareFunc(const void *obj1, const void *obj2, Size objsize)
-{
-	const BsonValueHashEntry *hashEntry1 = obj1;
-	const BsonValueHashEntry *hashEntry2 = obj2;
-
-	bool isComparisonValidIgnore;
-	bool cmp = CompareBsonValueAndTypeWithCollation(&hashEntry1->bsonValue,
-													&hashEntry2->bsonValue,
-													&isComparisonValidIgnore,
-													hashEntry1->collationString);
-	return cmp ? 1 : 0;
-}
-
-
-/*
- * Creates a hash table that stores bsonValue entries using
- * a hash and search based on the bsonValue.
- */
-static HTAB *
-CreateBsonValueElementHashSet(void)
-{
-	HASHCTL hashInfo = CreateExtensionHashCTL(
-		sizeof(BsonValueHashEntry),
-		sizeof(BsonValueHashEntry),
-		BsonValueHashEntryCompareFunc,
-		BsonValueHashEntryHashFunc);
-	HTAB *bsonElementHashSet =
-		hash_create("Bson Value Hash Table", 32, &hashInfo, DefaultExtensionHashFlags);
-
-	return bsonElementHashSet;
 }

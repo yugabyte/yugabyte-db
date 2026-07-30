@@ -126,6 +126,12 @@ typedef struct ReplicationSlotPersistentData
 	 * replication slot.
 	 */
 	bool		yb_allow_tables_without_primary_key;
+
+	/*
+	 * YB: Whether the slot will use pub refresh mechanism or mechanism to poll sys
+	 * catalog tablet for detecting changes to publications.
+	 */
+	bool		yb_detect_publication_changes_implicitly;
 } ReplicationSlotPersistentData;
 
 /*
@@ -222,6 +228,7 @@ extern PGDLLIMPORT int max_replication_slots;
 /* YB */
 extern PGDLLIMPORT const char *YB_OUTPUT_PLUGIN;
 extern PGDLLIMPORT const char *PG_OUTPUT_PLUGIN;
+extern PGDLLIMPORT const char *YB_GRPC_STREAM_INDICATOR;
 extern PGDLLIMPORT const char *LSN_TYPE_SEQUENCE;
 extern PGDLLIMPORT const char *LSN_TYPE_HYBRID_TIME;
 extern PGDLLIMPORT const char *ORDERING_MODE_ROW;
@@ -240,7 +247,7 @@ extern void ReplicationSlotCreate(const char *name, bool db_specific,
 								  YbCRSLsnType lsn_type,
 								  YbCRSOrderingMode yb_ordering_mode);
 extern void ReplicationSlotPersist(void);
-extern void ReplicationSlotDrop(const char *name, bool nowait);
+extern void ReplicationSlotDrop(const char *name, bool nowait, bool yb_force, bool yb_if_exists);
 
 extern void ReplicationSlotAcquire(const char *name, bool nowait);
 extern void ReplicationSlotRelease(void);
@@ -273,5 +280,12 @@ extern void CheckSlotPermissions(void);
 /* YB */
 extern void ReplicationSlotCleanupForProc(PGPROC *proc);
 extern char YBCGetReplicaIdentityForRelation(Oid relid);
+extern void YbReplicationSlotCreateForDB(const char *name, bool two_phase,
+										 const char *yb_plugin_name,
+										 CRSSnapshotAction yb_snapshot_action,
+										 uint64_t *yb_consistent_snapshot_time,
+										 YbCRSLsnType lsn_type,
+										 YbCRSOrderingMode yb_ordering_mode,
+										 Oid database_oid);
 
 #endif							/* SLOT_H */

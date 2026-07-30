@@ -222,7 +222,7 @@ class TransactionParticipant : public TransactionStatusManager {
   void IgnoreAllTransactionsStartedBefore(HybridTime limit);
 
   // Update transaction metadata to change the status tablet for the given transaction.
-  Status UpdateTransactionStatusLocation(
+  Status UpdateTransactionPromoting(
       const TransactionId& transaction_id, const TabletId& new_status_tablet);
 
   std::string DumpTransactions() const;
@@ -278,7 +278,7 @@ class TransactionParticipant : public TransactionStatusManager {
   std::pair<uint64_t, uint64_t> GetNumFastModeTransactions();
 
  private:
-  Result<int64_t> RegisterRequest() override;
+  Result<int64_t> RegisterRequest(bool allow_when_closing) override;
   void UnregisterRequest(int64_t request) override;
 
   friend class FastModeTransactionScope;

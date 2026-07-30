@@ -26,6 +26,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
@@ -45,11 +46,12 @@ import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
+import com.yugabyte.yw.forms.XClusterConfigRestartFormData.RestartBootstrapParams;
+import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
-import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -74,6 +76,7 @@ import java.util.UUID;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.yb.CommonTypes;
 import org.yb.Schema;
@@ -262,7 +265,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
     JsonNode fakeMetricResponse = Json.newObject().put("value", "0");
     doReturn(fakeMetricResponse)
         .when(mockMetricQueryHelper)
-        .query(any(), anyList(), anyMap(), anyMap(), anyBoolean());
+        .query(any(), anyList(), anyMap(), anyMap());
   }
 
   public void setupMetricValues() {
@@ -429,7 +432,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   public void testCreateUsingNewRbacAuthzWithNeededPermissions() throws Exception {
     initClientGetTablesList();
     mockDefaultInstanceClusterConfig();
-    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
     ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd1, rd2)));
     RoleBinding.create(user, RoleBindingType.Custom, role, rG);
     Result result =
@@ -468,9 +471,9 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   @Test
   public void testCreateUsingNewRbacAuthzWithNoPermissions() throws Exception {
     user = ModelFactory.testUser(customer, "test3@gmail.com", Users.Role.ConnectOnly);
-    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "false");
     initClientGetTablesList();
-    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
     Result result =
         doRequestWithAuthTokenAndBody("POST", apiEndpoint, user.createAuthToken(), createRequest);
     assertUnauthorizedNoException(result, "Unable to authorize user");
@@ -480,9 +483,9 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   public void testCreateUsingNewRbacAuthzWithIncompletePermissionsOnTargetUniverse()
       throws Exception {
     user = ModelFactory.testUser(customer, "test3@gmail.com", Users.Role.ConnectOnly);
-    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "false");
     initClientGetTablesList();
-    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
     ResourceDefinition rd3 =
         ResourceDefinition.builder()
             .resourceType(ResourceType.UNIVERSE)
@@ -500,7 +503,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
       throws Exception {
     user = ModelFactory.testUser(customer, "test3@gmail.com", Users.Role.ConnectOnly);
     initClientGetTablesList();
-    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
     ResourceDefinition rd3 =
         ResourceDefinition.builder()
             .resourceType(ResourceType.UNIVERSE)
@@ -517,7 +520,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
   public void testCreateUsingNewRbacAuthzWithIncompletePermission() throws Exception {
     user = ModelFactory.testUser(customer, "test3@gmail.com", Users.Role.ConnectOnly);
     initClientGetTablesList();
-    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "true");
     Role role1 =
         Role.create(
             customer.getUuid(),
@@ -777,7 +780,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetDoesntExist() {
-    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "false");
     String nonexistentUUID = UUID.randomUUID().toString();
     String getAPIEndpoint = apiEndpoint + "/" + nonexistentUUID;
 
@@ -1079,7 +1082,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testEditDoesntExist() {
-    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "false");
     String nonexistentUUID = UUID.randomUUID().toString();
     String editAPIEndpoint = apiEndpoint + "/" + nonexistentUUID;
 
@@ -1189,7 +1192,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testDeleteDoesntExist() {
-    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "false");
     String nonexistentUUID = UUID.randomUUID().toString();
     String deleteAPIEndpoint = apiEndpoint + "/" + nonexistentUUID;
 
@@ -1205,7 +1208,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testSync() {
-    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "false");
     String syncAPIEndpoint = apiEndpoint + "/sync?targetUniverseUUID=" + targetUniverseUUID;
 
     Result result = doRequestWithAuthToken("POST", syncAPIEndpoint, user.createAuthToken());
@@ -1247,7 +1250,7 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
 
   @Test
   public void testSyncInvalidTargetUniverse() {
-    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "false");
+    mutableConfigFactory.globalRuntimeConf().setValue("yb.rbac.use_new_authz", "false");
     String invalidUUID = UUID.randomUUID().toString();
     String syncAPIEndpoint = apiEndpoint + "/sync?targetUniverseUUID=" + invalidUUID;
 
@@ -1417,5 +1420,149 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
         doRequestWithAuthTokenAndBody("POST", apiEndpoint, user.createAuthToken(), createRequest);
     assertOk(result);
     assertNumXClusterConfigs(1);
+  }
+
+  private XClusterConfig createRunningXClusterConfigForRestartTests() {
+    XClusterConfig xClusterConfig =
+        XClusterConfig.create(createFormData, XClusterConfigStatusType.Running);
+    xClusterConfig.updateReplicationSetupDone(exampleTables);
+    return xClusterConfig;
+  }
+
+  private XClusterConfig createReverseDirectionXClusterConfig(Set<String> tableIds) {
+    XClusterConfigCreateFormData reverseFormData = new XClusterConfigCreateFormData();
+    reverseFormData.name = configName + "-reverse";
+    reverseFormData.sourceUniverseUUID = targetUniverseUUID;
+    reverseFormData.targetUniverseUUID = sourceUniverseUUID;
+    reverseFormData.tables = tableIds;
+    XClusterConfig reverseConfig =
+        XClusterConfig.create(reverseFormData, XClusterConfigStatusType.Running);
+    reverseConfig.updateReplicationSetupDone(tableIds);
+    return reverseConfig;
+  }
+
+  private RestartBootstrapParams createRestartBootstrapParams() {
+    RestartBootstrapParams restartBootstrapParams = new RestartBootstrapParams();
+    restartBootstrapParams.backupRequestParams =
+        new XClusterConfigCreateFormData.BootstrapParams.BootstrapBackupParams();
+    restartBootstrapParams.backupRequestParams.storageConfigUUID =
+        ModelFactory.createS3StorageConfig(customer, "restart-s3-config").getConfigUUID();
+    return restartBootstrapParams;
+  }
+
+  @Test
+  public void testRestartRejectedWhenBootstrapParamsAreNull() throws Exception {
+    initClientGetTablesList();
+    mockDefaultInstanceClusterConfig();
+    XClusterConfig xClusterConfig = createRunningXClusterConfigForRestartTests();
+
+    ObjectNode restartRequest = Json.newObject();
+    restartRequest.putArray("tables").add(exampleTableID1).add(exampleTableID2);
+
+    String restartAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST", restartAPIEndpoint, user.createAuthToken(), restartRequest));
+    assertEquals(contentAsString(result), BAD_REQUEST, result.status());
+    assertResponseError("{\"bootstrapParams\":[\"error.required\"]}", result);
+    assertNoTasksCreated();
+    assertAuditEntry(0, customer.getUuid());
+
+    xClusterConfig.delete();
+  }
+
+  @Test
+  public void testRestartRejectedWhenAllRequestedTablesExcludedFromBootstrap() throws Exception {
+    initClientGetTablesList();
+    mockDefaultInstanceClusterConfig();
+    XClusterConfig xClusterConfig = createRunningXClusterConfigForRestartTests();
+    XClusterConfig reverseConfig = createReverseDirectionXClusterConfig(exampleTables);
+
+    ObjectNode restartRequest = Json.newObject();
+    restartRequest.putArray("tables").add(exampleTableID1).add(exampleTableID2);
+    restartRequest.set("bootstrapParams", Json.toJson(createRestartBootstrapParams()));
+
+    String restartAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST", restartAPIEndpoint, user.createAuthToken(), restartRequest));
+    assertEquals(contentAsString(result), BAD_REQUEST, result.status());
+    assertBadRequest(
+        result,
+        "Restart is not allowed because one or more requested tables have corresponding"
+            + " target tables already involved in other xCluster replication on the target"
+            + " universe. Remove the other replication configurations to make this"
+            + " configuration uni-directional replication and try again.");
+    assertNoTasksCreated();
+    assertAuditEntry(0, customer.getUuid());
+
+    xClusterConfig.delete();
+    reverseConfig.delete();
+  }
+
+  @Test
+  public void testRestartAllowedWhenNoBidirectionalReplication() throws Exception {
+    initClientGetTablesList();
+    mockDefaultInstanceClusterConfig();
+    XClusterConfig xClusterConfig = createRunningXClusterConfigForRestartTests();
+
+    UUID restartTaskUUID = buildTaskInfo(null, TaskType.RestartXClusterConfig);
+    when(mockCommissioner.submit(any(), any())).thenReturn(restartTaskUUID);
+
+    ObjectNode restartRequest = Json.newObject();
+    restartRequest.putArray("tables").add(exampleTableID1).add(exampleTableID2);
+    restartRequest.set("bootstrapParams", Json.toJson(createRestartBootstrapParams()));
+
+    String restartAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST", restartAPIEndpoint, user.createAuthToken(), restartRequest);
+
+    assertOk(result);
+    ArgumentCaptor<XClusterConfigTaskParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(XClusterConfigTaskParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.RestartXClusterConfig), paramsArgumentCaptor.capture());
+    XClusterConfigTaskParams params = paramsArgumentCaptor.getValue();
+    assertNotNull(params.getBootstrapParams());
+    assertEquals(exampleTables, new HashSet<>(params.getBootstrapParams().tables));
+
+    xClusterConfig.delete();
+  }
+
+  @Test
+  public void testRestartRejectedWhenSomeRequestedTablesExcludedFromBootstrap() throws Exception {
+    initClientGetTablesList();
+    mockDefaultInstanceClusterConfig();
+    XClusterConfig xClusterConfig = createRunningXClusterConfigForRestartTests();
+    XClusterConfig reverseConfig =
+        createReverseDirectionXClusterConfig(Collections.singleton(exampleTableID1));
+
+    ObjectNode restartRequest = Json.newObject();
+    restartRequest.putArray("tables").add(exampleTableID1).add(exampleTableID2);
+    restartRequest.set("bootstrapParams", Json.toJson(createRestartBootstrapParams()));
+
+    String restartAPIEndpoint = apiEndpoint + "/" + xClusterConfig.getUuid();
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "POST", restartAPIEndpoint, user.createAuthToken(), restartRequest));
+    assertEquals(contentAsString(result), BAD_REQUEST, result.status());
+    assertBadRequest(
+        result,
+        "Restart is not allowed because one or more requested tables have corresponding"
+            + " target tables already involved in other xCluster replication on the target"
+            + " universe. Remove the other replication configurations to make this"
+            + " configuration uni-directional replication and try again.");
+    assertNoTasksCreated();
+    assertAuditEntry(0, customer.getUuid());
+
+    xClusterConfig.delete();
+    reverseConfig.delete();
   }
 }

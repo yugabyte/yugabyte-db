@@ -98,7 +98,7 @@ In these cases, the database aborts the query and returns a `40001` PostgreSQL e
 When running an `ysql_dump` command that takes too long to complete, you may encounter the following error:
 
 ```output
-Snapshot too old: Snapshot too old. Read point: { physical: 1628678717824559 }, earliest read time allowed: { physical: 1628679675271006 }, delta (usec): 957446447: kSnapshotTooOld
+Snapshot too old: Snapshot too old. Read point: { physical: 1628678717824559 }, earliest read time allowed: { physical: 1628679675271006 }, delta (usec): 957446447. Tablet: 245a715c23854b4d8a79df4774659fab, Table: example (000034d9000030008000000000004008): kSnapshotTooOld
 ```
 
 When the command takes a long time to be processed, a compaction may have occurred and have deleted some rows at the snapshot the dump was started on. For large backups, it is recommended to use [distributed snapshots](../../manage/backup-restore/snapshot-ysql/), which are more efficient and fast.

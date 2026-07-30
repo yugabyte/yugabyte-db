@@ -44,6 +44,11 @@ import play.mvc.Http.Status;
 @Slf4j
 public class CheckUpgrade extends ServerSubTaskBase {
 
+  /**
+   * Minimum DB version for YSQL major upgrade on preview release tracks (not runtime configurable).
+   */
+  private static final String YSQL_MAJOR_UPGRADE_MIN_PREVIEW_DB_VERSION = "2.25.0.0-b1";
+
   private final Config appConfig;
   private final AuditService auditService;
   private final SoftwareUpgradeHelper softwareUpgradeHelper;
@@ -216,13 +221,24 @@ public class CheckUpgrade extends ServerSubTaskBase {
         gFlagsValidation.ysqlMajorVersionUpgrade(currentVersion, newVersion);
     UserIntent currentIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     if (isYsqlMajorVersionUpgrade && currentIntent.enableYSQL) {
+      String minStableDbVersion =
+          confGetter.getConfForScope(universe, UniverseConfKeys.ysqlMajorUpgradeMinStableDbVersion);
       if (Util.compareYBVersions(
-              currentVersion, "2024.2.3.0-b1", "2.25.0.0-b1", true /* suppressFormatError */)
+              currentVersion,
+              minStableDbVersion,
+              YSQL_MAJOR_UPGRADE_MIN_PREVIEW_DB_VERSION,
+              true /* suppressFormatError */)
           < 0) {
+        String minVersionForMessage =
+            Util.isStableVersion(currentVersion, true /* suppressFormatError */)
+                ? minStableDbVersion
+                : YSQL_MAJOR_UPGRADE_MIN_PREVIEW_DB_VERSION;
         throw new PlatformServiceException(
-            Status.BAD_REQUEST,
-            "YSQL major version upgrade is only supported from 2024.2.3.0-b1. Please upgrade to a"
-                + " version >= 2024.2.3.0-b1 before proceeding with the upgrade.");
+            BAD_REQUEST,
+            String.format(
+                "YSQL major version upgrade is only supported from %s. Please upgrade to a version "
+                    + ">= %s before proceeding with the upgrade.",
+                minVersionForMessage, minVersionForMessage));
       }
 
       for (Cluster cluster : universe.getUniverseDetails().clusters) {

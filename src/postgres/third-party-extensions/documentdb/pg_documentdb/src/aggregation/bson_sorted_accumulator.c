@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/bson/bson_sorted_accumulator.c
+ * src/aggregation/bson_sorted_accumulator.c
  *
  * Functions related to custom aggregates for group by
  * accumulator with sort specification:
@@ -40,11 +40,18 @@ static void ParseInputExpressionAndPersistValue(AggregationExpressionData *expre
  * Converts a BsonOrderAggState into a serialized form to allow the internal type to be bytea
  * Resulting bytes look like:
  * | Varlena Header | numAggValues | numSortKeys | BsonOrderAggValue * numAggValues | sortDirections | inputExpression (pgbson)
+ *
+ * The function uses the CurrentMemoryContext (ecxt_per_tuple_memory context) to allocate the new set bytea for result, because we want
+ * this to be free'd as soon as possible, without leaking memory for entire duration of aggregate.
+ * Postgres makes sure to copy it into aggregate context if needed.
+ *
+ * For more info look at these places in PG where the state pointer is tracked and cleaned up:
+ * nodeAgg.c: https://github.com/postgres/postgres/blob/9c24111c4dad850bc2625c2113bb3d2dfd592efc/src/backend/executor/nodeAgg.c#L779
+ * nodeWindowAgg.c: https://github.com/postgres/postgres/blob/9c24111c4dad850bc2625c2113bb3d2dfd592efc/src/backend/executor/nodeWindowAgg.c#L367
+ *
  */
-bytea *
-SerializeOrderState(MemoryContext aggregateContext,
-					BsonOrderAggState *state,
-					bytea *byteArray)
+pg_attribute_no_sanitize_alignment() bytea *
+SerializeOrderState(BsonOrderAggState * state)
 {
 	int valueSize = 0;
 	for (int i = 0; i < state->currentCount; i++)
@@ -103,27 +110,17 @@ SerializeOrderState(MemoryContext aggregateContext,
 						   valueSize + /* BsonOrderAggValues */
 						   state->numSortKeys * sizeof(bool) + /* sortDirections */
 						   inputExpressionValueSize; /* inputExpression (pgbson) + null flag */
-	char *bytes;
-	int existingByteSize = (byteArray == NULL) ? 0 : VARSIZE(byteArray);
 
-	if (state->numAggValues == 1 && existingByteSize >= requiredByteSize)
-	{
-		/* Reuse existing bytes */
-		bytes = (char *) byteArray;
-	}
-	else
-	{
-		/* Otherwise get more
-		 * We don't need to do anything with the old memory (free/repalloc) since Postgres will free it as
-		 * it will track that the memory block changed in the transition function.
-		 * If we intent to free or repalloc the old memory, when Postgres tries to free it would crash as the old memory would be invalid.
-		 */
-		bytes = (char *) MemoryContextAlloc(aggregateContext, requiredByteSize);
-		SET_VARSIZE(bytes, requiredByteSize);
-	}
+	/* We should always allocate a new block of memory as the old one is still being used in the state that is referred later here.
+	 * We don't need to do anything with the old memory (free/repalloc) since Postgres will free it as
+	 * it will track that the memory block changed in the transition function.
+	 * If we intent to free or repalloc the old memory, when Postgres tries to free it would crash as the old memory would be invalid.
+	 */
+	char *bytes = (char *) MemoryContextAlloc(CurrentMemoryContext, requiredByteSize);
+	SET_VARSIZE(bytes, requiredByteSize);
 
 
-	/* Copy in the currentValue */
+	/* Copy into the current value variable */
 	char *byteAllocationPointer = (char *) VARDATA(bytes);
 
 	/* Set the number of Aggregation Values */
@@ -204,7 +201,7 @@ SerializeOrderState(MemoryContext aggregateContext,
  * Incoming bytes look like:
  * varlena Header | numAggValues | numSortKeys  | BsonOrderAggValues * numAggValues | sortDirections (bool) | inputExpression (pgbson)
  */
-void
+pg_attribute_no_sanitize_alignment() void
 DeserializeOrderState(bytea *byteArray,
 					  BsonOrderAggState *state)
 {
@@ -234,7 +231,7 @@ DeserializeOrderState(bytea *byteArray,
 	state->numSortKeys = *(int *) (bytes);
 	bytes += sizeof(int);
 
-	/* Extract each of the current results */
+	/* Extract values from each current result */
 	for (int i = 0; i < state->currentCount; i++)
 	{
 		if (*bytes == 0)
@@ -332,7 +329,7 @@ BsonOrderTransition(PG_FUNCTION_ARGS, bool invertSort, bool isSingle, bool
 	if (!aggContext)
 	{
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), errmsg(
-							"aggregate function called in non-aggregate context")));
+							"Aggregate function invoked in non-aggregate context")));
 	}
 
 	/* We store input expression in $setWindowFields context for $top(N)/$bottom(N) */
@@ -356,7 +353,7 @@ BsonOrderTransition(PG_FUNCTION_ARGS, bool invertSort, bool isSingle, bool
 	}
 	else
 	{
-		/* The 3rd argument is number of results to return */
+		/* The third parameter specifies the number of results that should be returned */
 		numResults = PG_GETARG_INT64(2);
 		Assert(numResults > 0);
 
@@ -427,6 +424,9 @@ BsonOrderTransition(PG_FUNCTION_ARGS, bool invertSort, bool isSingle, bool
 	int currentPos;
 	BsonOrderAggValue *newValue = palloc0(sizeof(BsonOrderAggValue));
 
+	/* TODO: support collation with sorted accumulators*/
+	char *collationString = NULL;
+
 	/* Find which position newValue needs ot be inserted into */
 	for (currentPos = inputAggregateState.currentCount - 1; currentPos >= 0; currentPos--)
 	{
@@ -453,7 +453,7 @@ BsonOrderTransition(PG_FUNCTION_ARGS, bool invertSort, bool isSingle, bool
 					newValue->sortKeyValues[currentParsePos++] = BsonOrderby(
 						inputDocument,
 						DatumGetPgBson(sortSpecs[i]),
-						validateSort);
+						validateSort, collationString);
 				}
 			}
 
@@ -528,7 +528,8 @@ BsonOrderTransition(PG_FUNCTION_ARGS, bool invertSort, bool isSingle, bool
 								DatumGetPgBson(
 									sortSpecs
 									[currentParsePos]),
-								validateSort);
+								validateSort,
+								collationString);
 			}
 			currentParsePos++;
 		}
@@ -537,11 +538,7 @@ BsonOrderTransition(PG_FUNCTION_ARGS, bool invertSort, bool isSingle, bool
 		{
 			inputAggregateState.currentCount += 1;
 		}
-		result = SerializeOrderState(aggregateContext,
-									 &inputAggregateState,
-									 PG_ARGISNULL(0) ?
-									 NULL :
-									 PG_GETARG_BYTEA_P(0));
+		result = SerializeOrderState(&inputAggregateState);
 	}
 	else
 	{
@@ -566,7 +563,7 @@ BsonOrderTransition(PG_FUNCTION_ARGS, bool invertSort, bool isSingle, bool
  *      2) The number of documents to be returned or 'N'
  *      3) The input expression to be applied on the results.
  */
-Datum
+pg_attribute_no_sanitize_alignment() Datum
 BsonOrderTransitionOnSorted(PG_FUNCTION_ARGS, bool invertSort, bool isSingle)
 {
 	MemoryContext aggregateContext;
@@ -575,7 +572,7 @@ BsonOrderTransitionOnSorted(PG_FUNCTION_ARGS, bool invertSort, bool isSingle)
 	if (!aggContext)
 	{
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), errmsg(
-							"aggregate function called in non-aggregate context")));
+							"Aggregate function invoked in non-aggregate context")));
 	}
 
 	bool storeInputExpression = false;
@@ -612,7 +609,7 @@ BsonOrderTransitionOnSorted(PG_FUNCTION_ARGS, bool invertSort, bool isSingle)
 		currentCount = 1;
 		if (!isSingle)
 		{
-			/* The 3rd argument is number of results to return */
+			/* The third parameter specifies the number of results that should be returned */
 			returnCount = PG_GETARG_INT64(2);
 			inputExpression = storeInputExpression ? PG_GETARG_MAYBE_NULL_PGBSON(3) :
 							  NULL;
@@ -666,11 +663,38 @@ BsonOrderTransitionOnSorted(PG_FUNCTION_ARGS, bool invertSort, bool isSingle)
 		}
 		else if (currentCount == returnCount && invertSort)
 		{
-			/* Need to drop the least recently seen element. */
-			/* Get the size of the last element and subtract from copySize. */
-			char *lastPtr = sourcePtr + copySize - sizeof(uint32);
-			uint32 dataSize = *(uint32 *) lastPtr;
-			copySize -= sizeof(uint32) + dataSize;
+			/*
+			 * When the aggregation state has already accumulated `returnCount` documents
+			 * and `invertSort == true` (e.g., for a $lastN without sort stage and bottomN behavior), we need to evict
+			 * the oldest document (the first one) to make room for the incoming new document.
+			 *
+			 * This block of code performs that eviction:
+			 * - It first verifies that the remaining data contains at least one complete BSON document
+			 *   by checking its minimum size and validity.
+			 * - Then it reads the size of the first BSON document.
+			 * - Finally, it advances the source pointer past the first document (including its trailing
+			 *   size marker), effectively removing it from the aggregation state.
+			 */
+
+			char *entryPtr = sourcePtr;
+			if (copySize < (int64) VARHDRSZ + (int64) sizeof(uint32))
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("Insufficient data for first aggregate entry")));
+			}
+
+			int32 bsonSize = VARSIZE_ANY((pgbson *) entryPtr);
+			if (bsonSize + (int64) sizeof(uint32) > copySize)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("Corrupted BSON entry in aggregation state")));
+			}
+
+			entryPtr += bsonSize + sizeof(uint32);
+			copySize -= (entryPtr - sourcePtr);
+			sourcePtr = entryPtr;
 		}
 		else
 		{
@@ -722,21 +746,11 @@ BsonOrderTransitionOnSorted(PG_FUNCTION_ARGS, bool invertSort, bool isSingle)
 	/* Need to copy first so we don't overwrite with newValue if we are reusing the array. */
 	/* Use memmove to account for the fact that we may be overwriting the data we are copying. */
 	/* Values for previously existing return values are no longer reliable after this. */
+	/* Copy over the first values we've already seen and adjust pointer to next position. */
 	if (copySize != 0)
 	{
-		if (invertSort)
-		{
-			/* Copy over any bytes that need to be maintained offset by the newValue size so the last value is first */
-			memmove(returnDataPtr + ((newValue == NULL) ? 1 : VARSIZE(newValue)) +
-					sizeof(uint32), sourcePtr,
-					copySize);
-		}
-		else
-		{
-			/* Copy over the first values we've already seen and adjust pointer to next position. */
-			memmove(returnDataPtr, sourcePtr, copySize);
-			returnDataPtr += copySize;
-		}
+		memmove(returnDataPtr, sourcePtr, copySize);
+		returnDataPtr += copySize;
 	}
 
 	/* Add in new value */
@@ -775,7 +789,7 @@ BsonOrderCombine(PG_FUNCTION_ARGS, bool invertSort)
 	if (!AggCheckCallContext(fcinfo, &aggregateContext))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), errmsg(
-							"aggregate function called in non-aggregate context")));
+							"Aggregate function invoked in non-aggregate context")));
 	}
 
 	/* Check if either result is NULL and return Non-NULL */
@@ -795,7 +809,7 @@ BsonOrderCombine(PG_FUNCTION_ARGS, bool invertSort)
 
 	int minPos = 0; /* Minimum position that new result can be inserted at */
 	int leftPos, rightPos; /* current result position for left/right states*/
-	bool updatedLeft = false; /* Flag to indicate that we updated the leftState */
+	bool updatedLeft = false; /* Flag indicates whether the leftState was updated */
 
 	/* Allocate additional memory for merging right results. */
 	if (leftState.currentCount != leftState.numAggValues)
@@ -923,9 +937,7 @@ BsonOrderCombine(PG_FUNCTION_ARGS, bool invertSort)
 
 	if (updatedLeft)
 	{
-		result = SerializeOrderState(aggregateContext, &leftState, PG_ARGISNULL(0) ?
-									 NULL :
-									 PG_GETARG_BYTEA_P(0));
+		result = SerializeOrderState(&leftState);
 	}
 	else
 	{
@@ -945,14 +957,14 @@ BsonOrderCombine(PG_FUNCTION_ARGS, bool invertSort)
  * otherwise an array of values will be returned.
  */
 Datum
-BsonOrderFinal(PG_FUNCTION_ARGS, bool isSingle)
+BsonOrderFinal(PG_FUNCTION_ARGS, bool isSingle, bool invert)
 {
 	MemoryContext aggregateContext;
 	int aggContext = AggCheckCallContext(fcinfo, &aggregateContext);
 	if (!aggContext)
 	{
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), errmsg(
-							"aggregate function called in non-aggregate context")));
+							"Aggregate function invoked in non-aggregate context")));
 	}
 	bool returnNull = false;
 	BsonOrderAggState state = { 0 };
@@ -983,7 +995,7 @@ BsonOrderFinal(PG_FUNCTION_ARGS, bool isSingle)
 
 		if (isSingle)
 		{
-			/* Mongo returns $null for empty sets */
+			/* Returns $null for empty sets */
 			pgbsonelement finalValue;
 			finalValue.path = "";
 			finalValue.pathLength = 0;
@@ -1079,11 +1091,16 @@ BsonOrderFinal(PG_FUNCTION_ARGS, bool isSingle)
 		pgbson_array_writer arrayWriter;
 		PgbsonWriterInit(&writer);
 		PgbsonWriterStartArray(&writer, "", 0, &arrayWriter);
-		for (int i = 0; i < state.currentCount; i++)
+
+		int currentPoint = invert ? state.currentCount - 1 : 0;
+		int toPoint = invert ? -1 : state.currentCount;
+		int direction = invert ? -1 : 1;
+
+		for (int i = currentPoint; i != toPoint; i += direction)
 		{
 			if (state.currentResult[i] == NULL)
 			{
-				/* No more Results*/
+				/* No additional results found*/
 				break;
 			}
 
@@ -1122,7 +1139,6 @@ BsonOrderFinal(PG_FUNCTION_ARGS, bool isSingle)
 				PgbsonArrayWriterWriteNull(&arrayWriter);
 			}
 		}
-
 		PgbsonWriterEndArray(&writer, &arrayWriter);
 		result = PgbsonWriterGetPgbson(&writer);
 	}
@@ -1139,7 +1155,7 @@ BsonOrderFinal(PG_FUNCTION_ARGS, bool isSingle)
  * if IsSingle is true a single value will be returned
  * otherwise an array of values will be returned.
  */
-Datum
+pg_attribute_no_sanitize_alignment() Datum
 BsonOrderFinalOnSorted(PG_FUNCTION_ARGS, bool isSingle)
 {
 	MemoryContext aggregateContext;
@@ -1148,7 +1164,7 @@ BsonOrderFinalOnSorted(PG_FUNCTION_ARGS, bool isSingle)
 	if (!aggContext)
 	{
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), errmsg(
-							"aggregate function called in non-aggregate context")));
+							"Aggregate function invoked in non-aggregate context")));
 	}
 
 	bool returnNull = false;
@@ -1256,7 +1272,7 @@ BsonOrderFinalOnSorted(PG_FUNCTION_ARGS, bool isSingle)
 
 		if (isSingle)
 		{
-			/* Mongo returns $null for empty sets */
+			/* Returns $null for empty sets */
 			pgbsonelement finalValue;
 			finalValue.path = "";
 			finalValue.pathLength = 0;

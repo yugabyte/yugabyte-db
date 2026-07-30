@@ -48,11 +48,12 @@ class VectorIndexPerfTest : public hnsw::VectorIndexTestBase {
         "usearch",
         UsearchIndexFactory<Vector, DistanceResult>::Create(
             vector_index::FactoryMode::kCreate, block_cache_, options,
-            HnswBackend::YB_HNSW, mem_tracker_));
+            HnswBackend::YB_HNSW_USEARCH, mem_tracker_));
     indexes_.emplace_back(
         "hnswlib",
         HnswlibIndexFactory<Vector, DistanceResult>::Create(
-            vector_index::FactoryMode::kCreate, options));
+            vector_index::FactoryMode::kCreate, block_cache_, options,
+            HnswBackend::YB_HNSW_HNSWLIB, mem_tracker_));
     for (const auto& [_, index] : indexes_) {
       ASSERT_OK(index->Reserve(count, 1, 1));
     }
@@ -65,6 +66,10 @@ class VectorIndexPerfTest : public hnsw::VectorIndexTestBase {
     indexes_.emplace_back(
         "yb_hnsw",
         ASSERT_RESULT(indexes_.front().second->SaveToFile(GetTestPath("0.yb_hnsw"))));
+
+    indexes_.emplace_back(
+        "yb_hnsw_hnswlib",
+        ASSERT_RESULT(indexes_[1].second->SaveToFile(GetTestPath("1.yb_hnsw"))));
   }
 
   void InsertRandomVector(Vector& holder) {

@@ -1,0 +1,5 @@
+title: UniversePagedResp
+description: Paged list response for universes.
+type: object
+x-data-container: PaginationResp
+x-data-item: Universe

@@ -38,4 +38,4 @@ The read-only node (or timeline-consistent node) is still strictly better than e
 
 ## Learn more
 
-- [Setup read replicas](../../../explore/multi-region-deployments/read-replicas-ysql)
+- [Setup read replicas](../../../explore/multi-region-deployments/read-replicas-ysql/)

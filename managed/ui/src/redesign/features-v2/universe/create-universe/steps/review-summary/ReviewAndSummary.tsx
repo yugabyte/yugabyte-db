@@ -1,31 +1,36 @@
 import { forwardRef, useContext, useImperativeHandle } from 'react';
 import { useQuery } from 'react-query';
-import { toast } from 'react-toastify';
+import { useYBToast } from '../../helpers/ToastUtils';
 import { useTranslation } from 'react-i18next';
-import {
-  CreateUniverseContext,
-  CreateUniverseContextMethods,
-  StepsRef
-} from '../../CreateUniverseContext';
 import {
   MapLegend,
   MapLegendItem,
   MarkerType,
   useGetMapIcons,
   YBMapMarker,
-  YBMaps
+  YBMaps,
+  mui
 } from '@yugabyte-ui-library/core';
-import { Region } from '../../../../../features/universe/universe-form/utils/dto';
-import { styled } from '@material-ui/core';
+import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import {
   getUniverseResources,
   useCreateUniverse
 } from '../../../../../../v2/api/universe/universe';
-import { mapCreateUniversePayload } from '../../CreateUniverseUtils';
-import { YBLoadingCircleIcon } from '@app/components/common/indicators';
+import {
+  CreateUniverseContext,
+  CreateUniverseContextMethods,
+  StepsRef
+} from '../../CreateUniverseContext';
+import { mapCreateUniversePayload, getDedicatedTserverMasterCounts } from '../../CreateUniverseUtils';
+import { Region } from '../../../../../features/universe/universe-form/utils/dto';
+import { createErrorMessage } from '@app/redesign/features/universe/universe-form/utils/helpers';
+import { CloudType } from '@app/redesign/helpers/dtos';
 
+//icons
 import UniverseIcon from '../../../../../assets/clusters.svg';
 import Money from '../../../../../assets/money.svg';
+
+const { styled } = mui;
 
 const StyledPanel = styled('div')(({ theme }) => ({
   borderRadius: '8px',
@@ -53,6 +58,7 @@ const StyledUniverseName = styled('span')(({ theme }) => ({
   color: theme.palette.primary[600],
   textDecoration: 'underline'
 }));
+
 const StyledAttrib = styled('div')(({ theme }) => ({
   fontSize: '13px',
   fontWeight: 400,
@@ -60,6 +66,7 @@ const StyledAttrib = styled('div')(({ theme }) => ({
   color: theme.palette.grey[600],
   width: '120px'
 }));
+
 const StyledValue = styled('div')(({ theme }) => ({
   fontSize: '13px',
   fontWeight: 600,
@@ -68,6 +75,7 @@ const StyledValue = styled('div')(({ theme }) => ({
   textAlign: 'right',
   width: '80px'
 }));
+
 const StyledFooter = styled('div')(({ theme }) => ({
   display: 'flex',
   alignItems: 'flex-end',
@@ -88,12 +96,19 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
 
-  const { resilienceAndRegionsSettings } = context;
+  const { resilienceAndRegionsSettings, nodesAvailabilitySettings, generalSettings } = context;
+  const isK8s =
+    generalSettings?.cloud === CloudType.kubernetes ||
+    generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
 
   const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.reviewAndSummary' });
-
+  const toast = useYBToast();
   const payload = mapCreateUniversePayload({ ...context });
   const createUniverse = useCreateUniverse();
+  const dedicatedCounts = getDedicatedTserverMasterCounts(
+    resilienceAndRegionsSettings,
+    nodesAvailabilitySettings
+  );
   const { data: pricingData, isLoading: isLoadingPricing } = useQuery(
     ['getUniversePricing', payload],
     () => getUniverseResources(payload),
@@ -115,7 +130,7 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
             },
             {
               onError(error) {
-                toast.error((error.response?.data as any)?.error || 'Failed to create universe');
+                toast.error(createErrorMessage(error));
               }
             }
           )
@@ -127,7 +142,6 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
           })
           .catch((error) => {
             console.error('Error creating universe:', error);
-            toast.error(error);
             // Handle error appropriately, e.g., show a notification
           });
       },
@@ -146,6 +160,9 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
 
   const costDaily = pricingData?.price_per_hour ? pricingData.price_per_hour * 24 : 0.0;
   const costMonthly = costDaily * 31;
+  const nodesDisplay = dedicatedCounts
+    ? dedicatedCounts.total
+    : pricingData?.num_nodes;
 
   return (
     <div style={{ display: 'flex', gap: '24px' }}>
@@ -179,8 +196,8 @@ export const ReviewAndSummary = forwardRef<StepsRef>((_, forwardRef) => {
                   justifyContent: 'space-between'
                 }}
               >
-                <StyledAttrib>{t('nodes')}</StyledAttrib>
-                <StyledValue>{pricingData?.num_nodes}</StyledValue>
+                <StyledAttrib>{t(isK8s ? 'pods' : 'nodes')}</StyledAttrib>
+                <StyledValue>{nodesDisplay}</StyledValue>
               </div>
               <div
                 style={{

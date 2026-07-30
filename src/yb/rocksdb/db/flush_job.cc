@@ -83,21 +83,15 @@ DEFINE_UNKNOWN_bool(rocksdb_release_mutex_during_wait_for_memtables_to_flush, tr
 
 namespace rocksdb {
 
-FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
-                   const DBOptions& db_options,
-                   const MutableCFOptions& mutable_cf_options,
-                   const EnvOptions& env_options, VersionSet* versions,
-                   InstrumentedMutex* db_mutex,
-                   std::atomic<bool>* shutting_down,
-                   std::atomic<bool>* disable_flush_on_shutdown,
-                   std::vector<SequenceNumber> existing_snapshots,
-                   SequenceNumber earliest_write_conflict_snapshot,
-                   MemTableFilter mem_table_flush_filter,
-                   FileNumbersProvider* file_numbers_provider,
-                   JobContext* job_context, LogBuffer* log_buffer,
-                   Directory* db_directory, Directory* output_file_directory,
-                   CompressionType output_compression, Statistics* stats,
-                   EventLogger* event_logger)
+FlushJob::FlushJob(
+    const std::string& dbname, ColumnFamilyData* cfd, const DBOptions& db_options,
+    const MutableCFOptions& mutable_cf_options, const EnvOptions& env_options, VersionSet* versions,
+    InstrumentedMutex* db_mutex, std::atomic<bool>* shutting_down,
+    std::atomic<bool>* disable_flush_on_shutdown, std::vector<SequenceNumber> existing_snapshots,
+    SequenceNumber earliest_write_conflict_snapshot, MemTableFilter mem_table_flush_filter,
+    FileNumbersProvider* file_numbers_provider, JobContext* job_context, LogBuffer* log_buffer,
+    Directory* db_directory, Directory* output_file_directory, CompressionType output_compression,
+    Statistics* stats, FlushReason flush_reason, EventLogger* event_logger)
     : dbname_(dbname),
       cfd_(cfd),
       db_options_(db_options),
@@ -117,6 +111,7 @@ FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
       output_file_directory_(output_file_directory),
       output_compression_(output_compression),
       stats_(stats),
+      flush_reason_(flush_reason),
       event_logger_(event_logger),
       wait_state_(yb::ash::WaitStateInfo::CreateIfAshIsEnabled<yb::ash::WaitStateInfo>()) {
   if (wait_state_) {
@@ -151,7 +146,7 @@ void FlushJob::RecordFlushIOStats() {
 Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
   ADOPT_WAIT_STATE(wait_state_);
   SCOPED_WAIT_STATUS(RocksDB_Flush);
-  if (PREDICT_FALSE(yb::GetAtomicFlag(&FLAGS_TEST_rocksdb_crash_on_flush))) {
+  if (PREDICT_FALSE(FLAGS_TEST_rocksdb_crash_on_flush)) {
     CHECK(false) << "a flush should not have been scheduled.";
   }
 
@@ -227,9 +222,11 @@ Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
   // This includes both SST and MANIFEST files IO.
   RecordFlushIOStats();
 
-  auto stream = event_logger_->LogToBuffer(log_buffer_);
+  // Same EVENT_LOG_v1 style as flush_started (INFO); includes flush_reason for observability.
+  auto stream = event_logger_->Log();
   stream << "job" << job_context_->job_id << "event"
-         << "flush_finished";
+         << "flush_finished"
+         << "flush_reason" << ToString(flush_reason_);
   stream << "lsm_state";
   stream.StartArray();
   auto vstorage = cfd_->current()->storage_info();
@@ -247,8 +244,9 @@ Result<FileNumbersHolder> FlushJob::WriteLevel0Table(
   const uint64_t start_micros = db_options_.env->NowMicros();
   auto file_number_holder = file_numbers_provider_->NewFileNumber();
   auto file_number = file_number_holder.Last();
-  // path 0 for level 0 file.
-  meta->fd = FileDescriptor(file_number, 0, 0, 0);
+  const uint32_t flush_path_id =
+      SafePathId(mutable_cf_options_.target_path_id, db_options_.db_paths.size());
+  meta->fd = FileDescriptor(file_number, flush_path_id, 0, 0);
 
   Status s;
   {
@@ -263,7 +261,7 @@ Result<FileNumbersHolder> FlushJob::WriteLevel0Table(
     uint64_t total_num_entries = 0, total_num_deletes = 0;
     size_t total_memory_usage = 0;
     for (MemTable* m : mems) {
-      RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
+      RLOG(InfoLogLevel::DETAIL_LEVEL, db_options_.info_log,
           "[%s] [JOB %d] Flushing memtable with next log file: %" PRIu64 "\n",
           cfd_->GetName().c_str(), job_context_->job_id, m->GetNextLogNumber());
       memtables.push_back(m->NewIterator(ro, &arena));
@@ -272,15 +270,18 @@ Result<FileNumbersHolder> FlushJob::WriteLevel0Table(
       total_memory_usage += m->ApproximateMemoryUsage();
       const auto* range = m->Frontiers();
       if (range) {
-        UserFrontier::Update(
-            &range->Smallest(), UpdateUserValueType::kSmallest, &meta->smallest.user_frontier);
-        UserFrontier::Update(
-            &range->Largest(), UpdateUserValueType::kLargest, &meta->largest.user_frontier);
+        yb::storage::UserFrontier::Update(
+            &range->Smallest(), yb::storage::UpdateUserValueType::kSmallest,
+            &meta->smallest.user_frontier);
+        yb::storage::UserFrontier::Update(
+            &range->Largest(), yb::storage::UpdateUserValueType::kLargest,
+            &meta->largest.user_frontier);
       }
     }
 
     event_logger_->Log() << "job" << job_context_->job_id << "event"
                          << "flush_started"
+                         << "flush_reason" << ToString(flush_reason_)
                          << "num_memtables" << mems.size() << "num_entries"
                          << total_num_entries << "num_deletes"
                          << total_num_deletes << "memory_usage"
@@ -291,7 +292,7 @@ Result<FileNumbersHolder> FlushJob::WriteLevel0Table(
       ScopedArenaIterator iter(
           NewMergingIterator(cfd_->internal_comparator().get(), &memtables[0],
                              static_cast<int>(memtables.size()), &arena));
-      RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
+      RLOG(InfoLogLevel::DETAIL_LEVEL, db_options_.info_log,
           "[%s] [JOB %d] Level-0 flush table #%" PRIu64 ": started",
           cfd_->GetName().c_str(), job_context_->job_id, meta->fd.GetNumber());
 
@@ -318,7 +319,7 @@ Result<FileNumbersHolder> FlushJob::WriteLevel0Table(
       info.table_properties = table_properties_;
       LogFlush(db_options_.info_log);
     }
-    RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
+    RLOG(InfoLogLevel::DETAIL_LEVEL, db_options_.info_log,
         "[%s] [JOB %d] Level-0 flush table #%" PRIu64 ": %" PRIu64
         " bytes %s%s %s",
         cfd_->GetName().c_str(), job_context_->job_id, meta->fd.GetNumber(),

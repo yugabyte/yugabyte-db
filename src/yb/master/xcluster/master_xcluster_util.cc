@@ -20,6 +20,8 @@
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 
+#include "yb/util/async_util.h"
+
 DECLARE_uint32(xcluster_ysql_statement_timeout_sec);
 
 namespace yb::master {
@@ -149,16 +151,28 @@ Status SetupDDLReplicationExtension(
             << namespace_id << " (" << namespace_name << ")";
 
   auto statement = Format("CREATE EXTENSION IF NOT EXISTS $0", kXClusterDDLExtensionName);
+  // ExecutePgsqlStatements is asynchronous.  Block until it actually completes so that we only
+  // change the xCluster role after the extension has been successfully created.  This runs on an
+  // async-task-pool thread (never the reactor), so blocking here is safe -- the inbound setup path
+  // relies on the same pattern.
+  Synchronizer sync;
   RETURN_NOT_OK(ExecutePgsqlStatements(
       namespace_name, {statement}, catalog_manager,
       CoarseMonoClock::now() + MonoDelta::FromSeconds(FLAGS_xcluster_ysql_statement_timeout_sec),
-      std::move(callback)));
+      sync.AsStdStatusCallback()));
+  auto status = sync.Wait();
+  if (!status.ok()) {
+    callback(status);
+    return Status::OK();
+  }
 
   auto* xcluster_manager = catalog_manager.GetXClusterManagerImpl();
-  return xcluster_manager->SetXClusterRole(catalog_manager.GetLeaderEpochInternal(),
+  status = xcluster_manager->SetXClusterRole(catalog_manager.GetLeaderEpochInternal(),
       namespace_id, role == XClusterDDLReplicationRole::kSource
                         ? XClusterNamespaceInfoPB_XClusterRole_AUTOMATIC_SOURCE
                         : XClusterNamespaceInfoPB_XClusterRole_AUTOMATIC_TARGET);
+  callback(status);
+  return Status::OK();
 }
 
 Status DropDDLReplicationExtensionIfExists(

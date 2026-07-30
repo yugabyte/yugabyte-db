@@ -33,13 +33,17 @@ import java.util.Arrays;
 import java.util.List;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
+import org.yb.util.RequiresLinux;
 import org.yb.client.TestUtils;
 import org.yb.util.ProcessUtil;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.ConnectionEndpoint;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.PGConnection;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestSessionParameters extends BaseYsqlConnMgr {
 
   @Override
@@ -604,6 +608,81 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
     }
   }
 
+  @Test
+  public void testSetLocalEmitsParameterStatus() throws Exception {
+    // --- Commit path ---
+    try (Connection conn = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+        .connect()) {
+      conn.setAutoCommit(false);
+      PGConnection pgConn = (PGConnection) conn;
+      String initialAppName = pgConn.getParameterStatus("application_name");
+
+      try (Statement stmt = conn.createStatement()) {
+        stmt.executeUpdate("SET application_name = 'connmgr_set_local_test_txn'");
+        assertEquals(
+            "regular SET should propagate via ParameterStatus to pgjdbc cache",
+            "connmgr_set_local_test_txn",
+            pgConn.getParameterStatus("application_name"));
+
+        stmt.executeUpdate("SET LOCAL application_name = 'connmgr_set_local_test_local'");
+        assertEquals(
+            "SET LOCAL should propagate via ParameterStatus to pgjdbc cache",
+            "connmgr_set_local_test_local",
+            pgConn.getParameterStatus("application_name"));
+      }
+      conn.commit();
+
+      // After COMMIT the SET LOCAL value is unwound; the post-COMMIT
+      // ParameterStatus from AtEOXact_GUC should restore the value set by the
+      // surrounding plain SET.
+      assertEquals(
+          "After COMMIT, SET LOCAL should be unwound and the surrounding SET value should remain",
+          "connmgr_set_local_test_txn",
+          pgConn.getParameterStatus("application_name"));
+
+      // A new logical connection through ConnMgr must not observe either the
+      // SET LOCAL value or any leaked persistent state -- it should see the
+      // connect-time default that the original connection saw.
+      try (Connection freshConn = getConnectionBuilder()
+          .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+          .connect()) {
+        PGConnection freshPg = (PGConnection) freshConn;
+        assertEquals(
+            "A fresh ConnMgr connection must not inherit the prior session's SET LOCAL value",
+            initialAppName,
+            freshPg.getParameterStatus("application_name"));
+      }
+    }
+
+    // --- Rollback path ---
+    try (Connection conn = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+        .connect()) {
+      conn.setAutoCommit(false);
+      PGConnection pgConn = (PGConnection) conn;
+      String initialAppName = pgConn.getParameterStatus("application_name");
+
+      try (Statement stmt = conn.createStatement()) {
+        stmt.executeUpdate("SET application_name = 'connmgr_set_local_test_txn'");
+        stmt.executeUpdate("SET LOCAL application_name = 'connmgr_set_local_test_local'");
+        assertEquals(
+            "SET LOCAL should propagate via ParameterStatus to pgjdbc cache (rollback path)",
+            "connmgr_set_local_test_local",
+            pgConn.getParameterStatus("application_name"));
+      }
+      conn.rollback();
+
+      // ROLLBACK unwinds both the plain SET and the SET LOCAL; the cache
+      // should converge back to the connect-time default.
+      assertEquals(
+          "After ROLLBACK, both SET and SET LOCAL should be unwound to the connect-time default",
+          initialAppName,
+          pgConn.getParameterStatus("application_name"));
+    }
+  }
+
+  @Test
   public void testStartupParameterPrecedence() throws Exception {
     // Test the precedence between guc setting specified through "options" key and one specified
     // directly in the startup packet. pgJDBC driver only allows us to use the former method.
@@ -748,5 +827,187 @@ public class TestSessionParameters extends BaseYsqlConnMgr {
         assertEquals("yugabyte", actualSessionAuth);
       }
     }
+  }
+
+  @Test
+  public void testExecutingResetWithinATransaction() throws Exception {
+    // Test geqo parameter behavior with startup packet, transaction, SET, RESET, and rollback
+    try (Connection conn = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+        .withOptions("-c geqo=off")
+        .connect();
+        Statement stmt = conn.createStatement()) {
+
+      // Check that geqo is off from startup packet
+      try (ResultSet rs = stmt.executeQuery("SHOW geqo")) {
+        assertTrue("SHOW geqo should return a row", rs.next());
+        String geqoValue = rs.getString(1);
+        assertEquals("geqo should be off from startup packet", "off", geqoValue);
+      }
+
+      // Start a transaction
+      stmt.execute("BEGIN");
+
+      // Set geqo to on within the transaction
+      stmt.execute("SET geqo = on");
+
+      // Check that geqo is now on
+      try (ResultSet rs = stmt.executeQuery("SHOW geqo")) {
+        assertTrue("SHOW geqo should return a row", rs.next());
+        String geqoValue = rs.getString(1);
+        assertEquals("geqo should be on after SET", "on", geqoValue);
+      }
+
+      // Reset geqo within the transaction
+      stmt.execute("RESET geqo");
+
+      // Check that geqo is back to startup value (off)
+      try (ResultSet rs = stmt.executeQuery("SHOW geqo")) {
+        assertTrue("SHOW geqo should return a row", rs.next());
+        String geqoValue = rs.getString(1);
+        assertEquals("geqo should be off after RESET", "off", geqoValue);
+      }
+
+      // Set geqo to on again to test rollback behavior
+      stmt.execute("SET geqo = on");
+
+      // Verify it's on before rollback
+      try (ResultSet rs = stmt.executeQuery("SHOW geqo")) {
+        assertTrue("SHOW geqo should return a row", rs.next());
+        String geqoValue = rs.getString(1);
+        assertEquals("geqo should be on before rollback", "on", geqoValue);
+      }
+
+      // Rollback the transaction
+      stmt.execute("ROLLBACK");
+
+      // Check that geqo is back to startup value (off) after rollback
+      try (ResultSet rs = stmt.executeQuery("SHOW geqo")) {
+        assertTrue("SHOW geqo should return a row", rs.next());
+        String geqoValue = rs.getString(1);
+        assertEquals("geqo should be off after rollback", "off", geqoValue);
+      }
+    }
+  }
+
+  @Test
+  public void testSettingBackendContextVariable() throws Exception {
+    try (Connection conn = getConnectionBuilder()
+        .withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+        .withOptions("-c ignore_system_indexes=true")
+        .connect();
+        Statement stmt = conn.createStatement()) {
+
+      // Verify the startup option works correctly on all backends in the pool
+      for (int i = 0; i < 5; i++) {
+        try (ResultSet rs = stmt.executeQuery("SHOW ignore_system_indexes")) {
+          assertTrue("SHOW ignore_system_indexes should return a row", rs.next());
+          String value = rs.getString(1);
+          assertEquals("ignore_system_indexes should be on", "on", value);
+        }
+      }
+
+      // PGC_BACKEND parameters cannot be set after connection start
+      try {
+        stmt.execute("SET ignore_system_indexes = on");
+        fail("SET ignore_system_indexes should have failed");
+      } catch (Exception e) {
+        assertTrue("Expected error about parameter cannot be set after connection start",
+            e.getMessage().contains("cannot be set after connection start"));
+      }
+    }
+  }
+
+  @Test
+  public void testUpdatingRuntimeFlagPGCSession() throws Exception {
+    try (
+        Connection conn =
+            getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                .withUser("yugabyte").withDatabase("yugabyte").connect();
+        Statement stmt = conn.createStatement()) {
+      try (ResultSet rs = stmt.executeQuery("SHOW yb_ash_sample_size")) {
+        assertTrue("expected one row for yb_ash_sample_size", rs.next());
+        int value = rs.getInt(1);
+        assertEquals("yb_ash_sample_size should be 500", 500, value);
+      }
+
+      for (HostAndPort tServer : miniCluster.getTabletServers().keySet()) {
+        setServerFlag(tServer, "ysql_yb_ash_sample_size", "600");
+      }
+
+      try (ResultSet rs = stmt.executeQuery("SHOW yb_ash_sample_size")) {
+        assertTrue("expected one row for yb_ash_sample_size", rs.next());
+        int value = rs.getInt(1);
+        assertEquals("yb_ash_sample_size should be 600", 600, value);
+      }
+    }
+  }
+
+  private void updateRuntimeFlagPGCBackend() throws Exception {
+    try (
+        Connection conn =
+            getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                .withUser("yugabyte").withDatabase("yugabyte").connect();
+        Statement stmt = conn.createStatement()) {
+      try (ResultSet rs = stmt.executeQuery("SHOW ignore_system_indexes")) {
+        assertTrue("expected one row for ignore_system_indexes", rs.next());
+        boolean value = rs.getBoolean(1);
+        assertFalse("ignore_system_indexes should be false", value);
+      }
+
+      for (HostAndPort tServer : miniCluster.getTabletServers().keySet()) {
+        setServerFlag(tServer, "ysql_pg_conf_csv", "ignore_system_indexes=true");
+      }
+
+      try (ResultSet rs = stmt.executeQuery("SHOW ignore_system_indexes")) {
+        assertTrue("expected one row for ignore_system_indexes", rs.next());
+        boolean value = rs.getBoolean(1);
+        assertFalse("ignore_system_indexes should be false in the same session even after SIGHUP",
+            value);
+      }
+
+      try (
+          Connection newConn =
+              getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                  .withUser("yugabyte").withDatabase("yugabyte").connect();
+          Statement newStmt = newConn.createStatement()) {
+        try (ResultSet rs = newStmt.executeQuery("SHOW ignore_system_indexes")) {
+          assertTrue("expected one row for ignore_system_indexes", rs.next());
+          boolean value = rs.getBoolean(1);
+          assertTrue("ignore_system_indexes should be true in the new session", value);
+        }
+      }
+
+      try (ResultSet rs = stmt.executeQuery("SHOW ignore_system_indexes")) {
+        assertTrue("expected one row for ignore_system_indexes", rs.next());
+        boolean value = rs.getBoolean(1);
+        assertFalse("ignore_system_indexes should be false in the same session even after SIGHUP",
+            value);
+      }
+    }
+  }
+
+  @Test
+  public void testUpdatingRuntimeFlagPGCBackendAuthBackend() throws Exception {
+    Map<String, String> tserverFlags = new HashMap<>();
+    tserverFlags.put("ysql_conn_mgr_alter_guc_adoption_strategy", "connection_static");
+    tserverFlags.put("ysql_conn_mgr_alter_guc_stale_backend_ttl_ms", Integer.toString(-1));
+    tserverFlags.put("ysql_conn_mgr_max_conns_per_db", "6");
+    tserverFlags.put("ysql_conn_mgr_use_auth_backend", "true");
+    restartClusterWithAdditionalFlags(java.util.Collections.emptyMap(), tserverFlags);
+
+    updateRuntimeFlagPGCBackend();
+  }
+
+  @Test
+  public void testUpdatingRuntimeFlagPGCBackendAuthPassthrough() throws Exception {
+    Map<String, String> tserverFlags = new HashMap<>();
+    tserverFlags.put("ysql_conn_mgr_alter_guc_adoption_strategy", "connection_static");
+    tserverFlags.put("ysql_conn_mgr_alter_guc_stale_backend_ttl_ms", Integer.toString(-1));
+    tserverFlags.put("ysql_conn_mgr_max_conns_per_db", "6");
+    tserverFlags.put("ysql_conn_mgr_use_auth_backend", "false");
+    restartClusterWithAdditionalFlags(java.util.Collections.emptyMap(), tserverFlags);
+
+    updateRuntimeFlagPGCBackend();
   }
 }

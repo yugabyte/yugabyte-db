@@ -21,7 +21,6 @@
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/doc_ql_filefilter.h"
-#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -49,16 +48,15 @@
 
 using namespace std::literals;
 
+DEFINE_RUNTIME_bool(disable_last_seen_ht_rollback, false,
+    "Disable optimization to ignore non-existent keys for read restart.");
+
 DEFINE_RUNTIME_bool(use_fast_next_for_iteration, true,
-                    "Whether intent aware iterator should use fast next feature.");
+    "Whether intent aware iterator should use fast next feature.");
 
 // Default value was picked intuitively, could try to find more suitable value in future.
 DEFINE_RUNTIME_uint64(max_next_calls_while_skipping_future_records, 3,
-                      "After number of next calls is reached this limit, use seek to find non "
-                      "future record.");
-
-DEFINE_RUNTIME_bool(disable_last_seen_ht_rollback, false,
-                    "Disable optimization to ignore non-existent keys for read restart.");
+    "After number of next calls is reached this limit, use seek to find non future record.");
 
 namespace yb::docdb {
 
@@ -199,7 +197,7 @@ IntentAwareIterator::IntentAwareIterator(
     const FastBackwardScan use_fast_backward_scan,
     const AvoidUselessNextInsteadOfSeek avoid_useless_next_instead_of_seek)
     : read_time_(read_operation_data.read_time),
-      encoded_read_time_(read_operation_data.read_time),
+      encoded_read_time_(read_operation_data.read_time, read_operation_data.write_id),
       txn_op_context_(txn_op_context),
       upperbound_(&kKeyEntryTypeMaxByte, 1),
       lowerbound_(&kKeyEntryTypeMinByte, 1),
@@ -776,12 +774,19 @@ Result<const FetchedEntry&> IntentAwareIterator::Fetch() {
   return result;
 }
 
-Result<Slice> IntentAwareIterator::FetchValue(Slice key) {
-  UpdateFilterKey(key);
+Result<Slice> IntentAwareIterator::FetchValue(Slice key, docdb::UpdateFilterKey update_filter_key) {
+  if (update_filter_key) {
+    // No-op if variable bloom filter is not used.
+    UpdateFilterKey(key);
+  }
+
   Seek(key, SeekFilter::kAll, Full::kTrue);
   auto fetch_result = VERIFY_RESULT_REF(Fetch());
 
-  return fetch_result.key == key ? fetch_result.value : Slice{};
+  // When the seek finds no matching entry, FillEntry() leaves entry_.key pointing at the
+  // previously fetched key, whose backing RocksDB block may already have been freed by this
+  // seek. Guard on validity so we never read that stale slice.
+  return fetch_result && fetch_result.key == key ? fetch_result.value : Slice{};
 }
 
 template <bool kDescending>
@@ -1070,7 +1075,7 @@ Result<EncodedDocHybridTime> IntentAwareIterator::GetMatchingRegularRecordDocHyb
   return EncodedDocHybridTime();
 }
 
-Result<HybridTime> IntentAwareIterator::FindOldestRecord(
+Result<DocHybridTime> IntentAwareIterator::FindOldestRecord(
     Slice key_without_ht, HybridTime min_hybrid_time) {
   VLOG_WITH_FUNC(4) << DebugDumpKeyToStr(key_without_ht) << ", " << min_hybrid_time;
 #define DOCDB_DEBUG
@@ -1082,19 +1087,19 @@ Result<HybridTime> IntentAwareIterator::FindOldestRecord(
 
   if (!VERIFY_RESULT_REF(Fetch())) {
     VLOG_WITH_FUNC(4) << "Returning kInvalid";
-    return HybridTime::kInvalid;
+    return DocHybridTime::kInvalid;
   }
 
   EncodedDocHybridTime encoded_min_hybrid_time(min_hybrid_time, kMaxWriteId);
 
-  HybridTime result;
+  DocHybridTime result = DocHybridTime::kInvalid;
   if (intent_iter_->Initialized()) {
     auto intent_dht = VERIFY_RESULT(FindMatchingIntentRecordDocHybridTime(key_without_ht));
     VLOG_WITH_FUNC(4) << "Looking for Intent Record found ?  =  "
             << !intent_dht.empty();
     if (!intent_dht.empty() && intent_dht > encoded_min_hybrid_time) {
-      result = VERIFY_RESULT(intent_dht.Decode()).hybrid_time();
-      VLOG_WITH_FUNC(4) << " oldest_record_ht is now " << result;
+      result = VERIFY_RESULT(intent_dht.Decode());
+      VLOG_WITH_FUNC(4) << " oldest_record_dht is now " << result;
     }
   } else {
     VLOG_WITH_FUNC(4) << "intent_iter_ not Initialized";
@@ -1123,9 +1128,12 @@ Result<HybridTime> IntentAwareIterator::FindOldestRecord(
     auto regular_dht = VERIFY_RESULT(GetMatchingRegularRecordDocHybridTime(key_without_ht));
     VLOG_WITH_FUNC(4) << "Looking for Matching Regular Record found = " << regular_dht.ToString();
     if (!regular_dht.empty()) {
-      auto ht = VERIFY_RESULT(regular_dht.Decode()).hybrid_time();
-      if (ht > min_hybrid_time) {
-        result.MakeAtMost(ht);
+      auto decoded_dht = VERIFY_RESULT(regular_dht.Decode());
+      if (decoded_dht.hybrid_time() > min_hybrid_time) {
+        // MakeAtMost: pick the older (smaller) of the two DocHybridTimes.
+        if (!result.is_valid() || decoded_dht < result) {
+          result = decoded_dht;
+        }
       }
     }
   } else {
@@ -1245,7 +1253,7 @@ void IntentAwareIterator::SkipFutureRecords(const rocksdb::KeyValueEntry& entry_
       auto max_allowed = value.compare(encoded_read_time_.local_limit.AsSlice()) > 0
           ? encoded_read_time_.global_limit.AsSlice()
           : encoded_read_time_.read.AsSlice();
-      if (encoded_doc_ht.compare(max_allowed) > 0) {
+      if (encoded_doc_ht.compare(max_allowed) >= 0) {
         auto encoded_intent_doc_ht_result = DocHybridTime::EncodedFromStart(&value);
         if (!HandleStatus(encoded_intent_doc_ht_result)) {
           return;
@@ -1253,7 +1261,7 @@ void IntentAwareIterator::SkipFutureRecords(const rocksdb::KeyValueEntry& entry_
         regular_entry_ = { .key = entry->key, .value = value };
         return;
       }
-    } else if (encoded_doc_ht.compare(encoded_read_time_.regular_limit()) > 0) {
+    } else if (encoded_doc_ht.compare(encoded_read_time_.regular_limit()) >= 0) {
       // If a value does not contain the hybrid time of the intent that wrote the original
       // transaction, then it either (a) originated from a single-shard transaction or (b) the
       // intent hybrid time has already been garbage-collected during a compaction because the
@@ -1391,18 +1399,26 @@ Result<ReadRestartData> IntentAwareIterator::GetReadRestartData() const {
   }
   auto decoded_max_seen_ht = VERIFY_RESULT(max_seen_ht_data_.max_seen_ht.Decode());
   VLOG(4) << "Restart read: " << decoded_max_seen_ht.hybrid_time() << ", original: " << read_time_;
-  return ReadRestartData{decoded_max_seen_ht.hybrid_time(), max_seen_ht_data_.max_seen_ht_key};
+  return ReadRestartData{
+      decoded_max_seen_ht.hybrid_time(),
+      max_seen_ht_data_.max_seen_ht_key};
 }
 
-MaxSeenHtData IntentAwareIterator::ObtainMaxSeenHtCheckpoint() {
-  return max_seen_ht_data_;
+EncodedDocHybridTime IntentAwareIterator::ObtainMaxSeenHtCheckpoint() {
+  return max_seen_ht_data_.max_seen_ht;
 }
 
-void IntentAwareIterator::RollbackMaxSeenHt(MaxSeenHtData checkpoint) {
+void IntentAwareIterator::RollbackMaxSeenHt(const EncodedDocHybridTime& checkpoint) {
   if (ANNOTATE_UNPROTECTED_READ(FLAGS_disable_last_seen_ht_rollback)) {
     return;
   }
-  max_seen_ht_data_ = checkpoint;
+  max_seen_ht_data_.max_seen_ht = checkpoint;
+  // The key is only recorded once HT crosses read_time. If the rolled-back HT
+  // is back at or below read_time, the observation that produced the key is
+  // being undone, drop it.
+  if (checkpoint <= encoded_read_time_.read) {
+    max_seen_ht_data_.max_seen_ht_key.Clear();
+  }
 }
 
 HybridTime IntentAwareIterator::TEST_MaxSeenHt() const {
@@ -1423,10 +1439,13 @@ const EncodedDocHybridTime& IntentAwareIterator::GetIntentDocHybridTime(
   return resolved_intent_txn_dht_;
 }
 
-EncodedReadHybridTime::EncodedReadHybridTime(const ReadHybridTime& read_time)
-    : read(read_time.read, kMaxWriteId),
-      local_limit(read_time.local_limit, kMaxWriteId),
-      global_limit(read_time.global_limit, kMaxWriteId),
+EncodedReadHybridTime::EncodedReadHybridTime(
+    const ReadHybridTime& read_time, IntraTxnWriteId write_id)
+    : read(read_time.read, write_id),
+      local_limit(read_time.local_limit, write_id),
+      global_limit(read_time.global_limit, write_id),
+      // We use kMaxWriteId for the in_txn_limit. write id is specified
+      // for reads to enforce uniqueness check during index backfill.
       in_txn_limit(read_time.in_txn_limit, kMaxWriteId),
       local_limit_gt_read(read_time.local_limit > read_time.read) {
 }
@@ -1459,7 +1478,7 @@ void IntentAwareIterator::DebugSeekTriggered() {
 }
 #endif
 
-void IntentAwareIterator::UpdateMaxSeenHt(EncodedDocHybridTime seen_ht, Slice key) {
+void IntentAwareIterator::UpdateMaxSeenHt(const EncodedDocHybridTime& seen_ht, Slice key) {
   if (max_seen_ht_data_.max_seen_ht >= seen_ht) {
     return;
   }
@@ -1469,7 +1488,7 @@ void IntentAwareIterator::UpdateMaxSeenHt(EncodedDocHybridTime seen_ht, Slice ke
   // Pick the first offending key.
   if (max_seen_ht_data_.max_seen_ht > encoded_read_time_.read
       && max_seen_ht_data_.max_seen_ht_key.empty()) {
-    max_seen_ht_data_.max_seen_ht_key = SubDocKey::DebugSliceToString(key);
+    max_seen_ht_data_.max_seen_ht_key = key;
   }
 }
 

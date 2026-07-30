@@ -169,9 +169,9 @@ EXECUTE q1( 'db', 'queryOperatorParameterized', '{ "$and": [ { "a.b": { "$gte": 
 
 -- invalid queries.
 EXECUTE q1( 'db', 'queryOperatorParameterized', '{ "a": { "$invalid": 1 } }');
-ERROR:  unknown operator: $invalid
+ERROR:  Unrecognized operator specified: $invalid
 EXECUTE q1( 'db', 'queryOperatorParameterized', '{ "$and": [ { "a": { "$invalid": 2 } } ] }');
-ERROR:  unknown operator: $invalid
+ERROR:  Unrecognized operator specified: $invalid
 EXECUTE q1( 'db', 'queryOperatorParameterized', '{ "$and": [ ] }');
 ERROR:  $or/$and/$nor arrays must have at least one entry
 -- repeat the queries with remote execution on.
@@ -243,7 +243,7 @@ EXECUTE q1( 'db', 'queryOperatorParameterized', '{ "$and": [ { "a.b": { "$gte": 
 
 -- invalid queries.
 EXECUTE q1( 'db', 'queryOperatorParameterized', '{ "a": { "$invalid": 1 } }');
-ERROR:  unknown operator: $invalid
+ERROR:  Unrecognized operator specified: $invalid
 EXECUTE q1( 'db', 'queryOperatorParameterized', '{ "$and": [ { "a": { "$invalid": 2 } } ] }');
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 EXECUTE q1( 'db', 'queryOperatorParameterized', '{ "$and": [ ] }');

@@ -22,12 +22,12 @@
 DEFINE_UNKNOWN_bool(dump_lock_keys, true,
             "Whether to add keys to error message when lock batch timed out");
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
 LockBatch::LockBatch(
     SharedLockManager* lock_manager, LockBatchEntries<SharedLockManager>&& key_to_intent_type,
-    CoarseTimePoint deadline) : data_(std::move(key_to_intent_type), lock_manager) {
+    CoarseTimePoint deadline)
+    : data_(std::move(key_to_intent_type), lock_manager) {
   Init(deadline);
   if (!data_.status.ok()) {
     data_.key_to_type.clear();
@@ -103,5 +103,4 @@ void UnlockedBatch::MoveFrom(UnlockedBatch* other) {
   other->shared_lock_manager_ = nullptr;
 }
 
-}  // namespace docdb
-}  // namespace yb
+}  // namespace yb::docdb

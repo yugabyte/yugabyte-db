@@ -11,7 +11,7 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": 1, "pipelin
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": 1, "pipeline": [ { "$currentOp": {} }] }');
 
 SELECT document FROM bson_aggregation_pipeline('admin', '{ "aggregate": "coll", "pipeline": [ { "$currentOp": {} }] }');
-SELECT document FROM bson_aggregation_pipeline('admin', '{ "aggregate": 1, "pipeline": [ { "$currentOp": {} }, { "$project": { "opid": 0, "op_prefix": 0, "currentOpTime": 0, "secs_running": 0 }}] }');
+SELECT document FROM bson_aggregation_pipeline('admin', '{ "aggregate": 1, "pipeline": [ { "$currentOp": {} }, { "$project": { "opid": 0, "op_prefix": 0, "currentOpTime": 0, "secs_running": 0 }}, { "$limit": 1 }] }');
 
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('admin', '{ "aggregate": 1, "pipeline": [ { "$currentOp": {} }] }');
 

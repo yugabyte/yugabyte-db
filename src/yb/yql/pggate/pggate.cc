@@ -32,11 +32,14 @@
 #include "yb/client/client_utils.h"
 #include "yb/client/table_info.h"
 
-#include "yb/dockv/partition.h"
+#include "yb/common/common_flags.h"
+#include "yb/common/common_net.pb.h"
 #include "yb/common/pg_system_attr.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
 #include "yb/dockv/doc_key.h"
+#include "yb/dockv/partition.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
@@ -48,6 +51,7 @@
 #include "yb/rpc/secure.h"
 
 #include "yb/tserver/pg_client.pb.h"
+#include "yb/tserver/tserver_cgroup_manager.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
 #include "yb/util/alignment.h"
@@ -56,9 +60,9 @@
 #include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/range.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread.h"
-#include "yb/util/scope_exit.h"
 
 #include "yb/yql/pggate/pg_column.h"
 #include "yb/yql/pggate/pg_ddl.h"
@@ -69,6 +73,7 @@
 #include "yb/yql/pggate/pg_explicit_row_lock_buffer.h"
 #include "yb/yql/pggate/pg_flush_debug_context.h"
 #include "yb/yql/pggate/pg_function.h"
+#include "yb/yql/pggate/pg_global_view_read.h"
 #include "yb/yql/pggate/pg_insert.h"
 #include "yb/yql/pggate/pg_memctx.h"
 #include "yb/yql/pggate/pg_sample.h"
@@ -82,6 +87,7 @@
 #include "yb/yql/pggate/pg_truncate_colocated.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/pg_update.h"
+#include "yb/yql/pggate/pg_value.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
@@ -94,6 +100,7 @@ DECLARE_bool(node_to_node_encryption_use_client_certificates);
 DECLARE_int32(backfill_index_client_rpc_timeout_ms);
 DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms);
 DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms);
+DECLARE_bool(use_node_hostname_for_local_tserver);
 
 DEFINE_RUNTIME_PREVIEW_bool(ysql_pack_inserted_value, false,
      "Enabled packing inserted columns into a single packed value in postgres layer.");
@@ -168,14 +175,74 @@ std::optional<PgSelect::IndexQueryInfo> MakeIndexQueryInfo(
 }
 
 Result<std::unique_ptr<PgStatement>> MakeSelectStatement(
-    const PgSession::ScopedRefPtr& pg_session, const PgObjectId& table_id,
+    const PgSessionPtr& pg_session, const PgObjectId& table_id,
     const PgObjectId& index_id, const YbcPgPrepareParameters* params,
-    const YbcPgTableLocalityInfo& locality_info) {
+    const YbcPgTableLocalityInfo& locality_info, bool skip_intents_read) {
   if (params && params->index_only_scan) {
-    return PgSelectIndex::Make(pg_session, index_id, locality_info);
+    return PgSelectIndex::Make(pg_session, index_id, locality_info, skip_intents_read);
   }
   return PgSelect::Make(
-      pg_session, table_id, locality_info, MakeIndexQueryInfo(index_id, params));
+      pg_session, table_id, locality_info, skip_intents_read, MakeIndexQueryInfo(index_id, params));
+}
+
+std::vector<size_t> GetColIndexToInput(
+    const PgTableDescPtr& table_desc, size_t num_values, size_t num_total_columns) {
+  const auto& attr_num_map = table_desc->GetAttrNumMap();
+  // For each schema column index, the index in the user's key_values[] for that column.
+  std::vector<size_t> col_index_to_input(num_values);
+  if (num_values == num_total_columns) {
+    // Full row: remap from attnum-sorted order to schema column order.
+    for (size_t i = 0; i < num_values; ++i) {
+      col_index_to_input[attr_num_map[i].second] = i;
+    }
+  } else {
+    // Key-only / partial range: values already in schema key column order.
+    std::iota(col_index_to_input.begin(), col_index_to_input.end(), 0);
+  }
+  return col_index_to_input;
+}
+
+Result<std::vector<size_t>> ValidateAndGetColIndexToInput(
+    const PgTableDescPtr& table_desc, const Schema& schema, const YbcPgKeyValue* key_values,
+    size_t num_values) {
+  const auto num_key_columns = schema.num_key_columns();
+  const auto num_total_columns = schema.num_columns();
+
+  if (table_desc->IsIndex()) {
+    return STATUS(InvalidArgument,
+        "yb_get_tablet_for_key cannot be used on indexes.");
+  }
+  if (table_desc->IsColocated()) {
+    return STATUS(InvalidArgument,
+        "yb_get_tablet_for_key is not yet supported for colocated tables");
+  }
+  const bool is_range_partitioned = !table_desc->IsHashPartitioned();
+  bool is_full_primary_key = num_values == num_key_columns;
+  bool is_full_row = num_values == num_total_columns;
+  bool is_partial_range_key = (is_range_partitioned && num_values < num_key_columns);
+
+  if (!(is_full_primary_key || is_full_row || is_partial_range_key)) {
+    return STATUS_FORMAT(InvalidArgument,
+        "invalid number of values: got $0, expected $1 (primary key) or $2 (entire row)",
+        num_values, num_key_columns, num_total_columns);
+  }
+
+  auto col_index_to_input = GetColIndexToInput(table_desc, num_values, num_total_columns);
+  const size_t num_keys_to_use = std::min(num_values, num_key_columns);
+
+  for (size_t i = 0; i < num_keys_to_use; ++i) {
+    if (key_values[col_index_to_input[i]].is_null) {
+      return STATUS_FORMAT(InvalidArgument,
+          "NULL values are not allowed in primary key columns (column $0)", i + 1);
+    }
+    const auto& col = schema.column(i);
+    const auto& kv = key_values[col_index_to_input[i]];
+    if (kv.type_entity && kv.type_entity->type_oid != 0 && col.pg_type_oid() != 0 &&
+        kv.type_entity->type_oid != col.pg_type_oid()) {
+      return STATUS_FORMAT(InvalidArgument, "type mismatch on column $0", i + 1);
+    }
+  }
+  return col_index_to_input;
 }
 
 namespace get_statement_as::internal {
@@ -441,6 +508,31 @@ Result<bool> RetrieveYbctidsImpl(
          !YBCIsBinaryUpgrade();
 }
 
+tserver::TServerSharedData& GetTServerSharedData() {
+  PgBackendSetupSharedMemory();
+  // This is an RCU object, but there are no concurrent updates on PG side, only on tserver, so
+  // it's safe to just save the pointer.
+  return *CHECK_NOTNULL(PgSharedMemoryManager().SharedData().get());
+}
+
+PgClient::ProxyInitInfo MakeProxyInitInfo(
+    rpc::ProxyCache& proxy_cache, const tserver::TServerSharedData& tserver_shared_data) {
+  PgClient::ProxyInitInfo result{proxy_cache, HostPort{tserver_shared_data.endpoint()}, {}};
+  if (FLAGS_use_node_hostname_for_local_tserver) {
+    result.host_port = HostPort(tserver_shared_data.host().ToBuffer(),
+                          tserver_shared_data.endpoint().port());
+    result.resolve_cache_timeout = MonoDelta::kMax;
+  }
+  return result;
+}
+
+YbcCloudInfo MakeYbcCloudInfo(const CloudInfoPB& pb) {
+  return YbcCloudInfo{
+      pb.placement_cloud().c_str(),
+      pb.placement_region().c_str(),
+      pb.placement_zone().c_str()};
+}
+
 } // namespace
 
 //--------------------------------------------------------------------------------------------------
@@ -602,6 +694,12 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
 
 struct PgApiImpl::PgSharedData {
   std::atomic<uint64_t> next_perform_op_serial_no{0};
+  // Source of read time serial numbers for the current backend. For parallel query, the leader and
+  // all of its workers share the same PgSharedData (via MyProc->yb_shared_data in DSM), so this
+  // counter hands out globally unique read time serial numbers across them. This prevents two
+  // unrelated snapshots in different parallel workers (or the leader) from sharing the same
+  // read_time_serial_no in the shared pg_client_session's read point history.
+  std::atomic<uint64_t> next_read_time_serial_no{0};
 };
 
 static_assert(std::is_trivially_destructible_v<PgApiImpl::PgSharedData>);
@@ -633,6 +731,7 @@ PgApiImpl::PgSharedDataHolder::PgSharedDataHolder(
   if (is_owner_) {
     signed_data_ = new (aligned_placeholder) SignedPgSharedData{};
     CHECK(signed_data_->data.next_perform_op_serial_no.is_lock_free());
+    CHECK(signed_data_->data.next_read_time_serial_no.is_lock_free());
   } else {
     signed_data_ = pointer_cast<SignedPgSharedData*>(aligned_placeholder);
     CHECK_EQ(
@@ -670,39 +769,47 @@ PgApiImpl::PgApiImpl(
               ash::WaitStateCode wait_event, ash::PggateRPC pggate_rpc) {
             return PgWaitEventWatcher{starter, wait_event, pggate_rpc};
       }),
-      pg_shared_data_(
-          *init_postgres_info.shared_data, !init_postgres_info.parallel_leader_session_id),
+      is_parallel_worker_(init_postgres_info.parallel_leader_session_id != nullptr),
+      pg_shared_data_(*init_postgres_info.shared_data, !is_parallel_worker_),
+      tserver_shared_object_(GetTServerSharedData()),
       pg_client_(
-          wait_event_watcher_, pg_shared_data_->next_perform_op_serial_no),
+          MakeProxyInitInfo(*proxy_cache_, tserver_shared_object_), wait_event_watcher_,
+          pg_shared_data_->next_perform_op_serial_no),
       interrupter_(new Interrupter(*messenger_holder_.messenger, pg_client_)),
       clock_(new server::HybridClock()),
       // For parallel query, multiple PgTxnManager(s) make parallel requests to pg_client_session
       // projecting as a single ysql backend. When object locking is enabled, only the leader worker
       // should acquire object locks and issue finish transaction rpcs to ensure correctness.
-      enable_table_locking_(
-          ShouldEnableTableLocks() && !init_postgres_info.parallel_leader_session_id),
-      pg_txn_manager_(new PgTxnManager(&pg_client_, clock_, pg_callbacks_, enable_table_locking_)),
-      pg_session_(make_scoped_refptr<PgSession>(
+      enable_table_locking_(ShouldEnableTableLocks() && !is_parallel_worker_),
+      pg_txn_manager_(new PgTxnManager(&pg_client_, pg_callbacks_, enable_table_locking_,
+          pg_shared_data_->next_read_time_serial_no)),
+      pg_session_(PgSession::Make(
           pg_client_, pg_txn_manager_, pg_callbacks_, session_stats, is_binary_upgrade,
           wait_event_watcher_, buffering_settings_)),
-      fk_reference_cache_(pg_session_, buffering_settings_),
-      explicit_row_lock_buffer_(pg_session_) {
-  PgBackendSetupSharedMemory();
-  // This is an RCU object, but there are no concurrent updates on PG side, only on tserver, so
-  // it's safe to just save the pointer.
-  tserver_shared_object_ = PgSharedMemoryManager().SharedData().get();
-
-  std::memcpy(ash_config.top_level_node_id, tserver_shared_object_->tserver_uuid(), kUuidSize);
+      fk_reference_cache_(*pg_session_, buffering_settings_) {
+  std::memcpy(ash_config.top_level_node_id, tserver_shared_object_.tserver_uuid(), kUuidSize);
   wait_state_ = ash::WaitStateInfo::CreateIfAshIsEnabled<ash::PgWaitStateInfo>(ash_config);
   ash::WaitStateInfo::SetCurrentWaitState(wait_state_);
 }
 
 PgApiImpl::~PgApiImpl() {
   mem_contexts_.clear();
-  pg_session_.reset();
-  interrupter_.reset();
-  pg_txn_manager_.reset();
-  pg_client_.Shutdown();
+}
+
+void PgApiImpl::Shutdown() {
+  pg_txn_manager_->Shutdown();
+}
+
+void PgApiImpl::SetupPgBackendCgroup(YbcPgOid dboid) {
+#ifdef __linux__
+  if (tserver::TServerCgroupManagementEnabled()) {
+    auto status = tserver::TServerCgroupManager::MovePgBackendToCgroup(dboid);
+    if (!status.ok()) {
+      LOG(FATAL) << "Failed to move postgres backend to cgroup for " << dboid
+                 << ": " << status;
+    }
+  }
+#endif
 }
 
 void PgApiImpl::Interrupt() {
@@ -757,20 +864,15 @@ Status PgApiImpl::ResetMemctx(PgMemctx *memctx) {
 //
 // For now, statements is allocated as ScopedPtr and cached in the memory context. The statements
 // would then be destructed when the context is destroyed and all other references are also cleared.
-Status PgApiImpl::AddToCurrentPgMemctx(std::unique_ptr<PgStatement> stmt,
-                                       PgStatement **handle) {
-  *handle = stmt.get();
-  pg_callbacks_.GetCurrentYbMemctx()->Register(stmt.release());
-  return Status::OK();
-}
-
+//
 // TODO(tvesely): Figure out how to use an arena for this
 //
 // For now, functions are allocated as ScopedPtr and cached in the memory context. The statements
 // would then be destructed when the context is destroyed and all other references are also cleared.
-Status PgApiImpl::AddToCurrentPgMemctx(std::unique_ptr<PgFunction> func, PgFunction **handle) {
-  *handle = func.get();
-  pg_callbacks_.GetCurrentYbMemctx()->Register(func.release());
+template <std::derived_from<PgMemctx::Registrable> R, std::derived_from<R> I>
+Status PgApiImpl::AddToCurrentPgMemctx(std::unique_ptr<I> impl, R** handle) {
+  *handle = impl.get();
+  GetCurrentYbMemctx().Register(impl.release());
   return Status::OK();
 }
 
@@ -780,15 +882,18 @@ Status PgApiImpl::AddToCurrentPgMemctx(std::unique_ptr<PgFunction> func, PgFunct
 //
 // For now, table_desc is allocated as ScopedPtr and cached in the memory context. The table_desc
 // would then be destructed when the context is destroyed.
-Status PgApiImpl::AddToCurrentPgMemctx(size_t table_desc_id,
-                                       const PgTableDescPtr &table_desc) {
-  pg_callbacks_.GetCurrentYbMemctx()->Cache(table_desc_id, table_desc);
-  return Status::OK();
+void PgApiImpl::AddToCurrentPgMemctx(size_t table_desc_id, const PgTableDescPtr& table_desc) {
+  GetCurrentYbMemctx().Cache(table_desc_id, table_desc);
 }
 
-Status PgApiImpl::GetTabledescFromCurrentPgMemctx(size_t table_desc_id, PgTableDesc **handle) {
-  pg_callbacks_.GetCurrentYbMemctx()->GetCache(table_desc_id, handle);
-  return Status::OK();
+PgTableDesc* PgApiImpl::GetTabledescFromCurrentPgMemctx(size_t table_desc_id) {
+  PgTableDesc* handle = nullptr;
+  GetCurrentYbMemctx().GetCache(table_desc_id, &handle);
+  return handle;
+}
+
+PgMemctx& PgApiImpl::GetCurrentYbMemctx() {
+  return *DCHECK_NOTNULL(pg_callbacks_.GetCurrentYbMemctx());
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -798,27 +903,27 @@ Status PgApiImpl::CreateSequencesDataTable() {
 }
 
 Status PgApiImpl::InsertSequenceTuple(
-    int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version, bool is_db_catalog_version_mode,
+    int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version,
     int64_t last_val, bool is_called) {
   return pg_client_.InsertSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called);
+      db_oid, seq_oid, ysql_catalog_version, last_val, is_called);
 }
 
 Status PgApiImpl::UpdateSequenceTupleConditionally(
-    int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version, bool is_db_catalog_version_mode,
+    int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version,
     int64_t last_val, bool is_called, int64_t expected_last_val, bool expected_is_called,
     bool *skipped) {
   *skipped = VERIFY_RESULT(pg_client_.UpdateSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called,
+      db_oid, seq_oid, ysql_catalog_version, last_val, is_called,
       expected_last_val, expected_is_called));
   return Status::OK();
 }
 
 Status PgApiImpl::UpdateSequenceTuple(
-    int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version, bool is_db_catalog_version_mode,
+    int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version,
     int64_t last_val, bool is_called, bool* skipped) {
   auto result = VERIFY_RESULT(pg_client_.UpdateSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val,
+      db_oid, seq_oid, ysql_catalog_version, last_val,
       is_called, std::nullopt, std::nullopt));
   if (skipped) {
     *skipped = result;
@@ -827,11 +932,11 @@ Status PgApiImpl::UpdateSequenceTuple(
 }
 
 Status PgApiImpl::FetchSequenceTuple(
-    int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version, bool is_db_catalog_version_mode,
+    int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version,
     uint32_t fetch_count, int64_t inc_by, int64_t min_value, int64_t max_value, bool cycle,
     int64_t *first_value, int64_t *last_value) {
   auto res = VERIFY_RESULT(pg_client_.FetchSequenceTuple(
-      db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, fetch_count, inc_by,
+      db_oid, seq_oid, ysql_catalog_version, fetch_count, inc_by,
       min_value, max_value, cycle));
   *first_value = res.first;
   *last_value = res.second;
@@ -839,13 +944,13 @@ Status PgApiImpl::FetchSequenceTuple(
 }
 
 Status PgApiImpl::ReadSequenceTuple(
-    int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version, bool is_db_catalog_version_mode,
+    int64_t db_oid, int64_t seq_oid, uint64_t ysql_catalog_version,
     int64_t *last_val, bool *is_called) {
   const auto actual_ysql_catalog_version =
       yb_disable_catalog_version_check ? std::nullopt : std::optional(ysql_catalog_version);
   const auto actual_yb_read_time = yb_read_time ? std::optional(yb_read_time) : std::nullopt;
   const auto res = VERIFY_RESULT(pg_client_.ReadSequenceTuple(
-      db_oid, seq_oid, actual_ysql_catalog_version, is_db_catalog_version_mode,
+      db_oid, seq_oid, actual_ysql_catalog_version,
       actual_yb_read_time));
   if (last_val) {
     *last_val = res.first;
@@ -1125,16 +1230,14 @@ Status PgApiImpl::NewDropDBSequences(PgOid database_oid, PgStatement** handle) {
 
 Status PgApiImpl::GetTableDesc(const PgObjectId& table_id, PgTableDesc **handle) {
   // First read from memory context.
-  size_t hash_id = hash_value(table_id);
-  RETURN_NOT_OK(GetTabledescFromCurrentPgMemctx(hash_id, handle));
+  const auto hash_id = hash_value(table_id);
+  *handle = GetTabledescFromCurrentPgMemctx(hash_id);
 
   // Read from environment.
-  if (*handle == nullptr) {
-    auto result = pg_session_->LoadTable(table_id);
-    RETURN_NOT_OK(result);
-    RETURN_NOT_OK(AddToCurrentPgMemctx(hash_id, *result));
-
-    *handle = result->get();
+  if (!*handle) {
+    auto result = VERIFY_RESULT(pg_session_->LoadTable(table_id));
+    AddToCurrentPgMemctx(hash_id, result);
+    *handle = result.get();
   }
 
   return Status::OK();
@@ -1142,6 +1245,14 @@ Status PgApiImpl::GetTableDesc(const PgObjectId& table_id, PgTableDesc **handle)
 
 Result<tserver::PgListClonesResponsePB> PgApiImpl::GetDatabaseClones() {
   return pg_client_.ListDatabaseClones();
+}
+
+Result<tserver::PgQueryAutoAnalyzeResponsePB> PgApiImpl::QueryAutoAnalyze(PgOid db_oid) {
+    return pg_session_->pg_client().QueryAutoAnalyze(db_oid);
+}
+
+Status PgApiImpl::ResetAutoAnalyzeMutationCounters(const PgObjectId& table_id) {
+  return pg_session_->pg_client().ResetAutoAnalyzeMutationCounters(table_id);
 }
 
 Result<YbcPgColumnInfo> PgApiImpl::GetColumnInfo(YbcPgTableDesc table_desc, int16_t attr_number) {
@@ -1320,9 +1431,10 @@ Result<int> PgApiImpl::WaitForBackendsCatalogVersion(PgOid dboid, uint64_t versi
         + FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms));
 }
 
-Status PgApiImpl::BackfillIndex(const PgObjectId& table_id) {
+Status PgApiImpl::BackfillIndex(const PgObjectId& table_id, bool use_regular_transaction_block) {
   tserver::PgBackfillIndexRequestPB req;
   table_id.ToPB(req.mutable_table_id());
+  req.set_use_regular_transaction_block(use_regular_transaction_block);
   return pg_client_.BackfillIndex(
       &req, CoarseMonoClock::Now() + FLAGS_backfill_index_client_rpc_timeout_ms * 1ms);
 }
@@ -1385,13 +1497,13 @@ Status PgApiImpl::DmlBindColumnCondIn(
 Status PgApiImpl::DmlAddRowUpperBound(
     PgStatement* handle, int n_col_values, PgExpr** col_values, bool is_inclusive) {
   return VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle)).AddRowUpperBound(
-      handle, n_col_values, col_values, is_inclusive);
+      std::span(col_values, n_col_values), is_inclusive);
 }
 
 Status PgApiImpl::DmlAddRowLowerBound(
     PgStatement* handle, int n_col_values, PgExpr** col_values, bool is_inclusive) {
   return VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle)).AddRowLowerBound(
-      handle, n_col_values, col_values, is_inclusive);
+      std::span(col_values, n_col_values), is_inclusive);
 }
 
 Status PgApiImpl::DmlBindHashCode(
@@ -1400,10 +1512,10 @@ Status PgApiImpl::DmlBindHashCode(
   return Status::OK();
 }
 
-Status PgApiImpl::DmlBindRange(
+Status PgApiImpl::DmlApplyParallelRange(
     PgStatement* handle, Slice lower_bound, bool lower_bound_inclusive, Slice upper_bound,
     bool upper_bound_inclusive) {
-  return VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle)).BindRange(
+  return VERIFY_RESULT_REF(GetStatementAs<PgDmlRead>(handle)).ApplyParallelRange(
       lower_bound, lower_bound_inclusive, upper_bound, upper_bound_inclusive);
 }
 
@@ -1443,6 +1555,48 @@ Result<dockv::KeyBytes> PgApiImpl::BuildTupleId(const YbcPgYBTupleIdDescriptor& 
     return tuple_id_builder_.Build(pg_session_.get(), descr);
 }
 
+Status PgApiImpl::DecodePKColumnsFromBasectid(
+    const PgObjectId& table_id, Slice basectid,
+    int num_attrs, YbcPgAttrValueDescriptor* attrs) {
+  auto table_desc = VERIFY_RESULT(pg_session_->LoadTable(table_id));
+
+  dockv::DocKey doc_key;
+  RETURN_NOT_OK(doc_key.DecodeFrom(
+      &basectid, dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue));
+
+  const auto& hash_group = doc_key.hashed_group();
+  const auto& range_group = doc_key.range_group();
+  size_t hash_idx = 0;
+  size_t range_idx = 0;
+
+  // Walk PK columns, decode each matching requested attribute.
+  for (auto i : Range(table_desc->num_key_columns())) {
+    PgColumn col(table_desc->schema(), i);
+    if (col.is_partition()) {
+      SCHECK(hash_idx < hash_group.size(), Corruption,
+             "DocKey hash group too short for table schema");
+    } else {
+      SCHECK(range_idx < range_group.size(), Corruption,
+             "DocKey range group too short for table schema");
+    }
+    const auto& key_val = col.is_partition()
+        ? hash_group[hash_idx++]
+        : range_group[range_idx++];
+
+    for (int j = 0; j < num_attrs; ++j) {
+      if (attrs[j].attr_num == col.attr_num()) {
+        QLValuePB ql_val;
+        key_val.ToQLValuePB(col.desc().type(), &ql_val);
+        RETURN_NOT_OK(PBToDatum(
+            attrs[j].type_entity, YbcPgTypeAttrs{-1},
+            ql_val, &attrs[j].datum, &attrs[j].is_null));
+        break;
+      }
+    }
+  }
+  return Status::OK();
+}
+
 Status PgApiImpl::StartOperationsBuffering() {
   return pg_session_->StartOperationsBuffering();
 }
@@ -1456,7 +1610,7 @@ void PgApiImpl::ResetOperationsBuffering() {
 }
 
 Status PgApiImpl::FlushBufferedOperations(const PgFlushDebugContext& dbg_ctx) {
-  return ResultToStatus(pg_session_->FlushBufferedOperations(dbg_ctx));
+  return ResultToStatus(FlushBufferedEntities(dbg_ctx));
 }
 
 Status PgApiImpl::AdjustOperationsBuffering(int multiple) {
@@ -1477,7 +1631,7 @@ Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_cou
 Result<PgStatement*> PgApiImpl::NewInsertBlock(
     const PgObjectId& table_id,
     const YbcPgTableLocalityInfo& locality_info,
-    YbcPgTransactionSetting transaction_setting) {
+    YbcPgTransactionSetting transaction_setting, bool skip_intents_write) {
   if (!FLAGS_ysql_pack_inserted_value) {
     return nullptr;
   }
@@ -1485,18 +1639,21 @@ Result<PgStatement*> PgApiImpl::NewInsertBlock(
   PgStatement *result = nullptr;
   RETURN_NOT_OK(AddToCurrentPgMemctx(
       VERIFY_RESULT(PgInsert::Make(
-          pg_session_, table_id, locality_info, transaction_setting, /* packed= */ true)),
+          pg_session_, table_id, locality_info, transaction_setting, skip_intents_write,
+          /* packed= */ true)),
       &result));
   return result;
 }
 
 Status PgApiImpl::NewInsert(
-    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info, PgStatement **handle,
-    YbcPgTransactionSetting transaction_setting) {
+    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+    YbcPgTransactionSetting transaction_setting, bool skip_intents_write,
+    PgStatement **handle) {
   *handle = nullptr;
   return AddToCurrentPgMemctx(
     VERIFY_RESULT(PgInsert::Make(
-        pg_session_, table_id, locality_info, transaction_setting, /* packed= */ false)),
+        pg_session_, table_id, locality_info, transaction_setting, skip_intents_write,
+        /* packed= */ false)),
     handle);
 }
 
@@ -1521,11 +1678,13 @@ Status PgApiImpl::InsertStmtSetIsBackfill(PgStatement* handle, bool is_backfill)
 // Update ------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewUpdate(
-    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info, PgStatement** handle,
-    YbcPgTransactionSetting transaction_setting) {
+    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+    YbcPgTransactionSetting transaction_setting, bool skip_intents_write,
+    PgStatement** handle) {
   *handle = nullptr;
   return AddToCurrentPgMemctx(
-      VERIFY_RESULT(PgUpdate::Make(pg_session_, table_id, locality_info, transaction_setting)),
+      VERIFY_RESULT(PgUpdate::Make(pg_session_, table_id, locality_info, transaction_setting,
+                                   skip_intents_write)),
       handle);
 }
 
@@ -1536,11 +1695,13 @@ Status PgApiImpl::ExecUpdate(PgStatement* handle) {
 // Delete ------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewDelete(
-    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info, PgStatement** handle,
-    YbcPgTransactionSetting transaction_setting) {
+    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+    YbcPgTransactionSetting transaction_setting, bool skip_intents_write,
+    PgStatement** handle) {
   *handle = nullptr;
   return AddToCurrentPgMemctx(
-      VERIFY_RESULT(PgDelete::Make(pg_session_, table_id, locality_info, transaction_setting)),
+      VERIFY_RESULT(PgDelete::Make(pg_session_, table_id, locality_info, transaction_setting,
+                                   skip_intents_write)),
       handle);
 }
 
@@ -1549,12 +1710,14 @@ Status PgApiImpl::ExecDelete(PgStatement* handle) {
 }
 
 Status PgApiImpl::NewSample(
-    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info, int targrows,
-    const SampleRandomState& rand_state, PgStatement** handle) {
+    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+    bool skip_intents_read, int targrows, const SampleRandomState& rand_state,
+    PgStatement** handle) {
   *handle = nullptr;
   return AddToCurrentPgMemctx(
       VERIFY_RESULT(PgSample::Make(
-          pg_session_, table_id, locality_info, targrows, rand_state, clock_->Now())),
+          pg_session_, table_id, locality_info, skip_intents_read, targrows, rand_state,
+          clock_->Now())),
       handle);
 }
 
@@ -1598,6 +1761,7 @@ Status PgApiImpl::ExecTruncateColocated(PgStatement* handle) {
 Status PgApiImpl::NewSelect(
     const PgObjectId& table_id, const PgObjectId& index_id,
     const YbcPgPrepareParameters* prepare_params, const YbcPgTableLocalityInfo& locality_info,
+    bool skip_intents_read,
     PgStatement** handle) {
   DCHECK(index_id.IsValid() || table_id.IsValid());
   DCHECK(!(prepare_params && prepare_params->index_only_scan) || index_id.IsValid());
@@ -1605,7 +1769,7 @@ Status PgApiImpl::NewSelect(
   *handle = nullptr;
   return AddToCurrentPgMemctx(
       VERIFY_RESULT(MakeSelectStatement(
-          pg_session_, table_id, index_id, prepare_params, locality_info)),
+          pg_session_, table_id, index_id, prepare_params, locality_info, skip_intents_read)),
       handle);
 }
 
@@ -1845,9 +2009,46 @@ Result<bool> PgApiImpl::IsInitDbDone() {
   return pg_client_.IsInitDbDone();
 }
 
+void PgApiImpl::ReplicationInfoSnapshot::Refresh() {
+  auto info = client_.RefreshClusterReplicationInfo(
+      value_ ? std::optional(value_->version) : std::nullopt);
+  if (!info) {
+    return;
+  }
+  value_ = std::move(info);
+  cloud_infos_holder_.clear();
+  auto& replication_pb = value_->value;
+  const auto& live_replicas = replication_pb.live_replicas().placement_blocks();
+  const auto& affinitized_leaders =
+      replication_pb.multi_affinitized_leaders().empty()
+          ? replication_pb.affinitized_leaders()
+          : replication_pb.multi_affinitized_leaders().begin()->zones();
+
+  const auto num_live_replicas = live_replicas.size();
+  const auto num_affinitized_leaders = affinitized_leaders.size();
+
+  cloud_infos_holder_.reserve(num_live_replicas + num_affinitized_leaders);
+
+  for (const auto& lr : live_replicas) {
+    cloud_infos_holder_.push_back(MakeYbcCloudInfo(lr.cloud_info()));
+  }
+
+  for (const auto& al : affinitized_leaders) {
+    cloud_infos_holder_.push_back(MakeYbcCloudInfo(al));
+  }
+
+  const auto* data = cloud_infos_holder_.data();
+  postgres_view_ = {
+    .num_live_replicas = num_live_replicas,
+    .live_replicas = num_live_replicas ? data : nullptr,
+    .num_affinitized_leaders = num_affinitized_leaders,
+    .affinitized_leaders = num_affinitized_leaders ? (data + num_live_replicas) : nullptr
+  };
+}
+
 Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid) {
   if (!db_oid) {
-    return tserver_shared_object_->ysql_catalog_version();
+    return tserver_shared_object_.ysql_catalog_version();
   }
   if (!catalog_version_db_index_) {
     // If db_oid is for a newly created database, it may not have an entry allocated in shared
@@ -1878,7 +2079,7 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid)
         Format("Failed to find suitable shared memory index for db $0: $1$2",
                *db_oid, status.ToString(),
                status.IsTimedOut() ? ", there may be too many databases or "
-               "the database might have been dropped" : ""));
+               "the database may have been dropped" : ""));
 
     CHECK(catalog_version_db_index_);
   }
@@ -1887,7 +2088,7 @@ Result<uint64_t> PgApiImpl::GetSharedCatalogVersion(std::optional<PgOid> db_oid)
         IllegalState, "Forbidden db switch from $0 to $1 detected",
         catalog_version_db_index_->first, *db_oid);
   }
-  return tserver_shared_object_->ysql_db_catalog_version(
+  return tserver_shared_object_.ysql_db_catalog_version(
       static_cast<size_t>(catalog_version_db_index_->second));
 }
 
@@ -1895,30 +2096,6 @@ Result<uint32_t> PgApiImpl::GetNumberOfDatabases() {
   const auto info = VERIFY_RESULT(pg_client_.GetTserverCatalogVersionInfo(
       true /* size_only */, kPgInvalidOid /* db_oid */));
   return info.num_entries();
-}
-
-Result<bool> PgApiImpl::CatalogVersionTableInPerdbMode() {
-  DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
-  if (!tserver_shared_object_->catalog_version_table_in_perdb_mode().has_value()) {
-    // If this tserver has just restarted, it may not have received any
-    // heartbeat response from yb-master that has set a value in
-    // catalog_version_table_in_perdb_mode_ in the shared memory object
-    // yet. Let's wait with 500ms interval until a value is set or until
-    // a 30-second timeout.
-    auto status = LoggedWaitFor(
-        [this]() -> Result<bool> {
-          return tserver_shared_object_->catalog_version_table_in_perdb_mode().has_value();
-        },
-        30s /* timeout */,
-        "catalog_version_table mode not set in shared memory, "
-        "tserver not ready to serve requests",
-        500ms /* initial_delay */,
-        1.0 /* delay_multiplier */);
-    RETURN_NOT_OK_PREPEND(
-        status,
-        "Failed to find out pg_yb_catalog_version mode");
-  }
-  return tserver_shared_object_->catalog_version_table_in_perdb_mode().value();
 }
 
 Result<tserver::PgGetTserverCatalogMessageListsResponsePB>
@@ -1940,16 +2117,21 @@ PgApiImpl::SetTserverCatalogMessageList(
       db_oid, is_breaking_change, new_catalog_version, messages);
 }
 
+Status PgApiImpl::GetYbSystemTableInfo(
+    PgOid namespace_oid, std::string_view table_name, PgOid* oid, PgOid* relfilenode) {
+  return pg_client_.GetYbSystemTableInfo(namespace_oid, table_name, oid, relfilenode);
+}
+
 uint64_t PgApiImpl::GetSharedAuthKey() const {
-  return tserver_shared_object_->postgres_auth_key();
+  return tserver_shared_object_.postgres_auth_key();
 }
 
 const unsigned char *PgApiImpl::GetLocalTserverUuid() const {
-  return tserver_shared_object_->tserver_uuid();
+  return tserver_shared_object_.tserver_uuid();
 }
 
 pid_t PgApiImpl::GetLocalTServerPid() const {
-  return tserver_shared_object_->pid();
+  return tserver_shared_object_.pid();
 }
 
 Result<int> PgApiImpl::GetXClusterRole(uint32_t db_oid) {
@@ -2002,14 +2184,14 @@ bool PgApiImpl::IsRestartReadPointRequested() {
 
 Status PgApiImpl::CommitPlainTransaction(const std::optional<PgDdlCommitInfo>& ddl_commit_info) {
   RSTATUS_DCHECK(
-      explicit_row_lock_buffer_.IsEmpty(),
-      IllegalState, "Expected row lock buffer to be empty");
+      !explicit_row_lock_buffer().HasPendingLocks(),
+      IllegalState, "Pending locks is not expected");
   RSTATUS_DCHECK(
       pg_session_->IsInsertOnConflictBufferEmpty(),
       IllegalState, "Expected INSERT ... ON CONFLICT buffer to be empty");
   fk_reference_cache_.Clear();
 
-  RETURN_NOT_OK(pg_session_->FlushBufferedOperations(
+  RETURN_NOT_OK(FlushBufferedOperations(
       PgFlushDebugContext::CommitTxn(
         ddl_commit_info.transform([](const auto& info){ return info.db_oid; }))));
   return pg_txn_manager_->CommitPlainTransaction(ddl_commit_info);
@@ -2025,7 +2207,8 @@ Status PgApiImpl::SetTransactionIsolationLevel(int isolation) {
 }
 
 Status PgApiImpl::SetTransactionReadOnly(bool read_only) {
-  return pg_txn_manager_->SetReadOnly(read_only);
+  pg_txn_manager_->SetReadOnly(read_only);
+  return Status::OK();
 }
 
 Status PgApiImpl::SetEnableTracing(bool tracing) {
@@ -2033,11 +2216,16 @@ Status PgApiImpl::SetEnableTracing(bool tracing) {
 }
 
 Status PgApiImpl::UpdateFollowerReadsConfig(bool enable_follower_reads, int32_t staleness_ms) {
-  return pg_txn_manager_->UpdateFollowerReadsConfig(enable_follower_reads, staleness_ms);
+  pg_txn_manager_->UpdateFollowerReadsConfig(enable_follower_reads, staleness_ms);
+  return Status::OK();
 }
 
 Status PgApiImpl::SetTransactionDeferrable(bool deferrable) {
   return pg_txn_manager_->SetDeferrable(deferrable);
+}
+
+void PgApiImpl::SetClampUncertaintyWindow(bool clamp) {
+  pg_txn_manager_->SetClampUncertaintyWindow(clamp);
 }
 
 Status PgApiImpl::SetInTxnBlock(bool in_txn_blk) {
@@ -2055,7 +2243,7 @@ Status PgApiImpl::SetDdlStateInPlainTransaction() {
 
 Status PgApiImpl::EnterSeparateDdlTxnMode() {
   // Flush all buffered operations as ddl txn use its own transaction session.
-  RETURN_NOT_OK(pg_session_->FlushBufferedOperations(PgFlushDebugContext::EnterDdlTxnMode()));
+  RETURN_NOT_OK(FlushBufferedOperations(PgFlushDebugContext::EnterDdlTxnMode()));
   pg_session_->ResetHasCatalogWriteOperationsInDdlMode();
   return pg_txn_manager_->EnterSeparateDdlTxnMode();
 }
@@ -2066,11 +2254,8 @@ bool PgApiImpl::HasWriteOperationsInDdlTxnMode() const {
 
 Status PgApiImpl::ExitSeparateDdlTxnMode(PgOid db_oid, bool is_silent_modification) {
   // Flush all buffered operations as ddl txn use its own transaction session.
-  RETURN_NOT_OK(pg_session_->FlushBufferedOperations(PgFlushDebugContext::ExitDdlTxnMode()));
-  RETURN_NOT_OK(pg_txn_manager_->ExitSeparateDdlTxnModeWithCommit(db_oid, is_silent_modification));
-  // Next reads from catalog tables have to see changes made by the DDL transaction.
-  ResetCatalogReadTime();
-  return Status::OK();
+  RETURN_NOT_OK(FlushBufferedOperations(PgFlushDebugContext::ExitDdlTxnMode()));
+  return pg_txn_manager_->ExitSeparateDdlTxnModeWithCommit(db_oid, is_silent_modification);
 }
 
 Status PgApiImpl::ClearSeparateDdlTxnMode() {
@@ -2086,7 +2271,7 @@ Status PgApiImpl::SetActiveSubTransaction(SubTransactionId id) {
   // ensuring that previous operations use previous SubTransactionMetadata. If we do not flush here,
   // already queued operations may incorrectly use this newly modified SubTransactionMetadata when
   // they are eventually sent to DocDB.
-  RETURN_NOT_OK(pg_session_->FlushBufferedOperations(PgFlushDebugContext::ActivateSubTxn(id)));
+  RETURN_NOT_OK(FlushBufferedOperations(PgFlushDebugContext::ActivateSubTxn(id)));
   pg_txn_manager_->SetActiveSubTransactionId(id);
   return Status::OK();
 }
@@ -2188,19 +2373,32 @@ void PgApiImpl::NotifyDeferredTriggersProcessingStarted() {
 
 Status PgApiImpl::AddExplicitRowLockIntent(
     const PgObjectId& table_id, const Slice& ybctid, const YbcPgExplicitRowLockParams& params,
-    const YbcPgTableLocalityInfo& locality_info, YbcPgExplicitRowLockErrorInfo& error_info) {
-  ExplicitRowLockErrorInfoAdapter adapter(error_info);
-  return explicit_row_lock_buffer_.Add(
-      {.rowmark = params.rowmark,
-       .pg_wait_policy = params.pg_wait_policy,
-       .docdb_wait_policy = params.docdb_wait_policy,
-       .database_id = table_id.database_oid},
-      LightweightTableYbctid(table_id.object_oid, ybctid), locality_info, adapter);
+    const YbcPgTableLocalityInfo& locality_info,
+    std::optional<YbcIsExplicitlyLockedRowSkippedCheckHandle>* handle,
+    YbcPgExplicitRowLockErrorInfo& error_info) {
+  ExplicitRowLockErrorInfoAdapter adapter{error_info};
+  ExplicitRowLockBuffer::AddLockData data{
+      .lock_info = {
+          .rowmark = params.rowmark,
+          .pg_wait_policy = params.pg_wait_policy,
+          .docdb_wait_policy = params.docdb_wait_policy,
+          .database_id = table_id.database_oid},
+      .lock_key{table_id.object_oid, ybctid},
+      .table_locality = locality_info,
+      .error_info = adapter};
+  if (!handle) {
+    RETURN_NOT_OK(explicit_row_lock_buffer().Add(data));
+    AddForeignKeyReference(table_id.object_oid, ybctid);
+  } else {
+    handle->emplace(VERIFY_RESULT(explicit_row_lock_buffer().AddSkippable(data, *handle)));
+    // TODO(#30984): Add FK reference into the cache in case of optimized SKIP LOCKED
+  }
+  return Status::OK();
 }
 
 Status PgApiImpl::FlushExplicitRowLockIntents(YbcPgExplicitRowLockErrorInfo& error_info) {
   ExplicitRowLockErrorInfoAdapter adapter(error_info);
-  return explicit_row_lock_buffer_.Flush(adapter);
+  return explicit_row_lock_buffer().Flush(adapter);
 }
 
 // INSERT ... ON CONFLICT batching -----------------------------------------------------------------
@@ -2303,6 +2501,10 @@ bool PgApiImpl::IsSysTablePrefetchingStarted() const {
   return static_cast<bool>(pg_sys_table_prefetcher_);
 }
 
+bool PgApiImpl::IsParallelWorker() const {
+  return is_parallel_worker_;
+}
+
 Status PgApiImpl::PrefetchRegisteredSysTables() {
   SCHECK(pg_sys_table_prefetcher_, IllegalState, "Sys table prefetching has not been started");
   return pg_sys_table_prefetcher_->Prefetch(pg_session_.get());
@@ -2324,6 +2526,10 @@ Result<bool> PgApiImpl::CheckIfPitrActive() {
 
 Result<bool> PgApiImpl::IsObjectPartOfXRepl(const PgObjectId& table_id) {
   return pg_client_.IsObjectPartOfXRepl(table_id);
+}
+
+Result<bool> PgApiImpl::IsNamespacePartOfCDCSDK(uint32_t database_oid) {
+  return pg_client_.IsNamespacePartOfCDCSDK(database_oid);
 }
 
 Result<TableKeyRanges> PgApiImpl::GetTableKeyRanges(
@@ -2364,6 +2570,10 @@ Result<tserver::PgCreateReplicationSlotResponsePB> PgApiImpl::ExecCreateReplicat
   return VERIFY_RESULT_REF(GetStatementAs<PgCreateReplicationSlot>(handle)).Exec();
 }
 
+Result<tserver::PgListSlotEntriesResponsePB> PgApiImpl::ListSlotEntries() {
+  return pg_client_.ListSlotEntries();
+}
+
 Result<tserver::PgListReplicationSlotsResponsePB> PgApiImpl::ListReplicationSlots() {
   return pg_client_.ListReplicationSlots();
 }
@@ -2375,10 +2585,12 @@ Result<tserver::PgGetReplicationSlotResponsePB> PgApiImpl::GetReplicationSlot(
 
 Result<cdc::InitVirtualWALForCDCResponsePB> PgApiImpl::InitVirtualWALForCDC(
     const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+    const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode,
     const YbcReplicationSlotHashRange* slot_hash_range, uint64_t active_pid,
     const std::vector<PgOid>& publication_oids, bool pub_all_tables) {
   return pg_client_.InitVirtualWALForCDC(
-      stream_id, table_ids, slot_hash_range, active_pid, publication_oids, pub_all_tables);
+    stream_id, table_ids, oid_to_relfilenode, slot_hash_range, active_pid, publication_oids,
+    pub_all_tables);
 }
 
 Result<cdc::GetLagMetricsResponsePB> PgApiImpl::GetLagMetrics(
@@ -2387,8 +2599,9 @@ Result<cdc::GetLagMetricsResponsePB> PgApiImpl::GetLagMetrics(
 }
 
 Result<cdc::UpdatePublicationTableListResponsePB> PgApiImpl::UpdatePublicationTableList(
-    const std::string& stream_id, const std::vector<PgObjectId>& table_ids) {
-  return pg_client_.UpdatePublicationTableList(stream_id, table_ids);
+    const std::string& stream_id, const std::vector<PgObjectId>& table_ids,
+    const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode) {
+  return pg_client_.UpdatePublicationTableList(stream_id, table_ids, oid_to_relfilenode);
 }
 
 Result<cdc::DestroyVirtualWALForCDCResponsePB> PgApiImpl::DestroyVirtualWALForCDC() {
@@ -2426,19 +2639,69 @@ Result<tserver::PgTabletsMetadataResponsePB> PgApiImpl::TabletsMetadata(bool loc
   return pg_client_.TabletsMetadata(local_only);
 }
 
+Result<std::string> PgApiImpl::GetTabletForKey(
+    YbcPgOid database_oid, YbcPgOid table_oid, const YbcPgKeyValue* key_values,
+    size_t num_values) {
+  auto table_desc = VERIFY_RESULT(
+      pg_session_->LoadTable(PgObjectId(database_oid, table_oid)));
+
+  const auto& schema = table_desc->schema();
+
+  const auto num_key_columns = schema.num_key_columns();
+  const auto num_hash_key_columns = schema.num_hash_key_columns();
+  auto col_index_to_input = VERIFY_RESULT(ValidateAndGetColIndexToInput(
+      table_desc, schema, key_values, num_values));
+  const size_t num_keys_to_use = std::min(num_values, num_key_columns);
+
+  dockv::KeyEntryValues hashed_components;
+  dockv::KeyEntryValues range_components;
+  hashed_components.reserve(num_hash_key_columns);
+  range_components.reserve(std::max(num_keys_to_use, num_hash_key_columns) - num_hash_key_columns);
+
+  std::string hash_compound;
+
+  for (size_t i = 0; i < num_keys_to_use; ++i) {
+    QLValuePB ql_value;
+    const auto& kv = key_values[col_index_to_input[i]];
+    DCHECK(kv.type_entity) << "Primary key column " << (i + 1)
+                           << " must have a supported type (type_entity is null)";
+    if (kv.type_entity) {
+      RETURN_NOT_OK(PgValueToPB(kv.type_entity, kv.datum, kv.is_null, &ql_value));
+    }
+    auto key_entry = dockv::KeyEntryValue::FromQLValuePB(
+      ql_value, schema.column(i).sorting_type());
+    if (i < num_hash_key_columns) {
+      hashed_components.push_back(std::move(key_entry));
+      AppendToKey(ql_value, &hash_compound);
+    } else {
+      range_components.push_back(std::move(key_entry));
+    }
+  }
+
+  dockv::DocKey doc_key;
+  if (num_hash_key_columns > 0) {
+    auto hash = YBPartition::HashColumnCompoundValue(hash_compound);
+    doc_key = dockv::DocKey(hash, std::move(hashed_components), std::move(range_components));
+  } else {
+    doc_key = dockv::DocKey(std::move(range_components));
+  }
+
+  auto table_id = PgObjectId(database_oid, table_oid).GetYbTableId();
+  auto partition_key = doc_key.Encode().ToStringBuffer();
+
+  return pg_client_.GetTabletForKey(table_id, partition_key);
+}
+
 Result<tserver::PgServersMetricsResponsePB> PgApiImpl::ServersMetrics() {
     return pg_client_.ServersMetrics();
 }
 
 SetupPerformOptionsAccessorTag PgApiImpl::ClearSessionState() {
-  auto result = pg_session_->DropBufferedOperations();
   fk_reference_cache_.Clear();
-  explicit_row_lock_buffer_.Clear();
-  pg_session_->ClearAllInsertOnConflictBuffers();
-  return result;
+  return pg_session_->ClearState();
 }
 
-bool PgApiImpl::IsCronLeader() const { return tserver_shared_object_->IsCronLeader(); }
+bool PgApiImpl::IsCronLeader() const { return tserver_shared_object_.IsCronLeader(); }
 
 Status PgApiImpl::SetCronLastMinute(int64_t last_minute) {
   return pg_client_.SetCronLastMinute(last_minute);
@@ -2489,8 +2752,18 @@ Status PgApiImpl::ReleaseAllAdvisoryLocks(uint32_t db_oid) {
 // Table Locks.
 //------------------------------------------------------------------------------------------------
 
-Status PgApiImpl::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLockMode mode) {
-  return pg_session_->AcquireObjectLock(lock_id, mode);
+Status PgApiImpl::AcquireObjectLock(
+    const YbcObjectLockId& lock_id, YbcObjectLockMode mode, bool is_session_lock) {
+  return pg_session_->AcquireObjectLock(lock_id, mode, is_session_lock);
+}
+
+Status PgApiImpl::ReleaseSessionObjectLock(const YbcObjectLockId& lock_id, bool release_all) {
+  return pg_session_->ReleaseSessionObjectLock(lock_id, release_all);
+}
+
+Status PgApiImpl::WaitForLockersMultiple(
+    const YbcObjectLockId* lock_ids, YbcObjectLockMode lock_mode, int num_locks) {
+  return pg_session_->WaitForLockersMultiple(lock_ids, lock_mode, num_locks);
 }
 
 //------------------------------------------------------------------------------------------------
@@ -2500,14 +2773,14 @@ Status PgApiImpl::AcquireObjectLock(const YbcObjectLockId& lock_id, YbcObjectLoc
 Result<std::string> PgApiImpl::ExportSnapshot(
     const YbcPgTxnSnapshot& snapshot, std::optional<YbcReadPointHandle> explicit_read_time) {
   return pg_txn_manager_->ExportSnapshot(
-      VERIFY_RESULT(pg_session_->FlushBufferedOperations(
+      VERIFY_RESULT(FlushBufferedEntities(
           PgFlushDebugContext::ExportSnapshot(snapshot.db_id, explicit_read_time))),
       snapshot, explicit_read_time);
 }
 
 Result<YbcPgTxnSnapshot> PgApiImpl::ImportSnapshot(std::string_view snapshot_id) {
   return pg_txn_manager_->ImportSnapshot(
-      VERIFY_RESULT(pg_session_->FlushBufferedOperations(
+      VERIFY_RESULT(FlushBufferedEntities(
           PgFlushDebugContext::ImportSnapshot(snapshot_id))), snapshot_id);
 }
 
@@ -2522,9 +2795,7 @@ Status PgApiImpl::TriggerRelcacheInitConnection(const std::string& dbname) {
 Status PgApiImpl::Init(std::optional<uint64_t> session_id) {
   RETURN_NOT_OK(interrupter_->Start());
   RETURN_NOT_OK(clock_->Init());
-  return pg_client_.Start(
-    proxy_cache_.get(), &messenger_holder_.messenger->scheduler(), *tserver_shared_object_,
-    session_id);
+  return pg_client_.Start(messenger_holder_.messenger->scheduler(), session_id);
 }
 
 Result<std::unique_ptr<PgApiImpl>> PgApiImpl::Make(
@@ -2538,6 +2809,32 @@ Result<std::unique_ptr<PgApiImpl>> PgApiImpl::Make(
       init_postgres_info.parallel_leader_session_id
           ? std::optional(*init_postgres_info.parallel_leader_session_id) : std::nullopt));
     return result;
+}
+
+Status PgApiImpl::NewGlobalViewRead(PgGlobalViewRead** handle) {
+  return AddToCurrentPgMemctx(std::make_unique<PgGlobalViewRead>(), handle);
+}
+
+YbcRemotePgExecResult PgApiImpl::ExecGlobalViewScan(
+    PgGlobalViewRead* handle, std::string_view database_name, std::string_view query,
+    std::string_view tserver_uuid) {
+  return handle->ExecScan(pg_client_, database_name, query, tserver_uuid);
+}
+
+ExplicitRowLockBuffer& PgApiImpl::explicit_row_lock_buffer() {
+  return pg_session_->explicit_row_lock_buffer();
+}
+
+Result<SetupPerformOptionsAccessorTag> PgApiImpl::FlushBufferedEntities(
+    const PgFlushDebugContext& dbg_ctx) {
+  // TODO: Consider flushing FK reference intents also.
+  return pg_session_->FlushBufferedEntities(dbg_ctx);
+}
+
+Result<bool> PgApiImpl::IsRowSkipped(
+    YbcIsExplicitlyLockedRowSkippedCheckHandle handle, YbcPgExplicitRowLockErrorInfo& error_info) {
+  ExplicitRowLockErrorInfoAdapter adapter(error_info);
+  return explicit_row_lock_buffer().IsSkipped(handle, adapter);
 }
 
 } // namespace yb::pggate

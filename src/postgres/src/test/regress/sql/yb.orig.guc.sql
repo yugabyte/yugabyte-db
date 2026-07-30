@@ -164,9 +164,43 @@ SET session_replication_role TO replica;
 SHOW session_replication_role;
 RESET session_replication_role;
 SHOW session_replication_role;
+SHOW backtrace_functions;
+SET backtrace_functions TO 'SearchCatCacheMiss';
+SHOW backtrace_functions;
+RESET backtrace_functions;
+SHOW backtrace_functions;
 -- test `yb_db_admin` role cannot set and reset other PGC_SUSET variables
 SET track_functions TO TRACK_FUNC_PL;
 RESET track_functions;
+-- test a non-privileged role cannot set backtrace_functions
+RESET SESSION AUTHORIZATION;
+CREATE ROLE yb_backtrace_test_regular_user;
+SET SESSION AUTHORIZATION yb_backtrace_test_regular_user;
+SET backtrace_functions TO 'SearchCatCacheMiss';
+RESET SESSION AUTHORIZATION;
+DROP ROLE yb_backtrace_test_regular_user;
+
+-- Test the parsers for yb_extra_commands_to_retry and
+-- yb_extra_commands_to_retry_in_proc: case-insensitivity, whitespace
+-- tolerance, multi-word tags, the unknown-tag error path, and the
+-- COPY / COPY FROM / ANALYZE rejection.
+SET yb_extra_commands_to_retry = 'alter table';
+SHOW yb_extra_commands_to_retry;
+SET yb_extra_commands_to_retry = '  alter table  ,  truncate table  ';
+SHOW yb_extra_commands_to_retry;
+SET yb_extra_commands_to_retry = '';
+SHOW yb_extra_commands_to_retry;
+SET yb_extra_commands_to_retry_in_proc = 'LOCK TABLE, CREATE INDEX';
+SHOW yb_extra_commands_to_retry_in_proc;
+SET yb_extra_commands_to_retry_in_proc = '';
+SHOW yb_extra_commands_to_retry_in_proc;
+SET yb_extra_commands_to_retry = 'NONSENSE TAG';                -- ERROR
+SET yb_extra_commands_to_retry_in_proc = 'select, NOPE';        -- ERROR
+SET yb_extra_commands_to_retry = 'COPY';                        -- ERROR
+SET yb_extra_commands_to_retry_in_proc = 'ANALYZE';             -- ERROR
+SET yb_extra_commands_to_retry = 'COPY FROM, ALTER TABLE';      -- ERROR
+RESET yb_extra_commands_to_retry;
+RESET yb_extra_commands_to_retry_in_proc;
 
 -- cleanup
 RESET foo;

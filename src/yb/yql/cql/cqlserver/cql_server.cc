@@ -51,8 +51,7 @@ DEFINE_RUNTIME_int32(cql_nodelist_refresh_interval_secs, 300,
     "Interval after which a node list refresh event should be sent to all CQL clients.");
 TAG_FLAG(cql_nodelist_refresh_interval_secs, advanced);
 
-DEFINE_RUNTIME_bool(
-    cql_limit_nodelist_refresh_to_subscribed_conns, true,
+DEFINE_RUNTIME_bool(cql_limit_nodelist_refresh_to_subscribed_conns, true,
     "When enabled, the node list refresh events will only be sent to the connections which have "
     "subscribed to receiving the topology change events.");
 TAG_FLAG(cql_limit_nodelist_refresh_to_subscribed_conns, advanced);
@@ -104,7 +103,7 @@ Status CQLServer::Start() {
   RETURN_NOT_OK(server::RpcAndWebServerBase::Init());
 
   auto cql_service = std::make_shared<CQLServiceImpl>(this, opts_);
-  cql_service->CompleteInit();
+  RETURN_NOT_OK(cql_service->CompleteInit());
 
   cql_service_ = std::move(cql_service);
   RETURN_NOT_OK(RegisterService(FLAGS_cql_service_queue_length, cql_service_));

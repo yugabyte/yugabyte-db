@@ -18,21 +18,24 @@
 
 #include "yb/ann_methods/yb_hnsw_wrapper.h"
 
+#include "yb/hnsw/hnsw_block_cache.h"
+
 #include "yb/gutil/casts.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/locks.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/status_format.h"
+
+#include "yb/ann_methods/index_memory_consumption.h"
 
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/index_wrapper_base.h"
 #include "yb/vector_index/usearch_include_wrapper_internal.h"
 #include "yb/vector_index/coordinate_types.h"
 #include "yb/vector_index/vectorann_util.h"
-
-DEFINE_test_flag(bool, usearch_exact, false,
-    "Use exact search in usearch wrapper to guarantee deterministic results.");
 
 namespace unum::usearch {
 
@@ -123,16 +126,9 @@ class UsearchIndex :
         distance_kind_(options.distance_kind),
         metric_(options.CreateMetric<Vector>()),
         backend_(backend),
-        index_(IndexImpl::make(metric_, CreateIndexDenseConfig(options))),
-        mem_tracker_(mem_tracker) {
+        index_(IndexImpl::make(metric_, CreateIndexDenseConfig(options))) {
     CHECK_GT(dimensions_, 0);
-  }
-
-  ~UsearchIndex() {
-    auto current_consumption = current_consumption_.load();
-    if (current_consumption) {
-      mem_tracker_->Release(current_consumption);
-    }
+    consumption_.Init(mem_tracker);
   }
 
   std::unique_ptr<AbstractIterator<std::pair<VectorId, Vector>>> BeginImpl() const override {
@@ -147,15 +143,30 @@ class UsearchIndex :
 
   Status Reserve(
       size_t num_vectors, size_t max_concurrent_inserts, size_t max_concurrent_reads) override {
-    auto se = UpdateConsumptionOnExit();
+    // Reserve allocates both the per-vector heap structures (vectors_lookup_, nodes_) and the
+    // per-thread search contexts buffer, so we update both children when it returns.
+    auto se = UpdateAllConsumptionOnExit();
     // Usearch could allocate 3 times more entries, than requested.
     // Since it always allocate power of 2, we use this weird logic to make it pick minimal
     // power of 2 that is greater or equals than num_vectors.
     auto rounded_num_vectors = unum::usearch::ceil2(num_vectors);
     auto num_members = std::max<size_t>(rounded_num_vectors * 2 / 3, 1);
+    // TODO(vector_index): index_dense_gt allocates a contexts_ buffer of context_t per slot,
+    // and every context_t holds top_candidates / next_candidates priority queues plus a
+    // visits_hash_set_t sized to the member capacity. With many vector_index chunks per
+    // tablet that scratch storage is duplicated, scaling as O(threads x members) per chunk.
+    // Same opportunity as the hnswlib VisitedListPool TODO -- investigate sharing the search
+    // contexts (or just the visits hash set) across UsearchIndex instances of compatible
+    // capacity.
     index_.reserve(unum::usearch::index_limits_t(
       num_members, max_concurrent_inserts + max_concurrent_reads));
     search_semaphore_.emplace(max_concurrent_reads);
+    // Reserve block cache space for this chunk's full footprint now: the index grows its node and
+    // vector tapes lazily up to the reserved capacity, so the cache evicts other blocks instead of
+    // letting the index push total memory past the limits.
+    this->ReserveBlockCacheSpace(
+        block_cache_ ? &block_cache_->cache() : nullptr,
+        index_.estimate_bytes_for_num_vectors(num_vectors));
     static std::once_flag log_once;
     std::call_once(log_once, [index = &index_]() {
       LOG(INFO) << "Usearch metric: " << index->metric().isa_name();
@@ -164,7 +175,9 @@ class UsearchIndex :
   }
 
   Status DoInsert(VectorId vector_id, const Vector& v) {
-    auto se = UpdateConsumptionOnExit();
+    // addPoint grows the node and vector tape arenas; the per-thread search contexts buffer
+    // does not change, so only the data tracker is updated.
+    auto se = UpdateDataConsumptionOnExit();
     auto add_result = index_.add(vector_id, v.data());
     RSTATUS_DCHECK(
         add_result, RuntimeError, "Failed to add a vector $0: $1", vector_id,
@@ -184,12 +197,16 @@ class UsearchIndex :
     return dimensions_;
   }
 
+  size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
+    return index_.estimate_num_vectors_for_bytes(bytes_limit);
+  }
+
   Result<vector_index::VectorIndexIfPtr<Vector, DistanceResult>> DoSaveToFile(
       const std::string& path) {
     // TODO(vector_index) Reload via memory mapped file
     VLOG_WITH_FUNC(2)
         << path << ", size: " << index_.size() << ", backend: " << HnswBackend_Name(backend_);
-    if (backend_ == HnswBackend::YB_HNSW) {
+    if (backend_ == HnswBackend::YB_HNSW_USEARCH) {
       return ImportYbHnsw<Vector, DistanceResult>(index_, path, block_cache_);
     }
     try {
@@ -203,7 +220,9 @@ class UsearchIndex :
   }
 
   Status DoLoadFromFile(const std::string& path, size_t max_concurrent_reads) {
-    auto se = UpdateConsumptionOnExit();
+    // Loading replaces the index entirely, which can invalidate both data and search context
+    // sizes; refresh both children.
+    auto se = UpdateAllConsumptionOnExit();
     try {
       auto result = decltype(index_)::make(path.c_str(), /* view= */ true);
       if (result) {
@@ -232,7 +251,7 @@ class UsearchIndex :
     SemaphoreLock lock(*search_semaphore_);
     auto usearch_results = index_.filtered_search_with_ef(
         query_vector.data(), options.max_num_results, options.filter, options.ef,
-        IndexImpl::any_thread(), FLAGS_TEST_usearch_exact);
+        IndexImpl::any_thread());
     RSTATUS_DCHECK(
         usearch_results, RuntimeError, "Failed to search a vector: $0",
         usearch_results.error.release());
@@ -291,43 +310,32 @@ class UsearchIndex :
   }
 
  private:
-  auto UpdateConsumptionOnExit() {
+  // RAII helper that refreshes the index_data tracker on scope exit (e.g. on the way out of
+  // an insert path). Use this when only the per-vector heap allocations changed.
+  auto UpdateDataConsumptionOnExit() {
     return ScopeExit([this] {
-      UpdateConsumption();
+      consumption_.UpdateData(index_.index_data_bytes());
     });
   }
 
-  void UpdateConsumption() {
-    if (!mem_tracker_) {
-      return;
-    }
-    auto new_consumption = index_.impl().tape_allocator().total_allocated();
-    auto current_consumption = current_consumption_.load();
-    // usearch does not release memory, so lower new_consumption just means that we have 2
-    // concurrent calls to UpdateConsumption, and call with lesser new_consumption happened
-    // earlier.
-    if (new_consumption <= current_consumption) {
-      return;
-    }
-    std::lock_guard lock(consumption_mutex_);
-    current_consumption = current_consumption_.load();
-    if (new_consumption <= current_consumption) {
-      return;
-    }
-    mem_tracker_->Consume(new_consumption - current_consumption);
-    current_consumption_.store(new_consumption);
+  // RAII helper that refreshes both the index_data and search_contexts trackers. Use this on
+  // operations that rebuild or resize the index (e.g. Reserve, LoadFromFile) where the
+  // per-thread search contexts buffer can also change size.
+  auto UpdateAllConsumptionOnExit() {
+    return ScopeExit([this] {
+      consumption_.UpdateData(index_.index_data_bytes());
+      consumption_.UpdateSearch(index_.impl().contexts_static_bytes());
+    });
   }
 
   const hnsw::BlockCachePtr block_cache_;
   size_t dimensions_;
   DistanceKind distance_kind_;
   metric_punned_t metric_;
-  HnswBackend backend_;
+  const HnswBackend backend_;
   IndexImpl index_;
   mutable std::optional<std::counting_semaphore<1>> search_semaphore_;
-  MemTrackerPtr mem_tracker_;
-  std::atomic<size_t> current_consumption_;
-  simple_spinlock consumption_mutex_;
+  IndexMemoryConsumption consumption_;
 };
 
 }  // namespace
@@ -338,7 +346,9 @@ vector_index::VectorIndexIfPtr<Vector, DistanceResult>
     UsearchIndexFactory<Vector, DistanceResult>::Create(
     vector_index::FactoryMode mode, const hnsw::BlockCachePtr& block_cache,
     const HNSWOptions& options, HnswBackend backend, const MemTrackerPtr& mem_tracker) {
-  if (backend == HnswBackend::YB_HNSW && mode == vector_index::FactoryMode::kLoad) {
+  LOG_IF(DFATAL, backend != HnswBackend::USEARCH && backend != HnswBackend::YB_HNSW_USEARCH) <<
+      "Invalid backed for usearch index: " << HnswBackend_Name(backend);
+  if (backend == HnswBackend::YB_HNSW_USEARCH && mode == vector_index::FactoryMode::kLoad) {
     return CreateYbHnsw<Vector, DistanceResult>(block_cache, options);
   }
   return std::make_shared<UsearchIndex<Vector, DistanceResult>>(

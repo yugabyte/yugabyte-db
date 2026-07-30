@@ -7,8 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { useMemo, useState } from 'react';
-import { FC } from 'react';
+import React, { FC, useMemo, useState } from 'react';
 import { YBModalForm } from '../../common/forms';
 import * as Yup from 'yup';
 import { Col, Row } from 'react-bootstrap';
@@ -30,7 +29,7 @@ import {
   StorageConfig
 } from '../common/IBackup';
 import { useDispatch, useSelector } from 'react-redux';
-import { find, flatten, groupBy, isArray, omit, uniq, uniqBy } from 'lodash';
+import _, { find, flatten, groupBy, isArray, omit, uniq, uniqBy } from 'lodash';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { YBLoading } from '../../common/indicators';
@@ -45,7 +44,7 @@ import { IBackupSchedule } from '../common/IBackupSchedule';
 import { MILLISECONDS_IN } from '../scheduled/ScheduledBackupUtils';
 import { components } from 'react-select';
 
-import { ParallelThreads } from '../common/BackupUtils';
+import { AZURE_IMMUTABLE_STORAGE_MSG, isImmutableStorageEnabled, ParallelThreads } from '../common/BackupUtils';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
 import { isActionFrozen } from '../../../redesign/helpers/utils';
@@ -371,13 +370,13 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       const { configUUID, configName, name } = filteredConfigs[0];
       initialValues['storage_config'] = { value: configUUID, label: configName, name: name };
     }
-
     const configs = filteredConfigs.map((c) => {
       return {
         value: c.configUUID,
         label: c.configName,
         name: c.name,
-        regions: c.data?.REGION_LOCATIONS
+        regions: c.data?.REGION_LOCATIONS,
+        data: c.data
       };
     });
 
@@ -621,6 +620,7 @@ function BackupConfigurationForm({
     value: {
       label: string;
       value: Partial<CustomerConfig>;
+      data?: any;
     };
   };
   errors: Record<string, string>;
@@ -659,6 +659,13 @@ function BackupConfigurationForm({
       find(values['storage_config'].regions, { REGION: e })
     );
   }
+
+  let immutableStorageEnabled = false;
+
+  if(values['storage_config'] !== null){
+    immutableStorageEnabled = isImmutableStorageEnabled(storageConfigs, values['storage_config'].value);
+  }
+
   return (
     <div className="backup-configuration-form">
       {isScheduledBackup && (
@@ -736,6 +743,9 @@ function BackupConfigurationForm({
           />
           {!regions_satisfied_by_config && CONFIG_DOESNT_SATISFY_NODES_MSG()}
         </Col>
+        <Col lg={12} className="no-padding">
+          {immutableStorageEnabled && AZURE_IMMUTABLE_STORAGE_MSG()}
+        </Col>
       </Row>
       <Row>
         <Col lg={8} className="no-padding">
@@ -747,10 +757,7 @@ function BackupConfigurationForm({
             onChange={(_: any, val: any) => {
               setFieldValue('db_to_backup', val);
               setFieldValue('backup_tables', Backup_Options_Type.ALL);
-              if (
-                values['api_type'].value === BACKUP_API_TYPES.YCQL ||
-                values['api_type'].value === BACKUP_API_TYPES.YEDIS
-              ) {
+              if (values['api_type'].value === BACKUP_API_TYPES.YCQL) {
                 setFieldValue('selected_ycql_tables', []);
                 //All keyspace selected
                 if (val.value === null) {
@@ -762,8 +769,7 @@ function BackupConfigurationForm({
           />
         </Col>
       </Row>
-      {(values['api_type'].value === BACKUP_API_TYPES.YCQL ||
-        values['api_type'].value === BACKUP_API_TYPES.YEDIS) && (
+      {values['api_type'].value === BACKUP_API_TYPES.YCQL && (
         <Row>
           <Col lg={12} className="no-padding">
             {TABLE_BACKUP_OPTIONS.map((target) => (
@@ -832,6 +838,25 @@ function BackupConfigurationForm({
           </Row>
         )}
 
+      {values['api_type'].value === BACKUP_API_TYPES.YSQL && (
+        <Row>
+          <Col lg={8} className="no-padding tablespaces">
+            <Row>
+              <Field
+                name="useRoles"
+                component={YBCheckBox}
+                disabled={isEditMode || isIncrementalBackup}
+                checkState={values['useRoles']}
+              />
+              {'Include roles and grants'}
+            </Row>
+            <div className="tablespaces-subText">
+              Back up roles and grants to preserve database access controls after restore.
+            </div>
+          </Col>
+        </Row>
+      )}
+
       {values['api_type'].value === BACKUP_API_TYPES.YSQL &&
         useTablespacesByDefault?.value === 'false' &&
         isYbcEnabledinCurrentUniverse && (
@@ -894,23 +919,6 @@ function BackupConfigurationForm({
             {errors['retention_interval']}
           </Col>
         )}
-      </Row>
-
-      <Row>
-        <Col lg={12} className="no-padding tablespaces">
-          <div>Role backup options</div>
-          <Row>
-            <Col lg={12} className="no-padding">
-              <Field
-                name="useRoles"
-                component={YBCheckBox}
-                disabled={isEditMode || isIncrementalBackup}
-                checkState={values['useRoles']}
-              />
-              {'Backup global roles'}
-            </Col>
-          </Row>
-        </Col>
       </Row>
 
       {isScheduledBackup && !isEditBackupMode && (

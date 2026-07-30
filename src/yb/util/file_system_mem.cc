@@ -19,6 +19,13 @@
 
 namespace yb {
 
+Status InMemoryWritableFile::AppendSlices(const Slice* slices, size_t num) {
+  for (const auto* end = slices + num; slices != end; ++slices) {
+    RETURN_NOT_OK(file_->Append(*slices));
+  }
+  return Status::OK();
+}
+
 Status InMemoryFileState::Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const {
   if (offset > size_) {
     return STATUS_FORMAT(IOError, "Offset ($0) greater than file size ($1).", offset, size_);

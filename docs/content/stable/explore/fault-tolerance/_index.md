@@ -69,6 +69,14 @@ This is similar to zone-level fault tolerance, but on a larger scale, where node
 Learn how YugabyteDB [handles region failures](./handling-region-failures/).
 {{</lead>}}
 
+### Gray failure
+
+A gray failure is a partial failure in which a node, disk, or network path is not completely down, but is unhealthy enough to affect performance or availability. Gray failures can also result from the differential observability of the various components in the distributed system, for example, where one application connected to a cluster detects a failure, but the cluster itself is healthy.
+
+{{<lead link="./handling-gray-failures/">}}
+Learn how YugabyteDB [handles gray failures](./handling-gray-failures/).
+{{</lead>}}
+
 ## Planned maintenance
 
 The benefits of continuous availability extend to performing maintenance and database upgrades. You can maintain and [upgrade your universe](../../manage/upgrade-deployment/) to a newer version of YugabyteDB by performing a rolling upgrade; that is, stopping each node, upgrading the software, and restarting the node with zero downtime for the universe as a whole. YugabyteDB manages such scenarios without any service interruption.

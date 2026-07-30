@@ -1,6 +1,6 @@
 
 /*
- * __API_SCHEMA_V2__.delete processes a Mongo wire protocol delete command.
+ * __API_SCHEMA_V2__.delete processes a mongo wire protocol delete command.
  */
 CREATE OR REPLACE FUNCTION __API_SCHEMA_V2__.delete(
     p_database_name text,

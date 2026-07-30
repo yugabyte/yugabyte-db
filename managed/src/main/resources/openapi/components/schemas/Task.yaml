@@ -1,0 +1,6 @@
+title: Task
+description: YugabyteDB Anywhere customer task.
+type: object
+properties:
+  info:
+    $ref: "./TaskInfo.yaml"

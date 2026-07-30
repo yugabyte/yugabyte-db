@@ -36,7 +36,7 @@ Follow these steps to deploy a free YugabyteDB Aeon instance:
 
 1. Create a YugabyteDB Aeon account: <https://cloud.yugabyte.com/signup>
 
-1. Begin creating the free cluster by clicking on the **Create a Free cluster** button.
+1. Begin creating the free cluster by clicking on the **Create Cluster** button.
 
     ![Create Cluster](/images/tutorials/build-and-learn/chapter5-create-free-cluster.png)
 
@@ -117,7 +117,7 @@ As soon as the `yugaplus-backend` container starts, it applies the database migr
 ![Tables](/images/tutorials/build-and-learn/chapter5-movie-tables.png)
 
 {{< note title="Can't connect to YugabyteDB Aeon?" >}}
-If the application fails to connect to YugabyteDB Aeon, ensure you've added your IP address to the [IP Allow list](/stable/yugabyte-cloud/cloud-secure-clusters/add-connections).
+If the application fails to connect to YugabyteDB Aeon, ensure you've added your IP address to the [IP Allow list](/stable/yugabyte-cloud/cloud-secure-clusters/add-connections/).
 {{< /note >}}
 
 ## Ask for movie recommendations one last time

@@ -149,20 +149,23 @@ public abstract class KubernetesManager {
     }
 
     // If the release does not exist or was successfully deleted, proceed with installation
-    List<String> commandList =
-        ImmutableList.of(
-            "helm",
-            "install",
-            helmReleaseName,
-            helmPackagePath,
-            "--debug",
-            "--namespace",
-            namespace,
-            "-f",
-            overridesFile,
-            "--timeout",
-            getTimeout(universeUUID),
-            "--wait");
+    String labelsFlag = extractAndFormatCommonLabels(overridesFile);
+    ImmutableList.Builder<String> commandBuilder =
+        ImmutableList.<String>builder()
+            .add(
+                "helm",
+                "install",
+                helmReleaseName,
+                helmPackagePath,
+                "--debug",
+                "--namespace",
+                namespace)
+            .add("-f", overridesFile);
+    if (labelsFlag != null && !labelsFlag.isEmpty()) {
+      commandBuilder.add("--labels", labelsFlag);
+    }
+    commandBuilder.add("--timeout", getTimeout(universeUUID), "--wait");
+    List<String> commandList = commandBuilder.build();
     ShellResponse response = execCommand(config, commandList);
     processHelmResponse(config, helmReleaseName, namespace, response);
   }
@@ -270,20 +273,17 @@ public abstract class KubernetesManager {
       LOG.error("Error in helm template generation");
     }
 
-    List<String> commandList =
-        ImmutableList.of(
-            "helm",
-            "upgrade",
-            helmReleaseName,
-            helmPackagePath,
-            "--debug",
-            "-f",
-            overridesFile,
-            "--namespace",
-            namespace,
-            "--timeout",
-            getTimeout(universeUuid),
-            "--wait");
+    String labelsFlag = extractAndFormatCommonLabels(overridesFile);
+    ImmutableList.Builder<String> commandBuilder =
+        ImmutableList.<String>builder()
+            .add("helm", "upgrade", helmReleaseName, helmPackagePath, "--debug")
+            .add("-f", overridesFile)
+            .add("--namespace", namespace);
+    if (labelsFlag != null && !labelsFlag.isEmpty()) {
+      commandBuilder.add("--labels", labelsFlag);
+    }
+    commandBuilder.add("--timeout", getTimeout(universeUuid), "--wait");
+    List<String> commandList = commandBuilder.build();
     ShellResponse response = execCommand(config, commandList);
     processHelmResponse(config, helmReleaseName, namespace, response);
   }
@@ -549,6 +549,50 @@ public abstract class KubernetesManager {
 
   /* helm helpers */
 
+  /**
+   * Extracts commonLabels from the helm overrides file and formats them for helm --labels flag.
+   * Returns null if no commonLabels are found.
+   *
+   * @param overridesFile Path to the helm overrides YAML file
+   * @return Formatted labels string (key1=value1,key2=value2) or null if no labels found
+   */
+  @SuppressWarnings("unchecked")
+  private String extractAndFormatCommonLabels(String overridesFile) {
+    if (overridesFile == null || overridesFile.isEmpty()) {
+      return null;
+    }
+    try {
+      String yamlContent = Files.readString(Path.of(overridesFile));
+      Map<String, Object> overrides = new Yaml().load(yamlContent);
+      if (overrides == null || !overrides.containsKey("commonLabels")) {
+        return null;
+      }
+      Object commonLabelsObj = overrides.get("commonLabels");
+      if (!(commonLabelsObj instanceof Map)) {
+        return null;
+      }
+      Map<String, Object> commonLabels = (Map<String, Object>) commonLabelsObj;
+      if (commonLabels.isEmpty()) {
+        return null;
+      }
+      // Format as key1=value1,key2=value2
+      // Convert values to strings to handle non-string types (numbers, booleans, etc.)
+      return commonLabels.entrySet().stream()
+          .map(
+              entry ->
+                  entry.getKey()
+                      + "="
+                      + (entry.getValue() != null ? entry.getValue().toString() : ""))
+          .collect(Collectors.joining(","));
+    } catch (Exception e) {
+      LOG.warn(
+          "Error extracting commonLabels from overrides file {}: {}",
+          overridesFile,
+          e.getMessage());
+      return null;
+    }
+  }
+
   private String createTempFile(Map<String, Object> valuesMap) {
     Path tempFile;
     try {
@@ -747,9 +791,9 @@ public abstract class KubernetesManager {
     if (primary.userIntent.enableExposingService == ExposingServiceState.UNEXPOSED) {
       return null;
     }
-    Provider provider = Provider.get(UUID.fromString(primary.userIntent.provider));
+    Provider provider = Util.getSingleProvider(primary);
 
-    if (!primary.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+    if (provider.getCloudCode() != Common.CloudType.kubernetes) {
       return null;
     } else {
       PlacementInfo pi = universeDetails.getPrimaryCluster().getOverallPlacement();
@@ -887,6 +931,17 @@ public abstract class KubernetesManager {
 
   public abstract boolean deleteStatefulSet(
       Map<String, String> config, String namespace, String stsName);
+
+  // Fetch the StatefulSet(s) matching the given helm release name and app type
+  // (yb-master/yb-tserver) and delete them. The actual STS name can carry a non-zero STS index
+  // suffix (e.g. after a full move), so resolving the name via labels is more reliable than
+  // constructing it. If no matching StatefulSet is found, this is a no-op.
+  public abstract void deleteStatefulSet(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
+      boolean newNamingStyle);
 
   public abstract boolean expandPVC(
       UUID universeUUID,

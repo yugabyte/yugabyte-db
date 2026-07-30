@@ -61,6 +61,7 @@ export const DrConfigState = {
   SWITCHOVER_IN_PROGRESS: 'Switchover in Progress',
   FAILOVER_IN_PROGRESS: 'Failover in Progress',
   HALTED: 'Halted',
+  PAUSED: 'Paused',
   FAILED: 'Failed',
   UPDATING: 'Updating'
 } as const;
@@ -77,6 +78,7 @@ export const SourceUniverseDrState = {
   READY_TO_REPLICATE: 'Ready to replicate',
   WAITING_FOR_DR: 'Waiting for DR',
   REPLICATING_DATA: 'Replicating data',
+  REPLICATION_PAUSED: 'Replication paused',
   PREPARING_SWITCHOVER: 'Preparing for switchover',
   SWITCHING_TO_DR_REPLICA: 'Switching to DR replica',
   DR_FAILED: 'Universe marked as DR failed'
@@ -93,6 +95,7 @@ export const TargetUniverseDrState = {
   UNCONFIGURED: 'Unconfigured for DR',
   BOOTSTRAPPING: 'Bootstrapping',
   RECEIVING_DATA: 'Receiving data, Ready for reads',
+  REPLICATION_PAUSED: 'Replication paused',
   SWITCHING_TO_DR_PRIMARY: 'Switching to DR primary',
   DR_FAILED: 'Universe marked as DR failed'
 } as const;

@@ -21,6 +21,9 @@
 #include "jit/jit.h"
 #include "utils/guc.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 PG_MODULE_MAGIC;
 
 /* GUC variables */
@@ -37,6 +40,10 @@ static int	auto_explain_log_level = LOG;
 static bool auto_explain_log_nested_statements = false;
 static double auto_explain_sample_rate = 1;
 static bool auto_explain_log_dist = true;	/* option = auto_explain.log_dist */
+static bool auto_explain_log_debug = false; /* option = auto_explain.log_debug */
+
+/* YB variables */
+static bool yb_auto_explain_debug_metrics_needed = false;
 
 static const struct config_enum_entry format_options[] = {
 	{"text", EXPLAIN_FORMAT_TEXT, false},
@@ -243,6 +250,18 @@ _PG_init(void)
 							 NULL,
 							 NULL);
 
+	/* No effect when log_analyze is switched off */
+	DefineCustomBoolVariable("auto_explain.log_debug",
+							 "Set log_debug=true to enable debug metrics in explain analyze output.",
+							 NULL,
+							 &auto_explain_log_debug,
+							 false,
+							 PGC_SUSET,
+							 0,
+							 NULL,
+							 NULL,
+							 NULL);
+
 	MarkGUCPrefixReserved("auto_explain");
 
 	/* Install hooks. */
@@ -293,6 +312,15 @@ explain_ExecutorStart(QueryDesc *queryDesc, int eflags)
 				queryDesc->instrument_options |= INSTRUMENT_BUFFERS;
 			if (auto_explain_log_wal)
 				queryDesc->instrument_options |= INSTRUMENT_WAL;
+
+			yb_auto_explain_debug_metrics_needed =
+				YbIsDebugMetricsCollectionNeeded(auto_explain_log_debug,
+												 auto_explain_log_dist);
+			if (yb_auto_explain_debug_metrics_needed)
+				YbSetMetricsCaptureType(YB_YQL_METRICS_CAPTURE_ALL);
+
+			if (auto_explain_log_timing)
+				YbToggleSessionStatsTimer(true);
 		}
 	}
 
@@ -400,6 +428,7 @@ explain_ExecutorEnd(QueryDesc *queryDesc)
 			es->format = auto_explain_log_format;
 			es->settings = auto_explain_log_settings;
 			es->rpc = (es->analyze && auto_explain_log_dist);
+			es->yb_debug = yb_auto_explain_debug_metrics_needed;
 
 			ExplainBeginOutput(es);
 			ExplainQueryText(es, queryDesc);
@@ -433,6 +462,15 @@ explain_ExecutorEnd(QueryDesc *queryDesc)
 					 errhidestmt(true)));
 		}
 
+		/*
+		 * YB: Turn off timing and metrics capture. These will be
+		 * restored by YbToggleSessionStatsTimer() in the main
+		 * query loop before the next query is executed.
+		 */
+		YbSetMetricsCaptureType(YB_YQL_METRICS_CAPTURE_NONE);
+		YbToggleSessionStatsTimer(false);
+
+		yb_auto_explain_debug_metrics_needed = false;
 		MemoryContextSwitchTo(oldcxt);
 	}
 

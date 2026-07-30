@@ -1,0 +1,99 @@
+# YugabyteDB query-layer retries
+
+PostgreSQL never retries a failed statement on its own. Under REPEATABLE
+READ / SERIALIZABLE, a serialization failure (SQLSTATE 40001) is returned
+to the client for the application to handle. Under READ COMMITTED, PG
+does not raise the error at all: the executor resolves the conflict in
+place via `EvalPlanQual`, re-reading just the conflicting rows. And
+because PG is single-node with one consistent snapshot, no read is ever
+"maybe stale, try again."
+
+YugabyteDB runs the PG query layer over a distributed storage engine
+that bounds clock skew rather than eliminating it. Two things follow:
+reads in the clock-uncertainty window can hit a **read restart** error
+that single-node PG never produces; and RC conflicts surface at the
+query layer rather than being absorbed in the executor.
+
+Surfacing either as-is would break PG compatibility -- apps never expect
+read restarts, and under RC they don't expect serialization failures. YB
+transparently retries these at the query layer when the retry is safe.
+
+## Where the database retries (orientation map)
+
+| # | Retry | Where |
+|---|-------|-------|
+| 1 | Schema / catalog cache mismatch | `YBPrepareCacheRefreshIfNeeded` (postgres.c) |
+| 2 | Serialization errors (read restart / conflict / deadlock / aborted) | `yb_is_retry_possible` + `yb_exec_query_wrapper` (postgres.c) |
+| 3 | RPC retries, query -> storage | pggate / docdb |
+| 4 | Wait-queue retries | docdb wait queues |
+| 5 | Storage-layer read-restart retries | docdb |
+| 6 | Other ad-hoc retries | various |
+
+---
+
+## Retrying serialization errors
+
+`yb_is_retry_possible` gates whether an error is retriable;
+`yb_exec_query_wrapper` is the loop.
+
+### Where the retry sits
+
+The loop wraps `exec_simple_query` (simple protocol `Q`) and
+`exec_execute_message` (extended-protocol Execute). Parse and Bind are
+not replayed; the redo reuses the already-bound portal, so portal state
+must survive across attempts.
+
+### Statement retry vs. transaction retry
+
+- **Statement retry** rolls back to an internal sub-transaction taken
+  before the statement (`RollbackAndReleaseCurrentSubTransaction`) and
+  re-runs it. RC path.
+- **Transaction retry** restarts the whole transaction surgically using
+  (`YBCRestartWriteTransaction()`, plus a read-point reset for read
+  restarts). RR/SR path.
+
+### Which statements are retried
+
+See the "Supported retries" comment block in `yb_is_retry_possible`
+(postgres.c) for the per-isolation, per-error-kind matrix. The two
+opt-in GUCs -- `yb_extra_commands_to_retry` (top level) and
+`yb_extra_commands_to_retry_in_proc` (inside CALL/DO bodies) -- widen
+that set.
+
+One caveat worth flagging here: read restart on DDL was never retried
+by default, even under RC. The DDL retry path was never validated for
+read restarts.
+
+### When a retry is not safe (and hence blocked)
+
+The retry assumes the failed statement can be wound back and re-run.
+Common reasons that doesn't hold:
+
+1. **Pinned snapshot (RR/SR).** A transaction retry adopts a new read
+   point, which is only sound before the transaction has externalized
+   data from the snapshot -- i.e. only for the first statement.
+2. **The statement's own output has started flushing.** Re-emitting
+   result rows would duplicate any already flushed to the client, so
+   the retry needs the output buffer still intact (the buffer is
+   discarded before re-execution so the redo starts clean).
+3. **Side effects that rollback cannot undo.** A retry relies on
+   savepoint/transaction rollback to erase the failed attempt;
+   anything escaping that rollback -- in storage, the query layer, or
+   elsewhere -- gets double-applied on redo. COPY is the canonical
+   example: it commits rows in batches, so a restart re-inserts the
+   committed prefix.
+
+### Async (batched) execution
+
+In the extended protocol, commands pipeline before `Sync` and output
+isn't flushed until `Sync`, so within a batch `YBIsDataSent` and
+`YBIsDataSentForCurrQuery` stay false even after mutations execute.
+Sync execution got the "only first command can retry" restriction for
+free from `YBIsDataSent` flipping on flush; async doesn't, so:
+
+    if (YbIsBatchedExecution() && GetCurrentCommandId(false) > FirstCommandId)
+        return false;
+
+Without this, retrying a later command would lose earlier ones in the
+batch -- they aren't recorded for replay, so undoing them deletes them
+from the transaction.

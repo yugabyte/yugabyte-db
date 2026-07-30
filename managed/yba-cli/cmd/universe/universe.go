@@ -7,6 +7,7 @@ package universe
 import (
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/edit"
+	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/filecollection"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/node"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/readreplica"
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/cmd/universe/security"
@@ -51,6 +52,8 @@ func init() {
 			detachUniverseCmd,
 			deleteMetadataCmd,
 			attachUniverseCmd,
+			filecollection.FileCollectionCmd,
+			runScriptCmd,
 		},
 	)
 

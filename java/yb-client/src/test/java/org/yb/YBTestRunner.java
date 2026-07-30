@@ -21,17 +21,24 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
 import org.yb.util.ConfForTesting;
+import org.yb.util.TestFilterUtil;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.lang.reflect.Modifier;
 
 public class YBTestRunner extends BlockJUnit4ClassRunner {
 
   private static final Logger LOG = LoggerFactory.getLogger(YBTestRunner.class);
 
-  protected boolean shouldRunTests() {
-    return true;
+  private Stream<FrameworkMethod> getFilteredChildren() {
+    if (TestFilterUtil.shouldSkip(getTestClass().getJavaClass().getAnnotations())) {
+      return Stream.empty();
+    }
+    return super.getChildren().stream()
+        .filter(m -> !TestFilterUtil.shouldSkip(m.getAnnotations()));
   }
 
   public YBTestRunner(Class<?> klass) throws InitializationError {
@@ -40,11 +47,8 @@ public class YBTestRunner extends BlockJUnit4ClassRunner {
     assert !Modifier.isAbstract(klass.getModifiers()) :
            "YBTestRunner constructor invoked for an abstract class " + specifiedClassName;
 
-    if (!shouldRunTests()) {
-      return;
-    }
     if (ConfForTesting.onlyCollectingTests()) {
-      for (FrameworkMethod method : super.getChildren()) {
+      getFilteredChildren().forEach(method -> {
         Class declaringClass = method.getDeclaringClass();
         final String declaringClassName = declaringClass.getName();
         final String methodName = method.getMethod().getName();
@@ -58,16 +62,16 @@ public class YBTestRunner extends BlockJUnit4ClassRunner {
           );
         }
         TestUtils.reportCollectedTest(specifiedClassName, methodName);
-      }
+      });
     }
   }
 
   @Override
   protected List<FrameworkMethod> getChildren() {
-    if (ConfForTesting.onlyCollectingTests() || !shouldRunTests()) {
+    if (ConfForTesting.onlyCollectingTests()) {
       return Collections.emptyList();
     }
-    return super.getChildren();
+    return getFilteredChildren().collect(Collectors.toList());
   }
 
 }

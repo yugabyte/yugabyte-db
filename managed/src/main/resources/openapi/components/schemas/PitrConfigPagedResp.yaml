@@ -1,0 +1,6 @@
+title: PitrConfigPagedResp
+description: Paged list response for PITR configurations.
+type: object
+x-data-container: PaginationResp
+x-data-item: PitrConfig
+x-data-entities-description: PITR configurations for this page.

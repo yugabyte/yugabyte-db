@@ -4,7 +4,6 @@ headerTitle: Build an application using YEDIS
 linkTitle: Build an application
 description: Client drivers
 headcontent: Use your favorite programming language to build a YugabyteDB application that interacts using YEDIS.
-image: /images/section_icons/develop/api-icon.png
 menu:
   stable:
     identifier: client-drivers-yedis

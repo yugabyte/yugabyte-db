@@ -2,15 +2,15 @@ SET documentdb.next_collection_id TO 3000;
 SET documentdb.next_collection_index_id TO 3000;
 -- null db name
 SELECT documentdb_api.find_and_modify(NULL, '{}');
-ERROR:  p_database_name cannot be NULL
+ERROR:  The parameter p_database_name must not be NULL
 -- null message
 SELECT documentdb_api.find_and_modify('db', NULL);
 ERROR:  p_message cannot be NULL
 -- missing params
 SELECT documentdb_api.find_and_modify('fam', '{}');
-ERROR:  BSON field 'findAndModify.findAndModify' is missing but a required field
+ERROR:  The BSON field 'findAndModify.findAndModify' is required but was not provided
 SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "remove_or_update"}');
-ERROR:  Either an update or remove=true must be specified
+ERROR:  You must specify either an update action or set remove=true for proper execution
 -- no such collection, upsert=false
 --  i) remove=true
 SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "dne", "query": {"a": 1000}, "remove": 0.1, "sort": {"b": -1}}');
@@ -59,40 +59,40 @@ SELECT document FROM documentdb_api.collection('fam', 'create_on_fam_2') ORDER B
 BEGIN;
   SET LOCAL documentdb.enable_create_collection_on_insert TO OFF;
   SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "create_on_fam_3", "update": {"_id": 1, "b": 1}, "upsert": true}');
-ERROR:  collection 'create_on_fam_3' does not exist
+ERROR:  The collection named 'create_on_fam_3' cannot be found
 ROLLBACK;
 -- test conflicting options
 SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "opts_conflict", "remove": true, "update": {"b": 1}}');
-ERROR:  Cannot specify both an update and remove=true
+ERROR:  It is not possible to specify both an update action and simultaneously set  remove=true
 SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "opts_conflict", "remove": true, "upsert": true}');
-ERROR:  Cannot specify both upsert=true and remove=true
+ERROR:  It is not allowed to set both upsert=true and remove=true simultaneously
 SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "opts_conflict", "remove": true, "new": true}');
-ERROR:  Cannot specify both new=true and remove=true; 'remove' always returns the deleted document
+ERROR:  It is not allowed to set both new=true and remove=true simultaneously, as the 'remove' always returns the document that was deleted.
 -- field type validations
 SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": []}');
-ERROR:  collection name has invalid type array
+ERROR:  Collection name contains an invalid data type array
 SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "invalid_type", "query": 1}');
-ERROR:  BSON field 'findAndModify.query' is the wrong type 'int', expected type 'object'
+ERROR:  The BSON field 'findAndModify.query' has an incorrect type 'int'; it should be of type 'object'.
 SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "invalid_type", "sort": "text"}');
-ERROR:  BSON field 'findAndModify.sort' is the wrong type 'string', expected type 'object'
+ERROR:  The BSON field 'findAndModify.sort' has an incorrect type 'string'; it should be of type 'object'.
 SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "invalid_type", "remove": {}}');
-ERROR:  BSON field 'findAndModify.remove' is the wrong type 'object', expected types '[bool, long, int, decimal, double']
+ERROR:  The BSON field 'findAndModify.remove' has an incorrect type 'object'; it should be one of the following valid types: [bool, long, int, decimal, double]
 SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "invalid_type", "update": 1}');
 ERROR:  Update argument must be either an object or an array
 SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "invalid_type", "new": []}');
-ERROR:  BSON field 'findAndModify.new' is the wrong type 'array', expected types '[bool, long, int, decimal, double']
+ERROR:  The BSON field 'findAndModify.new' has an incorrect type 'array'; it should be one of the following valid types: [bool, long, int, decimal, double]
 SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "invalid_type", "fields": "text"}');
-ERROR:  BSON field 'findAndModify.fields' is the wrong type 'string', expected type 'object'
+ERROR:  The BSON field 'findAndModify.fields' has an incorrect type 'string'; it should be of type 'object'.
 SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "invalid_type", "upsert": []}');
-ERROR:  BSON field 'findAndModify.upsert' is the wrong type 'array', expected types '[bool, long, int, decimal, double']
+ERROR:  The BSON field 'findAndModify.upsert' has an incorrect type 'array'; it should be one of the following valid types: [bool, long, int, decimal, double]
 -- hard errors for unsupported options
 SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "not_supported", "arrayFilters": 1}');
-ERROR:  BSON field 'findAndModify.arrayFields' is the wrong type 'int', expected type 'array'
+ERROR:  The BSON field 'findAndModify.arrayFields' has an incorrect type 'int'; it should be of type 'array'.
 SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "not_supported", "hint": 1}');
 ERROR:  findAndModify.hint is not implemented yet
 -- unknown option
 SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "unknown_option", "unknown_option": 1}');
-ERROR:  BSON field 'findAndModify.unknown_option' is an unknown field
+ERROR:  The BSON field 'findAndModify.unknown_option' is not recognized as a valid field.
 SELECT 1 FROM documentdb_api.insert_one('fam', 'collection', '{"a":5,"b":7}');
 NOTICE:  creating collection
  ?column? 
@@ -114,7 +114,7 @@ SELECT 1 FROM documentdb_api.insert_one('fam', 'collection', '{"a":5,"b":6}');
 
 -- Disallow writes to system.views
 SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "system.views", "query": null, "remove": 0.0, "sort": {"b": -1}, "update": {"a": 10}, "fields": {"_id": 0}}');
-ERROR:  cannot write to fam.system.views
+ERROR:  Unable to write data to specified location fam.system.views
 BEGIN;
   SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "collection", "query": null, "remove": 0.0, "sort": {"b": -1}, "update": {"a": 10}, "fields": {"_id": 0}}');
                                                                                                            find_and_modify                                                                                                            
@@ -182,7 +182,7 @@ BEGIN;
 (1 row)
 
   SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"a": 100}, "sort": {"b": 1}, "update": { "$set": { "a.$[a]": 10 }}, "fields": {"b": 1, "_id": 0}, "upsert": true, "arrayFilters": [ { "a": 30 } ]}');
-ERROR:  Cannot create field 'a' in element {a : 100}
+ERROR:  Failed to create the field 'a' within the element specified by {a : 100}
 ROLLBACK;
 BEGIN;
   SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"a": { "$gte": 15 } }, "sort": {}, "update": {"$set": {"z": 5}, "$inc": {"z": 5}, "$inc": {"a": 10}}, "upsert": false, "new": true, "fields": {}}');
@@ -327,7 +327,7 @@ SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "sharded_collect
 
 -- show that we validate "update" document even if collection doesn't exist or if we can't match any documents
 SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "dne", "query": {"a": 1}, "update": { "$set": { "a": 1 }, "$unset": {"a": 1 } } }');
-ERROR:  Updating the path 'a' would create a conflict at 'a'
+ERROR:  Modifying the path 'a' will result in a conflict occurring at 'a'
 SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "dne", "query": {"$a": 1}, "update": { "$set": { "a": 1 } } }');
 ERROR:  unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField.
 SELECT documentdb_api.create_collection('fam', 'no_match');
@@ -339,7 +339,7 @@ NOTICE:  creating collection
 
 \set VERBOSITY TERSE
 SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "no_match", "update": { "$set": { "a": 1 }, "$unset": {"a": 1 } }}');
-ERROR:  Updating the path 'a' would create a conflict at 'a'
+ERROR:  Modifying the path 'a' will result in a conflict occurring at 'a'
 SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "no_match", "query": {"$a": 1}, "update": { "$set": { "a": 1 } } }');
 ERROR:  unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField.
 \set VERBOSITY DEFAULT
@@ -588,7 +588,7 @@ SELECT document FROM documentdb_api.collection('fam', 'retryable_update') ORDER 
 
 -- unknown operator expressions in fields argument
 SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"_id": 1}, "update": {"$inc": {"b": 1}}, "new": true, "upsert": true, "fields": {"foo": {"$pop": ["bar"]}}}');
-ERROR:  Unknown expression $pop
+ERROR:  Unrecognized expression format: $pop
 -- test with operator expression in fields argument
 SELECT documentdb_api.find_and_modify('fam', '{"findAndModify": "collection", "query": {"_id": 1}, "update": {"$inc": {"b": 1}}, "new": true, "upsert": true, "fields": {"foo": {"$pow": [1, 2]}}}');
                                                                                                                                    find_and_modify                                                                                                                                    

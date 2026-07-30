@@ -182,14 +182,14 @@ Status VerifyRaftConfig(const RaftConfigPB& config, RaftConfigState type) {
 
   if (type == COMMITTED_QUORUM) {
     // Committed configurations must have 'opid_index' populated.
-    if (!config.has_opid_index()) {
+    if (!config.has_committed_op_index()) {
       return STATUS(IllegalState,
           Substitute("Committed configs must have opid_index set. RaftConfig: $0",
                      config.ShortDebugString()));
     }
   } else if (type == UNCOMMITTED_QUORUM) {
     // Uncommitted configurations must *not* have 'opid_index' populated.
-    if (config.has_opid_index()) {
+    if (config.has_committed_op_index()) {
       return STATUS(IllegalState,
           Substitute("Uncommitted configs must not have opid_index set. RaftConfig: $0",
                      config.ShortDebugString()));

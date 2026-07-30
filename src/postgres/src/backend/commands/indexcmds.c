@@ -74,7 +74,9 @@
 #include "catalog/pg_yb_tablegroup_d.h"
 #include "catalog/yb_catalog_version.h"
 #include "commands/progress.h"
+#include "commands/trigger.h"
 #include "commands/yb_tablegroup.h"
+#include "pg_yb_utils.h"
 #include "pgstat.h"
 #include "utils/guc.h"
 #include "utils/yb_inheritscache.h"
@@ -126,6 +128,7 @@ static inline void set_indexsafe_procflags(void);
 
 /* YB function declarations. */
 static void YbWaitForBackendsCatalogVersion();
+static void YbDefineIndexHelper(Oid relationId, Oid indexRelationId, Oid databaseId);
 
 /*
  * callback argument type for RangeVarCallbackForReindexIndex()
@@ -1020,208 +1023,13 @@ DefineIndex(Oid relationId,
 		!YbIsConnectedToTemplateDb() &&
 		YbGetTableProperties(rel)->is_colocated;
 
-	if (IsYugaByteEnabled())
-	{
-		/* Use tablegroup of the indexed table, if any. */
-		tablegroupId = YbTablegroupCatalogExists && IsYBRelation(rel) ?
-			YbGetTableProperties(rel)->tablegroup_oid :
-			InvalidOid;
-
-		bool		is_colocated_via_database = is_colocated && MyDatabaseColocated;
-		bool		is_colocated_tables_with_tablespace_enabled =
-			*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
-
-		/*
-		 * For colocated index tables in a colocation database, the implicit
-		 * tablegroup of the index depends on tablespace specified. If no tablespace
-		 * is specified we use the default implicit tablegroup.
-		 */
-		if (is_colocated_tables_with_tablespace_enabled &&
-			is_colocated_via_database && !MyColocatedDatabaseLegacy)
-		{
-			char	   *tablegroup_name = NULL;
-
-			if (OidIsValid(tablespaceId))
-			{
-				/*
-				 * We look in pg_shdepend rather than directly use the derived name,
-				 * as later we might need to associate an existing implicit tablegroup to a tablespace
-				 */
-				shdepFindImplicitTablegroup(tablespaceId, &tablegroupId);
-
-				/*
-				 * If we do not find a tablegroup corresponding to the given tablespace, we
-				 * would have to create one. We derive the name from tablespace OID.
-				 */
-				tablegroup_name = OidIsValid(tablegroupId) ? get_tablegroup_name(tablegroupId) :
-					get_implicit_tablegroup_name(tablespaceId);
-
-			}
-			else if (yb_binary_restore && OidIsValid(binary_upgrade_next_tablegroup_oid))
-			{
-				/*
-				 * In yb_binary_restore if tablespaceId is not valid but
-				 * binary_upgrade_next_tablegroup_oid is valid, that implies either:
-				 * 1. it is a default tablespace.
-				 * 2. we are restoring without tablespace information.
-				 * In this case all tables are restored to default tablespace,
-				 * while maintaining the colocation properties, and tablegroup's name
-				 * will be colocation_restore_tablegroupId, while default tablegroup's
-				 * name would still be default.
-				 */
-				tablegroup_name = (binary_upgrade_next_tablegroup_default ?
-								   DEFAULT_TABLEGROUP_NAME :
-								   get_restore_tablegroup_name(binary_upgrade_next_tablegroup_oid));
-				binary_upgrade_next_tablegroup_default = false;
-				tablegroupId = get_tablegroup_oid(tablegroup_name, true);
-			}
-			else if (yb_binary_restore && OidIsValid(tablegroupId))
-			{
-				/*
-				 * This case handles Primary Key's tablegroup id. The variable
-				 * tablegroupId stores the tablegroupId of the parent table.
-				 */
-				tablegroup_name = get_tablegroup_name(tablegroupId);
-			}
-			else
-			{
-				tablegroup_name = DEFAULT_TABLEGROUP_NAME;
-				tablegroupId = get_tablegroup_oid(tablegroup_name, true);
-			}
-
-			char	   *tablespace_name = (OidIsValid(tablespaceId) ?
-										   get_tablespace_name(tablespaceId) :
-										   NULL);
-
-			/* Tablegroup doesn't exist, so create it. */
-			if (!OidIsValid(tablegroupId))
-			{
-				/*
-				 * Regardless of the current user, let postgres be the owner of the
-				 * implicit tablegroup in a colocated database.
-				 */
-				RoleSpec   *spec = makeNode(RoleSpec);
-
-				spec->roletype = ROLESPEC_CSTRING;
-				spec->rolename = pstrdup("postgres");
-
-				YbCreateTableGroupStmt *tablegroup_stmt = makeNode(YbCreateTableGroupStmt);
-
-				tablegroup_stmt->tablegroupname = tablegroup_name;
-				tablegroup_stmt->tablespacename = tablespace_name;
-				tablegroup_stmt->implicit = true;
-				tablegroup_stmt->owner = spec;
-				tablegroupId = CreateTableGroup(tablegroup_stmt);
-			}
-		}
-		/*
-		 * Reset the binary_upgrade params as these are not needed anymore (only
-		 * required in CreateTableGroup), to ensure these parameter values are
-		 * not reused in subsequent unrelated statements.
-		 */
-		binary_upgrade_next_tablegroup_oid = InvalidOid;
-		binary_upgrade_next_tablegroup_default = false;
-
-
-		if (stmt->split_options)
-		{
-			if (MyDatabaseColocated && is_colocated)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("cannot create colocated index with split option")));
-			else if (OidIsValid(tablegroupId))
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("cannot use TABLEGROUP with SPLIT")));
-		}
-
-		colocation_id = YbGetColocationIdFromRelOptions(stmt->options);
-
-		if (OidIsValid(colocation_id))
-		{
-			if (!is_colocated)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-						 errmsg("cannot set colocation_id for non-colocated index")));
-			if (OidIsValid(yb_binary_upgrade_next_colocation_id))
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-						 errmsg("cannot set yb_binary_upgrade_next_colocation_id for colocated index")));
-		}
-		else if (OidIsValid(yb_binary_upgrade_next_colocation_id))
-		{
-			if (!is_colocated)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-						 errmsg("cannot set colocation_id for non-colocated index")));
-			colocation_id = yb_binary_upgrade_next_colocation_id;
-			yb_binary_upgrade_next_colocation_id = InvalidOid;
-		}
-
-		/*
-		 * Fail if the index is colocated via tablegroup and tablespace
-		 * is specified while creation.
-		 */
-		if (OidIsValid(tablespaceId) && is_colocated && !MyDatabaseColocated)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("TABLESPACE is not supported for indexes on colocated tables.")));
-
-		/*
-		 * YB: Check permissions for tablegroup. To create an index within a
-		 * tablegroup, a user must either be a superuser, the owner of the
-		 * tablegroup, or have create perms on it. Skip the check in a colocated
-		 * database because any user can create tables in an implicit
-		 * tablegroup. Skip the check during binary upgrade because ACLs have
-		 * not yet been restored, and CREATE INDEX, unlike CREATE TABLE, is
-		 * normally run as the table owner due to CVE-2022-1552. (See upstream
-		 * PG commit a117cebd638dd02e5c2e791c25e43745f233111b for details.)
-		 */
-		if (!MyDatabaseColocated && !IsBinaryUpgrade &&
-			OidIsValid(tablegroupId) && !pg_tablegroup_ownercheck(tablegroupId, GetUserId()))
-		{
-			AclResult	aclresult;
-
-			aclresult = pg_tablegroup_aclcheck(tablegroupId, GetUserId(), ACL_CREATE);
-			if (aclresult != ACLCHECK_OK)
-				aclcheck_error(aclresult, OBJECT_YBTABLEGROUP,
-							   get_tablegroup_name(tablegroupId));
-		}
-	}
-
 	/*
-	 * Force shared indexes into the pg_global tablespace.  This is a bit of a
-	 * hack but seems simpler than marking them in the BKI commands.  On the
-	 * other hand, if it's not shared, don't allow it to be placed there.
-	 */
-	if (relIsShared)
-		tablespaceId = GLOBALTABLESPACE_OID;
-	else if (tablespaceId == GLOBALTABLESPACE_OID)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("only shared relations can be placed in pg_global tablespace")));
-
-	/*
-	 * Choose the index column names.
-	 */
-	indexColNames = ChooseIndexColumnNames(allIndexParams);
-
-	/*
-	 * Select name for index if caller didn't specify
-	 */
-	indexRelationName = stmt->idxname;
-	if (indexRelationName == NULL)
-		indexRelationName = ChooseIndexName(RelationGetRelationName(rel),
-											namespaceId,
-											indexColNames,
-											stmt->excludeOpNames,
-											stmt->primary,
-											stmt->isconstraint);
-
-	/*
+	 * YB: the access method computation block has been moved up here so the implicit tablegroup
+	 * selection code can pivot on whether this index is copartitioned.
+	 *
 	 * look up the access method, verify it can handle the requested features
 	 */
-	accessMethodName = stmt->accessMethod;
+	accessMethodName = stmt->accessMethod; /* YB move access method computation */
 
 	/*
 	 * In Yugabyte mode, switch index method from "btree" or "hash" to "lsm" depending on whether
@@ -1289,10 +1097,228 @@ DefineIndex(Oid relationId,
 					 errmsg("access method \"%s\" does not exist",
 							accessMethodName)));
 	}
-
 	accessMethodForm = (Form_pg_am) GETSTRUCT(tuple);
 	accessMethodId = accessMethodForm->oid;
 	amRoutine = GetIndexAmRoutine(accessMethodForm->amhandler);
+	/* YB end of moved access method computation hunk */
+
+	if (IsYugaByteEnabled())
+	{
+		/* Use tablegroup of the indexed table, if any. */
+		tablegroupId = YbTablegroupCatalogExists && IsYBRelation(rel) ?
+			YbGetTableProperties(rel)->tablegroup_oid :
+			InvalidOid;
+
+		bool		is_colocated_via_database = is_colocated && MyDatabaseColocated;
+		bool		is_colocated_tables_with_tablespace_enabled =
+			*YBCGetGFlags()->ysql_enable_colocated_tables_with_tablespaces;
+
+		/*
+		 * A copartitioned index (e.g. a ybhnsw vector index) stores its rows
+		 * co-located with the indexed table's own tablets, so it must live in
+		 * the indexed table's implicit tablegroup rather than the default one.
+		 */
+		bool		index_is_copartitioned = amRoutine->yb_amiscopartitioned;
+
+		/*
+		 * For colocated index tables in a colocation database, the implicit
+		 * tablegroup of the index depends on tablespace specified. If no tablespace
+		 * is specified we use the default implicit tablegroup.
+		 */
+		if (is_colocated_tables_with_tablespace_enabled &&
+			is_colocated_via_database && !MyColocatedDatabaseLegacy)
+		{
+			char	   *tablegroup_name = NULL;
+
+			if (OidIsValid(tablespaceId))
+			{
+				/*
+				 * We look in pg_shdepend rather than directly use the derived name,
+				 * as later we might need to associate an existing implicit tablegroup to a tablespace
+				 */
+				shdepFindImplicitTablegroup(tablespaceId, &tablegroupId);
+
+				/*
+				 * If we do not find a tablegroup corresponding to the given tablespace, we
+				 * would have to create one. We derive the name from tablespace OID.
+				 */
+				tablegroup_name = OidIsValid(tablegroupId) ? get_tablegroup_name(tablegroupId) :
+					get_implicit_tablegroup_name(tablespaceId);
+
+			}
+			else if (yb_binary_restore && OidIsValid(binary_upgrade_next_tablegroup_oid))
+			{
+				Oid			preserved_tablegroup_oid = binary_upgrade_next_tablegroup_oid;
+				bool		is_default = binary_upgrade_next_tablegroup_default;
+
+				binary_upgrade_next_tablegroup_default = false;
+
+				/*
+				 * In yb_binary_restore if tablespaceId is not valid but
+				 * binary_upgrade_next_tablegroup_oid is valid, that implies
+				 * either:
+				 * 1. it is a default tablespace.
+				 * 2. we are restoring without tablespace information.
+				 * In this case all tables are restored to default tablespace,
+				 * while maintaining the colocation properties, and tablegroup's
+				 * name will be colocation_restore_tablegroupId, while default
+				 * tablegroup's name would still be default.
+				 *
+				 * The implicit tablegroup may already exist from an earlier
+				 * restore step (e.g. the indexed table was restored with
+				 * --use_tablespaces using the colocation_<tablespace_oid>
+				 * name). Look up by OID before falling back to the restore
+				 * name.
+				 */
+				tablegroup_name = get_tablegroup_name(preserved_tablegroup_oid);
+				if (tablegroup_name != NULL)
+				{
+					tablegroupId = preserved_tablegroup_oid;
+					binary_upgrade_next_tablegroup_oid = InvalidOid;
+				}
+				else
+				{
+					tablegroup_name = (is_default ?
+									   DEFAULT_TABLEGROUP_NAME :
+									   get_restore_tablegroup_name(preserved_tablegroup_oid));
+					tablegroupId = get_tablegroup_oid(tablegroup_name, true);
+				}
+			}
+			else if (yb_binary_restore && OidIsValid(tablegroupId))
+			{
+				/*
+				 * This case handles Primary Key's tablegroup id. The variable
+				 * tablegroupId stores the tablegroupId of the parent table.
+				 */
+				tablegroup_name = get_tablegroup_name(tablegroupId);
+			}
+			else if (index_is_copartitioned && OidIsValid(tablegroupId))
+			{
+				/*
+				 * A copartitioned index (e.g. a ybhnsw vector index) has no
+				 * tablespace of its own and its rows are stored co-located
+				 * with the indexed table's tablets. It must therefore share
+				 * the indexed table's implicit tablegroup. Falling through to
+				 * the default tablegroup below would create a spurious empty
+				 * implicit tablegroup (an empty colocation parent) that holds
+				 * no data and cannot be reproduced on the restore/clone side,
+				 * breaking snapshot import.
+				 */
+				tablegroup_name = get_tablegroup_name(tablegroupId);
+			}
+			else
+			{
+				tablegroup_name = DEFAULT_TABLEGROUP_NAME;
+				tablegroupId = get_tablegroup_oid(tablegroup_name, true);
+			}
+
+			char	   *tablespace_name = (OidIsValid(tablespaceId) ?
+										   get_tablespace_name(tablespaceId) :
+										   NULL);
+
+			/* Tablegroup doesn't exist, so create it. */
+			if (!OidIsValid(tablegroupId))
+			{
+				/*
+				 * Regardless of the current user, let postgres be the owner of the
+				 * implicit tablegroup in a colocated database.
+				 */
+				RoleSpec   *spec = makeNode(RoleSpec);
+
+				spec->roletype = ROLESPEC_CSTRING;
+				spec->rolename = pstrdup("postgres");
+
+				YbCreateTableGroupStmt *tablegroup_stmt = makeNode(YbCreateTableGroupStmt);
+
+				tablegroup_stmt->tablegroupname = tablegroup_name;
+				tablegroup_stmt->tablespacename = tablespace_name;
+				tablegroup_stmt->implicit = true;
+				tablegroup_stmt->owner = spec;
+				tablegroupId = CreateTableGroup(tablegroup_stmt);
+			}
+		}
+		/*
+		 * Reset the binary_upgrade params as these are not needed anymore (only
+		 * required in CreateTableGroup), to ensure these parameter values are
+		 * not reused in subsequent unrelated statements.
+		 */
+		binary_upgrade_next_tablegroup_oid = InvalidOid;
+		binary_upgrade_next_tablegroup_default = false;
+
+
+		if (stmt->split_options)
+		{
+			if (MyDatabaseColocated && is_colocated)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("cannot create colocated index with split option")));
+			else if (OidIsValid(tablegroupId))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("cannot use TABLEGROUP with SPLIT")));
+		}
+
+		colocation_id = YbGetColocationIdFromRelOptions(stmt->options);
+
+		/*
+		 * Fail if the index is colocated via tablegroup and tablespace
+		 * is specified while creation.
+		 */
+		if (OidIsValid(tablespaceId) && is_colocated && !MyDatabaseColocated)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("TABLESPACE is not supported for indexes on colocated tables.")));
+
+		/*
+		 * YB: Check permissions for tablegroup. To create an index within a
+		 * tablegroup, a user must either be a superuser, the owner of the
+		 * tablegroup, or have create perms on it. Skip the check in a colocated
+		 * database because any user can create tables in an implicit
+		 * tablegroup. Skip the check during binary upgrade because ACLs have
+		 * not yet been restored, and CREATE INDEX, unlike CREATE TABLE, is
+		 * normally run as the table owner due to CVE-2022-1552. (See upstream
+		 * PG commit a117cebd638dd02e5c2e791c25e43745f233111b for details.)
+		 */
+		if (!MyDatabaseColocated && !IsBinaryUpgrade &&
+			OidIsValid(tablegroupId) && !pg_tablegroup_ownercheck(tablegroupId, GetUserId()))
+		{
+			AclResult	aclresult;
+
+			aclresult = pg_tablegroup_aclcheck(tablegroupId, GetUserId(), ACL_CREATE);
+			if (aclresult != ACLCHECK_OK)
+				aclcheck_error(aclresult, OBJECT_YBTABLEGROUP,
+							   get_tablegroup_name(tablegroupId));
+		}
+	}
+
+	/*
+	 * Force shared indexes into the pg_global tablespace.  This is a bit of a
+	 * hack but seems simpler than marking them in the BKI commands.  On the
+	 * other hand, if it's not shared, don't allow it to be placed there.
+	 */
+	if (relIsShared)
+		tablespaceId = GLOBALTABLESPACE_OID;
+	else if (tablespaceId == GLOBALTABLESPACE_OID)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("only shared relations can be placed in pg_global tablespace")));
+
+	/*
+	 * Choose the index column names.
+	 */
+	indexColNames = ChooseIndexColumnNames(allIndexParams);
+
+	/*
+	 * Select name for index if caller didn't specify
+	 */
+	indexRelationName = stmt->idxname;
+	if (indexRelationName == NULL)
+		indexRelationName = ChooseIndexName(RelationGetRelationName(rel),
+											namespaceId,
+											indexColNames,
+											stmt->excludeOpNames,
+											stmt->primary,
+											stmt->isconstraint);
 
 	if (IsYBRelation(rel) && !amRoutine->yb_amisforybrelation)
 		ereport(ERROR,
@@ -1336,6 +1362,55 @@ DefineIndex(Oid relationId,
 	amcanorder = amRoutine->amcanorder;
 	amoptions = amRoutine->amoptions;
 
+	if (IsYugaByteEnabled())
+	{
+		bool		index_is_copartitioned = amRoutine->yb_amiscopartitioned;
+
+		/*
+		 * YB: A copartitioned index (e.g. the ybhnsw vector index) is stored on
+		 * the indexed table's own tablets, so -- like a YB primary key index --
+		 * its placement always follows the indexed table.  For a non-colocated
+		 * indexed table, force the index's tablespace to match the indexed table
+		 * so that pg_class.reltablespace stays consistent with where the index
+		 * physically lives.  An explicit TABLESPACE clause is rejected outright,
+		 * consistent with ALTER INDEX ... SET TABLESPACE: the index cannot be
+		 * placed anywhere other than with its indexed table, so its tablespace
+		 * can only be chosen by choosing the indexed table's.  When the indexed
+		 * table is colocated the index instead follows the indexed table's
+		 * implicit tablegroup and keeps the colocated convention of
+		 * reltablespace = 0, so this does not apply.
+		 */
+		if (index_is_copartitioned && !is_colocated)
+		{
+			if (stmt->tableSpace)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("cannot set tablespace for a vector index")));
+			tablespaceId = rel->rd_rel->reltablespace;
+		}
+
+		if (OidIsValid(colocation_id))
+		{
+			if (!is_colocated && !index_is_copartitioned)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("cannot set colocation_id for non-colocated index")));
+			if (OidIsValid(yb_binary_upgrade_next_colocation_id))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("cannot set yb_binary_upgrade_next_colocation_id for colocated index")));
+		}
+		else if (OidIsValid(yb_binary_upgrade_next_colocation_id))
+		{
+			if (!is_colocated && !index_is_copartitioned)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("cannot set colocation_id for non-colocated index")));
+			colocation_id = yb_binary_upgrade_next_colocation_id;
+			yb_binary_upgrade_next_colocation_id = InvalidOid;
+		}
+	}
+
 	pfree(amRoutine);
 	ReleaseSysCache(tuple);
 
@@ -1344,6 +1419,14 @@ DefineIndex(Oid relationId,
 	 */
 	if (stmt->whereClause)
 		CheckPredicate((Expr *) stmt->whereClause);
+
+	/*
+	 * YB: Keep the SPLIT clause and the yb_presplit reloption in sync so that
+	 * the index is created with the right pre-split values and yb_presplit is
+	 * persisted for REINDEX and dump/restore.
+	 */
+	if (IsYugaByteEnabled())
+		YbSyncSplitOptionsAndPresplit(&stmt->split_options, &stmt->options);
 
 	/*
 	 * Parse AM-specific options, convert to text array form, validate.
@@ -1884,6 +1967,13 @@ DefineIndex(Oid relationId,
 					childStmt->oldFirstRelfilenodeSubid = InvalidSubTransactionId;
 
 					/*
+					 * YB: Clear split_options so the child's DefineIndex
+					 * derives them from the yb_presplit reloption already
+					 * present in the copied options list.
+					 */
+					childStmt->split_options = NULL;
+
+					/*
 					 * Adjust any Vars (both in expressions and in the index's
 					 * WHERE clause) to match the partition's column numbering
 					 * in case it's different from the parent's.
@@ -2193,138 +2283,43 @@ DefineIndex(Oid relationId,
 	}
 	else
 	{
-		elog(LOG, "committing pg_index tuple with indislive=true");
-		if (yb_test_block_index_phase[0] != '\0')
-			YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
-										"indislive",
-										"index state change indislive=true");
 		/*
-		 * No need to break (abort) ongoing txns since this is an online schema
-		 * change.
-		 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
-		 * level 1).
+		 * To support concurrent create index statements, change backend type
+		 * to YB_INDEX_BACKFILL_DDL. A YB_INDEX_BACKFILL_DDL backend will be
+		 * ignored by the WaitForYsqlBackendsCatalogVersion query logic in the
+		 * CREATE INDEX CONCURRENTLY workflow. Otherwise a regular backend will
+		 * appear as a lagging backend when the backfill phase takes long time,
+		 * causing the other CREATE INDEX CONCURRENTLY to time out during its
+		 * WaitForYsqlBackendsCatalogVersion call.
 		 */
-		YBDecrementDdlNestingLevel();
-		CommitTransactionCommand();
 
-		/*
-		 * The index is now visible, so we can report the OID.
-		 */
-		pgstat_progress_update_param(PROGRESS_CREATEIDX_INDEX_OID,
-									 indexRelationId);
-
-		/* Delay after committing pg_index update. */
-		pg_usleep(yb_index_state_flags_update_delay * 1000);
-		if (yb_test_block_index_phase[0] != '\0')
-			YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
-										"indisready",
-										"index state change indisready=true");
-
-		StartTransactionCommand();
-
-		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
-
-		/* Wait for all backends to have up-to-date version. */
-		YbWaitForBackendsCatalogVersion();
-
-		YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "indisready");
-
-		/*
-		 * Update the pg_index row to mark the index as ready for inserts.
-		 */
-		index_set_state_flags(indexRelationId, INDEX_CREATE_SET_READY);
-
-		elog(LOG, "committing pg_index tuple with indisready=true");
-		/*
-		 * No need to break (abort) ongoing txns since this is an online schema
-		 * change.
-		 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
-		 * level 1).
-		 */
-		YBDecrementDdlNestingLevel();
-		CommitTransactionCommand();
-
-		/* Delay after committing pg_index update. */
-		pg_usleep(yb_index_state_flags_update_delay * 1000);
-		if (yb_test_block_index_phase[0] != '\0')
-			YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
-										"backfill",
-										"concurrent index backfill");
-
-		StartTransactionCommand();
-		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
-
-		/* Wait for all backends to have up-to-date version. */
-		YbWaitForBackendsCatalogVersion();
-
-		pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
-									 YB_PROGRESS_CREATEIDX_BACKFILLING);
-
-		/*
-		 * PG acquires ShareUpdateExclusiveLock on the main table for the
-		 * duration of the backfill so as to allow DMLs but prevent concurrent
-		 * schema changes, including parallel index creation requests. And it
-		 * acquires RowExclusiveLock on the index as backfill modifies data in
-		 * the index table.
-		 *
-		 * YB: Since backfill jobs run independently at each tablet, acquire
-		 * relevant locks here so as to hold them for the whole duration of the
-		 * backfill.
-		 */
-		LockRelationOid(relationId, ShareUpdateExclusiveLock);
-		LockRelationOid(indexRelationId, RowExclusiveLock);
-
-		/* TODO(jason): handle exclusion constraints, possibly not here. */
-
-		/* Do backfill. */
-
-		/*
-		 * YB: Do backfill if this is a separate DocDB table from the main
-		 * table.
-		 */
-		HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
-
-		Relation	yb_baserel = table_open(relationId, NoLock);
-
-		if (yb_enable_update_reltuples_after_create_index)
+		/* Use volatile to ensure variables survive a siglongjmp */
+		volatile BackendType old_type = MyBackendType;
+		volatile bool yb_type_changed = false;
+		PG_TRY();
 		{
-			Oid			index_oids[1] = {indexRelationId};
-			Oid			database_oids[1] = {databaseId};
-			uint64_t	num_rows_read_from_table;
-			double		num_rows_backfilled;
-
-			HandleYBStatus(YBCGetIndexBackfillProgress(index_oids, database_oids,
-													   &num_rows_read_from_table,
-													   &num_rows_backfilled,
-													   1));
-
-			/*
-			 * Ignore the update if there was an error getting backfill
-			 * progress.
-			 */
-			if (num_rows_backfilled != -1)
+			if (!YBCIsLegacyModeForCatalogOps() &&
+				GetCurrentTransactionNestLevel() == 1 &&
+				YbGetTriggerDepth() == 0)
 			{
-				Relation	yb_indexrel = index_open(indexRelationId, NoLock);
-
-				yb_index_update_stats(yb_baserel,
-									  true,
-									  ((double) (num_rows_read_from_table)));
-				yb_index_update_stats(yb_indexrel,
-									  false,
-									  (num_rows_backfilled));
-				index_close(yb_indexrel, NoLock);
+				MyBackendType = YB_INDEX_BACKFILL_DDL;
+				if (MyBEEntry)
+					MyBEEntry->st_backendType = MyBackendType;
+				yb_type_changed = true;
+			}
+			YbDefineIndexHelper(relationId, indexRelationId, databaseId);
+		}
+		PG_FINALLY();
+		{
+			/* Always restore if we changed it, even if an error occurred */
+			if (yb_type_changed)
+			{
+				MyBackendType = old_type;
+				if (MyBEEntry)
+					MyBEEntry->st_backendType = old_type;
 			}
 		}
-
-		table_close(yb_baserel, NoLock);
-
-		YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "postbackfill");
-
-		if (yb_test_block_index_phase[0] != '\0')
-			YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
-										"postbackfill",
-										"operations after concurrent "
-										"index backfill");
+		PG_END_TRY();
 	}
 
 	/*
@@ -2352,6 +2347,158 @@ DefineIndex(Oid relationId,
 	return address;
 }
 
+static void
+YbDefineIndexHelper(Oid relationId,
+					Oid indexRelationId,
+					Oid databaseId)
+{
+	bool yb_should_run_in_autonomous_transaction = YBCIsLegacyModeForCatalogOps();
+
+	elog(LOG, "committing pg_index tuple with indislive=true");
+	if (yb_test_block_index_phase[0] != '\0')
+		YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
+									"indislive",
+									"index state change indislive=true");
+	/*
+	 * No need to break (abort) ongoing txns since this is an online schema
+	 * change.
+	 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
+	 * level 1).
+	 */
+	 if (yb_should_run_in_autonomous_transaction)
+		YBDecrementDdlNestingLevel();
+
+	CommitTransactionCommand();
+
+	/*
+	 * The index is now visible, so we can report the OID.
+	 */
+	pgstat_progress_update_param(PROGRESS_CREATEIDX_INDEX_OID,
+								 indexRelationId);
+
+	/* Delay after committing pg_index update. */
+	pg_usleep(yb_index_state_flags_update_delay * 1000);
+	if (yb_test_block_index_phase[0] != '\0')
+		YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
+									"indisready",
+									"index state change indisready=true");
+
+	StartTransactionCommand();
+
+	if (yb_should_run_in_autonomous_transaction)
+		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
+	else
+		YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
+
+	/* Wait for all backends to have up-to-date version. */
+	YbWaitForBackendsCatalogVersion();
+
+	YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "indisready");
+
+	/*
+	 * Update the pg_index row to mark the index as ready for inserts.
+	 */
+	index_set_state_flags(indexRelationId, INDEX_CREATE_SET_READY);
+
+	elog(LOG, "committing pg_index tuple with indisready=true");
+	/*
+	 * No need to break (abort) ongoing txns since this is an online schema
+	 * change.
+	 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
+	 * level 1).
+	 */
+	if (yb_should_run_in_autonomous_transaction)
+		YBDecrementDdlNestingLevel();
+
+	CommitTransactionCommand();
+
+	/* Delay after committing pg_index update. */
+	pg_usleep(yb_index_state_flags_update_delay * 1000);
+	if (yb_test_block_index_phase[0] != '\0')
+		YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
+									"backfill",
+									"concurrent index backfill");
+
+	StartTransactionCommand();
+
+	if (yb_should_run_in_autonomous_transaction)
+		YBIncrementDdlNestingLevel(YB_DDL_MODE_VERSION_INCREMENT);
+	else
+		YBAddDdlTxnState(YB_DDL_MODE_VERSION_INCREMENT);
+
+	/* Wait for all backends to have up-to-date version. */
+	YbWaitForBackendsCatalogVersion();
+
+	pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
+								 YB_PROGRESS_CREATEIDX_BACKFILLING);
+
+	/*
+	 * PG acquires ShareUpdateExclusiveLock on the main table for the
+	 * duration of the backfill so as to allow DMLs but prevent concurrent
+	 * schema changes, including parallel index creation requests. And it
+	 * acquires RowExclusiveLock on the index as backfill modifies data in
+	 * the index table.
+	 *
+	 * YB: Since backfill jobs run independently at each tablet, acquire
+	 * relevant locks here so as to hold them for the whole duration of the
+	 * backfill.
+	 */
+	LockRelationOid(relationId, ShareUpdateExclusiveLock);
+	LockRelationOid(indexRelationId, RowExclusiveLock);
+
+	/* TODO(jason): handle exclusion constraints, possibly not here. */
+
+	/* Do backfill. */
+
+	/*
+	 * YB: Do backfill if this is a separate DocDB table from the main
+	 * table.
+	 */
+	HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId,
+									  !yb_should_run_in_autonomous_transaction));
+
+	Relation	yb_baserel = table_open(relationId, NoLock);
+
+	if (yb_enable_update_reltuples_after_create_index)
+	{
+		Oid			index_oids[1] = {indexRelationId};
+		Oid			database_oids[1] = {databaseId};
+		uint64_t	num_rows_read_from_table;
+		double		num_rows_backfilled;
+
+		HandleYBStatus(YBCGetIndexBackfillProgress(index_oids, database_oids,
+												   &num_rows_read_from_table,
+												   &num_rows_backfilled,
+												   1));
+
+		/*
+		 * Ignore the update if there was an error getting backfill
+		 * progress.
+		 */
+		if (num_rows_backfilled != -1)
+		{
+			Relation	yb_indexrel = index_open(indexRelationId, NoLock);
+
+			yb_index_update_stats(yb_baserel,
+								  true,
+								  ((double) (num_rows_read_from_table)));
+			yb_index_update_stats(yb_indexrel,
+								  false,
+								  (num_rows_backfilled));
+			index_close(yb_indexrel, NoLock);
+		}
+	}
+
+	table_close(yb_baserel, NoLock);
+
+	YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "postbackfill");
+
+	if (yb_test_block_index_phase[0] != '\0')
+		YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
+									"postbackfill",
+									"operations after concurrent "
+									"index backfill");
+}
 
 /*
  * CheckPredicate
@@ -5170,17 +5317,17 @@ YbWaitForBackendsCatalogVersion()
 	if (yb_disable_wait_for_backends_catalog_version)
 		return;
 
-	/*
-	 * We don't get the current catalog version after
-	 * YBDecrementDdlNestingLevel(), so we have to send another RPC to fetch
-	 * it.  This is needed because YbGetCatalogCacheVersion() may be behind in
-	 * case other DDLs happened concurrently.  This also means the version we
-	 * are waiting on may be higher than necessary in case other DDLs finished
-	 * before we collect the version.
-	 */
-	uint64_t	catalog_version = YbGetMasterCatalogVersion();
+	const bool enable_inval_messages = YbIsInvalidationMessageEnabled();
+	uint64_t	new_catalog_version =
+		enable_inval_messages ? YbGetNewCatalogVersion() : YbGetMasterCatalogVersion();
 
-	Assert(catalog_version >= YbGetCatalogCacheVersion());
+	/*
+	 * We might have invoked AcceptInvalidationMessages after incrementing catalog version,
+	 * some other backends might have incremented catalog version again. So if we have
+	 * used YbGetNewCatalogVersion() as new_catalog_version, it can be smaller than
+	 * YbGetCatalogCacheVersion().
+	 */
+	Assert(enable_inval_messages || new_catalog_version >= YbGetCatalogCacheVersion());
 
 	int			num_lagging_backends = -1;
 	int			retries_left = 10;
@@ -5207,16 +5354,18 @@ YbWaitForBackendsCatalogVersion()
 								   " catalog version %" PRIu64 ".",
 								   num_lagging_backends,
 								   MyDatabaseId,
-								   catalog_version),
+								   new_catalog_version),
 						 errhint("Run the following query on all tservers to find"
 								 " the lagging backends: SELECT * FROM"
 								 " pg_stat_activity WHERE"
 								 " backend_type != 'walsender' AND"
 								 " backend_type != 'yb-conn-mgr walsender' AND"
 								 " backend_type != 'yb auto analyze backend' AND"
+								 " backend_type != 'yb index backfill' AND"
+								 " backend_type != 'yb matview refresh' AND"
 								 " catalog_version < %" PRIu64
 								 " AND datid = %u;",
-								 catalog_version,
+								 new_catalog_version,
 								 MyDatabaseId)));
 			else
 			{
@@ -5228,18 +5377,18 @@ YbWaitForBackendsCatalogVersion()
 								   " database %u are still behind"
 								   " catalog version %" PRIu64 ".",
 								   MyDatabaseId,
-								   catalog_version)));
+								   new_catalog_version)));
 			}
 		}
 
 		YbcStatus	s = YBCPgWaitForBackendsCatalogVersion(MyDatabaseId,
-														   catalog_version,
+														   new_catalog_version,
 														   MyProcPid,
 														   &num_lagging_backends);
 
 		if (!s)					/* ok */
 			continue;
-		if (YBCStatusIsTryAgain(s))
+		if (YBCStatusIsTryAgain(s) || YBCStatusIsTimedOut(s))
 		{
 			YBCFreeStatus(s);
 			continue;

@@ -8,23 +8,19 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.node.TextNode;
 import com.google.common.collect.ImmutableMultiset;
 import com.google.common.collect.Iterables;
-import com.jayway.jsonpath.Configuration;
-import com.jayway.jsonpath.JsonPath;
-import com.jayway.jsonpath.spi.json.JacksonJsonNodeJsonProvider;
-import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.RequestContext;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.paging.PagedQuery;
@@ -57,6 +53,9 @@ import play.libs.Json;
 @Slf4j
 public class CommonUtils {
 
+  public static final String RESULT_SUCCESS = "success";
+  public static final String RESULT_FAILURE = "failure";
+
   public static final String DEFAULT_YB_HOME_DIR = "/home/yugabyte";
   public static final String DEFAULT_YBC_DIR = "%s/yugabyte";
 
@@ -75,12 +74,6 @@ public class CommonUtils {
 
   public static final String MIN_LIVE_TABLET_SERVERS_RELEASE = "2.8.0.0";
 
-  private static final Configuration JSONPATH_CONFIG =
-      Configuration.builder()
-          .jsonProvider(new JacksonJsonNodeJsonProvider())
-          .mappingProvider(new JacksonMappingProvider())
-          .build();
-
   // Sensisitve field substrings
   private static final List<String> sensitiveFieldSubstrings =
       Arrays.asList(
@@ -94,6 +87,9 @@ public class CommonUtils {
           "SAS_TOKEN",
           "REFRESH_TOKEN",
           "PASSWORD");
+  // Sensitive field exact names (case-insensitive). Used when a substring match would be too broad.
+  // For example, "token" should be masked but "authTokenIssueDate" should not.
+  private static final List<String> sensitiveFieldExactNames = Arrays.asList("TOKEN");
   // Exclude following strings from being sensitive fields
   private static final List<String> excludedFieldNames =
       Arrays.asList(
@@ -201,6 +197,12 @@ public class CommonUtils {
       return false;
     }
 
+    // Exact-name matches: used when a substring would be too broad.
+    // e.g. "token" must match but "authTokenIssueDate" must not.
+    if (sensitiveFieldExactNames.contains(ucFieldname)) {
+      return true;
+    }
+
     // Check if any of sensitiveFieldSubstrings are substrings in ucFieldname and mark as sensitive
     return sensitiveFieldSubstrings.stream().anyMatch(sfs -> ucFieldname.contains(sfs));
   }
@@ -231,7 +233,8 @@ public class CommonUtils {
         "$",
         config,
         CommonUtils::isSensitiveField,
-        (key, value, path) -> getMaskedValue(key, value));
+        (key, value, path) -> getMaskedValue(key, value),
+        CustomerConfig.ARRAY_IDENTITY_FIELDS);
   }
 
   public static Map<String, String> maskConfigNew(Map<String, String> config) {
@@ -293,6 +296,9 @@ public class CommonUtils {
     }
   }
 
+  // NOTE: unmaskObject uses unmaskJsonObject without an array identity map, so sensitive fields
+  // inside arrays are left as-is. For configs with array-sensitive fields, call unmaskJsonObject
+  // directly with an explicit identity map (e.g. CustomerConfig.ARRAY_IDENTITY_FIELDS).
   @SuppressWarnings("unchecked")
   public static <T> T unmaskObject(T originalObject, T object) {
     try {
@@ -308,26 +314,116 @@ public class CommonUtils {
   }
 
   /**
-   * Removes masks from the config. If some fields are sensitive but were updated, these fields are
-   * remain the same (with the new values).
-   *
-   * @param originalData Previous config data. All masked data recovered from it.
-   * @param data The new config data.
-   * @return Updated config (all masked fields are recovered).
+   * Removes masks from the config. Sensitive fields whose incoming value is a ****-mask placeholder
+   * are restored from originalData, so clients can do read-modify-write without re-entering
+   * credentials. Arrays without a registered identity field are left unchanged (no per-element
+   * merge of sensitive fields inside them).
    */
   public static ObjectNode unmaskJsonObject(ObjectNode originalData, ObjectNode data) {
-    return originalData == null
-        ? data
-        : processData(
-            "$",
-            data,
-            CommonUtils::isSensitiveField,
-            (key, value, path) -> {
-              JsonPath jsonPath = JsonPath.compile(path + "." + key);
-              return StringUtils.equals(value, getMaskedValue(key, value))
-                  ? ((TextNode) jsonPath.read(originalData, JSONPATH_CONFIG)).asText()
-                  : value;
-            });
+    return unmaskJsonObject(originalData, data, Collections.emptyMap());
+  }
+
+  /**
+   * Same as unmaskJsonObject(originalData, data) but uses arrayIdentityFields to match array
+   * elements by an explicit key. E.g. {"REGION_LOCATIONS" -> "REGION"} means elements in
+   * REGION_LOCATIONS are matched by REGION, so reordering the array does not swap tokens. Elements
+   * with no match in the original (new elements) are kept as-is.
+   */
+  public static ObjectNode unmaskJsonObject(
+      ObjectNode originalData, ObjectNode data, Map<String, String> arrayIdentityFields) {
+    if (originalData == null) return data;
+    return unmaskObjectNode(originalData, data, arrayIdentityFields);
+  }
+
+  private static ObjectNode unmaskObjectNode(
+      ObjectNode original, ObjectNode incoming, Map<String, String> arrayIdentityFields) {
+    ObjectNode result = incoming.deepCopy();
+    for (Iterator<Entry<String, JsonNode>> it = result.fields(); it.hasNext(); ) {
+      Entry<String, JsonNode> entry = it.next();
+      String key = entry.getKey();
+      JsonNode incomingVal = entry.getValue();
+      JsonNode originalVal = original.get(key);
+
+      if (incomingVal.isObject() && originalVal != null && originalVal.isObject()) {
+        result.set(
+            key,
+            unmaskObjectNode(
+                (ObjectNode) originalVal, (ObjectNode) incomingVal, arrayIdentityFields));
+      } else if (incomingVal.isArray()) {
+        if (!arrayIdentityFields.containsKey(key)) {
+          continue;
+        }
+        result.set(
+            key,
+            unmaskArrayNode(
+                originalVal,
+                (ArrayNode) incomingVal,
+                arrayIdentityFields.get(key),
+                arrayIdentityFields));
+      } else if (isSensitiveField(key) && incomingVal.isTextual()) {
+        result.put(key, unmaskSensitiveValue(key, incomingVal.asText(), originalVal));
+      }
+    }
+    return result;
+  }
+
+  private static ArrayNode unmaskArrayNode(
+      JsonNode originalArray,
+      ArrayNode incomingArray,
+      String identityField,
+      Map<String, String> arrayIdentityFields) {
+    ArrayNode processed = Json.newArray();
+    for (JsonNode elem : incomingArray) {
+      if (elem.isObject()) {
+        ObjectNode matchingOriginal =
+            findMatchingArrayElement(originalArray, (ObjectNode) elem, identityField);
+        processed.add(
+            matchingOriginal != null
+                ? unmaskObjectNode(matchingOriginal, (ObjectNode) elem, arrayIdentityFields)
+                : elem);
+      } else {
+        processed.add(elem);
+      }
+    }
+    return processed;
+  }
+
+  // Returns the original array element whose identity field matches the incoming element,
+  // or null if no match is found (e.g. new element, or no identity field registered).
+  private static ObjectNode findMatchingArrayElement(
+      JsonNode originalArray, ObjectNode incomingElem, String identityField) {
+    if (originalArray == null || !originalArray.isArray() || identityField == null) return null;
+
+    for (JsonNode origElem : originalArray) {
+      if (!origElem.isObject()) continue;
+      if (identityFieldMatches((ObjectNode) origElem, incomingElem, identityField)) {
+        return (ObjectNode) origElem;
+      }
+    }
+    return null;
+  }
+
+  // True if both nodes have the same non-null text value for the given field.
+  private static boolean identityFieldMatches(ObjectNode a, ObjectNode b, String field) {
+    JsonNode aVal = a.get(field);
+    JsonNode bVal = b.get(field);
+    return aVal != null && bVal != null && aVal.isTextual() && aVal.asText().equals(bVal.asText());
+  }
+
+  private static String unmaskSensitiveValue(
+      String key, String incomingValue, JsonNode originalNode) {
+    if (!StringUtils.equals(incomingValue, getMaskedValue(key, incomingValue))) {
+      return incomingValue; // Not a ****-mask placeholder; store as-is.
+    }
+    if (originalNode != null && originalNode.isTextual()) {
+      String originalValue = originalNode.asText();
+      // Don't restore if the original is also a ****-mask placeholder (e.g. previously clobbered
+      // by a bug). In that case keep the incoming value so the user can supply a real token.
+      if (!StringUtils.equals(originalValue, getMaskedValue(key, originalValue))) {
+        return originalValue;
+      }
+    }
+    return incomingValue;
   }
 
   public static Map<String, String> encryptProviderConfig(
@@ -385,19 +481,50 @@ public class CommonUtils {
       String path,
       JsonNode data,
       Predicate<String> selector,
-      TriFunction<String, String, String, String> getter) {
+      TriFunction<String, String, String, String> getter,
+      Map<String, String> arrayIdentityFields) {
     if (data == null) {
       return Json.newObject();
     }
     ObjectNode result = data.deepCopy();
     for (Iterator<Entry<String, JsonNode>> it = result.fields(); it.hasNext(); ) {
       Entry<String, JsonNode> entry = it.next();
+      if (entry.getValue().isArray()) {
+        if (!arrayIdentityFields.containsKey(entry.getKey())) {
+          continue;
+        }
+        ArrayNode arrayNode = (ArrayNode) entry.getValue();
+        ArrayNode processed = Json.newArray();
+        for (int i = 0; i < arrayNode.size(); i++) {
+          JsonNode elem = arrayNode.get(i);
+          if (elem == null || elem.isNull() || elem.isMissingNode()) {
+            processed.addNull();
+          } else if (elem.isObject()) {
+            processed.add(
+                processData(
+                    path + "." + entry.getKey() + "[" + i + "]",
+                    elem,
+                    selector,
+                    getter,
+                    arrayIdentityFields));
+          } else {
+            processed.add(elem);
+          }
+        }
+        result.set(entry.getKey(), processed);
+        continue;
+      }
       if (entry.getValue().isObject()) {
         result.set(
             entry.getKey(),
-            processData(path + "." + entry.getKey(), entry.getValue(), selector, getter));
+            processData(
+                path + "." + entry.getKey(),
+                entry.getValue(),
+                selector,
+                getter,
+                arrayIdentityFields));
       }
-      if (selector.test(entry.getKey())) {
+      if (selector.test(entry.getKey()) && entry.getValue().isTextual()) {
         result.put(
             entry.getKey(), getter.apply(entry.getKey(), entry.getValue().textValue(), path));
       }
@@ -423,8 +550,12 @@ public class CommonUtils {
     return result;
   }
 
-  /** Recursively merges second JsonNode into first JsonNode. ArrayNodes will be overwritten. */
   public static void deepMerge(JsonNode node1, JsonNode node2) {
+    deepMerge(node1, node2, false);
+  }
+
+  /** Recursively merges second JsonNode into first JsonNode. ArrayNodes will be overwritten. */
+  public static void deepMerge(JsonNode node1, JsonNode node2, boolean skipWritingNulls) {
     if (node1 == null || node1.size() == 0 || node2 == null || node2.size() == 0) {
       return;
     }
@@ -438,7 +569,9 @@ public class CommonUtils {
       JsonNode oldVal = node1.get(fieldName);
       JsonNode newVal = node2.get(fieldName);
       if (oldVal == null || oldVal.isNull() || !oldVal.isObject() || !newVal.isObject()) {
-        ((ObjectNode) node1).replace(fieldName, newVal);
+        if (!skipWritingNulls || !newVal.isNull()) {
+          ((ObjectNode) node1).replace(fieldName, newVal);
+        }
       } else {
         CommonUtils.deepMerge(oldVal, newVal);
       }
@@ -854,14 +987,6 @@ public class CommonUtils {
     return randomLiveOrRemovedTServer;
   }
 
-  public static UniverseDefinitionTaskParams.ClusterType getClusterType(
-      Provider provider, Universe universe) {
-    String primaryUUIDStr = universe.getUniverseDetails().getPrimaryCluster().userIntent.provider;
-    return provider.getUuid().toString().equals(primaryUUIDStr)
-        ? UniverseDefinitionTaskParams.ClusterType.PRIMARY
-        : UniverseDefinitionTaskParams.ClusterType.ASYNC;
-  }
-
   private static NodeDetails getARandomLiveOrToBeRemovedTServer(Collection<NodeDetails> nodes) {
     List<NodeDetails> tserverLiveNodes =
         nodes.stream()
@@ -976,5 +1101,34 @@ public class CommonUtils {
       String pathToModify, String initialRoot, String finalRoot) {
     String regex = "^" + Pattern.quote(initialRoot);
     return pathToModify.replaceAll(regex, finalRoot);
+  }
+
+  public static Optional<String> getEnvBothCase(String var) {
+    String ret = System.getenv(var);
+    if (StringUtils.isBlank(ret)) {
+      ret = System.getenv(var.toUpperCase());
+      if (StringUtils.isBlank(ret)) {
+        ret = null;
+      }
+    }
+    return Optional.ofNullable(ret);
+  }
+
+  public static void logEnvVar(String name) {
+    Optional<String> value = getEnvBothCase(name);
+    if (value.isEmpty()) {
+      log.info("Environment variable '{}' is not set", name);
+    } else {
+      log.info("Environment variable '{}' is set to '{}'", name, value.get());
+    }
+  }
+
+  public static void logSystemProperty(String name) {
+    String value = System.getProperty(name);
+    if (value == null) {
+      log.info("System property '{}' is not set", name);
+    } else {
+      log.info("System property '{}' is set to '{}'", name, value);
+    }
   }
 }

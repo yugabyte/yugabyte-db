@@ -11,6 +11,7 @@ import logging
 import json
 import os
 from ybops.utils.remote_shell import RemoteShell
+from ybops.common.exceptions import YBOpsExitCodeException
 
 warnings.filterwarnings("ignore")
 
@@ -124,7 +125,7 @@ def download_logs_ssh(args, client):
     # name is irrelevant as long as it doesn't already exist
     tar_file_name = args.node_name + "-support_package.tar.gz"
 
-    cmd = ['tar', '-czvf', tar_file_name, '-h', '-C',
+    cmd = ['tar', '--warning=no-file-changed', '-czvf', tar_file_name, '-h', '-C',
            args.yb_home_dir, 'tserver/logs/yb-tserver.INFO']
     if args.is_master:
         cmd += ['-h', '-C', args.yb_home_dir, 'master/logs/yb-master.INFO']
@@ -136,7 +137,7 @@ def download_logs_ssh(args, client):
 
 
 def download_logs_k8s(args, client):
-    cmd = ['tar', '-czvf', '-', '-h', '-C',
+    cmd = ['tar', '--warning=no-file-changed', '-czvf', '-', '-h', '-C',
            args.yb_home_dir]
     if args.is_master:
         cmd += ['master/logs/yb-master.INFO']
@@ -428,6 +429,8 @@ def main():
         try:
             client = RemoteShell(ssh_options)
         except Exception as e:
+            if isinstance(e, YBOpsExitCodeException):
+                sys.exit(e.exitcode())
             sys.exit("Failed to establish SSH connection to {}:{} - {}"
                      .format(args.ip, args.port, str(e)))
     elif args.node_type == 'rpc':
@@ -444,6 +447,8 @@ def main():
         try:
             client = RemoteShell(rpc_options)
         except Exception as e:
+            if isinstance(e, YBOpsExitCodeException):
+                sys.exit(e.exitcode())
             sys.exit("Failed to establish RPC connection to {}:{} - {}"
                      .format(args.node_agent_ip, args.node_agent_port, str(e)))
     else:

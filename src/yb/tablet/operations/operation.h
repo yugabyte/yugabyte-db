@@ -59,8 +59,7 @@ namespace tablet {
 
 using OperationCompletionCallback = std::function<void(const Status&)>;
 
-YB_DEFINE_ENUM(
-    OperationType,
+YB_DEFINE_ENUM(OperationType,
     ((kWrite, consensus::WRITE_OP))
     ((kChangeMetadata, consensus::CHANGE_METADATA_OP))
     ((kUpdateTransaction, consensus::UPDATE_TRANSACTION_OP))
@@ -220,6 +219,9 @@ class Operation {
   // committed_op_id - current committed operation id.
   Status AddedToLeader(const OpId& op_id, const OpId& committed_op_id);
   Status AddedToFollower();
+
+  // Called once the leader's consensus queue has accepted this op.
+  virtual void SubmittedToLeaderQueue() {}
 
   void Aborted(bool was_pending);
   void Replicated(WasPending was_pending);

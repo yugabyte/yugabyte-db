@@ -33,13 +33,14 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/raft_consensus.h"
 
-#include "yb/master/master_fwd.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/master.h"
 #include "yb/master/master_admin.pb.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_descriptor.h"
@@ -55,6 +56,7 @@
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status_format.h"
 #include "yb/util/unique_lock.h"
 
 using std::future;
@@ -214,7 +216,8 @@ AreNodesSafeToTakeDownDriver::FindTserversToContact(ReplicaCountMap* required_re
 
       // Get table replication factor, if we have not already done so.
       if (!min_replicas.has_value()) {
-        auto rf = VERIFY_RESULT(catalog_manager_->GetTableReplicationFactor(table));
+        auto rf = CatalogManagerUtil::GetReplicationFactor(
+            VERIFY_RESULT(catalog_manager_->GetTableReplicationInfoNoDefault(table)));
         min_replicas = rf / 2 + 1;
       }
       (*required_replicas)[tablet->id()] = *min_replicas;
@@ -305,10 +308,17 @@ Status AreNodesSafeToTakeDownDriver::StartCallAndWait(CoarseTimePoint deadline) 
   auto [finished, tablets_missing_replicas] = (cb_handler->WaitForResponses(deadline));
   if (!tablets_missing_replicas.empty()) {
     auto& [tablet_id, missing_replicas] = *tablets_missing_replicas.begin();
-    std::string msg = finished ? "" : "Timed out waiting for responses. ";
+    const char* replica_word = (missing_replicas == 1) ? "replica" : "replicas";
+
+    std::string msg = finished
+        ? ""
+        : "Some nodes did not respond (they may already be down) and were treated as "
+          "unavailable. ";
+
     msg += Format(
-        "$0 tablet(s) would be under-replicated. Example: tablet $1 would be under-replicated by "
-        "$2 replicas", tablets_missing_replicas.size(), tablet_id, missing_replicas);
+        "Taking down the requested node(s) is unsafe because $0 tablet(s) would not have enough "
+        "replicas for quorum. For example, tablet $1 will have $2 fewer $3 than needed for quorum.",
+        tablets_missing_replicas.size(), tablet_id, missing_replicas, replica_word);
     return STATUS(IllegalState, msg);
   }
 

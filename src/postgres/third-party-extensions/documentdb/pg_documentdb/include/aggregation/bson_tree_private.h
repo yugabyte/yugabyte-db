@@ -83,7 +83,8 @@ ThrowErrorOnIntermediateMismatch(BsonPathNode * node, const StringView * relativ
 {
 	int errorCode = ERRCODE_DOCUMENTDB_LOCATION31250;
 	StringInfo errorMessageStr = makeStringInfo();
-	appendStringInfo(errorMessageStr, "Path collision at %.*s", relativePath->length,
+	appendStringInfo(errorMessageStr, "Collision detected in specified path %.*s",
+					 relativePath->length,
 					 relativePath->string);
 
 	if (node->field.length < relativePath->length)

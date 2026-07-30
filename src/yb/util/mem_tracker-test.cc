@@ -40,10 +40,13 @@
 
 #include "yb/gutil/strings/human_readable.h"
 
+#include "yb/tserver/server_main_util.h"
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tcmalloc_util.h"
@@ -590,6 +593,26 @@ TEST(MemTrackerTest, DISABLED_Overhead) {
     LOG(INFO) << "Elapsed: " << AsString(s.elapsed());
     LOG(INFO) << "Nanos per iteration: " << s.elapsed().wall_millis() * 1000000 / num_iters;
   }
+}
+
+TEST(MemTrackerTest, ValidateMemoryLimitToRamRatio_ValidValues) {
+  EXPECT_TRUE(internal::ValidateMemoryLimitToRamRatio("test_flag", 0.1));
+  EXPECT_TRUE(internal::ValidateMemoryLimitToRamRatio("test_flag", 0.5));
+  EXPECT_TRUE(internal::ValidateMemoryLimitToRamRatio("test_flag", 1.0));
+  EXPECT_TRUE(internal::ValidateMemoryLimitToRamRatio("test_flag", USE_RECOMMENDED_MEMORY_VALUE));
+}
+
+TEST(MemTrackerTest, ValidateMemoryLimitToRamRatio_InvalidValues) {
+  EXPECT_FALSE(internal::ValidateMemoryLimitToRamRatio("test_flag", 0.0));  // Boundary: not > 0.
+  EXPECT_FALSE(internal::ValidateMemoryLimitToRamRatio("test_flag", -0.1)); // Negative.
+  EXPECT_FALSE(internal::ValidateMemoryLimitToRamRatio("test_flag", 1.1));  // Above 1.
+  EXPECT_FALSE(internal::ValidateMemoryLimitToRamRatio("test_flag", 2.0));  // Way above.
+}
+
+TEST(MemTrackerTest, ValidateMemoryLimitToRamRatio_EdgeCases) {
+  // Test near boundaries.
+  EXPECT_TRUE(internal::ValidateMemoryLimitToRamRatio("test_flag", 0.0001));  // Just above 0.
+  EXPECT_FALSE(internal::ValidateMemoryLimitToRamRatio("test_flag", 1.0001)); // Just above 1.
 }
 
 } // namespace yb

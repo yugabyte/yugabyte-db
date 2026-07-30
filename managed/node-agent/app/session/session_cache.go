@@ -131,20 +131,15 @@ func (cache *SessionCache) startWatcher() {
 	}
 	go func() {
 		for {
-			timer := createTimerFn()
+			cache.timer = createTimerFn()
 			if cache.timer == nil {
 				select {
 				case <-cache.waitChan:
-					if timer != nil {
-						timer.Stop()
-					}
 				}
 			} else {
 				select {
 				case <-cache.waitChan:
-					if timer != nil {
-						timer.Stop()
-					}
+					cache.timer.Stop()
 				case <-cache.timer.C:
 					expireFn()
 				}
@@ -209,6 +204,7 @@ func (cache *SessionCache) Put(ctx context.Context, entry *SessionEntry) {
 		top := cache.entryQueue.Peek()
 		if cache.entryQueue.Len() >= cache.capacity {
 			entry.index = top.index
+			delete(cache.entryMap, top.ID)
 			*top = *entry
 			cache.entryMap[entry.ID] = entry
 			heap.Fix(cache.entryQueue, entry.index)

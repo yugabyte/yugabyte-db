@@ -12,32 +12,33 @@ jobs:
     release_artifact: false
 
   - os: alma8
-    compiler: gcc12
+    compiler: gcc15
     build_type: fastdebug
-    test_opts: YB_TEST_YB_CONTROLLER=0
+    test_opts: YB_TEST_YB_CONTROLLER=0 YB_ENABLE_YSQL_CONN_MGR_IN_JAVA_TESTS=true
     release_artifact: false
 
   - os: alma8
     compiler: clang21
     build_type: release
-    build_opts: YB_LINKING_TYPE=full-lto
+    build_opts: YB_LINKING_TYPE=full-lto YB_PGO_BOLT=1
     release_artifact: true
 
   - os: alma8
     compiler: clang21
     build_type: release
     architecture: aarch64
+    build_opts: YB_LINKING_TYPE=full-lto YB_PGO_BOLT=1
     release_artifact: true
 
   - os: mac14
-    compiler: clang
+    compiler: clang21
     build_type: release
     architecture: arm64
     test_opts: YB_TEST_YB_CONTROLLER=0
     release_artifact: true
 
   - os: mac14
-    compiler: clang
+    compiler: clang21
     build_type: release
     architecture: x86_64
     test_opts: YB_COMPILE_ONLY=1

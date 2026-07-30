@@ -11,6 +11,7 @@
       "node_name":"host-n3",
       "node_address":"10.0.0.3",
       "node_region": "test-region",
+      "node_az": "az-3",
       "node_cluster_type": "PRIMARY"
     }
   },
@@ -26,6 +27,7 @@
       "node_name":"host-n2",
       "node_address":"10.0.0.2",
       "node_region": "test-region",
+      "node_az": "az-2",
       "node_cluster_type": "PRIMARY"
     }
   },
@@ -41,6 +43,7 @@
       "node_name":"host-n1",
       "node_address":"10.0.0.1",
       "node_region": "test-region",
+      "node_az": "az-1",
       "node_cluster_type": "PRIMARY"
     }
   }

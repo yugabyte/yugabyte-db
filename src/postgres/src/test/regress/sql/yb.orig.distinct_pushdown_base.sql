@@ -1,6 +1,9 @@
 \getenv abs_srcdir PG_ABS_SRCDIR
-\set filename :abs_srcdir '/yb_commands/explainrun_distinct_pushdown.sql'
+\set filename :abs_srcdir '/yb_commands/parameterized_query.sql'
 \i :filename
+\set P1 ':explain'
+\set P2
+\set explain 'EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)'
 
 -- Split at 1, ... to ensure that the value r1 = 1 is present in more than one tablet.
 -- See #18101.
@@ -14,31 +17,31 @@ SET yb_enable_distinct_pushdown TO off;
 
 -- Do not pick Distinct Index Scan since the flag is off.
 -- XXX: Results may not be consistent (no explicit ordering).
-\set query 'SELECT DISTINCT r1 FROM t'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM t;'
+\i :run_query
 
 -- Turn the flag back on.
 SET yb_enable_distinct_pushdown TO on;
 
 -- Pick Distinct Index Scan.
-\set query 'SELECT DISTINCT r1 FROM t'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM t;'
+\i :run_query
 
 -- Test a larger prefix.
-\set query 'SELECT DISTINCT r1, r2 FROM t'
-:explain1run1
+\set query ':P SELECT DISTINCT r1, r2 FROM t;'
+\i :run_query
 
 -- Even though the index scan does not return distinct values of r2, using
 --   a Distinct Index Scan can still help retrieve fewer rows from storage.
 -- Observe that this behavior deviates from ORDER BY where partial sorts
 --   are not useful but partial DISTINCT scans are still worth it.
-\set query 'SELECT DISTINCT r2 FROM t'
-:explain1run1
+\set query ':P SELECT DISTINCT r2 FROM t;'
+\i :run_query
 
 -- Limit clauses.
 -- Limit goes after DISTINCT (this includes the Unique node).
-\set query 'SELECT DISTINCT r1 FROM t LIMIT 2'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM t LIMIT 2;'
+\i :run_query
 
 -- Now, test other data types.
 
@@ -46,8 +49,8 @@ SET yb_enable_distinct_pushdown TO on;
 CREATE TABLE tr(r1 REAL, r2 REAL, PRIMARY KEY(r1 ASC, r2 ASC));
 INSERT INTO tr (SELECT 0.5, i FROM GENERATE_SERIES(1, 1000) AS i);
 
-\set query 'SELECT DISTINCT r1 FROM tr'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM tr;'
+\i :run_query
 
 DROP TABLE tr;
 
@@ -55,8 +58,8 @@ DROP TABLE tr;
 CREATE TABLE ts(r1 TEXT, r2 TEXT, v TEXT, PRIMARY KEY(r1 ASC, r2 ASC));
 INSERT INTO ts (SELECT 'uniq', i::TEXT, 'value' FROM GENERATE_SERIES(1, 1000) AS i);
 
-\set query 'SELECT DISTINCT r1 FROM ts'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM ts;'
+\i :run_query
 
 DROP TABLE ts;
 
@@ -69,8 +72,8 @@ CREATE INDEX NONCONCURRENTLY igin ON vectors USING ybgin (v);
 
 -- Avoid fetching primary key and fetch secondary key instead since
 --   there is already an LSM index on the primary key and LSM supports distinct index scan.
-\set query 'SELECT DISTINCT v FROM vectors'
-:explain1run1
+\set query ':P SELECT DISTINCT v FROM vectors;'
+\i :run_query
 
 DROP INDEX igin;
 DROP TABLE vectors;
@@ -78,22 +81,22 @@ DROP TABLE vectors;
 -- Test distinct index scans in scenarios where user provides explicit ordering.
 
 -- Start off easy with forward and backward scans.
-\set query 'SELECT DISTINCT r1 FROM t ORDER BY r1'
-:explain1run1
-\set query 'SELECT DISTINCT r1 FROM t ORDER BY r1 DESC'
-:explain1run1
+\set query ':P SELECT DISTINCT r1 FROM t ORDER BY r1;'
+\i :run_query
+\set query ':P SELECT DISTINCT r1 FROM t ORDER BY r1 DESC;'
+\i :run_query
 
 -- Now, try a larger prefix.
-\set query 'SELECT DISTINCT r1, r2 FROM t ORDER BY r1, r2'
-:explain1run1
-\set query 'SELECT DISTINCT r1, r2 FROM t ORDER BY r1 DESC, r2 DESC'
-:explain1run1
+\set query ':P SELECT DISTINCT r1, r2 FROM t ORDER BY r1, r2;'
+\i :run_query
+\set query ':P SELECT DISTINCT r1, r2 FROM t ORDER BY r1 DESC, r2 DESC;'
+\i :run_query
 
 -- Now, we try only a subset of the prefix.
 -- Picking a Distinct Index Scan for such cases can still be useful since
 --   the storage layer retrieves and returns fewer rows overall.
-\set query 'SELECT DISTINCT r1, r2 FROM t ORDER BY r2'
-:explain1run1
+\set query ':P SELECT DISTINCT r1, r2 FROM t ORDER BY r2;'
+\i :run_query
 
 -- m in tm refers to mixed ordering.
 -- Sort order does not matter when distinct-ifying the columns.
@@ -103,24 +106,24 @@ CREATE TABLE tm(r1 INT, r2 INT, r3 INT, v INT, PRIMARY KEY(r1 DESC, r2 ASC, r3 A
 INSERT INTO tm (SELECT i%3, 2-i%3, i, i/3 FROM GENERATE_SERIES(1, 1000) AS i);
 
 -- Test both forward and backwards scans.
-\set query 'SELECT DISTINCT r1, r2 FROM tm'
-:explain1run1
+\set query ':P SELECT DISTINCT r1, r2 FROM tm;'
+\i :run_query
 -- This is a backwards scan because of how the keys are ordered in the primary index.
-\set query 'SELECT DISTINCT r1, r2 FROM tm ORDER BY r1, r2 DESC'
-:explain1run1
+\set query ':P SELECT DISTINCT r1, r2 FROM tm ORDER BY r1, r2 DESC;'
+\i :run_query
 
 DROP TABLE tm;
 
 -- Aggregates.
 -- Unless the aggregate is pushed down into distinct index scan,
 -- cannot currently push down DISTINCT.
-\set query 'SELECT DISTINCT r1, COUNT(r1) FROM t GROUP BY r1'
-:explain1run1
+\set query ':P SELECT DISTINCT r1, COUNT(r1) FROM t GROUP BY r1;'
+\i :run_query
 
 -- Window Funcs.
 -- Same reasoning applies to window funcs as well.
-\set query 'SELECT DISTINCT r1, COUNT(r1) OVER (PARTITION BY r1) FROM t'
-:explain1run1
+\set query ':P SELECT DISTINCT r1, COUNT(r1) OVER (PARTITION BY r1) FROM t;'
+\i :run_query
 
 SELECT DISTINCT r1 FROM t WHERE r1 = 1 AND r2 IN (0, 1);
 

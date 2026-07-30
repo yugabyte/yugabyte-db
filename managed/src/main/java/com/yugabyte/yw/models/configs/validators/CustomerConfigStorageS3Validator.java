@@ -121,7 +121,11 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageValid
         CloudLocationInfo configLocationInfo =
             awsUtil.getCloudLocationInfo(region, s3Data, s3UriPath);
         awsUtil.validateOnBucket(
-            client, configLocationInfo.bucket, configLocationInfo.cloudPath, permissions);
+            client,
+            configLocationInfo.bucket,
+            configLocationInfo.cloudPath,
+            permissions,
+            s3Data.immutableStorage);
       } catch (S3Exception s3Exception) {
         String exceptionMsg = s3Exception.getMessage();
         if (exceptionMsg.contains("Denied") || exceptionMsg.contains("bucket"))

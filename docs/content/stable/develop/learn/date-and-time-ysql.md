@@ -23,7 +23,7 @@ YugabyteDB has extensive date and time capabilities. Once understood, the rich f
 
 For date and time data types, see [Data types](/stable/api/ysql/datatypes/).
 
-The examples use the [Retail Analytics sample dataset](../../../sample-data/retail-analytics/).
+The examples use the [Retail Analytics sample dataset](/stable/develop/sample-data/retail-analytics/).
 
 ## Special values
 
@@ -335,7 +335,7 @@ For a detailed explanation of how time is obtained, refer to the blog post descr
 
 A simpler explanation is that the [time](../../../architecture/docdb-replication/raft#replication-of-the-write-operation) is determined by the [tablet leader](../../../architecture/key-concepts/#tablet-leader) of the table and this is the time used by all followers of the leader. Therefore the UTC timestamp of the underlying server can differ from the current timestamp that is used for a transaction on a particular table.
 
-The following example assumes that you have created and connected to the `yb_demo` database with the [Retail Analytics sample dataset](../../../sample-data/retail-analytics/):
+The following example assumes that you have created and connected to the `yb_demo` database with the [Retail Analytics sample dataset](/stable/develop/sample-data/retail-analytics/):
 
 ```sql
 yb_demo=# SELECT to_char(max(orders.created_at), 'DD-MON-YYYY HH24:MI') AS "Last Order Date" from orders;
@@ -662,7 +662,7 @@ The `EXTRACT` command is preferred to `DATE_PART`.
 
 ## Manipulating using truncation
 
-The `DATE_TRUNC` command is used to 'floor' the timestamp to a particular unit. The example assumes that you have created and connected to the `yb_demo` database with the [Retail Analytics sample dataset](../../../sample-data/retail-analytics/).
+The `DATE_TRUNC` command is used to 'floor' the timestamp to a particular unit. The example assumes that you have created and connected to the `yb_demo` database with the [Retail Analytics sample dataset](/stable/develop/sample-data/retail-analytics/).
 
 ```sql
 yb_demo=# SELECT date_trunc('hour', current_timestamp);

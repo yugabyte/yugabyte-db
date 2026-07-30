@@ -126,6 +126,12 @@ class CQLProcessor : public ql::QLProcessor {
                                    static_cast<const ql::QueryRequest&>(*request_).query()) : "";
   }
 
+  // Set in ProcessRequest(BatchRequest) via CQLStatement::GetBatchQueryId before ExecuteAsync;
+  // stored on the processor so SendResponse (stat statements) can read it after async completion.
+  ql::CQLMessage::QueryId GetBatchQueryId() const {
+    return request_ && request_->opcode() == ql::CQLMessage::Opcode::BATCH ? batch_query_id_ : "";
+  }
+
   const std::unordered_map<std::string, std::vector<std::string>> kSupportedOptions = {
       {ql::CQLMessage::kCQLVersionOption,
           {"3.0.0" /* minimum */, "3.4.2" /* current */}},
@@ -156,6 +162,9 @@ class CQLProcessor : public ql::QLProcessor {
   // Parse and execute begin times.
   MonoTime parse_begin_;
   MonoTime execute_begin_;
+
+  // Only set and read when the current request is BATCH (ql::CQLMessage::Opcode::BATCH).
+  ql::CQLMessage::QueryId batch_query_id_;
 
   // Statement executed callback.
   ql::StatementExecutedCallback statement_executed_cb_;

@@ -49,6 +49,7 @@ struct RocksDBPriorityThreadPoolMetrics;
 namespace yb {
 
 class AutoFlagsManagerBase;
+class Cgroup;
 class Env;
 class MemTracker;
 class MetricRegistry;
@@ -85,7 +86,8 @@ struct TabletInitData {
   std::shared_future<client::YBClient*> client_future;
   scoped_refptr<server::Clock> clock;
   std::shared_ptr<MemTracker> parent_mem_tracker;
-  std::shared_ptr<MemTracker> block_based_table_mem_tracker;
+  std::shared_ptr<MemTracker> parent_block_based_table_mem_tracker;
+  std::shared_ptr<MemTracker> parent_block_based_table_builder_mem_tracker;
   std::shared_ptr<MemTracker> read_wal_mem_tracker;
   MetricRegistry* metric_registry = nullptr;
   log::LogAnchorRegistryPtr log_anchor_registry;
@@ -103,6 +105,9 @@ struct TabletInitData {
   TransactionManagerProvider transaction_manager_provider;
   docdb::LocalWaitingTxnRegistry* waiting_txn_registry = nullptr;
   ThreadPool* wait_queue_pool = nullptr;
+  // Per-DB cgroup for wait-queue tasks. Set at construction time when QoS is active and the
+  // tablet belongs to a user database; null otherwise.
+  Cgroup* wait_queue_cgroup = nullptr;
   AutoFlagsManagerBase* auto_flags_manager = nullptr;
   ThreadPool* full_compaction_pool;
   ThreadPool* admin_triggered_compaction_pool;

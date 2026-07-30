@@ -50,10 +50,12 @@ class CDCSDKVirtualWAL {
       {Status::Code::kNotFound, "Not leader for"},
       {Status::Code::kLeaderNotReadyToServe, "Not ready to serve"},
       {Status::Code::kNotFound, "Footer for segment"},
-      {Status::Code::kNotFound, "Log index cache entry for op index"}};
+      {Status::Code::kNotFound, "Log index cache entry for op index"},
+      {Status::Code::kIllegalState, "LogReader is not initialized"}};
 
   Status InitVirtualWALInternal(
-      std::unordered_set<TableId> table_list, const HostPort hostport,
+      std::unordered_set<TableId> table_list,
+      const std::unordered_map<uint32_t, uint32_t>& oid_to_relfilenode, const HostPort hostport,
       const CoarseTimePoint deadline, std::unique_ptr<ReplicationSlotHashRange> slot_hash_range,
       const std::unordered_set<uint32_t>& publications_list, bool pub_all_tables);
 
@@ -67,7 +69,8 @@ class CDCSDKVirtualWAL {
       const bool use_vwal_safe_time = false);
 
   Status UpdatePublicationTableListInternal(
-      const std::unordered_set<TableId>& new_tables, const HostPort hostport,
+      const std::unordered_set<TableId>& new_tables,
+      const std::unordered_map<uint32_t, uint32_t>& new_oid_to_relfilenode, const HostPort hostport,
       const CoarseTimePoint deadline);
 
   xrepl::StreamId GetStreamId();
@@ -212,11 +215,26 @@ class CDCSDKVirtualWAL {
 
   Status UpdateRestartTimeIfRequired();
 
-  bool DeterminePubRefreshFromMasterRecord(const RecordInfo& record_info);
+  bool DeterminePubRefreshFromMasterRecord(
+      const RecordInfo& record_info, bool* explicit_alter_publication_detected);
+
+  bool IsCatalogTableEligibleForCDC(const TableId& table_id) const;
 
   bool ShouldPopulateExplicitCheckpoint();
 
+  bool CheckForTableRewriteOrDrop(std::shared_ptr<CDCSDKProtoRecordPB> record);
+
+  void UpdateOidToRelfilenodeMap(
+      const std::unordered_map<uint32_t, uint32_t>& new_oid_to_relfilenode);
+
+  std::shared_ptr<CDCServiceProxy> GetCDCServiceProxy(HostPort hostport);
+
   CDCServiceImpl* cdc_service_;
+
+  // The proxy to the CDC service. This is used to call GetChanges locally.
+  // Only applicable when cdc_enable_local_get_changes is enabled.
+  // This is initialized when the first call to GetCDCServiceProxy is made.
+  std::shared_ptr<CDCServiceProxy> local_cdc_service_proxy_{nullptr};
 
   xrepl::StreamId stream_id_;
 
@@ -347,6 +365,12 @@ class CDCSDKVirtualWAL {
   // polling.
   TableId pg_publication_rel_table_id_;
 
+  // The table ID of pg_replication_origin catalog.
+  TableId pg_replication_origin_table_id_;
+
+  // The table ID of pg_publication catalog table for the database on which virtual WAL is polling.
+  TableId pg_publication_table_id_;
+
   // The list of publication OIDs that are being polled by the virtual WAL.
   std::unordered_set<uint32_t> publications_list_;
 
@@ -358,6 +382,14 @@ class CDCSDKVirtualWAL {
 
   // The last slot restart time which was updated in the cdc_state table.
   HybridTime last_persisted_record_id_commit_time_;
+
+  // Maintains the mapping between table's PG OID and relfilenode. This is used in detecting DDLs
+  // that cause table rewrites.
+  std::unordered_map<uint32_t, uint32_t> oid_to_relfilenode_;
+
+  // This decides whether to use pub refresh mechanism or to the mechanism to poll the sys catalog
+  // tablet for determining changes to the publication.
+  bool detect_publication_changes_implicitly_ = false;
 };
 
 }  // namespace cdc

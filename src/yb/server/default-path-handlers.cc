@@ -76,7 +76,6 @@
 #include "yb/rpc/secure.h"
 #include "yb/rpc/secure_stream.h"
 
-#include "yb/server/html_print_helper.h"
 #include "yb/server/pprof-path-handlers.h"
 #include "yb/server/server_base.h"
 #include "yb/server/webserver.h"
@@ -85,19 +84,20 @@
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/format.h"
 #include "yb/util/histogram.pb.h"
+#include "yb/util/html_print_helper.h"
+#include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
-#include "yb/util/jsonwriter.h"
+#include "yb/util/path_util.h"
 #include "yb/util/perf_util.h"
 #include "yb/util/result.h"
-#include "yb/util/status_log.h"
-#include "yb/util/stack_trace_tracker.h"
-#include "yb/util/string_case.h"
-#include "yb/util/path_util.h"
-#include "yb/util/subprocess.h"
 #include "yb/util/slice.h"
+#include "yb/util/stack_trace_tracker.h"
+#include "yb/util/status_log.h"
+#include "yb/util/string_case.h"
+#include "yb/util/subprocess.h"
 #include "yb/util/tostring.h"
 #include "yb/util/url-coding.h"
 
@@ -362,7 +362,7 @@ static void HtmlOutputMemTrackers(const std::vector<MemTrackerData>& trackers,
                                   int max_depth,
                                   bool use_full_path) {
   *output << "<h1>Memory usage by subsystem</h1>\n";
-  *output << "<table class='table table-striped' id='memtrackerstable'>\n";
+  *output << "<table class='table table-striped collapsable-table'>\n";
   *output << "  <tr><th>Id</th><th>Current Consumption</th>"
       "<th>Peak consumption</th><th>Limit</th></tr>\n";
   for (auto it = trackers.begin(); it != trackers.end(); it++) {
@@ -481,7 +481,7 @@ static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
                                       Webserver::WebResponse* resp) {
   MetricPrometheusOptions opts;
   opts.export_help_and_type = ExportHelpAndType(FLAGS_export_help_and_type_in_prometheus_metrics);
-  opts.max_metric_entries = GetAtomicFlag(&FLAGS_max_prometheus_metric_entries);
+  opts.max_metric_entries = FLAGS_max_prometheus_metric_entries;
   ParseRequestOptions(req, &opts);
 
   std::stringstream* output = &resp->output;
@@ -534,7 +534,7 @@ static void StackTraceTrackerHandler(
     WeightFormatter format_weight = {}) {
   std::stringstream& output = resp->output;
 
-  if (!GetAtomicFlag(&FLAGS_track_stack_traces)) {
+  if (!FLAGS_track_stack_traces) {
     output << "track_stack_traces must be turned on to use this page.";
     return;
   }

@@ -441,6 +441,17 @@ struct PlannerInfo
 
 	/* YB: parallel list of relids of 'prohibited joins */
 	List	   *ybProhibitedJoins;
+
+	/*
+	 * YB: Sparse array from RT index to tablet server UUID for the per-tserver
+	 * children of a federated YugabyteDB foreign table (global views).  Indexed
+	 * by rti and parallel to simple_rte_array; entries are NULL for any rti
+	 * that is not a per-tserver federated child.  Lazily allocated on the
+	 * first call to YbAddFederatedPartitionTserverUuid() and grown by
+	 * expand_planner_arrays(), so non-federated queries never pay for it.
+	 * NULL when the query has no federated foreign tables.
+	 */
+	const char **yb_tserver_uuids;
 };
 
 
@@ -861,6 +872,16 @@ typedef struct RelOptInfo
 	List	   *ybHintsOrigIndexlist;
 
 	PlannerInfo *ybRoot;
+
+	char	   *ybRelationName;
+
+	/*
+	 * YB: Path picked by yb_test_force_parallel for set_cheapest() to promote
+	 * over cheapest_total_path.  Tracked by add_path() as the cheapest
+	 * unparameterized Gather/GatherMerge-containing path, preferring subtrees
+	 * with a Parallel Hash Join.  NULL when no such path was created.
+	 */
+	struct Path *yb_forced_gather_path;
 } RelOptInfo;
 
 /*
@@ -982,6 +1003,8 @@ struct IndexOptInfo
 	bool		yb_amiscopartitioned;	/* is AM for YB a copartitioned index? */
 	/* Used for YB base scans cost model */
 	int32_t		yb_cached_ybctid_size;
+	char	   *ybIndexName;
+	int			yb_num_decoded_pk_cols;	/* number of decoded pk columns in index */
 };
 
 /*
@@ -1271,6 +1294,7 @@ typedef struct YbPlanInfo
 	double		estimated_num_nexts_prevs;
 	double		estimated_num_seeks;
 	int			estimated_docdb_result_width;
+	int			estimated_ybctid_width;
 	double		estimated_num_table_result_pages;
 	double		estimated_num_index_result_pages;
 	double		estimated_num_bmscan_nexts_prevs;
@@ -1281,16 +1305,16 @@ typedef struct YbPlanInfo
 /*
  * YB: info used by YbIndexPathInfo.
  *
- * Holds info used for scalar array operation merge index [only] scans.
+ * Holds info used for merge scans.
  */
-typedef struct YbSaopMergeSaopColInfo
+typedef struct YbMergeScanSaopColInfo
 {
 	NodeTag		type;
 	ScalarArrayOpExpr *saop;
 	int			indexcol;
 	int			num_elems;
 	bool		derived;
-} YbSaopMergeSaopColInfo;
+} YbMergeScanSaopColInfo;
 
 /*
  * Info propagated for YugabyteDB, for index scans.
@@ -1302,7 +1326,7 @@ typedef struct YbIndexPathInfo
 {
 	int			yb_distinct_prefixlen;
 	YbLockMechanism yb_lock_mechanism;	/* what lock as part of a scan */
-	List	   *saop_merge_saop_cols;	/* List of YbSaopMergeSaopColInfo */
+	List	   *merge_scan_saop_cols;	/* List of YbMergeScanSaopColInfo */
 } YbIndexPathInfo;
 
 

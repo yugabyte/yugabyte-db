@@ -31,13 +31,16 @@
 //
 #pragma once
 
+#include <mutex>
 #include <string>
 #include <vector>
-#include <mutex>
 
 #include "yb/fs/fs_manager.h"
+
+#include "yb/server/server_fwd.h"
 #include "yb/server/webserver_options.h"
 #include "yb/server/rpc_server.h"
+
 #include "yb/util/net/net_util.h"
 
 namespace yb {
@@ -46,9 +49,6 @@ class CloudInfoPB;
 class Env;
 
 namespace server {
-
-typedef std::vector<std::vector<HostPort>> MasterAddresses;
-typedef std::shared_ptr<const MasterAddresses> MasterAddressesPtr;
 
 // Options common to both types of servers.
 // The subclass constructor should fill these in with defaults from

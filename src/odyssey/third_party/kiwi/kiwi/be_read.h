@@ -11,6 +11,7 @@ typedef struct kiwi_be_startup kiwi_be_startup_t;
 
 struct kiwi_be_startup {
 	int is_ssl_request;
+	int yb_ssl_established;
 	int unsupported_request;
 	int is_cancel;
 	kiwi_key_t key;
@@ -23,11 +24,12 @@ static inline void kiwi_be_startup_init(kiwi_be_startup_t *su)
 {
 	su->is_cancel = 0;
 	su->is_ssl_request = 0;
+	su->yb_ssl_established = 0;
 	su->unsupported_request = 0;
 	kiwi_key_init(&su->key);
-	kiwi_var_init(&su->user, NULL, 0, false);
-	kiwi_var_init(&su->database, NULL, 0, false);
-	kiwi_var_init(&su->replication, NULL, 0, false);
+	kiwi_var_init(&su->user, NULL, 0);
+	kiwi_var_init(&su->database, NULL, 0);
+	kiwi_var_init(&su->replication, NULL, 0);
 }
 
 /*
@@ -47,8 +49,7 @@ static inline void yb_kiwi_be_truncate_and_set_var(kiwi_var_t *var, char *value,
 }
 
 static inline int kiwi_be_read_options(kiwi_be_startup_t *su, char *pos,
-				       uint32_t pos_size, kiwi_vars_t *vars,
-				       bool parse_options)
+				       uint32_t pos_size, kiwi_vars_t *vars)
 {
 	for (;;) {
 		/* name */
@@ -91,13 +92,9 @@ static inline int kiwi_be_read_options(kiwi_be_startup_t *su, char *pos,
 			kiwi_var_set(&su->replication, KIWI_VAR_UNDEF, value,
 				     value_size);
 #endif
-		else if (parse_options && name_size == 8 &&
-			 !memcmp(name, "options", 8))
-			kiwi_parse_options_and_update_vars(vars, value,
-							   value_size);
 		else
 			kiwi_vars_update(vars, name, name_size, value,
-					 value_size, parse_options);
+					 value_size);
 	}
 
 	/* user is mandatory */
@@ -124,8 +121,7 @@ static inline int kiwi_be_read_options(kiwi_be_startup_t *su, char *pos,
 
 KIWI_API static inline int kiwi_be_read_startup(char *data, uint32_t size,
 						kiwi_be_startup_t *su,
-						kiwi_vars_t *vars,
-						bool parse_options)
+						kiwi_vars_t *vars)
 {
 	uint32_t pos_size = size;
 	char *pos = data;
@@ -143,8 +139,7 @@ KIWI_API static inline int kiwi_be_read_startup(char *data, uint32_t size,
 	/* StartupMessage */
 	case PG_PROTOCOL_LATEST:
 		su->is_cancel = 0;
-		rc = kiwi_be_read_options(su, pos, pos_size, vars,
-					  parse_options);
+		rc = kiwi_be_read_options(su, pos, pos_size, vars);
 		if (kiwi_unlikely(rc == -1))
 			return -1;
 		break;
@@ -320,7 +315,7 @@ KIWI_API static inline int kiwi_be_read_parse(char *data, uint32_t size,
 	/* YB: Also parse new YB parse packets as they have the same format */
 	if (kiwi_unlikely(header->type != KIWI_FE_PARSE &&
 			  header->type != YB_KIWI_FE_PARSE_NO_PARSE_COMPLETE &&
-			  header->type != YB_KIWI_FE_NO_PARSE_PARSE_COMPLETE))
+			  header->type != YB_KIWI_FE_FORCE_PARSE))
 		return -1;
 	uint32_t pos_size = len;
 	char *pos = kiwi_header_data(header);

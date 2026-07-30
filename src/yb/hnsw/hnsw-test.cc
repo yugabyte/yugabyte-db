@@ -187,13 +187,6 @@ void YbHnswTest::TestRandom(bool load, size_t background_threads = 0) {
       ASSERT_NO_FATALS(VerifySearch(query_vector, kMaxResults));
     }
   }
-
-  LOG(INFO) << "Hit: " << block_cache_->metrics().hit->value();
-  LOG(INFO) << "Queries: " << block_cache_->metrics().query->value();
-  LOG(INFO) << "Read bytes: " << block_cache_->metrics().read->value();
-  LOG(INFO) << "Evicted bytes: " << block_cache_->metrics().evict->value();
-  LOG(INFO) << "Added bytes: " << block_cache_->metrics().add->value();
-  LOG(INFO) << "Removed bytes: " << block_cache_->metrics().remove->value();
 }
 
 TEST_F(YbHnswTest, Random) {

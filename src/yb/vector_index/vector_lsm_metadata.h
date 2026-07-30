@@ -13,8 +13,6 @@
 
 #pragma once
 
-#include "yb/rocksdb/rocksdb_fwd.h"
-
 #include "yb/util/env.h"
 #include "yb/util/result.h"
 
@@ -24,15 +22,18 @@ namespace yb::vector_index {
 
 struct VectorLSMMetadataLoadResult {
   size_t next_free_file_no = 0;
-  std::vector<VectorLSMUpdatePB> updates;
+
+  // Current set of chunks in the manifest after replaying all add/remove updates.
+  std::vector<VectorLSMChunkPB> chunks;
 
   std::string ToString() const;
 };
 
-Result<VectorLSMMetadataLoadResult> VectorLSMMetadataLoad(
-    Env* env, const std::string& dir);
+Result<VectorLSMMetadataLoadResult> VectorLSMMetadataLoad(Env* env, const std::string& dir);
+
 Result<std::unique_ptr<WritableFile>> VectorLSMMetadataOpenFile(
     Env* env, const std::string& dir, size_t file_index);
+
 Status VectorLSMMetadataAppendUpdate(WritableFile& file, const VectorLSMUpdatePB& update);
 
 }  // namespace yb::vector_index

@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * The placement info is a tree. The first level contains a list of clouds. Every cloud contains a
@@ -92,9 +93,18 @@ public class PlacementInfo {
     @ApiModelProperty public boolean isAffinitized;
     // The Load Balancer id.
     @ApiModelProperty public String lbName;
-    // Priority of zone (for leaders placement). Values have to be contiguous non-zero integers.
+    // Priority of zone (for leaders placement). Values have to be non-negative contiguous integers.
+    // Zero means not prioritized.
     // Multiple zones can have the same value. A lower value indicates higher zone priority.
     @ApiModelProperty public int leaderPreference;
+
+    // Start index of tserver statefulset in AZ.
+    @ApiModelProperty(hidden = true)
+    public int tsStsIndex = 0;
+
+    // Start index of master statefulset in AZ.
+    @ApiModelProperty(hidden = true)
+    public int masterStsIndex = 0;
 
     @Override
     public String toString() {
@@ -148,6 +158,11 @@ public class PlacementInfo {
   @JsonIgnore
   public PlacementAZ findByAZUUID(UUID azUUID) {
     return azStream().filter(az -> Objects.equals(azUUID, az.uuid)).findFirst().orElse(null);
+  }
+
+  @JsonIgnore
+  public PlacementAZ findByAZCode(String azCode) {
+    return azStream().filter(az -> StringUtils.equals(azCode, az.name)).findFirst().orElse(null);
   }
 
   @Override

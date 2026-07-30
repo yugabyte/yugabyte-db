@@ -2,17 +2,29 @@
 package com.yugabyte.yw.api.v2;
 
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.nullValue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import api.v2.handlers.UniverseManagementHandler;
+import api.v2.models.UniverseValidateKubernetesOverrides;
+import api.v2.models.YBAValidationResponse;
 import com.yugabyte.yba.v2.client.ApiException;
 import com.yugabyte.yba.v2.client.api.UniverseApi;
 import com.yugabyte.yba.v2.client.models.ClusterAddSpec;
 import com.yugabyte.yba.v2.client.models.ClusterEditSpec;
+import com.yugabyte.yba.v2.client.models.ClusterNetworkingEditSpec;
 import com.yugabyte.yba.v2.client.models.ClusterNodeSpec;
 import com.yugabyte.yba.v2.client.models.ClusterPartitionSpec;
 import com.yugabyte.yba.v2.client.models.ClusterPlacementSpec;
@@ -20,38 +32,54 @@ import com.yugabyte.yba.v2.client.models.ClusterProviderEditSpec;
 import com.yugabyte.yba.v2.client.models.ClusterSpec;
 import com.yugabyte.yba.v2.client.models.ClusterSpec.ClusterTypeEnum;
 import com.yugabyte.yba.v2.client.models.ClusterStorageSpec;
-import com.yugabyte.yba.v2.client.models.ClusterStorageSpec.StorageTypeEnum;
+import com.yugabyte.yba.v2.client.models.ClusterStorageType;
+import com.yugabyte.yba.v2.client.models.CommunicationPortsSpec;
+import com.yugabyte.yba.v2.client.models.ExposingServiceState;
 import com.yugabyte.yba.v2.client.models.PlacementAZ;
 import com.yugabyte.yba.v2.client.models.PlacementCloud;
 import com.yugabyte.yba.v2.client.models.PlacementRegion;
 import com.yugabyte.yba.v2.client.models.UniverseCreateSpec;
 import com.yugabyte.yba.v2.client.models.UniverseEditSpec;
+import com.yugabyte.yba.v2.client.models.UniverseNetworkingSpec;
+import com.yugabyte.yba.v2.client.models.UniverseSettings;
 import com.yugabyte.yba.v2.client.models.UniverseSpec;
 import com.yugabyte.yba.v2.client.models.YBATask;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.ReadOnlyClusterDelete;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
+import play.libs.Json;
 
 /** Tests for Edit Universe using v2.UniverseApiControllerImp. */
+@Slf4j
 public class UniverseApiControllerEditTest extends UniverseTestBase {
 
   @Before
@@ -132,9 +160,104 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
             .numNodes(primaryClusterSpec.getNumNodes() + incNumNodesBy)
             .placementSpec(new ClusterPlacementSpec().cloudList(List.of(newPlacementCloud)));
     UniverseEditSpec universeEditSpec =
-        new UniverseEditSpec().expectedUniverseVersion(-1).clusters(List.of(clusterEditSpec));
+        new UniverseEditSpec()
+            .expectedUniverseVersion(-1)
+            .clusters(List.of(clusterEditSpec))
+            .universeSettings(new UniverseSettings().expertMode(true));
     // run the edit universe
     runEditUniverseV2(universeEditSpec);
+  }
+
+  @Test
+  public void testEditUniverseV2_passesWhenInstanceTypeConsistent() throws ApiException {
+    Universe.saveDetails(
+        universeUuid,
+        univ -> {
+          UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          intent.instanceType = "c5.4xlarge";
+          for (NodeDetails n : univ.getUniverseDetails().nodeDetailsSet) {
+            n.state = NodeState.Live;
+            if (n.cloudInfo != null) {
+              n.cloudInfo.instance_type = "c5.4xlarge";
+            }
+          }
+          univ.setUniverseDetails(univ.getUniverseDetails());
+        },
+        false);
+
+    UniverseApi api = new UniverseApi();
+    UniverseSpec universeSpec = api.getUniverse(customer.getUuid(), universeUuid).getSpec();
+    ClusterSpec primaryClusterSpec =
+        universeSpec.getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findAny()
+            .orElseThrow();
+    int incNumNodesBy = 1;
+    PlacementCloud newPlacementCloud =
+        expandNumNodes(primaryClusterSpec.getPlacementSpec().getCloudList().get(0), incNumNodesBy);
+    ClusterEditSpec clusterEditSpec =
+        new ClusterEditSpec()
+            .uuid(primaryClusterSpec.getUuid())
+            .numNodes(primaryClusterSpec.getNumNodes() + incNumNodesBy)
+            .placementSpec(new ClusterPlacementSpec().cloudList(List.of(newPlacementCloud)));
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec().expectedUniverseVersion(-1).clusters(List.of(clusterEditSpec));
+    runEditUniverseV2(universeEditSpec);
+  }
+
+  @Test
+  public void testEditUniverseV2_failsOnInstanceTypeDrift() throws ApiException {
+    Universe.saveDetails(
+        universeUuid,
+        univ -> {
+          UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          intent.instanceType = "c5.4xlarge";
+          List<NodeDetails> nodes =
+              univ.getUniverseDetails().nodeDetailsSet.stream().collect(Collectors.toList());
+          for (int i = 0; i < nodes.size(); i++) {
+            NodeDetails n = nodes.get(i);
+            n.state = NodeState.Live;
+            n.nodeName = "host-n" + i;
+            if (n.cloudInfo == null) {
+              n.cloudInfo = new com.yugabyte.yw.models.helpers.CloudSpecificInfo();
+            }
+            n.cloudInfo.instance_type = (i == 1) ? "c5.9xlarge" : "c5.4xlarge";
+          }
+          univ.setUniverseDetails(univ.getUniverseDetails());
+        },
+        false);
+
+    UniverseApi api = new UniverseApi();
+    UniverseSpec universeSpec = api.getUniverse(customer.getUuid(), universeUuid).getSpec();
+    ClusterSpec primaryClusterSpec =
+        universeSpec.getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findAny()
+            .orElseThrow();
+    int incNumNodesBy = 1;
+    PlacementCloud newPlacementCloud =
+        expandNumNodes(primaryClusterSpec.getPlacementSpec().getCloudList().get(0), incNumNodesBy);
+    ClusterEditSpec clusterEditSpec =
+        new ClusterEditSpec()
+            .uuid(primaryClusterSpec.getUuid())
+            .numNodes(primaryClusterSpec.getNumNodes() + incNumNodesBy)
+            .placementSpec(new ClusterPlacementSpec().cloudList(List.of(newPlacementCloud)));
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec().expectedUniverseVersion(-1).clusters(List.of(clusterEditSpec));
+
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    ApiException ex =
+        assertThrows(
+            ApiException.class,
+            () -> api.editUniverse(customer.getUuid(), universeUuid, universeEditSpec));
+    assertEquals(400, ex.getCode());
+    assertTrue(ex.getResponseBody().contains("Instance type metadata is inconsistent"));
+    assertTrue(ex.getResponseBody().contains("host-n1"));
+    verify(mockCommissioner, never())
+        .submit(eq(TaskType.EditUniverse), any(UniverseDefinitionTaskParams.class));
   }
 
   @Test
@@ -153,7 +276,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
             .getStorageSpec()
             .numVolumes(3)
             .volumeSize(65432)
-            .storageType(StorageTypeEnum.GP3)
+            .storageType(ClusterStorageType.GP3)
             .diskIops(16000)
             .throughput(1000);
     ClusterNodeSpec newNodeSpec = primaryClusterSpec.getNodeSpec().storageSpec(newStorageSpec);
@@ -186,6 +309,50 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
         new UniverseEditSpec().expectedUniverseVersion(-1).clusters(List.of(clusterEditSpec));
     // run the edit universe
     runEditUniverseV2(universeEditSpec);
+  }
+
+  @Test
+  public void testEditUniverseV2DisableDedicatedNodes() throws ApiException {
+    Universe.saveDetails(
+        universeUuid,
+        univ -> {
+          UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
+          intent.dedicatedNodes = true;
+          intent.masterInstanceType = "m5.large";
+          intent.masterDeviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+          univ.setUniverseDetails(univ.getUniverseDetails());
+        },
+        false);
+
+    UniverseApi api = new UniverseApi();
+    UniverseSpec universeSpec = api.getUniverse(customer.getUuid(), universeUuid).getSpec();
+    ClusterSpec primaryClusterSpec =
+        universeSpec.getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findAny()
+            .orElseThrow();
+
+    ClusterNodeSpec nodeSpec = new ClusterNodeSpec().dedicatedNodes(false);
+    ClusterEditSpec clusterEditSpec =
+        new ClusterEditSpec().uuid(primaryClusterSpec.getUuid()).nodeSpec(nodeSpec);
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec().expectedUniverseVersion(-1).clusters(List.of(clusterEditSpec));
+
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    when(mockRuntimeConfig.getInt("yb.universe.otel_collector_metrics_port")).thenReturn(8889);
+
+    YBATask editTask = api.editUniverse(customer.getUuid(), universeUuid, universeEditSpec);
+    assertThat(editTask.getResourceUuid(), is(universeUuid));
+
+    ArgumentCaptor<UniverseConfigureTaskParams> v1EditParamsCapture =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner).submit(eq(TaskType.EditUniverse), v1EditParamsCapture.capture());
+    Cluster primaryCluster = v1EditParamsCapture.getValue().getPrimaryCluster();
+    assertThat(primaryCluster.userIntent.dedicatedNodes, is(false));
+    assertThat(primaryCluster.userIntent.masterInstanceType, is(nullValue()));
+    assertThat(primaryCluster.userIntent.masterDeviceInfo, is(nullValue()));
   }
 
   @Test
@@ -229,6 +396,71 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
   }
 
   @Test
+  public void testEditUniverseV2CommunicationPorts() throws ApiException {
+    UniverseApi api = new UniverseApi();
+    UniverseSpec universeSpec = api.getUniverse(customer.getUuid(), universeUuid).getSpec();
+    ClusterSpec primaryClusterSpec =
+        universeSpec.getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findAny()
+            .orElseThrow();
+    ClusterEditSpec clusterEditSpec = new ClusterEditSpec().uuid(primaryClusterSpec.getUuid());
+    CommunicationPortsSpec communicationPortsSpec =
+        new CommunicationPortsSpec()
+            .masterHttpPort(1234)
+            .masterRpcPort(1235)
+            .tserverHttpPort(5678)
+            .tserverRpcPort(5679)
+            .nodeExporterPort(9301)
+            .otelCollectorMetricsPort(8890)
+            .redisServerHttpPort(11001)
+            .redisServerRpcPort(6380)
+            .ybControllerHttpPort(14001)
+            .ybControllerRpcPort(18019)
+            .yqlServerHttpPort(12001)
+            .yqlServerRpcPort(9043)
+            .ysqlServerHttpPort(13001)
+            .ysqlServerRpcPort(5434)
+            .internalYsqlServerRpcPort(6434);
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec()
+            .expectedUniverseVersion(-1)
+            .clusters(List.of(clusterEditSpec))
+            .networkingSpec(
+                new UniverseNetworkingSpec()
+                    .assignPublicIp(universeSpec.getNetworkingSpec().getAssignPublicIp())
+                    .assignStaticPublicIp(
+                        universeSpec.getNetworkingSpec().getAssignStaticPublicIp())
+                    .enableIpv6(universeSpec.getNetworkingSpec().getEnableIpv6())
+                    .communicationPorts(communicationPortsSpec));
+    runEditUniverseV2(universeEditSpec);
+  }
+
+  @Test
+  public void testEditUniverseV2EnableExposingService() throws ApiException {
+    UniverseApi api = new UniverseApi();
+    UniverseSpec universeSpec = api.getUniverse(customer.getUuid(), universeUuid).getSpec();
+    ClusterSpec primaryClusterSpec =
+        universeSpec.getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findAny()
+            .orElseThrow();
+    // Create payload sets EXPOSED; edit to UNEXPOSED to verify the field is mutable.
+    assertThat(
+        primaryClusterSpec.getNetworkingSpec().getEnableExposingService(),
+        is(ExposingServiceState.EXPOSED));
+    ClusterEditSpec clusterEditSpec =
+        new ClusterEditSpec()
+            .uuid(primaryClusterSpec.getUuid())
+            .networkingSpec(
+                new ClusterNetworkingEditSpec()
+                    .enableExposingService(ExposingServiceState.UNEXPOSED));
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec().expectedUniverseVersion(-1).clusters(List.of(clusterEditSpec));
+    runEditUniverseV2(universeEditSpec);
+  }
+
+  @Test
   public void testEditUniverseV2GeoPartitions() throws ApiException {
     UniverseApi api = new UniverseApi();
     // payload for editing the Universe storage spec
@@ -238,6 +470,33 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
             .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
             .findAny()
             .orElseThrow();
+    when(mockRuntimeConfig.getBoolean(GlobalConfKeys.editUniverseV2UiEnabled.getKey()))
+        .thenReturn(true);
+    List<ClusterPartitionSpec> geoPartitionSpec =
+        getUniverseCreateSpecV2Geo().getSpec().getClusters().get(0).getPartitionsSpec();
+    ClusterEditSpec clusterEditSpec =
+        new ClusterEditSpec().uuid(primaryClusterSpec.getUuid()).partitionsSpec(geoPartitionSpec);
+    UniverseEditSpec universeEditSpec =
+        new UniverseEditSpec().expectedUniverseVersion(-1).clusters(List.of(clusterEditSpec));
+    // run the edit universe
+    runEditUniverseV2(universeEditSpec);
+  }
+
+  @Test
+  public void testEditUniverseV2GeoEditPlacement() throws ApiException {
+    when(mockRuntimeConfig.getBoolean(GlobalConfKeys.editUniverseV2UiEnabled.getKey()))
+        .thenReturn(true);
+
+    UniverseApi api = new UniverseApi();
+    // payload for editing the Universe storage spec
+    UniverseSpec universeSpec = api.getUniverse(customer.getUuid(), universeUuid).getSpec();
+    ClusterSpec primaryClusterSpec =
+        universeSpec.getClusters().stream()
+            .filter(c -> c.getClusterType() == ClusterTypeEnum.PRIMARY)
+            .findAny()
+            .orElseThrow();
+    when(mockRuntimeConfig.getBoolean(GlobalConfKeys.editUniverseV2UiEnabled.getKey()))
+        .thenReturn(true);
     List<ClusterPartitionSpec> geoPartitionSpec =
         getUniverseCreateSpecV2Geo().getSpec().getClusters().get(0).getPartitionsSpec();
     ClusterEditSpec clusterEditSpec =
@@ -261,7 +520,7 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
                 new ClusterStorageSpec()
                     .numVolumes(1)
                     .volumeSize(1024)
-                    .storageType(StorageTypeEnum.GP2)
+                    .storageType(ClusterStorageType.GP2)
                     .diskIops(3000)
                     .throughput(250));
     clusterAddSpec.setNodeSpec(nodeSpec);
@@ -298,6 +557,100 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     validateClusterAddSpec(clusterAddSpec, newV1Cluster, v2PrimaryCluster);
   }
 
+  @Test
+  public void testEditUniverseV2DedicatedAddReadReplica() throws ApiException {
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseConfigureTaskParams.class)))
+        .then(
+            invokation -> {
+              UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
+              return fakeTaskUUID;
+            });
+    UniverseApi api = new UniverseApi();
+    UniverseCreateSpec universeCreateSpecGeo = getUniverseCreateSpecV2Dedicated();
+    universeCreateSpecGeo.getSpec().name("dedicatedUniverse");
+    YBATask createTask = api.createUniverse(customer.getUuid(), universeCreateSpecGeo);
+    UUID universeUUID = createTask.getResourceUuid();
+
+    // setup mocks for addCluster to universe
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseConfigureTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    ClusterAddSpec clusterAddSpec = getReadReplicaClusterAddSpec();
+    YBATask addTask = api.addCluster(customer.getUuid(), universeUUID, clusterAddSpec);
+    UUID newClusterUuid = addTask.getResourceUuid();
+    ArgumentCaptor<UniverseConfigureTaskParams> v1AddClusterParamsCapture =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.ReadOnlyClusterCreate), v1AddClusterParamsCapture.capture());
+    UniverseConfigureTaskParams v1AddClusterParams = v1AddClusterParamsCapture.getValue();
+
+    Cluster newV1Cluster = v1AddClusterParams.getClusterByUuid(newClusterUuid);
+    assertFalse(newV1Cluster.userIntent.dedicatedNodes);
+    assertThat(newV1Cluster.userIntent.masterInstanceType, is(nullValue()));
+    assertThat(newV1Cluster.userIntent.masterDeviceInfo, is(nullValue()));
+    assertThat(v1AddClusterParams.getPrimaryCluster().userIntent.dedicatedNodes, is(true));
+    List<ClusterSpec> allV2Clusters =
+        api.getUniverse(customer.getUuid(), universeUuid).getSpec().getClusters();
+    ClusterSpec v2PrimaryCluster =
+        allV2Clusters.stream()
+            .filter(c -> c.getClusterType().equals(ClusterTypeEnum.PRIMARY))
+            .findAny()
+            .orElse(null);
+    validateClusterAddSpec(clusterAddSpec, newV1Cluster, v2PrimaryCluster);
+  }
+
+  @Test
+  public void testEditUniverseGeoV2AddReadReplica() throws ApiException {
+    when(mockRuntimeConfig.getBoolean(GlobalConfKeys.editUniverseV2UiEnabled.getKey()))
+        .thenReturn(true);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseConfigureTaskParams.class)))
+        .then(
+            invokation -> {
+              UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
+              return fakeTaskUUID;
+            });
+    UniverseApi api = new UniverseApi();
+    UniverseCreateSpec universeCreateSpecGeo = getUniverseCreateSpecV2Geo();
+    universeCreateSpecGeo.getSpec().name("geoUniverse");
+    YBATask createTask = api.createUniverse(customer.getUuid(), universeCreateSpecGeo);
+    UUID geoUniverseUUID = createTask.getResourceUuid();
+
+    ClusterAddSpec clusterAddSpec = getReadReplicaClusterAddSpec();
+    PlacementInfo placement = rf3Placement(Region.getByProvider(providerUuid).get(0));
+    ClusterPlacementSpec placementSpec = toPlacementSpec(placement);
+    ClusterPartitionSpec partitionSpec =
+        new ClusterPartitionSpec()
+            .name("default")
+            .defaultPartition(true)
+            .replicationFactor(3)
+            .placement(placementSpec);
+    clusterAddSpec.setPartitionsSpec(Collections.singletonList(partitionSpec));
+    clusterAddSpec.setNumNodes(PlacementInfoUtil.getNodeCountInPlacement(placement));
+
+    // setup mocks for addCluster to universe
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseConfigureTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    YBATask addTask = api.addCluster(customer.getUuid(), geoUniverseUUID, clusterAddSpec);
+    UUID newClusterUuid = addTask.getResourceUuid();
+    ArgumentCaptor<UniverseConfigureTaskParams> v1AddClusterParamsCapture =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    verify(mockCommissioner)
+        .submit(eq(TaskType.ReadOnlyClusterCreate), v1AddClusterParamsCapture.capture());
+    UniverseConfigureTaskParams v1AddClusterParams = v1AddClusterParamsCapture.getValue();
+
+    Cluster newV1Cluster = v1AddClusterParams.getClusterByUuid(newClusterUuid);
+    List<ClusterSpec> allV2Clusters =
+        api.getUniverse(customer.getUuid(), universeUuid).getSpec().getClusters();
+    ClusterSpec v2PrimaryCluster =
+        allV2Clusters.stream()
+            .filter(c -> c.getClusterType().equals(ClusterTypeEnum.PRIMARY))
+            .findAny()
+            .orElse(null);
+    validateClusterAddSpec(clusterAddSpec, newV1Cluster, v2PrimaryCluster);
+  }
+
   private Cluster addReadReplicaInDB(Region region) {
     Universe universe = Universe.getOrBadRequest(universeUuid);
     UserIntent curIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
@@ -305,14 +658,53 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
     userIntent.numNodes = 3;
     userIntent.replicationFactor = 3;
     userIntent.deviceInfo.numVolumes = 1;
-    PlacementInfo pi = new PlacementInfo();
-    for (AvailabilityZone az : region.getAllZones()) {
-      PlacementInfoUtil.addPlacementZone(az.getUuid(), pi, 1, 1, false);
-    }
+    PlacementInfo pi = rf3Placement(region);
     universe =
         Universe.saveDetails(
             universeUuid, ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
     return universe.getUniverseDetails().getReadOnlyClusters().get(0);
+  }
+
+  private PlacementInfo rf3Placement(Region region) {
+    PlacementInfo pi = new PlacementInfo();
+    region.getAllZones().stream()
+        .limit(3)
+        .forEach(
+            az -> {
+              PlacementInfoUtil.addPlacementZone(az.getUuid(), pi, 1, 1, false);
+            });
+    PlacementInfoUtil.checkAndSetPerAZRF(pi, 3, null, false);
+    return pi;
+  }
+
+  private ClusterPlacementSpec toPlacementSpec(PlacementInfo placementInfo) {
+    ClusterPlacementSpec clusterPlacementSpec = new ClusterPlacementSpec();
+    for (PlacementInfo.PlacementCloud placementCloud : placementInfo.cloudList) {
+      PlacementCloud pc = new PlacementCloud().code(placementCloud.code).uuid(placementCloud.uuid);
+      clusterPlacementSpec.addCloudListItem(pc);
+      for (PlacementInfo.PlacementRegion placementRegion : placementCloud.regionList) {
+        PlacementRegion pr =
+            new PlacementRegion()
+                .code(placementRegion.code)
+                .uuid(placementRegion.uuid)
+                .name(placementRegion.name)
+                .lbFqdn(placementRegion.lbFQDN);
+        pc.addRegionListItem(pr);
+        for (PlacementInfo.PlacementAZ placementAZ : placementRegion.azList) {
+          PlacementAZ pz =
+              new PlacementAZ()
+                  .uuid(placementAZ.uuid)
+                  .name(placementAZ.name)
+                  .lbName(placementAZ.lbName)
+                  .numNodesInAz(placementAZ.numNodesInAZ)
+                  .replicationFactor(placementAZ.replicationFactor)
+                  .leaderAffinity(placementAZ.isAffinitized)
+                  .leaderPreference(placementAZ.leaderPreference);
+          pr.addAzListItem(pz);
+        }
+      }
+    }
+    return clusterPlacementSpec;
   }
 
   @Test
@@ -354,5 +746,64 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
         .submit(eq(TaskType.ReadOnlyClusterDelete), v1DeleteClusterParamsCapture.capture());
     ReadOnlyClusterDelete.Params v1DeleteClusterParams = v1DeleteClusterParamsCapture.getValue();
     assertThat(v1DeleteClusterParams.clusterUUID, is(rrClusterUuid));
+  }
+
+  @Test
+  public void testValidateKubernetesOverrides() throws Exception {
+    setupProvider(Common.CloudType.kubernetes);
+    Provider provider = Provider.get(customer.getUuid(), providerUuid);
+    UniverseManagementHandler handler = app.injector().instanceOf(UniverseManagementHandler.class);
+    KubernetesManager kubernetesManager = kubernetesManagerFactory.getManager();
+
+    when(kubernetesManager.validateOverrides(any(), any(), any(), any(), any(), any()))
+        .thenAnswer(
+            invocation -> {
+              String azCode = invocation.getArgument(5);
+              Map<String, Object> parsedAzOverrides = invocation.getArgument(4);
+              if (parsedAzOverrides != null && !parsedAzOverrides.isEmpty()) {
+                return Set.of("helm template validation failed for " + azCode);
+              }
+              return Collections.emptySet();
+            });
+
+    Map<String, String> azOverrides = new HashMap<>();
+    azOverrides.put("unknown-az", "tserver:\n  podLabels:\n    env: test");
+    azOverrides.put("r2-az-1", "tserver:\n  podLabels:\n    env: test");
+    azOverrides.put("r1-az-1", "tserver:\n  podLabels:\n    env: test");
+
+    UniverseValidateKubernetesOverrides payload =
+        new UniverseValidateKubernetesOverrides()
+            .ybSoftwareVersion("2.20.0.0-b123")
+            .nodePrefix("test-node-prefix")
+            .isReadonlyCluster(false)
+            .placementSpec(
+                new api.v2.models.ClusterPlacementSpec()
+                    .cloudList(
+                        List.of(
+                            Json.fromJson(
+                                Json.toJson(placementFromProvider(3, 3)),
+                                api.v2.models.PlacementCloud.class))))
+            .overrides("")
+            .azOverrides(azOverrides);
+
+    YBAValidationResponse response =
+        handler.validateKubernetesOverrides(fakeRequest, customer.getUuid(), payload);
+
+    assertThat(
+        response.getErrors(),
+        hasItem(
+            is(
+                String.format(
+                    "Provider %s doesn't have following AZs: [unknown-az]. "
+                        + "But they are referred in AZ overrides",
+                    provider.getName()))));
+    assertThat(
+        response.getErrors(),
+        hasItem(
+            containsString(
+                "AZ overrides have following AZs for primary cluster: [r2-az-1]."
+                    + " But no DB pods assigned to these AZs."
+                    + "These overrides are not validated.")));
+    assertThat(response.getErrors(), hasItem("helm template validation failed for r1-az-1"));
   }
 }

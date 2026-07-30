@@ -69,6 +69,37 @@ using strings::Substitute;
 using tablet::TabletDataState;
 using tablet::RaftGroupReplicaSuperBlockPB;
 
+namespace {
+
+vector<string> FilterSstFiles(const vector<string>& files) {
+  vector<string> sst_files;
+  for (const auto& file : files) {
+    uint64_t number;
+    rocksdb::FileType type;
+    string filename = std::filesystem::path(file).filename();
+    if (ParseFileName(filename, &number, &type) &&
+        (type == rocksdb::kTableFile || type == rocksdb::kTableSBlockFile)) {
+      sst_files.push_back(file);
+    }
+  }
+  return sst_files;
+}
+
+}  // namespace
+
+std::string GetTabletSuperBlockPathOnTS(ExternalTabletServer& tserver, const TabletId& tablet_id) {
+  const auto data_dir = tserver.GetDataDirs()[0];
+  const auto meta_dir = FsManager::GetRaftGroupMetadataDir(data_dir);
+  return JoinPathSegments(meta_dir, tablet_id);
+}
+
+Status ReadTabletSuperBlockOnTS(
+    Env& env, ExternalTabletServer& tserver, const TabletId& tablet_id,
+    RaftGroupReplicaSuperBlockPB* sb) {
+  const auto sb_path = GetTabletSuperBlockPathOnTS(tserver, tablet_id);
+  return pb_util::ReadPBContainerFromPath(&env, sb_path, sb);
+}
+
 ExternalMiniClusterFsInspector::ExternalMiniClusterFsInspector(ExternalMiniCluster* cluster)
     : env_(Env::Default()),
       cluster_(CHECK_NOTNULL(cluster)) {
@@ -136,21 +167,14 @@ Result<vector<string>> ExternalMiniClusterFsInspector::ListTableSstFilesOnTS(
         continue;
       }
       auto table_sst_dir = JoinPathSegments(ts_rocksdb_dir, table);
-      vector<string> files = VERIFY_RESULT(RecursivelyListFilesInDir(table_sst_dir));
-      for (const auto& file : files) {
-        uint64_t number;
-        rocksdb::FileType type;
-        std::string filename = std::filesystem::path(file).filename();
-        if (ParseFileName(filename, &number, &type) &&
-            (type == rocksdb::kTableFile || type == rocksdb::kTableSBlockFile)) {
-          sst_files.push_back(file);
-        }
-      }
+      auto filtered = FilterSstFiles(VERIFY_RESULT(RecursivelyListFilesInDir(table_sst_dir)));
+      sst_files.insert(sst_files.end(), filtered.begin(), filtered.end());
       break;
     }
   }
   return sst_files;
 }
+
 
 Result<vector<string>> ExternalMiniClusterFsInspector::RecursivelyListFilesInDir(
   const string& path) {
@@ -305,23 +329,15 @@ Status ExternalMiniClusterFsInspector::CheckNoData() {
   return Status::OK();;
 }
 
-std::string ExternalMiniClusterFsInspector::GetTabletSuperBlockPathOnTS(
-    size_t ts_index, const string& tablet_id) const {
-  string data_dir = cluster_->tablet_server(ts_index)->GetDataDirs()[0];
-  std::string meta_dir = FsManager::GetRaftGroupMetadataDir(data_dir);
-  return JoinPathSegments(meta_dir, tablet_id);
-}
-
 Status ExternalMiniClusterFsInspector::ReadTabletSuperBlockOnTS(size_t index,
                                                                 const string& tablet_id,
                                                                 RaftGroupReplicaSuperBlockPB* sb) {
-  const auto& sb_path = GetTabletSuperBlockPathOnTS(index, tablet_id);
-  return pb_util::ReadPBContainerFromPath(env_, sb_path, sb);
+  return itest::ReadTabletSuperBlockOnTS(*env_, *cluster_->tablet_server(index), tablet_id, sb);
 }
 
 int64_t ExternalMiniClusterFsInspector::GetTabletSuperBlockMTimeOrDie(
     size_t ts_index, const std::string& tablet_id) {
-  const auto& sb_path = GetTabletSuperBlockPathOnTS(ts_index, tablet_id);
+  const auto sb_path = GetTabletSuperBlockPathOnTS(*cluster_->tablet_server(ts_index), tablet_id);
   struct stat s;
   CHECK_ERR(stat(sb_path.c_str(), &s)) << "failed to stat: " << sb_path;
 #ifdef __APPLE__

@@ -202,7 +202,7 @@ To obtain hash codes in YCQL, you can use the `partition_hash()` function, which
 
 ### Join with Active Session History
 
-Join [`yb_active_session_history`](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/#yb-active-session-history) with `yb_tablet_metadata` on `tablet_id` to get the metadata of a tablet that is part of `wait_event_aux`.
+For TServer events tied to a tablet, join [`yb_active_session_history`](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/#yb-active-session-history) with `yb_tablet_metadata` on `wait_event_aux = SUBSTRING(tablet_id, 1, 15)` to get metadata for the tablet referenced in `wait_event_aux`.
 
 ```sql
 SELECT

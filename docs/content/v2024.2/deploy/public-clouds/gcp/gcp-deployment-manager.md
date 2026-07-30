@@ -3,6 +3,10 @@ title: Deploy YugabyteDB in Google Cloud Platform with GCP Deployment Manager
 headerTitle: Google Cloud Platform
 linkTitle: Google Cloud Platform
 description: Use the GCP Deployment Manager to deploy a YugabyteDB cluster in Google Cloud Platform.
+headcontent: Deploy using Google Cloud Deployment Manager
+aliases:
+  - /v2024.2/deploy/public-clouds/gcp/
+  - /v2024.2/deploy/public-clouds/gcp/terraform/
 menu:
   v2024.2:
     identifier: deploy-in-gcp-1-deployment-manager
@@ -11,30 +15,7 @@ menu:
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
-
-  <li >
-    <a href="../gcp-deployment-manager/" class="nav-link active">
-      <i class="icon-shell"></i>
-      Google Cloud Deployment Manager
-    </a>
-  </li>
-
-  <li>
-    <a href="../gke/" class="nav-link">
-      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
-      Google Kubernetes Engine (GKE)
-    </a>
-  </li>
-
-  <li >
-    <a href="../terraform/" class="nav-link">
-      <i class="icon-shell"></i>
-      Terraform
-    </a>
-  </li>
-
-</ul>
+YugabyteDB maintains a Google Cloud Deployment Manager template for deploying YugabyteDB on Google cloud. This automated deployment deploys a multi-zone YugabyteDB universe to three nodes residing in three separate public subnets. The template is in the [Google Cloud Deployment Manager](https://github.com/yugabyte/gcp-deployment-manager) repository.
 
 ## Prerequisites
 

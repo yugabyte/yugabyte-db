@@ -3,7 +3,7 @@
  *
  * include/metadata/collection.h
  *
- * Common declarations for Mongo collections
+ * Common declarations for collections, views and data tables.
  *
  *-------------------------------------------------------------------------
  */
@@ -28,12 +28,12 @@
 #define DOCUMENT_DATA_TABLE_NAME_PREFIX "documents_"
 #define DOCUMENT_DATA_TABLE_NAME_FORMAT DOCUMENT_DATA_TABLE_NAME_PREFIX UINT64_FORMAT
 
-/* constants for document column of a Mongo data table */
+/* constants for document column of a data table */
 #define DOCUMENT_DATA_TABLE_DOCUMENT_VAR_COLLATION (InvalidOid)
 #define DOCUMENT_DATA_TABLE_DOCUMENT_VAR_TYPMOD ((int32) (-1))
 
 
-/* Attribute number constants for the layout of the mongo data table */
+/* Attribute number constants for the layout of the data table */
 #define DOCUMENT_DATA_TABLE_SHARD_KEY_VALUE_VAR_ATTR_NUMBER ((AttrNumber) 1)
 #define DOCUMENT_DATA_TABLE_OBJECT_ID_VAR_ATTR_NUMBER ((AttrNumber) 2)
 #define DOCUMENT_DATA_TABLE_DOCUMENT_VAR_ATTR_NUMBER ((AttrNumber) 3)
@@ -46,10 +46,8 @@
  */
 typedef struct
 {
-	/* name of the Mongo database */
 	char databaseName[MAX_DATABASE_NAME_LENGTH];
 
-	/* name of the Mongo collection */
 	char collectionName[MAX_COLLECTION_NAME_LENGTH];
 } MongoCollectionName;
 
@@ -107,7 +105,7 @@ typedef struct
 	/* View definition if applicable */
 	pgbson *viewDefinition;
 
-	/* The UUID of the collection or view */
+	/* The unique identifier (UUID) associated with the specified collection or view */
 	pg_uuid_t collectionUUID;
 
 	/* creation_time column attribute number */
@@ -132,7 +130,7 @@ typedef struct
  */
 typedef struct
 {
-	/* The name of the source collection or view */
+	/* The source collection or view for this view definition */
 	const char *viewSource;
 
 	/* An optional pipeline to apply to the view
@@ -211,28 +209,15 @@ MongoCollection * GetMongoCollectionByColId(uint64 collectionId, LOCKMODE lockMo
 /* get Mongo collection metadata by realtion ID of a collection's shard */
 MongoCollection * GetMongoCollectionByRelationShardId(Oid relationId);
 
-/* get OID of Mongo documents table by collection id */
+/* get OID of data table (documents_*) table by collection id */
 Oid GetRelationIdForCollectionId(uint64 collectionId, LOCKMODE lockMode);
 
 /* c-wrapper for create_collection() */
 bool CreateCollection(Datum dbNameDatum, Datum collectionNameDatum);
 
-/* c-wrapper for copy_collection_metadata() */
-void SetupCollectionForOut(char *srcDbName, char *srcCollectionName, char *destDbName,
-						   char *destCollectionName, bool createTemporaryTable);
-
 /* c-wrapper for rename_collection() */
 void RenameCollection(Datum dbNameDatum, Datum srcCollectionNameDatum, Datum
 					  destCollectionNameDatum, bool dropTarget);
-
-/* c-wrapper for droping the staging collection created during $out */
-void DropStagingCollectionForOut(Datum dbNameDatum, Datum srcCollectionNameDatumt);
-
-/* c-wrapper for copy_collection_data() */
-void OverWriteDataFromStagingToDest(Datum srcDbNameDatum, Datum srcCollectionNameDatum,
-									Datum
-									destDbNameDatum, Datum destCollectionNameDatum, bool
-									dropSourceCollection);
 
 /* called by metadata_cache.c when cache invalidation occurs */
 void ResetCollectionsCache(void);

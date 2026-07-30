@@ -84,14 +84,14 @@ CREATE TABLESPACE regress_tblspace LOCATION '/data';
 CREATE TABLESPACE regress_tblspace_2 LOCATION '/data';
 
 -- try setting and resetting some properties for the new tablespace
-ALTER TABLESPACE regress_tblspace SET (random_page_cost = 1.0, seq_page_cost = 1.1);
-
--- Enable these tests after ALTER is supported.
-/*
+ALTER TABLESPACE regress_tblspace SET (random_page_cost = 1.0, seq_page_cost = 1.1); -- fail
+ALTER TABLESPACE regress_tblspace SET (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}'); -- ok
+SELECT spcoptions IS NOT NULL FROM pg_tablespace WHERE spcname = 'regress_tblspace';
 ALTER TABLESPACE regress_tblspace SET (some_nonexistent_parameter = true);  -- fail
 ALTER TABLESPACE regress_tblspace RESET (random_page_cost = 2.0); -- fail
 ALTER TABLESPACE regress_tblspace RESET (random_page_cost, effective_io_concurrency); -- ok
-*/
+ALTER TABLESPACE regress_tblspace RESET (replica_placement); -- ok
+SELECT spcoptions IS NULL FROM pg_tablespace WHERE spcname = 'regress_tblspace';
 
 -- create a schema we can use
 CREATE SCHEMA testschema;
@@ -160,6 +160,37 @@ ALTER INDEX testschema.using_index2_a_key SET TABLESPACE pg_default;
 CREATE INDEX foo_idx on testschema.foo(i) TABLESPACE regress_tblspace;
 SELECT relname, spcname FROM pg_catalog.pg_tablespace t, pg_catalog.pg_class c
     where c.reltablespace = t.oid AND c.relname = 'foo_idx';
+
+-- YB: Vector (ybhnsw) indexes are copartitioned with the indexed table -- they
+-- are stored on the table's own tablets -- so, like primary key indexes, their
+-- tablespace always follows the indexed table.  Verify that pg_class.reltablespace
+-- stays consistent with the indexed table.
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE TABLE testschema.vectbl (id int PRIMARY KEY, embedding vector(3))
+    TABLESPACE regress_tblspace;
+-- Without a TABLESPACE clause, the vector index inherits the indexed table's
+-- tablespace (rather than recording reltablespace = 0).
+CREATE INDEX vec_idx_inherit ON testschema.vectbl USING ybhnsw (embedding vector_l2_ops);
+-- The table and its vector index report the same tablespace.
+SELECT relname, spcname FROM pg_catalog.pg_class c
+    LEFT JOIN pg_catalog.pg_tablespace t ON c.reltablespace = t.oid
+    WHERE c.relname IN ('vectbl', 'vec_idx_inherit') ORDER BY relname;
+-- Fail: a vector index's tablespace cannot be set directly; it always follows
+-- the indexed table.  An explicit TABLESPACE clause is rejected even when it
+-- matches the indexed table's tablespace.
+CREATE INDEX vec_idx_match ON testschema.vectbl USING ybhnsw (embedding vector_l2_ops)
+    TABLESPACE regress_tblspace;
+CREATE INDEX vec_idx_mismatch ON testschema.vectbl USING ybhnsw (embedding vector_l2_ops)
+    TABLESPACE regress_tblspace_2;
+-- ALTER TABLE ... SET TABLESPACE moves the vector index with the table and
+-- keeps the index's reltablespace in sync.
+ALTER TABLE testschema.vectbl SET TABLESPACE regress_tblspace_2;
+SELECT relname, spcname FROM pg_catalog.pg_class c
+    LEFT JOIN pg_catalog.pg_tablespace t ON c.reltablespace = t.oid
+    WHERE c.relname IN ('vectbl', 'vec_idx_inherit') ORDER BY relname;
+-- Fail: a vector index's tablespace cannot be set directly; it follows the table.
+ALTER INDEX testschema.vec_idx_inherit SET TABLESPACE regress_tblspace;
+DROP TABLE testschema.vectbl;
 
 -- partitioned table
 CREATE TABLE testschema.part (a int) PARTITION BY LIST (a);
@@ -374,6 +405,8 @@ CREATE TABLE tbl_other(x int, y int);
 SET SESSION ROLE yb_db_admin;
 -- Verify yb_db_admin role can CREATE tablespace
 CREATE TABLESPACE tblspace WITH (replica_placement='{"num_replicas": 1, "placement_blocks": [{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
+-- Verify yb_db_admin role can ALTER tablespace
+ALTER TABLESPACE tblspace SET (replica_placement='{"num_replicas": 1, "placement_blocks": [{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
 -- Verify yb_db_admin role can CREATE table with tablespace
 CREATE TABLE tbl (x int, y int) TABLESPACE tblspace;
 DROP TABLE tbl;
@@ -386,8 +419,6 @@ DROP TABLE tbl;
 CREATE TABLE tbl(x int, y int);
 CREATE INDEX idx ON tbl(x) TABLESPACE tblspace;
 CREATE INDEX idx2 ON tbl_other(x) TABLESPACE tblspace;
--- Verify yb_db_admin role cannot ALTER tablespace
-ALTER TABLESPACE tblspace SET (random_page_cost = 1.0, seq_page_cost = 1.1);
 -- Verify yb_db_admin role can DROP tablespace
 DROP TABLE tbl;
 DROP TABLE tbl_other;

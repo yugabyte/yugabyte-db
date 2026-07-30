@@ -679,7 +679,7 @@ Valid values are `connection` and `server`.
 
 This flag requires the YB-TServer `yb_enable_sequence_pushdown` flag to be true (the default). Otherwise, the default behavior will occur regardless of this flag's value.
 
-For details on caching values on the server and switching between cache methods, see the semantics on the [nextval](../../../api/ysql/exprs/func_nextval/) page.
+For details on caching values on the server and switching between cache methods, see the semantics on the [nextval](../../../api/ysql/exprs/sequence_functions/func_nextval/) page.
 
 Default: `connection`
 
@@ -789,7 +789,7 @@ Default: `false`
 
 ##### --ycql_require_drop_privs_for_truncate
 
-Set this flag to `true` to reject [`TRUNCATE`](../../../api/ycql/dml_truncate) statements unless allowed by [`DROP TABLE`](../../../api/ycql/ddl_drop_table) privileges.
+Set this flag to `true` to reject [`TRUNCATE`](../../../api/ycql/dml_truncate/) statements unless allowed by [`DROP TABLE`](../../../api/ycql/ddl_drop_table/) privileges.
 
 Default: `false`
 
@@ -797,7 +797,7 @@ Default: `false`
 
 Set this flag to `true` to enable audit logging for the universe.
 
-For details, see [Audit logging for the YCQL API](../../../secure/audit-logging/audit-logging-ycql).
+For details, see [Audit logging for the YCQL API](../../../secure/audit-logging/audit-logging-ycql/).
 
 ##### --ycql_allow_non_authenticated_password_reset
 
@@ -1131,7 +1131,7 @@ Default: `50`
 
 Maximum number of intent records allowed in a single CDC batch.
 
-Default: `1000`
+Default: `1680`
 
 ##### --cdc_snapshot_batch_size
 
@@ -1329,7 +1329,7 @@ Default: 86400000 (1 day)
 
 The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.
 
-Default: -1, where the system automatically calculates the value to be approximately 1 second.
+Default: -1, where the system automatically calculates the margin. For YSQL index backfill the baseline is 3 minutes (180000 ms); for YCQL the baseline is approximately 1 second (1000 ms). The effective margin is the greater of that baseline and a value derived from backfill_index_write_batch_size and backfill_index_rate_rows_per_sec.
 
 ##### backfill_index_write_batch_size
 

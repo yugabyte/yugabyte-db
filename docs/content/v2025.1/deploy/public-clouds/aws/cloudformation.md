@@ -3,6 +3,10 @@ title: Deploy on Amazon Web Services using AWS CloudFormation
 headerTitle: Amazon Web Services
 linkTitle: Amazon Web Services
 description: Deploy a YugabyteDB cluster on Amazon Web Services using AWS CloudFormation
+headcontent: Deploy using AWS CloudFormation
+aliases:
+  - /v2025.1/deploy/public-clouds/aws/
+  - /v2025.1/deploy/public-clouds/aws/terraform/
 menu:
   v2025.1:
     identifier: deploy-in-aws-1-cloudformation
@@ -18,12 +22,6 @@ type: docs
       CloudFormation
     </a>
   </li>
-  <li >
-    <a href="../terraform/" class="nav-link">
-      <i class="icon-shell"></i>
-      Terraform
-    </a>
-  </li>
   <li>
     <a href="../manual-deployment/" class="nav-link">
       <i class="icon-shell"></i>
@@ -31,6 +29,14 @@ type: docs
     </a>
   </li>
 </ul>
+
+YugabyteDB maintains an AWS CloudFormation template for deploying YugabyteDB on AWS. This automated deployment:
+
+- Creates a VPC with three public subnets.
+- Creates an instance in each subnet.
+- Deploys a YugabyteDB cluster across these three nodes.
+
+The template is in the [AWS CloudFormation](https://github.com/yugabyte/aws-cloudformation) repository.
 
 ## Prerequisites
 
@@ -40,9 +46,9 @@ type: docs
 4. In the region you want to bring up the stack, make sure you can launch new VPCs.
 5. Download the template file.
 
-```sh
-$ wget https://raw.githubusercontent.com/yugabyte/aws-cloudformation/master/yugabyte_cloudformation.yaml
-```
+    ```sh
+    $ wget https://raw.githubusercontent.com/yugabyte/aws-cloudformation/master/yugabyte_cloudformation.yaml
+    ```
 
 {{< note title="Note" >}}
 

@@ -7,15 +7,14 @@ headContent: Manually provision on-premises nodes using the legacy assisted manu
 menu:
   v2025.1_yugabyte-platform:
     identifier: on-premises-script
-    parent: on-premises-nodes
     weight: 20
 type: docs
 ---
 
 {{< warning title="Deprecated workflow" >}}
-The assisted manual provisioning script (provision_instance.py) shown on the **Instances** page is strictly for legacy manual provisioning.
+The assisted manual provisioning script (provision_instance.py) shown on the **Instances** page is strictly for legacy manual provisioning. Use of this script is deprecated.
 
-If you provisioned your nodes automatically using the [node agent script](../../prepare/server-nodes-software/software-on-prem/) (node-agent-provision.sh), you can add your nodes (if they have not already been added to the provider) by clicking [Add Instances](../on-premises-nodes/#add-instances-to-the-on-premises-provider).
+Instead, provision your nodes automatically using the [node agent script](../../prepare/server-nodes-software/software-on-prem/) (node-agent-provision.sh).
 {{< /warning >}}
 
 If the SSH user configured in the on-premises provider has sudo privileges that require a password, you can provision your nodes by running the pre-provisioning script (`provision_instance.py`).

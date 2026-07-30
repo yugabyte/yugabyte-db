@@ -3,7 +3,6 @@ SET citus.next_shard_id TO 640000;
 SET documentdb.next_collection_id TO 6400;
 SET documentdb.next_collection_index_id TO 6400;
 
-SET documentdb.enableIndexTermTruncationOnNestedObjects to on;
 -- Set configs to something reasonable for testing.
 set documentdb.indexTermLimitOverride to 100;
 
@@ -870,5 +869,3 @@ SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documen
 SELECT FORMAT('{ "visits": [ "1" %s ] }', repeat(', { "estimatedTimeOfArrival": { "$date": 101010 }, "estimatedTimeOfDeparture": { "$date": 101010 }, "visitId": "someVisitIdValueString", "visitDocuments": { } } ', 5)) AS documentvalue \gset
 
 SELECT length(bson_dollar_project(term, '{ "t": 0 }')::bytea), term FROM documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms(:'documentvalue'::bson, '', true, true, true, 500) term;
-
-SET documentdb.enableIndexTermTruncationOnNestedObjects to off;

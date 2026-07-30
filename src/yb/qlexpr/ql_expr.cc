@@ -16,6 +16,7 @@
 #include "yb/qlexpr/ql_bfunc.h"
 
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb::qlexpr {
 
@@ -989,7 +990,7 @@ QLTableColumn& QLTableRow::AppendColumn() {
 
 QLTableColumn& QLTableRow::AllocColumn(ColumnIdRep col_id) {
   size_t index = col_id;
-  if (index < kFirstNonPreallocatedColumnId && index >= kFirstColumnIdRep) {
+  if (index < kFirstNonPreallocatedColumnId && col_id >= kFirstColumnIdRep) {
     index -= kFirstColumnIdRep;
     // We are in directly mapped part. Ensure that vector is big enough.
     if (values_.size() <= index) {

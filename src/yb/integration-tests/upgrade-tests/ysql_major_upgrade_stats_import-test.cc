@@ -24,10 +24,11 @@ class YsqlMajorUpgradeStatsImportTest : public YsqlMajorUpgradeTestBase {
   void SetUp() override {
     TEST_SETUP_SUPER(YsqlMajorUpgradeTestBase);
     auto conn = ASSERT_RESULT(cluster_->ConnectToDB());
-    ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (id INT PRIMARY KEY, value TEXT)", kTableName));
     ASSERT_OK(conn.ExecuteFormat(
-        "INSERT INTO $0 (id, value) SELECT generate_series(1, 1000), "
-        "md5(random()::text)",
+        "CREATE TABLE $0 (id INT PRIMARY KEY, value TEXT, range_column INT4RANGE)", kTableName));
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0 (id, value, range_column) SELECT generate_series(1, 1000), "
+        "md5(random()::text), int4range(1, 1000, '[]')",
         kTableName));
     ASSERT_OK(conn.ExecuteFormat("ANALYZE $0", kTableName));
   }
@@ -50,9 +51,23 @@ class YsqlMajorUpgradeStatsImportTest : public YsqlMajorUpgradeTestBase {
 
   Result<std::string> GetAttrStats(
       pgwrapper::PGConn& conn, const std::string& attr_name, bool is_pg11) {
-    return conn.FetchAllAsString(Format(
-        "SELECT * FROM pg_catalog.$0 WHERE tablename = '$1' AND attname = '$2'",
-        (is_pg11 ? "yb_int_pg_stats_v11" : "pg_stats"), kTableName, attr_name));
+        // libpq does not support array or anyrange, so cast to TEXT.
+    const auto select_stmt = VERIFY_RESULT(conn.FetchRowAsString(Format(
+        R"(SELECT 'SELECT ' || string_agg(
+        CASE
+            WHEN data_type IN ('ARRAY', 'anyarray')
+            THEN quote_ident(column_name) || '::TEXT'
+            ELSE quote_ident(column_name)
+        END,
+        ', ' ORDER BY column_name
+    ) ||
+    ' FROM pg_catalog.$0'
+FROM information_schema.columns
+WHERE table_schema = 'pg_catalog'
+  AND table_name = '$0')",
+        (is_pg11 ? "yb_int_pg_stats_v11" : "pg_stats"))));
+    return conn.FetchAllAsString(
+        Format("$0 WHERE tablename = '$1' AND attname = '$2'", select_stmt, kTableName, attr_name));
   }
 };
 
@@ -70,6 +85,10 @@ TEST_F(YsqlMajorUpgradeStatsImportTest, ValidateStatsImported) {
   const auto initial_value_stats = ASSERT_RESULT(GetAttrStats(conn, "value", /*is_pg11=*/true));
   LOG(INFO) << "value stats: " << initial_value_stats;
   ASSERT_NE(initial_value_stats, "");
+  const auto initial_range_column_stats =
+      ASSERT_RESULT(GetAttrStats(conn, "range_column", /*is_pg11=*/true));
+  LOG(INFO) << "range_column stats: " << initial_range_column_stats;
+  ASSERT_NE(initial_range_column_stats, "");
 
   auto validate_stats = [&] {
     auto final_relation_stats = ASSERT_RESULT(GetRelationStats(conn));
@@ -80,6 +99,10 @@ TEST_F(YsqlMajorUpgradeStatsImportTest, ValidateStatsImported) {
 
     auto final_value_stats = ASSERT_RESULT(GetAttrStats(conn, "value", /*is_pg11=*/false));
     ASSERT_EQ(initial_value_stats, final_value_stats);
+
+    auto final_range_column_stats =
+        ASSERT_RESULT(GetAttrStats(conn, "range_column", /*is_pg11=*/false));
+    ASSERT_EQ(initial_range_column_stats, final_range_column_stats);
   };
 
   ASSERT_OK(UpgradeClusterToMixedMode());

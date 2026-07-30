@@ -175,6 +175,126 @@ TEST_F(YBAdminMultiMasterTest, AddShellMaster) {
   ASSERT_EQ(lines4.size(), kNumInitMasters + 2);
 }
 
+TEST_F(YBAdminMultiMasterTest, FlushSysCatalog) {
+  const auto admin_path = GetToolPath(kAdminToolName);
+  const int kNumMasters = 2;
+  ASSERT_NO_FATALS(StartCluster({}, {}, 1 /* num tservers */, kNumMasters));
+
+  LOG(INFO) << "FlushSysCatalog: master addresses: " << cluster_->GetMasterAddresses();
+
+  // Set up a LogWaiter per master to verify the success log line.
+  const auto kFlushLogMessage = "FlushSysCatalog completed: OK";
+  std::vector<std::unique_ptr<LogWaiter>> log_waiters;
+  for (int i = 0; i < kNumMasters; i++) {
+    log_waiters.push_back(
+        std::make_unique<LogWaiter>(cluster_->master(i), kFlushLogMessage));
+  }
+
+  // Default: run on every master; outputs "Successful" per master.
+  std::string output;
+  ASSERT_OK(Subprocess::Call(ToStringVector(
+      admin_path, "--master_addresses", cluster_->GetMasterAddresses(),
+      "flush_sys_catalog"), &output));
+  LOG(INFO) << "flush_sys_catalog (all masters):\n" << output;
+  auto lines = StringSplit(output, '\n');
+  int successful_count = 0;
+  for (const auto& line : lines) {
+    if (line.find("Successful") != std::string::npos) {
+      successful_count++;
+    }
+  }
+  ASSERT_EQ(successful_count, kNumMasters);
+
+  // Verify the success log line appeared on every master.
+  for (int i = 0; i < kNumMasters; i++) {
+    ASSERT_OK(log_waiters[i]->WaitFor(10s));
+  }
+
+  // Set up LogWaiters again to look for future loglines.
+  log_waiters.clear();
+  for (int i = 0; i < kNumMasters; i++) {
+    log_waiters.push_back(
+        std::make_unique<LogWaiter>(cluster_->master(i), kFlushLogMessage));
+  }
+
+  // with 'leader_only': old behavior to only run on the leader.
+  // No output => success.
+  ASSERT_OK(Subprocess::Call(ToStringVector(
+      admin_path, "--master_addresses", cluster_->GetMasterAddresses(),
+      "flush_sys_catalog", "leader_only"), &output));
+  ASSERT_TRUE(output.empty()) << "Expected empty output, got: " << output;
+
+  // Verify the log line appeared only on the leader.
+  auto leader_idx = ASSERT_RESULT(cluster_->GetLeaderMasterIndex());
+  ASSERT_OK(log_waiters[leader_idx]->WaitFor(10s));
+  for (int i = 0; i < kNumMasters; i++) {
+    if (static_cast<size_t>(i) != leader_idx) {
+      ASSERT_FALSE(log_waiters[i]->IsEventOccurred())
+          << "FlushSysCatalog log unexpectedly found on follower master " << i;
+    }
+  }
+}
+
+TEST_F(YBAdminMultiMasterTest, CompactSysCatalog) {
+  const auto admin_path = GetToolPath(kAdminToolName);
+  const int kNumMasters = 2;
+  ASSERT_NO_FATALS(StartCluster({}, {}, 1 /* num tservers */, kNumMasters));
+
+  LOG(INFO) << "CompactSysCatalog: master addresses: " << cluster_->GetMasterAddresses();
+
+  // Set up a LogWaiter per master to verify the success log line.
+  const auto kCompactLogMessage = "CompactSysCatalog completed: OK";
+  std::vector<std::unique_ptr<LogWaiter>> log_waiters;
+  for (int i = 0; i < kNumMasters; i++) {
+    log_waiters.push_back(
+        std::make_unique<LogWaiter>(cluster_->master(i), kCompactLogMessage));
+  }
+
+  // Default: run on every master; outputs "Successful" per master.
+  std::string output;
+  ASSERT_OK(Subprocess::Call(ToStringVector(
+      admin_path, "--master_addresses", cluster_->GetMasterAddresses(),
+      "compact_sys_catalog"), &output));
+  LOG(INFO) << "compact_sys_catalog (all masters):\n" << output;
+  auto lines = StringSplit(output, '\n');
+  int successful_count = 0;
+  for (const auto& line : lines) {
+    if (line.find("Successful") != std::string::npos) {
+      successful_count++;
+    }
+  }
+  ASSERT_EQ(successful_count, kNumMasters);
+
+  // Verify the success log line appeared on every master.
+  for (int i = 0; i < kNumMasters; i++) {
+    ASSERT_OK(log_waiters[i]->WaitFor(10s));
+  }
+
+  // Set up LogWaiters again to look for future loglines.
+  log_waiters.clear();
+  for (int i = 0; i < kNumMasters; i++) {
+    log_waiters.push_back(
+        std::make_unique<LogWaiter>(cluster_->master(i), kCompactLogMessage));
+  }
+
+  // with 'leader_only': old behavior to only run on the leader.
+  // No output => success.
+  ASSERT_OK(Subprocess::Call(ToStringVector(
+    admin_path, "--master_addresses", cluster_->GetMasterAddresses(),
+    "compact_sys_catalog", "leader_only"), &output));
+  ASSERT_TRUE(output.empty()) << "Expected empty output, got: " << output;
+
+  // Verify the log line appeared only on the leader.
+  auto leader_idx = ASSERT_RESULT(cluster_->GetLeaderMasterIndex());
+  ASSERT_OK(log_waiters[leader_idx]->WaitFor(10s));
+  for (int i = 0; i < kNumMasters; i++) {
+    if (static_cast<size_t>(i) != leader_idx) {
+      ASSERT_FALSE(log_waiters[i]->IsEventOccurred())
+          << "CompactSysCatalog log unexpectedly found on follower master " << i;
+    }
+  }
+}
+
 TEST_F(YBAdminMultiMasterTest, TestMasterLeaderStepdown) {
   const int kNumInitMasters = 3;
   ASSERT_NO_FATALS(StartCluster({}, {}, 1/*num tservers*/, kNumInitMasters));

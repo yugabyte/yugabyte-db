@@ -24,7 +24,7 @@ SELECT documentdb_api.insert_one('db','bsontypetests','{"_id":"3", "value":{"$nu
 (1 row)
 
 -- insert string
-SELECT documentdb_api.insert_one('db','bsontypetests','{"_id":"4", "value": "A quick brown fox jumps over the lazy dog."}', NULL);
+SELECT documentdb_api.insert_one('db','bsontypetests','{"_id":"4", "value": "Bright stars illuminate the calm ocean during a peaceful night."}', NULL);
                               insert_one                              
 ----------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
@@ -52,7 +52,7 @@ SELECT documentdb_api.insert_one('db','bsontypetests','{"_id":"7", "tsField": {"
 (1 row)
 
 -- array & nested object
-SELECT documentdb_api.insert_one('db','bsontypetests','{"_id":"8", "arrayOfObject": [ { "ola": "ola"}, { "tudo bem?": "tudo bem!"}, { "o que tu fizeste essa semana?" : "nada" } ]}', NULL);
+SELECT documentdb_api.insert_one('db','bsontypetests','{"_id":"8", "arrayOfObject": [{ "こんにちは": "ありがとう" }, { "¿Cómo estás?": "Muy bien!" }, { "Что ты делал на этой неделе?": "Ничего" }]}', NULL);
                               insert_one                              
 ----------------------------------------------------------------------
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
@@ -65,11 +65,11 @@ SELECT shard_key_value, object_id, document FROM documentdb_data.documents_1001 
             1001 | { "" : "1" } | { "_id" : "1", "value" : { "$numberInt" : "11" }, "valueMax" : { "$numberInt" : "2147483647" }, "valueMin" : { "$numberInt" : "-2147483648" } }
             1001 | { "" : "2" } | { "_id" : "2", "value" : { "$numberLong" : "134311" }, "valueMax" : { "$numberLong" : "9223372036854775807" }, "valueMin" : { "$numberLong" : "-9223372036854775808" } }
             1001 | { "" : "3" } | { "_id" : "3", "value" : { "$numberDouble" : "0.0" }, "valueMax" : { "$numberDouble" : "1.7976931348623157081e+308" }, "valueMin" : { "$numberDouble" : "-1.7976931348623157081e+308" }, "valueEpsilon" : { "$numberDouble" : "4.9406564584124654418e-324" }, "valueinfinity" : { "$numberDouble" : "Infinity" } }
-            1001 | { "" : "4" } | { "_id" : "4", "value" : "A quick brown fox jumps over the lazy dog." }
+            1001 | { "" : "4" } | { "_id" : "4", "value" : "Bright stars illuminate the calm ocean during a peaceful night." }
             1001 | { "" : "5" } | { "_id" : "5", "value" : { "$binary" : { "base64" : "U29tZVRleHRUb0VuY29kZQ==", "subType" : "02" } } }
             1001 | { "" : "6" } | { "_id" : "6", "valueMin" : { "$minKey" : 1 }, "valueMax" : { "$maxKey" : 1 } }
             1001 | { "" : "7" } | { "_id" : "7", "tsField" : { "$timestamp" : { "t" : 1565545664, "i" : 1 } }, "dateBefore1970" : { "$date" : { "$numberLong" : "-1577923200000" } }, "dateField" : { "$date" : { "$numberLong" : "1565546054692" } }, "oidField" : { "$oid" : "5d505646cf6d4fe581014ab2" } }
-            1001 | { "" : "8" } | { "_id" : "8", "arrayOfObject" : [ { "ola" : "ola" }, { "tudo bem?" : "tudo bem!" }, { "o que tu fizeste essa semana?" : "nada" } ] }
+            1001 | { "" : "8" } | { "_id" : "8", "arrayOfObject" : [ { "こんにちは" : "ありがとう" }, { "¿Cómo estás?" : "Muy bien!" }, { "Что ты делал на этой неделе?" : "Ничего" } ] }
 (8 rows)
 
 -- project two fields out.
@@ -79,7 +79,7 @@ SELECT document->'_id', document->'value' FROM documentdb_data.documents_1001 OR
  { "" : "1" } | { "" : { "$numberInt" : "11" } }
  { "" : "2" } | { "" : { "$numberLong" : "134311" } }
  { "" : "3" } | { "" : { "$numberDouble" : "0.0" } }
- { "" : "4" } | { "" : "A quick brown fox jumps over the lazy dog." }
+ { "" : "4" } | { "" : "Bright stars illuminate the calm ocean during a peaceful night." }
  { "" : "5" } | { "" : { "$binary" : { "base64" : "U29tZVRleHRUb0VuY29kZQ==", "subType" : "02" } } }
  { "" : "6" } | 
  { "" : "7" } | 
@@ -137,9 +137,9 @@ SELECT documentdb_api.insert_one('db', 'bsontypetests', '{ "_id": 16, "field": [
 
 /* Test to validate that _id field cannot have regex as it's value */
 select documentdb_api.insert_one('db', 'bsontypetests', '{"_id": {"$regex": "^A", "$options": ""}}');
-                                                                                                          insert_one                                                                                                          
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "The '_id' value cannot be of type regex" } ] }
+                                                                                                               insert_one                                                                                                               
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "The '_id' field value must not be a type of regex" } ] }
 (1 row)
 
 /* Test _id cannot have nested paths with $ */
@@ -151,9 +151,9 @@ SELECT documentdb_api.insert_one('db', 'bsontypetests', '{ "_id": { "a": 2, "$c"
 
 /* Test to validate that _id field cannot have array as it's value */
 select documentdb_api.insert_one('db', 'bsontypetests', '{"_id": [1]}');
-                                                                                                          insert_one                                                                                                          
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "The '_id' value cannot be of type array" } ] }
+                                                                                                               insert_one                                                                                                               
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "n" : { "$numberInt" : "0" }, "ok" : { "$numberDouble" : "1.0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "16777245" }, "errmsg" : "The '_id' field value must not be a type of array" } ] }
 (1 row)
 
 -- assert object_id matches the '_id' from the content - should be numRows.

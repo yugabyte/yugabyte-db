@@ -296,17 +296,29 @@ partition:
   tserver: 3
 ```
 
-If you want to change the defaults, you can use the following command. You can even do `helm install` instead of `helm upgrade` when you are installing on a Kubernetes cluster with configuration different than the defaults:
+If you want to change the defaults, use the `helm upgrade --set` command; or, if you are installing on a Kubernetes cluster with a configuration different than the defaults, you can use `helm install` instead of `helm upgrade`.
+
+For example, to change the TServer resource:
 
 ```sh
 helm upgrade --set resource.tserver.requests.cpu=8,resource.tserver.requests.memory=15Gi yb-demo ./yugabyte
 ```
 
-Replica count can be changed using the following command. Note that only the YB-TServers need to be scaled in a replication factor 3 cluster which keeps the masters count at `3`:
+To change replica count:
 
 ```sh
 helm upgrade --set replicas.tserver=5 yb-demo ./yugabyte
 ```
+
+Note that only the YB-TServers need to be scaled in a replication factor 3 cluster, which keeps the masters count at 3.
+
+#### Memory limits for Kubernetes deployments
+
+For Kubernetes deployments, memory limits are controlled via Kubernetes resource specifications in the Helm chart (the `resource.master.limits.memory` and `resource.tserver.limits.memory` values).
+
+The Helm chart automatically converts these Kubernetes pod memory limits to the `--memory_limit_hard_bytes` command-line flag, which is passed to the YugabyteDB processes (yb-tserver and yb-master) when the pods start. The [--default_memory_limit_to_ram_ratio](../../../../../reference/configuration/yb-tserver/#default-memory-limit-to-ram-ratio) flag does not apply to Kubernetes universes because memory resources are specified natively in the Kubernetes YAML rather than as a percentage of system RAM.
+
+For example, if you set `resource.tserver.limits.memory: 4Gi` in your Helm chart, the Helm chart automatically converts this to bytes and sets `--memory_limit_hard_bytes=4294967296` as a command-line argument when starting the TServer pods.
 
 ### Readiness probes
 
@@ -347,6 +359,44 @@ tserver:
     periodSeconds: 20
     timeoutSeconds: 10
 ```
+
+### Liveness probes
+
+[Liveness probes](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#container-probes) determine whether Kubernetes should restart the YugabyteDB container. After enough consecutive failures, the kubelet restarts the container. Readiness probes only govern whether traffic is sent to the pod.
+
+Like readiness, liveness behavior comes from the Helm chart used for direct installs and for [YugabyteDB Anywhere-managed deployments](../../../../../yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes/#helm-overrides).
+
+YB-Master and YB-TServer pods share the top-level `livenessProbe` and `customLivenessProbe` entries in [`values.yaml`](https://github.com/yugabyte/charts/blob/master/stable/yugabyte/values.yaml).
+
+With persistent volume storage (`storage.ephemeral` is false), the chart installs a default `exec` probe that writes a timestamp into `disk.check` under each data directory (`/mnt/disk0`, `/mnt/disk1`, and so on, according to the configured disk count) and runs `sync` on those files. That touches the data disks so stuck or read-only volumes are more likely to fail the probe than a socket-only check.
+
+If `storage.ephemeral` is true, the chart omits this disk-based liveness probe and the startup probes rendered in the same conditional block.
+
+`livenessProbe.enabled` defaults to true. Tune `failureThreshold`, `periodSeconds`, `successThreshold`, and `timeoutSeconds` on the default probe.
+
+Disable the default probe:
+
+```yaml
+livenessProbe:
+  enabled: false
+```
+
+Set `customLivenessProbe` to a complete Kubernetes probe specification (`exec`, `httpGet`, or `tcpSocket`) to replace the default disk probe.
+
+```yaml
+customLivenessProbe:
+  exec:
+    command:
+      - /custom/health/check
+  failureThreshold: 3
+  periodSeconds: 10
+  timeoutSeconds: 1
+  successThreshold: 1
+```
+
+On each `Services` entry for `yb-masters` or `yb-tservers`, `skipHealthChecks: true` skips the disk-based liveness and startup probes from that template; readiness is still configured on its own.
+
+Preflight values (`preflight.skipAll` and related flags) affect startup checks only and do not change liveness probes.
 
 ### Independent LoadBalancers
 

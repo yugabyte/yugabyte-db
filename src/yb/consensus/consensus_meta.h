@@ -165,15 +165,6 @@ class ConsensusMetadata {
   const RaftConfigPB& committed_config() const;
   void set_committed_config(const RaftConfigPB& config);
 
-  // Accessors for split_parent_tablet_id.
-  bool has_split_parent_tablet_id() const;
-  const TabletId& split_parent_tablet_id() const;
-  void set_split_parent_tablet_id(const TabletId& split_parent_tablet_id);
-
-  // CloneSourceInfo contains info about the clone request that created this tablet.
-  const std::optional<CloneSourceInfo> clone_source_info() const;
-  void set_clone_source_info(uint32_t seq_no, const TabletId& tablet_id);
-
   // Returns whether a pending configuration is set.
   bool has_pending_config() const;
 
@@ -191,6 +182,11 @@ class ConsensusMetadata {
   // Otherwise, return the committed configuration.
   const RaftConfigPB& active_config() const;
 
+  // Pending Raft config op ID received from leader inside StartRemoteBootstrapRequestPB.
+  OpId pending_config_op_id_from_rbs() const;
+  void set_pending_config_op_id_from_rbs(const OpId& op_id);
+  void clear_pending_config_op_id_from_rbs();
+
   // Accessors for setting the active leader.
   const std::string& leader_uuid() const;
   void set_leader_uuid(const std::string& uuid);
@@ -202,6 +198,15 @@ class ConsensusMetadata {
 
   // Returns the currently active role of the current node.
   PeerRole active_role() const;
+
+  // Accessors for split_parent_tablet_id.
+  bool has_split_parent_tablet_id() const;
+  const TabletId& split_parent_tablet_id() const;
+  void set_split_parent_tablet_id(const TabletId& split_parent_tablet_id);
+
+  // CloneSourceInfo contains info about the clone request that created this tablet.
+  const std::optional<CloneSourceInfo> clone_source_info() const;
+  void set_clone_source_info(uint32_t seq_no, const TabletId& tablet_id);
 
   // Copy the stored state into a ConsensusStatePB object.
   // To get the active configuration, specify 'type' = ACTIVE.

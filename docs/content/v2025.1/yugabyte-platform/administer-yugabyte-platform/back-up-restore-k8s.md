@@ -21,13 +21,6 @@ YugabyteDB Anywhere installations include configuration settings, certificates a
       YBA Installer</a>
   </li>
 
-  <li >
-    <a href="../back-up-restore-yp/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>
-      Replicated
-    </a>
-  </li>
-
   <li>
     <a href="../back-up-restore-k8s/" class="nav-link active">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>

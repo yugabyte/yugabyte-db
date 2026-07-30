@@ -15,7 +15,7 @@ type: docs
 
 The following table describes the operating system and architecture support for [deploying YugabyteDB](../../../deploy/manual-deployment/).
 
-Unless otherwise noted, operating systems are supported by all supported versions of YugabyteDB and YugabyteDB Anywhere. YugabyteDB Anywhere added support for deploying YugabyteDB to ARM-based systems for non-Kubernetes platforms in v2.18.
+Unless otherwise noted, operating systems are supported by all supported versions of YugabyteDB and YugabyteDB Anywhere. YugabyteDB Anywhere added support for deploying YugabyteDB to ARM-based systems for non-Kubernetes platforms in v2.18, and Kubernetes in v2024.2.1 {{<tags/feature/ea idea="1486">}}.
 
 | Operating system | x86            | ARM            | Notes |
 | :--------------- | :------------- | :------------- | :---- |
@@ -27,7 +27,7 @@ Unless otherwise noted, operating systems are supported by all supported version
 | Red Hat Enterprise Linux 8 CIS Hardened | {{<icon/yes>}} |      | |
 | Red Hat Enterprise Linux&nbsp;9.3 and later | {{<icon/yes>}} |  | |
 | Red Hat Enterprise Linux&nbsp;9 CIS Hardened | {{<icon/yes>}} |  | Supported in v2.20.3 and later.  {{<tags/feature/ea>}} |
-| Rocky Linux 8    | {{<icon/yes>}} |                | Supported in v2.20.8, v2024.1.4, and v2024.2 and later.  {{<tags/feature/ea>}} |
+| Rocky Linux 8    | {{<icon/yes>}} |                | Supported in v2.20.8 {{<tags/feature/ea idea="1157">}}, v2024.1.4 {{<tags/feature/ea idea="1157">}}, and v2024.2 and later.   |
 | SUSE&nbsp;Linux&nbsp;Enterprise&nbsp;Server&nbsp;15&nbsp;SP5 | {{<icon/yes>}} |     | {{<tags/feature/ea>}} |
 | Ubuntu 20        | {{<icon/yes>}} | {{<icon/yes>}} |       |
 | Ubuntu 22        | {{<icon/yes>}} | {{<icon/yes>}} | Supported in v2.18.5, v2.20.1 |

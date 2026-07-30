@@ -34,7 +34,7 @@ EXPLAIN (COSTS ON) SELECT document FROM documentdb_api.collection('db', 'test_ob
 (7 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_object_id_index') WHERE document @@ '{ "_id": { "$gt": 50 } }';
-                                                                             QUERY PLAN                                                                              
+                                                                                                                                     QUERY PLAN                                                                                                                                     
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -42,12 +42,11 @@ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_o
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Index Scan using _id_ on documents_2510_251007 collection
-               Index Cond: ((shard_key_value = '2510'::bigint) AND (object_id OPERATOR(documentdb_core.>) '{ "" : { "$numberInt" : "50" } }'::documentdb_core.bson))
-               Filter: (document OPERATOR(documentdb_api_catalog.@>) '{ "_id" : { "$numberInt" : "50" } }'::documentdb_core.bson)
-(8 rows)
+               Index Cond: ((shard_key_value = '2510'::bigint) AND (object_id OPERATOR(documentdb_core.>) '{ "" : { "$numberInt" : "50" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.<=) '{ "" : { "$numberDouble" : "Infinity" } }'::documentdb_core.bson))
+(7 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_object_id_index') WHERE document @@ '{ "_id": { "$gt": 50, "$lt": 60 } }';
-                                                                                                                                QUERY PLAN                                                                                                                                
+                                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -55,12 +54,11 @@ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_o
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Index Scan using _id_ on documents_2510_251007 collection
-               Index Cond: ((shard_key_value = '2510'::bigint) AND (object_id OPERATOR(documentdb_core.>) '{ "" : { "$numberInt" : "50" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.<) '{ "" : { "$numberInt" : "60" } }'::documentdb_core.bson))
-               Filter: ((document OPERATOR(documentdb_api_catalog.@>) '{ "_id" : { "$numberInt" : "50" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@<) '{ "_id" : { "$numberInt" : "60" } }'::documentdb_core.bson))
-(8 rows)
+               Index Cond: ((shard_key_value = '2510'::bigint) AND (object_id OPERATOR(documentdb_core.>) '{ "" : { "$numberInt" : "50" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.<=) '{ "" : { "$numberDouble" : "Infinity" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.<) '{ "" : { "$numberInt" : "60" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.>=) '{ "" : { "$numberDouble" : "-Infinity" } }'::documentdb_core.bson))
+(7 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_object_id_index') WHERE document @@ '{ "_id": { "$gte": 50, "$lte": 60 } }';
-                                                                                                                                 QUERY PLAN                                                                                                                                 
+                                                                                                                                                                                                                                                QUERY PLAN                                                                                                                                                                                                                                                 
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -68,9 +66,8 @@ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_o
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Index Scan using _id_ on documents_2510_251007 collection
-               Index Cond: ((shard_key_value = '2510'::bigint) AND (object_id OPERATOR(documentdb_core.>=) '{ "" : { "$numberInt" : "50" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.<=) '{ "" : { "$numberInt" : "60" } }'::documentdb_core.bson))
-               Filter: ((document OPERATOR(documentdb_api_catalog.@>=) '{ "_id" : { "$numberInt" : "50" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@<=) '{ "_id" : { "$numberInt" : "60" } }'::documentdb_core.bson))
-(8 rows)
+               Index Cond: ((shard_key_value = '2510'::bigint) AND (object_id OPERATOR(documentdb_core.>=) '{ "" : { "$numberInt" : "50" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.<=) '{ "" : { "$numberDouble" : "Infinity" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.<=) '{ "" : { "$numberInt" : "60" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.>=) '{ "" : { "$numberDouble" : "-Infinity" } }'::documentdb_core.bson))
+(7 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_object_id_index') WHERE document @@ '{ "$and": [ {"_id": 15 }, { "_id": 16 } ] }';
                                                                                                                                 QUERY PLAN                                                                                                                                
@@ -82,8 +79,7 @@ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_o
          Node: host=localhost port=58070 dbname=regression
          ->  Index Scan using _id_ on documents_2510_251007 collection
                Index Cond: ((shard_key_value = '2510'::bigint) AND (object_id OPERATOR(documentdb_core.=) '{ "" : { "$numberInt" : "15" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.=) '{ "" : { "$numberInt" : "16" } }'::documentdb_core.bson))
-               Filter: (document OPERATOR(documentdb_api_catalog.@=) '{ "_id" : { "$numberInt" : "15" } }'::documentdb_core.bson)
-(8 rows)
+(7 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_object_id_index') WHERE document @@ '{ "$and": [ {"_id": { "$in": [ 15, 16, 17] }}, { "_id": { "$in": [ 16, 17, 18 ] } } ] }';
                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                    
@@ -95,11 +91,11 @@ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_o
          Node: host=localhost port=58070 dbname=regression
          ->  Index Scan using _id_ on documents_2510_251007 collection
                Index Cond: ((shard_key_value = '2510'::bigint) AND (object_id OPERATOR(documentdb_core.=) ANY ('{"{ \"\" : { \"$numberInt\" : \"15\" } }","{ \"\" : { \"$numberInt\" : \"16\" } }","{ \"\" : { \"$numberInt\" : \"17\" } }"}'::documentdb_core.bson[])) AND (object_id OPERATOR(documentdb_core.=) ANY ('{"{ \"\" : { \"$numberInt\" : \"16\" } }","{ \"\" : { \"$numberInt\" : \"17\" } }","{ \"\" : { \"$numberInt\" : \"18\" } }"}'::documentdb_core.bson[])))
-               Filter: (document OPERATOR(documentdb_api_catalog.@*=) '{ "_id" : [ { "$numberInt" : "15" }, { "$numberInt" : "16" }, { "$numberInt" : "17" } ] }'::documentdb_core.bson)
+               Filter: (document OPERATOR(documentdb_api_catalog.@*=) '{ "_id" : [ { "$numberInt" : "16" }, { "$numberInt" : "17" }, { "$numberInt" : "18" } ] }'::documentdb_core.bson)
 (8 rows)
 
 EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_object_id_index') WHERE document @@ '{ "$and": [ {"_id": { "$gt": 50 } }, { "_id": { "$lt": 60 } } ] }';
-                                                                                                                                QUERY PLAN                                                                                                                                
+                                                                                                                                                                                                                                               QUERY PLAN                                                                                                                                                                                                                                                
 ---------------------------------------------------------------------
  Custom Scan (Citus Adaptive)
    Task Count: 1
@@ -107,9 +103,8 @@ EXPLAIN (COSTS OFF) SELECT document FROM documentdb_api.collection('db', 'test_o
    ->  Task
          Node: host=localhost port=58070 dbname=regression
          ->  Index Scan using _id_ on documents_2510_251007 collection
-               Index Cond: ((shard_key_value = '2510'::bigint) AND (object_id OPERATOR(documentdb_core.>) '{ "" : { "$numberInt" : "50" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.<) '{ "" : { "$numberInt" : "60" } }'::documentdb_core.bson))
-               Filter: ((document OPERATOR(documentdb_api_catalog.@>) '{ "_id" : { "$numberInt" : "50" } }'::documentdb_core.bson) AND (document OPERATOR(documentdb_api_catalog.@<) '{ "_id" : { "$numberInt" : "60" } }'::documentdb_core.bson))
-(8 rows)
+               Index Cond: ((shard_key_value = '2510'::bigint) AND (object_id OPERATOR(documentdb_core.>) '{ "" : { "$numberInt" : "50" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.<=) '{ "" : { "$numberDouble" : "Infinity" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.<) '{ "" : { "$numberInt" : "60" } }'::documentdb_core.bson) AND (object_id OPERATOR(documentdb_core.>=) '{ "" : { "$numberDouble" : "-Infinity" } }'::documentdb_core.bson))
+(7 rows)
 
 -- create a scenario where there's an alternate filter and that can be matched in the RUM index.
 SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "test_object_id_index", "indexes": [ { "key": { "otherField": 1 }, "name": "idx_1" } ]}', true);

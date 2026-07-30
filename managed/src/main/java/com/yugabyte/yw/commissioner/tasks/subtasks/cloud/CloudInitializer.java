@@ -14,6 +14,7 @@ import com.yugabyte.yw.cloud.AbstractInitializer;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.cloud.azu.AZUInitializer;
 import com.yugabyte.yw.cloud.gcp.GCPInitializer;
+import com.yugabyte.yw.cloud.oci.OCIInitializer;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
@@ -50,6 +51,9 @@ public class CloudInitializer extends CloudTaskBase {
         break;
       case azu:
         initializer = StaticInjectorHolder.injector().instanceOf(AZUInitializer.class);
+        break;
+      case oci:
+        initializer = StaticInjectorHolder.injector().instanceOf(OCIInitializer.class);
         break;
       default:
         throw new RuntimeException(cloudProvider.getCode() + " does not have an initializer.");

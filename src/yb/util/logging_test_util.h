@@ -69,7 +69,7 @@ class StringVectorSink : public google::LogSink {
 template<class Pattern>
 class PatternWaiterLogSink : public google::LogSink {
  public:
-  explicit PatternWaiterLogSink<Pattern>(const std::string& pattern)
+  explicit PatternWaiterLogSink(const std::string& pattern)
       : pattern_source_(pattern), pattern_to_wait_for_(pattern) {
     google::AddLogSink(this);
   }

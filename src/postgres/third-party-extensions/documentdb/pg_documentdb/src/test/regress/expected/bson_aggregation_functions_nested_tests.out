@@ -63,7 +63,6 @@ SELECT q1.document, q2.document FROM q1, q2 WHERE q1.document->>'state' = q2.doc
 (2 rows)
 
 -- with the GUC off nested fails, but basic works
-set documentdb.allowNestedAggregationFunctionInQueries to off;
 SELECT document FROM documentdb_api_catalog.bson_aggregation_find('nested_db', '{ "find": "airports", "filter": { "airport_id": { "$gt": 12000, "$lt": 14000 }}}');
                                                                                              document                                                                                              
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -71,8 +70,17 @@ SELECT document FROM documentdb_api_catalog.bson_aggregation_find('nested_db', '
 (1 row)
 
 SELECT document FROM (SELECT document FROM documentdb_api_catalog.bson_aggregation_find('nested_db', '{ "find": "airports", "filter": { "airport_id": { "$gt": 12000, "$lt": 14000 }}}')) basequery;
-ERROR:  Aggregation pipeline node should select from the Mongo aggregation function kind 1. This is unexpected
+                                                                                             document                                                                                              
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "airport_id" : { "$numberInt" : "13442" }, "city" : "Everet", "state" : "WA", "name" : "Paine Field", "rule" : { "tags" : { "$all" : [ "private", "vip" ] } } }
+(1 row)
+
 WITH q1 AS (SELECT document FROM documentdb_api_catalog.bson_aggregation_find('nested_db', '{ "find": "airports", "filter": { "airport_id": { "$gt": 12000, "$lt": 14000 }}}')),
 q2 AS (SELECT document FROM documentdb_api_catalog.bson_aggregation_find('nested_db', '{ "find": "airports", "filter": { "state": { "$gt": "A" }}}'))
 SELECT q1.document, q2.document FROM q1, q2 WHERE q1.document->>'state' = q2.document->>'state';
-ERROR:  Aggregation pipeline node should have 1 collection. Found 2. This is unexpected
+                                                                                             document                                                                                              |                                                                                              document                                                                                               
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "7" }, "airport_id" : { "$numberInt" : "13442" }, "city" : "Everet", "state" : "WA", "name" : "Paine Field", "rule" : { "tags" : { "$all" : [ "private", "vip" ] } } } | { "_id" : { "$numberInt" : "7" }, "airport_id" : { "$numberInt" : "13442" }, "city" : "Everet", "state" : "WA", "name" : "Paine Field", "rule" : { "tags" : { "$all" : [ "private", "vip" ] } } }
+ { "_id" : { "$numberInt" : "7" }, "airport_id" : { "$numberInt" : "13442" }, "city" : "Everet", "state" : "WA", "name" : "Paine Field", "rule" : { "tags" : { "$all" : [ "private", "vip" ] } } } | { "_id" : { "$numberInt" : "8" }, "airport_id" : { "$numberInt" : "16123" }, "city" : "Seattle", "state" : "WA", "name" : "Boeing Field", "rule" : { "tags" : { "$all" : [ "private", "vip" ] } } }
+(2 rows)
+

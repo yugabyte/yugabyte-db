@@ -1,21 +1,24 @@
-import { mui, YBToggleField } from '@yugabyte-ui-library/core';
 import { useContext } from 'react';
-import { StyledProps, Typography } from '@material-ui/core';
-import { Trans, useTranslation } from 'react-i18next';
 import { useFormContext } from 'react-hook-form';
+import { Trans, useTranslation } from 'react-i18next';
+import { StyledProps } from '@material-ui/core';
+import { mui, YBToggleField, YBAccordion, YBTooltip } from '@yugabyte-ui-library/core';
 import { StyledPanel } from '../../components/DefaultComponents';
 import { NodeAvailabilityProps } from './dtos';
 import { getNodeCount } from '../../CreateUniverseUtils';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
-import { ArrowDropDown } from '@material-ui/icons';
+import { REPLICATION_FACTOR } from '../../fields/FieldNames';
+import { CloudType } from '../../../../../features/universe/universe-form/utils/dto';
+
+//icons
 import Return from '../../../../../assets/tree.svg';
+import InfoIcon from '../../../../../assets/approved/info-new.svg';
 
-const { styled } = mui;
-
-const { Accordion, AccordionSummary, AccordionDetails } = mui;
+const { styled, Link } = mui;
 
 const DedicatedNodeHelpText = styled('div')(({ theme }) => ({
-  marginLeft: '44px',
+  marginTop: '4px',
+  marginLeft: '48px',
   color: theme.palette.grey[700]
 }));
 
@@ -46,13 +49,19 @@ export const DedicatedNode = ({ noAccordion }: { noAccordion?: boolean }) => {
     keyPrefix: 'createUniverseV2.nodesAndAvailability.dedicatedNodes'
   });
   const { control, watch } = useFormContext<NodeAvailabilityProps>();
-  const [{ resilienceAndRegionsSettings }] = (useContext(
+  const [{ resilienceAndRegionsSettings, generalSettings }] = useContext(
     CreateUniverseContext
-  ) as unknown) as CreateUniverseContextMethods;
+  ) as unknown as CreateUniverseContextMethods;
+  const isK8sUniverse = generalSettings?.cloud === CloudType.kubernetes;
 
   const availabilityZones = watch('availabilityZones');
   const useDedicatedNodes = watch('useDedicatedNodes');
   const nodeCount = getNodeCount(availabilityZones);
+  const replicationFactor = watch(REPLICATION_FACTOR) ?? 1;
+
+  if (isK8sUniverse) {
+    return null;
+  }
 
   const getStyledToggleArea = () => (
     <>
@@ -65,19 +74,19 @@ export const DedicatedNode = ({ noAccordion }: { noAccordion?: boolean }) => {
           dataTestId="use-dedicated-nodes-field"
         />
         <DedicatedNodeHelpText>
-          <div>{t('helpText')}</div>
+          <div>{t('helpText1')}</div>
           <div>
-            <Trans t={t} i18nKey={'helpTextLink'} components={{ b: <b />, a: <a href="#" /> }} />
+            <Trans t={t} i18nKey={'helpText2'} components={{ b: <b />, a: <a href="#" /> }} />
           </div>
         </DedicatedNodeHelpText>
       </StyledToggleArea>
-      <div style={{ marginLeft: '44px', paddingBottom: '24px' }}>
-        {useDedicatedNodes && (
+      {useDedicatedNodes && (
+        <div style={{ paddingBottom: '24px', paddingLeft: '38px' }}>
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Return />
               <NodesCount header>
-                <span>{nodeCount + resilienceAndRegionsSettings!.replicationFactor}</span>
+                <span>{nodeCount + replicationFactor}</span>
                 <span>{t('totalNodes')}</span>
               </NodesCount>
             </div>
@@ -87,7 +96,7 @@ export const DedicatedNode = ({ noAccordion }: { noAccordion?: boolean }) => {
                 gap: '16px',
                 marginTop: '8px',
                 alignItems: 'center',
-                marginLeft: '24px'
+                marginLeft: '32px'
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -99,14 +108,31 @@ export const DedicatedNode = ({ noAccordion }: { noAccordion?: boolean }) => {
               <span style={{ fontSize: '15px', fontWeight: '500' }}>+</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <NodesCount>
-                  <span>{resilienceAndRegionsSettings?.replicationFactor}</span>
+                  <span>{replicationFactor}</span>
                 </NodesCount>
                 <span style={{ color: '#6D7C88' }}>{t('totalMaster')}</span>
+                <YBTooltip
+                  title={
+                    <Trans
+                      t={t}
+                      style={{ fontSize: '11.5px', fontWeight: 400, lineHeight: '16px' }}
+                      i18nKey="tooltip"
+                      components={{
+                        a: <Link />,
+                        br: <br />
+                      }}
+                    />
+                  }
+                >
+                  <span style={{ marginTop: '6px', marginLeft: '-4px', cursor: 'pointer' }}>
+                    <InfoIcon />
+                  </span>
+                </YBTooltip>
               </div>
             </div>
           </>
-        )}
-      </div>
+        </div>
+      )}
     </>
   );
 
@@ -115,19 +141,12 @@ export const DedicatedNode = ({ noAccordion }: { noAccordion?: boolean }) => {
   }
 
   return (
-    <StyledPanel>
-      <Accordion>
-        <AccordionSummary
-          expandIcon={<ArrowDropDown style={{ fontSize: '24px', color: 'black' }} />}
-        >
-          <Typography variant="h5" style={{ fontWeight: 600 }}>
-            {t('title')}
-          </Typography>
-        </AccordionSummary>
-        <AccordionDetails>
-          <StyledPanel>{getStyledToggleArea()}</StyledPanel>
-        </AccordionDetails>
-      </Accordion>
-    </StyledPanel>
+    <YBAccordion
+      titleContent={t('title')}
+      sx={{ width: '100%' }}
+      defaultExpanded={!!useDedicatedNodes}
+    >
+      <StyledPanel>{getStyledToggleArea()}</StyledPanel>
+    </YBAccordion>
   );
 };

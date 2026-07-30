@@ -50,7 +50,7 @@ public class TabletServerController extends AuthenticatedController {
   @Inject
   public TabletServerController(CustomWsClientFactory wsClientFactory, Config config) {
     WSClient wsClient = wsClientFactory.forCustomConfig(config.getValue(Util.YB_NODE_UI_WS_KEY));
-    this.apiHelper = new ApiHelper(wsClient);
+    this.apiHelper = new ApiHelper(wsClient, wsClientFactory.getMaterializer());
   }
 
   @VisibleForTesting

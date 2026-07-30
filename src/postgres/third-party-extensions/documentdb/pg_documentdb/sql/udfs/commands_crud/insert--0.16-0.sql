@@ -1,6 +1,6 @@
 
 /*
- * processes a Mongo insert wire protocol command.
+ * processes a documentdb insert wire protocol command.
  */
 CREATE OR REPLACE FUNCTION __API_SCHEMA_V2__.insert(
     p_database_name text,
@@ -13,7 +13,7 @@ CREATE OR REPLACE FUNCTION __API_SCHEMA_V2__.insert(
  LANGUAGE C
 AS 'MODULE_PATHNAME', $$command_insert$$;
 COMMENT ON FUNCTION __API_SCHEMA_V2__.insert(text,__CORE_SCHEMA_V2__.bson,__CORE_SCHEMA_V2__.bsonsequence,text)
-    IS 'inserts documents into a collection for a mongo wire protocol command';
+    IS 'inserts documents into a documentdb collection for wire protocol command';
 
 /* Command: insert */
 CREATE OR REPLACE FUNCTION __API_SCHEMA_INTERNAL_V2__.insert_one(

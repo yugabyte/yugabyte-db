@@ -48,6 +48,7 @@
 
 #include "yb/dockv/partition.h"
 
+#include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
@@ -65,12 +66,10 @@ using std::string;
 
 using strings::Substitute;
 
-DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_bool(cdcsdk_enable_dynamic_tables_disable_option);
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 
-DEFINE_RUNTIME_AUTO_bool(
-    use_parent_table_id_field, kLocalPersisted, false, true,
+DEFINE_RUNTIME_AUTO_bool(use_parent_table_id_field, kLocalPersisted, false, true,
     "Whether to use the new schema for colocated tables based on the parent_table_id field.");
 TAG_FLAG(use_parent_table_id_field, advanced);
 
@@ -154,15 +153,6 @@ void TabletReplica::UpdateLeaderLeaseInfo(const TabletLeaderLeaseInfo& info) {
     }
   }
   leader_lease_info.initialized = initialized || info.initialized;
-}
-
-bool TabletReplica::IsStale() const {
-  MonoTime now(MonoTime::Now());
-  if (now.GetDeltaSince(time_updated).ToMilliseconds() >=
-      GetAtomicFlag(&FLAGS_tserver_unresponsive_timeout_ms)) {
-    return true;
-  }
-  return false;
 }
 
 bool TabletReplica::IsStarting() const {
@@ -663,17 +653,14 @@ Result<TabletWithSplitPartitions> TableInfo::FindSplittableHashPartitionForStatu
   return STATUS_FORMAT(NotFound, "Table $0 has no splittable hash partition", table_id_);
 }
 
-void TableInfo::AddStatusTabletViaSplitPartition(
+Result<TabletInfo::WriteLock> TableInfo::AddStatusTabletViaSplitPartition(
     TabletInfoPtr old_tablet, const dockv::Partition& partition, const TabletInfoPtr& new_tablet) {
   const auto& new_dirty = new_tablet->metadata().dirty();
-  if (new_dirty.is_deleted()) {
-    return;
-  }
+  RSTATUS_DCHECK(!new_dirty.is_deleted(), Deleted, "New tablet to add is already deleted");
 
   auto old_lock = old_tablet->LockForWrite();
   auto old_partition = old_lock.mutable_data()->pb.mutable_partition();
   partition.ToPB(old_partition);
-  old_lock.Commit();
 
   std::lock_guard l(lock_);
   tablets_.emplace(new_tablet->id(), new_tablet);
@@ -682,6 +669,7 @@ void TableInfo::AddStatusTabletViaSplitPartition(
     const auto& new_partition_key = new_dirty.pb.partition().partition_key_end();
     partitions_.emplace(new_partition_key, new_tablet);
   }
+  return old_lock;
 }
 
 Status TableInfo::AddTabletUnlocked(const TabletInfoPtr& tablet) {
@@ -921,6 +909,15 @@ Status TableInfo::SetIsBackfilling() {
   return Status::OK();
 }
 
+bool TableInfo::TrySetPostTabletCreateTasksScheduled() {
+  bool expected = false;
+  return post_tablet_create_tasks_scheduled_.compare_exchange_strong(expected, true);
+}
+
+void TableInfo::ClearPostTabletCreateTasksScheduled() {
+  post_tablet_create_tasks_scheduled_.store(false);
+}
+
 void TableInfo::SetCreateTableErrorStatus(const Status& status) {
   VLOG_WITH_FUNC(1) << status;
   std::lock_guard l(lock_);
@@ -1034,6 +1031,10 @@ qlexpr::IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
 TableIds TableInfo::GetIndexIds() const {
   TableIds result;
   auto lock = LockForRead();
+
+  DCHECK(!IsIndex(lock->pb) || lock->pb.indexes().empty())
+      << "Indexes should be empty for index table";
+
   result.reserve(lock->pb.indexes().size());
   for (const auto& index_info_pb : lock->pb.indexes()) {
     result.emplace_back(index_info_pb.table_id());
@@ -1053,7 +1054,7 @@ TableIds TableInfo::GetVectorIndexIds() const {
   return result;
 }
 
-bool TableInfo::UsesTablespacesForPlacement() const {
+bool TableInfo::TableTypeUsesTablespacesForPlacement() const {
   auto l = LockForRead();
   // Global transaction table is excluded due to not having a tablespace id set.
   bool is_transaction_table_using_tablespaces =
@@ -1112,6 +1113,15 @@ bool TableInfo::IsSequencesSystemTable(const ReadLock& lock) const {
     return false;
   }
   return *table_oid == kPgSequencesDataTableOid;
+}
+
+bool TableInfo::ShouldLookupPgSchemaName() const {
+  return ShouldLookupPgSchemaName(LockForRead());
+}
+
+bool TableInfo::ShouldLookupPgSchemaName(const ReadLock& lock) const {
+  return lock->table_type() == PGSQL_TABLE_TYPE && !is_system() &&
+         !IsColocationParentTable() && !IsSequencesSystemTable(lock);
 }
 
 bool TableInfo::IsXClusterDDLReplicationDDLQueueTable() const {
@@ -1181,6 +1191,17 @@ std::vector<TransactionId> TableInfo::EraseDdlTxnsWaitingForSchemaVersion(int sc
   return txns;
 }
 
+std::vector<std::pair<int, TransactionId>> TableInfo::GetDdlTxnsWaitingForSchemaVersion() const {
+  SharedLock<decltype(lock_)> l(lock_);
+  std::vector<std::pair<int, TransactionId>> txns;
+
+  txns.reserve(ddl_txns_waiting_for_schema_version_.size());
+  for (const auto& [schema_version, txn] : ddl_txns_waiting_for_schema_version_) {
+    txns.emplace_back(schema_version, txn);
+  }
+  return txns;
+}
+
 void TableInfo::AddDdlTxnForRollbackToSubTxnWaitingForSchemaVersion(
     int schema_version, const TransactionId& txn) {
   std::lock_guard l(lock_);
@@ -1197,11 +1218,31 @@ TransactionId TableInfo::EraseDdlTxnForRollbackToSubTxnWaitingForSchemaVersion(
   std::lock_guard l(lock_);
   TransactionId txn;
 
-  auto itr = ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.find(schema_version);
-  if (itr != ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.end()) {
-    txn = itr->second;
-    ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.erase(itr);
+  auto upper_bound_iter =
+      ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.upper_bound(schema_version);
+  // Note that a single rollback to sub-transaction operation can involve more than one schema
+  // version bump on a table.
+  // For example:
+  //   BEGIN;
+  //   SAVEPOINT a;
+  //   ALTER TABLE test ADD COLUMN c int;
+  //   CREATE INDEX test_idx on test(b);
+  //   ROLLBACK TO a;
+  // The rollback operation will bump up the schema version of `test` twice. Therefore, the same
+  // transaction can be waiting for multiple schema versions. Similar to the comments mentioned in
+  // EraseDdlTxnsWaitingForSchemaVersion, it is possible that the TServers respond back with the
+  // latest schema version. Therefore, we delete all entries for schema versions less than the
+  // reported schema version. They all must belong to the same transaction though since we only
+  // allow one rollback to sub-transaction operation on a table at a given time.
+  for (auto it = ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.begin();
+       it != upper_bound_iter; ++it) {
+    DCHECK(txn.IsNil() || txn == it->second)
+        << Format("Multiple transactions waiting for schema version $0: $1 and $2",
+                  schema_version, txn, it->second);
+    txn = it->second;
   }
+  ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.erase(
+    ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.begin(), upper_bound_iter);
   return txn;
 }
 
@@ -1226,8 +1267,8 @@ bool TableInfo::IsUserCreated(const ReadLock& lock) const {
     return false;
   }
   return !is_system() && !IsSequencesSystemTable(lock) &&
-         lock->namespace_id() != kSystemNamespaceId &&
-         !IsColocationParentTable();
+         lock->namespace_id() != kSystemNamespaceId && !IsColocationParentTable() &&
+         lock->namespace_name() != kYbSystemDbName;
 }
 
 bool TableInfo::IsUserTable(const ReadLock& lock) const {
@@ -1437,18 +1478,19 @@ std::string DdlLogEntry::id() const {
 // ================================================================================================
 
 Result<std::variant<ObjectLockInfo::WriteLock, SysObjectLockEntryPB::LeaseInfoPB>>
-ObjectLockInfo::RefreshYsqlOperationLease(const NodeInstancePB& instance, MonoDelta lease_ttl) {
+ObjectLockInfo::RefreshYsqlOperationLease(
+    const RefreshYsqlLeaseRequestPB& req, MonoDelta lease_ttl) {
   auto l = LockForWrite();
   auto& current_lease_info = l->pb.lease_info();
-  if (instance.instance_seqno() < current_lease_info.instance_seqno()) {
+  if (req.instance().instance_seqno() < current_lease_info.instance_seqno()) {
     return STATUS_FORMAT(
         IllegalState,
         "Cannot grant lease, instance seqno of requestor $0 is lower than instance seqno of a "
         "previously granted lease $1",
-        instance.instance_seqno(), current_lease_info.instance_seqno());
+        req.instance().instance_seqno(), current_lease_info.instance_seqno());
   }
   if (current_lease_info.lease_relinquished() &&
-      instance.instance_seqno() <= current_lease_info.instance_seqno()) {
+      req.instance().instance_seqno() <= current_lease_info.instance_seqno()) {
     return STATUS_FORMAT(
         IllegalState,
         "Cannot grant lease, lease has been relinquished by instance_seqno $0 already",
@@ -1461,13 +1503,15 @@ ObjectLockInfo::RefreshYsqlOperationLease(const NodeInstancePB& instance, MonoDe
     ysql_lease_deadline_ = std::max(ysql_lease_deadline_, MonoTime::Now() + lease_ttl);
   }
   if (l->pb.lease_info().live_lease() &&
-      l->pb.lease_info().instance_seqno() == instance.instance_seqno()) {
+      l->pb.lease_info().instance_seqno() == req.instance().instance_seqno() &&
+      // Only extend the current lease if the tserver thinks it still has a live lease.
+      req.current_lease_epoch() == current_lease_info.lease_epoch()) {
     return l->pb.lease_info();
   }
   auto& lease_info = *l.mutable_data()->pb.mutable_lease_info();
   lease_info.set_live_lease(true);
   lease_info.set_lease_epoch(lease_info.lease_epoch() + 1);
-  lease_info.set_instance_seqno(instance.instance_seqno());
+  lease_info.set_instance_seqno(req.instance().instance_seqno());
   lease_info.set_lease_relinquished(false);
   return std::move(l);
 }
@@ -1478,7 +1522,7 @@ void ObjectLockInfo::Load(const SysObjectLockEntryPB& metadata) {
     std::lock_guard l(mutex_);
     ysql_lease_deadline_ =
         MonoTime::Now() +
-        MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_master_ysql_operation_lease_ttl_ms));
+        MonoDelta::FromMilliseconds(FLAGS_master_ysql_operation_lease_ttl_ms);
   }
 }
 
@@ -1541,6 +1585,12 @@ bool CDCStreamInfo::IsDynamicTableAdditionDisabled() const {
 bool CDCStreamInfo::IsTablesWithoutPrimaryKeyAllowed() const {
   auto l = LockForRead();
   return l->pb.has_allow_tables_without_primary_key() && l->pb.allow_tables_without_primary_key();
+}
+
+bool CDCStreamInfo::DetectPublicationChangesImplicitly() const {
+  auto l = LockForRead();
+  return l->pb.has_detect_publication_changes_implicitly() &&
+         l->pb.detect_publication_changes_implicitly();
 }
 
 std::string CDCStreamInfo::ToString() const {
@@ -1795,7 +1845,7 @@ void SetupTabletInfo(
 
   auto& cstate = *metadata.mutable_committed_consensus_state();
   cstate.set_current_term(consensus::kMinimumTerm);
-  cstate.mutable_config()->set_opid_index(consensus::kInvalidOpIdIndex);
+  cstate.mutable_config()->set_committed_op_index(consensus::kInvalidOpIdIndex);
 }
 
 TabletInfoPtr CreateTabletInfo(

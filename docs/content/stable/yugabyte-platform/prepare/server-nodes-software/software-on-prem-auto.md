@@ -31,13 +31,6 @@ Legacy provisioning of on-premises nodes is deprecated. Before you can upgrade Y
   </li>
 
   <li>
-    <a href="../software-on-prem-assist/" class="nav-link">
-      <i class="fa-regular fa-scroll"></i>
-      Assisted
-    </a>
-  </li>
-
-  <li>
     <a href="../software-on-prem-manual/" class="nav-link">
       <i class="icon-shell" aria-hidden="true"></i>
       Fully manual
@@ -46,6 +39,8 @@ Legacy provisioning of on-premises nodes is deprecated. Before you can upgrade Y
 </ul>
 
 When YugabyteDB Anywhere (YBA) has access to an SSH user with passwordless sudo privileges (for example, the `ec2-user` on AWS EC2 instances), then YBA can provision the VMs automatically.
+
+Note that the SSH user you provide must not be named `yugabyte`.
 
 ## With Internet or Yum connectivity
 

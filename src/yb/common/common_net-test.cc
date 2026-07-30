@@ -54,18 +54,15 @@ struct PlacementInfo {
       auto* placement_block = out.add_placement_blocks();
       placement_block->set_min_num_replicas(block.min_replicas);
 
-      auto* cloud_info = placement_block->mutable_cloud_info();
-
       auto [cloud, region_zone] = SplitString(block.placement, '.');
-      cloud_info->set_placement_cloud(cloud.begin(), cloud.size());
-      if (!region_zone.empty() && region_zone != "*") {
-        auto [region, zone] = SplitString(region_zone, '.');
-        cloud_info->set_placement_region(region.begin(), region.size());
-
-        if (!zone.empty() && zone != "*") {
-          cloud_info->set_placement_zone(zone.begin(), zone.size());
-        }
+      std::string_view region = "*"sv, zone = "*"sv;
+      if (!region_zone.empty()) {
+        auto [r, z] = SplitString(region_zone, '.');
+        region = r;
+        zone = z.empty() ? "*"sv : z;
       }
+      *placement_block->mutable_cloud_info() =
+          MakeCloudInfoPB(std::string(cloud), std::string(region), std::string(zone));
     }
     return out;
   }
@@ -367,6 +364,72 @@ TEST(TestPlacementInfoContainsPlacementInfo, TestSlack) {
         .blocks = {
             { .min_replicas = 1, .placement = "c1.r1.z1" },
             { .min_replicas = 1, .placement = "c1.r2.*" }} }));
+}
+
+bool CloudInfoMatchesPlacement(std::string_view cloud_str, PlacementInfo placement) {
+  auto [cloud, region_zone] = SplitString(cloud_str, '.');
+  std::string_view region = "*"sv, zone = "*"sv;
+  if (!region_zone.empty()) {
+    auto [r, z] = SplitString(region_zone, '.');
+    region = r;
+    zone = z.empty() ? "*"sv : z;
+  }
+  auto ci = MakeCloudInfoPB(std::string(cloud), std::string(region), std::string(zone));
+  return CloudInfoMatchesPlacementInfo(ci, placement.ToPB());
+}
+
+TEST(TestCloudInfoMatchesPlacementInfo, HandlesSpecificAndWildcardPlacements) {
+  ASSERT_TRUE(CloudInfoMatchesPlacement(
+      "c1.r1.z1",
+      { .replicas = 3, .blocks = {{ .min_replicas = 1, .placement = "c1.r1.z1" }} }));
+  ASSERT_FALSE(CloudInfoMatchesPlacement(
+      "c1.r1.z2",
+      { .replicas = 3, .blocks = {{ .min_replicas = 1, .placement = "c1.r1.z1" }} }));
+  ASSERT_FALSE(CloudInfoMatchesPlacement(
+      "c2.r1.z1",
+      { .replicas = 3, .blocks = {{ .min_replicas = 1, .placement = "c1.r1.z1" }} }));
+  ASSERT_TRUE(CloudInfoMatchesPlacement(
+      "c1.r1.z1",
+      { .replicas = 3, .blocks = {{ .min_replicas = 1, .placement = "c1.r1.*" }} }));
+  ASSERT_TRUE(CloudInfoMatchesPlacement(
+      "c1.r1.z1",
+      { .replicas = 3, .blocks = {{ .min_replicas = 1, .placement = "c1.*.*" }} }));
+  ASSERT_FALSE(CloudInfoMatchesPlacement(
+      "c1.r2.z1",
+      { .replicas = 3, .blocks = {{ .min_replicas = 1, .placement = "c1.r1.*" }} }));
+  ASSERT_FALSE(CloudInfoMatchesPlacement(
+      "c2.r1.z1",
+      { .replicas = 3, .blocks = {{ .min_replicas = 1, .placement = "c1.r1.*" }} }));
+  ASSERT_FALSE(CloudInfoMatchesPlacement(
+      "c1.r2.z1",
+      { .replicas = 3, .blocks = {{ .min_replicas = 1, .placement = "c1.r1.*" }} }));
+  ASSERT_FALSE(CloudInfoMatchesPlacement(
+      "c2.r1.z1",
+      { .replicas = 3, .blocks = {{ .min_replicas = 1, .placement = "c1.*" }} }));
+  ASSERT_TRUE(CloudInfoMatchesPlacement(
+      "c1.r1.*",
+      { .replicas = 3, .blocks = {{ .min_replicas = 1, .placement = "c1.r1.z1" }} }));
+  ASSERT_TRUE(CloudInfoMatchesPlacement(
+      "c1.*",
+      { .replicas = 3, .blocks = {{ .min_replicas = 1, .placement = "c1.r1.z1" }} }));
+  ASSERT_FALSE(CloudInfoMatchesPlacement(
+      "c2.r1.*",
+      { .replicas = 3, .blocks = {{ .min_replicas = 1, .placement = "c1.r1.z1" }} }));
+  ASSERT_TRUE(CloudInfoMatchesPlacement(
+      "c1.r1.z1",
+      { .replicas = 3, .blocks = {
+          { .min_replicas = 1, .placement = "c1.r1.z1" },
+          { .min_replicas = 1, .placement = "c1.r1.z2" }} }));
+  ASSERT_TRUE(CloudInfoMatchesPlacement(
+      "c1.r1.z3",
+      { .replicas = 3, .blocks = {
+          { .min_replicas = 1, .placement = "c1.r1.*" },
+          { .min_replicas = 1, .placement = "c2.r1.z1" }} }));
+  ASSERT_FALSE(CloudInfoMatchesPlacement(
+      "c3.r1.z1",
+      { .replicas = 3, .blocks = {
+          { .min_replicas = 1, .placement = "c1.r1.*" },
+          { .min_replicas = 1, .placement = "c2.r1.z1" }} }));
 }
 
 } // namespace yb

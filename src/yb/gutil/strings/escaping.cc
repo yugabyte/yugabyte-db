@@ -855,7 +855,7 @@ size_t CalculateBase64EscapedLen(size_t input_len) {
 // filename-safe.
 // ----------------------------------------------------------------------
 
-size_t Base64UnescapeInternal(
+ssize_t Base64UnescapeInternal(
     const char *signed_src, size_t szsrc, char *dest, size_t szdest, const signed char* unbase64) {
   static const char kPad64 = '=';
   auto* src = static_cast<const unsigned char*>(static_cast<const void*>(signed_src));
@@ -1222,12 +1222,20 @@ bool WebSafeBase64Unescape(const char *src, size_t slen, string* dest) {
   return Base64UnescapeInternal(src, slen, dest, kUnWebSafeBase64);
 }
 
+bool TrySub(size_t& dest, size_t value) {
+  if (dest < value) {
+    return false;
+  }
+  dest -= value;
+  return true;
+}
+
 size_t Base64EscapeInternal(
     const unsigned char *src, size_t szsrc, char *dest, size_t szdest, const char *base64,
     bool do_padding) {
   static const char kPad64 = '=';
 
-  if (szsrc <= 0) return 0;
+  if (!szsrc) return 0;
 
   char *cur_dest = dest;
   const unsigned char *cur_src = src;
@@ -1235,7 +1243,7 @@ size_t Base64EscapeInternal(
   // Three bytes of data encodes to four characters of cyphertext.
   // So we can pump through three-byte chunks atomically.
   while (szsrc > 2) { /* keep going until we have less than 24 bits */
-    if ((szdest -= 4) < 0) return 0;
+    if (!TrySub(szdest, 4)) return 0;
     cur_dest[0] = base64[cur_src[0] >> 2];
     cur_dest[1] = base64[((cur_src[0] & 0x03) << 4) + (cur_src[1] >> 4)];
     cur_dest[2] = base64[((cur_src[1] & 0x0f) << 2) + (cur_src[2] >> 6)];
@@ -1254,12 +1262,12 @@ size_t Base64EscapeInternal(
     case 1:
       // One byte left: this encodes to two characters, and (optionally)
       // two pad characters to round out the four-character cypherblock.
-      if ((szdest -= 2) < 0) return 0;
+      if (!TrySub(szdest, 2)) return 0;
       cur_dest[0] = base64[cur_src[0] >> 2];
       cur_dest[1] = base64[(cur_src[0] & 0x03) << 4];
       cur_dest += 2;
       if (do_padding) {
-        if ((szdest -= 2) < 0) return 0;
+        if (!TrySub(szdest, 2)) return 0;
         cur_dest[0] = kPad64;
         cur_dest[1] = kPad64;
         cur_dest += 2;
@@ -1268,13 +1276,13 @@ size_t Base64EscapeInternal(
     case 2:
       // Two bytes left: this encodes to three characters, and (optionally)
       // one pad character to round out the four-character cypherblock.
-      if ((szdest -= 3) < 0) return 0;
+      if (!TrySub(szdest, 3)) return 0;
       cur_dest[0] = base64[cur_src[0] >> 2];
       cur_dest[1] = base64[((cur_src[0] & 0x03) << 4) + (cur_src[1] >> 4)];
       cur_dest[2] = base64[(cur_src[1] & 0x0f) << 2];
       cur_dest += 3;
       if (do_padding) {
-        if ((szdest -= 1) < 0) return 0;
+        if (!TrySub(szdest, 1)) return 0;
         cur_dest[0] = kPad64;
         cur_dest += 1;
       }
@@ -1362,7 +1370,7 @@ static const size_t kBase32NumUnescapedBytes[] = {
   0, 5, 1, 5, 2, 3, 5, 4, 5
 };
 
-size_t Base32Unescape(const char* src, size_t slen, char* dest, size_t szdest) {
+ssize_t Base32Unescape(const char* src, size_t slen, char* dest, size_t szdest) {
   size_t destidx = 0;
   char escaped_bytes[8];
   unsigned char unescaped_bytes[5];
@@ -1498,11 +1506,6 @@ static bool GeneralBase32Escape(const string& src, string* dest,
                           alphabet);
 
   DCHECK_LE(max_escaped_size, escaped_len);
-
-  if (escaped_len < 0) {
-    dest->clear();
-    return false;
-  }
 
   dest->resize(escaped_len);
   return true;

@@ -2,7 +2,6 @@ SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documen
 SET citus.next_shard_id TO 370000;
 SET documentdb.next_collection_id TO 3700;
 SET documentdb.next_collection_index_id TO 3700;
-SET documentdb.enableIndexTermTruncationOnNestedObjects to on;
 -- now get terms for a simple document ( { a: { b : 1 }})
 -- test root, 'a', 'a.b', 'a.b.1' with wildcard/non-wildcard
 SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_terms('{"_id": 6, "a" : { "b": 1, "c": 2 }, "d": 1 }', '', true);
@@ -70,10 +69,10 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
  { "_id" : { "$numberInt" : "8" } }
  { "a" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.0" : { "$numberInt" : "0" } }
- { "a.1" : { "$numberInt" : "1" } }
- { "a.2" : { "$numberInt" : "2" } }
  { "a" : { "$numberInt" : "0" } }
+ { "a.1" : { "$numberInt" : "1" } }
  { "a" : { "$numberInt" : "1" } }
+ { "a.2" : { "$numberInt" : "2" } }
  { "a" : { "$numberInt" : "2" } }
  { "" : true }
 (9 rows)
@@ -89,10 +88,10 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
 ---------------------------------------------------------------------
  { "a" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.0" : { "$numberInt" : "0" } }
- { "a.1" : { "$numberInt" : "1" } }
- { "a.2" : { "$numberInt" : "2" } }
  { "a" : { "$numberInt" : "0" } }
+ { "a.1" : { "$numberInt" : "1" } }
  { "a" : { "$numberInt" : "1" } }
+ { "a.2" : { "$numberInt" : "2" } }
  { "a" : { "$numberInt" : "2" } }
  { "" : true }
 (8 rows)
@@ -142,10 +141,10 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
  { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.b.0" : { "$numberInt" : "0" } }
- { "a.b.1" : { "$numberInt" : "1" } }
- { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "2" } }
  { "" : true }
 (10 rows)
@@ -162,10 +161,10 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
  { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.b.0" : { "$numberInt" : "0" } }
- { "a.b.1" : { "$numberInt" : "1" } }
- { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "2" } }
  { "" : true }
 (9 rows)
@@ -182,10 +181,10 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
 ---------------------------------------------------------------------
  { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.b.0" : { "$numberInt" : "0" } }
- { "a.b.1" : { "$numberInt" : "1" } }
- { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "2" } }
  { "" : true }
 (8 rows)
@@ -223,14 +222,14 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
  { "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberDouble" : "3.0" } } ] }
  { "a.0" : { "b" : { "$numberInt" : "0" } } }
  { "a.0.b" : { "$numberInt" : "0" } }
- { "a.1" : { "b" : { "$numberInt" : "1" } } }
- { "a.1.b" : { "$numberInt" : "1" } }
- { "a.2" : { "b" : { "$numberDouble" : "3.0" } } }
- { "a.2.b" : { "$numberDouble" : "3.0" } }
  { "a" : { "b" : { "$numberInt" : "0" } } }
  { "a.b" : { "$numberInt" : "0" } }
+ { "a.1" : { "b" : { "$numberInt" : "1" } } }
+ { "a.1.b" : { "$numberInt" : "1" } }
  { "a" : { "b" : { "$numberInt" : "1" } } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.2" : { "b" : { "$numberDouble" : "3.0" } } }
+ { "a.2.b" : { "$numberDouble" : "3.0" } }
  { "a" : { "b" : { "$numberDouble" : "3.0" } } }
  { "a.b" : { "$numberDouble" : "3.0" } }
  { "" : true }
@@ -249,14 +248,14 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
  { "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberDouble" : "3.0" } } ] }
  { "a.0" : { "b" : { "$numberInt" : "0" } } }
  { "a.0.b" : { "$numberInt" : "0" } }
- { "a.1" : { "b" : { "$numberInt" : "1" } } }
- { "a.1.b" : { "$numberInt" : "1" } }
- { "a.2" : { "b" : { "$numberDouble" : "3.0" } } }
- { "a.2.b" : { "$numberDouble" : "3.0" } }
  { "a" : { "b" : { "$numberInt" : "0" } } }
  { "a.b" : { "$numberInt" : "0" } }
+ { "a.1" : { "b" : { "$numberInt" : "1" } } }
+ { "a.1.b" : { "$numberInt" : "1" } }
  { "a" : { "b" : { "$numberInt" : "1" } } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.2" : { "b" : { "$numberDouble" : "3.0" } } }
+ { "a.2.b" : { "$numberDouble" : "3.0" } }
  { "a" : { "b" : { "$numberDouble" : "3.0" } } }
  { "a.b" : { "$numberDouble" : "3.0" } }
  { "" : true }
@@ -316,50 +315,50 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
  { "a.0" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.0.b.0" : { "$numberInt" : "-1" } }
- { "a.0.b.1" : { "$numberInt" : "1" } }
- { "a.0.b.2" : { "$numberInt" : "2" } }
  { "a.0.b" : { "$numberInt" : "-1" } }
+ { "a.0.b.1" : { "$numberInt" : "1" } }
  { "a.0.b" : { "$numberInt" : "1" } }
+ { "a.0.b.2" : { "$numberInt" : "2" } }
  { "a.0.b" : { "$numberInt" : "2" } }
- { "a.1" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
- { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
- { "a.1.b.0" : { "$numberInt" : "0" } }
- { "a.1.b.1" : { "$numberInt" : "1" } }
- { "a.1.b.2" : { "$numberInt" : "2" } }
- { "a.1.b" : { "$numberInt" : "0" } }
- { "a.1.b" : { "$numberInt" : "1" } }
- { "a.1.b" : { "$numberInt" : "2" } }
- { "a.2" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
- { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
- { "a.2.b.0" : { "$numberInt" : "0" } }
- { "a.2.b.1" : { "$numberInt" : "1" } }
- { "a.2.b.2" : { "$numberInt" : "7" } }
- { "a.2.b" : { "$numberInt" : "0" } }
- { "a.2.b" : { "$numberInt" : "1" } }
- { "a.2.b" : { "$numberInt" : "7" } }
  { "a" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.b.0" : { "$numberInt" : "-1" } }
- { "a.b.1" : { "$numberInt" : "1" } }
- { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "-1" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "2" } }
+ { "a.1" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1.b.0" : { "$numberInt" : "0" } }
+ { "a.1.b" : { "$numberInt" : "0" } }
+ { "a.1.b.1" : { "$numberInt" : "1" } }
+ { "a.1.b" : { "$numberInt" : "1" } }
+ { "a.1.b.2" : { "$numberInt" : "2" } }
+ { "a.1.b" : { "$numberInt" : "2" } }
  { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.b.0" : { "$numberInt" : "0" } }
- { "a.b.1" : { "$numberInt" : "1" } }
- { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "2" } }
+ { "a.2" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
+ { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.2.b.0" : { "$numberInt" : "0" } }
+ { "a.2.b" : { "$numberInt" : "0" } }
+ { "a.2.b.1" : { "$numberInt" : "1" } }
+ { "a.2.b" : { "$numberInt" : "1" } }
+ { "a.2.b.2" : { "$numberInt" : "7" } }
+ { "a.2.b" : { "$numberInt" : "7" } }
  { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
  { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
  { "a.b.0" : { "$numberInt" : "0" } }
- { "a.b.1" : { "$numberInt" : "1" } }
- { "a.b.2" : { "$numberInt" : "7" } }
  { "a.b" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "7" } }
  { "a.b" : { "$numberInt" : "7" } }
  { "" : true }
  { "" : [  ] }
@@ -378,50 +377,50 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
  { "a.0" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.0.b.0" : { "$numberInt" : "-1" } }
- { "a.0.b.1" : { "$numberInt" : "1" } }
- { "a.0.b.2" : { "$numberInt" : "2" } }
  { "a.0.b" : { "$numberInt" : "-1" } }
+ { "a.0.b.1" : { "$numberInt" : "1" } }
  { "a.0.b" : { "$numberInt" : "1" } }
+ { "a.0.b.2" : { "$numberInt" : "2" } }
  { "a.0.b" : { "$numberInt" : "2" } }
- { "a.1" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
- { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
- { "a.1.b.0" : { "$numberInt" : "0" } }
- { "a.1.b.1" : { "$numberInt" : "1" } }
- { "a.1.b.2" : { "$numberInt" : "2" } }
- { "a.1.b" : { "$numberInt" : "0" } }
- { "a.1.b" : { "$numberInt" : "1" } }
- { "a.1.b" : { "$numberInt" : "2" } }
- { "a.2" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
- { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
- { "a.2.b.0" : { "$numberInt" : "0" } }
- { "a.2.b.1" : { "$numberInt" : "1" } }
- { "a.2.b.2" : { "$numberInt" : "7" } }
- { "a.2.b" : { "$numberInt" : "0" } }
- { "a.2.b" : { "$numberInt" : "1" } }
- { "a.2.b" : { "$numberInt" : "7" } }
  { "a" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.b.0" : { "$numberInt" : "-1" } }
- { "a.b.1" : { "$numberInt" : "1" } }
- { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "-1" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "2" } }
+ { "a.1" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1.b.0" : { "$numberInt" : "0" } }
+ { "a.1.b" : { "$numberInt" : "0" } }
+ { "a.1.b.1" : { "$numberInt" : "1" } }
+ { "a.1.b" : { "$numberInt" : "1" } }
+ { "a.1.b.2" : { "$numberInt" : "2" } }
+ { "a.1.b" : { "$numberInt" : "2" } }
  { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.b.0" : { "$numberInt" : "0" } }
- { "a.b.1" : { "$numberInt" : "1" } }
- { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "2" } }
+ { "a.2" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
+ { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.2.b.0" : { "$numberInt" : "0" } }
+ { "a.2.b" : { "$numberInt" : "0" } }
+ { "a.2.b.1" : { "$numberInt" : "1" } }
+ { "a.2.b" : { "$numberInt" : "1" } }
+ { "a.2.b.2" : { "$numberInt" : "7" } }
+ { "a.2.b" : { "$numberInt" : "7" } }
  { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
  { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
  { "a.b.0" : { "$numberInt" : "0" } }
- { "a.b.1" : { "$numberInt" : "1" } }
- { "a.b.2" : { "$numberInt" : "7" } }
  { "a.b" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "7" } }
  { "a.b" : { "$numberInt" : "7" } }
  { "" : true }
  { "" : [  ] }
@@ -443,24 +442,24 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
 ---------------------------------------------------------------------
  { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.b.0" : { "$numberInt" : "-1" } }
- { "a.b.1" : { "$numberInt" : "1" } }
- { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "-1" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "2" } }
  { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.b.0" : { "$numberInt" : "0" } }
- { "a.b.1" : { "$numberInt" : "1" } }
- { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "2" } }
  { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
  { "a.b.0" : { "$numberInt" : "0" } }
- { "a.b.1" : { "$numberInt" : "1" } }
- { "a.b.2" : { "$numberInt" : "7" } }
  { "a.b" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "7" } }
  { "a.b" : { "$numberInt" : "7" } }
  { "" : true }
  { "" : [  ] }
@@ -517,20 +516,6 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
  { "a.0.b.0.1" : { "$numberInt" : "1" } }
  { "a.0.b.0.2" : { "$numberInt" : "2" } }
  { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
- { "a.1" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
- { "a.1.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
- { "a.1.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
- { "a.1.b.0.0" : { "$numberInt" : "0" } }
- { "a.1.b.0.1" : { "$numberInt" : "1" } }
- { "a.1.b.0.2" : { "$numberInt" : "2" } }
- { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
- { "a.2" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
- { "a.2.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
- { "a.2.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
- { "a.2.b.0.0" : { "$numberInt" : "0" } }
- { "a.2.b.0.1" : { "$numberInt" : "1" } }
- { "a.2.b.0.2" : { "$numberInt" : "7" } }
- { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
  { "a" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
  { "a.b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
  { "a.b.0" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
@@ -538,6 +523,13 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
  { "a.b.0.1" : { "$numberInt" : "1" } }
  { "a.b.0.2" : { "$numberInt" : "2" } }
  { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.1.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.1.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1.b.0.0" : { "$numberInt" : "0" } }
+ { "a.1.b.0.1" : { "$numberInt" : "1" } }
+ { "a.1.b.0.2" : { "$numberInt" : "2" } }
+ { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
  { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
  { "a.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
@@ -545,6 +537,13 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
  { "a.b.0.1" : { "$numberInt" : "1" } }
  { "a.b.0.2" : { "$numberInt" : "2" } }
  { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.2" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
+ { "a.2.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
+ { "a.2.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.2.b.0.0" : { "$numberInt" : "0" } }
+ { "a.2.b.0.1" : { "$numberInt" : "1" } }
+ { "a.2.b.0.2" : { "$numberInt" : "7" } }
+ { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
  { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
  { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
  { "a.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
@@ -573,20 +572,6 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
  { "a.0.b.0.1" : { "$numberInt" : "1" } }
  { "a.0.b.0.2" : { "$numberInt" : "2" } }
  { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
- { "a.1" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
- { "a.1.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
- { "a.1.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
- { "a.1.b.0.0" : { "$numberInt" : "0" } }
- { "a.1.b.0.1" : { "$numberInt" : "1" } }
- { "a.1.b.0.2" : { "$numberInt" : "2" } }
- { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
- { "a.2" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
- { "a.2.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
- { "a.2.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
- { "a.2.b.0.0" : { "$numberInt" : "0" } }
- { "a.2.b.0.1" : { "$numberInt" : "1" } }
- { "a.2.b.0.2" : { "$numberInt" : "7" } }
- { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
  { "a" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
  { "a.b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
  { "a.b.0" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
@@ -594,6 +579,13 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
  { "a.b.0.1" : { "$numberInt" : "1" } }
  { "a.b.0.2" : { "$numberInt" : "2" } }
  { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.1.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.1.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1.b.0.0" : { "$numberInt" : "0" } }
+ { "a.1.b.0.1" : { "$numberInt" : "1" } }
+ { "a.1.b.0.2" : { "$numberInt" : "2" } }
+ { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
  { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
  { "a.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
@@ -601,6 +593,13 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
  { "a.b.0.1" : { "$numberInt" : "1" } }
  { "a.b.0.2" : { "$numberInt" : "2" } }
  { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.2" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
+ { "a.2.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
+ { "a.2.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.2.b.0.0" : { "$numberInt" : "0" } }
+ { "a.2.b.0.1" : { "$numberInt" : "1" } }
+ { "a.2.b.0.2" : { "$numberInt" : "7" } }
+ { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
  { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
  { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
  { "a.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
@@ -684,18 +683,18 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
  { "a.b.0" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
  { "a.b.0.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
  { "a.b.0.1.0" : { "$numberInt" : "1" } }
- { "a.b.0.1.1" : { "$numberInt" : "2" } }
- { "a.b.0.1.2" : { "$numberInt" : "3" } }
  { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.1.1" : { "$numberInt" : "2" } }
  { "a.b.0.1" : { "$numberInt" : "2" } }
+ { "a.b.0.1.2" : { "$numberInt" : "3" } }
  { "a.b.0.1" : { "$numberInt" : "3" } }
  { "a.b" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
  { "a.b.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
  { "a.b.1.0" : { "$numberInt" : "1" } }
- { "a.b.1.1" : { "$numberInt" : "2" } }
- { "a.b.1.2" : { "$numberInt" : "3" } }
  { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.1.1" : { "$numberInt" : "2" } }
  { "a.b.1" : { "$numberInt" : "2" } }
+ { "a.b.1.2" : { "$numberInt" : "3" } }
  { "a.b.1" : { "$numberInt" : "3" } }
  { "" : true }
  { "" : [  ] }
@@ -715,18 +714,18 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
  { "a.b.0" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
  { "a.b.0.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
  { "a.b.0.1.0" : { "$numberInt" : "1" } }
- { "a.b.0.1.1" : { "$numberInt" : "2" } }
- { "a.b.0.1.2" : { "$numberInt" : "3" } }
  { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.1.1" : { "$numberInt" : "2" } }
  { "a.b.0.1" : { "$numberInt" : "2" } }
+ { "a.b.0.1.2" : { "$numberInt" : "3" } }
  { "a.b.0.1" : { "$numberInt" : "3" } }
  { "a.b" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
  { "a.b.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
  { "a.b.1.0" : { "$numberInt" : "1" } }
- { "a.b.1.1" : { "$numberInt" : "2" } }
- { "a.b.1.2" : { "$numberInt" : "3" } }
  { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.1.1" : { "$numberInt" : "2" } }
  { "a.b.1" : { "$numberInt" : "2" } }
+ { "a.b.1.2" : { "$numberInt" : "3" } }
  { "a.b.1" : { "$numberInt" : "3" } }
  { "" : true }
  { "" : [  ] }
@@ -746,18 +745,18 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
  { "a.b.0" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
  { "a.b.0.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
  { "a.b.0.1.0" : { "$numberInt" : "1" } }
- { "a.b.0.1.1" : { "$numberInt" : "2" } }
- { "a.b.0.1.2" : { "$numberInt" : "3" } }
  { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.1.1" : { "$numberInt" : "2" } }
  { "a.b.0.1" : { "$numberInt" : "2" } }
+ { "a.b.0.1.2" : { "$numberInt" : "3" } }
  { "a.b.0.1" : { "$numberInt" : "3" } }
  { "a.b" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
  { "a.b.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
  { "a.b.1.0" : { "$numberInt" : "1" } }
- { "a.b.1.1" : { "$numberInt" : "2" } }
- { "a.b.1.2" : { "$numberInt" : "3" } }
  { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.1.1" : { "$numberInt" : "2" } }
  { "a.b.1" : { "$numberInt" : "2" } }
+ { "a.b.1.2" : { "$numberInt" : "3" } }
  { "a.b.1" : { "$numberInt" : "3" } }
  { "" : true }
  { "" : [  ] }
@@ -777,10 +776,10 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
 ---------------------------------------------------------------------
  { "a.b.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
  { "a.b.1.0" : { "$numberInt" : "1" } }
- { "a.b.1.1" : { "$numberInt" : "2" } }
- { "a.b.1.2" : { "$numberInt" : "3" } }
  { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.1.1" : { "$numberInt" : "2" } }
  { "a.b.1" : { "$numberInt" : "2" } }
+ { "a.b.1.2" : { "$numberInt" : "3" } }
  { "a.b.1" : { "$numberInt" : "3" } }
  { "" : true }
  { "" : [  ] }
@@ -804,14 +803,14 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
  { "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }
  { "a.0" : { "c" : { "$numberInt" : "0" } } }
  { "a.0.c" : { "$numberInt" : "0" } }
- { "a.1" : { "c" : { "$numberInt" : "1" } } }
- { "a.1.c" : { "$numberInt" : "1" } }
- { "a.2" : { "b" : { "$numberInt" : "2" } } }
- { "a.2.b" : { "$numberInt" : "2" } }
  { "a" : { "c" : { "$numberInt" : "0" } } }
  { "a.c" : { "$numberInt" : "0" } }
+ { "a.1" : { "c" : { "$numberInt" : "1" } } }
+ { "a.1.c" : { "$numberInt" : "1" } }
  { "a" : { "c" : { "$numberInt" : "1" } } }
  { "a.c" : { "$numberInt" : "1" } }
+ { "a.2" : { "b" : { "$numberInt" : "2" } } }
+ { "a.2.b" : { "$numberInt" : "2" } }
  { "a" : { "b" : { "$numberInt" : "2" } } }
  { "a.b" : { "$numberInt" : "2" } }
  { "" : true }
@@ -830,14 +829,14 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
  { "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }
  { "a.0" : { "c" : { "$numberInt" : "0" } } }
  { "a.0.c" : { "$numberInt" : "0" } }
- { "a.1" : { "c" : { "$numberInt" : "1" } } }
- { "a.1.c" : { "$numberInt" : "1" } }
- { "a.2" : { "b" : { "$numberInt" : "2" } } }
- { "a.2.b" : { "$numberInt" : "2" } }
  { "a" : { "c" : { "$numberInt" : "0" } } }
  { "a.c" : { "$numberInt" : "0" } }
+ { "a.1" : { "c" : { "$numberInt" : "1" } } }
+ { "a.1.c" : { "$numberInt" : "1" } }
  { "a" : { "c" : { "$numberInt" : "1" } } }
  { "a.c" : { "$numberInt" : "1" } }
+ { "a.2" : { "b" : { "$numberInt" : "2" } } }
+ { "a.2.b" : { "$numberInt" : "2" } }
  { "a" : { "b" : { "$numberInt" : "2" } } }
  { "a.b" : { "$numberInt" : "2" } }
  { "" : true }
@@ -940,10 +939,10 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "_id" : { "$numberInt" : "8" } }
  { "a" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.0" : { "$numberInt" : "0" } }
- { "a.1" : { "$numberInt" : "1" } }
- { "a.2" : { "$numberInt" : "2" } }
  { "a" : { "$numberInt" : "0" } }
+ { "a.1" : { "$numberInt" : "1" } }
  { "a" : { "$numberInt" : "1" } }
+ { "a.2" : { "$numberInt" : "2" } }
  { "a" : { "$numberInt" : "2" } }
  { "" : true }
 (9 rows)
@@ -968,10 +967,10 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.b.0" : { "$numberInt" : "0" } }
- { "a.b.1" : { "$numberInt" : "1" } }
- { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "2" } }
  { "" : true }
 (10 rows)
@@ -995,10 +994,10 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "_id" : { "$numberInt" : "10" } }
  { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.b.0" : { "$numberInt" : "0" } }
- { "a.b.1" : { "$numberInt" : "1" } }
- { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "2" } }
  { "" : true }
 (9 rows)
@@ -1025,14 +1024,14 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberDouble" : "3.0" } } ] }
  { "a.0" : { "b" : { "$numberInt" : "0" } } }
  { "a.0.b" : { "$numberInt" : "0" } }
- { "a.1" : { "b" : { "$numberInt" : "1" } } }
- { "a.1.b" : { "$numberInt" : "1" } }
- { "a.2" : { "b" : { "$numberDouble" : "3.0" } } }
- { "a.2.b" : { "$numberDouble" : "3.0" } }
  { "a" : { "b" : { "$numberInt" : "0" } } }
  { "a.b" : { "$numberInt" : "0" } }
+ { "a.1" : { "b" : { "$numberInt" : "1" } } }
+ { "a.1.b" : { "$numberInt" : "1" } }
  { "a" : { "b" : { "$numberInt" : "1" } } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.2" : { "b" : { "$numberDouble" : "3.0" } } }
+ { "a.2.b" : { "$numberDouble" : "3.0" } }
  { "a" : { "b" : { "$numberDouble" : "3.0" } } }
  { "a.b" : { "$numberDouble" : "3.0" } }
  { "" : true }
@@ -1070,12 +1069,12 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberDouble" : "3.0" } } ] }
  { "a.0" : { "b" : { "$numberInt" : "0" } } }
  { "a.0.b" : { "$numberInt" : "0" } }
+ { "a" : { "b" : { "$numberInt" : "0" } } }
  { "a.1" : { "b" : { "$numberInt" : "1" } } }
  { "a.1.b" : { "$numberInt" : "1" } }
+ { "a" : { "b" : { "$numberInt" : "1" } } }
  { "a.2" : { "b" : { "$numberDouble" : "3.0" } } }
  { "a.2.b" : { "$numberDouble" : "3.0" } }
- { "a" : { "b" : { "$numberInt" : "0" } } }
- { "a" : { "b" : { "$numberInt" : "1" } } }
  { "a" : { "b" : { "$numberDouble" : "3.0" } } }
  { "" : true }
  { "" : [  ] }
@@ -1087,12 +1086,12 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a" : [ { "b" : { "$numberInt" : "0" } }, { "b" : { "$numberInt" : "1" } }, { "b" : { "$numberDouble" : "3.0" } } ] }
  { "a.0" : { "b" : { "$numberInt" : "0" } } }
  { "a.0.b" : { "$numberInt" : "0" } }
+ { "a" : { "b" : { "$numberInt" : "0" } } }
  { "a.1" : { "b" : { "$numberInt" : "1" } } }
  { "a.1.b" : { "$numberInt" : "1" } }
+ { "a" : { "b" : { "$numberInt" : "1" } } }
  { "a.2" : { "b" : { "$numberDouble" : "3.0" } } }
  { "a.2.b" : { "$numberDouble" : "3.0" } }
- { "a" : { "b" : { "$numberInt" : "0" } } }
- { "a" : { "b" : { "$numberInt" : "1" } } }
  { "a" : { "b" : { "$numberDouble" : "3.0" } } }
  { "" : true }
  { "" : [  ] }
@@ -1106,50 +1105,50 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a.0" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.0.b.0" : { "$numberInt" : "-1" } }
- { "a.0.b.1" : { "$numberInt" : "1" } }
- { "a.0.b.2" : { "$numberInt" : "2" } }
  { "a.0.b" : { "$numberInt" : "-1" } }
+ { "a.0.b.1" : { "$numberInt" : "1" } }
  { "a.0.b" : { "$numberInt" : "1" } }
+ { "a.0.b.2" : { "$numberInt" : "2" } }
  { "a.0.b" : { "$numberInt" : "2" } }
- { "a.1" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
- { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
- { "a.1.b.0" : { "$numberInt" : "0" } }
- { "a.1.b.1" : { "$numberInt" : "1" } }
- { "a.1.b.2" : { "$numberInt" : "2" } }
- { "a.1.b" : { "$numberInt" : "0" } }
- { "a.1.b" : { "$numberInt" : "1" } }
- { "a.1.b" : { "$numberInt" : "2" } }
- { "a.2" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
- { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
- { "a.2.b.0" : { "$numberInt" : "0" } }
- { "a.2.b.1" : { "$numberInt" : "1" } }
- { "a.2.b.2" : { "$numberInt" : "7" } }
- { "a.2.b" : { "$numberInt" : "0" } }
- { "a.2.b" : { "$numberInt" : "1" } }
- { "a.2.b" : { "$numberInt" : "7" } }
  { "a" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.b.0" : { "$numberInt" : "-1" } }
- { "a.b.1" : { "$numberInt" : "1" } }
- { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "-1" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "2" } }
+ { "a.1" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1.b.0" : { "$numberInt" : "0" } }
+ { "a.1.b" : { "$numberInt" : "0" } }
+ { "a.1.b.1" : { "$numberInt" : "1" } }
+ { "a.1.b" : { "$numberInt" : "1" } }
+ { "a.1.b.2" : { "$numberInt" : "2" } }
+ { "a.1.b" : { "$numberInt" : "2" } }
  { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.b.0" : { "$numberInt" : "0" } }
- { "a.b.1" : { "$numberInt" : "1" } }
- { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "2" } }
+ { "a.2" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
+ { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.2.b.0" : { "$numberInt" : "0" } }
+ { "a.2.b" : { "$numberInt" : "0" } }
+ { "a.2.b.1" : { "$numberInt" : "1" } }
+ { "a.2.b" : { "$numberInt" : "1" } }
+ { "a.2.b.2" : { "$numberInt" : "7" } }
+ { "a.2.b" : { "$numberInt" : "7" } }
  { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
  { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
  { "a.b.0" : { "$numberInt" : "0" } }
- { "a.b.1" : { "$numberInt" : "1" } }
- { "a.b.2" : { "$numberInt" : "7" } }
  { "a.b" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "7" } }
  { "a.b" : { "$numberInt" : "7" } }
  { "" : true }
  { "" : [  ] }
@@ -1174,24 +1173,24 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "_id" : { "$numberInt" : "12" } }
  { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.b.0" : { "$numberInt" : "-1" } }
- { "a.b.1" : { "$numberInt" : "1" } }
- { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "-1" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "2" } }
  { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.b.0" : { "$numberInt" : "0" } }
- { "a.b.1" : { "$numberInt" : "1" } }
- { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
  { "a.b" : { "$numberInt" : "2" } }
  { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
  { "a.b.0" : { "$numberInt" : "0" } }
- { "a.b.1" : { "$numberInt" : "1" } }
- { "a.b.2" : { "$numberInt" : "7" } }
  { "a.b" : { "$numberInt" : "0" } }
+ { "a.b.1" : { "$numberInt" : "1" } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "7" } }
  { "a.b" : { "$numberInt" : "7" } }
  { "" : true }
  { "" : [  ] }
@@ -1205,29 +1204,29 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a.0" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.0.b.0" : { "$numberInt" : "-1" } }
- { "a.0.b.1" : { "$numberInt" : "1" } }
- { "a.0.b.2" : { "$numberInt" : "2" } }
  { "a.0.b" : { "$numberInt" : "-1" } }
+ { "a.0.b.1" : { "$numberInt" : "1" } }
  { "a.0.b" : { "$numberInt" : "1" } }
+ { "a.0.b.2" : { "$numberInt" : "2" } }
  { "a.0.b" : { "$numberInt" : "2" } }
+ { "a" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a.1" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.1.b.0" : { "$numberInt" : "0" } }
- { "a.1.b.1" : { "$numberInt" : "1" } }
- { "a.1.b.2" : { "$numberInt" : "2" } }
  { "a.1.b" : { "$numberInt" : "0" } }
+ { "a.1.b.1" : { "$numberInt" : "1" } }
  { "a.1.b" : { "$numberInt" : "1" } }
+ { "a.1.b.2" : { "$numberInt" : "2" } }
  { "a.1.b" : { "$numberInt" : "2" } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a.2" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
  { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
  { "a.2.b.0" : { "$numberInt" : "0" } }
- { "a.2.b.1" : { "$numberInt" : "1" } }
- { "a.2.b.2" : { "$numberInt" : "7" } }
  { "a.2.b" : { "$numberInt" : "0" } }
+ { "a.2.b.1" : { "$numberInt" : "1" } }
  { "a.2.b" : { "$numberInt" : "1" } }
+ { "a.2.b.2" : { "$numberInt" : "7" } }
  { "a.2.b" : { "$numberInt" : "7" } }
- { "a" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
- { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
  { "" : true }
  { "" : [  ] }
@@ -1240,29 +1239,29 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a.0" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.0.b.0" : { "$numberInt" : "-1" } }
- { "a.0.b.1" : { "$numberInt" : "1" } }
- { "a.0.b.2" : { "$numberInt" : "2" } }
  { "a.0.b" : { "$numberInt" : "-1" } }
+ { "a.0.b.1" : { "$numberInt" : "1" } }
  { "a.0.b" : { "$numberInt" : "1" } }
+ { "a.0.b.2" : { "$numberInt" : "2" } }
  { "a.0.b" : { "$numberInt" : "2" } }
+ { "a" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a.1" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.1.b.0" : { "$numberInt" : "0" } }
- { "a.1.b.1" : { "$numberInt" : "1" } }
- { "a.1.b.2" : { "$numberInt" : "2" } }
  { "a.1.b" : { "$numberInt" : "0" } }
+ { "a.1.b.1" : { "$numberInt" : "1" } }
  { "a.1.b" : { "$numberInt" : "1" } }
+ { "a.1.b.2" : { "$numberInt" : "2" } }
  { "a.1.b" : { "$numberInt" : "2" } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a.2" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
  { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
  { "a.2.b.0" : { "$numberInt" : "0" } }
- { "a.2.b.1" : { "$numberInt" : "1" } }
- { "a.2.b.2" : { "$numberInt" : "7" } }
  { "a.2.b" : { "$numberInt" : "0" } }
+ { "a.2.b.1" : { "$numberInt" : "1" } }
  { "a.2.b" : { "$numberInt" : "1" } }
+ { "a.2.b.2" : { "$numberInt" : "7" } }
  { "a.2.b" : { "$numberInt" : "7" } }
- { "a" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
- { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
  { "" : true }
  { "" : [  ] }
@@ -1290,44 +1289,44 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a.0" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.0.b.0" : { "$numberInt" : "-1" } }
- { "a.0.b.1" : { "$numberInt" : "1" } }
- { "a.0.b.2" : { "$numberInt" : "2" } }
  { "a.0.b" : { "$numberInt" : "-1" } }
+ { "a.0.b.1" : { "$numberInt" : "1" } }
  { "a.0.b" : { "$numberInt" : "1" } }
+ { "a.0.b.2" : { "$numberInt" : "2" } }
  { "a.0.b" : { "$numberInt" : "2" } }
+ { "a" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b" : { "$numberInt" : "-1" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
+ { "a.b" : { "$numberInt" : "2" } }
  { "a.1" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.1.b.0" : { "$numberInt" : "0" } }
- { "a.1.b.1" : { "$numberInt" : "1" } }
- { "a.1.b.2" : { "$numberInt" : "2" } }
  { "a.1.b" : { "$numberInt" : "0" } }
+ { "a.1.b.1" : { "$numberInt" : "1" } }
  { "a.1.b" : { "$numberInt" : "1" } }
+ { "a.1.b.2" : { "$numberInt" : "2" } }
  { "a.1.b" : { "$numberInt" : "2" } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
+ { "a.b" : { "$numberInt" : "2" } }
  { "a.2" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
  { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
  { "a.2.b.0" : { "$numberInt" : "0" } }
- { "a.2.b.1" : { "$numberInt" : "1" } }
- { "a.2.b.2" : { "$numberInt" : "7" } }
  { "a.2.b" : { "$numberInt" : "0" } }
+ { "a.2.b.1" : { "$numberInt" : "1" } }
  { "a.2.b" : { "$numberInt" : "1" } }
+ { "a.2.b.2" : { "$numberInt" : "7" } }
  { "a.2.b" : { "$numberInt" : "7" } }
- { "a" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
- { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
- { "a.b.2" : { "$numberInt" : "2" } }
- { "a.b" : { "$numberInt" : "-1" } }
- { "a.b" : { "$numberInt" : "1" } }
- { "a.b" : { "$numberInt" : "2" } }
- { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
- { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
- { "a.b.2" : { "$numberInt" : "2" } }
- { "a.b" : { "$numberInt" : "0" } }
- { "a.b" : { "$numberInt" : "1" } }
- { "a.b" : { "$numberInt" : "2" } }
  { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
  { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
- { "a.b.2" : { "$numberInt" : "7" } }
  { "a.b" : { "$numberInt" : "0" } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "7" } }
  { "a.b" : { "$numberInt" : "7" } }
  { "" : true }
  { "" : [  ] }
@@ -1340,44 +1339,44 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a.0" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.0.b.0" : { "$numberInt" : "-1" } }
- { "a.0.b.1" : { "$numberInt" : "1" } }
- { "a.0.b.2" : { "$numberInt" : "2" } }
  { "a.0.b" : { "$numberInt" : "-1" } }
+ { "a.0.b.1" : { "$numberInt" : "1" } }
  { "a.0.b" : { "$numberInt" : "1" } }
+ { "a.0.b.2" : { "$numberInt" : "2" } }
  { "a.0.b" : { "$numberInt" : "2" } }
+ { "a" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b" : { "$numberInt" : "-1" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
+ { "a.b" : { "$numberInt" : "2" } }
  { "a.1" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
  { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.1.b.0" : { "$numberInt" : "0" } }
- { "a.1.b.1" : { "$numberInt" : "1" } }
- { "a.1.b.2" : { "$numberInt" : "2" } }
  { "a.1.b" : { "$numberInt" : "0" } }
+ { "a.1.b.1" : { "$numberInt" : "1" } }
  { "a.1.b" : { "$numberInt" : "1" } }
+ { "a.1.b.2" : { "$numberInt" : "2" } }
  { "a.1.b" : { "$numberInt" : "2" } }
+ { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.b" : { "$numberInt" : "0" } }
+ { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "2" } }
+ { "a.b" : { "$numberInt" : "2" } }
  { "a.2" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
  { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
  { "a.2.b.0" : { "$numberInt" : "0" } }
- { "a.2.b.1" : { "$numberInt" : "1" } }
- { "a.2.b.2" : { "$numberInt" : "7" } }
  { "a.2.b" : { "$numberInt" : "0" } }
+ { "a.2.b.1" : { "$numberInt" : "1" } }
  { "a.2.b" : { "$numberInt" : "1" } }
+ { "a.2.b.2" : { "$numberInt" : "7" } }
  { "a.2.b" : { "$numberInt" : "7" } }
- { "a" : { "b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
- { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
- { "a.b.2" : { "$numberInt" : "2" } }
- { "a.b" : { "$numberInt" : "-1" } }
- { "a.b" : { "$numberInt" : "1" } }
- { "a.b" : { "$numberInt" : "2" } }
- { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] } }
- { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
- { "a.b.2" : { "$numberInt" : "2" } }
- { "a.b" : { "$numberInt" : "0" } }
- { "a.b" : { "$numberInt" : "1" } }
- { "a.b" : { "$numberInt" : "2" } }
  { "a" : { "b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] } }
  { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
- { "a.b.2" : { "$numberInt" : "7" } }
  { "a.b" : { "$numberInt" : "0" } }
  { "a.b" : { "$numberInt" : "1" } }
+ { "a.b.2" : { "$numberInt" : "7" } }
  { "a.b" : { "$numberInt" : "7" } }
  { "" : true }
  { "" : [  ] }
@@ -1395,20 +1394,6 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a.0.b.0.1" : { "$numberInt" : "1" } }
  { "a.0.b.0.2" : { "$numberInt" : "2" } }
  { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
- { "a.1" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
- { "a.1.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
- { "a.1.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
- { "a.1.b.0.0" : { "$numberInt" : "0" } }
- { "a.1.b.0.1" : { "$numberInt" : "1" } }
- { "a.1.b.0.2" : { "$numberInt" : "2" } }
- { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
- { "a.2" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
- { "a.2.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
- { "a.2.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
- { "a.2.b.0.0" : { "$numberInt" : "0" } }
- { "a.2.b.0.1" : { "$numberInt" : "1" } }
- { "a.2.b.0.2" : { "$numberInt" : "7" } }
- { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
  { "a" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
  { "a.b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
  { "a.b.0" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
@@ -1416,6 +1401,13 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a.b.0.1" : { "$numberInt" : "1" } }
  { "a.b.0.2" : { "$numberInt" : "2" } }
  { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.1.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.1.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.1.b.0.0" : { "$numberInt" : "0" } }
+ { "a.1.b.0.1" : { "$numberInt" : "1" } }
+ { "a.1.b.0.2" : { "$numberInt" : "2" } }
+ { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
  { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
  { "a.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
@@ -1423,6 +1415,13 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a.b.0.1" : { "$numberInt" : "1" } }
  { "a.b.0.2" : { "$numberInt" : "2" } }
  { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a.2" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
+ { "a.2.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
+ { "a.2.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
+ { "a.2.b.0.0" : { "$numberInt" : "0" } }
+ { "a.2.b.0.1" : { "$numberInt" : "1" } }
+ { "a.2.b.0.2" : { "$numberInt" : "7" } }
+ { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
  { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
  { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
  { "a.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
@@ -1485,6 +1484,7 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a.0.b.0.1" : { "$numberInt" : "1" } }
  { "a.0.b.0.2" : { "$numberInt" : "2" } }
  { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
  { "a.1" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
  { "a.1.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
  { "a.1.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
@@ -1492,6 +1492,7 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a.1.b.0.1" : { "$numberInt" : "1" } }
  { "a.1.b.0.2" : { "$numberInt" : "2" } }
  { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
  { "a.2" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
  { "a.2.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
  { "a.2.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
@@ -1499,8 +1500,6 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a.2.b.0.1" : { "$numberInt" : "1" } }
  { "a.2.b.0.2" : { "$numberInt" : "7" } }
  { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
- { "a" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
- { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
  { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
  { "" : true }
  { "" : [  ] }
@@ -1517,6 +1516,7 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a.0.b.0.1" : { "$numberInt" : "1" } }
  { "a.0.b.0.2" : { "$numberInt" : "2" } }
  { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
  { "a.1" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
  { "a.1.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
  { "a.1.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
@@ -1524,6 +1524,7 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a.1.b.0.1" : { "$numberInt" : "1" } }
  { "a.1.b.0.2" : { "$numberInt" : "2" } }
  { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
  { "a.2" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
  { "a.2.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
  { "a.2.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
@@ -1531,8 +1532,6 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a.2.b.0.1" : { "$numberInt" : "1" } }
  { "a.2.b.0.2" : { "$numberInt" : "7" } }
  { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
- { "a" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
- { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
  { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
  { "" : true }
  { "" : [  ] }
@@ -1570,6 +1569,9 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a.0.b.0.1" : { "$numberInt" : "1" } }
  { "a.0.b.0.2" : { "$numberInt" : "2" } }
  { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.1" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
  { "a.1.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
  { "a.1.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
@@ -1577,6 +1579,9 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a.1.b.0.1" : { "$numberInt" : "1" } }
  { "a.1.b.0.2" : { "$numberInt" : "2" } }
  { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.2" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
  { "a.2.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
  { "a.2.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
@@ -1584,12 +1589,6 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a.2.b.0.1" : { "$numberInt" : "1" } }
  { "a.2.b.0.2" : { "$numberInt" : "7" } }
  { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
- { "a" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
- { "a.b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
- { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
- { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
- { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
- { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
  { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
  { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
@@ -1608,6 +1607,9 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a.0.b.0.1" : { "$numberInt" : "1" } }
  { "a.0.b.0.2" : { "$numberInt" : "2" } }
  { "a.0.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.1" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
  { "a.1.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
  { "a.1.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
@@ -1615,6 +1617,9 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a.1.b.0.1" : { "$numberInt" : "1" } }
  { "a.1.b.0.2" : { "$numberInt" : "2" } }
  { "a.1.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
+ { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
+ { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+ { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a.2" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
  { "a.2.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
  { "a.2.b.0" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
@@ -1622,12 +1627,6 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a.2.b.0.1" : { "$numberInt" : "1" } }
  { "a.2.b.0.2" : { "$numberInt" : "7" } }
  { "a.2.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
- { "a" : { "b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
- { "a.b" : [ [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
- { "a.b" : [ { "$numberInt" : "-1" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
- { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] } }
- { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
- { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "2" } ] }
  { "a" : { "b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] } }
  { "a.b" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] ] }
  { "a.b" : [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "7" } ] }
@@ -1644,18 +1643,18 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a.b.0" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
  { "a.b.0.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
  { "a.b.0.1.0" : { "$numberInt" : "1" } }
- { "a.b.0.1.1" : { "$numberInt" : "2" } }
- { "a.b.0.1.2" : { "$numberInt" : "3" } }
  { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.1.1" : { "$numberInt" : "2" } }
  { "a.b.0.1" : { "$numberInt" : "2" } }
+ { "a.b.0.1.2" : { "$numberInt" : "3" } }
  { "a.b.0.1" : { "$numberInt" : "3" } }
  { "a.b" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
  { "a.b.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
  { "a.b.1.0" : { "$numberInt" : "1" } }
- { "a.b.1.1" : { "$numberInt" : "2" } }
- { "a.b.1.2" : { "$numberInt" : "3" } }
  { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.1.1" : { "$numberInt" : "2" } }
  { "a.b.1" : { "$numberInt" : "2" } }
+ { "a.b.1.2" : { "$numberInt" : "3" } }
  { "a.b.1" : { "$numberInt" : "3" } }
  { "" : true }
  { "" : [  ] }
@@ -1682,18 +1681,18 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a.b.0" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
  { "a.b.0.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
  { "a.b.0.1.0" : { "$numberInt" : "1" } }
- { "a.b.0.1.1" : { "$numberInt" : "2" } }
- { "a.b.0.1.2" : { "$numberInt" : "3" } }
  { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.1.1" : { "$numberInt" : "2" } }
  { "a.b.0.1" : { "$numberInt" : "2" } }
+ { "a.b.0.1.2" : { "$numberInt" : "3" } }
  { "a.b.0.1" : { "$numberInt" : "3" } }
  { "a.b" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
  { "a.b.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
  { "a.b.1.0" : { "$numberInt" : "1" } }
- { "a.b.1.1" : { "$numberInt" : "2" } }
- { "a.b.1.2" : { "$numberInt" : "3" } }
  { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.1.1" : { "$numberInt" : "2" } }
  { "a.b.1" : { "$numberInt" : "2" } }
+ { "a.b.1.2" : { "$numberInt" : "3" } }
  { "a.b.1" : { "$numberInt" : "3" } }
  { "" : true }
  { "" : [  ] }
@@ -1721,17 +1720,17 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a.b.0" : { "1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] } }
  { "a.b.0.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
  { "a.b.0.1.0" : { "$numberInt" : "1" } }
- { "a.b.0.1.1" : { "$numberInt" : "2" } }
- { "a.b.0.1.2" : { "$numberInt" : "3" } }
  { "a.b.0.1" : { "$numberInt" : "1" } }
+ { "a.b.0.1.1" : { "$numberInt" : "2" } }
  { "a.b.0.1" : { "$numberInt" : "2" } }
+ { "a.b.0.1.2" : { "$numberInt" : "3" } }
  { "a.b.0.1" : { "$numberInt" : "3" } }
  { "a.b.1" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }
  { "a.b.1.0" : { "$numberInt" : "1" } }
- { "a.b.1.1" : { "$numberInt" : "2" } }
- { "a.b.1.2" : { "$numberInt" : "3" } }
  { "a.b.1" : { "$numberInt" : "1" } }
+ { "a.b.1.1" : { "$numberInt" : "2" } }
  { "a.b.1" : { "$numberInt" : "2" } }
+ { "a.b.1.2" : { "$numberInt" : "3" } }
  { "a.b.1" : { "$numberInt" : "3" } }
  { "" : true }
  { "" : [  ] }
@@ -1765,14 +1764,14 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }
  { "a.0" : { "c" : { "$numberInt" : "0" } } }
  { "a.0.c" : { "$numberInt" : "0" } }
- { "a.1" : { "c" : { "$numberInt" : "1" } } }
- { "a.1.c" : { "$numberInt" : "1" } }
- { "a.2" : { "b" : { "$numberInt" : "2" } } }
- { "a.2.b" : { "$numberInt" : "2" } }
  { "a" : { "c" : { "$numberInt" : "0" } } }
  { "a.c" : { "$numberInt" : "0" } }
+ { "a.1" : { "c" : { "$numberInt" : "1" } } }
+ { "a.1.c" : { "$numberInt" : "1" } }
  { "a" : { "c" : { "$numberInt" : "1" } } }
  { "a.c" : { "$numberInt" : "1" } }
+ { "a.2" : { "b" : { "$numberInt" : "2" } } }
+ { "a.2.b" : { "$numberInt" : "2" } }
  { "a" : { "b" : { "$numberInt" : "2" } } }
  { "a.b" : { "$numberInt" : "2" } }
  { "" : true }
@@ -1808,14 +1807,14 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }
  { "a.0" : { "c" : { "$numberInt" : "0" } } }
  { "a.0.c" : { "$numberInt" : "0" } }
- { "a.1" : { "c" : { "$numberInt" : "1" } } }
- { "a.1.c" : { "$numberInt" : "1" } }
- { "a.2" : { "b" : { "$numberInt" : "2" } } }
- { "a.2.b" : { "$numberInt" : "2" } }
  { "a" : { "c" : { "$numberInt" : "0" } } }
  { "a.c" : { "$numberInt" : "0" } }
+ { "a.1" : { "c" : { "$numberInt" : "1" } } }
+ { "a.1.c" : { "$numberInt" : "1" } }
  { "a" : { "c" : { "$numberInt" : "1" } } }
  { "a.c" : { "$numberInt" : "1" } }
+ { "a.2" : { "b" : { "$numberInt" : "2" } } }
+ { "a.2.b" : { "$numberInt" : "2" } }
  { "a" : { "b" : { "$numberInt" : "2" } } }
  { "" : true }
  { "" : [  ] }
@@ -1827,14 +1826,14 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ] }
  { "a.0" : { "c" : { "$numberInt" : "0" } } }
  { "a.0.c" : { "$numberInt" : "0" } }
- { "a.1" : { "c" : { "$numberInt" : "1" } } }
- { "a.1.c" : { "$numberInt" : "1" } }
- { "a.2" : { "b" : { "$numberInt" : "2" } } }
- { "a.2.b" : { "$numberInt" : "2" } }
  { "a" : { "c" : { "$numberInt" : "0" } } }
  { "a.c" : { "$numberInt" : "0" } }
+ { "a.1" : { "c" : { "$numberInt" : "1" } } }
+ { "a.1.c" : { "$numberInt" : "1" } }
  { "a" : { "c" : { "$numberInt" : "1" } } }
  { "a.c" : { "$numberInt" : "1" } }
+ { "a.2" : { "b" : { "$numberInt" : "2" } } }
+ { "a.2.b" : { "$numberInt" : "2" } }
  { "a" : { "b" : { "$numberInt" : "2" } } }
  { "" : true }
  { "" : [  ] }
@@ -1877,8 +1876,8 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
  { "a.0.0" : { "$numberInt" : "1" } }
  { "a.0.1" : { "b" : "old" } }
  { "a.0.1.b" : "old" }
- { "a.0.2" : { "$numberInt" : "3" } }
  { "a.0.b" : "old" }
+ { "a.0.2" : { "$numberInt" : "3" } }
  { "a" : [ { "$numberInt" : "1" }, { "b" : "old" }, { "$numberInt" : "3" } ] }
  { "" : true }
  { "" : [  ] }
@@ -2080,8 +2079,8 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
  { "_id" : { "$numberInt" : "13" } }
  { "a" : [ "cDg2UFhxR3B5a2dGNHByRjlYMG9" ] }
  { "a.0" : "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21" }
- { "a.1" : "short field" }
  { "a" : "cDg2UFhxR3B5a2dGNHByRjlYMG91R1ZHN21rU" }
+ { "a.1" : "short field" }
  { "a" : "short field" }
  { "" : true }
  { "" : { "$maxKey" : 1 } }
@@ -2121,14 +2120,14 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_single_path_generated_te
  { "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ], "t" : false }
  { "a.0" : { "c" : { "$numberInt" : "0" } }, "t" : false }
  { "a.0.c" : { "$numberInt" : "0" }, "t" : false }
- { "a.1" : { "c" : { "$numberInt" : "1" } }, "t" : false }
- { "a.1.c" : { "$numberInt" : "1" }, "t" : false }
- { "a.2" : { "b" : { "$numberInt" : "2" } }, "t" : false }
- { "a.2.b" : { "$numberInt" : "2" }, "t" : false }
  { "a" : { "c" : { "$numberInt" : "0" } }, "t" : false }
  { "a.c" : { "$numberInt" : "0" }, "t" : false }
+ { "a.1" : { "c" : { "$numberInt" : "1" } }, "t" : false }
+ { "a.1.c" : { "$numberInt" : "1" }, "t" : false }
  { "a" : { "c" : { "$numberInt" : "1" } }, "t" : false }
  { "a.c" : { "$numberInt" : "1" }, "t" : false }
+ { "a.2" : { "b" : { "$numberInt" : "2" } }, "t" : false }
+ { "a.2.b" : { "$numberInt" : "2" }, "t" : false }
  { "a" : { "b" : { "$numberInt" : "2" } }, "t" : false }
  { "a.b" : { "$numberInt" : "2" }, "t" : false }
  { "" : true, "t" : false }
@@ -2141,14 +2140,14 @@ SELECT documentdb_distributed_test_helpers.gin_bson_get_wildcard_project_generat
  { "a" : [ { "c" : { "$numberInt" : "0" } }, { "c" : { "$numberInt" : "1" } }, { "b" : { "$numberInt" : "2" } } ], "t" : false }
  { "a.0" : { "c" : { "$numberInt" : "0" } }, "t" : false }
  { "a.0.c" : { "$numberInt" : "0" }, "t" : false }
- { "a.1" : { "c" : { "$numberInt" : "1" } }, "t" : false }
- { "a.1.c" : { "$numberInt" : "1" }, "t" : false }
- { "a.2" : { "b" : { "$numberInt" : "2" } }, "t" : false }
- { "a.2.b" : { "$numberInt" : "2" }, "t" : false }
  { "a" : { "c" : { "$numberInt" : "0" } }, "t" : false }
  { "a.c" : { "$numberInt" : "0" }, "t" : false }
+ { "a.1" : { "c" : { "$numberInt" : "1" } }, "t" : false }
+ { "a.1.c" : { "$numberInt" : "1" }, "t" : false }
  { "a" : { "c" : { "$numberInt" : "1" } }, "t" : false }
  { "a.c" : { "$numberInt" : "1" }, "t" : false }
+ { "a.2" : { "b" : { "$numberInt" : "2" } }, "t" : false }
+ { "a.2.b" : { "$numberInt" : "2" }, "t" : false }
  { "a" : { "b" : { "$numberInt" : "2" } }, "t" : false }
  { "" : true, "t" : false }
  { "" : [  ], "t" : false }
@@ -2231,13 +2230,12 @@ SELECT documentdb_api_internal.create_indexes_non_concurrently('db', '{ "createI
 (1 row)
 
 \d documentdb_data.documents_3700
-                      Table "documentdb_data.documents_3700"
-     Column      |           Type           | Collation | Nullable | Default 
+          Table "documentdb_data.documents_3700"
+     Column      |  Type  | Collation | Nullable | Default 
 ---------------------------------------------------------------------
- shard_key_value | bigint                   |           | not null | 
- object_id       | bson                     |           | not null | 
- document        | bson                     |           | not null | 
- creation_time   | timestamp with time zone |           |          | 
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
 Indexes:
     "collection_pk_3700" PRIMARY KEY, btree (shard_key_value, object_id)
     "documents_rum_index_3701" documentdb_rum (document bson_rum_single_path_ops (path='', iswildcard='true', tl='2699', wkl='200'))
@@ -2274,4 +2272,3 @@ SELECT documentdb_api.insert_one('db','indextermgeneration', '{"_id": 13, "a" : 
  { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
 (1 row)
 
-SET documentdb.enableIndexTermTruncationOnNestedObjects TO off;

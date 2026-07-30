@@ -147,10 +147,31 @@ Check the result by re-running the _pg_prpc_ query. This is new result:
  g    | s4     | invoker  | immutable  | {statement_timeout=1}
 ```
 
+### Mark extension dependencies
+
+Use `DEPENDS ON EXTENSION` to mark a function as dependent on an extension:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Create a function that depends on the extension
+CREATE FUNCTION s4.g(int) RETURNS text SECURITY DEFINER 
+  LANGUAGE plpgsql AS $$BEGIN RETURN 'Result'; END$$;
+
+-- Mark the dependency on the extension
+ALTER FUNCTION s4.g(int) DEPENDS ON EXTENSION "uuid-ossp";
+
+-- Remove the dependency mark
+ALTER FUNCTION s4.g(int) NO DEPENDS ON EXTENSION "uuid-ossp";
+```
+
+When an extension is dropped, all dependent objects are dropped or updated accordingly.
+
 ## See also
 
-- [`CREATE FUNCTION`](../ddl_create_function)
-- [`DROP FUNCTION`](../ddl_drop_function)
-- [`CREATE PROCEDURE`](../ddl_create_procedure)
-- [`ALTER PROCEDURE`](../ddl_alter_procedure)
-- [`DROP PROCEDURE`](../ddl_drop_procedure)
+- [ALTER ROUTINE](../ddl_alter_routine)
+- [CREATE FUNCTION](../ddl_create_function)
+- [DROP FUNCTION](../ddl_drop_function)
+- [CREATE PROCEDURE](../ddl_create_procedure)
+- [ALTER PROCEDURE](../ddl_alter_procedure)
+- [DROP PROCEDURE](../ddl_drop_procedure)

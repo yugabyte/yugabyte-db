@@ -1,0 +1,31 @@
+# Tests related to READ COMMITTED isolation
+test: yb.orig.read_committed_update_and_explicit_locking
+test: yb.orig.read_committed_insert
+test: yb.orig.read_committed_insert_duplicate_key_error
+test: yb.orig.read_committed_test_internal_savepoint
+test: yb.orig.read_committed_test_do_call
+test: yb.orig.read_committed_non_atomic_commit_no_retry
+
+# Skip locked related tests newly added at YB
+test: yb.orig.modification-followed-by-lock
+test: yb.orig.skip-locked-after-update
+test: yb.orig.skip-locked-single-shard-transaction
+
+# TODO: Re-enable after memory leak fixed
+# Refer https://github.com/yugabyte/yugabyte-db/issues/18324 for details.
+# test: yb.orig.lock-status
+
+# TODO:
+# 1. Test to ensure that new sub txns inherit ybDataSentForCurrQuery and parent txns
+#    inherit it back from nested sub txns once they are removed.
+# 2. Test to ensure clean-up of partial intents using savepoints.
+# 3. Test all skip locked specs with REPEATABLE READ isolation as well.
+
+test: yb.orig.ignore-rolled-back-savepoint-intent
+test: yb.orig.ensure-lock-only-conflict-always-ignored
+test: yb.orig.drop-probe-waiting-on-aborted-subtxn
+test: yb.orig.serializable_conflict_with_index_only_scan
+test: yb.orig.query_layer_retries_multi_stmt_query
+test: yb.orig.advisory_locks
+test: yb.orig.only-abort-sub-txn
+test: yb.orig.drop-expression-partitioned-table

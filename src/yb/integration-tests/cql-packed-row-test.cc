@@ -18,6 +18,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status_log.h"
 
 using namespace std::literals;
 
@@ -334,8 +335,8 @@ TEST_F(CqlPackedRowTest, CompactWithoutLivenessColumn) {
 void CqlPackedRowTest::TestRemoteBootstrap() {
   // Global load balancing could break leader step down at the end of this test.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_global_load_balancing) = false;
-  FLAGS_remote_bootstrap_begin_session_timeout_ms = 50000;
-  FLAGS_TEST_rbs_sleep_after_taking_metadata_ms = 500;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_remote_bootstrap_begin_session_timeout_ms) = 50000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_rbs_sleep_after_taking_metadata_ms) = 500;
   constexpr size_t kNewTServerIdx = 3;
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));

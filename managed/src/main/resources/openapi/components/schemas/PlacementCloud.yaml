@@ -1,6 +1,10 @@
 title: PlacementCloud
 description: YBA Placement Cloud. Part of ClusterPlacementSpec.
 type: object
+required:
+  - uuid
+  - code
+  - region_list
 properties:
   uuid:
     description: The cloud provider id.

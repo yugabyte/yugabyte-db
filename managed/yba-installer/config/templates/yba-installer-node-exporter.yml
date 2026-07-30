@@ -1,0 +1,49 @@
+services:
+  - name: nodeExporterService
+    fileName: "{{ .SystemdFileLocation }}"
+    contents: |
+      [Unit]
+      Description=Node Exporter
+      Wants=network-online.target
+      After=network-online.target
+
+      [Service]
+      {{ if eq (yamlPath "as_root") "true" }}
+      User={{ yamlPath "service_username" }}
+      Group={{ yamlPath "service_username" }}
+      {{ end }}
+      Type=simple
+      ExecStart=/bin/sh -c "{{ .BinDir }}/node_exporter \
+      --web.listen-address=:{{ yamlPath "nodeExporter.port" }} \
+      --web.config.file={{ .WebConfFile }} \
+      --collector.filesystem.mount-points-exclude='^/(dev|proc|sys|var/lib/docker/.+|var/lib/kubelet/.+)($|/)' \
+      >> {{ .LogDir }}/node-exporter.log 2>&1"
+
+      Restart=always
+      RestartSec=10
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - name: nodeExporterWebConf
+    fileName: "{{ .WebConfFile }}"
+    contents: |
+      {{ if eq (yamlPath "nodeExporter.scheme") "https" }}
+      tls_server_config:
+        cert_file: {{ .HttpsCertPath }}
+        key_file: {{ .HttpsKeyPath }}
+      {{ end }}
+
+  - name: nodeExporterLogrotate
+    fileName: "{{ logrotateD }}/node-exporter"
+    contents: |
+      {{ .LogDir }}/node-exporter.log {
+          daily
+          rotate 7
+          compress
+          missingok
+          notifempty
+          copytruncate
+          delaycompress
+          create 0640 {{ yamlPath "service_username" }} {{ yamlPath "service_username" }}
+      }

@@ -17,12 +17,13 @@ export interface OtherAdvancedProps {
   redisServerHttpPort: number;
   redisServerRpcPort: number;
   nodeExporterPort: number;
-  ybControllerrRpcPort: number;
+  ybControllerRpcPort: number;
   instanceTags: InstanceTag[];
-  useTimeSync: boolean;
   awsArnString: string;
   useSystemd: boolean;
   accessKeyCode: string;
+  universeOverrides?: string;
+  azOverrides?: Record<string, string>;
 }
 
 export interface AccessKey {
@@ -53,4 +54,6 @@ export interface ProxyAdvancedProps {
   webProxyPort?: number;
   byPassProxyList: boolean;
   byPassProxyListValues: string[];
+  /** Yup only */
+  proxyServerType?: string;
 }

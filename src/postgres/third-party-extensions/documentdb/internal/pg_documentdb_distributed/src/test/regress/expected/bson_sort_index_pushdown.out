@@ -6,6 +6,7 @@ SET search_path TO documentdb_api,documentdb_api_internal,documentdb_api_catalog
 SET citus.next_shard_id TO 9640000;
 SET documentdb.next_collection_id TO 964000;
 SET documentdb.next_collection_index_id TO 964000;
+SET documentdb.enableIndexOrderbyPushdown = 'on';
 DO $$
 DECLARE i int;
 DECLARE a int;
@@ -41,6 +42,7 @@ SELECT count(*) from documentdb_api.collection('sort_pushdown', 'coll');
 -- force the analyzer to kick in to have real statistics after we did the insertion.
 ANALYZE documentdb_data.documents_964001;
 -- sort by id with no filters uses the _id_ index and returns the right results
+set enable_seqscan to off;
 SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {}, "sort": {"_id": 1}, "limit": 20 }');
                               document                              
 ---------------------------------------------------------------------
@@ -105,10 +107,11 @@ EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bs
    Index Cond: (shard_key_value = '964001'::bigint)
 (2 rows)
 
+reset enable_seqscan;
 SELECT documentdb_distributed_test_helpers.get_feature_counter_pretty(true);
-                                             get_feature_counter_pretty                                              
+                             get_feature_counter_pretty                             
 ---------------------------------------------------------------------
- {"Feature_usage":[{"limit" : 2}, {"match" : 4}, {"sort" : 4}, {"sort_by_id" : 4}, {"sort_by_id_pushdownable" : 4}]}
+ {"Feature_usage":[{"limit" : 2}, {"match" : 4}, {"sort" : 4}, {"sort_by_id" : 4}]}
 (1 row)
 
 -- filter on _id_
@@ -163,32 +166,18 @@ SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "
 (20 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"_id": {"$gt": 5}}, "sort": {"_id": 1} }');
-                                                         QUERY PLAN                                                         
+                                                                                     QUERY PLAN                                                                                      
 ---------------------------------------------------------------------
- Sort (actual rows=9995 loops=1)
-   Sort Key: object_id
-   Sort Method: quicksort  Memory: 1243kB
-   ->  Bitmap Heap Scan on documents_964001_9640002 collection (actual rows=9995 loops=1)
-         Recheck Cond: ((shard_key_value = '964001'::bigint) AND (object_id > '{ "" : { "$numberInt" : "5" } }'::bson))
-         Filter: (document @> '{ "_id" : { "$numberInt" : "5" } }'::bson)
-         Heap Blocks: exact=104
-         ->  Bitmap Index Scan on _id_ (actual rows=9995 loops=1)
-               Index Cond: ((shard_key_value = '964001'::bigint) AND (object_id > '{ "" : { "$numberInt" : "5" } }'::bson))
-(9 rows)
+ Index Scan using _id_ on documents_964001_9640002 collection (actual rows=9995 loops=1)
+   Index Cond: ((shard_key_value = '964001'::bigint) AND (object_id > '{ "" : { "$numberInt" : "5" } }'::bson) AND (object_id <= '{ "" : { "$numberDouble" : "Infinity" } }'::bson))
+(2 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"_id": {"$gt": 5}}, "sort": {"_id": -1} }');
-                                                         QUERY PLAN                                                         
+                                                                                     QUERY PLAN                                                                                      
 ---------------------------------------------------------------------
- Sort (actual rows=9995 loops=1)
-   Sort Key: object_id DESC
-   Sort Method: quicksort  Memory: 1243kB
-   ->  Bitmap Heap Scan on documents_964001_9640002 collection (actual rows=9995 loops=1)
-         Recheck Cond: ((shard_key_value = '964001'::bigint) AND (object_id > '{ "" : { "$numberInt" : "5" } }'::bson))
-         Filter: (document @> '{ "_id" : { "$numberInt" : "5" } }'::bson)
-         Heap Blocks: exact=104
-         ->  Bitmap Index Scan on _id_ (actual rows=9995 loops=1)
-               Index Cond: ((shard_key_value = '964001'::bigint) AND (object_id > '{ "" : { "$numberInt" : "5" } }'::bson))
-(9 rows)
+ Index Scan Backward using _id_ on documents_964001_9640002 collection (actual rows=9995 loops=1)
+   Index Cond: ((shard_key_value = '964001'::bigint) AND (object_id > '{ "" : { "$numberInt" : "5" } }'::bson) AND (object_id <= '{ "" : { "$numberDouble" : "Infinity" } }'::bson))
+(2 rows)
 
 -- filter on a with no index
 SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$eq": 22}}, "sort": {"_id": 1}, "limit": 20 }');
@@ -260,6 +249,35 @@ SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "
 (20 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$eq": 14}}, "sort": {"_id": 1}, "limit": 20 }');
+                                             QUERY PLAN                                             
+---------------------------------------------------------------------
+ Limit (actual rows=20 loops=1)
+   ->  Sort (actual rows=20 loops=1)
+         Sort Key: (bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::bson)) NULLS FIRST
+         Sort Method: top-N heapsort  Memory: 26kB
+         ->  Bitmap Heap Scan on documents_964001_9640002 collection (actual rows=3334 loops=1)
+               Recheck Cond: (document @= '{ "a" : { "$numberInt" : "14" } }'::bson)
+               Heap Blocks: exact=94
+               ->  Bitmap Index Scan on a_id (actual rows=3334 loops=1)
+                     Index Cond: (document @= '{ "a" : { "$numberInt" : "14" } }'::bson)
+(9 rows)
+
+EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$in": [12, 14]}}, "sort": {"_id": 1}, "limit": 20 }');
+                                                      QUERY PLAN                                                       
+---------------------------------------------------------------------
+ Limit (actual rows=20 loops=1)
+   ->  Sort (actual rows=20 loops=1)
+         Sort Key: (bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::bson)) NULLS FIRST
+         Sort Method: top-N heapsort  Memory: 26kB
+         ->  Bitmap Heap Scan on documents_964001_9640002 collection (actual rows=6667 loops=1)
+               Recheck Cond: (document @*= '{ "a" : [ { "$numberInt" : "12" }, { "$numberInt" : "14" } ] }'::bson)
+               Heap Blocks: exact=94
+               ->  Bitmap Index Scan on a_id (actual rows=6667 loops=1)
+                     Index Cond: (document @*= '{ "a" : [ { "$numberInt" : "12" }, { "$numberInt" : "14" } ] }'::bson)
+(9 rows)
+
+set documentdb.enableOrderByIdOnCostFunction to on;
+EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$eq": 14}}, "sort": {"_id": 1}, "limit": 20 }');
                                          QUERY PLAN                                          
 ---------------------------------------------------------------------
  Limit (actual rows=20 loops=1)
@@ -279,14 +297,15 @@ EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bs
          Rows Removed by Filter: 10
 (5 rows)
 
+reset documentdb.enableOrderByIdOnCostFunction;
 SELECT documentdb_distributed_test_helpers.get_feature_counter_pretty(true);
-                                             get_feature_counter_pretty                                              
+                                                                       get_feature_counter_pretty                                                                       
 ---------------------------------------------------------------------
- {"Feature_usage":[{"limit" : 7}, {"match" : 9}, {"sort" : 9}, {"sort_by_id" : 9}, {"sort_by_id_pushdownable" : 9}]}
+ {"Feature_usage":[{"query_operator_eq" : 5}, {"query_operator_gt" : 4}, {"query_operator_in" : 2}, {"limit" : 9}, {"match" : 11}, {"sort" : 11}, {"sort_by_id" : 11}]}
 (1 row)
 
 BEGIN;
-SET LOCAL documentdb.enableSortbyIdPushDownToPrimaryKey = 'false';
+SET LOCAL documentdb.enableIndexOrderbyPushdown = 'false';
 ---- should not use  Index Scan using _id_ 
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$eq": 14}}, "sort": {"_id": 1}, "limit": 20 }');
                                                                       QUERY PLAN                                                                       
@@ -304,7 +323,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bs
                      Sort Method: top-N heapsort  Memory: 26kB
                      ->  Bitmap Heap Scan on documents_964001_9640002 collection (actual rows=3334 loops=1)
                            Recheck Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "14" } }'::documentdb_core.bson)
-                           Heap Blocks: exact=104
+                           Heap Blocks: exact=94
                            ->  Bitmap Index Scan on a_id (actual rows=3334 loops=1)
                                  Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "14" } }'::documentdb_core.bson)
 (16 rows)
@@ -326,15 +345,15 @@ EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bs
                      Sort Method: top-N heapsort  Memory: 26kB
                      ->  Bitmap Heap Scan on documents_964001_9640002 collection (actual rows=6667 loops=1)
                            Recheck Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "12" }, { "$numberInt" : "14" } ] }'::documentdb_core.bson)
-                           Heap Blocks: exact=104
+                           Heap Blocks: exact=94
                            ->  Bitmap Index Scan on a_id (actual rows=6667 loops=1)
                                  Index Cond: (document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "12" }, { "$numberInt" : "14" } ] }'::documentdb_core.bson)
 (16 rows)
 
 SELECT documentdb_distributed_test_helpers.get_feature_counter_pretty(true);
-                                             get_feature_counter_pretty                                              
+                                                        get_feature_counter_pretty                                                        
 ---------------------------------------------------------------------
- {"Feature_usage":[{"limit" : 2}, {"match" : 2}, {"sort" : 2}, {"sort_by_id" : 2}, {"sort_by_id_pushdownable" : 2}]}
+ {"Feature_usage":[{"query_operator_eq" : 1}, {"query_operator_in" : 1}, {"limit" : 2}, {"match" : 2}, {"sort" : 2}, {"sort_by_id" : 2}]}
 (1 row)
 
 END;
@@ -364,21 +383,12 @@ SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "
 (20 rows)
 
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"_id": {"$gt": 100}}, "sort": {"_id": 1}, "limit": 20 }');
-                                                                                          QUERY PLAN                                                                                           
+                                                                                         QUERY PLAN                                                                                          
 ---------------------------------------------------------------------
  Limit (actual rows=20 loops=1)
-   ->  Sort (actual rows=20 loops=1)
-         Sort Key: object_id
-         Sort Method: top-N heapsort  Memory: 26kB
-         ->  Bitmap Heap Scan on documents_964001_9640002 collection (actual rows=9900 loops=1)
-               Recheck Cond: ((document @> '{ "_id" : { "$numberInt" : "100" } }'::bson) AND (shard_key_value = '964001'::bigint) AND (object_id > '{ "" : { "$numberInt" : "100" } }'::bson))
-               Heap Blocks: exact=103
-               ->  BitmapAnd (actual rows=0 loops=1)
-                     ->  Bitmap Index Scan on a_id (actual rows=9900 loops=1)
-                           Index Cond: (document @> '{ "_id" : { "$numberInt" : "100" } }'::bson)
-                     ->  Bitmap Index Scan on _id_ (actual rows=9900 loops=1)
-                           Index Cond: ((shard_key_value = '964001'::bigint) AND (object_id > '{ "" : { "$numberInt" : "100" } }'::bson))
-(12 rows)
+   ->  Index Scan using _id_ on documents_964001_9640002 collection (actual rows=20 loops=1)
+         Index Cond: ((shard_key_value = '964001'::bigint) AND (object_id > '{ "" : { "$numberInt" : "100" } }'::bson) AND (object_id <= '{ "" : { "$numberDouble" : "Infinity" } }'::bson))
+(3 rows)
 
 -- no filter should still prefer the _id index
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {}, "sort": {"_id": 1}, "limit": 20 }');
@@ -410,11 +420,11 @@ EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bs
          Node: host=localhost port=58070 dbname=regression
          ->  Limit (actual rows=20 loops=1)
                ->  Sort (actual rows=20 loops=1)
-                     Sort Key: object_id
+                     Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
                      Sort Method: top-N heapsort  Memory: 26kB
                      ->  Bitmap Heap Scan on documents_964001_9640004 collection (actual rows=3334 loops=1)
                            Recheck Cond: ((document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "14" } }'::documentdb_core.bson) AND (shard_key_value = '3904677705083871083'::bigint))
-                           Heap Blocks: exact=104
+                           Heap Blocks: exact=94
                            ->  BitmapAnd (actual rows=0 loops=1)
                                  ->  Bitmap Index Scan on a_id (actual rows=3334 loops=1)
                                        Index Cond: (document OPERATOR(documentdb_api_catalog.@=) '{ "a" : { "$numberInt" : "14" } }'::documentdb_core.bson)
@@ -442,7 +452,7 @@ EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bs
                                  Sort Method: top-N heapsort  Memory: 26kB
                                  ->  Bitmap Heap Scan on documents_964001_9640004 collection (actual rows=3333 loops=1)
                                        Recheck Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "a" : { "$numberInt" : "14" } }'::documentdb_core.bson)
-                                       Heap Blocks: exact=104
+                                       Heap Blocks: exact=94
                                        ->  Bitmap Index Scan on a_id (actual rows=3333 loops=1)
                                              Index Cond: (document OPERATOR(documentdb_api_catalog.@>) '{ "a" : { "$numberInt" : "14" } }'::documentdb_core.bson)
                ->  Task
@@ -496,6 +506,8 @@ CALL documentdb_api.drop_indexes('sort_pushdown', '{ "dropIndexes": "coll", "ind
 (1 row)
 
 ANALYZE documentdb_data.documents_964001;
+BEGIN;
+SET LOCAL documentdb.enableIndexOrderbyPushdown = 'true';
 EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bson_aggregation_find('sort_pushdown', '{ "find": "coll", "filter": {"a": {"$eq": 14}}, "sort": {"_id": 1}, "limit": 20 }');
                                                               QUERY PLAN                                                              
 ---------------------------------------------------------------------
@@ -525,12 +537,13 @@ EXPLAIN (COSTS OFF, TIMING OFF, ANALYZE ON, SUMMARY OFF) SELECT document FROM bs
          Node: host=localhost port=58070 dbname=regression
          ->  Limit (actual rows=20 loops=1)
                ->  Sort (actual rows=20 loops=1)
-                     Sort Key: object_id
+                     Sort Key: (documentdb_api_catalog.bson_orderby(document, '{ "_id" : { "$numberInt" : "1" } }'::documentdb_core.bson)) NULLS FIRST
                      Sort Method: top-N heapsort  Memory: 26kB
                      ->  Seq Scan on documents_964001_9640004 collection (actual rows=6667 loops=1)
                            Filter: ((document OPERATOR(documentdb_api_catalog.@*=) '{ "a" : [ { "$numberInt" : "14" }, { "$numberInt" : "22" } ] }'::documentdb_core.bson) AND ((shard_key_value = '3904677705083871083'::bigint) OR (shard_key_value = '-8641956760761651950'::bigint)))
                            Rows Removed by Filter: 3333
 (14 rows)
 
+ROLLBACK;
 RESET citus.explain_all_tasks;
 RESET citus.max_adaptive_executor_pool_size;

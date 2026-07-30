@@ -1,9 +1,9 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/oss_backend/commands/commands_common.c
+ * src/commands/commands_common.c
  *
- * Implementation of a set of common methods for Mongo commands.
+ * Implementation of a set of common methods for commands in general.
  *
  *-------------------------------------------------------------------------
  */
@@ -15,8 +15,11 @@
 #include "executor/spi.h"
 #include "lib/stringinfo.h"
 #include "utils/builtins.h"
+#include "storage/lmgr.h"
+#include "utils/snapmgr.h"
 
 #include "io/bson_core.h"
+#include "collation/collation.h"
 #include "commands/commands_common.h"
 #include "utils/error_utils.h"
 #include "utils/documentdb_errors.h"
@@ -29,9 +32,11 @@
 extern bool ThrowDeadlockOnCrud;
 extern bool EnableBackendStatementTimeout;
 extern int MaxCustomCommandTimeout;
+extern bool EnableVariablesSupportForWriteCommands;
+extern bool RumFailOnLostPath;
 
 /*
- *  This is a list of Mongo command options that are not currently supported.
+ *  This is a list of command options that are not currently supported.
  *  At runtime, we ignore these optional fields.
  *
  *  Note: Please keep this array sorted.
@@ -50,6 +55,7 @@ static const char *IgnoredCommonSpecFields[] = {
 	"awaitData",
 	"batch_size",
 	"bypassDocumentValidation", /* insert command */
+	"bypassEmptyTsReplacement", /* insert, update, findAndModify and bulkWrite command */
 	"collation",
 	"collstats",
 	"comment", /* insert, createIndex, dropIndex command */
@@ -99,37 +105,133 @@ static pgbson * RewriteDocumentAddObjectIdCore(const bson_value_t *docValue,
  * document IDs that match, it uses the smallest one.
  */
 bool
-FindShardKeyValueForDocumentId(MongoCollection *collection, pgbson *queryDoc,
-							   bson_value_t *objectId, int64 *shardKeyValue)
+FindShardKeyValueForDocumentId(MongoCollection *collection, const bson_value_t *queryDoc,
+							   bson_value_t *objectId, bool isIdValueCollationAware,
+							   bool queryHasNonIdFilters, int64_t *shardKeyValue,
+							   const bson_value_t *variableSpec,
+							   const char *collationString)
 {
 	StringInfoData selectQuery;
-	int argCount = 2;
-	Oid argTypes[2];
-	Datum argValues[2];
+	int argCount = 0;
+
 	bool foundDocument = false;
 
 	SPI_connect();
 	initStringInfo(&selectQuery);
+
 	appendStringInfo(&selectQuery,
-					 "SELECT shard_key_value FROM %s.documents_" UINT64_FORMAT
-					 " WHERE object_id = $1::%s"
-					 " AND document OPERATOR(%s.@@) $2::%s ORDER BY object_id LIMIT 1",
-					 ApiDataSchemaName, collection->collectionId,
-					 FullBsonTypeName, ApiCatalogSchemaName, FullBsonTypeName);
+					 "SELECT shard_key_value FROM %s.documents_" UINT64_FORMAT,
+					 ApiDataSchemaName, collection->collectionId);
 
-	/* object_id column uses the projected value format */
-	pgbson_writer writer;
-	PgbsonWriterInit(&writer);
-	PgbsonWriterAppendValue(&writer, "", 0, objectId);
+	pgbson *variableSpecBson = NULL;
+	if (EnableVariablesSupportForWriteCommands && queryHasNonIdFilters)
+	{
+		variableSpecBson = variableSpec != NULL &&
+						   variableSpec->value_type == BSON_TYPE_DOCUMENT ?
+						   PgbsonInitFromDocumentBsonValue(variableSpec) : NULL;
+	}
 
-	argTypes[0] = BYTEAOID;
-	argValues[0] = PointerGetDatum(CastPgbsonToBytea(PgbsonWriterGetPgbson(&writer)));
+	bool applyVariableSpec = variableSpecBson != NULL;
+	bool applyCollation = IsCollationApplicable(collationString);
+	if (applyCollation || applyVariableSpec)
+	{
+		/* utilize the collation and/or variables in matching the document */
+		appendStringInfo(&selectQuery,
+						 " WHERE %s.bson_query_match(document, $1::%s.bson, $2::%s.bson, $3::text)",
+						 DocumentDBApiInternalSchemaName, CoreSchemaName,
+						 CoreSchemaName);
 
-	/* we use bytea because bson may not have the same OID on all nodes */
-	argTypes[1] = BYTEAOID;
-	argValues[1] = PointerGetDatum(CastPgbsonToBytea(queryDoc));
+		argCount += 3;
+	}
+	else
+	{
+		appendStringInfo(&selectQuery,
+						 " WHERE document OPERATOR(%s.@@) $1::%s",
+						 ApiCatalogSchemaName, FullBsonTypeName);
 
-	char *argNulls = NULL;
+		argCount++;
+	}
+
+	/* filter directly by _id if _id is not collation-sensitive */
+	bool applyCollationToIdValue = applyCollation && isIdValueCollationAware;
+	int idArgIndex = -1;
+	if (!applyCollationToIdValue)
+	{
+		idArgIndex = argCount;
+		appendStringInfo(&selectQuery,
+						 " AND object_id OPERATOR(%s.=) $%d::%s",
+						 CoreSchemaName, idArgIndex + 1, FullBsonTypeName);
+
+		argCount++;
+	}
+
+	/* choose document with smallest _id if multiple documents are found */
+	int idOrderByIndex = -1;
+	if (applyCollationToIdValue)
+	{
+		idOrderByIndex = argCount;
+		appendStringInfo(&selectQuery,
+						 " ORDER BY %s.bson_orderby(document, $%d::%s, $3::text) USING OPERATOR(%s.<<<) LIMIT 1",
+						 ApiInternalSchemaNameV2, idOrderByIndex + 1, FullBsonTypeName,
+						 ApiInternalSchemaNameV2);
+
+		argCount++;
+	}
+	else
+	{
+		appendStringInfo(&selectQuery, " ORDER BY object_id LIMIT 1");
+	}
+
+	Oid *argTypes = palloc0(argCount * sizeof(Oid));
+	Datum *argValues = palloc0(argCount * sizeof(Datum));
+
+	char *argNulls = palloc0(argCount * sizeof(char));
+	memset(argNulls, ' ', argCount);
+
+	Oid bsonTypeId = BsonTypeId();
+
+	/* set the query spec */
+	argTypes[0] = bsonTypeId;
+	argValues[0] = PointerGetDatum(PgbsonInitFromDocumentBsonValue(queryDoc));
+
+	if (applyVariableSpec || applyCollation)
+	{
+		/* set the variableSpec */
+		argTypes[1] = bsonTypeId;
+		argValues[1] = applyVariableSpec ? PointerGetDatum(variableSpecBson) :
+					   PointerGetDatum(PgbsonInitEmpty());
+
+		/* set the collation string */
+		argTypes[2] = TEXTOID;
+		argValues[2] = applyCollation ? CStringGetTextDatum(collationString) :
+					   CStringGetTextDatum("");
+	}
+
+	/* set _id filter */
+	if (!applyCollationToIdValue)
+	{
+		/* object_id column uses the projected value format */
+		pgbson_writer writer;
+		PgbsonWriterInit(&writer);
+		PgbsonWriterAppendValue(&writer, "", 0, objectId);
+
+		argTypes[idArgIndex] = BYTEAOID;
+		argValues[idArgIndex] = PointerGetDatum(CastPgbsonToBytea(PgbsonWriterGetPgbson(
+																	  &writer)));
+	}
+
+	/* set the orderby _id filter */
+	if (applyCollationToIdValue)
+	{
+		/* the _id filter should be in the form '{ "_id" : { "$numberInt" : "1" } }' */
+		pgbson_writer writer;
+		PgbsonWriterInit(&writer);
+		PgbsonWriterAppendInt32(&writer, "_id", 3, 1);
+
+		argTypes[idOrderByIndex] = bsonTypeId;
+		argValues[idOrderByIndex] = PointerGetDatum(PgbsonWriterGetPgbson(&writer));
+	}
+
 	bool readOnly = false;
 	long maxTupleCount = 0;
 
@@ -187,25 +289,37 @@ SetExplicitStatementTimeout(int timeoutMilliseconds)
 }
 
 
+pgbson *
+GetObjectIdFilterFromQueryDocumentValue(const bson_value_t *queryDoc,
+										bool *queryHasNonIdFilters,
+										bool *isIdValueCollationAware)
+{
+	bson_iter_t queryIterator;
+	bson_value_t queryIdValue;
+	bool errorOnConflict = false;
+	BsonValueInitIterator(queryDoc, &queryIterator);
+	if (TraverseQueryDocumentAndGetId(&queryIterator, &queryIdValue, errorOnConflict,
+									  queryHasNonIdFilters, isIdValueCollationAware))
+	{
+		return BsonValueToDocumentPgbson(&queryIdValue);
+	}
+
+	return NULL;
+}
+
+
 /*
  * Extracts the object_id if applicable from a query doc and returns a serialized pgbson
  * containing the object_id (top level column) value if one was extracted.
  * Returns NULL otherwise.
  */
 pgbson *
-GetObjectIdFilterFromQueryDocument(pgbson *queryDoc, bool *queryHasNonIdFilters)
+GetObjectIdFilterFromQueryDocument(pgbson *queryDoc, bool *queryHasNonIdFilters,
+								   bool *isIdValueCollationAware)
 {
-	bson_iter_t queryIterator;
-	bson_value_t queryIdValue;
-	bool errorOnConflict = false;
-	PgbsonInitIterator(queryDoc, &queryIterator);
-	if (TraverseQueryDocumentAndGetId(&queryIterator, &queryIdValue, errorOnConflict,
-									  queryHasNonIdFilters))
-	{
-		return BsonValueToDocumentPgbson(&queryIdValue);
-	}
-
-	return NULL;
+	bson_value_t queryIdValue = ConvertPgbsonToBsonValue(queryDoc);
+	return GetObjectIdFilterFromQueryDocumentValue(&queryIdValue, queryHasNonIdFilters,
+												   isIdValueCollationAware);
 }
 
 
@@ -234,9 +348,9 @@ GetWriteErrorFromErrorData(ErrorData *errorData, int writeErrorIdx)
 		ThrowErrorData(errorData);
 	}
 
-	if (errorData->sqlerrcode == ERRCODE_INTERNAL_ERROR)
+	if (errorData->sqlerrcode == ERRCODE_INTERNAL_ERROR && errorData->message != NULL)
 	{
-		if (errorData->message != NULL && strcmp(errorData->message, "Lost Path") == 0)
+		if (RumFailOnLostPath && strcmp(errorData->message, "Lost path") == 0)
 		{
 			/*
 			 * We need to throw this updated error and retry at the gateway
@@ -245,6 +359,17 @@ GetWriteErrorFromErrorData(ErrorData *errorData, int writeErrorIdx)
 			errorData->message =
 				"An invalid/lost index path for the write operation was detected."
 				" Please retry the operation.";
+			ereport(LOG, (errmsg("%s", errorData->message)));
+			ThrowErrorData(errorData);
+		}
+		else if (strcmp(errorData->message, "invalid offset on rumpage") == 0)
+		{
+			/*
+			 * We need to throw this updated error and retry at the gateway
+			 */
+			errorData->sqlerrcode = ERRCODE_INDEX_LOSTPATH;
+			errorData->message =
+				"The index page was split while a query was in progress";
 			ereport(LOG, (errmsg("%s", errorData->message)));
 			ThrowErrorData(errorData);
 		}
@@ -272,7 +397,7 @@ TryGetErrorMessageAndCode(ErrorData *errorData, int *code, char **errmessage)
 {
 	if (errorData->sqlerrcode == ERRCODE_CHECK_VIOLATION)
 	{
-		ereport(LOG, (errmsg("Check constraint error %s", errorData->message)));
+		ereport(LOG, (errmsg("Check constraint violation %s", errorData->message)));
 		*code = ERRCODE_DOCUMENTDB_DUPLICATEKEY;
 		*errmessage =
 			"Invalid write detected. Please validate the collection and/or shard key being written to";
@@ -343,7 +468,7 @@ TryGetErrorMessageAndCode(ErrorData *errorData, int *code, char **errmessage)
 
 
 /*
- * Ensures that the _id field in a write document conforms to the requirements of Mongo
+ * Ensures that the _id field in a write document conforms to the protocol requirements
  * Right now this ensures that the _id is not undefined or an array or a regex pattern
  */
 void
@@ -354,7 +479,7 @@ ValidateIdField(const bson_value_t *idValue)
 		(idValue->value_type == BSON_TYPE_REGEX))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
-							"The '_id' value cannot be of type %s",
+							"The '_id' field value must not be a type of %s",
 							BsonTypeName(idValue->value_type))));
 	}
 
@@ -440,6 +565,45 @@ RewriteDocumentWithCustomObjectId(pgbson *document,
 	}
 
 	return result;
+}
+
+
+/*
+ * For write procedures, commits and re-acquires the collection lock.
+ */
+void
+CommitWriteProcedureAndReacquireCollectionLock(MongoCollection *collection,
+											   Oid shardTableOid,
+											   bool setSnapshot)
+{
+	ereport(DEBUG1, (errmsg("Commiting intermediate state and "
+							"reacquiring collection lock")));
+
+	if (ActiveSnapshotSet())
+	{
+		PopActiveSnapshot();
+	}
+
+	/* Commit the old transaction */
+	CommitTransactionCommand();
+
+	/* Initiate a new transaction */
+	StartTransactionCommand();
+
+	/* Push the active snapshot if commands need it (Portals do) */
+	if (setSnapshot)
+	{
+		PushActiveSnapshot(GetTransactionSnapshot());
+	}
+
+	/* Acquire the collection lock */
+	LockRelationOid(collection->relationId, RowExclusiveLock);
+
+	/* If the shard table OID is valid, lock it as well */
+	if (shardTableOid != InvalidOid)
+	{
+		LockRelationOid(shardTableOid, RowExclusiveLock);
+	}
 }
 
 

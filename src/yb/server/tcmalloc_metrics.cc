@@ -92,16 +92,10 @@ namespace yb {
 namespace tcmalloc {
 
 static uint64_t GetTCMallocPropValue(const char* prop) {
-  size_t value = 0;
+  uint64_t value = 0;
 #if YB_TCMALLOC_ENABLED
   value = ::yb::GetTCMallocProperty(prop);
-  if (value < 0) {
-    YB_LOG_EVERY_N_SECS(DFATAL, 1) << "Negative value returned for tcmalloc property " << prop
-                                   << ": " << value;
-    value = 0;
-  }
 #endif
-
   return value;
 }
 

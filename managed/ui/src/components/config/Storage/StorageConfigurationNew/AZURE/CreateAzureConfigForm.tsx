@@ -44,6 +44,9 @@ type configs = {
 
 interface InitialValuesTypes {
   AZ_CONFIGURATION_NAME: string;
+  USE_AZURE_IAM: boolean;
+  AZURE_CLIENT_ID: string;
+  IMMUTABLE_STORAGE: boolean;
   multi_regions: configs[];
   MULTI_REGION_AZ_ENABLED: boolean;
   default_bucket: string;
@@ -74,6 +77,15 @@ export const CreateAzureConfigForm: FC<CreateAzureConfigFormProps> = ({
   fetchConfigs
 }) => {
   const isEditMode = !isEmpty(editInitialValues);
+  const [useAzureIam, setUseAzureIam] = React.useState(() => {
+    if (isEmpty(editInitialValues)) {
+      return false;
+    }
+    return (
+      editInitialValues.data['USE_AZURE_IAM'] === 'true' ||
+      editInitialValues.data['USE_AZURE_IAM'] === true
+    );
+  });
 
   const azureProviders = useSelector((state: any) =>
     state.cloud.providers.data
@@ -140,17 +152,25 @@ export const CreateAzureConfigForm: FC<CreateAzureConfigFormProps> = ({
         BACKUP_LOCATION: `${values.multi_regions[0].container}/${
           values.multi_regions[0].folder ?? ''
         }`,
-        AZURE_STORAGE_SAS_TOKEN: values.multi_regions[0].sas_token
+        USE_AZURE_IAM: values.USE_AZURE_IAM ? values.USE_AZURE_IAM.toString() : undefined,
+        AZURE_CLIENT_ID:
+          values.USE_AZURE_IAM && values.AZURE_CLIENT_ID ? values.AZURE_CLIENT_ID : undefined,
+        AZURE_STORAGE_SAS_TOKEN: values.USE_AZURE_IAM ? undefined : values.multi_regions[0].sas_token,
+        IMMUTABLE_STORAGE: values.IMMUTABLE_STORAGE
       }
     };
 
     if (values.MULTI_REGION_AZ_ENABLED) {
       payload['data']['REGION_LOCATIONS'] = values['multi_regions'].map((r: configs) => {
-        return {
+        const regionLocation: any = {
           REGION: r.region.value,
-          LOCATION: `${r.container}/${r.folder}`,
-          AZURE_STORAGE_SAS_TOKEN: r.sas_token
+          LOCATION: `${r.container}/${r.folder}`
         };
+        // SAS token is region-scoped; IAM / client ID stay top-level only.
+        if (!values.USE_AZURE_IAM) {
+          regionLocation.AZURE_STORAGE_SAS_TOKEN = r.sas_token;
+        }
+        return regionLocation;
       });
     }
 
@@ -171,6 +191,9 @@ export const CreateAzureConfigForm: FC<CreateAzureConfigFormProps> = ({
 
   const initialValues: InitialValuesTypes = {
     AZ_CONFIGURATION_NAME: '',
+    USE_AZURE_IAM: false,
+    AZURE_CLIENT_ID: '',
+    IMMUTABLE_STORAGE: false,
     MULTI_REGION_AZ_ENABLED: false,
     multi_regions: [MUTLI_REGION_DEFAULT_VALUES],
     default_bucket: '0'
@@ -179,6 +202,11 @@ export const CreateAzureConfigForm: FC<CreateAzureConfigFormProps> = ({
   // in Edit mode , convert api values to form values
   if (isEditMode) {
     initialValues.AZ_CONFIGURATION_NAME = editInitialValues['configName'];
+    initialValues.USE_AZURE_IAM = editInitialValues.data['USE_AZURE_IAM'] === 'true' || editInitialValues.data['USE_AZURE_IAM'] === true;
+    initialValues.AZURE_CLIENT_ID = editInitialValues.data['AZURE_CLIENT_ID'] ?? '';
+    initialValues.IMMUTABLE_STORAGE =
+      editInitialValues.data['IMMUTABLE_STORAGE'] === 'true' ||
+      editInitialValues.data['IMMUTABLE_STORAGE'] === true;
 
     initialValues.MULTI_REGION_AZ_ENABLED = editInitialValues.data['REGION_LOCATIONS']?.length > 0;
 
@@ -193,7 +221,7 @@ export const CreateAzureConfigForm: FC<CreateAzureConfigFormProps> = ({
 
           return {
             region: { value: r.REGION, label: r.REGION },
-            containet: containerAndFolder.container,
+            container: containerAndFolder.container,
             folder: containerAndFolder.folder,
             sas_token: r.AZURE_STORAGE_SAS_TOKEN
           };
@@ -207,54 +235,68 @@ export const CreateAzureConfigForm: FC<CreateAzureConfigFormProps> = ({
         {
           container: containerAndFolder.container,
           folder: containerAndFolder.folder,
-          region: { value: null, region: null },
+          region: { value: null, label: null },
           sas_token: editInitialValues.data['AZURE_STORAGE_SAS_TOKEN']
         }
       ];
     }
   }
 
-  const validationSchema = Yup.object().shape({
-    AZ_CONFIGURATION_NAME: Yup.string().required('Configuration name is required'),
-    multi_regions: Yup.array()
-      .when('MULTI_REGION_AZ_ENABLED', {
-        is: (enabled) => enabled,
-        then: Yup.array()
-          .of(
+  // Create validation schema with current useAzureIam value
+  const getValidationSchema = () => {
+    return Yup.object().shape({
+      AZ_CONFIGURATION_NAME: Yup.string().required('Configuration name is required'),
+      USE_AZURE_IAM: Yup.boolean(),
+      AZURE_CLIENT_ID: Yup.string(),
+      IMMUTABLE_STORAGE: Yup.boolean(),
+      multi_regions: Yup.array()
+        .when('MULTI_REGION_AZ_ENABLED', {
+          is: (enabled) => enabled,
+          then: Yup.array()
+            .of(
+              Yup.object().shape({
+                region: Yup.object().shape({
+                  value: Yup.string().required().typeError('Region is required')
+                }),
+                sas_token: Yup.string().test('sas-token-required', 'SAS token is required', function(value) {
+                  const formValues = this.parent;
+                  const rootUseAzureIam = formValues?.USE_AZURE_IAM ?? useAzureIam;
+                  return rootUseAzureIam ? true : !!value;
+                }),
+                container: Yup.string().required('Container is required'),
+                folder: Yup.string()
+              })
+            )
+            .min(1, 'Atleast one region has to be configured')
+            .test('unique_regions', 'Regions should be unique', (value: any) => {
+              const regions = flatten(
+                value.map((e: configs) => e.region.value).filter((e: string) => e !== null)
+              );
+              return regions.length === uniq(regions).length;
+            })
+        })
+        .when('MULTI_REGION_AZ_ENABLED', {
+          is: (enabled) => !enabled,
+          then: Yup.array().of(
             Yup.object().shape({
-              region: Yup.object().shape({
-                value: Yup.string().required().typeError('Region is required')
+              sas_token: Yup.string().test('sas-token-required', 'SAS token is required', function(value) {
+                const formValues = this.parent;
+                const rootUseAzureIam = formValues?.USE_AZURE_IAM ?? useAzureIam;
+                return rootUseAzureIam ? true : !!value;
               }),
-              sas_token: Yup.string().required('SAS token is required'),
               container: Yup.string().required('Container is required'),
               folder: Yup.string()
             })
           )
-          .min(1, 'Atleast one region has to be configured')
-          .test('unique_regions', 'Regions should be unique', (value: any) => {
-            const regions = flatten(
-              value.map((e: configs) => e.region.value).filter((e: string) => e !== null)
-            );
-            return regions.length === uniq(regions).length;
-          })
-      })
-      .when('MULTI_REGION_AZ_ENABLED', {
-        is: (enabled) => !enabled,
-        then: Yup.array().of(
-          Yup.object().shape({
-            sas_token: Yup.string().required('SAS token is required'),
-            container: Yup.string().required('Container is required'),
-            folder: Yup.string()
-          })
-        )
-      })
-  });
+        })
+    });
+  };
 
   return (
     <StorageConfigCreationForm
       onCancel={onHide}
       initialValues={initialValues}
-      validationSchema={validationSchema}
+      validationSchema={getValidationSchema()}
       type="CREATE"
       onSubmit={onSubmit}
       components={({ setFieldValue, values, errors, touched }) => {
@@ -270,6 +312,58 @@ export const CreateAzureConfigForm: FC<CreateAzureConfigFormProps> = ({
                     name="AZ_CONFIGURATION_NAME"
                     placeHolder="Configuration Name"
                     component={YBFormInput}
+                  />
+                </Col>
+              </Row>
+              <div className="form-divider" />
+              <Row className="config-provider-row">
+                <Col lg={2} className="form-item-custom-label">
+                  <div>Use Azure IAM</div>
+                </Col>
+                <Col lg={9}>
+                  <Field
+                    name="USE_AZURE_IAM"
+                    component={YBFormToggle}
+                    subLabel="Whether to use IAM role for backup on Azure."
+                    onChange={(_: any, e: React.ChangeEvent<HTMLInputElement>) => {
+                      setUseAzureIam(e.target.checked);
+                      setFieldValue('USE_AZURE_IAM', e.target.checked);
+                      if (!e.target.checked) {
+                        setFieldValue('AZURE_CLIENT_ID', '');
+                      }
+                    }}
+                  />
+                </Col>
+              </Row>
+              {(useAzureIam ||
+                values?.USE_AZURE_IAM === true ||
+                values?.USE_AZURE_IAM === 'true') && (
+                <>
+                  <div className="form-divider" />
+                  <Row className="config-provider-row">
+                    <Col lg={2} className="form-item-custom-label">
+                      <div>Client ID</div>
+                    </Col>
+                    <Col lg={9}>
+                      <Field
+                        name="AZURE_CLIENT_ID"
+                        placeHolder="Client ID (optional)"
+                        component={YBFormInput}
+                      />
+                    </Col>
+                  </Row>
+                </>
+              )}
+              <div className="form-divider" />
+              <Row className="config-provider-row">
+                <Col lg={2} className="form-item-custom-label">
+                  <div>Immutable Storage</div>
+                </Col>
+                <Col lg={9}>
+                  <Field
+                    name="IMMUTABLE_STORAGE"
+                    component={YBFormToggle}
+                    subLabel="If enabled, backup deletion only removes YBA metadata and does not delete files from cloud storage."
                   />
                 </Col>
               </Row>
@@ -303,6 +397,7 @@ export const CreateAzureConfigForm: FC<CreateAzureConfigFormProps> = ({
                             setFieldValue(`multi_regions.${0}.sas_token`, e.target.value);
                           }}
                           val={values?.multi_regions?.[0]?.sas_token ?? ''}
+                          isReadOnly={useAzureIam || values?.USE_AZURE_IAM === true || values?.USE_AZURE_IAM === 'true'}
                         />
                         {touched?.multi_regions?.[0]?.sas_token && (
                           <span className="field-error">
@@ -360,7 +455,8 @@ export const CreateAzureConfigForm: FC<CreateAzureConfigFormProps> = ({
                                 isEditMode,
                                 values['default_bucket'] === String(index),
                                 errors?.multi_regions?.[index],
-                                touched?.multi_regions?.[index]
+                                touched?.multi_regions?.[index],
+                                useAzureIam || values?.USE_AZURE_IAM === true || values?.USE_AZURE_IAM === 'true'
                               )}
                             </Col>
                           </Row>
@@ -405,7 +501,8 @@ const MultiRegionControls = (
   isDisabled = false,
   isdefaultBucket = false,
   errors: Record<string, any> | undefined,
-  touched: Record<string, boolean> | Record<string, any>
+  touched: Record<string, boolean> | Record<string, any>,
+  useAzureIam = false
 ) => (
   <div className="multi-region-enabled-fields az">
     <div>
@@ -435,7 +532,7 @@ const MultiRegionControls = (
           updateFieldVal(`multi_regions.${index}.sas_token`, e.target.value);
         }}
         val={field?.sas_token ?? ''}
-        isDisabled={isDisabled}
+        isReadOnly={isDisabled || useAzureIam}
       />
       {touched?.sas_token && <span className="field-error">{errors?.sas_token}</span>}
     </div>

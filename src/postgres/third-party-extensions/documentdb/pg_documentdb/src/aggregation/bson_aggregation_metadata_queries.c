@@ -58,7 +58,7 @@ static Query * GenerateBaseListCollectionsQuery(Datum databaseDatum, bool nameOn
 static Query * HandleListCollectionsProjector(Query *query,
 											  AggregationPipelineBuildContext *context,
 											  bool nameOnly, bool addDistributedMetadata);
-static Query * GenerateBaseListIndexesQuery(Datum databaseDatum, const
+static Query * GenerateBaseListIndexesQuery(text *databaseDatum, const
 											StringView *collectionName,
 											AggregationPipelineBuildContext *context);
 
@@ -74,7 +74,7 @@ static Query * BuildSingleFunctionQuery(Oid queryFunctionOid, List *queryArgs, b
  * This is because any agnostic stage will overwrite this anyway.
  */
 Query *
-GenerateBaseAgnosticQuery(Datum databaseDatum, AggregationPipelineBuildContext *context)
+GenerateBaseAgnosticQuery(text *databaseDatum, AggregationPipelineBuildContext *context)
 {
 	StringView agnosticCollection = CreateStringViewFromString("$cmd.aggregate");
 	Query *query = makeNode(Query);
@@ -82,13 +82,13 @@ GenerateBaseAgnosticQuery(Datum databaseDatum, AggregationPipelineBuildContext *
 	query->querySource = QSRC_ORIGINAL;
 	query->canSetTag = true;
 	context->collectionNameView = agnosticCollection;
-	context->namespaceName = CreateNamespaceName(DatumGetTextP(databaseDatum),
+	context->namespaceName = CreateNamespaceName(databaseDatum,
 												 &agnosticCollection);
 	context->mongoCollection = NULL;
 
 	query->rtable = NIL;
 
-	/* Create an empty jointree */
+	/* Create an empty jointree structure */
 	query->jointree = makeNode(FromExpr);
 
 	/* Create the projector. We only project the NULL::bson in this type of query */
@@ -105,7 +105,7 @@ GenerateBaseAgnosticQuery(Datum databaseDatum, AggregationPipelineBuildContext *
  * Generates a query that is akin to the MongoDB $listCollections query command
  */
 Query *
-GenerateListCollectionsQuery(Datum databaseDatum, pgbson *listCollectionsSpec,
+GenerateListCollectionsQuery(text *databaseDatum, pgbson *listCollectionsSpec,
 							 QueryData *queryData, bool addCursorParams,
 							 bool setStatementTimeout)
 {
@@ -158,18 +158,41 @@ GenerateListCollectionsQuery(Datum databaseDatum, pgbson *listCollectionsSpec,
 			EnsureTopLevelFieldIsNumberLike("listCollections.maxTimeMS", value);
 			SetExplicitStatementTimeout(BsonValueAsInt32(value));
 		}
+		else if (StringViewEqualsCString(&keyView, "$db"))
+		{
+			if (context.databaseNameDatum == NULL)
+			{
+				/* Extract the database out of $db */
+				EnsureTopLevelFieldType("$db", &listCollectionsIter, BSON_TYPE_UTF8);
+
+				uint32_t databaseLength = 0;
+				const char *databaseName = bson_iter_utf8(&listCollectionsIter,
+														  &databaseLength);
+				context.databaseNameDatum = cstring_to_text_with_len(databaseName,
+																	 databaseLength);
+				databaseDatum = context.databaseNameDatum;
+			}
+		}
 		else if (!IsCommonSpecIgnoredField(keyView.string))
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_UNKNOWNBSONFIELD),
-							errmsg("BSON field listCollections.%.*s is an unknown field",
-								   keyView.length, keyView.string),
+							errmsg(
+								"The BSON field listCollections.%.*s is not recognized as a valid field",
+								keyView.length, keyView.string),
 							errdetail_log(
-								"BSON field listCollections.%.*s is an unknown field",
+								"The BSON field listCollections.%.*s is not recognized as a valid field",
 								keyView.length, keyView.string)));
 		}
 	}
 
-	Query *query = GenerateBaseListCollectionsQuery(databaseDatum, nameOnly,
+	if (context.databaseNameDatum == NULL)
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
+							"Required field database must be valid")));
+	}
+
+	Query *query = GenerateBaseListCollectionsQuery(PointerGetDatum(databaseDatum),
+													nameOnly,
 													distributedMetadata, &context);
 	queryData->namespaceName = context.namespaceName;
 
@@ -191,7 +214,7 @@ GenerateListCollectionsQuery(Datum databaseDatum, pgbson *listCollectionsSpec,
  * Generates a query that is akin to the MongoDB $listIndexes query command
  */
 Query *
-GenerateListIndexesQuery(Datum databaseDatum, pgbson *listIndexesSpec,
+GenerateListIndexesQuery(text *databaseDatum, pgbson *listIndexesSpec,
 						 QueryData *queryData,
 						 bool addCursorParams, bool setStatementTimeout)
 {
@@ -222,15 +245,37 @@ GenerateListIndexesQuery(Datum databaseDatum, pgbson *listIndexesSpec,
 			EnsureTopLevelFieldIsNumberLike("listIndexes.maxTimeMS", value);
 			SetExplicitStatementTimeout(BsonValueAsInt32(value));
 		}
+		else if (StringViewEqualsCString(&keyView, "$db"))
+		{
+			if (context.databaseNameDatum == NULL)
+			{
+				/* Extract the database out of $db */
+				EnsureTopLevelFieldType("$db", &listIndexesIter, BSON_TYPE_UTF8);
+
+				uint32_t databaseLength = 0;
+				const char *databaseName = bson_iter_utf8(&listIndexesIter,
+														  &databaseLength);
+				context.databaseNameDatum = cstring_to_text_with_len(databaseName,
+																	 databaseLength);
+				databaseDatum = context.databaseNameDatum;
+			}
+		}
 		else if (!IsCommonSpecIgnoredField(keyView.string))
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_UNKNOWNBSONFIELD),
-							errmsg("BSON field listIndexes.%.*s is an unknown field",
-								   keyView.length, keyView.string),
+							errmsg(
+								"The BSON field listIndexes.%.*s is not recognized as a valid field",
+								keyView.length, keyView.string),
 							errdetail_log(
-								"BSON field listIndexes.%.*s is an unknown field",
+								"The BSON field listIndexes.%.*s is not recognized as a valid field",
 								keyView.length, keyView.string)));
 		}
+	}
+
+	if (context.databaseNameDatum == NULL)
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_BADVALUE), errmsg(
+							"Required field database must be valid")));
 	}
 
 	Query *query = GenerateBaseListIndexesQuery(databaseDatum, &collectionName, &context);
@@ -259,16 +304,16 @@ HandleCurrentOp(const bson_value_t *existingValue, Query *query,
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40602),
 						errmsg(
-							"$currentOp is only valid as the first stage in the pipeline.")));
+							"The $currentOp can only be used as the initial stage in the pipeline.")));
 	}
 
-	const char *databaseStr = TextDatumGetCString(context->databaseNameDatum);
+	const char *databaseStr = text_to_cstring(context->databaseNameDatum);
 	if (strcmp(databaseStr, "admin") != 0 ||
 		query->jointree->fromlist != NULL)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_INVALIDNAMESPACE),
 						errmsg(
-							"$currentOp must be run against the 'admin' database with {aggregate: 1}")));
+							"$currentOp must be executed on the 'admin' database with parameter {aggregate: 1}")));
 	}
 
 	/* Any further validation done during processing of the currentOp aggregation */
@@ -333,25 +378,27 @@ HandleCurrentOp(const bson_value_t *existingValue, Query *query,
  * for a listIndexes scenario.
  */
 static Query *
-GenerateBaseListIndexesQuery(Datum databaseDatum, const StringView *collectionName,
+GenerateBaseListIndexesQuery(text *databaseDatum, const StringView *collectionName,
 							 AggregationPipelineBuildContext *context)
 {
 	Query *query = makeNode(Query);
 	query->commandType = CMD_SELECT;
 	query->querySource = QSRC_ORIGINAL;
 	query->canSetTag = true;
-	context->namespaceName = CreateNamespaceName(DatumGetTextP(databaseDatum),
+	context->namespaceName = CreateNamespaceName(databaseDatum,
 												 collectionName);
 	context->collectionNameView = *collectionName;
 
-	MongoCollection *collection = GetMongoCollectionByNameDatum(databaseDatum,
+	MongoCollection *collection = GetMongoCollectionByNameDatum(PointerGetDatum(
+																	databaseDatum),
 																CStringGetTextDatum(
 																	collectionName->string),
 																NoLock);
 	if (collection == NULL)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_NAMESPACENOTFOUND),
-						errmsg("ns does not exist: %s", context->namespaceName)));
+						errmsg("Namespace does not currently exist: %s",
+							   context->namespaceName)));
 	}
 
 	/* Add ApiInternalSchemaName.index_spec_as_bson(index_spec, TRUE) projector */
@@ -526,7 +573,7 @@ GenerateBaseListCollectionsQuery(Datum databaseDatum, bool nameOnly,
 								 (Expr *) databaseVar,
 								 (Expr *) makeConst(TEXTOID, -1, InvalidOid, -1,
 													databaseDatum, false, false),
-								 InvalidOid, DEFAULT_COLLATION_OID); /* YB: Upstream bug(#163). Output type bool should not have collation. */
+								 InvalidOid, DEFAULT_COLLATION_OID);
 
 	/* Remove system collections */
 	Var *collectionVar = makeVar(1, 2, TEXTOID, -1, InvalidOid, 0);
@@ -535,13 +582,13 @@ GenerateBaseListCollectionsQuery(Datum databaseDatum, bool nameOnly,
 											sentinelCollection.length);
 	Expr *notExpr = make_opclause(TextNotEqualOperatorId(), BOOLOID, false,
 								  (Expr *) collectionVar, (Expr *) systemCollection,
-								  InvalidOid, DEFAULT_COLLATION_OID); /* YB: Upstream bug(#164). Output type bool should not have collation. */
+								  InvalidOid, DEFAULT_COLLATION_OID);
 
 	query->jointree = makeFromExpr(list_make1(rtr), (Node *) make_ands_explicit(
 									   list_make2(opExpr, notExpr)));
 
 	/* Add a row_get_bson to make it a single bson document */
-	Var *rowExpr = makeVar(1, 0, MongoCatalogCollectionsTypeOid(), -1, InvalidOid, 0);
+	Var *rowExpr = makeVar(1, 0, ApiCatalogCollectionsTypeOid(), -1, InvalidOid, 0);
 	FuncExpr *funcExpr = makeFuncExpr(RowGetBsonFunctionOid(), BsonTypeId(),
 									  list_make1(rowExpr), InvalidOid, InvalidOid,
 									  COERCE_EXPLICIT_CALL);
@@ -572,13 +619,14 @@ HandleCollStats(const bson_value_t *existingValue, Query *query,
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40602),
 						errmsg(
-							"$collStats is only valid as the first stage in the pipeline.")));
+							"$collStats can only be used as the initial stage within the processing pipeline.")));
 	}
 
 	/* Skip validate the collStats document: done in the function */
 	/* Now create the rtfunc*/
 	Const *databaseConst = makeConst(TEXTOID, -1, InvalidOid, -1,
-									 context->databaseNameDatum, false, false);
+									 PointerGetDatum(context->databaseNameDatum), false,
+									 false);
 	Const *collectionConst = MakeTextConst(context->collectionNameView.string,
 										   context->collectionNameView.length);
 	pgbson *bson = PgbsonInitFromDocumentBsonValue(existingValue);
@@ -606,25 +654,27 @@ HandleIndexStats(const bson_value_t *existingValue, Query *query,
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION28803),
 						errmsg(
-							"The $indexStats stage specification must be an empty object")));
+							"The $indexStats stage specification is required to be provided as an empty object.")));
 	}
 
 	if (context->stageNum != 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION40602),
 						errmsg(
-							"$indexStats is only valid as the first stage in the pipeline.")));
+							"The $indexStats operator can only be used as the initial stage in the pipeline.")));
 	}
 
 	bool isTopLevel = true;
 	if (IsInTransactionBlock(isTopLevel))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_OPERATIONNOTSUPPORTEDINTRANSACTION),
-						errmsg("$indexStats cannot be used in a transaction")));
+						errmsg(
+							"$indexStats is not permitted for use within a transaction")));
 	}
 
 	Const *databaseConst = makeConst(TEXTOID, -1, InvalidOid, -1,
-									 context->databaseNameDatum, false, false);
+									 PointerGetDatum(context->databaseNameDatum), false,
+									 false);
 	Const *collectionConst = MakeTextConst(context->collectionNameView.string,
 										   context->collectionNameView.length);
 	List *indexStatsArgs = list_make2(databaseConst, collectionConst);

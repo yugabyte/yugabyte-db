@@ -1,8 +1,17 @@
+INSIDE_GIT_REPO = $(shell git rev-parse --is-inside-work-tree 2>/dev/null || echo "false")  
 
-GIT_INDEX_DIR=$(shell git rev-parse --git-dir)/index
+ifeq ($(INSIDE_GIT_REPO), false)
+    GIT_INDEX_DIR_VALUE :=
+else
+    GIT_INDEX_DIR_VALUE := $(shell git  rev-parse --git-dir)
+endif
 
+ifeq (, $(GIT_INDEX_DIR_VALUE))
+    GIT_INDEX_FILE =
+else
+    GIT_INDEX_FILE = $(GIT_INDEX_DIR_VALUE)/index
+endif
 
-build/include/metadata/$(EXTENSION_OBJECT_PREFIX)_extension_version.h: $(version_file_inputs) $(GIT_INDEX_DIR)
+build/include/metadata/$(EXTENSION_OBJECT_PREFIX)_extension_version.h: $(version_file_inputs) $(GIT_INDEX_FILE)
 	mkdir -p build/include/metadata
-	$(BUILD_SCRIPT_DIR)scripts/generate_extension_version.sh build/include/metadata/$(EXTENSION_OBJECT_PREFIX)_extension_version.h $(EXTENSION) $(MODULE_big) || exit 1
-
+	$(BUILD_SCRIPT_DIR)scripts/generate_extension_version.sh build/include/metadata/$(EXTENSION_OBJECT_PREFIX)_extension_version.h $(EXTENSION) $(MODULE_big) $(GIT_INDEX_FILE) || exit 1

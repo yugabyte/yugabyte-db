@@ -70,6 +70,7 @@ int main() {
 #else
 
 #include "yb/util/flags.h"
+#include "yb/util/status_log.h"
 
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
@@ -106,8 +107,8 @@ DEFINE_NON_RUNTIME_double(first_char_mutate_probability, 0.1,
     "How likely are we to mutate the first char every period");
 DEFINE_NON_RUNTIME_double(second_char_mutate_probability, 0.2,
     "How likely are we to mutate the second char every period");
-DEFINE_NON_RUNTIME_double(
-    third_char_mutate_probability, 0.5, "How likely are we to mutate the third char every period");
+DEFINE_NON_RUNTIME_double(third_char_mutate_probability, 0.5,
+    "How likely are we to mutate the third char every period");
 
 DEFINE_NON_RUNTIME_int32(iterator_hold_sec, 5,
     "How long will the iterator hold files before it gets destroyed");

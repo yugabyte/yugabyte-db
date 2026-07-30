@@ -418,7 +418,9 @@ Default: `false`
 
 {{% /tags/wrap %}}
 
-Enables or disables the query planner's use of bitmap scans for YugabyteDB relations. Both [enable_bitmapscan](#enable-bitmapscan) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
+Enables or disables the query planner's use of bitmap scans for YugabyteDB relations.
+
+Both [enable_bitmapscan](#enable-bitmapscan) (enabled by default) and `yb_enable_bitmapscan` must be set to true for a YugabyteDB relation to use a bitmap scan. If `yb_enable_bitmapscan` is false, the planner never uses a YugabyteDB bitmap scan.
 
 | enable_bitmapscan | yb_enable_bitmapscan | Result |
 | :--- | :---  | :--- |
@@ -480,7 +482,7 @@ Note: this parameter has been replaced by [yb_enable_cbo](#yb-enable-cbo).
 ##### yb_enable_optimizer_statistics
 
 {{% tags/wrap %}}
-{{<tags/feature/tp>}}
+
 Default: `false`
 {{% /tags/wrap %}}
 
@@ -491,7 +493,7 @@ Note: this parameter has been replaced by [yb_enable_cbo](#yb-enable-cbo).
 ##### yb_fetch_size_limit
 
 {{% tags/wrap %}}
-{{<tags/feature/tp>}}
+
 Default: `0`
 {{% /tags/wrap %}}
 
@@ -504,7 +506,7 @@ See also the [--ysql_yb_fetch_size_limit](#ysql-yb-fetch-size-limit) flag. If th
 ##### yb_fetch_row_limit
 
 {{% tags/wrap %}}
-{{<tags/feature/tp>}}
+
 Default: `1024`
 {{% /tags/wrap %}}
 
@@ -1073,8 +1075,7 @@ The number of tablet replicas that each core on a YB-TServer can support.
 
 {{% tags/wrap %}}
 
-
-Default: 1024 * (7/10) (corresponding to an overhead of roughly 700 KiB per tablet)
+Default: `1462`
 {{% /tags/wrap %}}
 
 The number of tablet replicas that each GiB reserved by YB-TServers for tablet overheads can support.
@@ -1317,8 +1318,7 @@ Maximum size (in bytes) of changes sent from the [Virtual WAL](../../../architec
 
 {{% tags/wrap %}}
 
-
-Default: `1 MB`
+Default: `1048576` (1MB)
 {{% /tags/wrap %}}
 
 Max size (in bytes) of changes sent from CDC Service to [Virtual WAL](../../../architecture/docdb-replication/cdc-logical-replication)(VWAL) for a particular tablet.
@@ -1632,6 +1632,8 @@ Default: `0`
 
 Maximum amount of memory this process should use in bytes, that is, its hard memory limit.  A value of `0` specifies to instead use a percentage of the total system memory; see [--default_memory_limit_to_ram_ratio](#default-memory-limit-to-ram-ratio) for the percentage used.  A value of `-1` disables all memory limiting.
 
+For Kubernetes deployments, this flag is automatically set from the Kubernetes pod memory limits specified in the Helm chart configuration. See [Memory limits for Kubernetes deployments](../../../deploy/kubernetes/single-zone/oss/helm-chart/#memory-limits-for-kubernetes-deployments) for details.
+
 ##### --default_memory_limit_to_ram_ratio
 
 {{% tags/wrap %}}
@@ -1642,6 +1644,8 @@ Default: `0.85`
 The default is different if [--use_memory_defaults_optimized_for_ysql](#use-memory-defaults-optimized-for-ysql) is true.
 
 The percentage of available RAM to use for this process if [--memory_limit_hard_bytes](#memory-limit-hard-bytes) is `0`.  The special value `-1000` means to instead use the default value for this flag.  Available RAM excludes memory reserved by the kernel.
+
+This flag does not apply to Kubernetes universes. Memory limits are controlled via Kubernetes resource specifications in the Helm chart, and `--memory_limit_hard_bytes` is automatically set from those limits. See [Memory limits for Kubernetes deployments](../../../deploy/kubernetes/single-zone/oss/helm-chart/#memory-limits-for-kubernetes-deployments) for details.
 
 #### Flags controlling the split of memory within a TServer
 
@@ -1932,16 +1936,6 @@ Default: `1`
 
 The maximum number of threads allowed for non-admin full compactions. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
 
-##### --full_compaction_pool_max_queue_size
-
-{{% tags/wrap %}}
-
-
-Default: `500`
-{{% /tags/wrap %}}
-
-The maximum number of full compaction tasks that can be queued simultaneously. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
-
 ##### --auto_compact_check_interval_sec
 
 {{% tags/wrap %}}
@@ -2165,7 +2159,7 @@ For information on using this parameter to configure CBO, refer to [Enable cost-
 
 ### Auto Analyze service flags
 
-{{<tags/feature/ea idea="590">}}To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze).
+{{<tags/feature/ea idea="590">}}To learn about the Auto Analyze service, see [Auto Analyze service](../../../additional-features/auto-analyze/).
 
 {{< note title="Note" >}}
 
@@ -2346,7 +2340,7 @@ Timeout (in milliseconds) for the backfill stage of a concurrent CREATE INDEX.
 {{% tags/wrap %}}
 
 
-Default: `-1`, where the system automatically calculates the value to be approximately 1 second.
+Default: `-1`, where the system automatically calculates the margin. For YSQL index backfill the baseline is 3 minutes (180000 ms); for YCQL the baseline is approximately 1 second (1000 ms). The effective margin is the greater of that baseline and a value derived from `backfill_index_write_batch_size` and `backfill_index_rate_rows_per_sec`.
 {{% /tags/wrap %}}
 
 The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.
@@ -2727,7 +2721,7 @@ For details on the expected behaviour when used with the sequence cache clause, 
 ##### --ysql_yb_fetch_size_limit
 
 {{% tags/wrap %}}
-{{<tags/feature/tp>}}
+
 Default: `0`
 {{% /tags/wrap %}}
 
@@ -2744,7 +2738,7 @@ See also the [yb_fetch_size_limit](#yb-fetch-size-limit) configuration parameter
 ##### --ysql_yb_fetch_row_limit
 
 {{% tags/wrap %}}
-{{<tags/feature/tp>}}
+
 Default: `1024`
 {{% /tags/wrap %}}
 
@@ -2914,13 +2908,13 @@ Specifies if YCQL tables are created with transactions enabled by default.
 Default: `false`
 {{% /tags/wrap %}}
 
-Set this flag to `true` to reject [`TRUNCATE`](../../../api/ycql/dml_truncate) statements unless allowed by [`DROP TABLE`](../../../api/ycql/ddl_drop_table) privileges.
+Set this flag to `true` to reject [`TRUNCATE`](../../../api/ycql/dml_truncate/) statements unless allowed by [`DROP TABLE`](../../../api/ycql/ddl_drop_table/) privileges.
 
 ##### --ycql_enable_audit_log
 
 Set this flag to `true` to enable audit logging for the universe.
 
-For details, see [Audit logging for the YCQL API](../../../secure/audit-logging/audit-logging-ycql).
+For details, see [Audit logging for the YCQL API](../../../secure/audit-logging/audit-logging-ycql/).
 
 ##### --ycql_allow_non_authenticated_password_reset
 

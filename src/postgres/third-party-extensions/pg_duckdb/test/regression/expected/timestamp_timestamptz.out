@@ -1,0 +1,287 @@
+----------------------------------------
+-- Timestamp tests
+----------------------------------------
+-- Test +/- inf values
+CREATE TABLE t(a TIMESTAMP, b TEXT);
+INSERT INTO t VALUES('Infinity','Positive INF'), ('-Infinity','Negative INF');
+-- PG Execution
+SELECT * from t;
+     a     |      b       
+-----------+--------------
+ infinity  | Positive INF
+ -infinity | Negative INF
+(2 rows)
+
+SELECT isfinite(a),b FROM t;
+ isfinite |      b       
+----------+--------------
+ f        | Positive INF
+ f        | Negative INF
+(2 rows)
+
+set duckdb.force_execution = true;
+-- DuckDB execution
+SELECT * from t;
+     a     |      b       
+-----------+--------------
+ infinity  | Positive INF
+ -infinity | Negative INF
+(2 rows)
+
+SELECT isfinite(a),b FROM t;
+ isfinite |      b       
+----------+--------------
+ f        | Positive INF
+ f        | Negative INF
+(2 rows)
+
+-- Cleanup
+set duckdb.force_execution = false;
+DROP TABLE t;
+SELECT * FROM duckdb.query($$ SELECT '4714-11-24 (BC) 00:00:00'::timestamp_s as timestamp_s $$);
+         timestamp_s         
+-----------------------------
+ Mon Nov 24 00:00:00 4714 BC
+(1 row)
+
+SELECT * FROM duckdb.query($$ SELECT '4714-11-23 (BC) 23:59:59'::timestamp_s as timestamp_s $$);  -- out of range
+ERROR:  (PGDuckDB/Duckdb_ExecCustomScan_Cpp) Out of Range Error: The Timestamp value should be between min and max value (4714-11-24 (BC) 00:00:00 <-> 294247-01-01 00:00:00)
+SELECT * FROM duckdb.query($$ SELECT '294246-12-31 23:59:59'::timestamp_s as timestamp_s $$);
+        timestamp_s         
+----------------------------
+ Thu Dec 31 23:59:59 294246
+(1 row)
+
+SELECT * FROM duckdb.query($$ SELECT '294247-01-01 00:00:00'::timestamp_s as timestamp_s $$);  -- out of range
+ERROR:  (PGDuckDB/Duckdb_ExecCustomScan_Cpp) Out of Range Error: The Timestamp value should be between min and max value (4714-11-24 (BC) 00:00:00 <-> 294247-01-01 00:00:00)
+SELECT * FROM duckdb.query($$ SELECT '4714-11-24 (BC) 00:00:00.000000'::timestamp as timestamp $$);
+          timestamp          
+-----------------------------
+ Mon Nov 24 00:00:00 4714 BC
+(1 row)
+
+SELECT * FROM duckdb.query($$ SELECT '4714-11-23 (BC) 23:59:59.999999'::timestamp as timestamp $$);  -- out of range
+ERROR:  (PGDuckDB/Duckdb_ExecCustomScan_Cpp) Out of Range Error: The Timestamp value should be between min and max value (4714-11-24 (BC) 00:00:00 <-> 294247-01-01 00:00:00)
+SELECT * FROM duckdb.query($$ SELECT '294246-12-31 23:59:59.999999'::timestamp as timestamp $$);
+             timestamp             
+-----------------------------------
+ Thu Dec 31 23:59:59.999999 294246
+(1 row)
+
+SELECT * FROM duckdb.query($$ SELECT '294247-01-01 00:00:00.000000'::timestamp as timestamp $$);  -- out of range
+ERROR:  (PGDuckDB/Duckdb_ExecCustomScan_Cpp) Out of Range Error: The Timestamp value should be between min and max value (4714-11-24 (BC) 00:00:00 <-> 294247-01-01 00:00:00)
+SELECT * FROM duckdb.query($$ SELECT '4714-11-24 (BC) 00:00:00.000'::timestamp_ms as timestamp_ms $$);
+        timestamp_ms         
+-----------------------------
+ Mon Nov 24 00:00:00 4714 BC
+(1 row)
+
+SELECT * FROM duckdb.query($$ SELECT '4714-11-23 (BC) 23:59:59.999'::timestamp_ms as timestamp_ms $$);  -- out of range
+ERROR:  (PGDuckDB/Duckdb_ExecCustomScan_Cpp) Out of Range Error: The Timestamp value should be between min and max value (4714-11-24 (BC) 00:00:00 <-> 294247-01-01 00:00:00)
+SELECT * FROM duckdb.query($$ SELECT '294246-12-31 23:59:59.999'::timestamp_ms as timestamp_ms $$);
+          timestamp_ms          
+--------------------------------
+ Thu Dec 31 23:59:59.999 294246
+(1 row)
+
+SELECT * FROM duckdb.query($$ SELECT '294247-01-01 00:00:00.000'::timestamp_ms as timestamp_ms $$);  -- out of range
+ERROR:  (PGDuckDB/Duckdb_ExecCustomScan_Cpp) Out of Range Error: The Timestamp value should be between min and max value (4714-11-24 (BC) 00:00:00 <-> 294247-01-01 00:00:00)
+----------------------------------------
+-- TimestampTz tests
+----------------------------------------
+-- Test +/- inf valuestz
+CREATE TABLE t(a TIMESTAMPTZ, b TEXT);
+INSERT INTO t VALUES('Infinity','Positive INF'), ('-Infinity','Negative INF');
+-- PG Execution
+SELECT * from t;
+     a     |      b       
+-----------+--------------
+ infinity  | Positive INF
+ -infinity | Negative INF
+(2 rows)
+
+SELECT isfinite(a), b FROM t;
+ isfinite |      b       
+----------+--------------
+ f        | Positive INF
+ f        | Negative INF
+(2 rows)
+
+set duckdb.force_execution = true;
+-- DuckDB execution
+SELECT * from t;
+     a     |      b       
+-----------+--------------
+ infinity  | Positive INF
+ -infinity | Negative INF
+(2 rows)
+
+SELECT isfinite(a), b FROM t;
+ isfinite |      b       
+----------+--------------
+ f        | Positive INF
+ f        | Negative INF
+(2 rows)
+
+-- Cleanup
+set duckdb.force_execution = false;
+DROP TABLE t;
+SELECT * FROM duckdb.query($$ SELECT '4714-11-24 (BC) 00:00:00+00'::timestamptz as timestamptz $$);
+           timestamptz           
+---------------------------------
+ Sun Nov 23 16:07:02 4714 LMT BC
+(1 row)
+
+SELECT * FROM duckdb.query($$ SELECT '4714-11-23 (BC) 23:59:59+00'::timestamptz as timestamptz $$);  -- out of range
+ERROR:  (PGDuckDB/Duckdb_ExecCustomScan_Cpp) Out of Range Error: The TimestampTz value should be between min and max value (4714-11-24 (BC) 00:00:00 <-> 294247-01-01 00:00:00)
+SELECT * FROM duckdb.query($$ SELECT '294246-12-31 23:59:59+00'::timestamptz as timestamptz $$);
+          timestamptz           
+--------------------------------
+ Thu Dec 31 15:59:59 294246 PST
+(1 row)
+
+SELECT * FROM duckdb.query($$ SELECT '294247-01-01 00:00:00+00'::timestamptz as timestamptz $$);  -- out of range
+ERROR:  (PGDuckDB/Duckdb_ExecCustomScan_Cpp) Out of Range Error: The TimestampTz value should be between min and max value (4714-11-24 (BC) 00:00:00 <-> 294247-01-01 00:00:00)
+set time zone 'Africa/Abidjan';
+select * from duckdb.query($$ SELECT * FROM duckdb_settings() WHERE name = 'TimeZone' $$) r;
+   name   |     value      |      description      | input_type | scope | aliases 
+----------+----------------+-----------------------+------------+-------+---------
+ TimeZone | Africa/Abidjan | The current time zone | VARCHAR    | LOCAL | {}
+(1 row)
+
+SELECT * FROM duckdb.query($$ SELECT '4714-11-24 (BC) 00:00:00+00'::timestamptz as timestamptz $$);
+           timestamptz           
+---------------------------------
+ Sun Nov 23 23:43:52 4714 LMT BC
+(1 row)
+
+SELECT * FROM duckdb.query($$ SELECT '294246-12-31 23:59:59+00'::timestamptz as timestamptz $$);
+          timestamptz           
+--------------------------------
+ Thu Dec 31 23:59:59 294246 GMT
+(1 row)
+
+select * from duckdb.query($$ select strptime('2025-07-03 21:35:03.871 utc', '%Y-%m-%d %H:%M:%S.%g %Z') $$) r;
+ strptime('2025-07-03 21:35:03.871 utc', '%Y-%m-%d %H:%M:%S.%g % 
+-----------------------------------------------------------------
+ Thu Jul 03 21:35:03.871 2025 GMT
+(1 row)
+
+SET TIME ZONE 'UTC';
+select * from duckdb.query($$ SELECT * FROM duckdb_settings() WHERE name = 'TimeZone' $$) r;
+   name   | value |      description      | input_type | scope | aliases 
+----------+-------+-----------------------+------------+-------+---------
+ TimeZone | UTC   | The current time zone | VARCHAR    | LOCAL | {}
+(1 row)
+
+SELECT * FROM duckdb.query($$ SELECT '4714-11-24 (BC) 00:00:00+00'::timestamptz as timestamptz $$);
+           timestamptz           
+---------------------------------
+ Mon Nov 24 00:00:00 4714 UTC BC
+(1 row)
+
+SELECT * FROM duckdb.query($$ SELECT '294246-12-31 23:59:59+00'::timestamptz as timestamptz $$);
+          timestamptz           
+--------------------------------
+ Thu Dec 31 23:59:59 294246 UTC
+(1 row)
+
+select * from duckdb.query($$ select strptime('2025-07-03 21:35:03.871 utc', '%Y-%m-%d %H:%M:%S.%g %Z') $$) r;
+ strptime('2025-07-03 21:35:03.871 utc', '%Y-%m-%d %H:%M:%S.%g % 
+-----------------------------------------------------------------
+ Thu Jul 03 21:35:03.871 2025 UTC
+(1 row)
+
+CREATE TABLE t (
+    id int PRIMARY KEY,
+    d timestamp without time zone,
+    tz timestamp with time zone
+);
+SET TIME ZONE 'Asia/Shanghai';
+select * from duckdb.query($$ SELECT * FROM duckdb_settings() WHERE name = 'TimeZone' $$) r;
+   name   |     value     |      description      | input_type | scope | aliases 
+----------+---------------+-----------------------+------------+-------+---------
+ TimeZone | Asia/Shanghai | The current time zone | VARCHAR    | LOCAL | {}
+(1 row)
+
+insert into t values (1,'2025-07-03 20:35:03.871', '2025-07-03 20:35:03.871');
+insert into t values (2,'2025-07-03 21:35:03.871', '2025-07-03 21:35:03.871');
+insert into t values (3,'2025-07-03 22:35:03.871', '2025-07-03 22:35:03.871');
+SET TIME ZONE 'UTC';
+select * from duckdb.query($$ SELECT * FROM duckdb_settings() WHERE name = 'TimeZone' $$) r;
+   name   | value |      description      | input_type | scope | aliases 
+----------+-------+-----------------------+------------+-------+---------
+ TimeZone | UTC   | The current time zone | VARCHAR    | LOCAL | {}
+(1 row)
+
+insert into t values (4,'2025-07-03 23:35:03.871', '2025-07-03 23:35:03.871');
+SELECT * FROM t WHERE d IN (SELECT tz FROM t);
+ id |              d               |                tz                
+----+------------------------------+----------------------------------
+  4 | Thu Jul 03 23:35:03.871 2025 | Thu Jul 03 23:35:03.871 2025 UTC
+(1 row)
+
+set duckdb.force_execution = on;
+SELECT * FROM t WHERE d IN (SELECT tz FROM t);
+ id |              d               |                tz                
+----+------------------------------+----------------------------------
+  4 | Thu Jul 03 23:35:03.871 2025 | Thu Jul 03 23:35:03.871 2025 UTC
+(1 row)
+
+SET TIME ZONE 'Asia/Shanghai';
+select * from duckdb.query($$ SELECT * FROM duckdb_settings() WHERE name = 'TimeZone' $$) r;
+   name   |     value     |      description      | input_type | scope | aliases 
+----------+---------------+-----------------------+------------+-------+---------
+ TimeZone | Asia/Shanghai | The current time zone | VARCHAR    | LOCAL | {}
+(1 row)
+
+set duckdb.force_execution = off;
+SELECT * FROM t WHERE d IN (SELECT tz FROM t);
+ id |              d               |                tz                
+----+------------------------------+----------------------------------
+  1 | Thu Jul 03 20:35:03.871 2025 | Thu Jul 03 20:35:03.871 2025 CST
+  2 | Thu Jul 03 21:35:03.871 2025 | Thu Jul 03 21:35:03.871 2025 CST
+  3 | Thu Jul 03 22:35:03.871 2025 | Thu Jul 03 22:35:03.871 2025 CST
+(3 rows)
+
+set duckdb.force_execution = on;
+SELECT * FROM t WHERE d IN (SELECT tz FROM t);
+ id |              d               |                tz                
+----+------------------------------+----------------------------------
+  1 | Thu Jul 03 20:35:03.871 2025 | Thu Jul 03 20:35:03.871 2025 CST
+  2 | Thu Jul 03 21:35:03.871 2025 | Thu Jul 03 21:35:03.871 2025 CST
+  3 | Thu Jul 03 22:35:03.871 2025 | Thu Jul 03 22:35:03.871 2025 CST
+(3 rows)
+
+drop extension pg_duckdb;
+SET TIME ZONE 'UTC';
+SHOW TIME ZONE;
+ TimeZone 
+----------
+ UTC
+(1 row)
+
+SELECT * FROM t WHERE d IN (SELECT tz FROM t);
+ id |              d               |                tz                
+----+------------------------------+----------------------------------
+  4 | Thu Jul 03 23:35:03.871 2025 | Thu Jul 03 23:35:03.871 2025 UTC
+(1 row)
+
+SET TIME ZONE 'Asia/Shanghai';
+SHOW TIME ZONE;
+   TimeZone    
+---------------
+ Asia/Shanghai
+(1 row)
+
+SELECT * FROM t WHERE d IN (SELECT tz FROM t);
+ id |              d               |                tz                
+----+------------------------------+----------------------------------
+  1 | Thu Jul 03 20:35:03.871 2025 | Thu Jul 03 20:35:03.871 2025 CST
+  2 | Thu Jul 03 21:35:03.871 2025 | Thu Jul 03 21:35:03.871 2025 CST
+  3 | Thu Jul 03 22:35:03.871 2025 | Thu Jul 03 22:35:03.871 2025 CST
+(3 rows)
+
+drop table t;
+SET TIME ZONE DEFAULT;
+create extension pg_duckdb;

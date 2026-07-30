@@ -12,6 +12,7 @@ import { YBButton } from '../../../../common/forms/fields';
 import { YBInputField } from '../../../../../redesign/components';
 import { ConfigureRegionFormValues } from './ConfigureRegionModal';
 import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelectField';
+import { CloudVendorProviders, ProviderCode } from '../../constants';
 
 import { CloudVendorAvailabilityZoneMutation } from '../../types';
 
@@ -19,6 +20,7 @@ interface ConfigureAvailabilityZoneFieldProps {
   isFormDisabled: boolean;
   zoneCodeOptions: string[] | undefined;
   inUseZones: Set<String>;
+  providerCode: typeof CloudVendorProviders[number];
 
   className?: string;
 }
@@ -52,8 +54,10 @@ export const ConfigureAvailabilityZoneField = ({
   className,
   inUseZones,
   isFormDisabled,
+  providerCode,
   zoneCodeOptions
 }: ConfigureAvailabilityZoneFieldProps) => {
+  const subnetPlaceholder = providerCode === ProviderCode.OCI ? 'Subnet OCID' : 'Subnet';
   const classes = useStyles();
   const { control, watch } = useFormContext<ConfigureRegionFormValues>();
   const { fields, append, remove } = useFieldArray({ control, name: 'zones' });
@@ -96,7 +100,7 @@ export const ConfigureAvailabilityZoneField = ({
               <YBInputField
                 control={control}
                 name={`zones.${index}.subnet`}
-                placeholder="Subnet"
+                placeholder={subnetPlaceholder}
                 disabled={isFieldDisabled}
                 fullWidth
               />

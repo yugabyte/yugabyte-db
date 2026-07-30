@@ -36,31 +36,31 @@ DR further allows for the role of each universe to switch during planned switcho
     title="Set up Disaster Recovery"
     body="Designate a universe to act as a DR replica."
     href="disaster-recovery-setup/"
-    icon="/images/section_icons/explore/fault_tolerance.png">}}
+    icon="fa-thin fa-umbrella">}}
 
   {{<index/item
     title="Unplanned failover"
     body="Fail over to the DR replica in case of an unplanned outage."
     href="disaster-recovery-failover/"
-    icon="/images/section_icons/explore/high_performance.png">}}
+    icon="fa-thin fa-cloud-bolt-sun">}}
 
   {{<index/item
     title="Planned switchover"
     body="Switch over to the DR replica for planned testing and failback."
     href="disaster-recovery-switchover/"
-    icon="/images/section_icons/manage/backup.png">}}
+    icon="fa-thin fa-toggle-on">}}
 
   {{<index/item
     title="Add and remove tables and indexes"
     body="Perform DDL changes to databases in replication."
     href="disaster-recovery-tables/"
-    icon="/images/section_icons/architecture/concepts/replication.png">}}
+    icon="fa-thin fa-plus-minus">}}
 
 {{</index/block>}}
 
 ## Limitations
 
-- Currently, replication of DDL (SQL-level changes such as creating or dropping tables or indexes) is not supported. To make these changes requires first performing the DDL operation (for example, creating a table), and then adding the new object to replication in YBA. Refer to [Manage tables and indexes](./disaster-recovery-tables/).
+- Making DDL (SQL-level changes such as creating or dropping tables or indexes) changes requires first performing the DDL operation (for example, creating a table), and then adding the new object to replication in YBA. Refer to [Manage tables and indexes](./disaster-recovery-tables/).
 
 - DR setup (and other operations that require making a full copy from DR primary to DR replica, such as adding tables with data to replication, resuming replication after an extended network outage, and so on) may fail with the error `database "<database_name>" is being accessed by other users`.
 

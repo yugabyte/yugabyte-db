@@ -47,18 +47,30 @@ yb-ts-cli [ --server_address=<host>:<port> ] are_tablets_running
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 
-### is_server_ready
+### cdc_release_barriers_on_tablet
 
-Prints the number of tablets that have not yet bootstrapped.
-If all tablets have bootstrapped, returns "Tablet server is ready".
+Available in v2024.2.9.1 and later.
+
+Releases [CDC retention barriers](../../additional-features/change-data-capture/using-logical-replication/advanced-configuration/#retention-of-resources) on the specified tablet on the target YB-TServer. Use this command when CDC retention barriers remain on a tablet after a replication slot or CDC stream is dropped.
+
+Run the command against every YB-TServer that hosts a peer for the [list_tablets](../yb-admin/#list-tablets) command.
+
+{{< warning title="Warning" >}}
+
+This is an operational troubleshooting command. Use it only when CDC retention barriers are stuck on a specific tablet and normal barrier advancement (for example, after dropping the slot) does not release them.
+
+{{< /warning >}}
 
 **Syntax**
 
 ```sh
-yb-ts-cli [ --server_address=<host>:<port> ] is_server_ready
+yb-ts-cli [ --server_address=<host>:<port> ] cdc_release_barriers_on_tablet <tablet-id>
 ```
 
-* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+* *host*:*port*: The *host* and *port* of the YB-TServer that hosts the tablet. Default is `localhost:9100`.
+* *tablet-id*: The identifier of the tablet on which to release CDC retention barriers.
+
+On success, the command prints a confirmation that CDC retention barriers were released on the tablet at the specified peer.
 
 ### clear_server_metacache
 
@@ -91,11 +103,11 @@ Compact the specified tablet on the tablet server.
 **Syntax**
 
 ```sh
-yb-ts-cli [ --server_address=<host>:<port> ] compact_tablet <tablet_id>
+yb-ts-cli [ --server_address=<host>:<port> ] compact_tablet <tablet-id>
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
-* *tablet_id*: The identifier of the tablet to compact.
+* *tablet-id*: The identifier of the tablet to compact.
 
 ### count_intents
 
@@ -123,30 +135,30 @@ yb-ts-cli  [ --server_address=<host>:<port> ] current_hybrid_time
 
 ### delete_tablet
 
-Deletes the tablet with the specified tablet ID (`tablet_id`) and reason.
+Deletes the tablet with the specified tablet ID (`tablet-id`) and reason.
 
 **Syntax**
 
 ```sh
-yb-ts-cli  [ --server_address=<host>:<port> ] delete_tablet <tablet_id> "<reason-string>"
+yb-ts-cli  [ --server_address=<host>:<port> ] delete_tablet <tablet-id> "<reason-string>"
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
-* *tablet_id*: The identifier (ID) for the tablet.
+* *tablet-id*: The identifier (ID) for the tablet.
 * *reason-string*: Text string providing information on why the tablet was deleted.
 
 ### dump_tablet
 
-Dump, or export, the specified tablet ID (`tablet_id`).
+Dump, or export, the specified tablet ID (`tablet-id`).
 
 **Syntax**
 
 ```sh
-yb-ts-cli [ --server_address=<host>:<port> ] dump_tablet <tablet_id>
+yb-ts-cli [ --server_address=<host>:<port> ] dump_tablet <tablet-id>
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
-* *tablet_id*: The identifier (ID) for the tablet.
+* *tablet-id*: The identifier (ID) for the tablet.
 
 ### flush_all_tablets
 
@@ -167,11 +179,24 @@ Flush the specified tablet on the tablet server.
 **Syntax**
 
 ```sh
-yb-ts-cli [ --server_address=<host>:<port> ] flush_tablet <tablet_id>
+yb-ts-cli [ --server_address=<host>:<port> ] flush_tablet <tablet-id>
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
-* *tablet_id*: The identifier of the tablet to compact.
+* *tablet-id*: The identifier of the tablet to flush.
+
+### is_server_ready
+
+Prints the number of tablets that have not yet bootstrapped.
+If all tablets have bootstrapped, returns "Tablet server is ready".
+
+**Syntax**
+
+```sh
+yb-ts-cli [ --server_address=<host>:<port> ] is_server_ready
+```
+
+* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 
 ### list_tablets
 
@@ -184,6 +209,20 @@ yb-ts-cli [ --server_address=<host>:<port> ] list_tablets
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+
+### refresh_flags
+
+Refresh flags that are loaded from the configuration file. Works on both YB-Master (port 9100) and YB-TServer (port 7100) process. No parameters needed.
+
+Each process needs to have the following command issued, for example, issuing the command on one YB-TServer won't update the flags on the other YB-TServers.
+
+**Syntax**
+
+```sh
+yb-ts-cli [ --server_address=<host>:<port> ] refresh_flags
+```
+
+* *host*:*port*: The *host* and *port* of the YB-Master or YB-TServer. Default is `localhost:9100`.
 
 ### reload_certificates
 
@@ -204,12 +243,12 @@ Trigger a remote bootstrap of a tablet from another tablet server to the specifi
 **Syntax**
 
 ```sh
-yb-ts-cli [ --server_address=<host>:<port> ] remote_bootstrap <source_host> <tablet_id>
+yb-ts-cli [ --server_address=<host>:<port> ] remote_bootstrap <source-host> <tablet-id>
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server running the remote bootstrap. Default is `localhost:9100`.
-* *source_host*: The *host* or *host* and *port* of the tablet server to bootstrap from.
-* *tablet_id*: The identifier of the tablet to trigger a remote bootstrap for.
+* *source-host*: The *host* or *host* and *port* of the tablet server to bootstrap from.
+* *tablet-id*: The identifier of the tablet to trigger a remote bootstrap for.
 
 See [Manual remote bootstrap of failed peer](/stable/troubleshoot/cluster/replace_failed_peers/) for example usage.
 
@@ -251,20 +290,6 @@ yb-ts-cli [ --server_address=<host>:<port> ] status
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 
 For an example, see [Return the status of a tablet server](#return-the-status-of-a-tablet-server)
-
-### refresh_flags
-
-Refresh flags that are loaded from the configuration file. Works on both YB-Master (port 9100) and YB-TServer (port 7100) process. No parameters needed.
-
-Each process needs to have the following command issued, for example, issuing the command on one YB-TServer won't update the flags on the other YB-TServers.
-
-**Syntax**
-
-```sh
-yb-ts-cli [ --server_address=<host>:<port> ] refresh_flags
-```
-
-* *host*:*port*: The *host* and *port* of the YB-Master or YB-TServer. Default is `localhost:9100`.
 
 ## Flags
 

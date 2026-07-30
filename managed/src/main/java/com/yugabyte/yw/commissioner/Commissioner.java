@@ -25,6 +25,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.SoftwareUpgradeProgress;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
@@ -212,8 +213,7 @@ public class Commissioner {
         String taskParamsString = taskParams.toString();
         redactedTaskParams = RedactingService.redactSensitiveInfoInString(taskParamsString);
         log.debug(
-            "JSON serialization failed for task params, using string redaction: {}",
-            jsonException.getMessage());
+            "JSON serialization failed for task params, using string redaction: ", jsonException);
       }
 
       String msg =
@@ -375,6 +375,11 @@ public class Commissioner {
     if (taskInfo.getTaskParams().has("metricsExportConfig")) {
       details.set("metricsExportConfig", taskInfo.getTaskParams().get("metricsExportConfig"));
     }
+    // Add modifiedExportTypes (telemetry export configure task) so the UI can show which
+    // telemetry config types are being modified while the task is in progress.
+    if (taskInfo.getTaskParams().has("modifiedExportTypes")) {
+      details.set("modifiedExportTypes", taskInfo.getTaskParams().get("modifiedExportTypes"));
+    }
 
     responseJson.set("details", details);
 
@@ -408,7 +413,32 @@ public class Commissioner {
       // perspective, it is still running.
       responseJson.put("paused", true);
     }
+    attachSoftwareUpgradeProgressToTaskStatus(task, responseJson);
     return Optional.of(responseJson);
+  }
+
+  private void attachSoftwareUpgradeProgressToTaskStatus(
+      CustomerTask task, ObjectNode responseJson) {
+    if (task.getTargetType() != CustomerTask.TargetType.Universe) {
+      return;
+    }
+    if (task.getType() != CustomerTask.TaskType.SoftwareUpgradeYB
+        && task.getType() != CustomerTask.TaskType.SoftwareUpgrade) {
+      return;
+    }
+    Universe.maybeGet(task.getTargetUUID())
+        .ifPresent(
+            u -> {
+              SoftwareUpgradeProgress progress =
+                  SoftwareUpgradeProgress.fromPrevYBSoftwareConfigIfPresent(
+                      u.getUniverseDetails().prevYBSoftwareConfig);
+              if (progress != null) {
+                JsonNode detailsNode = responseJson.get("details");
+                if (detailsNode instanceof ObjectNode) {
+                  ((ObjectNode) detailsNode).set("softwareUpgradeProgress", Json.toJson(progress));
+                }
+              }
+            });
   }
 
   public boolean isTaskAbortable(TaskInfo taskInfo) {

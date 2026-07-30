@@ -7,8 +7,13 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase.UpgradeContext;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckOpentelemetryOperator;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckShellConnectivity;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
@@ -16,6 +21,7 @@ import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.RollMaxBatchSize;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.Provider;
@@ -325,8 +331,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
     KubernetesPlacement placement =
         new KubernetesPlacement(placementInfo, /*isReadOnlyCluster*/ false);
-    Provider provider =
-        Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
+    Provider provider = Util.getSingleProvider(primaryCluster);
     boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
     String universeOverrides = primaryCluster.userIntent.universeOverrides;
@@ -349,7 +354,12 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     YsqlMajorVersionUpgradeState ysqlMajorVersionUpgradeState =
         upgradeContext != null ? upgradeContext.getYsqlMajorVersionUpgradeState() : null;
     UUID rootCAUUID = upgradeContext != null ? upgradeContext.getRootCAUUID() : null;
-
+    boolean useExistingServerCert =
+        upgradeContext != null && upgradeContext.isUseExistingServerCert();
+    // Transient post-change universe state (intent not yet persisted in DB). Used by the YSQL
+    // readiness probe in upgradePodsTask to pick the correct port during API toggles (PLAT-21282).
+    Universe targetUniverseState =
+        upgradeContext != null ? upgradeContext.getTargetUniverseState() : null;
     // If upgradeContext is non-null and has non-null useYBDBInbuiltYbc we use that.
     // It will be set for KubernetesToggleImmutableYbc task.
     // Otherwise pick from universe primary cluster userIntent.
@@ -373,10 +383,13 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           enableYbc,
           ybcSoftwareVersion,
           PodUpgradeParams.builder()
-              .delayAfterStartup(taskParams().sleepAfterMasterRestartMillis)
+              .delayAfterStartup(getSleepTimeForProcess(ServerType.MASTER))
               .build(),
           ysqlMajorVersionUpgradeState,
-          rootCAUUID);
+          rootCAUUID,
+          useExistingServerCert,
+          null /* skipAZs */,
+          targetUniverseState);
     }
 
     if (upgradeTservers) {
@@ -399,11 +412,14 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           enableYbc,
           ybcSoftwareVersion,
           PodUpgradeParams.builder()
-              .delayAfterStartup(taskParams().sleepAfterTServerRestartMillis)
+              .delayAfterStartup(getSleepTimeForProcess(ServerType.TSERVER))
               .rollMaxBatchSize(getCurrentRollBatchSize(universe))
               .build(),
           ysqlMajorVersionUpgradeState,
-          rootCAUUID);
+          rootCAUUID,
+          useExistingServerCert,
+          null /* skipAZs */,
+          targetUniverseState);
 
       if (enableYbc) {
         Set<NodeDetails> primaryTservers = new HashSet<>(universe.getTServersInPrimaryCluster());
@@ -448,11 +464,14 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
             enableYbc,
             ybcSoftwareVersion,
             PodUpgradeParams.builder()
-                .delayAfterStartup(taskParams().sleepAfterTServerRestartMillis)
+                .delayAfterStartup(getSleepTimeForProcess(ServerType.TSERVER))
                 .rollMaxBatchSize(getCurrentRollBatchSize(universe))
                 .build(),
             ysqlMajorVersionUpgradeState,
-            rootCAUUID);
+            rootCAUUID,
+            useExistingServerCert,
+            null /* skipAZs */,
+            targetUniverseState);
 
         if (enableYbc) {
           Set<NodeDetails> replicaTservers =
@@ -484,10 +503,13 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           enableYbc,
           ybcSoftwareVersion,
           PodUpgradeParams.builder()
-              .delayAfterStartup(taskParams().sleepAfterMasterRestartMillis)
+              .delayAfterStartup(getSleepTimeForProcess(ServerType.MASTER))
               .build(),
           ysqlMajorVersionUpgradeState,
-          rootCAUUID);
+          rootCAUUID,
+          useExistingServerCert,
+          null /* skipAZs */,
+          targetUniverseState);
     }
   }
 
@@ -524,8 +546,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
     KubernetesPlacement placement =
         new KubernetesPlacement(placementInfo, /*isReadOnlyCluster*/ false);
-    Provider provider =
-        Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
+    Provider provider = Util.getSingleProvider(primaryCluster);
     boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
     String universeOverrides = primaryCluster.userIntent.universeOverrides;
@@ -775,6 +796,48 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     if (ysqlMajorVersionUpgrade && taskParams().getPreviousTaskUUID() == null) {
       createPGUpgradeTServerCheckTask(ybSoftwareVersion);
     }
+    createCheckShellConnectivityTask();
+  }
+
+  private void createCheckShellConnectivityTask() {
+    Universe universe = getUniverse();
+    if (!confGetter.getConfForScope(universe, UniverseConfKeys.checkShellConnectivity)) {
+      log.info("Skipping shell connectivity check.");
+      return;
+    }
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    if (userIntent.enableClientToNodeEncrypt) {
+      UUID rootCaUuid =
+          universe.getUniverseDetails().getClientRootCA() != null
+              ? universe.getUniverseDetails().getClientRootCA()
+              : universe.getUniverseDetails().rootCA;
+      if (CertificateHelper.isK8sCertManager(rootCaUuid)) {
+        doInPrecheckSubTaskGroup(
+            "CheckShellConnectivity",
+            subTaskGroup -> {
+              UniverseTaskParams params = new UniverseTaskParams();
+              params.setUniverseUUID(universe.getUniverseUUID());
+              CheckShellConnectivity task = createTask(CheckShellConnectivity.class);
+              task.initialize(params);
+              subTaskGroup.addSubTask(task);
+            });
+      }
+    }
+  }
+
+  protected void checkOtelOperatorInstallation(Universe universe) {
+    if (confGetter.getConfForScope(universe, UniverseConfKeys.skipOpentelemetryOperatorCheck)) {
+      log.info("Skipping Opentelemetry Operator check.");
+      return;
+    }
+    doInPrecheckSubTaskGroup(
+        "CheckOpentelemetryOperator",
+        subTaskGroup -> {
+          CheckOpentelemetryOperator task = createTask(CheckOpentelemetryOperator.class);
+          task.initialize(universe.getUniverseDetails());
+          subTaskGroup.addSubTask(task);
+        });
   }
 
   protected void createGFlagsUpgradeAndUpdateMastersTaskForYSQLMajorUpgrade(

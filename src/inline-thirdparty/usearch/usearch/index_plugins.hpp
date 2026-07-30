@@ -833,7 +833,19 @@ class page_allocator_t {
      */
     byte_t* allocate(std::size_t count_bytes) const noexcept {
         count_bytes = divide_round_up(count_bytes, page_size()) * page_size();
+        // Under sanitizers, route the node and vector tapes through the heap allocator instead of
+        // raw mmap so AddressSanitizer can see them (mmap'd memory is not instrumented). Keep the
+        // arena page-aligned so the slice alignment memory_mapping_allocator_gt relies on holds.
+#if defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
 #if defined(USEARCH_DEFINED_WINDOWS)
+        return (byte_t*)_aligned_malloc(count_bytes, page_size());
+#elif defined(USEARCH_DEFINED_APPLE) || defined(USEARCH_DEFINED_ANDROID)
+        void* result = nullptr;
+        return posix_memalign(&result, page_size(), count_bytes) == 0 ? (byte_t*)result : nullptr;
+#else
+        return (byte_t*)aligned_alloc(page_size(), count_bytes);
+#endif
+#elif defined(USEARCH_DEFINED_WINDOWS)
         return (byte_t*)(::VirtualAlloc(NULL, count_bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
 #else
         return (byte_t*)mmap(NULL, count_bytes, PROT_WRITE | PROT_READ, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
@@ -841,7 +853,14 @@ class page_allocator_t {
     }
 
     void deallocate(byte_t* page_pointer, std::size_t count_bytes) const noexcept {
+#if defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
+        (void)count_bytes;
 #if defined(USEARCH_DEFINED_WINDOWS)
+        _aligned_free(page_pointer);
+#else
+        free(page_pointer);
+#endif
+#elif defined(USEARCH_DEFINED_WINDOWS)
         ::VirtualFree(page_pointer, 0, MEM_RELEASE);
 #else
         count_bytes = divide_round_up(count_bytes, page_size()) * page_size();
@@ -856,6 +875,16 @@ class page_allocator_t {
  *
  *  Using this memory allocator won't affect your overall speed much, as that is not the bottleneck.
  *  However, it can drastically improve memory usage especially for huge indexes of small vectors.
+ *
+ *  TODO(yugabyte): the 4 MB-min / x2-doubling arena schedule below has no upper bound, so the
+ *  worst-case slack scales with the index size: data that lands just past an arena boundary
+ *  forces the next (twice as large) arena and wastes nearly its full capacity. For example a
+ *  ~1.1 GB working set commits 8+16+...+1024 = 2040 MB, leaving ~900 MB unused. Investigate a
+ *  tighter scheme -- growing in fixed page_size() multiples, capping the arena at some
+ *  threshold and switching to fixed-size arenas after that, or using a smaller multiplier
+ *  (1.25-1.5x). Nothing inside this allocator or its callers actually consumes the power-of-2
+ *  property -- ceil2()/x2 here is just amortized geometric growth, not used for masking or
+ *  buddy pairing.
  */
 template <std::size_t alignment_ak = 1> class memory_mapping_allocator_gt {
 

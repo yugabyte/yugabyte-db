@@ -6,8 +6,8 @@
 CREATE TABLE pctest1(k int, a int, b int, c int, d text, primary key(k hash));
 CREATE TABLE pctest2(k int, a int, b int, c int, d text, primary key(k hash));
 CREATE UNIQUE INDEX ON pctest1(a hash);
-CREATE INDEX ON pctest1(c hash);
-CREATE INDEX ON pctest2(b hash);
+CREATE INDEX ON pctest1(c hash) split into 3 tablets;
+CREATE INDEX ON pctest2(b hash) split into 3 tablets;
 INSERT INTO pctest1
     SELECT i, 1000 - i, i/3, i%50, 'Value' || i::text FROM generate_series(1, 1000) i;
 INSERT INTO pctest2
@@ -69,17 +69,17 @@ SELECT count(*) FROM pctest1 WHERE k > 123;
 SELECT count(*) FROM pctest1 WHERE k > 123;
 
 -- index only
-/*+ Parallel(pctest1 2 hard) */
+/*+ Parallel(pctest1 2 hard) IndexOnlyScan(pctest1) */
 EXPLAIN (costs off)
 SELECT a FROM pctest1 WHERE a < 10;
-/*+ Parallel(pctest1 2 hard) */
+/*+ Parallel(pctest1 2 hard) IndexOnlyScan(pctest1) */
 SELECT a FROM pctest1 WHERE a < 10;
 
 -- with grouping
-/*+ Parallel(pctest1 2 hard) */
+/*+ Parallel(pctest1 2 hard) IndexOnlyScan(pctest1) */
 EXPLAIN (costs off)
 SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
-/*+ Parallel(pctest1 2 hard) */
+/*+ Parallel(pctest1 2 hard) IndexOnlyScan(pctest1) */
 SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
 
 -- Subquery
@@ -259,10 +259,20 @@ SELECT * FROM
      WHERE pctest1.k = pctest2.k AND pctest1.b = pctest2.b) s2 ON s1.b = s2.c;
 
 -- index only scan with aggregates pushdown such that #atts being pushed down > #atts in relation
-/*+ Parallel(pctest3 3 hard) */
+/*+ Parallel(pctest3 3 hard) IndexOnlyScan(pctest3) */
 EXPLAIN (costs off) SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
-/*+ Parallel(pctest3 3 hard) */
+/*+ Parallel(pctest3 3 hard) IndexOnlyScan(pctest3) */
 SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
+
+-- GHI #30204 support for conditions on yb_hash_code()
+/*+ Parallel(pctest1 2 hard) */
+EXPLAIN (costs off) SELECT * FROM pctest1 WHERE yb_hash_code(k) >= 512 AND yb_hash_code(k) < 1024;
+/*+ Parallel(pctest1 2 hard) */
+SELECT * FROM pctest1 WHERE yb_hash_code(k) >= 512 AND yb_hash_code(k) < 1024;
+/*+ Parallel(pctest1 2 hard) */
+EXPLAIN (costs off) SELECT * FROM pctest1 WHERE yb_hash_code(c) >= 1024 AND yb_hash_code(c) < 2048;
+/*+ Parallel(pctest1 2 hard) */
+SELECT * FROM pctest1 WHERE yb_hash_code(c) >= 1024 AND yb_hash_code(c) < 2048;
 
 DROP TABLE pctest1;
 DROP TABLE pctest2;

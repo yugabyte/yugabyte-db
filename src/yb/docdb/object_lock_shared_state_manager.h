@@ -51,7 +51,7 @@ class ObjectLockOwnerRegistry {
   class Impl;
 
  public:
-  class [[nodiscard]] RegistrationGuard { // NOLINT(whitespace/braces)
+  class [[nodiscard]] RegistrationGuard {
    public:
     RegistrationGuard(Impl& registry, SessionLockOwnerTag tag) : registry_(registry), tag_(tag) {}
     ~RegistrationGuard();
@@ -90,6 +90,9 @@ class ObjectLockSharedStateManager {
       : object_lock_tracker_(std::move(object_lock_tracker)) {}
 
   void SetupShared(ObjectLockSharedState& shared);
+
+  void PauseAndResetSharedLockState();
+  void ResumeSharedLockState();
 
   [[nodiscard]] ObjectLockOwnerRegistry& registry() { return registry_; }
 

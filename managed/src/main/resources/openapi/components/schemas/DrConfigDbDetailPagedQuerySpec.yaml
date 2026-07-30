@@ -1,0 +1,7 @@
+title: DrConfigDbDetailPagedQuerySpec
+description: |
+  Paged list of database replication details for a DR config.
+  Rows are ordered by source namespace ID. The order is ascending by default.
+type: object
+allOf:
+  - $ref: "./PaginationSpec.yaml"

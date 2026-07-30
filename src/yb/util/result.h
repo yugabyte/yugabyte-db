@@ -73,7 +73,7 @@ concept ConvertibleResultValueType = std::convertible_to<ResultValueType<R>, TVa
 void StatusCheck(bool);
 
 template<class TValue>
-class [[nodiscard]] Result { // NOLINT
+class [[nodiscard]] Result {
   using Traits = result::internal::ResultTraits<TValue>;
 
  public:
@@ -366,6 +366,12 @@ struct IsNonConstResultRvalue<Result<T>&&> : std::true_type {};
 // If expr's result is ok returns wrapped value.
 #define VERIFY_RESULT_PREPEND(expr, message) \
   RESULT_CHECKER_HELPER(expr, RETURN_NOT_OK_PREPEND(__result, message))
+
+// If expr's result is not ok, returns the error status prepended with current the caller name.
+// If expr's result is ok returns wrapped value.
+// This macro helps to identify the exact place of failure for the widely used expression.
+#define VERIFY_RESULT_PREPEND_FUNC(expr) \
+  VERIFY_RESULT_PREPEND(expr, __func__)
 
 template<class T>
 T&& OptionalWrapMove(Result<T>&& result) {

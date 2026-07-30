@@ -50,8 +50,9 @@ DEFINE_RUNTIME_bool(enable_global_load_balancing, true,
     "global load. Note that global balancing only occurs after all tables are balanced.");
 
 DEFINE_RUNTIME_int32(leader_balance_threshold, 0,
-    "Number of leaders per each tablet server to balance below. If this is configured to "
+    "Number of leaders per each tablet server per table to balance below. If this is configured to "
     "0 (the default), the leaders will be balanced optimally at extra cost.");
+TAG_FLAG(leader_balance_threshold, advanced);
 
 DEFINE_RUNTIME_int32(leader_balance_unresponsive_timeout_ms, 3 * 1000,
     "The period of time that a master can go without receiving a heartbeat from a "
@@ -137,6 +138,10 @@ DEFINE_RUNTIME_bool(load_balancer_drive_aware, true,
 
 DEFINE_RUNTIME_bool(load_balancer_ignore_cloud_info_similarity, false,
     "If true, ignore the similarity between cloud infos when deciding which tablet to move");
+
+DEFINE_RUNTIME_bool(cluster_balancer_stepdown_to_preferred_leader_on_remove, true,
+    "If true, when removing a replica which happens to be the leader from a tablet, the cluster "
+    "balancer will step down the leader to a tserver in the most preferred zone.");
 
 DECLARE_int32(replication_factor);
 
@@ -238,12 +243,9 @@ std::vector<std::pair<TabletId, std::string>> GetLeadersOnTSToMove(
     global_state_->activity_info_.CountWarning(type, warn_msg); \
   } while (false)
 
-ReplicationInfoPB ClusterLoadBalancer::GetTableReplicationInfo(
-    const scoped_refptr<const TableInfo>& table) const {
-  return CatalogManagerUtil::GetTableReplicationInfo(
-      table,
-      catalog_manager_->GetTablespaceManager(),
-      catalog_manager_->ClusterConfig()->LockForRead()->pb.replication_info());
+ReplicationInfoPB ClusterLoadBalancer::GetTableReplicationInfo(const TableInfoPtr& table) const {
+  // todo(GH30679): We should fix this before we remove load balancer wait on new master leaders.
+  return catalog_manager_->GetTableReplicationInfoWithDefault(table);
 }
 
 void ClusterLoadBalancer::InitTablespaceManager() {
@@ -253,19 +255,24 @@ void ClusterLoadBalancer::InitTablespaceManager() {
 Status ClusterLoadBalancer::PopulateReplicationInfo(
     const scoped_refptr<TableInfo>& table, const ReplicationInfoPB& replication_info) {
 
+  bool has_read_replicas = true;
   if (state_->options_->type == ReplicaType::kLive) {
     state_->placement_.CopyFrom(replication_info.live_replicas());
   } else if (state_->options_->type == ReplicaType::kReadOnly) {
     if (replication_info.read_replicas_size() == 0) {
-      // Should not reach here as tables that should not have read replicas should
-      // have already been skipped before reaching here.
-      return STATUS_FORMAT(
-          IllegalState, "Encountered a table $0 with no read replicas. Placement info $1",
-          table->id(), replication_info);
+      // The table has no read replicas configured. Set num_replicas to 0 so that any existing
+      // read replicas are detected as over-replicated and removed. This handles the case where
+      // a table is moved to a tablespace without read replica placement.
+      has_read_replicas = false;
+      state_->placement_.Clear();
+      state_->placement_.set_num_replicas(0);
+    } else {
+      state_->placement_.CopyFrom(GetReadOnlyPlacementFromUuid(replication_info));
     }
-    state_->placement_.CopyFrom(GetReadOnlyPlacementFromUuid(replication_info));
   }
-  if (state_->placement_.num_replicas() == 0) {
+  // Apply default replication factor if not set, but only if the table has read replicas
+  // configured (i.e., we don't want to override an explicit 0 setting).
+  if (state_->placement_.num_replicas() == 0 && has_read_replicas) {
     state_->placement_.set_num_replicas(FLAGS_replication_factor);
   }
   if (state_->placement_.placement_blocks().empty()) {
@@ -428,17 +435,6 @@ void ClusterLoadBalancer::RunClusterBalancerWithOptions(
     const auto replication_info = GetTableReplicationInfo(table);
     VLOG(2) << Format("Replication info for table $0: $1", table_id,
         replication_info.ShortDebugString());
-
-    if (options->type == ReplicaType::kReadOnly) {
-      if (replication_info.read_replicas_size() == 0) {
-        // The table has a replication policy without any read replicas present.
-        // The ClusterBalancer is handling read replicas in this run, so this
-        // table can be skipped.
-        VLOG(2) << Format("Skipping table $0 with no read replicas configured in read replica run",
-            table_id);
-        continue;
-      }
-    }
 
     ResetTableStatePtr(table_id, options);
 
@@ -1676,8 +1672,81 @@ Status ClusterLoadBalancer::RemoveReplica(
     return STATUS_FORMAT(
         NotFound, "Couldn't find tablet $0 to remove from ts $1", tablet_id, ts_uuid);
   }
-  RETURN_NOT_OK(SendRemoveReplica(tablet_opt->get(), ts_uuid, reason));
+  // If the replica is also the leader, first step it down and then remove.
+  if (state_->per_tablet_meta_[tablet_id].leader_uuid == ts_uuid) {
+    // Select a preferred leader based on leader affinity before stepping down.
+    TabletServerId preferred_leader = "";
+    if (FLAGS_cluster_balancer_stepdown_to_preferred_leader_on_remove) {
+      preferred_leader = SelectBestLeaderAfterStepdown(tablet_id, ts_uuid);
+    }
+    RETURN_NOT_OK(MoveLeader({
+        .tablet_id = tablet_id,
+        .from_ts = ts_uuid,
+        .to_ts = preferred_leader,
+        .to_ts_path = "",
+        .reason = reason,
+        .also_remove_replica = true,
+    }));
+  } else {
+    RETURN_NOT_OK(SendRemoveReplica(tablet_opt->get(), ts_uuid, reason));
+  }
   return state_->RemoveReplica(tablet_id, ts_uuid);
+}
+
+TabletServerId ClusterLoadBalancer::SelectBestLeaderAfterStepdown(
+    const TabletId& tablet_id, const TabletServerId& ts_to_exclude) {
+  // Helper function to compute the score of a tserver (lower is better).
+  auto get_ts_leader_affinity = [&](const TabletServerId& ts_uuid) -> size_t {
+    // Leader blacklisted / unknown servers are prioritized last.
+    const auto& ts_meta = state_->per_ts_meta_.find(ts_uuid);
+    if (ts_meta == state_->per_ts_meta_.end() ||
+        global_state_->leader_blacklisted_servers_.contains(ts_uuid)) {
+      return state_->affinitized_zones_.size() + 1;
+    }
+
+    // Check which affinitized zone this tserver belongs to (if any).
+    // Use MatchesCloudInfo to support wildcard matching (e.g., cloud.region.*).
+    const auto& ts_desc = ts_meta->second.descriptor;
+    for (size_t priority = 0; priority < state_->affinitized_zones_.size(); ++priority) {
+      for (const auto& zone_cloud_info : state_->affinitized_zones_[priority]) {
+        if (ts_desc->MatchesCloudInfo(zone_cloud_info)) {
+          return priority;
+        }
+      }
+    }
+    return state_->affinitized_zones_.size();
+  };
+
+  // Find all running replicas of this tablet (excluding the one we're removing).
+  std::vector<std::pair<TabletServerId, size_t>> ts_and_priority;
+  for (const auto& [ts_uuid, ts_meta] : state_->per_ts_meta_) {
+    if (ts_uuid == ts_to_exclude) {
+      continue;
+    }
+    if (ts_meta.running_tablets.count(tablet_id) > 0) {
+      auto score = get_ts_leader_affinity(ts_uuid);
+      ts_and_priority.emplace_back(ts_uuid, score);
+    }
+  }
+
+  if (ts_and_priority.empty()) {
+    return "";
+  }
+
+  // Sort by priority (lower is better), with ties broken by leader load.
+  std::sort(ts_and_priority.begin(), ts_and_priority.end(),
+            [this](const auto& lhs, const auto& rhs) {
+              if (lhs.second != rhs.second) {
+                return lhs.second < rhs.second;
+              }
+              return state_->GetLeaderLoad(lhs.first) < state_->GetLeaderLoad(rhs.first);
+            });
+
+  // Return the tserver with the best (lowest) score.
+  const auto& best_replica = ts_and_priority[0];
+  VLOG(1) << Format("Selected preferred leader $0 (score $1) for tablet $2 during removal of $3",
+                    best_replica.first, best_replica.second, tablet_id, ts_to_exclude);
+  return best_replica.first;
 }
 
 Status ClusterLoadBalancer::MoveLeader(const LeaderMoveDetails& move_details) {
@@ -1691,7 +1760,7 @@ Status ClusterLoadBalancer::MoveLeader(const LeaderMoveDetails& move_details) {
         move_details.tablet_id, move_details.from_ts, move_details.to_ts);
   }
   RETURN_NOT_OK(SendMoveLeader(
-      tablet_opt->get(), move_details.from_ts, false /* should_remove_leader */,
+      tablet_opt->get(), move_details.from_ts, move_details.also_remove_replica,
       move_details.reason, move_details.to_ts));
   return state_->MoveLeader(
       move_details.tablet_id, move_details.from_ts, move_details.to_ts, move_details.to_ts_path);
@@ -1860,10 +1929,6 @@ Status ClusterLoadBalancer::SendAddReplica(
 Status ClusterLoadBalancer::SendRemoveReplica(
     const TabletInfoPtr& tablet, const TabletServerId& ts_uuid, const std::string& reason) {
   auto l = tablet->LockForRead();
-  // If the replica is also the leader, first step it down and then remove.
-  if (state_->per_tablet_meta_[tablet->id()].leader_uuid == ts_uuid) {
-    return SendMoveLeader(tablet, ts_uuid, true /* should_remove_leader */, reason);
-  }
   SCHECK_EQ(
       state_->pending_remove_replica_tasks_[tablet->table()->id()].count(tablet->tablet_id()), 0U,
       IllegalState, "Sending duplicate remove replica task.");
@@ -1874,7 +1939,7 @@ Status ClusterLoadBalancer::SendRemoveReplica(
 
 Status ClusterLoadBalancer::SendMoveLeader(
     const TabletInfoPtr& tablet, const TabletServerId& ts_uuid,
-    bool should_remove_leader, const std::string& reason,
+    bool also_remove_replica, const std::string& reason,
     const TabletServerId& new_leader_ts_uuid) {
   auto l = tablet->LockForRead();
   auto& actual_leader = state_->per_tablet_meta_[tablet->id()].leader_uuid;
@@ -1887,7 +1952,7 @@ Status ClusterLoadBalancer::SendMoveLeader(
       state_->pending_stepdown_leader_tasks_[tablet->table()->id()].count(tablet->tablet_id()),
       0U, IllegalState, "Sending duplicate leader stepdown task.");
   TrackTask(VERIFY_RESULT(catalog_manager_->ScheduleTryStepDownTask(
-      tablet, l->pb.committed_consensus_state(), ts_uuid, should_remove_leader, epoch_,
+      tablet, l->pb.committed_consensus_state(), ts_uuid, also_remove_replica, epoch_,
       reason, new_leader_ts_uuid)));
   return Status::OK();
 }
@@ -1921,9 +1986,12 @@ const PlacementInfoPB& ClusterLoadBalancer::GetReadOnlyPlacementFromUuid(
       return read_only_placement;
     }
   }
-  // Should never get here.
-  LOG(DFATAL) << "Could not find read only cluster with placement uuid: "
-              << state_->options_->placement_uuid;
+  // We can legitimately get here if the cluster's read-replica configuration changed (e.g. via
+  // yb-admin add_read_replica_placement_info / delete_read_replica_placement_info) between when
+  // the tablespace map was populated with this placement_uuid and now. Fall back to the first
+  // read-replica cluster; the next tablespace-map refresh will rebind to the current config.
+  LOG(WARNING) << "Could not find read only cluster with placement uuid: "
+               << state_->options_->placement_uuid;
   return replication_info.read_replicas(0);
 }
 

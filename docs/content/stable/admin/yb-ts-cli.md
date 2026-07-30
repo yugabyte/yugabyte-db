@@ -47,18 +47,30 @@ yb-ts-cli [ --server_address=<host>:<port> ] are_tablets_running
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 
-### is_server_ready
+### cdc_release_barriers_on_tablet
 
-Prints the number of tablets that have not yet bootstrapped.
-If all tablets have bootstrapped, returns "Tablet server is ready".
+Available in v2025.2.4.0 and later.
+
+Releases [CDC retention barriers](../../additional-features/change-data-capture/using-logical-replication/advanced-configuration/#retention-of-resources) on the specified tablet on the target YB-TServer. Use this command when CDC retention barriers remain on a tablet after a replication slot or CDC stream is dropped.
+
+Run the command against every YB-TServer that hosts a peer for the tablet. Obtain the tablet ID using [list_tablets](../yb-admin/#list-tablets) command.
+
+{{< warning title="Warning" >}}
+
+This is an operational troubleshooting command. Use it only when CDC retention barriers are stuck on a specific tablet and normal barrier advancement (for example, after dropping the slot) does not release them.
+
+{{< /warning >}}
 
 **Syntax**
 
 ```sh
-yb-ts-cli [ --server_address=<host>:<port> ] is_server_ready
+yb-ts-cli [ --server_address=<host>:<port> ] cdc_release_barriers_on_tablet <tablet-id>
 ```
 
-* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+* *host*:*port*: The *host* and *port* of the YB-TServer that hosts the tablet. Default is `localhost:9100`.
+* *tablet-id*: The identifier of the tablet on which to release CDC retention barriers.
+
+On success, the command prints a confirmation that CDC retention barriers were released on the tablet at the specified peer.
 
 ### clear_server_metacache
 
@@ -74,28 +86,44 @@ yb-ts-cli [ --server_address=<host>:<port> ] clear_server_metacache
 
 ### compact_all_tablets
 
-Compact all tablets on the tablet server.
+Compact all tablets on the tablet server. By default, compaction also includes all [vector indexes](../../additional-features/pg-extensions/extension-pgvector/#vector-indexing) (pgvector) on each tablet. Vector index compaction can be significantly heavier than RocksDB compaction for a tablet of the same size; use [--exclude_vector_indexes](#exclude-vector-indexes) to skip vector indexes.
 
 **Syntax**
 
 ```sh
-yb-ts-cli [ --server_address=<host>:<port> ] compact_all_tablets
+yb-ts-cli [ --server_address=<host>:<port> ] [ --exclude_vector_indexes ] compact_all_tablets
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+* [--exclude_vector_indexes](#exclude-vector-indexes): Optional. Exclude vector indexes from compaction.
 
 ### compact_tablet
 
-Compact the specified tablet on the tablet server.
+Compact the specified tablet on the tablet server. By default, compaction also includes all [vector indexes](../../additional-features/pg-extensions/extension-pgvector/#vector-indexing) (pgvector) on the tablet. Vector index compaction can be significantly heavier than RocksDB compaction for a tablet of the same size; use [--exclude_vector_indexes](#exclude-vector-indexes) to skip vector indexes. To compact only vector indexes, use [compact_vector_index](#compact-vector-index).
 
 **Syntax**
 
 ```sh
-yb-ts-cli [ --server_address=<host>:<port> ] compact_tablet <tablet_id>
+yb-ts-cli [ --server_address=<host>:<port> ] [ --exclude_vector_indexes ] compact_tablet <tablet-id>
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
-* *tablet_id*: The identifier of the tablet to compact.
+* [--exclude_vector_indexes](#exclude-vector-indexes): Optional. Exclude vector indexes from compaction.
+* *tablet-id*: The identifier of the tablet to compact.
+
+### compact_vector_index
+
+Trigger compaction of [vector indexes](../../additional-features/pg-extensions/extension-pgvector/#vector-indexing) (pgvector) on a specific tablet. Use this for tablet-level vector index compaction when you need to compact only vector indexes on a given tablet (for example, after bulk loads or for maintenance).
+
+**Syntax**
+
+```sh
+yb-ts-cli [ --server_address=<host>:<port> ] compact_vector_index <tablet-id> [<vector-index-id1> <vector-index-id2> ...]
+```
+
+* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+* *tablet-id*: The identifier of the tablet that contains the vector index(es).
+* *vector-index-id1*, *vector-index-id2*, ...: Optional. Table IDs of specific vector indexes to compact. If omitted, all vector indexes on the tablet are compacted.
 
 ### count_intents
 
@@ -123,30 +151,30 @@ yb-ts-cli  [ --server_address=<host>:<port> ] current_hybrid_time
 
 ### delete_tablet
 
-Deletes the tablet with the specified tablet ID (`tablet_id`) and reason.
+Deletes the tablet with the specified tablet ID (`tablet-id`) and reason.
 
 **Syntax**
 
 ```sh
-yb-ts-cli  [ --server_address=<host>:<port> ] delete_tablet <tablet_id> "<reason-string>"
+yb-ts-cli  [ --server_address=<host>:<port> ] delete_tablet <tablet-id> "<reason-string>"
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
-* *tablet_id*: The identifier (ID) for the tablet.
+* *tablet-id*: The identifier (ID) for the tablet.
 * *reason-string*: Text string providing information on why the tablet was deleted.
 
 ### dump_tablet
 
-Dump, or export, the specified tablet ID (`tablet_id`).
+Dump, or export, the specified tablet ID (`tablet-id`).
 
 **Syntax**
 
 ```sh
-yb-ts-cli [ --server_address=<host>:<port> ] dump_tablet <tablet_id>
+yb-ts-cli [ --server_address=<host>:<port> ] dump_tablet <tablet-id>
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
-* *tablet_id*: The identifier (ID) for the tablet.
+* *tablet-id*: The identifier (ID) for the tablet.
 
 ### flush_all_tablets
 
@@ -167,11 +195,38 @@ Flush the specified tablet on the tablet server.
 **Syntax**
 
 ```sh
-yb-ts-cli [ --server_address=<host>:<port> ] flush_tablet <tablet_id>
+yb-ts-cli [ --server_address=<host>:<port> ] flush_tablet <tablet-id>
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
-* *tablet_id*: The identifier of the tablet to compact.
+* *tablet-id*: The identifier of the tablet to flush.
+
+### flush_vector_index
+
+Trigger a flush of [vector indexes](../../additional-features/pg-extensions/extension-pgvector/#vector-indexing) (pgvector) on a specific tablet. Use this for tablet-level vector index flush when you need to flush only vector indexes on a given tablet (for example, after bulk loads or for maintenance).
+
+**Syntax**
+
+```sh
+yb-ts-cli [ --server_address=<host>:<port> ] flush_vector_index <tablet-id> [<vector-index-id1> <vector-index-id2> ...]
+```
+
+* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+* *tablet-id*: The identifier of the tablet that contains the vector index(es).
+* *vector-index-id1*, *vector-index-id2*, ...: Optional. Table IDs of specific vector indexes to flush. If omitted, all vector indexes on the tablet are flushed.
+
+### is_server_ready
+
+Prints the number of tablets that have not yet bootstrapped.
+If all tablets have bootstrapped, returns "Tablet server is ready".
+
+**Syntax**
+
+```sh
+yb-ts-cli [ --server_address=<host>:<port> ] is_server_ready
+```
+
+* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 
 ### list_tablets
 
@@ -184,6 +239,20 @@ yb-ts-cli [ --server_address=<host>:<port> ] list_tablets
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+
+### refresh_flags
+
+Refresh flags that are loaded from the configuration file. Works on both YB-Master (port 9100) and YB-TServer (port 7100) process. No parameters needed.
+
+Each process needs to have the following command issued, for example, issuing the command on one YB-TServer won't update the flags on the other YB-TServers.
+
+**Syntax**
+
+```sh
+yb-ts-cli [ --server_address=<host>:<port> ] refresh_flags
+```
+
+* *host*:*port*: The *host* and *port* of the YB-Master or YB-TServer. Default is `localhost:9100`.
 
 ### reload_certificates
 
@@ -204,12 +273,12 @@ Trigger a remote bootstrap of a tablet from another tablet server to the specifi
 **Syntax**
 
 ```sh
-yb-ts-cli [ --server_address=<host>:<port> ] remote_bootstrap <source_host> <tablet_id>
+yb-ts-cli [ --server_address=<host>:<port> ] remote_bootstrap <source-host> <tablet-id>
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server running the remote bootstrap. Default is `localhost:9100`.
-* *source_host*: The *host* or *host* and *port* of the tablet server to bootstrap from.
-* *tablet_id*: The identifier of the tablet to trigger a remote bootstrap for.
+* *source-host*: The *host* or *host* and *port* of the tablet server to bootstrap from.
+* *tablet-id*: The identifier of the tablet to trigger a remote bootstrap for.
 
 See [Manual remote bootstrap of failed peer](/stable/troubleshoot/cluster/replace_failed_peers/) for example usage.
 
@@ -252,23 +321,15 @@ yb-ts-cli [ --server_address=<host>:<port> ] status
 
 For an example, see [Return the status of a tablet server](#return-the-status-of-a-tablet-server)
 
-### refresh_flags
-
-Refresh flags that are loaded from the configuration file. Works on both YB-Master (port 9100) and YB-TServer (port 7100) process. No parameters needed.
-
-Each process needs to have the following command issued, for example, issuing the command on one YB-TServer won't update the flags on the other YB-TServers.
-
-**Syntax**
-
-```sh
-yb-ts-cli [ --server_address=<host>:<port> ] refresh_flags
-```
-
-* *host*:*port*: The *host* and *port* of the YB-Master or YB-TServer. Default is `localhost:9100`.
-
 ## Flags
 
 The following flags can be used, when specified, with the commands above.
+
+### --exclude_vector_indexes
+
+Use with [compact_tablet](#compact_tablet) or [compact_all_tablets](#compact_all_tablets) to compact only the tablet's RocksDB data and skip vector indexes on the tablet. Not valid for flush commands.
+
+Default: `false` (vector indexes are included in compaction)
 
 ### --force
 

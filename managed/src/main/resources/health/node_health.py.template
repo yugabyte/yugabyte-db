@@ -65,7 +65,6 @@ YB_CONTROLLER = "yb-controller-server"
 NODE_EXPORTER = "node_exporter"
 CONNECTION_POOLING_MANAGER = "odyssey"
 EARLYOOM = "earlyoom"
-TOTAL = "total"
 
 ALERT_ENHANCEMENTS_RELEASE_BUILD = "2.6.0.0-b0"
 RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-](.+)"
@@ -89,7 +88,10 @@ MAX_THREADS = 10
 
 MAX_TRIES = 2
 
-PER_PROCESS_VERSION = 3
+MIN_OPEN_FILES = 1048576
+MIN_PROCESSES = 64000
+
+PER_PROCESS_VERSION = 4
 
 DEFAULT_SSL_VERSION = "TLSv1_2"
 SSL_PROTOCOL_TO_SSL_VERSION = {
@@ -260,6 +262,12 @@ YB_PROCESS_IO_KB_TOTAL = MetricDefinition(
 YB_PROCESS_OPEN_FILES = MetricDefinition(
     "yb_process_open_files",
     "Check number of open files per process and its subprocesses")
+YB_PROCESS_LIMIT = MetricDefinition(
+    "yb_process_limit",
+    "Process resource limits from /proc/<pid>/limits")
+YB_PROCESS_LIMITS_STATUS = MetricDefinition(
+    "yb_process_limits_status",
+    "Process limits status (1 = OK, 0 = incorrect)")
 YB_NODE_UNEXPECTED_TSERVER_RUNNING = MetricDefinition(
     "yb_node_unexpected_tserver_running",
     "Tserver is running on node (but should not)")
@@ -275,6 +283,24 @@ YB_EARLYOOM_KILLS_COUNT = MetricDefinition(
 YB_THP_SETTINGS_CHECK = MetricDefinition(
     "yb_thp_settings_check",
     "Check that THP settings are applied")
+YB_NODE_YNP_VERSION = MetricDefinition(
+    "yb_node_ynp_version",
+    "YNP version on the node")
+YB_NODE_YNP_VERSION_SKEW = MetricDefinition(
+    "yb_node_ynp_version_skew",
+    "YNP version skew between YBA and node")
+# Status of the node maintenance systemd services (yb-zip_purge_yb_logs, yb-clean_cores).
+# Values: 1 = last run succeeded, 0 = last run failed or service never executed,
+# 2 = service unit definition missing on the node.
+YB_NODE_MAINTENANCE_SERVICE_STATUS = MetricDefinition(
+    "yb_node_maintenance_service_status",
+    "Last run status of node maintenance systemd service")
+# Unix timestamp (seconds since epoch) of the last completed run of the maintenance service.
+# 0 if the service has never executed or is missing.
+YB_NODE_MAINTENANCE_SERVICE_LAST_RUN_SECONDS = MetricDefinition(
+    "yb_node_maintenance_service_last_run_seconds",
+    "Unix timestamp of the last completed run of the node maintenance systemd service",
+    "sec")
 
 ###################################################################################################
 # Reporting
@@ -568,7 +594,7 @@ class NodeChecker():
                  otel_enabled, temp_output_file, ddl_atomicity_check, master_leader_url,
                  master_rpc_port, tserver_rpc_port, verbose, clock_service_required,
                  enable_earlyoom, topk_other_processes, topk_mem_threshold_percent, check_thp,
-                 ybdb_inbuilt_ybc):
+                 ybdb_inbuilt_ybc, yba_ynp_version):
         self.node = node
         self.node_name = node_name
         self.node_identifier = node_identifier
@@ -611,6 +637,7 @@ class NodeChecker():
         self.topk_mem_threshold_percent = topk_mem_threshold_percent
         self.check_thp = check_thp
         self.ybdb_inbuilt_ybc = ybdb_inbuilt_ybc
+        self.yba_ynp_version = yba_ynp_version
         self.prev_process_results = self._load_previous_per_process_results(temp_output_file)
         self.current_process_results = {}
 
@@ -1951,16 +1978,10 @@ class NodeChecker():
         e = self._new_metric_entry("Per-process check", process_name)
         process = Label("process", process_name)
         try:
-            if process_name == TOTAL:
-                stat = self._get_empty_proc_results()
-                for proc in self.current_process_results.keys():
-                    stat = self._merge_proc_results(
-                        stat, self.current_process_results[proc]['total_stat'])
-                self._dump_per_process_results()
-            else:
-                res = self._load_per_process_metrics(process_name)
-                stat = res['total_stat']
-                self.current_process_results[process_name] = res
+            res = self._load_per_process_metrics(process_name)
+            stat = res['total_stat']
+            self.current_process_results[process_name] = res
+            self._dump_per_process_results()
             ticks = int(os.sysconf("SC_CLK_TCK"))
             metrics[0].add_value(stat['user_cpu_seconds'] // ticks, labels=[process,
                                                                             Label('type', 'user')])
@@ -1982,6 +2003,81 @@ class NodeChecker():
             return e.fill_and_return_entry(["Failed to parse process stats: {}".format(str(ex))],
                                            has_error=True, metrics = metrics)
 
+
+    def check_process_limits(self, process_name):
+        metric = Metric.from_definition(YB_PROCESS_LIMIT)
+        e = self._new_entry("Per-process limits check", process_name)
+        process = Label("process", process_name)
+        try:
+            pid = self.get_process_pid_by_name(process_name)
+            if pid is None:
+                return e.fill_and_return_entry([], has_error=False, metrics=[metric])
+
+            cmd = 'cat /proc/{}/limits'.format(pid)
+            output = self._check_output(cmd).strip()
+
+            limit_map = {
+                'Max open files': 'max_open_files',
+                'Max processes': 'max_processes',
+                'Max core file size': 'max_core_file_size',
+                'Max locked memory': 'max_locked_memory',
+            }
+
+            actual_limits = {}
+            for line in output.split('\n'):
+                for limit_name, label_value in limit_map.items():
+                    if line.startswith(limit_name):
+                        parts = line[len(limit_name):].split()
+                        if len(parts) >= 2:
+                            soft = parts[0]
+                            hard = parts[1]
+                            soft_val = -1 if soft == 'unlimited' else int(soft)
+                            hard_val = -1 if hard == 'unlimited' else int(hard)
+                            actual_limits[label_value] = {
+                                'soft': soft_val, 'hard': hard_val
+                            }
+                            metric.add_value(soft_val,
+                                             labels=[process,
+                                                     Label('limit', label_value),
+                                                     Label('type', 'soft')])
+                            metric.add_value(hard_val,
+                                             labels=[process,
+                                                     Label('limit', label_value),
+                                                     Label('type', 'hard')])
+                        break
+
+            issues = self._check_limit_thresholds(actual_limits)
+            status_metric = Metric.from_definition(YB_PROCESS_LIMITS_STATUS)
+            status_metric.add_value(0 if issues else 1, labels=[process])
+            all_metrics = [metric, status_metric]
+
+            return e.fill_and_return_entry([], has_error=False, metrics=all_metrics)
+        except Exception as ex:
+            return e.fill_and_return_entry(
+                ["Failed to parse process limits: {}".format(str(ex))],
+                has_error=True, metrics=[metric])
+
+    def _check_limit_thresholds(self, actual_limits):
+        issues = []
+        threshold_checks = {
+            'max_open_files': MIN_OPEN_FILES,
+            'max_processes': MIN_PROCESSES,
+        }
+        for limit_label, min_val in threshold_checks.items():
+            if limit_label in actual_limits:
+                soft = actual_limits[limit_label]['soft']
+                if soft != -1 and soft < min_val:
+                    issues.append(
+                        '{} soft limit {} is below minimum {}'.format(
+                            limit_label, soft, min_val))
+
+        if 'max_core_file_size' in actual_limits:
+            core_soft = actual_limits['max_core_file_size']['soft']
+            if core_soft != -1:
+                issues.append(
+                    'max_core_file_size soft limit {} is not unlimited'.format(
+                        core_soft))
+        return issues
 
     def check_other_process_stats(self):
         metric = Metric.from_definition(YB_PROCESS_MEMORY_KB)
@@ -2012,21 +2108,28 @@ class NodeChecker():
         services = ["yb-master.service", "yb-tserver.service"]
         errors = []
         for service in services:
-            root_cmd = "systemctl list-unit-files %s" % service
-            user_cmd = "systemctl --user list-unit-files %s" % service
-            root_out = self._check_output(root_cmd)
-            user_out = self._check_output(user_cmd)
-            success = True
-            if "0 unit files listed" not in root_out and "Error" not in root_out:
-                if not self._check_unit_for_preexec(service, user=False):
-                    errors.append("%s has no clock_sync script ExecStartPre" % service)
-            elif "0 unit files listed" not in user_out and "Error" not in user_out:
-                if not self._check_unit_for_preexec(service, user=True):
-                    errors.append("%s has no clock_sync script ExecStartPre" % service)
-            else:
+            user_scope = self._discover_systemd_unit_scope(service)
+            if user_scope is None:
                 logging.info("no systemd units found, skipping")
                 return e.ignore_check()
+            if not self._check_unit_for_preexec(service, user=user_scope):
+                errors.append("%s has no clock_sync script ExecStartPre" % service)
         return e.fill_and_return_entry(errors, has_error=len(errors) > 0)
+
+    def _discover_systemd_unit_scope(self, unit):
+        """Detect whether a systemd unit is installed at system or --user scope.
+
+        Returns False if the unit is registered at system scope, True if it is
+        registered at --user scope, or None if the unit is not registered in
+        either scope (or systemctl returned an error).
+        """
+        root_out = self._check_output("systemctl list-unit-files %s" % unit)
+        if "0 unit files listed" not in root_out and "Error" not in root_out:
+            return False
+        user_out = self._check_output("systemctl --user list-unit-files %s" % unit)
+        if "0 unit files listed" not in user_out and "Error" not in user_out:
+            return True
+        return None
 
     def check_otel_container_health_k8s(self):
         """Checks the health status of the OpenTelemetry Collector running in the pod."""
@@ -2208,8 +2311,10 @@ class NodeChecker():
         process_map = {}
         for cur_pid in pid_list:
             stat = self._get_empty_proc_results()
+            start_time = None
             try:
                 stat = self._get_process_stats_by_pid(cur_pid)
+                start_time = stat['start_time']
             except Exception as e:
                 pass
             # Calculating the sum with current state
@@ -2217,8 +2322,14 @@ class NodeChecker():
             # We need to substract pid stats from prev run
             if cur_pid in prev_process_map:
                 prev_stat = prev_process_map[cur_pid]['stats']
-                self._invert_prev_pid_stats(prev_stat)
-                total_stat = self._merge_proc_results(total_stat, prev_stat)
+                prev_start_time = prev_stat['start_time'] if 'start_time' in prev_stat.keys()\
+                    else None
+                if prev_start_time == start_time or prev_start_time is None:
+                    self._invert_prev_pid_stats(prev_stat)
+                    total_stat = self._merge_proc_results(total_stat, prev_stat)
+                else:
+                    self.verbose_log("Prev start time {} cur {} for pid {}"
+                                     .format(start_time, prev_start_time, cur_pid))
 
             process_map[cur_pid] = {
                 'is_root': cur_pid == root_pid,
@@ -2279,6 +2390,7 @@ class NodeChecker():
             res['user_cpu_seconds'] = int(stat_list[13])
             res['system_cpu_seconds'] = int(stat_list[14])
             res['virtual_memory_kb'] = int(stat_list[22]) // 1024
+            res['start_time'] = int(stat_list[21])
 
         cmd = 'cat /proc/{}/smaps'.format(pid)
         stat = self._check_output(cmd).strip()
@@ -2391,6 +2503,140 @@ class NodeChecker():
                     ["Found running process: {}, should be disabled".format(pid)], has_error=True)
         return e.fill_and_return_entry([], has_error=False)
 
+    def check_ynp_version(self):
+        logging.info("Checking YNP version on node {}".format(self.node))
+        e = self._new_entry("YNP Version")
+        metrics = []
+
+        yugabyte_dir = os.path.join(self.yb_home_dir, ".yugabyte")
+        ynp_version_file = os.path.join(yugabyte_dir, "ynp_version")
+        cmd = 'if [ -f "{}" ]; then cat "{}"; else echo ""; fi'.format(
+            ynp_version_file, ynp_version_file)
+        node_ynp_version = self._check_output(cmd).strip()
+
+        if check_for_errors(node_ynp_version):
+            node_ynp_version = ""
+
+        # If file is missing or empty, report placeholder metric and skip skew check
+        if not node_ynp_version:
+            version_metric = Metric.from_definition(YB_NODE_YNP_VERSION) \
+                .add_value(0, [Label("ynp_version", "unknown")])
+            skew_metric = Metric.from_definition(YB_NODE_YNP_VERSION_SKEW).add_value(0)
+            metrics.extend([version_metric, skew_metric])
+            return e.fill_and_return_entry(
+                ["YNP version file not found or empty at {}".format(ynp_version_file)],
+                has_error=False,
+                metrics=metrics)
+
+        # Report the node YNP version metric
+        version_metric = Metric.from_definition(YB_NODE_YNP_VERSION) \
+            .add_value(1, [Label("ynp_version", node_ynp_version)])
+        metrics.append(version_metric)
+
+        # Check for version skew using semver comparison
+        skew_metric = Metric.from_definition(YB_NODE_YNP_VERSION_SKEW)
+        if self.yba_ynp_version:
+            is_greater = is_semver_greater(self.yba_ynp_version, node_ynp_version)
+            if is_greater is None:
+                # Could not parse one or both versions - report as warning, no skew error
+                skew_metric.add_value(0)
+                metrics.append(skew_metric)
+                return e.fill_and_return_warning_entry(
+                    ["Unable to parse versions for comparison: YBA={}, Node={}".format(
+                        self.yba_ynp_version, node_ynp_version)],
+                    metrics=metrics)
+            elif is_greater:
+                # YBA version is strictly greater than node version - skew detected
+                skew_metric.add_value(1, [
+                    Label("yba_ynp_version", self.yba_ynp_version),
+                    Label("node_ynp_version", node_ynp_version)])
+                metrics.append(skew_metric)
+                return e.fill_and_return_entry(
+                    ["YNP version skew: YBA={} > Node={}".format(
+                        self.yba_ynp_version, node_ynp_version)],
+                    has_error=True,
+                    metrics=metrics)
+
+        # No skew: either versions match, node is ahead/equal, or no YBA version provided
+        skew_metric.add_value(0)
+        metrics.append(skew_metric)
+        return e.fill_and_return_entry(
+            ["YNP version: {}".format(node_ynp_version)],
+            has_error=False,
+            metrics=metrics)
+
+    def check_yb_node_maintenance_services(self):
+        """Metric-only check that exports last-run timestamp and status for the YB
+        maintenance systemd services driven by timers (yb-zip_purge_yb_logs and
+        yb-clean_cores). The units may be installed at either system (root) or
+        --user scope, so we discover the scope first via list-unit-files and then
+        query the matching scope. For each service we emit:
+          - yb_node_maintenance_service_status{service=...}
+              2 = unit definition missing on the node
+              1 = last run succeeded
+              0 = last run failed or never executed
+          - yb_node_maintenance_service_last_run_seconds{service=...}
+              Unix timestamp (seconds) of the last completed run, 0 if never.
+        """
+        logging.info("Checking YB node maintenance services on node {}".format(self.node))
+        e = self._new_metric_entry("YB node maintenance services")
+        services = ["yb-zip_purge_yb_logs.service", "yb-clean_cores.service"]
+        status_metric = Metric.from_definition(YB_NODE_MAINTENANCE_SERVICE_STATUS)
+        last_run_metric = Metric.from_definition(YB_NODE_MAINTENANCE_SERVICE_LAST_RUN_SECONDS)
+        msgs = []
+        for unit in services:
+            service_label = Label("service", unit)
+            user_scope = self._discover_systemd_unit_scope(unit)
+            if user_scope is None:
+                # Unit definition missing in both scopes.
+                status_metric.add_value(2, [service_label])
+                last_run_metric.add_value(0, [service_label])
+                msgs.append("{}: definition missing (no system or --user unit)".format(unit))
+                continue
+
+            # Query the relevant fields in one call against the discovered scope.
+            scope_flag = "--user " if user_scope else ""
+            cmd = ("systemctl {scope}show {unit} --no-pager "
+                   "--property=LoadState,Result,ExecMainExitTimestamp,"
+                   "ActiveState,SubState 2>&1").format(scope=scope_flag, unit=unit)
+            output = self._check_output(cmd)
+            props = {}
+            for line in output.splitlines():
+                if "=" in line:
+                    k, _, v = line.partition("=")
+                    props[k.strip()] = v.strip()
+
+            load_state = props.get("LoadState", "")
+            scope_label = "user" if user_scope else "system"
+            if load_state != "loaded":
+                status_metric.add_value(2, [service_label])
+                last_run_metric.add_value(0, [service_label])
+                msgs.append("{}: definition missing in {} scope (LoadState={})".format(
+                    unit, scope_label, load_state))
+                continue
+
+            exit_ts_raw = props.get("ExecMainExitTimestamp", "")
+            last_run_epoch = parse_systemctl_timestamp(exit_ts_raw)
+            last_run_metric.add_value(last_run_epoch, [service_label])
+
+            result = props.get("Result", "")
+            if last_run_epoch == 0:
+                # Service is defined but has never been executed yet.
+                status_metric.add_value(0, [service_label])
+                msgs.append("{}: never executed in {} scope (Result={})".format(
+                    unit, scope_label, result))
+            elif result == "success":
+                status_metric.add_value(1, [service_label])
+                msgs.append("{}: ok in {} scope (last run at {})".format(
+                    unit, scope_label, exit_ts_raw))
+            else:
+                status_metric.add_value(0, [service_label])
+                msgs.append("{}: failed in {} scope (Result={}, last run at {})".format(
+                    unit, scope_label, result, exit_ts_raw))
+
+        return e.fill_and_return_entry(msgs, has_error=False,
+                                       metrics=[status_metric, last_run_metric])
+
     def verbose_log(self, message):
         if self.verbose:
             logging.info(message)
@@ -2403,6 +2649,33 @@ def seconds_to_human_readable_time(seconds):
     h, m = divmod(m, 60)
     d, h = divmod(h, 24)
     return ['{} days {:d}:{:02d}:{:02d}'.format(d, h, m, s)]
+
+
+def parse_systemctl_timestamp(value):
+    """Parse a `systemctl show` timestamp into Unix epoch seconds.
+
+    systemd reports timestamps in the form 'Mon 2026-04-14 10:11:12 UTC'.
+    Returns 0 if the value is empty or unparseable (which also covers the
+    'never executed' case where systemd reports an empty string).
+    """
+    if not value:
+        return 0
+    # Strip the leading day-of-week (it's locale-independent in --no-page output
+    # but redundant for parsing).
+    parts = value.split(None, 1)
+    if len(parts) == 2:
+        value = parts[1]
+    # Try a few common formats: with timezone abbreviation and without.
+    for fmt in ("%Y-%m-%d %H:%M:%S %Z", "%Y-%m-%d %H:%M:%S"):
+        try:
+            dt = datetime.strptime(value, fmt)
+            # systemd emits UTC by default; treat naive timestamps as UTC.
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return int(dt.timestamp())
+        except ValueError:
+            continue
+    return 0
 
 
 def local_time():
@@ -2462,6 +2735,29 @@ def is_equal_or_newer_release_build(current_release_build, threshold_release_bui
 def is_equal_release_build(release_build1, release_build2):
     return (is_equal_or_newer_release_build(release_build1, release_build2) and
             is_equal_or_newer_release_build(release_build2, release_build1))
+
+def parse_semver(version_str):
+    """Parse a semver string like '1.2.3' into a tuple of ints.
+       Supports optional pre-release suffix after a hyphen (ignored for comparison).
+       Returns None if the version string is invalid."""
+    if not version_str:
+        return None
+    base_version = version_str.split('-')[0].strip()
+    parts = base_version.split('.')
+    try:
+        return tuple(int(p) for p in parts)
+    except (ValueError, TypeError):
+        return None
+
+
+def is_semver_greater(version_a, version_b):
+    """Returns True if version_a > version_b using semantic versioning.
+       Returns None if either version cannot be parsed."""
+    parsed_a = parse_semver(version_a)
+    parsed_b = parse_semver(version_b)
+    if parsed_a is None or parsed_b is None:
+        return None
+    return parsed_a > parsed_b
 
 def is_service_running(service_name):
     env = os.environ.copy()
@@ -2710,6 +3006,8 @@ def main():
                         help='Add verbose output')
     parser.add_argument('--cronbased', default=False, required=False, action='store_true',
                         help='Set to true if the node is cronbased instead of systemd')
+    parser.add_argument('--yba_ynp_version', type=str, default=None, required=False,
+                        help='YNP version from YBA side for skew comparison.')
 
     args = parser.parse_args()
 
@@ -2737,7 +3035,7 @@ def main():
         n.otel_enabled, args.temp_output_file, args.ddl_atomicity_check, args.master_leader_url,
         n.master_rpc_port, n.tserver_rpc_port, args.verbose, n.clockSyncServiceRequired,
         n.enable_earlyoom, n.topk_other_processes, n.topk_mem_threshold_percent, n.check_thp,
-        n.ybdb_inbuilt_ybc)
+        n.ybdb_inbuilt_ybc, args.yba_ynp_version)
 
     coordinator.add_precheck(checker, "check_openssl_availability")
 
@@ -2753,6 +3051,7 @@ def main():
         coordinator.add_check(checker, "check_leaderless_tablets")
         coordinator.add_check(checker, "check_underreplicated_tablets")
         coordinator.add_check(checker, "check_process_stats", MASTER)
+        coordinator.add_check(checker, "check_process_limits", MASTER)
 
     if n.tserver_index >= 0:
         coordinator.add_check(checker, "check_uptime_for_process", TSERVER)
@@ -2800,6 +3099,7 @@ def main():
             coordinator.add_check(checker, "check_process_stats", YB_CONTROLLER)
         coordinator.add_check(checker, "check_process_stats", POSTMASTER)
         coordinator.add_check(checker, "check_process_stats", TSERVER)
+        coordinator.add_check(checker, "check_process_limits", TSERVER)
 
     coordinator.add_check(checker, "check_disk_utilization")
     coordinator.add_check(checker, "check_for_core_files")
@@ -2838,6 +3138,7 @@ def main():
         coordinator.add_check(checker, "check_process_stats", NODE_EXPORTER)
         if not args.cronbased:
             coordinator.add_check(checker, "check_systemd_unit_preexec_present")
+            coordinator.add_check(checker, "check_yb_node_maintenance_services")
 
     if n.otel_enabled:
         coordinator.add_check(checker, "check_process_stats", OTEL_COLLECTOR)
@@ -2854,13 +3155,14 @@ def main():
     if n.clockbound_enabled:
         coordinator.add_check(checker, "check_clockbound_sync_status")
 
-    coordinator.add_check(checker, "check_process_stats", TOTAL)
     if n.topk_other_processes > 0:
-        # This should be run after TOTAL is calculated (we don't want it to be included in total).
         coordinator.add_check(checker, "check_other_process_stats")
 
     if not n.is_k8s and n.check_thp:
         coordinator.add_check(checker, "check_thp_settings")
+
+    if not n.is_k8s:
+        coordinator.add_check(checker, "check_ynp_version")
 
     entries = coordinator.run()
     for e in entries:

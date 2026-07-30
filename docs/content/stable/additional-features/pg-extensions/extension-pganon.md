@@ -316,4 +316,4 @@ SELECT * FROM people;
 - The SECURITY LABEL commands on tables and databases are not supported.
 - YugabyteDB does not currently support the `anon.dummy_` functions.
 
-Refer to [Masking rule limitations](https://postgresql-anonymizer.readthedocs.io/en/stable/declare_masking_rules/#limitations) and [Legacy masking rule limitations](https://postgresql-anonymizer.readthedocs.io/en/stable/legacy_dynamic_masking/#limitations) in the Anonymizer documentation for information on the Anonymizer extension limitations.
+Refer to [Masking rule limitations](https://postgresql-anonymizer.readthedocs.io/en/stable/declare_masking_rules/#limitations) in the Anonymizer documentation for information on the Anonymizer extension limitations.

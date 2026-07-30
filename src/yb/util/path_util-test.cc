@@ -34,7 +34,7 @@
 
 #include "yb/util/env.h"
 #include "yb/util/path_util.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/test_macros.h"
 
 using std::string;

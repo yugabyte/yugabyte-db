@@ -26,8 +26,12 @@ declare module '*.less';
 declare module '*.styl';
 
 declare module '*.svg' {
-  const ref: React.RefForwardingComponent<SVGSVGElement, React.SVGAttributes<SVGSVGElement>>;
-  export default ref;
+  import * as React from 'react';
+
+  const ReactComponent: React.FunctionComponent<
+    React.ComponentProps<'svg'> & { title?: string; titleId?: string; desc?: string; descId?: string }
+  >;
+  export default ReactComponent;
 }
 
 declare module '*.bmp' {

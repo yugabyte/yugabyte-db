@@ -23,6 +23,7 @@ export interface EditGflagsFormValues {
 }
 
 export interface GFlagValues {
+  requiresRestart?: boolean;
   default: string;
   file: string;
   meaning: string;

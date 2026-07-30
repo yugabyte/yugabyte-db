@@ -40,7 +40,7 @@ class ColumnDesc {
             int id,
             string name,
             bool is_partition,
-            bool is_primary,
+            bool is_key,
             int32_t attr_num,
             const std::shared_ptr<QLType>& ql_type,
             InternalType internal_type,
@@ -49,7 +49,7 @@ class ColumnDesc {
     id_ = id;
     name_ = name;
     is_partition_ = is_partition;
-    is_primary_ = is_primary;
+    is_key_ = is_key;
     attr_num_ = attr_num;
     ql_type_ = ql_type;
     internal_type_ = internal_type;
@@ -76,8 +76,8 @@ class ColumnDesc {
     return is_partition_;
   }
 
-  bool is_primary() const {
-    return is_primary_;
+  bool is_key() const {
+    return is_key_;
   }
 
   int32_t attr_num() const {
@@ -101,7 +101,7 @@ class ColumnDesc {
   int id_ = -1;
   string name_;
   bool is_partition_ = false;
-  bool is_primary_ = false;
+  bool is_key_ = false;
   int32_t attr_num_ = -1;
   std::shared_ptr<QLType> ql_type_;
   InternalType internal_type_ = InternalType::VALUE_NOT_SET;

@@ -40,7 +40,7 @@ namespace yb {
 //    return Status::OK();
 //  }
 template <InvocableAs<void()> F>
-class [[nodiscard]] CancelableScopeExit { // NOLINT
+class [[nodiscard]] CancelableScopeExit {
  public:
   explicit CancelableScopeExit(const F& f) : f_(f) {}
   explicit CancelableScopeExit(F&& f) : f_(std::move(f)) {}
@@ -65,7 +65,7 @@ class [[nodiscard]] CancelableScopeExit { // NOLINT
 // Execute the lambda when object goes out of scope.
 // Unlike CancelableScopeExit execution can't be dismissed (no Cancel method)
 template <InvocableAs<void()> F>
-class [[nodiscard]] ScopeExit { // NOLINT
+class [[nodiscard]] ScopeExit {
  public:
   explicit ScopeExit(const F& f) : impl_(f) {}
   explicit ScopeExit(F&& f) : impl_(std::move(f)) {}

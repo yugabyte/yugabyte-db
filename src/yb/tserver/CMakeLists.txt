@@ -104,6 +104,7 @@ YRPC_GENERATE(
   PROTO_FILES pg_client.proto)
 set(PG_CLIENT_YRPC_LIBS
   master_proto
+  tserver_service_proto
   yrpc)
 ADD_YB_LIBRARY(pg_client_proto
   SRCS ${PG_CLIENT_YRPC_SRCS}
@@ -211,13 +212,16 @@ ADD_YB_LIBRARY(pg_cron_leader_service_proto
 #########################################
 
 set(TSERVER_SHARED_SRCS
-  tserver_flags.cc
+  tserver_cgroup_manager.cc
   tserver_error.cc
+  tserver_flags.cc
   tserver_shared_mem.cc)
 set(TSERVER_SHARED_LIBS
   yb_docdb_shared
   yb_util
-  yb_util_shmem)
+  yb_util_shmem
+  consensus_proto
+  tserver_proto)
 ADD_YB_LIBRARY(tserver_shared
   SRCS ${TSERVER_SHARED_SRCS}
   DEPS ${TSERVER_SHARED_LIBS})
@@ -231,6 +235,7 @@ include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 
 set(TSERVER_SRCS
   backup_service.cc
+  connectivity_poller.cc
   db_server_base.cc
   full_compaction_manager.cc
   heartbeater.cc
@@ -240,8 +245,10 @@ set(TSERVER_SRCS
   pg_client_service.cc
   pg_client_session.cc
   pg_create_table.cc
+  pg_db_cache.cc
   pg_mutation_counter.cc
   pg_response_cache.cc
+  pg_session_guard.cc
   pg_sequence_cache.cc
   pg_shared_mem_pool.cc
   pg_table_cache.cc
@@ -274,6 +281,7 @@ set(TSERVER_SRCS
   tserver_metrics_heartbeat_data_provider.cc
   server_main_util.cc
   stateful_services/pg_auto_analyze_service.cc
+  stateful_services/pg_auto_analyze_table.cc
   stateful_services/pg_cron_leader_service.cc
   stateful_services/stateful_service_base.cc
   stateful_services/test_echo_service.cc
@@ -289,6 +297,7 @@ set(TSERVER_SRCS
   xcluster_output_client.cc
   xcluster_write_implementations.cc
   ysql_advisory_lock_table.cc
+  ysql_call_home_stats.cc
   ysql_lease_manager.cc
   ysql_lease_poller.cc)
 
@@ -315,7 +324,10 @@ set(TSERVER_DEPS
   xcluster_producer_proto
   yb_ash
   yb_client
+  pq_utils
   yb_pggate_flags
+  yb_pgresult_util
+  yb_ysql_binary_runner
   yrpc
   ysql_upgrade
 )
@@ -349,6 +361,7 @@ set(TSERVER_MAIN_DEPS
     yb_process_wrapper
     yb_pgwrapper
     ysql_conn_mgr_wrapper
+    dist_rag_wrapper
     ${YB_BASE_LIBS})
 
 ADD_YB_LIBRARY(tserver_main_impl
@@ -419,6 +432,10 @@ ADD_YB_TEST(tablet_server-test)
 ADD_YB_TEST(tablet_server-stress-test RUN_SERIAL true)
 ADD_YB_TEST(ts_local_lock_manager-test)
 ADD_YB_TEST(ts_tablet_manager-test)
+if (NOT APPLE)
+  # We disable this test when running on Apple platform as it does not support cgroups.
+  ADD_YB_TEST(tserver_cgroup_manager-test)
+endif()
 ADD_YB_TEST(header_manager_impl-test)
 ADD_YB_TEST(backup_service-test)
 ADD_YB_TEST(clone_operation-test)

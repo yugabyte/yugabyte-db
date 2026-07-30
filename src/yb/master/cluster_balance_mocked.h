@@ -7,8 +7,7 @@
 #include "yb/master/master_fwd.h"
 #include "yb/master/ts_manager.h"
 
-namespace yb {
-namespace master {
+namespace yb::master {
 
 class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
  public:
@@ -48,8 +47,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
     return std::cref(it->second);
   }
 
-  ReplicationInfoPB GetTableReplicationInfo(
-      const scoped_refptr<const TableInfo>& table) const override {
+  ReplicationInfoPB GetTableReplicationInfo(const TableInfoPtr& table) const override {
     return replication_info_;
   }
 
@@ -78,7 +76,7 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
   }
   Status SendMoveLeader(
       const TabletInfoPtr& tablet, const TabletServerId& ts_uuid,
-      bool should_remove_leader, const std::string& reason,
+      bool also_remove_replica, const std::string& reason,
       const TabletServerId& new_leader_ts_uuid) override {
     return Status::OK();
   }
@@ -130,5 +128,4 @@ class ClusterLoadBalancerMocked : public ClusterLoadBalancer {
   friend class TestLoadBalancerEnterprise;
 };
 
-} // namespace master
-} // namespace yb
+} // namespace yb::master

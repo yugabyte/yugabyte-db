@@ -32,6 +32,12 @@ public class DeleteXClusterConfigEntry extends XClusterConfigTaskBase {
 
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
 
+    // If the config was already deleted by a prior run, treat this as a no-op for idempotency.
+    if (XClusterConfig.maybeGet(xClusterConfig.getUuid()).isEmpty()) {
+      log.info("Skipping {}: xCluster config was already deleted", getName());
+      return;
+    }
+
     try (Transaction transaction = DB.beginTransaction()) {
       // Promote a secondary xCluster config to primary if required.
       if (xClusterConfig.isUsedForDr() && !xClusterConfig.isSecondary()) {

@@ -28,7 +28,7 @@
 bool
 ShouldAcquireYBAdvisoryLocks()
 {
-	return IsYugaByteEnabled() && !yb_silence_advisory_locks_not_supported_error;
+	return IsYugaByteEnabled();
 }
 
 YbcAdvisoryLockId

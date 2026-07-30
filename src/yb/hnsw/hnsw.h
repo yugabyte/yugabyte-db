@@ -26,6 +26,7 @@
 #include "yb/vector_index/vector_index_fwd.h"
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/hnsw_util.h"
+#include "yb/vector_index/hnswlib_include.h"
 #include "yb/vector_index/usearch_include_wrapper_internal.h"
 
 namespace yb {
@@ -106,19 +107,44 @@ struct YbHnswSearchContext {
   SearchCache search_cache;
 };
 
+class YbHnswMetric {
+ public:
+  virtual ~YbHnswMetric() = default;
+  virtual HnswDistanceType Distance(const std::byte* lhs, const std::byte* rhs) = 0;
+};
+
+class UsearchMetric : public YbHnswMetric {
+ public:
+  using Impl = unum::usearch::metric_punned_t;
+
+  explicit UsearchMetric(const Impl& metric) : impl_(metric) {}
+
+  HnswDistanceType Distance(const std::byte* lhs, const std::byte* rhs) override;
+
+ private:
+  unum::usearch::metric_punned_t impl_;
+};
+
 class YbHnsw {
  public:
   using CoordinateType = float;
   using DistanceType = HnswDistanceType;
-  using Metric = unum::usearch::metric_punned_t;
+  using Metric = YbHnswMetric;
+  using MetricPtr = std::unique_ptr<Metric>;
   using SearchResult = std::vector<vector_index::VectorWithDistance<DistanceType>>;
 
-  YbHnsw(const Metric& metric, BlockCachePtr block_cache);
+  YbHnsw(const UsearchMetric::Impl& metric, BlockCachePtr block_cache)
+      : YbHnsw(std::make_unique<UsearchMetric>(metric), block_cache) {
+  }
+
+  YbHnsw(MetricPtr&& metric, BlockCachePtr block_cache);
   ~YbHnsw();
 
   // Imports specified index to YbHnsw structure, also storing this structure to disk.
   Status Import(
     const unum::usearch::index_dense_gt<vector_index::VectorId>& index, const std::string& path);
+  Status Import(
+    const HnswlibIndex<DistanceType>& index, const std::string& path);
 
   // Initialize YbHnsw from specified file, using block_cache to cache blocks.
   Status Init(const std::string& path);
@@ -154,7 +180,7 @@ class YbHnsw {
   boost::iterator_range<MisalignedPtr<const CoordinateType>> Coordinates(
       size_t vector, SearchCache& cache) const;
 
-  Metric metric_;
+  MetricPtr metric_;
   const BlockCachePtr block_cache_;
 
   Header header_;

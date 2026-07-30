@@ -12,42 +12,46 @@
 //
 
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
-#include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 
 #include <string>
 
-#include "yb/client/xcluster_client.h"
-#include "yb/common/xcluster_util.h"
-
 #include "yb/client/client.h"
 #include "yb/client/table.h"
-
 #include "yb/client/table_creator.h"
+#include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
+
 #include "yb/common/colocated_util.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/common/xcluster_util.h"
 
 #include "yb/gutil/casts.h"
 
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/xcluster/xcluster_test_utils.h"
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
-#include "yb/master/master_defaults.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
+
 #include "yb/rpc/rpc_controller.h"
-#include "yb/tserver/tserver_xcluster_context_if.h"
-#include "yb/tserver/xcluster_consumer_if.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tserver_xcluster_context_if.h"
+#include "yb/tserver/xcluster_consumer_if.h"
+#include "yb/tserver/xcluster_poller.h"
+
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/file_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/thread.h"
+
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
-#include "yb/util/file_util.h"
 
 using std::string;
 
@@ -536,6 +540,29 @@ Status XClusterTestBase::GetCDCStreamForTable(
   }, MonoDelta::FromSeconds(kRpcTimeout), "Get CDC stream for table");
 }
 
+Status XClusterTestBase::WaitForConsumerPollersToSleep(
+    const std::unordered_set<TabletId>& producer_tablet_ids, MonoDelta timeout) {
+  return LoggedWaitFor(
+      [this, &producer_tablet_ids]() -> Result<bool> {
+        std::unordered_set<TabletId> sleeping;
+        for (const auto& mini_tserver : consumer_cluster()->mini_tablet_servers()) {
+          auto* tserver = mini_tserver->server();
+          tserver::XClusterConsumerIf* xcluster_consumer;
+          if (!tserver || !(xcluster_consumer = tserver->GetXClusterConsumer())) {
+            continue;
+          }
+          for (const auto& poller : xcluster_consumer->TEST_ListPollers()) {
+            const auto& tablet_id = poller->GetProducerTabletInfo().tablet_id;
+            if (producer_tablet_ids.contains(tablet_id) && poller->TEST_Is_Sleeping()) {
+              sleeping.insert(tablet_id);
+            }
+          }
+        }
+        return sleeping.size() == producer_tablet_ids.size();
+      },
+      timeout, "Wait for consumer pollers to sleep on simulated lag");
+}
+
 uint32_t XClusterTestBase::GetSuccessfulWriteOps(MiniCluster* cluster) {
   uint32_t size = 0;
   for (const auto& mini_tserver : cluster->mini_tablet_servers()) {
@@ -602,7 +629,11 @@ Status XClusterTestBase::AlterUniverseReplication(
   auto alter_replication_group_id = xcluster::GetAlterReplicationGroupId(replication_group_id);
   RETURN_NOT_OK(WaitForSetupUniverseReplication(
       consumer_cluster(), consumer_client(), alter_replication_group_id, &setup_resp));
-  SCHECK(!setup_resp.has_error(), IllegalState, alter_resp.ShortDebugString());
+  SCHECK(!setup_resp.has_error(), IllegalState, setup_resp.ShortDebugString());
+  SCHECK(
+      !setup_resp.has_replication_error() ||
+          setup_resp.replication_error().code() == AppStatusPB_ErrorCode_OK,
+      IllegalState, setup_resp.ShortDebugString());
   master::GetUniverseReplicationResponsePB get_resp;
   return VerifyUniverseReplication(replication_group_id, &get_resp);
 }

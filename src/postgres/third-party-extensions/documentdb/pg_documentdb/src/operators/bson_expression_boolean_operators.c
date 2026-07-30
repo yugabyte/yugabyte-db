@@ -43,7 +43,7 @@ static bool ProcessBooleanOperator(const bson_value_t *currentElement,
 
 /*
  * Parses an $or expression and sets the parsed data in the data argument.
- * $or is expressed as { "$or":  [ <expression>, <expression>, .. ]  }
+ * $or is expressed as { "$or":  [ <>, <>, .. ]  }
  */
 void
 ParseDollarOr(const bson_value_t *argument, AggregationExpressionData *data,
@@ -57,8 +57,8 @@ ParseDollarOr(const bson_value_t *argument, AggregationExpressionData *data,
 
 /*
  * Evaluates the output of an $or expression.
- * $or is expressed as { "$or": [ <expression>, <expression>, .. ] }
- * or { "$or": <expression> }.
+ * $or is expressed as { "$or": [ <>, <>, .. ] }
+ * or { "$or": <> }.
  * We evaluate the inner expressions and then return a boolean
  * representing the table of truth for or.
  */
@@ -78,7 +78,7 @@ HandlePreParsedDollarOr(pgbson *doc, void *arguments,
 
 /*
  * Parses an $and expression and sets the parsed data in the data argument.
- * $and is expressed as { "$and":  [ <expression>, <expression>, .. ]  }
+ * $and is expressed as { "$and":  [ <>, <>, .. ]  }
  */
 void
 ParseDollarAnd(const bson_value_t *argument, AggregationExpressionData *data,
@@ -92,8 +92,8 @@ ParseDollarAnd(const bson_value_t *argument, AggregationExpressionData *data,
 
 /*
  * Evaluates the output of an $and expression.
- * $and is expressed as { "$and": [ <expression>, <expression>, .. ] }
- * or { "$and": <expression> }.
+ * $and is expressed as { "$and": [ <>, <>, .. ] }
+ * or { "$and": <> }.
  * We evaluate the inner expressions and then return a boolean
  * representing the table of truth for and.
  */
@@ -114,8 +114,8 @@ HandlePreParsedDollarAnd(pgbson *doc, void *arguments,
 
 /*
  * Parses an $not expression and sets the parsed data in the data argument.
- * $not is expressed as { "$not": [ <expression> ] }
- * or { "$not": <expression> }.
+ * $not is expressed as { "$not": [ <> ] }
+ * or { "$not": <> }.
  */
 void
 ParseDollarNot(const bson_value_t *argument, AggregationExpressionData *data,
@@ -148,8 +148,8 @@ ParseDollarNot(const bson_value_t *argument, AggregationExpressionData *data,
 
 /*
  * Evaluates the output of a $not expression.
- * $not is expressed as { "$not": [ <expression> ] }
- * or { "$not": <expression> }.
+ * $not is expressed as { "$not": [ <> ] }
+ * or { "$not": <> }.
  * We return the negated boolean of the evaluated expression.
  */
 void

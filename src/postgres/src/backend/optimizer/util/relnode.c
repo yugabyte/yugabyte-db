@@ -195,6 +195,20 @@ expand_planner_arrays(PlannerInfo *root, int add_size)
 			palloc0(sizeof(AppendRelInfo *) * new_size);
 	}
 
+	/*
+	 * YB: The yb_tserver_uuids array is lazily allocated by
+	 * YbAddFederatedPartitionTserverUuid(); only grow it if it already exists,
+	 * so non-federated queries pay nothing for it.
+	 */
+	if (root->yb_tserver_uuids)
+	{
+		root->yb_tserver_uuids = (const char **)
+			repalloc(root->yb_tserver_uuids,
+					 sizeof(const char *) * new_size);
+		MemSet(root->yb_tserver_uuids + root->simple_rel_array_size,
+			   0, sizeof(const char *) * add_size);
+	}
+
 	root->simple_rel_array_size = new_size;
 }
 
@@ -256,6 +270,7 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 	rel->cheapest_total_path = NULL;
 	rel->cheapest_unique_path = NULL;
 	rel->cheapest_parameterized_paths = NIL;
+	rel->yb_forced_gather_path = NULL;
 	rel->relid = relid;
 	rel->rtekind = rte->rtekind;
 	/* min_attr, max_attr, attr_needed, attr_widths are set below */
@@ -298,6 +313,7 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 	rel->ybHintAlias = NULL;
 	rel->ybBlockId = 0;
 	rel->ybRoot = root;
+	rel->ybRelationName = NULL;
 
 	/*
 	 * Pass assorted information down the inheritance hierarchy.
@@ -405,12 +421,19 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 
 	if (IsYugaByteEnabled())
 	{
-		if (rte->ybHintAlias != NULL)
+		rte->ybScannedObjectName = rel->ybRelationName;
+		if (rte->ybHintAlias != NULL && rel->reloptkind != RELOPT_OTHER_MEMBER_REL)
 		{
 			/*
 			 * This code path is taken when we have an INSERT, UPDATE, DELETE, or MERGE statement
 			 * and have already processed the target RTE (when PlannerGlobal instance was allocated
 			 * standard_planner()). Just place the information on 'rel'.
+			 *
+			 * However, for rels the are of kind RELOPT_OTHER_MEMBER_REL, e.g. children in an inheritance
+			 * hierarchy, or an individual partition of a partitioned table, we do not want to take
+			 * this path and use the hint alias but rather generate a unique one. For these cases,
+			 * PG assigns the same alias to the children as the one used for the parent, which makes
+			 * hint generation incorrect and makes hinting individual partitions/children impossible.
 			 */
 			rel->ybHintAlias = rte->ybHintAlias;
 			rel->ybBlockId = root->ybBlockId;
@@ -431,6 +454,7 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptInfo *parent)
 			 * Assign a unique id to the rel.
 			 */
 			rel->ybUniqueBaseId = ++(glob->ybBaseRelCnt);
+			rte->ybUniqueBaseId = rel->ybUniqueBaseId;
 
 			/*
 			 * Start with the existing rel alias.
@@ -814,6 +838,7 @@ build_join_rel(PlannerInfo *root,
 	joinrel->ybHintAlias = NULL;
 	joinrel->ybBlockId = 0;
 	joinrel->ybRoot = root;
+	joinrel->ybRelationName = NULL;
 
 	/* Compute information relevant to the foreign relations. */
 	set_foreign_rel_properties(joinrel, outer_rel, inner_rel);
@@ -1387,6 +1412,7 @@ fetch_upper_rel(PlannerInfo *root, UpperRelationKind kind, Relids relids)
 	upperrel->ybHintAlias = NULL;
 	upperrel->ybBlockId = 0;
 	upperrel->ybRoot = root;
+	upperrel->ybRelationName = NULL;
 
 	root->upper_rels[kind] = lappend(root->upper_rels[kind], upperrel);
 
@@ -1510,6 +1536,32 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 										baserel->relids,
 										joinrelids))
 			pclauses = lappend(pclauses, rinfo);
+	}
+
+	/*
+	 * YB: When this parameterized path batches one or more outer relations,
+	 * drop any movable clause that references a batched relation but cannot be
+	 * batched.  Pushing it into this scan would reference the batched relation
+	 * with a scalar parameter while the same relation is referenced with a
+	 * batched array elsewhere in the scan (#20495); the dropped clauses are
+	 * re-applied as a join filter instead. (#31760)
+	 */
+	if (yb_enable_base_scans_cost_model && !bms_is_empty(batchedrelids))
+	{
+		List	   *kept_clauses = NIL;
+
+		foreach(lc, pclauses)
+		{
+			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+
+			if (bms_overlap(rinfo->clause_relids, batchedrelids) &&
+				!yb_get_batched_restrictinfo(rinfo, batchedrelids,
+											 baserel->relids))
+				continue;
+
+			kept_clauses = lappend(kept_clauses, rinfo);
+		}
+		pclauses = kept_clauses;
 	}
 
 	List	   *sel_clauses = pclauses;
@@ -1749,41 +1801,100 @@ get_joinrel_parampathinfo(PlannerInfo *root, RelOptInfo *joinrel,
 		}
 	}
 
+	List	   *yb_relegated = NIL;
+
 	if (IsYugaByteEnabled() && !bms_is_empty(req_batchedids))
 	{
 		/*
-		 * YB: TODO: This can be omitted if we allow join filters to be batched
-		 * IN clauses. Consider a join for (X (Y Z)) with a filter Fxy between
-		 * X and Y. If this filter is applied at the lower join then batching
-		 * X becomes impossible if Fxy is not converted into an IN clause.
-		 * This same logic can be applied to any mergejoinable qpqual within
-		 * a batched join context.
+		 * YB: A moved-down clause that references a batched outer relation
+		 * outside this join cannot be enforced here while that relation stays
+		 * batched: the batched value is not available until the batched nested
+		 * loop join above un-batches it.  Consider a join (X (Y Z)) with a
+		 * filter between X and Y where X is batched.
+		 *
+		 * - When CBO is enabled, relegate it to that batched nested loop join:
+		 *   drop it here so it is applied above, provided every relation it
+		 *   references is in this join or a batched outer relation so the join
+		 *   can evaluate it.  Such a clause spans both join inputs (otherwise it
+		 *   would have been pushed into one of them), so its batched form, if
+		 *   any, could not be enforced as a single-relation index condition
+		 *   here anyway.
+		 * - Otherwise the external relations it touches must be unbatched (a
+		 *   batchable join filter would have to become an IN clause, which is
+		 *   not supported).
+		 *
+		 * Relegating or unbatching one clause can change another's
+		 * eligibility, so resolve to a fixed point.
 		 */
+		List	   *candidates = NIL;
+
 		foreach(lc, pclauses)
 		{
 			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
 
-			/*
-			 * YB: If outer/inner path has a relevant pclause that requires
-			 * external relids that are not in
-			 * outer/inner_batchedrelids
-			 * then those external relids need to be unbatched.
-			 */
 			if (bms_is_subset(rinfo->clause_relids, joinrel->relids))
 				continue;
 
-			if (bms_overlap(rinfo->clause_relids, req_batchedids))
-			{
-				Relids		unbatched_ext_rels = bms_difference(rinfo->clause_relids,
-																joinrel->relids);
+			if (!bms_overlap(rinfo->clause_relids, req_batchedids))
+				continue;
 
+			if (yb_enable_base_scans_cost_model)
+				candidates = lappend(candidates, rinfo);
+			else
 				req_unbatchedids =
-					bms_union(req_unbatchedids, unbatched_ext_rels);
+					bms_union(req_unbatchedids,
+							  bms_difference(rinfo->clause_relids,
+											 joinrel->relids));
+		}
+
+		if (candidates != NIL)
+		{
+			bool		changed;
+
+			do
+			{
+				Relids		relegatable_rels =
+					bms_union(joinrel->relids,
+							  bms_difference(req_batchedids, req_unbatchedids));
+
+				changed = false;
+				foreach(lc, candidates)
+				{
+					RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+
+					if (rinfo == NULL)
+						continue;
+
+					if (bms_is_subset(rinfo->clause_relids, relegatable_rels))
+						continue;
+
+					/* Not relegatable: unbatch the external rels it touches. */
+					req_unbatchedids =
+						bms_union(req_unbatchedids,
+								  bms_difference(rinfo->clause_relids,
+												 joinrel->relids));
+					lfirst(lc) = NULL;
+					changed = true;
+				}
+				bms_free(relegatable_rels);
+			} while (changed);
+
+			foreach(lc, candidates)
+			{
+				if (lfirst(lc) != NULL)
+					yb_relegated = lappend(yb_relegated, lfirst(lc));
 			}
 		}
 	}
 
 	req_batchedids = bms_difference(req_batchedids, req_unbatchedids);
+
+	/*
+	 * YB: Drop relegated clauses from this join; the batched nested loop join
+	 * above is responsible for evaluating them.
+	 */
+	foreach(lc, yb_relegated)
+		pclauses = list_delete_ptr(pclauses, lfirst(lc));
 
 	/*
 	 * Now, attach the identified moved-down clauses to the caller's

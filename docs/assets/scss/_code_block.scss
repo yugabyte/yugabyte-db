@@ -208,7 +208,7 @@ main {
           position: absolute;
           top: 0;
           left: 0;
-          font: 15px/1 $font-awesome-font-name;
+          font: 15px/1 $td-font-awesome-font-name;
           font-weight: 700;
           content: "\f00c";
           color: #48ab52 !important;
@@ -246,6 +246,16 @@ main {
 
     div.highlight pre.can-be-copied[data-code="2"] {
       margin-bottom: -13px;
+    }
+
+    .release-downloads pre.can-be-copied[data-code="1"] {
+      margin-bottom: -13px;
+
+      code::after {
+        content: "";
+        display: block;
+        height: 1.625em;
+      }
     }
 
     pre.can-be-copied {

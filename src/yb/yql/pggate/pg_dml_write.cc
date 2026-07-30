@@ -31,14 +31,15 @@
 namespace yb::pggate {
 
 PgDmlWrite::PgDmlWrite(
-    const PgSession::ScopedRefPtr& pg_session, YbcPgTransactionSetting transaction_setting,
+    const PgSessionPtr& pg_session, YbcPgTransactionSetting transaction_setting,
     bool packed)
     : PgDml(pg_session), transaction_setting_(transaction_setting), packed_(packed) {
     pg_session_->SetTransactionHasWrites();
 }
 
 Status PgDmlWrite::Prepare(
-    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info) {
+    const PgObjectId& table_id, const YbcPgTableLocalityInfo& locality_info,
+    bool skip_intents_write) {
   // Setup descriptors for target and bind columns.
   target_ = bind_ = PgTable(VERIFY_RESULT(pg_session_->LoadTable(table_id)));
 
@@ -54,6 +55,9 @@ Status PgDmlWrite::Prepare(
   write_req_->set_schema_version(target_->schema_version());
   write_req_->set_stmt_id(reinterpret_cast<uint64_t>(write_req_.get()));
   write_req_->set_metrics_capture(pg_session_->metrics().metrics_capture());
+  if (skip_intents_write) {
+    write_req_->set_skip_intents_write(skip_intents_write);
+  }
 
   doc_op_ = std::make_shared<PgDocWriteOp>(pg_session_, &target_, std::move(write_op));
   PrepareColumns();
@@ -61,29 +65,29 @@ Status PgDmlWrite::Prepare(
 }
 
 void PgDmlWrite::PrepareColumns() {
-  // Because DocDB API requires that primary columns must be listed in their created-order,
-  // the slots for primary column bind expressions are allocated here in correct order.
+  // Because DocDB API requires that key columns must be listed in their created-order,
+  // the slots for key column bind expressions are allocated here in correct order.
   for (auto& col : target_.columns()) {
-    col.AllocPrimaryBindPB(write_req_.get());
+    col.AllocKeyBindPB(write_req_.get());
   }
 }
 
-Status PgDmlWrite::DeleteEmptyPrimaryBinds() {
+Status PgDmlWrite::DeleteEmptyKeyBinds() {
   if (packed()) {
     return Status::OK();
   }
 
-  // Iterate primary-key columns and remove the binds without values.
-  bool missing_primary_key = false;
+  // Iterate key columns and remove the binds without values.
+  bool missing_key_column = false;
 
-  // Either ybctid or primary key must be present.
+  // Either ybctid or key columns must be present.
   if (!ybctid_bind_) {
     // Remove empty binds from partition list.
     size_t idx = 0;
     auto partition_iter = write_req_->mutable_partition_column_values()->begin();
     while (partition_iter != write_req_->mutable_partition_column_values()->end()) {
       if (!bind_.ColumnForIndex(idx++).ValueBound()) {
-        missing_primary_key = true;
+        missing_key_column = true;
         partition_iter = write_req_->mutable_partition_column_values()->erase(partition_iter);
       } else {
         partition_iter++;
@@ -94,7 +98,7 @@ Status PgDmlWrite::DeleteEmptyPrimaryBinds() {
     auto range_iter = write_req_->mutable_range_column_values()->begin();
     while (range_iter != write_req_->mutable_range_column_values()->end()) {
       if (!bind_.ColumnForIndex(idx++).ValueBound()) {
-        missing_primary_key = true;
+        missing_key_column = true;
         range_iter = write_req_->mutable_range_column_values()->erase(range_iter);
       } else {
         range_iter++;
@@ -106,18 +110,18 @@ Status PgDmlWrite::DeleteEmptyPrimaryBinds() {
   }
 
   // Check for missing key.  This is okay when binding the whole table (for colocated truncate).
-  RSTATUS_DCHECK(!missing_primary_key || bind_table_, InvalidArgument,
-                 "Primary key must be fully specified for modifying table");
+  RSTATUS_DCHECK(!missing_key_column || bind_table_, InvalidArgument,
+                 "Key columns must be fully specified for modifying table");
 
   return Status::OK();
 }
 
 Status PgDmlWrite::Exec(ForceNonBufferable force_non_bufferable) {
   // Delete allocated binds that are not associated with a value.
-  // YBClient interface enforce us to allocate binds for primary key columns in their indexing
+  // YBClient interface enforce us to allocate binds for key columns in their indexing
   // order, so we have to allocate these binds before associating them with values. When the values
   // are not assigned, these allocated binds must be deleted.
-  RETURN_NOT_OK(DeleteEmptyPrimaryBinds());
+  RETURN_NOT_OK(DeleteEmptyKeyBinds());
 
   // First update protobuf with new bind values.
   RETURN_NOT_OK(UpdateAssignPBs());

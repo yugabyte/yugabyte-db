@@ -4,31 +4,31 @@ SET documentdb.next_collection_id TO 2700;
 SET documentdb.next_collection_index_id TO 2700;
 -- Invalid scenarios
 SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a.$": 1, "b.$": 1}', '{}');
-ERROR:  Cannot specify more than one positional projection per query.
+ERROR:  More than one positional projection cannot be specified within a single query.
 SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a..$": 1}', '{}');
-ERROR:  FieldPath must not end with a '.'.
+ERROR:  The FieldPath cannot terminate with a '.' character.
 SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a.$": {"$slice": 1}}', '{}');
-ERROR:  positional projection cannot be used with an expression or sub object
+ERROR:  Positional projection is not allowed when applied to an expression or sub object
 SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a.$": 0}', '{}');
-ERROR:  positional projection cannot be used with exclusion
+ERROR:  Exclusion is not compatible with positional projection usage
 SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a.$": [1,2,3]}', '{}');
-ERROR:  positional projection cannot be used with a literal
+ERROR:  Positional projection is not applicable when working with a literal value
 SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a.$": "Hello"}', '{}');
-ERROR:  positional projection cannot be used with a literal
+ERROR:  Positional projection is not applicable when working with a literal value
 SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a.$": {"$numberDecimal": "0"}}', '{}');
-ERROR:  positional projection cannot be used with exclusion
+ERROR:  Exclusion is not compatible with positional projection usage
 SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a": 1, "a.$": 1 }', '{}');
-ERROR:  Path collision at a
+ERROR:  Collision detected in specified path a
 SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a.b": 1, "a.b.$": 1 }', '{}');
-ERROR:  Path collision at a.b
+ERROR:  Collision detected in specified path a.b
 SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a": 1, "a.b.$": 1 }', '{}');
-ERROR:  Path collision at a.b remaining portion b
+ERROR:  Collision detected in specified path a.b remaining portion b
 SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a.$": 1, "a": 1 }', '{}');
-ERROR:  Path collision at a
+ERROR:  Collision detected in specified path a
 SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a.b.$": 1, "a.b": 1 }', '{}');
-ERROR:  Path collision at a.b
+ERROR:  Collision detected in specified path a.b
 SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a.b": 1, "a.$": 1 }', '{}');
-ERROR:  Path collision at a
+ERROR:  Collision detected in specified path a
 -- some basic positional projection test
 SELECT * FROM bson_dollar_project_find('{ "a" :[1,2,3] }', '{ "a.$": {"$numberDecimal": "Infinity"}}', '{"a": 1}');
        bson_dollar_project_find       
@@ -302,9 +302,9 @@ SELECT * FROM bson_dollar_project_find('{ "_id": 1, "a" :[1,2,3], "b": {"c": {"d
 
 -- $project and $addFields doesn't support positional, TODO throw native mongo error for $project
 SELECT * FROM bson_dollar_project('{ "_id": 1, "a" :[{ "b": {"c": [1,3,2]}, "d": {"e": [4,5,6]}}]} ', '{"a.b.c.$": 1 }');
-ERROR:  FieldPath field names may not start with '$'. Consider using $getField or $setField
+ERROR:  FieldPath field names cannot begin with the operators symbol '$'; you might want to use $getField or $setField instead.
 SELECT bson_dollar_add_fields('{"a": {"b": [1,2,3]}}', '{ "a.b.$" : "1", "a.y": ["p", "q"]}');
-ERROR:  FieldPath field names may not start with '$'. Consider using $getField or $setField
+ERROR:  FieldPath field names cannot begin with the operators symbol '$'; you might want to use $getField or $setField instead.
 --sharded collection tests
 BEGIN;
 -- Insert data into a new collection to be sharded

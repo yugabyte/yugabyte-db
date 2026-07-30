@@ -13,7 +13,7 @@ SELECT documentdb_api.insert_one('db','bsontypetests','{"_id":"2", "value":{"$nu
 SELECT documentdb_api.insert_one('db','bsontypetests','{"_id":"3", "value":{"$numberDouble" : "0"}, "valueMax": { "$numberDouble" : "1.7976931348623157E+308" }, "valueMin": { "$numberDouble" : "-1.7976931348623157E+308" }, "valueEpsilon": { "$numberDouble": "4.94065645841247E-324"}, "valueinfinity": {"$numberDouble":"Infinity"}}', NULL);
 
 -- insert string
-SELECT documentdb_api.insert_one('db','bsontypetests','{"_id":"4", "value": "A quick brown fox jumps over the lazy dog."}', NULL);
+SELECT documentdb_api.insert_one('db','bsontypetests','{"_id":"4", "value": "Bright stars illuminate the calm ocean during a peaceful night."}', NULL);
 
 -- insert binary
 SELECT documentdb_api.insert_one('db','bsontypetests','{"_id":"5", "value": {"$binary": { "base64": "U29tZVRleHRUb0VuY29kZQ==", "subType": "02"}}}', NULL);
@@ -25,7 +25,7 @@ SELECT documentdb_api.insert_one('db','bsontypetests','{"_id":"6", "valueMin": {
 SELECT documentdb_api.insert_one('db','bsontypetests','{"_id":"7", "tsField": {"$timestamp":{"t":1565545664,"i":1}}, "dateBefore1970": {"$date":{"$numberLong":"-1577923200000"}}, "dateField": {"$date":{"$numberLong":"1565546054692"}}, "oidField": {"$oid":"5d505646cf6d4fe581014ab2"}}', NULL);
 
 -- array & nested object
-SELECT documentdb_api.insert_one('db','bsontypetests','{"_id":"8", "arrayOfObject": [ { "ola": "ola"}, { "tudo bem?": "tudo bem!"}, { "o que tu fizeste essa semana?" : "nada" } ]}', NULL);
+SELECT documentdb_api.insert_one('db','bsontypetests','{"_id":"8", "arrayOfObject": [{ "こんにちは": "ありがとう" }, { "¿Cómo estás?": "Muy bien!" }, { "Что ты делал на этой неделе?": "Ничего" }]}', NULL);
 
 -- fetch all rows
 SELECT shard_key_value, object_id, document FROM documentdb_data.documents_1001 ORDER BY 1,2,3;

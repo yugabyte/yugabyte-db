@@ -291,6 +291,7 @@ Insert a different row. Verify that the row inserted in the transaction in sessi
 
 ```sql
 INSERT INTO example VALUES (2);
+COMMIT;
 SELECT * FROM example;
 ```
 

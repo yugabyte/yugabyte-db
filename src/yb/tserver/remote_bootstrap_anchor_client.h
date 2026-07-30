@@ -72,8 +72,6 @@ class RemoteBootstrapAnchorClient : public RefCountedThreadSafe<RemoteBootstrapA
 
   Status KeepLogAnchorAliveAsync(bool session_succeeded);
 
-  Status ChangePeerRole();
-
   void SetLogAnchorRefreshStatus(
       std::shared_ptr<rpc::RpcController> controller,
       const std::shared_ptr<UpdateLogAnchorResponsePB> &update_anchor_resp,

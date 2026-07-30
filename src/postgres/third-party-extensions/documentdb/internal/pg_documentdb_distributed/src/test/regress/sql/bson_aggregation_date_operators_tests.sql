@@ -45,9 +45,8 @@ SELECT * FROM bson_dollar_project('{"date": {"$date": "1930-12-31T11:59:00.000Z"
 SELECT * FROM bson_dollar_project('{"date": {"$date": "1930-12-31T11:59:00.000Z"}, "tz": "-12"}', '{"year": {"$year": { "date": "$date", "timezone": "$tz" }}, "month": {"$month": { "date": "$date", "timezone": "$tz" }}, "dayOfMonth": {"$dayOfMonth": { "date": "$date", "timezone": "$tz" }}}');
 
 -- $week and $isoWeek 
--- $week range is 0-53, weeks are from Sunday-Saturday, and the 1st of the year starts on the first Sunday of the year, so any day of that year before
--- the first Sunday, is week 0.
--- $isoWeek follows ISO 8601, ranges is 1-53, weeks are Monday-Sunday, and the 1st of the year is the week that contains the year's first Thursday.
+-- $week range is 0-53, weeks are from Sunday-Saturday.
+-- $isoWeek ranges is 1-53, weeks are Monday-Sunday.
 
 -- 2023-01-01 is first Sunday of the year.
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2023-01-01T07:30:10.5Z"}}', '{"week": {"$week": "$date"}, "isoWeek": {"$isoWeek": "$date"}}');
@@ -69,9 +68,7 @@ SELECT * FROM bson_dollar_project('{"date": {"$date": "2023-02-28T07:30:10.5Z"}}
 SELECT * FROM bson_dollar_project('{"leapDate": {"$date": "2024-03-01T07:30:10.5Z"}, "nonLeapDate": {"$date": "2023-03-01T07:30:10.5Z"}}', '{"leapDayOfYear": {"$dayOfYear": { "date": "$leapDate" }}, "nonLeapDayOfYear": {"$dayOfYear": { "date": "$nonLeapDate" }}}');
 SELECT * FROM bson_dollar_project('{"leapDate": {"$date": "2024-12-31T07:30:10.5Z"}, "nonLeapDate": {"$date": "2023-12-31T07:30:10.5Z"}}', '{"leapDayOfYear": {"$dayOfYear": { "date": "$leapDate" }}, "nonLeapDayOfYear": {"$dayOfYear": { "date": "$nonLeapDate" }}}');
 
--- $dayOfWeek and $isoDayOfWeek
--- $dayOfWeek is between 1 (Sunday) and 7 (Saturday).
--- $isoDayOfWeek is between 1 (Monday) and 7 (Sunday).
+-- $dayOfWeek and $isoDayOfWeek both are 1-7 following $week or $isoWeek.
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2023-01-01T07:30:10.5Z"}}', '{"name": "Sunday", "dayOfWeek": {"$dayOfWeek": "$date"}, "isoDayOfWeek": {"$isoDayOfWeek": "$date"}}');
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2023-01-02T07:30:10.5Z"}}', '{"name": "Monday", "dayOfWeek": {"$dayOfWeek": "$date"}, "isoDayOfWeek": {"$isoDayOfWeek": "$date"}}');
 SELECT * FROM bson_dollar_project('{"date": {"$date": "1999-02-02T07:30:10.5Z"}}', '{"name": "Tuesday", "dayOfWeek": {"$dayOfWeek": "$date"}, "isoDayOfWeek": {"$isoDayOfWeek": "$date"}}');
@@ -81,7 +78,6 @@ SELECT * FROM bson_dollar_project('{"date": {"$date": "2028-05-19T07:30:10.5Z"}}
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2035-06-23T07:30:10.5Z"}}', '{"name": "Saturday", "dayOfWeek": {"$dayOfWeek": "$date"}, "isoDayOfWeek": {"$isoDayOfWeek": "$date"}}');
 
 -- $year and $isoWeekYear
--- $isoWeekYear returns the ISO 8601 week-numbering year that the date falls in.
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2023-01-01T07:30:10.5Z"}}', '{"year": {"$year": "$date"}, "isoWeekYear": {"$isoWeekYear": "$date"}}');
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2006-01-01T07:30:10.5Z"}}', '{"year": {"$year": "$date"}, "isoWeekYear": {"$isoWeekYear": "$date"}}');
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2006-01-02T07:30:10.5Z"}}', '{"year": {"$year": "$date"}, "isoWeekYear": {"$isoWeekYear": "$date"}}');
@@ -139,7 +135,7 @@ SELECT * FROM bson_dollar_project('{"date": {"$date": "2035-06-23T07:30:10.5Z"}}
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2035-06-23T07:30:10.5Z"}}', '{"isoDayOfWeek": {"$isoDayOfWeek": {"date": "$date", "timezone": true}}}');
 SELECT * FROM bson_dollar_project('{"date": {"$date": "2035-06-23T07:30:10.5Z"}}', '{"isoWeek": {"$isoWeek": {"date": "$date", "timezone": true}}}');
 
--- date part operators: date option must be provided when argument is an object
+-- date part operators: object argument.
 SELECT * FROM bson_dollar_project('{ }', '{"year": {"$year": {"timezone": true}}}');
 SELECT * FROM bson_dollar_project('{ }', '{"month": {"$month": {}}}');
 SELECT * FROM bson_dollar_project('{ }', '{"dayOfMonth": {"$dayOfMonth": {"timezone": []}}}');
@@ -154,7 +150,7 @@ SELECT * FROM bson_dollar_project('{ }', '{"isoWeekYear": {"$isoWeekYear": {"tim
 SELECT * FROM bson_dollar_project('{ }', '{"isoDayOfWeek": {"$isoDayOfWeek": {"timezone": true}}}');
 SELECT * FROM bson_dollar_project('{ }', '{"isoWeek": {"$isoWeek": {"timezone": true}}}');
 
--- date part operators: when argument is object only date and timezone keys are accepted.
+-- date part operators: object with date and timezone arguments.
 SELECT * FROM bson_dollar_project('{ }', '{"year": {"$year": {"random": true}}}');
 SELECT * FROM bson_dollar_project('{ }', '{"month": {"$month": {"foo": 1}}}');
 SELECT * FROM bson_dollar_project('{ }', '{"dayOfMonth": {"$dayOfMonth": {"timezone": [], "date": 1, "time": 1}}}');
@@ -169,7 +165,7 @@ SELECT * FROM bson_dollar_project('{ }', '{"isoWeekYear": {"$isoWeekYear": {"tim
 SELECT * FROM bson_dollar_project('{ }', '{"isoDayOfWeek": {"$isoDayOfWeek": {"timezone": true, "foo": 1}}}');
 SELECT * FROM bson_dollar_project('{ }', '{"isoWeek": {"$isoWeek": {"date": 1, "info": ""}}}');
 
--- date part operators: when argument is array, it only accepts a single element in the array.
+-- date part operators: array argument, should be single element array.
 SELECT * FROM bson_dollar_project('{ }', '{"year": {"$year": [1, 2, 3]}}');
 SELECT * FROM bson_dollar_project('{ }', '{"month": {"$month": []}}');
 SELECT * FROM bson_dollar_project('{ }', '{"dayOfMonth": {"$dayOfMonth": [1, 2]}}');
@@ -532,6 +528,7 @@ select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$d
 select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$date" : {"$numberLong": "951850555381"}}, "unit": "hour" , "binSize": 200000, "timezone": "America/New_York" }  }}');
 select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$date" : {"$numberLong": "951850555381"}}, "unit": "hour" , "binSize": 200000, "timezone": "America/Denver" }  }}');
 select * from bson_dollar_project('{}', '{"result": {"$dateTrunc": {"date": {"$date" : {"$numberLong": "7498555381"}}, "unit": "hour" , "binSize": 4500 }  }}');
+
 /* This test case has overflow, postgres added this check in newer minor versions.
  * Todo: add this test back and check overflow after we bump up the postgres minor version (>=15.7 and >=16.3).
  */

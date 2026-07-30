@@ -13,41 +13,33 @@
 
 #include "yb/ann_methods/hnswlib_wrapper.h"
 
+#include <cmath>
 #include <memory>
+#include <mutex>
 #include <utility>
 
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index_container.hpp>
 
-#pragma GCC diagnostic push
+#include "yb/ann_methods/yb_hnsw_wrapper.h"
 
-// For https://gist.githubusercontent.com/mbautin/db70c2fcaa7dd97081b0c909d72a18a8/raw
-#pragma GCC diagnostic ignored "-Wunused-function"
-
-#ifdef __clang__
-#pragma GCC diagnostic ignored "-Wshorten-64-to-32"
-#endif
-
-#if defined(__x86_64__) || defined(_M_X64)
-#define USE_AVX512
-#define USE_AVX
-#endif
-
-#include "hnswlib/hnswlib.h"
-#include "hnswlib/hnswalg.h"
-
-#undef USE_AVX
-#undef USE_AVX512
-
-#pragma GCC diagnostic pop
+#include "yb/hnsw/hnsw_block_cache.h"
 
 #include "yb/gutil/casts.h"
 
+#include "yb/util/locks.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+
+#include "yb/ann_methods/index_memory_consumption.h"
 
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/index_wrapper_base.h"
+#include "yb/vector_index/hnswlib_include.h"
 #include "yb/vector_index/usearch_include_wrapper_internal.h"
 #include "yb/vector_index/vector_index_if.h"
 
@@ -153,7 +145,7 @@ Result<std::unique_ptr<hnswlib::SpaceInterface<DistanceResult>>> CreateSpace(
 namespace {
 
 void LogDistFunction(hnswlib::DISTFUNC<int> ptr) {
-  LOG(INFO) << "Unknown hnswlib distance function: " << ptr;
+  LOG(INFO) << "Unknown hnswlib distance function: " << reinterpret_cast<void*>(ptr);
 }
 
 void LogDistFunction(hnswlib::DISTFUNC<float> ptr) {
@@ -176,7 +168,7 @@ void LogDistFunction(hnswlib::DISTFUNC<float> ptr) {
   CHECK_LOG_AND_RETURN(InnerProductDistanceSIMD16ExtResiduals);
   CHECK_LOG_AND_RETURN(InnerProductDistanceSIMD4ExtResiduals);
   #endif
-  LOG(INFO) << "Unknown hnswlib distance function: " << ptr;
+  LOG(INFO) << "Unknown hnswlib distance function: " << reinterpret_cast<void*>(ptr);
 }
 
 } // namespace
@@ -189,9 +181,14 @@ class HnswlibIndex :
 
   using HNSWImpl = hnswlib::HierarchicalNSW<DistanceResult, VectorId>;
 
-  explicit HnswlibIndex(const HNSWOptions& options)
-      : options_(options),
+  HnswlibIndex(
+      const hnsw::BlockCachePtr& block_cache, const HNSWOptions& options, HnswBackend backend,
+      const MemTrackerPtr& mem_tracker)
+      : block_cache_(block_cache),
+        options_(options),
+        backend_(backend),
         space_(CHECK_RESULT((CreateSpace<Scalar, DistanceResult>(options)))) {
+    consumption_.Init(mem_tracker);
     static std::once_flag once_flag;
     std::call_once(once_flag, [func = space_->get_dist_func()]() {
       LogDistFunction(func);
@@ -214,6 +211,16 @@ class HnswlibIndex :
           IllegalState, "Cannot reserve space for $0 vectors: Hnswlib index already initialized",
           num_vectors);
     }
+    // Both data and search-context allocations are sized off max_elements at construction.
+    auto se = UpdateAllConsumptionOnExit();
+    // TODO(vector_index): each HierarchicalNSW instance owns its own VisitedListPool sized to
+    // num_vectors (`unsigned short` per slot, plus one fresh VisitedList per concurrent
+    // search). A YB tablet can hold many vector_index chunks of similar size, so the pools are
+    // duplicated per chunk and add up. Investigate sharing a pool across HnswlibIndex
+    // instances of the same num_vectors (or just plumbing a process-wide pool keyed by
+    // capacity). Same opportunity exists for any other purely-search-time scratch buffers
+    // hnswlib introduces in the future.
+    //
     // Please be careful about adding and removing arguments here and make sure they match the
     // actual list of arguments in hnswalg.h.
     hnsw_ = std::make_unique<HNSWImpl>(
@@ -224,12 +231,22 @@ class HnswlibIndex :
         /* random_seed= */ 100,              // Default value from hnswalg.h
         /* allow_replace_deleted= */ false,  // Default value from hnswalg.h
         /* ef= */ 128);
+    // Reserve block cache space for this chunk's full footprint so the index is accounted within
+    // the block cache budget (#32357): the cache evicts other blocks instead of letting the index
+    // grow total memory consumption past the limits.
+    this->ReserveBlockCacheSpace(
+        block_cache_ ? &block_cache_->cache() : nullptr,
+        HNSWImpl::estimateBytesForNumVectors(
+            num_vectors, options_.num_neighbors_per_vertex, options_.num_neighbors_per_vertex_base,
+            options_.dimensions * sizeof(Scalar)));
     return Status::OK();
   }
 
   Status DoInsert(VectorId vector_id, const Vector& v) {
+    // Only data grows on insert (level1+ linkLists_[i] entries and label_lookup_); the
+    // search-contexts pool is sized at construction.
+    auto se = UpdateDataConsumptionOnExit();
     hnsw_->addPoint(v.data(), vector_id);
-
     return Status::OK();
   }
 
@@ -245,7 +262,20 @@ class HnswlibIndex :
     return options_.dimensions;
   }
 
+  // Estimates how many vectors fit into the given byte budget for this index. The per-vector
+  // overhead mirrors the allocation layout in hnswlib::HierarchicalNSW (see hnswalg.h) and uses
+  // the same per-element terms as indexDataBytes() / searchContextBytes() so that memory
+  // tracked via MemTracker for N inserted vectors is approximately the requested budget.
+  size_t EstimateNumVectorsForBytes(size_t bytes_limit) const override {
+    return HNSWImpl::estimateNumVectorsForBytes(
+        bytes_limit, options_.num_neighbors_per_vertex, options_.num_neighbors_per_vertex_base,
+        options_.dimensions * sizeof(Scalar));
+  }
+
   Result<VectorIndexIfPtr<Vector, DistanceResult>> DoSaveToFile(const std::string& path) {
+    if (std::is_same_v<DistanceResult, float> && backend_ == HnswBackend::YB_HNSW_HNSWLIB) {
+      return ImportYbHnsw<Vector, DistanceResult>(*hnsw_, path, block_cache_, options_);
+    }
     try {
       hnsw_->saveIndex(path);
     } catch (std::exception& e) {
@@ -333,9 +363,34 @@ class HnswlibIndex :
   }
 
  private:
-  HNSWOptions options_;
+  // RAII helper that refreshes the index_data tracker on scope exit (e.g. on the way out of
+  // an insert path). Use this when only the per-vector heap allocations changed.
+  auto UpdateDataConsumptionOnExit() {
+    return ScopeExit([this] {
+      if (hnsw_) {
+        consumption_.UpdateData(hnsw_->indexDataBytes());
+      }
+    });
+  }
+
+  // RAII helper that refreshes both the index_data and search_contexts trackers. Use this on
+  // operations that rebuild or resize the index (e.g. Reserve) where the pool / per-vector
+  // tables are also (re)allocated.
+  auto UpdateAllConsumptionOnExit() {
+    return ScopeExit([this] {
+      if (hnsw_) {
+        consumption_.UpdateData(hnsw_->indexDataBytes());
+        consumption_.UpdateSearch(hnsw_->searchContextBytes());
+      }
+    });
+  }
+
+  const hnsw::BlockCachePtr block_cache_;
+  const HNSWOptions options_;
+  const HnswBackend backend_;
   std::unique_ptr<hnswlib::SpaceInterface<DistanceResult>> space_;
   std::unique_ptr<HNSWImpl> hnsw_;
+  IndexMemoryConsumption consumption_;
 };
 
 
@@ -373,8 +428,17 @@ class HnswlibVectorIterator : public AbstractIterator<std::pair<VectorId, Vector
 
 template <IndexableVectorType Vector, ValidDistanceResultType DistanceResult>
 VectorIndexIfPtr<Vector, DistanceResult> HnswlibIndexFactory<Vector, DistanceResult>::Create(
-    vector_index::FactoryMode mode, const HNSWOptions& options) {
-  return std::make_shared<HnswlibIndex<Vector, DistanceResult>>(options);
+    vector_index::FactoryMode mode, const hnsw::BlockCachePtr& block_cache,
+    const vector_index::HNSWOptions& options, HnswBackend backend,
+    const std::shared_ptr<MemTracker>& mem_tracker) {
+  LOG_IF(DFATAL, backend != HnswBackend::HNSWLIB && backend != HnswBackend::YB_HNSW_HNSWLIB) <<
+      "Invalid backed for Hnswlib index: " << HnswBackend_Name(backend);
+  if (std::is_same_v<DistanceResult, float> && backend == HnswBackend::YB_HNSW_HNSWLIB &&
+      mode == vector_index::FactoryMode::kLoad) {
+    return CreateYbHnsw<Vector, DistanceResult>(block_cache, options);
+  }
+  return std::make_shared<HnswlibIndex<Vector, DistanceResult>>(
+      block_cache, options, backend, mem_tracker);
 }
 
 template class HnswlibIndexFactory<FloatVector, float>;

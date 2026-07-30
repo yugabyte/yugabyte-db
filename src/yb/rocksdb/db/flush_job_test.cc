@@ -34,6 +34,8 @@
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 
+#include "yb/storage/storage_test_util.h"
+
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
 
@@ -115,7 +117,8 @@ TEST_F(FlushJobTest, Empty) {
       dbname_, versions_->GetColumnFamilySet()->GetDefault(), db_options_,
       *cfd->GetLatestMutableCFOptions(), env_options_, versions_.get(), &mutex_, &shutting_down_,
       &disable_flush_on_shutdown_, {}, kMaxSequenceNumber, MemTableFilter(), &file_numbers_provider,
-      &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr, &event_logger);
+      &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr, FlushReason::kTestOnly,
+      &event_logger);
   {
     InstrumentedMutexLock l(&mutex_);
     ASSERT_OK(yb::ResultToStatus(flush_job.Run()));
@@ -152,7 +155,7 @@ TEST_F(FlushJobTest, NonEmpty) {
     inserted_keys.emplace(internal_key.Encode().ToBuffer(), value);
     values.Feed(key);
   }
-  test::TestUserFrontiers frontiers(1, 12345);
+  yb::storage::TestUserFrontiers frontiers(1, 12345);
   new_mem->UpdateFrontiers(frontiers);
 
   autovector<MemTable*> to_delete;
@@ -167,7 +170,8 @@ TEST_F(FlushJobTest, NonEmpty) {
       dbname_, versions_->GetColumnFamilySet()->GetDefault(), db_options_,
       *cfd->GetLatestMutableCFOptions(), env_options_, versions_.get(), &mutex_, &shutting_down_,
       &disable_flush_on_shutdown_, {}, kMaxSequenceNumber, MemTableFilter(), &file_numbers_provider,
-      &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr, &event_logger);
+      &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr, FlushReason::kTestOnly,
+      &event_logger);
   FileMetaData fd;
   {
     InstrumentedMutexLock l(&mutex_);
@@ -240,7 +244,7 @@ TEST_F(FlushJobTest, Snapshots) {
       *cfd->GetLatestMutableCFOptions(), env_options_, versions_.get(), &mutex_, &shutting_down_,
       &disable_flush_on_shutdown_, snapshots, kMaxSequenceNumber, MemTableFilter(),
       &file_numbers_provider, &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr,
-      &event_logger);
+      FlushReason::kTestOnly, &event_logger);
   {
     InstrumentedMutexLock l(&mutex_);
     ASSERT_OK(yb::ResultToStatus(flush_job.Run()));

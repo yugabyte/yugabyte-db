@@ -8,11 +8,12 @@ func New() rootConfig {
 // sub-configurations for the installer, such as installer config (installRoot, etc.), platform,
 // postgres, prometheus, and any other service we may eventually support.
 type rootConfig struct {
-	Installer   installerConfig   `mapstructure:"installer"`
-	Platform    platformConfig    `mapstructure:"platform"`
-	Prometheus  prometheusConfig  `mapstructure:"prometheus"`
-	Postgres    postgresConfig    `mapstructure:"postgres"`
-	PerfAdvisor perfAdvisorConfig `mapstructure:"perfAdvisor"`
+	Installer    installerConfig    `mapstructure:"installer"`
+	Platform     platformConfig     `mapstructure:"platform"`
+	Prometheus   prometheusConfig   `mapstructure:"prometheus"`
+	Postgres     postgresConfig     `mapstructure:"postgres"`
+	PerfAdvisor  perfAdvisorConfig  `mapstructure:"perfAdvisor"`
+	NodeExporter nodeExporterConfig `mapstructure:"nodeExporter"`
 }
 
 type Service string
@@ -22,6 +23,7 @@ const (
 	ServicePostgres           Service = "postgres"
 	ServicePrometheus         Service = "prometheus"
 	ServicePerformanceAdvisor Service = "yb-perf-advisor"
+	ServiceNodeExporter       Service = "node-exporter"
 )
 
 func (s Service) String() string {
@@ -30,7 +32,7 @@ func (s Service) String() string {
 
 func (s Service) Validate() bool {
 	switch s {
-	case ServicePlatform, ServicePostgres, ServicePrometheus, ServicePerformanceAdvisor:
+	case ServicePlatform, ServicePostgres, ServicePrometheus, ServicePerformanceAdvisor, ServiceNodeExporter:
 		return true
 	default:
 		return false
@@ -153,8 +155,31 @@ type ldapConfig struct {
 }
 
 type perfAdvisorConfig struct {
-	Enabled        bool `mapstructure:"enabled"`
-	Port           int  `mapstructure:"port"`
-	RestartSeconds int  `mapstructure:"restart_seconds"`
-	EnableHttps    bool `mapstructure:"enable_https"`
+	Enabled        bool           `mapstructure:"enabled"`
+	Port           int            `mapstructure:"port"`
+	RestartSeconds int            `mapstructure:"restart_seconds"`
+	PaSecret       string         `mapstructure:"pa_secret"`
+	Callhome       callhomeConfig `mapstructure:"callhome"`
+	Tls            tlsConfig      `mapstructure:"tls"`
+}
+
+type nodeExporterConfig struct {
+	Enabled      bool   `mapstructure:"enabled"`
+	Port         int    `mapstructure:"port"`
+	Scheme       string `mapstructure:"scheme"`
+	EnableAuth   bool   `mapstructure:"enable_auth"`
+	AuthUsername string `mapstructure:"auth_username"`
+	AuthPassword string `mapstructure:"auth_password"`
+}
+
+type tlsConfig struct {
+	Enabled          bool   `mapstructure:"enabled"`
+	SSLProtocols     string `mapstructure:"ssl_protocols"`
+	Hsts             bool   `mapstructure:"hsts"`
+	KeystorePassword string `mapstructure:"keystore_password"`
+}
+
+type callhomeConfig struct {
+	Enabled     bool   `mapstructure:"enabled"`
+	Environment string `mapstructure:"environment"`
 }

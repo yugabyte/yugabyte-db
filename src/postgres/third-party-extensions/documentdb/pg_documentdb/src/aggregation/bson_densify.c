@@ -38,7 +38,12 @@ int32 PEC_InternalQueryMaxAllowedDensifyDocs = DEFAULT_MAX_ALLOWED_DOCS_IN_DENSI
 int32 PEC_InternalDocumentSourceDensifyMaxMemoryBytes =
 	BSON_MAX_ALLOWED_SIZE_INTERMEDIATE;
 
-/* Enum to represent the type of Densify */
+/*
+ * DensifyType enumerates the available modes for the $densify aggregation stage,
+ * specifying whether densification is performed over a fixed range, within partitions,
+ * or across the entire dataset. This guides the logic for generating missing documents
+ * based on the densify specification.
+ */
 typedef enum DensifyType
 {
 	DENSIFY_TYPE_INVALID,
@@ -483,16 +488,16 @@ HandleDensify(const bson_value_t *existingValue, Query *query,
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
 						errmsg(
-							"The $densify stage specification must be an object, found %s",
+							"The $densify stage specification must be provided as an object, but encountered %s instead",
 							BsonTypeName(existingValue->value_type)),
 						errdetail_log(
-							"The $densify stage specification must be an object, found %s",
+							"The $densify stage specification must be provided as an object, but encountered %s instead",
 							BsonTypeName(existingValue->value_type))));
 	}
 
 	RangeTblEntry *rte = linitial(query->rtable);
 
-	bool isMongoDataTable = rte->rtekind == RTE_RELATION;
+	bool isCollectionDataTable = rte->rtekind == RTE_RELATION;
 
 	pgbson *densifySpec = PgbsonInitFromDocumentBsonValue(existingValue);
 	Const *densifySpecConst = MakeBsonConst(densifySpec);
@@ -503,7 +508,7 @@ HandleDensify(const bson_value_t *existingValue, Query *query,
 
 	/*
 	 * Special case for range mode densify.
-	 * Mongo generates documents in the range even when the collection is
+	 * Generate documents in the range even when the collection is
 	 * - Non existing.
 	 * - Empty collection.
 	 * - Filtered documents are 0.
@@ -519,10 +524,10 @@ HandleDensify(const bson_value_t *existingValue, Query *query,
 		query = GenerateUnionAllWithSelectNullQuery(query, context);
 
 		/* We create union all query now its not a data table alone anymore */
-		isMongoDataTable = false;
+		isCollectionDataTable = false;
 	}
 
-	if (!isMongoDataTable)
+	if (!isCollectionDataTable)
 	{
 		query = MigrateQueryToSubQuery(query, context);
 	}
@@ -533,7 +538,7 @@ HandleDensify(const bson_value_t *existingValue, Query *query,
 	Expr *partitionByFieldsExpr = NULL;
 	SortBy *sortByExpr = NULL;
 	Oid densifyFunctionOid = InvalidOid;
-	GetDensifyQueryExprs(&arguments, context, docExpr, isMongoDataTable,
+	GetDensifyQueryExprs(&arguments, context, docExpr, isCollectionDataTable,
 						 &partitionByFieldsExpr, &sortByExpr, &densifyFunctionOid);
 
 	/* Add the window function for densify */
@@ -681,22 +686,22 @@ CheckFieldValue(const bson_value_t *fieldValue, DensifyWindowState *state)
 	if (!BsonValueIsNumber(fieldValue) && fieldValue->value_type != BSON_TYPE_DATE_TIME)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5733201),
-						errmsg("PlanExecutor error during aggregation :: caused by :: "
-							   "Densify field type must be numeric or a date")));
+						errmsg(
+							"Expected a numeric or date type for densify.")));
 	}
 
 	if (isDateUnitPresent && BsonValueIsNumber(fieldValue))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION6053600),
-						errmsg("PlanExecutor error during aggregation :: caused by :: "
-							   "Encountered numeric densify value in collection when step has a date unit.")));
+						errmsg(
+							"Encountered numeric densify value in collection when step has a date unit.")));
 	}
 
 	if (!isDateUnitPresent && fieldValue->value_type == BSON_TYPE_DATE_TIME)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION6053600),
-						errmsg("PlanExecutor error during aggregation :: caused by :: "
-							   "Encountered date densify value in collection when step does not have a date unit.")));
+						errmsg(
+							"Encountered date densify value in collection when step does not have a date unit.")));
 	}
 }
 
@@ -729,12 +734,10 @@ ThorwLimitExceededError(int32 nDocumentsGenerated)
 	ereport(ERROR, (
 				errcode(ERRCODE_DOCUMENTDB_LOCATION5897900),
 				errmsg(
-					"PlanExecutor error during aggregation :: caused by :: Generated %d documents in $densify"
-					", which is over the limit of %d. Increase the 'internalQueryMaxAllowedDensifyDocs' parameter"
-					" to allow more generated documents",
+					"$densify stage produced %d documents which is greater that the allowed limit of %d",
 					nDocumentsGenerated, PEC_InternalQueryMaxAllowedDensifyDocs),
 				errdetail_log(
-					"Generated %d documents in $densify, which is over the limit of %d.",
+					"Generated %d documents in $densify, exceeding the allowed limit of %d.",
 					nDocumentsGenerated, PEC_InternalQueryMaxAllowedDensifyDocs)));
 }
 
@@ -746,10 +749,10 @@ ThrowMemoryLimitExceededError(int meConsumed)
 				errcode(ERRCODE_DOCUMENTDB_LOCATION6007200),
 				errmsg(
 					"PlanExecutor error during aggregation :: caused by :: "
-					"$densify exceeded memory limit of %d",
+					"$densify ran out of memory limit: %d",
 					PEC_InternalDocumentSourceDensifyMaxMemoryBytes),
 				errdetail_log(
-					"$densify exceeded memory limit of %d",
+					"$densify ran out of memory limit: %d",
 					PEC_InternalDocumentSourceDensifyMaxMemoryBytes)));
 }
 
@@ -1123,8 +1126,7 @@ PopulateDensifyArgs(DensifyArguments *arguments, const pgbson *densifySpec)
 					ereport(ERROR, (
 								errcode(ERRCODE_DOCUMENTDB_LOCATION5733402),
 								errmsg(
-									"the bounds in a range statement must be the string 'full', 'partition',"
-									" or an ascending array of two numbers or two dates")));
+									"Range bounds must be 'full', 'partition', or an ascending array of two numbers or two dates.")));
 				}
 
 				if (rangeElement.bsonValue.value_type == BSON_TYPE_UTF8)
@@ -1144,7 +1146,7 @@ PopulateDensifyArgs(DensifyArguments *arguments, const pgbson *densifySpec)
 						ereport(ERROR, (
 									errcode(ERRCODE_DOCUMENTDB_LOCATION5946802),
 									errmsg(
-										"Bounds string must either be 'full' or 'partition'")));
+										"The bounds string value should be either 'full' or 'partition'")));
 					}
 				}
 				else if (rangeElement.bsonValue.value_type == BSON_TYPE_ARRAY)
@@ -1171,7 +1173,7 @@ PopulateDensifyArgs(DensifyArguments *arguments, const pgbson *densifySpec)
 					{
 						ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5733403),
 										errmsg(
-											"a bounding array in a range statement must have exactly two elements")));
+											"A boundary array used within a range statement is required to contain exactly two elements.")));
 					}
 
 					arguments->densifyType = DENSIFY_TYPE_RANGE;
@@ -1186,7 +1188,7 @@ PopulateDensifyArgs(DensifyArguments *arguments, const pgbson *densifySpec)
 				{
 					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5733401),
 									errmsg(
-										"the step parameter in a range statement must be a strictly positive numeric value")));
+										"The step argument within a range expression should always be a strictly positive numerical value")));
 				}
 				arguments->step = rangeElement.bsonValue;
 			}
@@ -1200,7 +1202,7 @@ PopulateDensifyArgs(DensifyArguments *arguments, const pgbson *densifySpec)
 				if (arguments->timeUnit == DateUnit_Invalid)
 				{
 					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE),
-									errmsg("unknown time unit value: %s",
+									errmsg("Unrecognized value for time unit: %s",
 										   rangeElement.bsonValue.value.v_utf8.str)));
 				}
 			}
@@ -1255,7 +1257,7 @@ PopulateDensifyArgs(DensifyArguments *arguments, const pgbson *densifySpec)
 	/* Validation for missing fields or invalid combinations */
 	if (arguments->densifyType == DENSIFY_TYPE_INVALID)
 	{
-		/* No bounds provided */
+		/* Bounds were not specified */
 		ThrowTopLevelMissingFieldErrorWithCode("$densify.range.bounds",
 											   ERRCODE_DOCUMENTDB_LOCATION40414);
 	}
@@ -1271,8 +1273,8 @@ PopulateDensifyArgs(DensifyArguments *arguments, const pgbson *densifySpec)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5733408),
 						errmsg(
-							"one may not specify the bounds as 'partition' without specifying "
-							"a non-empty array of partitionByFields. You may have meant to specify 'full' bounds.")));
+							"Bounds cannot be set as 'partition' unless a non-empty array of partitionByFields is provided; "
+							"perhaps you intended to use 'full' bounds instead.")));
 	}
 
 	if (arguments->densifyType == DENSIFY_TYPE_RANGE)
@@ -1283,35 +1285,34 @@ PopulateDensifyArgs(DensifyArguments *arguments, const pgbson *densifySpec)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5733402),
 							errmsg(
-								"the bounds in a range statement must be the string 'full', 'partition',"
-								" or an ascending array of two numbers or two dates")));
+								"Range bounds must be 'full', 'partition', or an ascending array of two numbers or two dates.")));
 		}
 		else if (BsonTypeIsNumber(arguments->lowerBound.value_type) &&
 				 arguments->timeUnit != DateUnit_Invalid)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5733409),
-							errmsg("numeric bounds may not have unit parameter")));
+							errmsg("Numeric bounds cannot include a unit parameter")));
 		}
 		else if (BsonValueIsNumber(&arguments->lowerBound) &&
 				 arguments->upperBound.value_type == BSON_TYPE_DATE_TIME)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5733406),
 							errmsg(
-								"a bounding array must contain either both dates or both numeric types")));
+								"A bounding array is required to include either a pair of dates or a pair of numeric values.")));
 		}
 		else if (BsonValueIsNumber(&arguments->upperBound) &&
 				 arguments->lowerBound.value_type == BSON_TYPE_DATE_TIME)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5733402),
 							errmsg(
-								"a bounding array must be an ascending array of either two dates or two numbers")));
+								"A bounding array is required to be sorted in ascending order and must contain either two dates or two numerical values.")));
 		}
 		else if (arguments->lowerBound.value_type == BSON_TYPE_DATE_TIME &&
 				 !IsBsonValueFixedInteger(&arguments->step))
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION6586400),
 							errmsg(
-								"The step parameter in a range satement must be a whole number when densifying a date range")));
+								"The step parameter in a range statement must always be an integer value when performing date range densify")));
 		}
 		else if (arguments->timeUnit == DateUnit_Invalid &&
 				 !(arguments->step.value_type == arguments->lowerBound.value_type &&
@@ -1319,7 +1320,7 @@ PopulateDensifyArgs(DensifyArguments *arguments, const pgbson *densifySpec)
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION5876900),
 							errmsg(
-								"Upper bound, lower bound, and step must all have the same type")));
+								"Upper bound, lower bound, and step values must each be of identical type")));
 		}
 	}
 }
@@ -1397,7 +1398,7 @@ GenerateAndWriteDocumentsInRange(const bson_value_t *minValue, const
 	if (compareResult == 0)
 	{
 		/*
-		 * Mongodb retains the last seen value and maintains its type.
+		 * Retain the last seen value and maintains its type.
 		 * Copy the original value of max as this is matched completely
 		 * and then add the step to maintain type
 		 */
@@ -1532,10 +1533,12 @@ CreateProjectionTreeStateForPartitionBy(DensifyWindowState *state, pgbson *parti
 
 	bool forceProjectId = false;
 	bool allowInclusionExclusion = true;
+	pgbson *variableSpec = NULL;
 	state->partitionByTreeState =
 		(BsonProjectionQueryState *) GetProjectionStateForBsonProject(&iter,
 																	  forceProjectId,
-																	  allowInclusionExclusion);
+																	  allowInclusionExclusion,
+																	  variableSpec);
 }
 
 
@@ -1551,7 +1554,7 @@ GetValidPartitionAwareState(DensifyWindowState *state, pgbson *document)
 
 	if (partitionState->isInitialized)
 	{
-		/* Already initialized, nothing to do */
+		/* Already initialized, no further action required */
 		return partitionState;
 	}
 
@@ -1716,7 +1719,7 @@ GenerateSelectNullQuery()
 	query->canSetTag = true;
 	query->rtable = NIL;
 
-	/* Create an empty jointree */
+	/* Create an empty jointree structure */
 	query->jointree = makeNode(FromExpr);
 
 	/* Create the projector for NULL::bson */

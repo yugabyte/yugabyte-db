@@ -4,7 +4,9 @@
   justify-content: space-between;
 
   @media (min-width: 992px) {
-    margin: 20px 0;
+    &:not(.header-version-dropdown) {
+      margin: 20px 0;
+    }
   }
 
   .dropdown-menu {
@@ -88,7 +90,7 @@
       vertical-align: middle;
       content: "\f107";
       color: #97a5b0;
-      font-family: $font-awesome-font-name;
+      font-family: $td-font-awesome-font-name;
       font-weight: 700;
       border: 0;
       width: 20px;

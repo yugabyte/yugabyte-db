@@ -31,7 +31,7 @@
 //
 #include "yb/tablet/tablet_metrics.h"
 
-#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/pgsql_protocol.messages.h"
 
 #include "yb/util/metrics.h"
 
@@ -173,6 +173,12 @@ METRIC_DEFINE_counter(tablet, docdb_obsolete_keys_found_past_cutoff,
     yb::MetricUnit::kKeys,
     "Number of obsolete keys found in RocksDB searches that were past history cutoff");
 
+METRIC_DEFINE_counter(tablet, backfill_reads_rejected_below_history_cutoff,
+    "Backfill Reads Rejected Below History Cutoff",
+    yb::MetricUnit::kRequests,
+    "Number of index backfill reads of the indexed table rejected with SnapshotTooOld because "
+    "their fixed read time is below the tablet's history cutoff");
+
 METRIC_DEFINE_gauge_int64(tablet, active_write_query_objects,
     "Active WriteQuery Objects",
     yb::MetricUnit::kOperations,
@@ -250,6 +256,9 @@ const CounterEntry kCounters[] = {
   {pggate::YB_STORAGE_COUNTER_DOCDB_OBSOLETE_KEYS_FOUND_PAST_CUTOFF,
       TabletCounters::kDocDBObsoleteKeysFoundPastCutoff,
       &METRIC_docdb_obsolete_keys_found_past_cutoff},
+  {pggate::YB_STORAGE_COUNTER_BACKFILL_READS_REJECTED_BELOW_HISTORY_CUTOFF,
+      TabletCounters::kBackfillReadsRejectedBelowHistoryCutoff,
+      &METRIC_backfill_reads_rejected_below_history_cutoff},
 };
 
 const CounterEntry kCountersForPgStatStatements[] = {
@@ -433,6 +442,17 @@ void ScopedTabletMetrics::AddAggregateStats(
 
 void ScopedTabletMetrics::CopyToPgsqlResponse(
     PgsqlResponsePB* response, PgsqlMetricsCaptureType metrics_capture) const {
+  DoCopyToPgsqlResponse(response, metrics_capture);
+}
+
+void ScopedTabletMetrics::CopyToPgsqlResponse(
+    LWPgsqlResponsePB* response, PgsqlMetricsCaptureType metrics_capture) const {
+  DoCopyToPgsqlResponse(response, metrics_capture);
+}
+
+template <class PB>
+void ScopedTabletMetrics::DoCopyToPgsqlResponse(
+    PB* response, PgsqlMetricsCaptureType metrics_capture) const {
   const auto& metrics_lists = GetMetricsForCaptureType(metrics_capture);
   auto* metrics = response->mutable_metrics();
   for (const auto& counter : metrics_lists.counters) {

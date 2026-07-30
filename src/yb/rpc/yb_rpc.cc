@@ -20,7 +20,6 @@
 #include "yb/common/common.pb.h"
 
 #include "yb/gutil/casts.h"
-#include "yb/gutil/endian.h"
 
 #include "yb/rpc/connection.h"
 #include "yb/rpc/messenger.h"
@@ -29,13 +28,9 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/serialization.h"
 
-#include "yb/util/crc.h"
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
-#include "yb/util/memory/memory.h"
 #include "yb/util/result.h"
-#include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 
 using std::string;
@@ -58,8 +53,7 @@ DECLARE_int64(rpc_throttle_threshold_bytes);
 DECLARE_uint64(rpc_connection_timeout_ms);
 DECLARE_uint64(rpc_max_message_size);
 
-namespace yb {
-namespace rpc {
+namespace yb::rpc {
 
 constexpr const auto kHeartbeatsPerTimeoutPeriod = 3;
 
@@ -137,7 +131,7 @@ Result<ProcessCallsResult> YBInboundConnectionContext::ProcessCalls(
   if (state_ == RpcConnectionPB::NEGOTIATING) {
     // We assume that header is fully contained in the first block.
     if (data[0].iov_len < kConnectionHeaderSize) {
-      return ProcessCallsResult{ 0, Slice() };
+      return ProcessCallsResult{.consumed = 0, .buffer = Slice()};
     }
 
     Slice slice(static_cast<const char*>(data[0].iov_base), data[0].iov_len);
@@ -163,6 +157,7 @@ namespace {
 
 Status ThrottleRpcStatus(const MemTrackerPtr& throttle_tracker, const YBInboundCall& call) {
   if (ShouldThrottleRpc(throttle_tracker, call.request_data().size(), "Rejecting RPC call: ")) {
+    call.RecordCallRejectedDueToMemoryPressure();
     return STATUS_FORMAT(ServiceUnavailable, "Call rejected due to memory pressure: $0", call);
   } else {
     return Status::OK();
@@ -264,7 +259,7 @@ YBInboundCall::YBInboundCall(
     CallStateListenerFactory* call_state_listener_factory)
     : InboundCall(
           std::move(conn),
-          nullptr /* rpc_metrics */,
+          /*rpc_metrics=*/nullptr,
           call_processed_listener,
           call_state_listener_factory),
       sidecars_(&consumption_) {}
@@ -276,7 +271,7 @@ YBInboundCall::YBInboundCall(
     : InboundCall(
           nullptr /* conn */,
           rpc_metrics,
-          nullptr /* call_processed_listener */,
+          /*call_processed_listener=*/nullptr,
           call_state_listener_factory),
       sidecars_(&consumption_) {
   header_.remote_method = remote_method.serialized_body();
@@ -430,7 +425,7 @@ Status YBInboundCall::ParseParam(RpcCallParams* params) {
 
 void YBInboundCall::RespondSuccess(AnyMessageConstPtr response) {
   TRACE_EVENT0("rpc", "InboundCall::RespondSuccess");
-  Respond(response, true);
+  Respond(response, /*is_success=*/true);
 }
 
 void YBInboundCall::RespondFailure(ErrorStatusPB::RpcErrorCodePB error_code,
@@ -444,14 +439,14 @@ void YBInboundCall::RespondFailure(ErrorStatusPB::RpcErrorCodePB error_code,
   err.set_message(status.ToString());
   err.set_code(error_code);
 
-  Respond(AnyMessageConstPtr(&err), false);
+  Respond(AnyMessageConstPtr(&err), /*is_success=*/false);
 }
 
 void YBInboundCall::RespondApplicationError(int error_ext_id, const std::string& message,
                                             const MessageLite& app_error_pb) {
   ErrorStatusPB err;
   ApplicationErrorToPB(error_ext_id, message, app_error_pb, &err);
-  Respond(AnyMessageConstPtr(&err), false);
+  Respond(AnyMessageConstPtr(&err), /*is_success=*/false);
 }
 
 void YBInboundCall::ApplicationErrorToPB(int error_ext_id, const std::string& message,
@@ -518,7 +513,7 @@ Status YBOutboundConnectionContext::AssignConnection(const ConnectionPtr& connec
 
 Result<ProcessCallsResult> YBOutboundConnectionContext::ProcessCalls(
     const ConnectionPtr& connection, const IoVecs& data, ReadBufferFull read_buffer_full) {
-  return parser().Parse(connection, data, read_buffer_full, nullptr /* tracker_for_throttle */);
+  return parser().Parse(connection, data, read_buffer_full, /*tracker_for_throttle=*/nullptr);
 }
 
 void YBOutboundConnectionContext::UpdateLastRead(const ConnectionPtr& connection) {
@@ -558,5 +553,4 @@ void YBOutboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents)
   timer_.Start(deadline - now);
 }
 
-} // namespace rpc
-} // namespace yb
+} // namespace yb::rpc

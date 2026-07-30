@@ -13,7 +13,11 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#pragma once
+// YB: include guard instead of pragma once: this header is installed into
+// the PostgreSQL server include directory, and pragma once does not
+// deduplicate identical copies of a header visible via two paths.
+#ifndef YB_YQL_PGGATE_PG_METRICS_LIST_H
+#define YB_YQL_PGGATE_PG_METRICS_LIST_H
 
 #ifdef __cplusplus
 
@@ -201,6 +205,7 @@ typedef enum PgAnalyzeCounterMetrics {
     YB_STORAGE_COUNTER_DOCDB_KEYS_FOUND,
     YB_STORAGE_COUNTER_DOCDB_OBSOLETE_KEYS_FOUND,
     YB_STORAGE_COUNTER_DOCDB_OBSOLETE_KEYS_FOUND_PAST_CUTOFF,
+    YB_STORAGE_COUNTER_BACKFILL_READS_REJECTED_BELOW_HISTORY_CUTOFF,
 
     YB_STORAGE_COUNTER_COUNT,
 } YbPgCounterMetrics;
@@ -259,3 +264,5 @@ typedef enum PgAnalyzeEventStatsMetrics {
 } // namespace yb::pggate
 
 #endif // __cplusplus
+
+#endif  // YB_YQL_PGGATE_PG_METRICS_LIST_H

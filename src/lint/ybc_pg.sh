@@ -36,8 +36,10 @@ echo "$1" \
         # correctly find the corresponding opening "{" if comments have
         # non-matching braces.  Perhaps make this language aware in the future,
         # or adjust such comments.
+        # In vim 9.1+ ex mode, the +'0' and +'/pattern/' commands print to
+        # stdout; pipe through tail -1 to keep only the w! output.
         first_line=$(vi -ens +'0' +"/^} $symbol;" +'normal 0%' +'0,.-1d' \
-                       +'.1,$d' +'w! /dev/stdout' +'q' "$1")
+                       +'.1,$d' +'w! /dev/stdout' +'q' "$1" | tail -1)
         # In the common case, there is no name following enum/struct/union, so
         # there is nothing to check.
         if grep -Eq "^typedef (enum|struct|union) {" <<<"$first_line"; then

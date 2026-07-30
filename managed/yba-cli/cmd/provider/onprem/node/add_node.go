@@ -131,7 +131,7 @@ var addNodesCmd = &cobra.Command{
 			Ip:           nodeIP,
 			Region:       region,
 			Zone:         zone,
-			SshUser:      sshUser,
+			SshUser:      &sshUser,
 		}
 		nodeList := make([]ybaclient.NodeInstanceData, 0)
 		nodeList = append(nodeList, node)

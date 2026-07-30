@@ -10,9 +10,8 @@
 import React, { useState } from 'react';
 import moment from 'moment';
 import { useSelector } from 'react-redux';
-import { keyBy, mapValues, capitalize, lowerCase, find } from 'lodash';
-import { Backup_Options_Type, IBackup, CustomerConfig, IUniverse } from './IBackup';
-import { Backup_States } from '../common/IBackup';
+import { keyBy, mapValues, capitalize, lowerCase, find, flatMap } from 'lodash';
+import { Backup_Options_Type, Backup_States, CustomerConfig, IBackup, IUniverse } from './IBackup';
 import { Alert } from 'react-bootstrap';
 import { TableType } from '../../../redesign/helpers/dtos';
 import { RunTimeConfig } from '../../../redesign/features/universe/universe-form/utils/dto';
@@ -22,7 +21,9 @@ import './BackupUtils.scss';
 export const BACKUP_REFETCH_INTERVAL = 20 * 1000;
 export const BACKUP_PITR_ENABLED = 'yb.ui.feature_flags.off_cluster_pitr_enabled';
 export const PATH_STYLE_ACCESS = 'yb.ui.feature_flags.enable_path_style_access';
+export const CHUNKED_ENCODING = 'yb.ui.feature_flags.enable_chunked_encoding';
 export const ENABLE_SIGNING_REGION = 'yb.ui.feature_flags.enable_signing_region';
+export const ENABLE_S3_BACKUP_PROXY = 'yb.ui.feature_flags.enable_s3_backup_proxy';
 
 /**
  * Calculates the difference between two dates
@@ -68,11 +69,11 @@ export const BACKUP_STATUS_OPTIONS: { value: Backup_States | null; label: string
     value: null
   },
   {
-    label: 'In Progress',
+    label: 'Backup In Progress',
     value: Backup_States.IN_PROGRESS
   },
   {
-    label: 'Completed',
+    label: 'Backup Completed',
     value: Backup_States.COMPLETED
   },
   {
@@ -80,7 +81,7 @@ export const BACKUP_STATUS_OPTIONS: { value: Backup_States | null; label: string
     value: Backup_States.DELETE_IN_PROGRESS
   },
   {
-    label: 'Failed',
+    label: 'Backup Failed',
     value: Backup_States.FAILED
   },
   {
@@ -92,11 +93,11 @@ export const BACKUP_STATUS_OPTIONS: { value: Backup_States | null; label: string
     value: Backup_States.QUEUED_FOR_DELETION
   },
   {
-    label: 'Skipped',
+    label: 'Backup Skipped',
     value: Backup_States.SKIPPED
   },
   {
-    label: 'Cancelled',
+    label: 'Backup Cancelled',
     value: Backup_States.STOPPED
   }
 ];
@@ -252,6 +253,47 @@ export const isPathStyleAccess = (runtimeConfigs: RunTimeConfig) => {
   return find(runtimeConfigs?.configEntries, (config) => config.key === PATH_STYLE_ACCESS)?.value === 'true';
 };
 
+export const isChunkedEncodingEnabled = (runtimeConfigs: RunTimeConfig) => {
+  return find(runtimeConfigs?.configEntries, (config) => config.key === CHUNKED_ENCODING)?.value === 'true';
+};
+
 export const isSigningRegionEnabled = (runtimeConfigs: RunTimeConfig) => {
   return find(runtimeConfigs?.configEntries, (config) => config.key === ENABLE_SIGNING_REGION)?.value === 'true';
 };
+
+export const isS3BackupProxyEnabled = (runtimeConfigs: RunTimeConfig) => {
+  return find(runtimeConfigs?.configEntries, (config) => config.key === ENABLE_S3_BACKUP_PROXY)?.value === 'true';
+};
+
+export const isImmutableStorageEnabled = (storageConfigs: any, storageConfigUUID: string) => {
+  const selectedStorageConfig: any = flatMap((storageConfigs as any).map((c:any) => c.options))
+    .find((c: any) => c.value === storageConfigUUID);
+  return selectedStorageConfig?.data?.IMMUTABLE_STORAGE ?? false;
+};
+
+export const hasImmutableStorageAmongBackups = (
+  groupedStorageConfigs: any,
+  backups: IBackup[]
+): boolean =>
+  backups.some((backup) =>
+    isImmutableStorageEnabled(groupedStorageConfigs, backup.commonBackupInfo.storageConfigUUID)
+  );
+
+export const AZURE_IMMUTABLE_STORAGE_MSG = (noIcon = false) => (
+  <span className="alert-message warning">
+    {noIcon ? null : <i className="fa fa-warning" />}
+    <span>
+      <b>Warning!</b> You have selected immutable storage. When a backup is deleted, only the YBA metadata is removed.<br/>
+      The backup itself is <b>not deleted</b> from the cloud storage 
+    </span>
+  </span>
+);
+
+export const BACKUP_WITH_IMMUTABLE_STORAGE_MSG = () => (
+  <span className="alert-message warning">
+    <span>
+      <b>Warning!</b> Some of the selected items use a storage configuration with immutable storage enabled.
+      Proceeding with the deletion will <b>remove only the YBA metadata</b>. The actual backup data will remain in the cloud storage. 
+    </span>
+  </span>
+);

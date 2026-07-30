@@ -20,8 +20,11 @@
 #include <boost/ptr_container/ptr_vector.hpp>
 #include <gtest/gtest.h>
 
+#include "yb/util/logging_test_util.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/test_util.h"
+
+DECLARE_uint64(malloc_with_check_large_alloc_threshold_bytes);
 
 using namespace std::literals;
 
@@ -196,6 +199,28 @@ TEST_F(RefCntBufferTest, TestThreads) {
 
   for (auto& queue : queues) {
     queue.Assert();
+  }
+}
+
+TEST_F(RefCntBufferTest, LargeAllocationLogging) {
+  // Use a threshold where RefCntBuffer's internal overhead (~16 bytes) doesn't affect the test.
+  const size_t kTestThreshold = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_malloc_with_check_large_alloc_threshold_bytes) = kTestThreshold;
+
+  // Small allocation, should not trigger warning.
+  {
+    StringWaiterLogSink log_waiter("Large allocation in malloc_with_check");
+    RefCntBuffer small_buffer(100);
+    ASSERT_TRUE(small_buffer);
+    ASSERT_FALSE(log_waiter.IsEventOccurred());
+  }
+
+  // Large allocation, should trigger warning log.
+  {
+    StringWaiterLogSink log_waiter("Large allocation in malloc_with_check");
+    RefCntBuffer large_buffer(kTestThreshold);
+    ASSERT_TRUE(large_buffer);
+    ASSERT_TRUE(log_waiter.IsEventOccurred());
   }
 }
 

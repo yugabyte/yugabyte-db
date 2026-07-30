@@ -32,6 +32,9 @@
 
 #include "yb/tablet/operations/write_operation.h"
 
+#include "yb/common/pgsql_error.h"
+#include "yb/common/transaction_error.h"
+
 #include "yb/consensus/consensus.messages.h"
 
 #include "yb/tablet/tablet.h"
@@ -47,8 +50,7 @@ DEFINE_test_flag(int32, tablet_inject_latency_on_apply_write_txn_ms, 0,
 DEFINE_test_flag(bool, tablet_pause_apply_write_ops, false,
                  "Pause applying of write operations.");
 
-namespace yb {
-namespace tablet {
+namespace yb::tablet {
 
 template <>
 void RequestTraits<LWWritePB>::SetAllocatedRequest(
@@ -72,37 +74,30 @@ Status WriteOperation::DoAborted(const Status& status) {
 }
 
 void WriteOperation::SetAsyncWrite(AsyncWriteCallback callback) {
-  added_to_leader_callback_ = std::move(callback);
+  async_write_callback_ = std::move(callback);
 }
 
-void WriteOperation::AddedAsPending(const TabletPtr& tablet) {
-  if (added_to_leader_callback_) {
-    Status complete_status;
-    auto status = DoReplicated(op_id().term, &complete_status);
-    if (!status.ok()) {
-      complete_status = status;
-    }
-    if (complete_status.ok()) {
-      added_to_leader_callback_(op_id());
-    } else {
-      added_to_leader_callback_(complete_status);
-    }
-    added_to_leader_callback_ = {};
+void WriteOperation::SubmittedToLeaderQueue() {
+  if (!async_write_callback_) {
+    return;
   }
+  // Run the callbacks here rather than in AddedAsPending since that can fail after the fact and get
+  // rolled back (see RollbackIdAndDeleteOpId). Since the OpId can get reused, that would make the
+  // async tracking potentially invalid.
+  Status complete_status = ApplyOperation(op_id().term, /*skip_opid_update=*/true);
+  if (complete_status.ok()) {
+    async_write_callback_(op_id());
+  } else {
+    async_write_callback_(std::move(complete_status));
+  }
+  async_write_callback_ = {};
 }
 
-// FIXME: Since this is called as a void in a thread-pool callback,
-// it seems pointless to return a Status!
-Status WriteOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
-  if (do_replicated_completed_) {
-    *complete_status = Status::OK();
-    return Status::OK();
-  }
-
+Status WriteOperation::ApplyOperation(int64_t leader_term, bool skip_opid_update) {
   TRACE_EVENT0("txn", "WriteOperation::Complete");
   TRACE("APPLY: Starting");
 
-  auto injected_latency = GetAtomicFlag(&FLAGS_TEST_tablet_inject_latency_on_apply_write_txn_ms);
+  auto injected_latency = FLAGS_TEST_tablet_inject_latency_on_apply_write_txn_ms;
   if (PREDICT_FALSE(injected_latency) > 0) {
       TRACE("Injecting $0ms of latency due to --TEST_tablet_inject_latency_on_apply_write_txn_ms",
             injected_latency);
@@ -111,16 +106,32 @@ Status WriteOperation::DoReplicated(int64_t leader_term, Status* complete_status
     TEST_PAUSE_IF_FLAG(TEST_tablet_pause_apply_write_ops);
   }
 
-  *complete_status = VERIFY_RESULT(tablet_safe())->ApplyRowOperations(this);
-  // Failure is regular case, since could happen because transaction was aborted, while
-  // replicating its intents.
-  LOG_IF(INFO, !complete_status->ok()) << "Apply operation failed: " << *complete_status;
+  RETURN_NOT_OK(VERIFY_RESULT(tablet_safe())
+                    ->ApplyRowOperations(
+                        this, /*apply_to_storages=*/docdb::StorageSet::All(), skip_opid_update));
 
-  // Now that all of the changes have been applied and the commit is durable
-  // make the changes visible to readers.
+  // Now that all of the changes have been applied make the changes visible to readers.
   TRACE("FINISH: making edits visible");
 
-  do_replicated_completed_ = true;
+  apply_completed_ = true;
+
+  return Status::OK();
+}
+
+// FIXME: Since this is called as a void in a thread-pool callback,
+// it seems pointless to return a Status!
+Status WriteOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
+  if (apply_completed_) {
+    // If the apply completed, we need to update the op id.
+    *complete_status = VERIFY_RESULT(tablet_safe())->UpdateOpIdForOperation(this);
+  } else {
+    *complete_status = ApplyOperation(leader_term, /*skip_opid_update=*/false);
+  }
+
+  // Failure is regular case, since could happen because transaction was aborted, while
+  // replicating its intents.
+  LOG_IF(FATAL, !complete_status->ok() && !IsTxnAborted(*complete_status))
+      << "Apply operation failed: " << *complete_status;
 
   return Status::OK();
 }
@@ -132,5 +143,10 @@ HybridTime WriteOperation::WriteHybridTime() const {
   return Operation::WriteHybridTime();
 }
 
-}  // namespace tablet
-}  // namespace yb
+bool IsTxnAborted(const Status& status) {
+  auto txn_error = TransactionError::ValueFromStatus(status);
+  return txn_error == TransactionErrorCode::kDeadlock ||
+         txn_error == TransactionErrorCode::kAborted;
+}
+
+}  // namespace yb::tablet

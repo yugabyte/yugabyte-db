@@ -8,22 +8,36 @@
  *-------------------------------------------------------------------------
  */
 
-#include <postgres.h>
-#include <regex.h>
+ #include <postgres.h>
+ #include <regex.h>
 
-#include "io/bson_core.h"
-#include "operators/bson_expression.h"
-#include "operators/bson_expression_operators.h"
-#include "types/decimal128.h"
-#include "utils/version_utils.h"
-#include <utils/uuid.h>
-#include "metadata/metadata_cache.h"
+ #include "common/base64.h"
+ #include "io/bson_core.h"
+ #include "operators/bson_expression.h"
+ #include "operators/bson_expression_operators.h"
+ #include "operators/bson_expression_date_operators.h"
+ #include "types/decimal128.h"
+ #include "utils/version_utils.h"
+ #include <utils/uuid.h>
+ #include "metadata/metadata_cache.h"
+
+ #define UUID_STRING_LEN 36
 
 /* --------------------------------------------------------- */
 /* Type definitions */
 /* --------------------------------------------------------- */
 typedef void (*ProcessToTypeOperator)(const bson_value_t *currentValue,
 									  bson_value_t *result);
+
+typedef struct ConvertToTypeArguments
+{
+	AggregationExpressionData *inputData;
+	AggregationExpressionData *toData;
+	AggregationExpressionData *formatData;
+	AggregationExpressionData *onNullData;
+	AggregationExpressionData *onErrorData;
+} ConvertToTypeArguments;
+
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -35,16 +49,22 @@ static void ProcessDollarToObjectId(const bson_value_t *currentValue,
 									bson_value_t *result);
 static void ProcessDollarToInt(const bson_value_t *currentValue, bson_value_t *result);
 static void ProcessDollarToLong(const bson_value_t *currentValue, bson_value_t *result);
-static void ProcessDollarToString(const bson_value_t *currentValue, bson_value_t *result);
+static void ProcessDollarToString(const bson_value_t *currentValue, const
+								  bson_value_t *format,
+								  bson_value_t *result);
 static void ProcessDollarToDate(const bson_value_t *currentValue, bson_value_t *result);
 static void ProcessDollarToDouble(const bson_value_t *currentValue, bson_value_t *result);
 static void ProcessDollarToDecimal(const bson_value_t *currentValue,
 								   bson_value_t *result);
+static void ProcessDollarConvert(List *arguments, bson_value_t *result);
 static void ProcessDollarToUUID(const bson_value_t *currentValue, bson_value_t *result);
-static void ProcessDollarConvert(const bson_value_t *currentValue, bson_value_t *result,
-								 bson_type_t toType);
 static void ProcessDollarToHashedIndexKey(const bson_value_t *currentValue,
 										  bson_value_t *result);
+static void ProcessDollarToBinData(const bson_value_t *currentValue,
+								   const bson_type_t *toType,
+								   const bson_subtype_t toSubtype,
+								   const bson_value_t *format,
+								   bson_value_t *result);
 
 static void ParseTypeOperatorOneOperand(const bson_value_t *argument,
 										AggregationExpressionData *data,
@@ -57,7 +77,7 @@ static void HandlePreParsedTypeOperatorOneOperand(pgbson *doc, void *arguments,
 												  ProcessToTypeOperator
 												  processOperatorFunc);
 
-static void ApplyDollarConvert(const bson_value_t *inputValue, const bson_type_t toType,
+static void ApplyDollarConvert(List *arguments,
 							   const AggregationExpressionData *onErrorData,
 							   bson_value_t *result, bool *hasError);
 
@@ -65,13 +85,23 @@ static int32_t ConvertStringToInt32(const bson_value_t *value);
 static int64_t ConvertStringToInt64(const bson_value_t *value);
 static double ConvertStringToDouble(const bson_value_t *value);
 static bson_decimal128_t ConvertStringToDecimal128(const bson_value_t *value);
+static void GetToTypeAndSubTypeForConvert(const bson_value_t *toValue,
+										  bson_value_t *toType,
+										  bson_subtype_t *toSubtype);
+static bool ValidateUUIDString(const char *string);
+static void ConvertUUIDStringToPgUUID(const char *uuidString, bson_value_t *result);
 static void ValidateStringIsNotHexBase(const bson_value_t *value);
+static void ValidateConvertToTypeFormat(const bson_value_t formatValue);
 static void ValidateValueIsNotNaNOrInfinity(const bson_value_t *value);
 static void ValidateAndGetConvertToType(const bson_value_t *value, bson_type_t *toType);
-static inline void ThrowInvalidConversionError(bson_type_t sourceType, bson_type_t
-											   targetType);
+static inline void ThrowInvalidConversionError(bson_type_t sourceType,
+											   bson_type_t targetType);
 static inline void ThrowOverflowTargetError(const bson_value_t *value);
-static inline void ThrowFailedToParseNumber(const char *value, const char *reason);
+static inline void ThrowFailedToParseNumberError(const char *value, const char *reason);
+static inline void ThrowFailedToParseBinDataError(const char *value, const char *reason);
+static inline void ThrowFailedToParseBinDataDeprecatedSubTypeError(int deprecatedSubType,
+																   int supportedSubType);
+static void ValidateBinDataSubType(const bson_subtype_t toSubtype);
 
 /* --------------------------------------------------------- */
 /* Parse and handle pre-parse functions */
@@ -233,8 +263,35 @@ void
 ParseDollarToString(const bson_value_t *argument, AggregationExpressionData *data,
 					ParseAggregationExpressionContext *context)
 {
-	ParseTypeOperatorOneOperand(argument, data, "$toString", context,
-								ProcessDollarToString);
+	int numOfRequiredArgs = 1;
+	AggregationExpressionData *parsedData = ParseFixedArgumentsForExpression(argument,
+																			 numOfRequiredArgs,
+																			 "$toString",
+																			 &data->
+																			 operator.
+																			 argumentsKind,
+																			 context);
+
+	/* If the arguments is constant: compute comparison result, change
+	 * expression type to constant, store the result in the expression value
+	 * and free the arguments list as it won't be needed anymore. */
+	if (IsAggregationExpressionConstant(parsedData))
+	{
+		/* format value for conversion from binData */
+		bson_value_t format = { 0 };
+		format.value_type = BSON_TYPE_UTF8;
+		format.value.v_utf8.str = "auto";
+		format.value.v_utf8.len = 4;
+
+		ProcessDollarToString(&parsedData->value, &format, &data->value);
+		data->kind = AggregationExpressionKind_Constant;
+		pfree(parsedData);
+	}
+	else
+	{
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
+		data->operator.arguments = parsedData;
+	}
 }
 
 
@@ -245,8 +302,22 @@ void
 HandlePreParsedDollarToString(pgbson *doc, void *arguments,
 							  ExpressionResult *expressionResult)
 {
-	HandlePreParsedTypeOperatorOneOperand(doc, arguments, expressionResult,
-										  ProcessDollarToString);
+	AggregationExpressionData *argument = (AggregationExpressionData *) arguments;
+
+	bool isNullOnEmpty = false;
+	ExpressionResult childResult = ExpressionResultCreateChild(expressionResult);
+	EvaluateAggregationExpressionData(argument, doc, &childResult, isNullOnEmpty);
+	bson_value_t currentValue = childResult.value;
+
+	/* format value for conversion from binData */
+	bson_value_t format = { 0 };
+	format.value_type = BSON_TYPE_UTF8;
+	format.value.v_utf8.str = "auto";
+	format.value.v_utf8.len = 4;
+
+	bson_value_t result = { 0 };
+	ProcessDollarToString(&currentValue, &format, &result);
+	ExpressionResultSetValue(expressionResult, &result);
 }
 
 
@@ -409,7 +480,7 @@ ParseDollarConvert(const bson_value_t *argument, AggregationExpressionData *data
 	if (argument->value_type != BSON_TYPE_DOCUMENT)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
-							"$convert expects an object of named arguments but found: %s",
+							"$convert requires an object containing named arguments, but instead received: %s",
 							BsonTypeName(argument->value_type))));
 	}
 
@@ -417,6 +488,7 @@ ParseDollarConvert(const bson_value_t *argument, AggregationExpressionData *data
 	bson_value_t toExpression = { 0 };
 	bson_value_t onErrorExpression = { 0 };
 	bson_value_t onNullExpression = { 0 };
+	bson_value_t formatExpression = { 0 };
 
 	bson_iter_t docIter;
 	BsonValueInitIterator(argument, &docIter);
@@ -432,6 +504,10 @@ ParseDollarConvert(const bson_value_t *argument, AggregationExpressionData *data
 		{
 			toExpression = *bson_iter_value(&docIter);
 		}
+		else if (strcmp(key, "format") == 0)
+		{
+			formatExpression = *bson_iter_value(&docIter);
+		}
 		else if (strcmp(key, "onError") == 0)
 		{
 			onErrorExpression = *bson_iter_value(&docIter);
@@ -443,7 +519,7 @@ ParseDollarConvert(const bson_value_t *argument, AggregationExpressionData *data
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
-								"$convert found an unknown argument: %s",
+								"$convert encountered an unrecognized argument: %s",
 								key)));
 		}
 	}
@@ -457,46 +533,88 @@ ParseDollarConvert(const bson_value_t *argument, AggregationExpressionData *data
 	if (toExpression.value_type == BSON_TYPE_EOD)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
-							"Missing 'to' parameter to $convert")));
+							"'to' parameter is missing for $convert")));
 	}
+
+	ConvertToTypeArguments *arguments = palloc0(sizeof(ConvertToTypeArguments));
 
 	/* onError and onNull expressions are evaluated first,
 	 * regardless of if they are going to be needed or not. */
-	AggregationExpressionData *onErrorData = NULL;
 	if (onErrorExpression.value_type != BSON_TYPE_EOD)
 	{
-		onErrorData = palloc0(sizeof(AggregationExpressionData));
-		ParseAggregationExpressionData(onErrorData, &onErrorExpression, context);
+		arguments->onErrorData = palloc0(sizeof(AggregationExpressionData));
+		ParseAggregationExpressionData(arguments->onErrorData, &onErrorExpression,
+									   context);
 	}
 
-	AggregationExpressionData *onNullData = NULL;
 	if (onNullExpression.value_type != BSON_TYPE_EOD)
 	{
-		onNullData = palloc0(sizeof(AggregationExpressionData));
-		ParseAggregationExpressionData(onNullData, &onNullExpression, context);
+		arguments->onNullData = palloc0(sizeof(AggregationExpressionData));
+		ParseAggregationExpressionData(arguments->onNullData, &onNullExpression, context);
 	}
 
+	bool isFormatUndefinedOrConstant = true;
+	bson_value_t formatValue = { 0 };
+	if (!IsExpressionResultNullOrUndefined(&formatExpression))
+	{
+		arguments->formatData = palloc0(sizeof(AggregationExpressionData));
+		ParseAggregationExpressionData(arguments->formatData, &formatExpression,
+									   context);
+
+		isFormatUndefinedOrConstant = IsAggregationExpressionConstant(
+			arguments->formatData);
+		if (isFormatUndefinedOrConstant)
+		{
+			formatValue = arguments->formatData->value;
+
+			if (!IsExpressionResultNullOrUndefined(&formatValue))
+			{
+				ValidateConvertToTypeFormat(formatValue);
+			}
+		}
+	}
 
 	/* Then evaluate <to-expression>, <input-expression> in this order. */
-	AggregationExpressionData *toData = palloc0(sizeof(AggregationExpressionData));
-	ParseAggregationExpressionData(toData, &toExpression, context);
+	arguments->toData = palloc0(sizeof(AggregationExpressionData));
+	ParseAggregationExpressionData(arguments->toData, &toExpression, context);
 
-	bson_type_t toType;
-	if (IsAggregationExpressionConstant(toData))
+	bson_type_t toType = BSON_TYPE_EOD;
+	bson_subtype_t toSubtype = BSON_SUBTYPE_BINARY;
+	bson_value_t originalToValue = arguments->toData->value;
+
+	if (IsAggregationExpressionConstant(arguments->toData))
 	{
-		ValidateAndGetConvertToType(&toData->value, &toType);
+		/*  <to-expression> could be { "to": {type: <targetType>, "subtype": <subtype> } } */
+		/* The subtype specification is considered optional */
+		if (originalToValue.value_type == BSON_TYPE_DOCUMENT)
+		{
+			/* Extract and validate the to.type and subtype. */
+			GetToTypeAndSubTypeForConvert(&originalToValue,
+										  &arguments->toData->value,
+										  &toSubtype);
+		}
+
+		ValidateAndGetConvertToType(&arguments->toData->value, &toType);
+
+		if (toType == BSON_TYPE_BINARY)
+		{
+			ValidateBinDataSubType(toSubtype);
+		}
 	}
 
-	AggregationExpressionData *inputData = palloc0(sizeof(AggregationExpressionData));
-	ParseAggregationExpressionData(inputData, &inputExpression, context);
+	arguments->inputData = palloc0(sizeof(AggregationExpressionData));
+	ParseAggregationExpressionData(arguments->inputData, &inputExpression, context);
 
-	/* The parsed arguments should be in this order. */
-	List *arguments = list_make4(inputData, toData, onErrorData, onNullData);
 	bool evaluatedOnConstants = false;
-
-	if (IsAggregationExpressionConstant(inputData))
+	if (IsAggregationExpressionConstant(arguments->inputData))
 	{
-		bson_value_t inputValue = inputData->value;
+		bson_value_t inputValue = arguments->inputData->value;
+		if (inputValue.value_type == BSON_TYPE_BINARY &&
+			!IsExpressionResultNullOrUndefined(&formatValue))
+		{
+			ValidateConvertToTypeFormat(formatValue);
+		}
+
 		bson_value_t defaultNullValue = {
 			.value_type = BSON_TYPE_NULL,
 		};
@@ -506,43 +624,43 @@ ParseDollarConvert(const bson_value_t *argument, AggregationExpressionData *data
 		{
 			/* If no onNull expression was specified, set to the default null value. */
 			/* Else set to the value of the onNull expression if it's constant. */
-			if (onNullData == NULL)
+			if (arguments->onNullData == NULL)
 			{
 				data->value = defaultNullValue;
 
 				data->kind = AggregationExpressionKind_Constant;
-				FreeVariableLengthArgs(arguments);
 				evaluatedOnConstants = true;
 			}
-			else if (IsAggregationExpressionConstant(onNullData))
+			else if (IsAggregationExpressionConstant(arguments->onNullData))
 			{
-				data->value = onNullData->value;
+				data->value = arguments->onNullData->value;
 
 				data->kind = AggregationExpressionKind_Constant;
-				FreeVariableLengthArgs(arguments);
 				evaluatedOnConstants = true;
 			}
 		}
-		else if (IsAggregationExpressionConstant(toData))
+		else if (IsAggregationExpressionConstant(arguments->toData))
 		{
-			if (IsExpressionResultNullOrUndefined(&toData->value))
+			if (IsExpressionResultNullOrUndefined(&arguments->toData->value))
 			{
 				data->value = defaultNullValue;
 
 				data->kind = AggregationExpressionKind_Constant;
-				FreeVariableLengthArgs(arguments);
 				evaluatedOnConstants = true;
 			}
-			else
+			else if (isFormatUndefinedOrConstant)
 			{
 				bson_value_t onErrorValue = { 0 };
-				if (onErrorExpression.value_type != BSON_TYPE_EOD)
+				if (onErrorExpression.value_type != BSON_TYPE_EOD &&
+					arguments->onErrorData != NULL)
 				{
-					onErrorValue = onErrorData->value;
+					onErrorValue = arguments->onErrorData->value;
 				}
-
 				bool hasError = false;
-				ApplyDollarConvert(&inputValue, toType, onErrorData, &data->value,
+				List *argumentsList = list_make4(&inputValue, &toType, &toSubtype,
+												 &formatValue);
+
+				ApplyDollarConvert(argumentsList, arguments->onErrorData, &data->value,
 								   &hasError);
 
 				if (hasError)
@@ -552,13 +670,17 @@ ParseDollarConvert(const bson_value_t *argument, AggregationExpressionData *data
 						return;
 					}
 
-					if (IsAggregationExpressionConstant(onErrorData))
+					if (IsAggregationExpressionConstant(arguments->onErrorData))
 					{
-						data->value = onErrorData->value;
+						data->value = arguments->onErrorData->value;
 						data->kind = AggregationExpressionKind_Constant;
-						FreeVariableLengthArgs(arguments);
 						evaluatedOnConstants = true;
 					}
+				}
+				else
+				{
+					data->kind = AggregationExpressionKind_Constant;
+					evaluatedOnConstants = true;
 				}
 			}
 		}
@@ -567,8 +689,12 @@ ParseDollarConvert(const bson_value_t *argument, AggregationExpressionData *data
 	/* If we did not already evaluate and set to a constant value. */
 	if (!evaluatedOnConstants)
 	{
+		/* Use the original to-value given. */
+		/* This will preserve to.type and to.subtype for binData conversions */
+		arguments->toData->value = originalToValue;
+
 		data->operator.arguments = arguments;
-		data->operator.argumentsKind = AggregationExpressionArgumentsKind_List;
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
 	}
 }
 
@@ -580,12 +706,13 @@ void
 HandlePreParsedDollarConvert(pgbson *doc, void *arguments,
 							 ExpressionResult *expressionResult)
 {
-	List *argumentList = (List *) arguments;
+	ConvertToTypeArguments *args = (ConvertToTypeArguments *) arguments;
 
-	AggregationExpressionData *inputData = list_nth(argumentList, 0);
-	AggregationExpressionData *toData = list_nth(argumentList, 1);
-	AggregationExpressionData *onErrorData = list_nth(argumentList, 2);
-	AggregationExpressionData *onNullData = list_nth(argumentList, 3);
+	AggregationExpressionData *inputData = args->inputData;
+	AggregationExpressionData *toData = args->toData;
+	AggregationExpressionData *formatData = args->formatData;
+	AggregationExpressionData *onErrorData = args->onErrorData;
+	AggregationExpressionData *onNullData = args->onNullData;
 
 	ExpressionResult childResult;
 
@@ -607,25 +734,60 @@ HandlePreParsedDollarConvert(pgbson *doc, void *arguments,
 		ExpressionResultReset(&childResult);
 	}
 
+	bson_value_t formatValue = { 0 };
+	if (formatData != NULL)
+	{
+		childResult = ExpressionResultCreateChild(expressionResult);
+		EvaluateAggregationExpressionData(formatData, doc, &childResult, false);
+		formatValue = childResult.value;
+		ExpressionResultReset(&childResult);
+	}
+
 	bson_value_t toValue = { 0 };
 	childResult = ExpressionResultCreateChild(expressionResult);
 	EvaluateAggregationExpressionData(toData, doc, &childResult, false);
 	toValue = childResult.value;
 	ExpressionResultReset(&childResult);
 
+
+	bson_subtype_t toSubtype = BSON_SUBTYPE_BINARY;
+	if (toValue.value_type == BSON_TYPE_DOCUMENT)
+	{
+		bson_value_t originalToValue = toValue;
+		GetToTypeAndSubTypeForConvert(&originalToValue, &toValue,
+									  &toSubtype);
+	}
+
+	bson_type_t toType = BSON_TYPE_EOD;
+	ValidateAndGetConvertToType(&toValue, &toType);
+
+	if (toType == BSON_TYPE_BINARY)
+	{
+		ValidateBinDataSubType(toSubtype);
+
+		if (!IsExpressionResultNullOrUndefined(&formatValue))
+		{
+			ValidateConvertToTypeFormat(formatValue);
+		}
+	}
+
 	bson_value_t inputValue = { 0 };
 	childResult = ExpressionResultCreateChild(expressionResult);
 	EvaluateAggregationExpressionData(inputData, doc, &childResult, false);
 	inputValue = childResult.value;
+	ExpressionResultReset(&childResult);
 
-	bson_type_t toType;
-	ValidateAndGetConvertToType(&toValue, &toType);
+	if (inputValue.value_type == BSON_TYPE_BINARY &&
+		!IsExpressionResultNullOrUndefined(&formatValue))
+	{
+		ValidateConvertToTypeFormat(formatValue);
+	}
 
 	bson_value_t defaultNullValue = {
 		.value_type = BSON_TYPE_NULL,
 	};
 
-	/* Null 'input' argument takes presedence over null 'to' argument. */
+	/* Null 'input' argument takes precedence over null 'to' argument. */
 	if (IsExpressionResultNullOrUndefined(&inputValue))
 	{
 		/* onNull was not specified. Just set it to null */
@@ -653,9 +815,10 @@ HandlePreParsedDollarConvert(pgbson *doc, void *arguments,
 
 	bson_value_t result = { 0 };
 
+	List *argumentsList = list_make4(&inputValue, &toType, &toSubtype, &formatValue);
 	bool hasError = false;
-	ApplyDollarConvert(&inputValue, toType, onErrorData, &result,
-					   &hasError);
+	ApplyDollarConvert(argumentsList, onErrorData, &result, &hasError);
+
 	if (hasError)
 	{
 		if (onErrorValue.value_type == BSON_TYPE_EOD)
@@ -764,6 +927,7 @@ ParseTypeOperatorOneOperand(const bson_value_t *argument,
 	}
 	else
 	{
+		data->operator.argumentsKind = AggregationExpressionArgumentsKind_Palloc;
 		data->operator.arguments = parsedData;
 	}
 }
@@ -796,10 +960,12 @@ HandlePreParsedTypeOperatorOneOperand(pgbson *doc, void *arguments,
 
 /* Helper function that based on the toType argument, calls the underlying $to* convert handler. */
 static void
-ProcessDollarConvert(const bson_value_t *currentValue, bson_value_t *result, const
-					 bson_type_t toType)
+ProcessDollarConvert(List *arguments, bson_value_t *result)
 {
-	switch (toType)
+	bson_value_t *currentValue = (bson_value_t *) linitial(arguments);
+	bson_type_t *toType = (bson_type_t *) lsecond(arguments);
+
+	switch (*toType)
 	{
 		case BSON_TYPE_DOUBLE:
 		{
@@ -809,7 +975,8 @@ ProcessDollarConvert(const bson_value_t *currentValue, bson_value_t *result, con
 
 		case BSON_TYPE_UTF8:
 		{
-			ProcessDollarToString(currentValue, result);
+			bson_value_t *format = (bson_value_t *) lfourth(arguments);
+			ProcessDollarToString(currentValue, format, result);
 			break;
 		}
 
@@ -849,9 +1016,17 @@ ProcessDollarConvert(const bson_value_t *currentValue, bson_value_t *result, con
 			break;
 		}
 
+		case BSON_TYPE_BINARY:
+		{
+			bson_subtype_t *toSubtype = (bson_subtype_t *) lthird(arguments);
+			bson_value_t *format = (bson_value_t *) lfourth(arguments);
+			ProcessDollarToBinData(currentValue, toType, *toSubtype, format, result);
+			break;
+		}
+
 		default:
 		{
-			ThrowInvalidConversionError(currentValue->value_type, toType);
+			ThrowInvalidConversionError(currentValue->value_type, *toType);
 		}
 	}
 }
@@ -873,10 +1048,9 @@ ProcessDollarType(const bson_value_t *currentValue, bson_value_t *result)
 {
 	bson_type_t type = currentValue->value_type;
 
-	/* We need to cover the case where the expression is a field path and it doesn't exist, native Mongo returns 'missing'.
+	/* We need to cover the case where the expression is a field path and it doesn't exist, for compatibility, the expected behavior is to return 'missing'.
 	 * However, 'missing' is not a valid type name for other ops, so we cover here rather than in the common BsonTypeName method. */
-	char *name = type == BSON_TYPE_EOD ?
-				 MISSING_TYPE_NAME : BsonTypeName(type);
+	char *name = BsonTypeNameExtended(type);
 
 	result->value_type = BSON_TYPE_UTF8;
 	result->value.v_utf8.str = name;
@@ -1168,7 +1342,8 @@ ProcessDollarToDecimal(const bson_value_t *currentValue, bson_value_t *result)
 /* Process the evaluated expression for $toString.
  * If null or undefined, the result should be null. */
 static void
-ProcessDollarToString(const bson_value_t *currentValue, bson_value_t *result)
+ProcessDollarToString(const bson_value_t *currentValue, const bson_value_t *format,
+					  bson_value_t *result)
 {
 	if (IsExpressionResultNullOrUndefined(currentValue))
 	{
@@ -1222,6 +1397,149 @@ ProcessDollarToString(const bson_value_t *currentValue, bson_value_t *result)
 			break;
 		}
 
+		case BSON_TYPE_BINARY:
+		{
+			if (IsExpressionResultNullOrUndefined(format))
+			{
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
+									" A format must be specified when performing a conversion from %s to the string type.",
+									BsonTypeName(currentValue->value_type))));
+				break;
+			}
+
+			char *formatString = format->value.v_utf8.str;
+			if (strcmp(formatString, "auto") == 0)
+			{
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_COMMANDNOTSUPPORTED), errmsg(
+									"Convert to string from binData with format 'auto' is not supported yet.")));
+			}
+
+			char *encodedValue = NULL;
+			bson_subtype_t subtype = currentValue->value.v_binary.subtype;
+			switch (subtype)
+			{
+				case BSON_SUBTYPE_UUID:
+				case BSON_SUBTYPE_BINARY:
+				case BSON_SUBTYPE_MD5:
+				case BSON_SUBTYPE_ENCRYPTED:
+				case BSON_SUBTYPE_USER:
+				case BSON_SUBTYPE_COLUMN:
+				case BSON_SUBTYPE_SENSITIVE:
+				{
+					const uint8_t *binData = currentValue->value.v_binary.data;
+					const uint32_t binDataLen = currentValue->value.v_binary.data_len;
+
+					if (strcmp(formatString, "uuid") == 0)
+					{
+						/* convert binary data to pg_uuid_t structure */
+						pg_uuid_t *uuid = (pg_uuid_t *) palloc(sizeof(pg_uuid_t));
+						memcpy(uuid->data, binData, 16);
+
+						/* convert to string using PostgreSQL UUID output function */
+						Datum uuidDatum = UUIDPGetDatum(uuid);
+						encodedValue = DatumGetCString(DirectFunctionCall1(uuid_out,
+																		   uuidDatum));
+					}
+					else if (strcmp(formatString, "base64") == 0 ||
+							 strcmp(formatString, "base64url") == 0)
+					{
+						int encodedValueLen = pg_b64_enc_len(binDataLen) + 1;  /* +1 for '\0' */
+						encodedValue = palloc(encodedValueLen);
+
+						encodedValueLen = pg_b64_encode((char_uint8_compat *) binData,
+														binDataLen,
+														encodedValue,
+														encodedValueLen);
+
+						/* perform substitutions for base64url */
+						if (strcmp(formatString, "base64url") == 0)
+						{
+							/* replace '+' with '-' and '/' with '_' */
+							/* base64url should not contain '+' and '/' */
+							for (int i = 0; i < encodedValueLen; ++i)
+							{
+								if (encodedValue[i] == '+')
+								{
+									encodedValue[i] = '-';
+								}
+								else if (encodedValue[i] == '/')
+								{
+									encodedValue[i] = '_';
+								}
+							}
+
+							/* Remove padding if any */
+							while (encodedValueLen > 0 &&
+								   encodedValue[encodedValueLen - 1] == '=')
+							{
+								encodedValue[encodedValueLen - 1] = '\0';
+								encodedValueLen--;
+							}
+						}
+
+						encodedValue[encodedValueLen] = '\0';
+					}
+					else if (strcmp(formatString, "hex") == 0)
+					{
+						char *binDataString = (char *) binData;
+
+						int hexStringLen = binDataLen * 2 + 1;  /* +1 for '\0 */
+						encodedValue = palloc(hexStringLen);
+						int hexStringActualSize = hex_encode(binDataString, binDataLen,
+															 encodedValue);
+
+						/* convert all lowercase characters to uppercase */
+						for (int i = 0; i < hexStringActualSize; i++)
+						{
+							if (encodedValue[i] >= 'a' && encodedValue[i] <= 'f')
+							{
+								encodedValue[i] -= 32;
+							}
+						}
+
+						encodedValue[hexStringActualSize] = '\0';
+					}
+					else if (strcmp(formatString, "utf8") == 0)
+					{
+						encodedValue = (char *) binData;
+						encodedValue[binDataLen] = '\0';
+					}
+					break;
+				}
+
+				case BSON_SUBTYPE_BINARY_DEPRECATED:
+				{
+					ThrowFailedToParseBinDataDeprecatedSubTypeError(subtype,
+																	BSON_SUBTYPE_BINARY);
+					break;
+				}
+
+				case BSON_SUBTYPE_UUID_DEPRECATED:
+				{
+					ThrowFailedToParseBinDataDeprecatedSubTypeError(subtype,
+																	BSON_SUBTYPE_UUID);
+					break;
+				}
+
+				default:
+				{
+					ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE), errmsg(
+										"Failed to parse BinData in $convert with no onError value: \
+										Unsupported subtype %d for BinData conversion to string.",
+										subtype)));
+					break;
+				}
+			}
+
+			if (encodedValue != NULL)
+			{
+				result->value.v_utf8.str = encodedValue;
+				result->value.v_utf8.len = strlen(encodedValue);
+			}
+
+			break;
+		}
+
 		default:
 		{
 			ThrowInvalidConversionError(currentValue->value_type, BSON_TYPE_UTF8);
@@ -1243,7 +1561,7 @@ ProcessDollarToDate(const bson_value_t *currentValue, bson_value_t *result)
 		return;
 	}
 
-	/* Native mongo doesn't support int32 -> date conversion yet. */
+	/* int32 -> date conversion is not allowed. */
 	switch (currentValue->value_type)
 	{
 		case BSON_TYPE_DOUBLE:
@@ -1270,7 +1588,12 @@ ProcessDollarToDate(const bson_value_t *currentValue, bson_value_t *result)
 
 		case BSON_TYPE_UTF8:
 		{
-			/* TODO: from string, will add with $dateFromString operator. */
+			bson_value_t dateString = *currentValue;
+			bson_value_t dateValue = { 0 };
+
+			StringToDateWithDefaultFormat(&dateString, &dateValue);
+			result->value.v_datetime = dateValue.value.v_datetime;
+			break;
 		}
 
 		default:
@@ -1301,35 +1624,16 @@ ProcessDollarToUUID(const bson_value_t *currentValue, bson_value_t *result)
 
 	const char *uuidStr = currentValue->value.v_utf8.str;
 
-	/* Basic validation - must be 36 characters with hyphens in standard positions */
-	/* check string length to make a early return on invalid string */
-	/* Postgresql uuid_in function allows the UUID string being wrapped with braces and without hyphens */
-	/* so we also need to check the hyphens in the correct positions */
-	/* We don't need to check if it is wrapped with braces as a UUID with braces has a length of 38, */
-	/* which fails at the first check. */
-	if (currentValue->value.v_utf8.len != 36 || uuidStr[8] != '-' || uuidStr[13] != '-' ||
-		uuidStr[18] != '-' || uuidStr[23] != '-')
+	/* Validate the UUID string before processing */
+	if (!ValidateUUIDString(uuidStr))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE), errmsg(
-							"Failed to parse BinData %s in $convert with no onError value: Invalid UUID string: %s",
-							uuidStr, uuidStr)));
+							"The provided UUID string '%s' is not valid", uuidStr)));
 	}
 
-	/* Use PostgreSQL uuid_in function to parse and validate the UUID */
 	PG_TRY();
 	{
-		Datum uuidDatum = CStringGetDatum(uuidStr);
-		Oid uuidInFuncId = PostgresUUIDInFunctionId();
-		Datum uuidResult = OidFunctionCall1(uuidInFuncId, uuidDatum);
-
-		pg_uuid_t *uuid = DatumGetUUIDP(uuidResult);
-
-		result->value_type = BSON_TYPE_BINARY;
-		result->value.v_binary.subtype = BSON_SUBTYPE_UUID;
-		result->value.v_binary.data = (uint8_t *) palloc(16);
-		result->value.v_binary.data_len = 16;
-
-		memcpy(result->value.v_binary.data, uuid->data, 16);
+		ConvertUUIDStringToPgUUID(uuidStr, result);
 	}
 	PG_CATCH();
 	{
@@ -1338,9 +1642,9 @@ ProcessDollarToUUID(const bson_value_t *currentValue, bson_value_t *result)
 		FlushErrorState();
 
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE), errmsg(
-							"Failed to parse BinData %s in $convert with no onError value: Invalid UUID string: %s",
+							"Unable to parse BinData %s in $convert without onError parameter: Provided UUID string is invalid: %s",
 							uuidStr, uuidStr), errdetail_log(
-							"Failed to parse BinData as UUID with error: %s",
+							"Could not interpret BinData as a valid UUID due to error: %s",
 							edata->message)));
 	}
 	PG_END_TRY();
@@ -1358,9 +1662,241 @@ ProcessDollarToHashedIndexKey(const bson_value_t *arguments, bson_value_t *resul
 }
 
 
+/* Converts a string and binData to a binData. */
+static void
+ProcessDollarToBinData(const bson_value_t *currentValue, const bson_type_t *toType, const
+					   bson_subtype_t toSubtype, const bson_value_t *format,
+					   bson_value_t *result)
+{
+	Assert(toType != NULL && format != NULL && result != NULL && currentValue != NULL);
+
+	if (IsExpressionResultNullOrUndefined(currentValue))
+	{
+		result->value_type = BSON_TYPE_NULL;
+		return;
+	}
+
+	bson_type_t currentValueType = currentValue->value_type;
+	if (currentValueType != BSON_TYPE_UTF8 && currentValueType != BSON_TYPE_BINARY)
+	{
+		ThrowInvalidConversionError(currentValueType, BSON_TYPE_BINARY);
+	}
+
+	switch (currentValueType)
+	{
+		case BSON_TYPE_UTF8:
+		{
+			if (IsExpressionResultNullOrUndefined(format))
+			{
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
+									"A specific format must be provided when attempting to convert from %s into 'binData'.",
+									BsonTypeName(currentValueType))));
+			}
+
+			char *formatString = format->value.v_utf8.str;
+			if (strcmp(formatString, "auto") == 0)
+			{
+				ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
+									"Format '%s' is not supported for string to 'binData' conversion",
+									formatString)));
+			}
+
+			char *currentString = (char *) currentValue->value.v_binary.data;
+
+			if ((toSubtype == BSON_SUBTYPE_UUID) ^ (strcmp(formatString, "uuid") == 0))
+			{
+				ThrowFailedToParseBinDataError(currentString,
+											   "Only the UUID subtype (4) is allowed with the 'uuid' format");
+			}
+
+			/* Check if the input format is correct */
+			char *decodedValue = currentString;
+			int decodedValueLen = strlen(currentString);
+			if (strcmp(formatString, "base64") == 0)
+			{
+				decodedValue = palloc(decodedValueLen);
+				decodedValueLen = pg_b64_decode(currentString,
+												currentValue->value.v_utf8.len,
+												(char_uint8_compat *) decodedValue,
+												decodedValueLen);
+
+				if (decodedValueLen == -1)
+				{
+					ThrowFailedToParseBinDataError(currentString,
+												   "The provided input does not represent a valid base64-encoded string.");
+				}
+			}
+			else if (strcmp(formatString, "base64url") == 0)
+			{
+				int padding = (4 - (decodedValueLen % 4)) % 4;
+				decodedValue = palloc(decodedValueLen + padding + 1);
+
+				memcpy(decodedValue, currentString, decodedValueLen);
+
+				/* Replace URL safe characters with base64 equivalent characters. */
+				/* base64url should not contain '+' and '/' */
+				for (int i = 0; i < decodedValueLen; ++i)
+				{
+					if (decodedValue[i] == '-')
+					{
+						decodedValue[i] = '+';
+					}
+					else if (decodedValue[i] == '_')
+					{
+						decodedValue[i] = '/';
+					}
+					else if (decodedValue[i] == '+')
+					{
+						ThrowFailedToParseBinDataError(currentString,
+													   "The provided input does not represent a valid base64-encoded string.");
+					}
+					else if (decodedValue[i] == '/')
+					{
+						ThrowFailedToParseBinDataError(currentString,
+													   "The provided input does not represent a valid base64-encoded string.");
+					}
+				}
+
+				/* Add padding if necessary. */
+				if (padding > 0)
+				{
+					memset(decodedValue + decodedValueLen, '=', padding);
+				}
+
+				/* Decode as base64. */
+				decodedValueLen = pg_b64_decode(decodedValue, decodedValueLen + padding,
+												(char_uint8_compat *) decodedValue,
+												decodedValueLen);
+
+				if (decodedValueLen == -1)
+				{
+					ThrowFailedToParseBinDataError(currentString,
+												   "Input is not a valid base64url string.");
+				}
+			}
+			else if (strcmp(formatString, "hex") == 0)
+			{
+				decodedValueLen = (decodedValueLen / 2) + VARHDRSZ;
+				decodedValue = palloc(decodedValueLen);
+
+				decodedValueLen = hex_decode(currentString, strlen(currentString),
+											 decodedValue);
+			}
+			else if (strcmp(formatString, "uuid") == 0)
+			{
+				if (!ValidateUUIDString(currentString))
+				{
+					ThrowFailedToParseBinDataError(currentString,
+												   "The provided input does not represent a properly formatted UUID string %s.");
+				}
+
+				ConvertUUIDStringToPgUUID(currentString, result);
+				return;
+			}
+
+			result->value_type = BSON_TYPE_BINARY;
+			result->value.v_binary.data = (uint8_t *) decodedValue;
+			result->value.v_binary.data_len = decodedValueLen;
+			result->value.v_binary.subtype = toSubtype;
+
+			break;
+		}
+
+		case BSON_TYPE_BINARY:
+		{
+			uint8_t *binData = currentValue->value.v_binary.data;
+			uint32_t binDataLen = currentValue->value.v_binary.data_len;
+
+			/* use same binary representation but set subtype */
+			result->value.v_binary.data = binData;
+			result->value.v_binary.data_len = binDataLen;
+			result->value_type = BSON_TYPE_BINARY;
+			result->value.v_binary.subtype = toSubtype;
+
+			break;
+		}
+
+		default:
+		{
+			break;
+		}
+	}
+}
+
+
 /* --------------------------------------------------------- */
 /* Other helper functions. */
 /* --------------------------------------------------------- */
+
+/* Extract the 'type' and 'subtype' from a document 'to' value. */
+static void
+GetToTypeAndSubTypeForConvert(const bson_value_t *toValue,
+							  bson_value_t *toTypeValue,
+							  bson_subtype_t *toSubtype)
+{
+	Assert(toValue->value_type == BSON_TYPE_DOCUMENT);
+
+	bson_iter_t toIter;
+	BsonValueInitIterator(toValue, &toIter);
+
+	while (bson_iter_next(&toIter))
+	{
+		const char *key = bson_iter_key(&toIter);
+		const bson_value_t *value = bson_iter_value(&toIter);
+
+		if (strcmp(key, "type") == 0)
+		{
+			*toTypeValue = *value;
+		}
+		else if (strcmp(key, "subtype") == 0)
+		{
+			if (value->value_type == BSON_TYPE_INT32)
+			{
+				*toSubtype = value->value.v_int32;
+			}
+			else if (value->value_type == BSON_TYPE_DOUBLE)
+			{
+				*toSubtype = (int) value->value.v_double;
+			}
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
+								"Unknown key in $convert 'to' expression: %s",
+								key)));
+		}
+	}
+}
+
+
+/* Ensures toSubtype is a valid BinData subtype */
+static void
+ValidateBinDataSubType(const bson_subtype_t toSubtype)
+{
+	if (toSubtype == BSON_SUBTYPE_UUID_DEPRECATED)
+	{
+		ThrowFailedToParseBinDataDeprecatedSubTypeError(toSubtype, BSON_SUBTYPE_UUID);
+	}
+
+	if (toSubtype == BSON_SUBTYPE_BINARY_DEPRECATED)
+	{
+		ThrowFailedToParseBinDataDeprecatedSubTypeError(toSubtype, BSON_SUBTYPE_BINARY);
+	}
+
+	/* user-defined subtypes must fall within the valid numeric range of 128 to 255. */
+	if (toSubtype >= 128 && toSubtype <= 255)
+	{
+		return;
+	}
+
+	if (toSubtype < BSON_SUBTYPE_BINARY || toSubtype > BSON_SUBTYPE_SENSITIVE)
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_LOCATION4341107), errmsg(
+							"Cannot use bindata subtype %d for $convert operation",
+							toSubtype)));
+	}
+}
+
 
 /* Validates the type to convert to and sets 'toType' to the validated type. */
 static void
@@ -1395,7 +1931,7 @@ ValidateAndGetConvertToType(const bson_value_t *toValue, bson_type_t *toType)
 		if (!TryGetTypeFromInt64(typeCode, toType))
 		{
 			ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
-								"In $convert, numeric value for 'to' does not correspond to a BSON type: %lld",
+								"During $convert, the numeric value provided for 'to' is not a valid BSON type: %lld",
 								(long long int) typeCode)));
 		}
 	}
@@ -1405,23 +1941,52 @@ ValidateAndGetConvertToType(const bson_value_t *toValue, bson_type_t *toType)
 		 * however, we can't do it here yet, as if the 'input' expression evaluates to null and onNull is specified,
 		 * we must return that instead. */
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
-							"$convert's 'to' argument must be a string or number, but is %s",
+							"The 'to' parameter in $convert must contain either a string value or a numeric value, but it currently holds %s",
 							BsonTypeName(toValue->value_type))));
+	}
+}
+
+
+/* Validates the format field of $convert */
+/* 'format' must be a string with value 'base64', 'base64url', 'hex', 'uuid', 'auto' */
+static void
+ValidateConvertToTypeFormat(const bson_value_t formatValue)
+{
+	if (IsExpressionResultNullOrUndefined(&formatValue))
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
+							"A format must be clearly specified when performing a conversion to 'binData'.")));
+	}
+
+	if (formatValue.value_type != BSON_TYPE_UTF8)
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE), errmsg(
+							"Invalid format value provided for $convert: %s",
+							BsonTypeName(formatValue.value_type))));
+	}
+
+	const char *format = formatValue.value.v_utf8.str;
+	if (strcmp(format, "base64") != 0 && strcmp(format, "base64url") != 0 &&
+		strcmp(format, "hex") != 0 && strcmp(format, "uuid") != 0 &&
+		strcmp(format, "utf8") != 0 && strcmp(format, "auto") != 0)
+	{
+		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE), errmsg(
+							"Invalid format value provided for $convert: %s",
+							format)));
 	}
 }
 
 
 /* Helper to apply the conversion to the 'toType'. Throws an error if no onError expression was specified. */
 static void
-ApplyDollarConvert(const bson_value_t *inputValue, const bson_type_t toType,
-				   const AggregationExpressionData *onErrorData, bson_value_t *result,
-				   bool *hasError)
+ApplyDollarConvert(List *arguments, const AggregationExpressionData *onErrorData,
+				   bson_value_t *result, bool *hasError)
 {
 	MemoryContext savedMemoryContext = CurrentMemoryContext;
 
 	PG_TRY();
 	{
-		ProcessDollarConvert(inputValue, result, toType);
+		ProcessDollarConvert(arguments, result);
 	}
 	PG_CATCH();
 	{
@@ -1452,7 +2017,7 @@ ConvertStringToInt32(const bson_value_t *value)
 
 	if (result < INT32_MIN || result > INT32_MAX)
 	{
-		ThrowFailedToParseNumber(value->value.v_utf8.str, "Overflow");
+		ThrowFailedToParseNumberError(value->value.v_utf8.str, "Overflow");
 	}
 
 	return (int32_t) result;
@@ -1470,12 +2035,12 @@ ConvertStringToInt64(const bson_value_t *value)
 
 	if (len == 0)
 	{
-		ThrowFailedToParseNumber(str, "No digits");
+		ThrowFailedToParseNumberError(str, "No digits");
 	}
 
 	if (*str == ' ')
 	{
-		ThrowFailedToParseNumber(str, "Did not consume whole string.");
+		ThrowFailedToParseNumberError(str, "Failed to process the entire string.");
 	}
 
 	ValidateStringIsNotHexBase(value);
@@ -1486,12 +2051,12 @@ ConvertStringToInt64(const bson_value_t *value)
 
 	if (endptr != (str + len))
 	{
-		ThrowFailedToParseNumber(str, "Did not consume whole string.");
+		ThrowFailedToParseNumberError(str, "Failed to process the entire string.");
 	}
 
 	if ((result == INT64_MAX || result == INT64_MIN) && errno == ERANGE)
 	{
-		ThrowFailedToParseNumber(str, "Overflow");
+		ThrowFailedToParseNumberError(str, "Overflow");
 	}
 
 	return result;
@@ -1511,7 +2076,8 @@ ConvertStringToDouble(const bson_value_t *value)
 
 	if (!IsDecimal128InDoubleRange(&decimalResult))
 	{
-		ThrowFailedToParseNumber(value->value.v_utf8.str, "Out of range");
+		ThrowFailedToParseNumberError(value->value.v_utf8.str,
+									  "Value exceeds allowed range");
 	}
 
 	return GetBsonDecimal128AsDouble(&decimalResult);
@@ -1529,7 +2095,7 @@ ConvertStringToDecimal128(const bson_value_t *value)
 
 	if (len == 0)
 	{
-		ThrowFailedToParseNumber(str, "Empty string");
+		ThrowFailedToParseNumberError(str, "Empty string");
 	}
 
 	ValidateStringIsNotHexBase(value);
@@ -1537,7 +2103,8 @@ ConvertStringToDecimal128(const bson_value_t *value)
 	bson_decimal128_t dec128;
 	if (!bson_decimal128_from_string_w_len(str, len, &dec128))
 	{
-		ThrowFailedToParseNumber(str, "Failed to parse string to decimal");
+		ThrowFailedToParseNumberError(str,
+									  "Unable to convert the provided string into a valid decimal format");
 	}
 
 	return dec128;
@@ -1545,19 +2112,19 @@ ConvertStringToDecimal128(const bson_value_t *value)
 
 
 /* Performs validation that the provided string doesn't represent a hex number.
- * We only check for lowercase 'x' to match native mongo. */
+ * Only lowercase 'x' is considered a valid hexadecimal prefix in this context. */
 static void
 ValidateStringIsNotHexBase(const bson_value_t *value)
 {
 	Assert(value->value_type == BSON_TYPE_UTF8);
 
-	/* Native mongo only identifies lowercase x as hexadecimal value. */
+	/* Validation checks for lowercase 'x' following a leading '0'. */
 	if (value->value.v_utf8.len >= 2 &&
 		value->value.v_utf8.str[0] == '0' &&
 		value->value.v_utf8.str[1] == 'x')
 	{
 		ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE), errmsg(
-							"Illegal hexadecimal input in $convert with no onError value: %s",
+							"Invalid hexadecimal input detected in $convert without a specified onError handler: %s",
 							value->value.v_utf8.str)));
 	}
 }
@@ -1577,18 +2144,58 @@ ValidateValueIsNotNaNOrInfinity(const bson_value_t *value)
 }
 
 
+/* Checks if 'string' is a valid UUID.
+ * Valid UUID string has length UUID_STRING_LEN (36), has '-' at indices 8, 13, 18, 23
+ */
+static bool
+ValidateUUIDString(const char *uuidString)
+{
+	if (strlen(uuidString) != UUID_STRING_LEN)
+	{
+		return false;
+	}
+
+	int underScoreInds[] = { 8, 13, 18, 23 };
+	for (int i = 0; i < 4; i++)
+	{
+		if (uuidString[underScoreInds[i]] != '-')
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+
+/* Convert a UUID string to PG's UUID format using pg_uuid_in */
+static void
+ConvertUUIDStringToPgUUID(const char *uuidString, bson_value_t *result)
+{
+	/* Use PostgreSQL uuid_in function to parse and validate the UUID */
+	Datum uuidDatum = CStringGetDatum(uuidString);
+	Datum uuidResult = DirectFunctionCall1(uuid_in, uuidDatum);
+	pg_uuid_t *uuid = DatumGetUUIDP(uuidResult);
+
+	result->value_type = BSON_TYPE_BINARY;
+	result->value.v_binary.subtype = BSON_SUBTYPE_UUID;
+	result->value.v_binary.data = (uint8_t *) palloc(16);
+	result->value.v_binary.data_len = 16;
+
+	memcpy(result->value.v_binary.data, uuid->data, 16);
+}
+
+
 /* Throws an invalid conversion error with the sourceType and targetType in the error message. */
 static inline void
 pg_attribute_noreturn()
 ThrowInvalidConversionError(bson_type_t sourceType, bson_type_t targetType)
 {
 	/* Only target type name can be "missing". */
-	const char *targetTypeName = targetType == BSON_TYPE_EOD ?
-								 MISSING_TYPE_NAME : BsonTypeName(targetType);
+	const char *targetTypeName = BsonTypeNameExtended(targetType);
 
 	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE), errmsg(
 						"Unsupported conversion from %s to %s in $convert with no onError value",
-						BsonTypeName(sourceType), targetTypeName)));
+						BsonTypeNameExtended(sourceType), targetTypeName)));
 }
 
 
@@ -1610,9 +2217,32 @@ ThrowOverflowTargetError(const bson_value_t * value)
 /* Throws an error for when an input string is not able to be parsed as a number. */
 static inline void
 pg_attribute_noreturn()
-ThrowFailedToParseNumber(const char * value, const char * reason)
+ThrowFailedToParseNumberError(const char * value, const char * reason)
 {
 	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_CONVERSIONFAILURE), errmsg(
-						"Failed to parse number '%s' in $convert with no onError value: %s",
+						"Unable to interpret number '%s' within $convert, as no onError value was specified: %s",
 						value, reason)));
+}
+
+
+/* Throws an error when a formatted string is not successfully converted to a BinData. */
+static inline void
+pg_attribute_noreturn()
+ThrowFailedToParseBinDataError(const char * value, const char * reason)
+{
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
+						"Unable to interpret BinData '%s' during $convert operation due to missing onError parameter: %s",
+						value, reason)));
+}
+
+
+/* Throws an error when a deprecated bson_subtype_t (2 or 3) are used. */
+static inline void
+pg_attribute_noreturn()
+ThrowFailedToParseBinDataDeprecatedSubTypeError(int deprecatedSubType, int
+												supportedSubType)
+{
+	ereport(ERROR, (errcode(ERRCODE_DOCUMENTDB_FAILEDTOPARSE), errmsg(
+						"Failed to parse BinData with deprecated subtype %d in $convert with no onError value: Use subtype %d instead.",
+						deprecatedSubType, supportedSubType)));
 }

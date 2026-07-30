@@ -21,9 +21,7 @@
 
 
 /*
- * MongoDB use WGS84 as the default format for storing GeoJSON data.
- *
- * This is essentially the 4326 SRID (Spatial referrence ID) in PostGIS.
+ * WGS84 uses 4326 SRID (Spatial referrence ID) in PostGIS.
  * This is used to treat the geodetic data as WGS84.
  */
 #define DEFAULT_GEO_SRID 4326
@@ -121,7 +119,6 @@ static const float8 RADIUS_OF_ELLIPSOIDAL_EARTH_M = 6371008.7714150595;
 /*
  * GeoJSON types specified by the GeoJSON standard
  * https://datatracker.ietf.org/doc/html/rfc7946
- * and are used by Mongo.
  *
  * Please note: These are meant to be bitmask flags
  */
@@ -254,10 +251,10 @@ typedef enum ParseFlags
 	/* None */
 	ParseFlag_None = 0x0,
 
-	/* Mongo Legacy format */
+	/* Legacy point format */
 	ParseFlag_Legacy = 0x2,
 
-	/* Mongo Legacy format, while parsing it will not attempt to throw error */
+	/* Legacy point format, while parsing it will not attempt to throw error */
 	ParseFlag_Legacy_NoError = 0x4,
 
 	/* Only GeoJSON point */
@@ -523,7 +520,7 @@ WKBBufferGetCollectionByteaWithSRID(StringInfo wkbBuffer, WKBGeometryType collec
 	uint32 sridPos = WKB_BYTE_SIZE_ORDER + WKB_BYTE_SIZE_TYPE;
 	memcpy((wkbData + sridPos), (uint8 *) &srid, WKB_BYTE_SIZE_SRID);
 
-	/* copy number of items */
+	/* Number of items to copy */
 	uint32 totalPos = sridPos + WKB_BYTE_SIZE_TYPE;
 	memcpy((wkbData + totalPos), (uint8 *) &totalNum, WKB_BYTE_SIZE_SRID);
 

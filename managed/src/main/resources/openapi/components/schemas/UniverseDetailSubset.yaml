@@ -1,0 +1,26 @@
+title: UniverseDetailSubset
+description: Small subset of universe information.
+type: object
+properties:
+  uuid:
+    description: Universe unique identifier.
+    type: string
+    format: uuid
+  name:
+    description: Universe display name.
+    type: string
+  update_in_progress:
+    description: Whether a universe update operation is currently running.
+    type: boolean
+  update_succeeded:
+    description: Whether the last universe update attempt completed successfully.
+    type: boolean
+  creation_date:
+    description: Universe creation time (RFC 3339 / ISO-8601).
+    type: string
+    format: date-time
+    example: '2022-12-12T13:07:18Z'
+    readOnly: true
+  universe_paused:
+    description: Whether the universe is in a paused state.
+    type: boolean

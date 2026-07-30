@@ -30,11 +30,23 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/rocksdb/port/port.h"
+#include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
+
+#include "yb/storage/storage_test_util.h"
+
+#include "yb/util/logging.h"
+#include "yb/util/mem_tracker.h"
 
 using std::unique_ptr;
 
 namespace rocksdb {
+
+const yb::MemTrackerPtr& test_mem_tracker() {
+  static yb::MemTrackerPtr mem_tracker = yb::MemTracker::CreateTracker("test");
+  return mem_tracker;
+}
+
 namespace test {
 
 extern std::string RandomHumanReadableString(Random* rnd, int len) {
@@ -111,6 +123,16 @@ std::string RandomName(Random* rnd, const size_t len) {
     ss << static_cast<char>(rnd->Uniform(26) + 'a');
   }
   return ss.str();
+}
+
+std::vector<CompressionType> GetSupportedCompressionTypes() {
+  std::vector<CompressionType> types;
+  for (auto type : kAllCompressionTypes) {
+    if (CompressionTypeSupported(type)) {
+      types.push_back(type);
+    }
+  }
+  return types;
 }
 
 CompressionType RandomCompressionType(Random* rnd) {
@@ -341,8 +363,8 @@ class TestBoundaryValuesExtractor: public BoundaryValuesExtractor {
     return Status::OK();
   }
 
-  UserFrontierPtr CreateFrontier() override {
-    return new TestUserFrontier(0);
+  yb::storage::UserFrontierPtr CreateFrontier() override {
+    return new yb::storage::TestUserFrontier(0);
   }
 
   virtual ~TestBoundaryValuesExtractor() {}
@@ -350,10 +372,6 @@ class TestBoundaryValuesExtractor: public BoundaryValuesExtractor {
 };
 
 } // namespace
-
-std::string TestUserFrontier::ToString() const {
-  return YB_CLASS_TO_STRING(value);
-}
 
 Slice GetBoundaryLeft(const UserBoundaryValues& values) {
   auto value = TEST_UserValueWithTag(values, TAG_LEFT_VALUE);
@@ -411,6 +429,10 @@ void BoundaryTestValues::Check(const FileBoundaryValues<InternalKey>& smallest,
   AssertSlicesEq(max_left.AsSlice(), GetBoundaryLeft(largest.user_values));
   AssertSlicesEq(min_right.AsSlice(), GetBoundaryRight(smallest.user_values));
   AssertSlicesEq(max_right.AsSlice(), GetBoundaryRight(largest.user_values));
+}
+
+size_t StringSource::memory_footprint() const {
+  LOG(FATAL) << "Not supported";
 }
 
 }  // namespace test

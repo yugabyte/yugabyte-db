@@ -370,7 +370,7 @@ TEST_P(CreateMultiHBTableStressTest, RestartServersAfterCreation) {
     LOG(INFO) << "Skipping slow test";
     return;
   }
-  FLAGS_tablet_creation_timeout_ms = 10000 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_creation_timeout_ms) = 10000 * kTimeMultiplier;
   YBTableName table_name(YQL_DATABASE_CQL, "my_keyspace", "test_table");
   ASSERT_NO_FATALS(CreateBigTable(table_name, FLAGS_num_test_tablets));
 
@@ -639,7 +639,7 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
   // the master to mistakenly think that the tablet servers are dead. To avoid this
   // increase the TS unresponsive timeout so that the leader correctly thinks that
   // they are alive.
-  SetAtomicFlag(5 * 60 * 1000, &FLAGS_tserver_unresponsive_timeout_ms);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_unresponsive_timeout_ms) = 5 * 60 * 1000;
 
   thread reload_metadata_thread([&]() {
     while (!stop.Load()) {

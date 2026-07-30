@@ -17,8 +17,8 @@ public class XClusterUtil {
   public static final String MULTIPLE_TXN_REPLICATION_SUPPORT_VERSION_STABLE = "2024.1.0.0-b71";
   public static final String MULTIPLE_TXN_REPLICATION_SUPPORT_VERSION_PREVIEW = "2.23.0.0-b157";
 
-  public static final String MINIMUM_VERSION_AUTOMATIC_DDL_SUPPORT_STABLE = "2025.1.0.0-b167";
-  public static final String MINIMUM_VERSION_AUTOMATIC_DDL_SUPPORT_PREVIEW = "2.25.1.0-b0";
+  public static final String MINIMUM_VERSION_AUTOMATIC_DDL_SUPPORT_STABLE = "2025.2.1.0-b0";
+  public static final String MINIMUM_VERSION_AUTOMATIC_DDL_SUPPORT_PREVIEW = "2.29.0.0-b0";
 
   public static boolean supportsDbScopedXCluster(Universe universe) {
     // The minimum YBDB version that supports db scoped replication is 2024.1.1.0-b49 stable and

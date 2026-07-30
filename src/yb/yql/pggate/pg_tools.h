@@ -32,17 +32,23 @@
 #include "yb/ash/wait_state.h"
 
 #include "yb/common/pg_types.h"
+
 #include "yb/common/transaction.pb.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/util/format.h"
 #include "yb/util/lru_cache.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/slice.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
+#include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+
+std::ostream& operator<<(std::ostream& str, const YbcObjectLockId& lock_id);
+std::ostream& operator<<(std::ostream& str, const YbcAdvisoryLockId& lock_id);
 
 namespace yb::pggate {
 
@@ -152,8 +158,6 @@ using TableYbctidSet = TableYbctidSetHelper<TableYbctid>;
 template <class U>
 using TableYbctidMap = std::unordered_map<TableYbctid, U, TableYbctidHasher, TableYbctidComparator>;
 
-using ExecParametersMutator = LWFunction<void(YbcPgExecParameters&)>;
-
 struct YbctidBatch {
   YbctidBatch(std::span<const Slice> ybctids_, bool keep_order_)
       : ybctids(ybctids_), keep_order(keep_order_) {}
@@ -182,9 +186,6 @@ struct YbctidGenerator {
   DISALLOW_COPY_AND_ASSIGN(YbctidGenerator);
 };
 
-std::string ToString(const YbcAdvisoryLockId& lock_id);
-std::string ToString(const YbcObjectLockId& lock_id);
-
 class TablespaceCache {
  public:
   explicit TablespaceCache(size_t capacity);
@@ -211,5 +212,7 @@ class TableLocalityMap {
  private:
   std::unordered_map<PgOid, YbcPgTableLocalityInfo> map_;
 };
+
+bool SkipIntents(const PgsqlOp& op);
 
 } // namespace yb::pggate

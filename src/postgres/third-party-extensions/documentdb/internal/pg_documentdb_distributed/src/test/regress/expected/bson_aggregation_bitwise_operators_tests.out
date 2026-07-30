@@ -28,21 +28,21 @@ select *from bson_dollar_project('{"array": [1,2,3]}', '{"result": { "$bitNot": 
 (1 row)
 
 select *from bson_dollar_project('{"array": [1,2,3]}', '{"result": { "$bitAnd": [1,2.1,3] } }');
-ERROR:  $bitAnd only supports int and long operands.
+ERROR:  $bitAnd can only be used with int and long type operands.
 select *from bson_dollar_project('{"array": [1,2,3]}', '{"result": { "$bitOr": [1.8,2,3] } }');
-ERROR:  $bitOr only supports int and long operands.
+ERROR:  $bitOr can only be used with int and long type operands.
 select *from bson_dollar_project('{"array": [1,2,3]}', '{"result": { "$bitXor": [1,2,3.7] } }');
-ERROR:  $bitXor only supports int and long operands.
+ERROR:  $bitXor can only be used with int and long type operands.
 select *from bson_dollar_project('{"array": [1,2,3]}', '{"result": { "$bitNot": [1.4] } }');
-ERROR:  $bitNot only supports int and long, not: double.
+ERROR:  $bitNot supports only int and long types, not: double.
 select *from bson_dollar_project('{}', '{"result": { "$bitAnd": [{"$numberDecimal": "1.18"},3] } }');
-ERROR:  $bitAnd only supports int and long operands.
+ERROR:  $bitAnd can only be used with int and long type operands.
 select *from bson_dollar_project('{}', '{"result": { "$bitOr": [{"$numberDecimal": "1.18"},3] } }');
-ERROR:  $bitOr only supports int and long operands.
+ERROR:  $bitOr can only be used with int and long type operands.
 select *from bson_dollar_project('{}', '{"result": { "$bitXor": [{"$numberDecimal": "1.18"},3] } }');
-ERROR:  $bitXor only supports int and long operands.
+ERROR:  $bitXor can only be used with int and long type operands.
 select *from bson_dollar_project('{}', '{"result": { "$bitNot": {"$numberDecimal": "1.18"} } }');
-ERROR:  $bitNot only supports int and long, not: decimal.
+ERROR:  $bitNot supports only int and long types, not: decimal.
 select *from bson_dollar_project('{}', '{"result": { "$bitAnd": [123456789012345678,3] } }');
           bson_dollar_project           
 ---------------------------------------------------------------------
@@ -68,38 +68,38 @@ select *from bson_dollar_project('{}', '{"result": { "$bitNot": 1234567890123456
 (1 row)
 
 select *from bson_dollar_project('{}', '{"result": { "$bitAnd": 1.3 } }');
-ERROR:  $bitAnd only supports int and long operands.
+ERROR:  $bitAnd can only be used with int and long type operands.
 select *from bson_dollar_project('{}', '{"result": { "$bitOr": 1.3 } }');
-ERROR:  $bitOr only supports int and long operands.
+ERROR:  $bitOr can only be used with int and long type operands.
 select *from bson_dollar_project('{}', '{"result": { "$bitXor": 1.3 } }');
-ERROR:  $bitXor only supports int and long operands.
+ERROR:  $bitXor can only be used with int and long type operands.
 select *from bson_dollar_project('{}', '{"result": { "$bitNot": 1.3 } }');
-ERROR:  $bitNot only supports int and long, not: double.
+ERROR:  $bitNot supports only int and long types, not: double.
 -- $bitAnd $bitOr $bitXor $bitNot, use $array.
 select *from bson_dollar_project('{"array": [1,2,3]}', '{"result": { "$bitAnd": "$array" } }');
-ERROR:  $bitAnd only supports int and long operands.
+ERROR:  $bitAnd can only be used with int and long type operands.
 select *from bson_dollar_project('{"array": [1,2,3]}', '{"result": { "$bitOr": "$array" } }');
-ERROR:  $bitOr only supports int and long operands.
+ERROR:  $bitOr can only be used with int and long type operands.
 select *from bson_dollar_project('{"array": [1,2,3]}', '{"result": { "$bitXor": "$array" } }');
-ERROR:  $bitXor only supports int and long operands.
+ERROR:  $bitXor can only be used with int and long type operands.
 select *from bson_dollar_project('{"array": [3]}', '{"result": { "$bitNot": "$array" } }');
-ERROR:  $bitNot only supports numeric types, not array
+ERROR:  $bitNot works exclusively with numeric data types, not with array
 select *from bson_dollar_project('{"array": [1,2,3]}', '{"result": { "$bitAnd": ["$array", 4] } }');
-ERROR:  $bitAnd only supports int and long operands.
+ERROR:  $bitAnd can only be used with int and long type operands.
 select *from bson_dollar_project('{"array": [1,2,3]}', '{"result": { "$bitOr": ["$array",5] } }');
-ERROR:  $bitOr only supports int and long operands.
+ERROR:  $bitOr can only be used with int and long type operands.
 select *from bson_dollar_project('{"array": [1,2,3]}', '{"result": { "$bitXor": ["$array",4] } }');
-ERROR:  $bitXor only supports int and long operands.
+ERROR:  $bitXor can only be used with int and long type operands.
 select *from bson_dollar_project('{"array": [3]}', '{"result": { "$bitNot": ["$array"] } }');
-ERROR:  $bitNot only supports numeric types, not array
+ERROR:  $bitNot works exclusively with numeric data types, not with array
 select *from bson_dollar_project('{"array": [1,2.1,3]}', '{"result": { "$bitAnd": "$array" } }');
-ERROR:  $bitAnd only supports int and long operands.
+ERROR:  $bitAnd can only be used with int and long type operands.
 select *from bson_dollar_project('{"array": [1.5,2,3]}', '{"result": { "$bitOr": "$array" } }');
-ERROR:  $bitOr only supports int and long operands.
+ERROR:  $bitOr can only be used with int and long type operands.
 select *from bson_dollar_project('{"array": [1,2,3.4]}', '{"result": { "$bitXor": "$array" } }');
-ERROR:  $bitXor only supports int and long operands.
+ERROR:  $bitXor can only be used with int and long type operands.
 select *from bson_dollar_project('{"array": [3.1]}', '{"result": { "$bitNot": "$array" } }');
-ERROR:  $bitNot only supports numeric types, not array
+ERROR:  $bitNot works exclusively with numeric data types, not with array
 -- $bitAnd $bitOr $bitXor $bitNot, null in array.
 select *from bson_dollar_project('{"array": [1,2,3]}', '{"result": { "$bitAnd": [2,3,null] } }');
  bson_dollar_project 
@@ -120,7 +120,7 @@ select *from bson_dollar_project('{"array": [1,2,3]}', '{"result": { "$bitXor": 
 (1 row)
 
 select *from bson_dollar_project('{"array": [1,2,3]}', '{"result": { "$bitNot": [2,3,null] } }');
-ERROR:  Expression $bitNot takes exactly 1 arguments. 3 were passed in.
+ERROR:  The expression $bitNot requires exactly 1 arguments, but 3 arguments were actually provided.
 -- $bitAnd $bitOr $bitXor $bitNot, null array.
 select *from bson_dollar_project('{"array": [1,2,3]}', '{"result": { "$bitAnd": [] } }');
           bson_dollar_project           
@@ -141,16 +141,16 @@ select *from bson_dollar_project('{"array": [1,2,3]}', '{"result": { "$bitXor": 
 (1 row)
 
 select *from bson_dollar_project('{"array": [1,2,3]}', '{"result": { "$bitNot": [] } }');
-ERROR:  Expression $bitNot takes exactly 1 arguments. 0 were passed in.
+ERROR:  The expression $bitNot requires exactly 1 arguments, but 0 arguments were actually provided.
 -- $bitAnd $bitOr $bitXor $bitNot, nested array
 select *from bson_dollar_project('{"array": [1,2,3]}', '{"result": { "$bitAnd": [1,2,3,[1,2]] } }');
-ERROR:  $bitAnd only supports int and long operands.
+ERROR:  $bitAnd can only be used with int and long type operands.
 select *from bson_dollar_project('{"array": [1,2,3]}', '{"result": { "$bitOr": [1,2,3,[3,4]] } }');
-ERROR:  $bitOr only supports int and long operands.
+ERROR:  $bitOr can only be used with int and long type operands.
 select *from bson_dollar_project('{"array": [1,2,3]}', '{"result": { "$bitXor": [1,2,3,[5,6]] } }');
-ERROR:  $bitXor only supports int and long operands.
+ERROR:  $bitXor can only be used with int and long type operands.
 select *from bson_dollar_project('{"array": [1,2,3]}', '{"result": { "$bitNot": [[1]] } }');
-ERROR:  $bitNot only supports numeric types, not array
+ERROR:  $bitNot works exclusively with numeric data types, not with array
 -- $bitAnd $bitOr $bitXor $bitNot, dotted path tests
 SELECT * FROM bson_dollar_project('{"array": {"b": 1}}', '{"result": { "$bitAnd": ["$array.b",3]}}');
           bson_dollar_project          

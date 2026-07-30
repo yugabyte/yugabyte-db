@@ -112,6 +112,15 @@ void Partition::FromPB(const PartitionPB& pb, Partition* partition) {
   partition->partition_key_end_ = pb.partition_key_end();
 }
 
+uint16_t Partition::GetKeyStartAsHashCode() const {
+  DCHECK(PartitionSchema::IsValidHashPartitionKeyBound(partition_key_start_));
+  return PartitionSchema::DecodePartitionKeyStartAsHashLeftBoundInclusive(partition_key_start_);
+}
+
+Result<std::pair<uint16_t, uint16_t>> Partition::GetKeysAsHashBoundsInclusive() const {
+  return PartitionSchema::DecodePartitionAsHashBoundsInclusive(*this);
+}
+
 std::string Partition::ToString() const {
   return Format(
       "{ partition_key_start: $0 partition_key_end: $1 hash_buckets: $2 }",
@@ -452,19 +461,47 @@ uint16_t PartitionSchema::DecodeMultiColumnHashValue(Slice partition_key) {
   return BigEndian::Load16(partition_key.data());
 }
 
-uint16_t PartitionSchema::DecodeMultiColumnHashLeftBound(Slice partition_key) {
+uint16_t PartitionSchema::DecodePartitionKeyStartAsHashLeftBoundInclusive(Slice partition_key) {
   return partition_key.empty()
              ? std::numeric_limits<uint16_t>::min()
              : DecodeMultiColumnHashValue(partition_key);
 }
 
-uint16_t PartitionSchema::DecodeMultiColumnHashRightBound(Slice partition_key) {
+Result<uint16_t> PartitionSchema::DecodePartitionKeyEndAsHashRightBoundInclusive(
+    Slice partition_key) {
   if (partition_key.empty()) {
     return std::numeric_limits<uint16_t>::max();
   }
-  uint16_t value = DecodeMultiColumnHashValue(partition_key);
-  DCHECK_GT(value, 0);
+  const auto value = DecodeMultiColumnHashValue(partition_key);
+  SCHECK_FORMAT(
+      value > 0, InvalidArgument,
+      "Invalid hash right bound: $0", partition_key.ToDebugHexString());
   return value - 1;
+}
+
+Result<std::pair<uint16_t, uint16_t>> PartitionSchema::DecodePartitionKeysAsHashBoundsInclusive(
+    Slice partition_key_start, Slice partition_key_end) {
+  RETURN_NOT_OK_PREPEND(CheckHashPartitionKeyBound(partition_key_start), "Key start");
+  RETURN_NOT_OK_PREPEND(CheckHashPartitionKeyBound(partition_key_end), "Key end");
+
+  const auto left_bound =
+      PartitionSchema::DecodePartitionKeyStartAsHashLeftBoundInclusive(partition_key_start);
+  const auto right_bound = VERIFY_RESULT_PREPEND_FUNC(
+      PartitionSchema::DecodePartitionKeyEndAsHashRightBoundInclusive(partition_key_end));
+  if (left_bound > right_bound) {
+    return STATUS_FORMAT(
+        InvalidArgument,
+        "partition_key_start: \"$0\" must be less than or equal to partition_key_end: \"$1\"",
+        partition_key_start.ToDebugHexString(),
+        partition_key_end.ToDebugHexString());
+  }
+  return std::make_pair(left_bound, right_bound);
+}
+
+Result<std::pair<uint16_t, uint16_t>> PartitionSchema::DecodePartitionAsHashBoundsInclusive(
+    const Partition& partition) {
+  return DecodePartitionKeysAsHashBoundsInclusive(
+      partition.partition_key_start(), partition.partition_key_end());
 }
 
 namespace {
@@ -505,24 +542,31 @@ Result<std::string> PartitionSchema::GetEncodedPartitionKey(
   return GetEncodedHashPartitionKey(partition_key);
 }
 
-Status PartitionSchema::IsValidHashPartitionRange(const Slice partition_key_start,
-                                                  const Slice partition_key_end) {
-  if (!IsValidHashPartitionKeyBound(partition_key_start) ||
-      !IsValidHashPartitionKeyBound(partition_key_end)) {
-    return STATUS(InvalidArgument, "Passed in partition keys are not hash partitions.");
+Status PartitionSchema::CheckPartitionBounds(
+    Slice partition_key_start, Slice partition_key_end) const {
+  if (IsHashPartitioning()) {
+    return CheckHashPartitionBounds(partition_key_start, partition_key_end);
   }
-  if (PartitionSchema::DecodeMultiColumnHashLeftBound(partition_key_start) >
-      PartitionSchema::DecodeMultiColumnHashRightBound(partition_key_end)) {
-    return STATUS(InvalidArgument,
-                  Format("Invalid arguments for partition_key_start: $0 and partition_key_end: $1",
-                  Slice(partition_key_start).ToDebugHexString(),
-                  Slice(partition_key_end).ToDebugHexString()));
-  }
+
+  // TODO: implement CheckRangePartitionBounds()
   return Status::OK();
 }
 
-bool PartitionSchema::IsValidHashPartitionKeyBound(const Slice partition_key) {
+Status PartitionSchema::CheckHashPartitionBounds(
+    Slice partition_key_start, Slice partition_key_end) {
+  return ResultToStatus(
+      DecodePartitionKeysAsHashBoundsInclusive(partition_key_start, partition_key_end));
+}
+
+bool PartitionSchema::IsValidHashPartitionKeyBound(Slice partition_key) {
   return partition_key.empty() || partition_key.size() == kPartitionKeySize;
+}
+
+Status PartitionSchema::CheckHashPartitionKeyBound(Slice partition_key) {
+  SCHECK_FORMAT(
+      IsValidHashPartitionKeyBound(partition_key), InvalidArgument,
+      "Invalid partition key \"$0\"", partition_key.ToDebugHexString());
+  return Status::OK();
 }
 
 Result<std::string> PartitionSchema::GetLexicographicMiddleKey(
@@ -599,16 +643,6 @@ bool PartitionSchema::HasOverlap(
          (key_end.empty() || other_key_start < key_end);
 }
 
-std::pair<uint16_t, uint16_t> PartitionSchema::GetHashPartitionBounds(const Partition& partition) {
-  const auto start_hash_code = partition.partition_key_start().empty()
-      ? 0
-      : DecodeMultiColumnHashValue(partition.partition_key_start());
-  const auto end_hash_code = partition.partition_key_end().empty()
-      ? kMaxPartitionKey
-      : DecodeMultiColumnHashValue(partition.partition_key_end()) - 1;
-  return std::make_pair(start_hash_code, end_hash_code);
-}
-
 Status PartitionSchema::CreateRangePartitions(std::vector<Partition>* partitions) const {
   // Create the start range keys.
   // NOTE: When converting FromPB to partition schema, we already error-check, so we don't need
@@ -632,9 +666,16 @@ Status PartitionSchema::CreateRangePartitions(std::vector<Partition>* partitions
 
 std::optional<std::pair<Partition, Partition>> PartitionSchema::SplitHashPartitionForStatusTablet(
     const Partition& partition) {
-  auto start = DecodeMultiColumnHashLeftBound(partition.partition_key_start_);
-  auto end = DecodeMultiColumnHashRightBound(partition.partition_key_end_);
-  if (start >= end) {
+  auto hash_bounds_result = partition.GetKeysAsHashBoundsInclusive();
+  if (!hash_bounds_result.ok()) {
+    LOG(DFATAL) << hash_bounds_result.status();
+    return std::nullopt;
+  }
+
+  const auto start = hash_bounds_result->first;
+  const auto end  = hash_bounds_result->second;
+  if (start == end) {
+    // The partition has the min range already.
     return std::nullopt;
   }
 
@@ -1018,30 +1059,40 @@ string PartitionSchema::RangePartitionDebugString(const Partition& partition,
   return s;
 }
 
-string PartitionSchema::PartitionDebugString(const Partition& partition,
-                                             const Schema& schema) const {
+namespace {
 
+std::string HashBoundsDebugString(const Partition& partition) {
+  auto bounds = partition.GetKeysAsHashBoundsInclusive();
+  if (!bounds.ok()) {
+    return bounds.status().ToString();
+  }
+  return Format(
+      "[0x$0, 0x$1]", Uint16ToHexString(bounds->first), Uint16ToHexString(bounds->second));
+}
+
+std::string HashPartitionDebugString(const Partition& partition) {
+  return Format("hash_split: $0", HashBoundsDebugString(partition));
+}
+
+} // namespace
+
+string PartitionSchema::PartitionDebugString(
+    const Partition& partition, const Schema& schema) const {
   if (schema.num_hash_key_columns() == 0) {
     return RangePartitionDebugString(partition, schema);
   }
 
-  string s;
   if (hash_schema_) {
     switch (*hash_schema_) {
       case YBHashSchema::kRedisHash: FALLTHROUGH_INTENDED;
       case YBHashSchema::kPgsqlHash: FALLTHROUGH_INTENDED;
       case YBHashSchema::kMultiColumnHash: {
-        const string& pstart = partition.partition_key_start();
-        const string& pend = partition.partition_key_end();
-        uint16_t hash_start = PartitionSchema::DecodeMultiColumnHashLeftBound(pstart);
-        uint16_t hash_end = PartitionSchema::DecodeMultiColumnHashRightBound(pend);
-        s.append(Substitute("hash_split: [0x$0, 0x$1]",
-                            Uint16ToHexString(hash_start), Uint16ToHexString(hash_end)));
-        return s;
+        return HashPartitionDebugString(partition);
       }
     }
   }
 
+  std::string s;
   if (!partition.hash_buckets().empty()) {
     vector<string> components;
     for (int32_t bucket : partition.hash_buckets()) {

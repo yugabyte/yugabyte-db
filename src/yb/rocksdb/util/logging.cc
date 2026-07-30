@@ -27,8 +27,10 @@
 #define __STDC_FORMAT_MACROS
 #endif
 
-#include <inttypes.h>
-#include <stdio.h>
+#include <cinttypes>
+#include <cstdio>
+
+#include "yb/util/logging.h"
 #include "yb/util/slice.h"
 
 namespace rocksdb {
@@ -102,6 +104,13 @@ void AppendEscapedStringTo(std::string* str, const Slice& value) {
       str->append(buf);
     }
   }
+}
+
+std::string BytesToHumanString(uint64_t bytes) {
+  char buf[32];
+  const auto len = AppendHumanBytes(bytes, buf, sizeof(buf));
+  DCHECK_GT(len, 0);
+  return len > 0 ? std::string{ buf } : std::string{};
 }
 
 std::string NumberToString(uint64_t num) {

@@ -28,6 +28,7 @@ import "yb/master/master_types.proto";
 import "yb/rpc/lightweight_message.proto";
 import "yb/rpc/service.proto";
 import "yb/tablet/tablet.proto";
+import "yb/tserver/tserver_service.proto";
 
 service PgClientService {
   option (yb.rpc.service_send_metadata) = true;
@@ -55,6 +56,8 @@ service PgClientService {
       returns (PgGetCatalogMasterVersionResponsePB);
   rpc GetXClusterRole(PgGetXClusterRoleRequestPB) returns (PgGetXClusterRoleResponsePB);
   rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
+  rpc IsDatabaseColocated(PgIsDatabaseColocatedRequestPB)
+      returns (PgIsDatabaseColocatedResponsePB);
   rpc GetLockStatus(PgGetLockStatusRequestPB) returns (PgGetLockStatusResponsePB);
   rpc GetReplicationSlot(PgGetReplicationSlotRequestPB) returns (PgGetReplicationSlotResponsePB);
   rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB) {
@@ -62,6 +65,8 @@ service PgClientService {
   }
   rpc ListLiveTabletServers(PgListLiveTabletServersRequestPB)
       returns (PgListLiveTabletServersResponsePB);
+  rpc ListSlotEntries(PgListSlotEntriesRequestPB)
+      returns (PgListSlotEntriesResponsePB);
   rpc ListReplicationSlots(PgListReplicationSlotsRequestPB)
       returns (PgListReplicationSlotsResponsePB);
   rpc GetIndexBackfillProgress(PgGetIndexBackfillProgressRequestPB)
@@ -70,7 +75,7 @@ service PgClientService {
   rpc GetTablePartitionList(PgGetTablePartitionListRequestPB)
       returns (PgGetTablePartitionListResponsePB);
   rpc Perform(PgPerformRequestPB) returns (PgPerformResponsePB) {
-    option (yb.rpc.lightweight_method).sides = PROXY;
+    option (yb.rpc.lightweight_method).sides = BOTH;
   };
   rpc PollVectorIndexReady(PgPollVectorIndexReadyRequestPB)
       returns (PgPollVectorIndexReadyResponsePB) {
@@ -89,15 +94,38 @@ service PgClientService {
   rpc WaitForBackendsCatalogVersion(PgWaitForBackendsCatalogVersionRequestPB)
       returns (PgWaitForBackendsCatalogVersionResponsePB);
 
-  rpc InsertSequenceTuple(PgInsertSequenceTupleRequestPB) returns (PgInsertSequenceTupleResponsePB);
-  rpc UpdateSequenceTuple(PgUpdateSequenceTupleRequestPB) returns (PgUpdateSequenceTupleResponsePB);
-  rpc FetchSequenceTuple(PgFetchSequenceTupleRequestPB) returns (PgFetchSequenceTupleResponsePB);
-  rpc ReadSequenceTuple(PgReadSequenceTupleRequestPB) returns (PgReadSequenceTupleResponsePB);
-  rpc DeleteSequenceTuple(PgDeleteSequenceTupleRequestPB) returns (PgDeleteSequenceTupleResponsePB);
-  rpc DeleteDBSequences(PgDeleteDBSequencesRequestPB) returns (PgDeleteDBSequencesResponsePB);
+  rpc InsertSequenceTuple(PgInsertSequenceTupleRequestPB)
+      returns (PgInsertSequenceTupleResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  }
+
+  rpc UpdateSequenceTuple(PgUpdateSequenceTupleRequestPB)
+      returns (PgUpdateSequenceTupleResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  }
+
+  rpc FetchSequenceTuple(PgFetchSequenceTupleRequestPB) returns (PgFetchSequenceTupleResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  }
+
+  rpc ReadSequenceTuple(PgReadSequenceTupleRequestPB) returns (PgReadSequenceTupleResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  }
+
+  rpc DeleteSequenceTuple(PgDeleteSequenceTupleRequestPB)
+      returns (PgDeleteSequenceTupleResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  }
+
+  rpc DeleteDBSequences(PgDeleteDBSequencesRequestPB) returns (PgDeleteDBSequencesResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  }
+
   rpc CheckIfPitrActive(PgCheckIfPitrActiveRequestPB) returns (PgCheckIfPitrActiveResponsePB);
   rpc IsObjectPartOfXRepl(PgIsObjectPartOfXReplRequestPB)
       returns (PgIsObjectPartOfXReplResponsePB);
+  rpc IsNamespacePartOfCDCSDK(PgIsNamespacePartOfCDCSDKRequestPB)
+      returns (PgIsNamespacePartOfCDCSDKResponsePB);
   rpc GetTserverCatalogVersionInfo(PgGetTserverCatalogVersionInfoRequestPB)
       returns (PgGetTserverCatalogVersionInfoResponsePB);
   rpc CancelTransaction(PgCancelTransactionRequestPB) returns (PgCancelTransactionResponsePB);
@@ -108,16 +136,25 @@ service PgClientService {
   rpc GetActiveTransactionList(PgGetActiveTransactionListRequestPB)
       returns (PgGetActiveTransactionListResponsePB);
 
-  rpc GetTableKeyRanges(PgGetTableKeyRangesRequestPB) returns (PgGetTableKeyRangesResponsePB);
+  rpc GetTableKeyRanges(PgGetTableKeyRangesRequestPB) returns (PgGetTableKeyRangesResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
+  }
 
   rpc GetNewObjectId(PgGetNewObjectIdRequestPB)
       returns (PgGetNewObjectIdResponsePB);
 
   rpc TabletsMetadata(PgTabletsMetadataRequestPB) returns (PgTabletsMetadataResponsePB);
 
+  rpc GetTabletForKey(PgGetTabletForKeyRequestPB) returns (PgGetTabletForKeyResponsePB);
+
   rpc ServersMetrics(PgServersMetricsRequestPB) returns (PgServersMetricsResponsePB);
 
   rpc ListClones(PgListClonesRequestPB) returns (PgListClonesResponsePB);
+
+  rpc QueryAutoAnalyze(PgQueryAutoAnalyzeRequestPB) returns (PgQueryAutoAnalyzeResponsePB);
+
+  rpc ResetAutoAnalyzeMutationCounters(PgResetAutoAnalyzeMutationCountersRequestPB)
+      returns (PgResetAutoAnalyzeMutationCountersResponsePB);
 
   rpc FetchData(PgFetchDataRequestPB) returns (PgFetchDataResponsePB) {
     option (yb.rpc.lightweight_method).sides = PROXY;
@@ -140,7 +177,14 @@ service PgClientService {
 
   rpc AcquireObjectLock(PgAcquireObjectLockRequestPB)
       returns (PgAcquireObjectLockResponsePB) {
-    option (yb.rpc.lightweight_method).sides = PROXY;
+    option (yb.rpc.lightweight_method).sides = BOTH;
+  }
+  rpc ReleaseSessionObjectLock(PgReleaseSessionObjectLockRequestPB)
+      returns (PgReleaseSessionObjectLockResponsePB);
+
+  rpc WaitForLockersMultiple(PgWaitForLockersMultipleRequestPB)
+      returns (PgWaitForLockersMultipleResponsePB) {
+    option (yb.rpc.lightweight_method).sides = SERVICE;
   }
 
   rpc ExportTxnSnapshot(PgExportTxnSnapshotRequestPB)
@@ -160,6 +204,13 @@ service PgClientService {
 
   rpc TriggerRelcacheInitConnection(PgTriggerRelcacheInitConnectionRequestPB)
       returns (PgTriggerRelcacheInitConnectionResponsePB);
+
+  // Fetch table info for non-catalog tables in yb_system database
+  rpc GetYbSystemTableInfo(PgGetYbSystemTableInfoRequestPB)
+      returns (PgGetYbSystemTableInfoResponsePB);
+
+  rpc RemoteExec(PgRemoteExecRequestPB)
+      returns (PgRemoteExecResponsePB);
 }
 
 // TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
@@ -179,12 +230,19 @@ message OptionalUint64PB {
 message PgHeartbeatRequestPB {
   uint64 session_id = 1;
   uint32 pid = 2;
+  int32 cluster_config_version = 3;
+}
+
+message PgClusterConfigPB {
+  int32 version = 1;
+  ReplicationInfoPB replication_info = 2;
 }
 
 message PgHeartbeatResponsePB {
   AppStatusPB status = 1;
   uint64 session_id = 2;
   bytes instance_id = 3;
+  PgClusterConfigPB cluster_config = 4;
 }
 
 message PgObjectIdPB {
@@ -208,6 +266,10 @@ message PgBackfillIndexRequestPB {
   uint64 session_id = 1;
   PgObjectIdPB table_id = 2;
   reserved 3; // ASH metadata is now passed in RequestHeader PB
+  // When transactional DDL is enabled (ysql_yb_ddl_transaction_block_enabled), the CREATE INDEX
+  // backend uses the kPlain session transaction rather than an autonomous kDDL transaction.
+  // This flag must match the DDL mode so GetDdlTransactionMetadata fetches from the right txn.
+  bool use_regular_transaction_block = 4;
 }
 
 message PgBackfillIndexResponsePB {
@@ -284,7 +346,13 @@ message PgCreateDatabaseRequestPB {
   bool colocated = 7;
   fixed64 clone_time = 8;
   string source_database_name = 9;
-  string source_owner = 10;
+  // Reserved: previously held source_owner. Removed because ysql_dump now
+  // derives the source DB owner from pg_database.datdba via its
+  // --rename-owner machinery, so the master no longer needs to ship it.
+  reserved 10;
+  // Raw role name (as stored in pg_authid.rolname) of the new database
+  // owner. Forwarded to ysql_dump as --rename-owner=<target_owner>; ysql_dump
+  // applies fmtId() at emission time, so no pre-quoting is needed here.
   string target_owner = 11;
   reserved 12; // ASH metadata is now passed in RequestHeader PB
   bool use_regular_transaction_block = 13;
@@ -377,12 +445,8 @@ message PgCreateTableRequestPB {
 
   bool is_colocated_via_database = 10;
   PgObjectIdPB tablegroup_oid = 11;
-  // Auto-generated by catalog manager if not specified.
-  // Only makes sense for colocated tables.
-  // Note: proto3 v3.15 includes an "optional" keyword as a syntactic sugar for this oneof wrapper.
-  oneof optional_colocation_id {
-    uint32 colocation_id = 20;
-  }
+
+  optional uint32 colocation_id = 20;
 
   PgObjectIdPB tablespace_oid = 12;
   repeated PgCreateColumnPB create_columns = 13;
@@ -541,6 +605,17 @@ message PgGetDatabaseInfoResponsePB {
   master.GetNamespaceInfoResponsePB info = 2;
 }
 
+message PgIsDatabaseColocatedRequestPB {
+  uint32 database_oid = 1;
+}
+
+message PgIsDatabaseColocatedResponsePB {
+  AppStatusPB status = 1;
+
+  bool colocated = 2;
+  bool legacy_colocated_database = 3;
+}
+
 message PgIsInitDbDoneRequestPB {
 }
 
@@ -645,6 +720,25 @@ message PgListLiveTabletServersResponsePB {
   string universe_uuid = 3;
 }
 
+message PgListSlotEntriesRequestPB {
+  reserved 1; // ASH metadata is now passed in RequestHeader PB
+}
+
+message PgSlotEntryInfoPB {
+  string stream_id = 1;
+  uint64 confirmed_flush_lsn = 2;
+  uint64 restart_lsn = 3;
+  uint32 xmin = 4;
+  uint64 record_id_commit_time_ht = 5;
+  uint64 last_pub_refresh_time = 6;
+  uint64 active_pid = 7;
+}
+
+message PgListSlotEntriesResponsePB {
+  AppStatusPB status = 1;
+  repeated PgSlotEntryInfoPB slot_entries = 2;
+}
+
 message PgListReplicationSlotsRequestPB {
   reserved 1; // ASH metadata is now passed in RequestHeader PB
 }
@@ -667,6 +761,7 @@ message PgReplicationSlotInfoPB {
   uint64 active_pid = 13;
   bool expired = 14;
   bool allow_tables_without_primary_key = 15;
+  bool detect_publication_changes_implicitly = 16;
 }
 
 message PgListReplicationSlotsResponsePB {
@@ -742,25 +837,33 @@ message PgPerformOptionsPB {
     OptionalUint32PB lifetime_threshold_ms = 3;
   }
 
+  message ReadTimeOptionsPB {
+    uint64 read_time_serial_no = 1;
+    uint64 read_time_serial_no_history_min = 2;
+    bool restart_transaction = 3;
+    bool defer_read_point = 4;
+    ReadTimeManipulation read_time_manipulation = 5;
+    ReadHybridTimePB read_time = 6;
+    // When set,
+    // - Sets the read time locally.
+    // - Clamps the read uncertainty window.
+    // See the commit desc for more info.
+    bool clamp_uncertainty_window = 7;
+    OptionalUint32PB follower_read_staleness_ms = 8;
+  }
+
   // Cannot use IsolationLevel enum, since we cannot use proto2 enum in proto3 messages.
   // Replace with IsolationLevel after migration to proto3.
   uint32 isolation = 2;
   bool ddl_mode = 3;
   bool ddl_use_regular_transaction_block = 25;
   uint64 txn_serial_no = 4;
-  uint64 read_time_serial_no = 20;
-  uint64 read_time_serial_no_history_min = 27;
-
 
   // See ReadHybridTimePB for information about in_txn_limit_ht.
   OptionalFixed64PB in_txn_limit_ht = 5;
   bool use_existing_priority = 6;
   fixed64 priority = 7;
-  bool restart_transaction = 8;
-  bool defer_read_point = 9;
-  ReadTimeManipulation read_time_manipulation = 10;
-  ReadHybridTimePB read_time = 11;
-  bool use_catalog_session = 12;
+  bool use_legacy_catalog_session = 12;
   string namespace_id = 14;
   bool use_xcluster_database_consistency = 15;
   uint32 active_sub_transaction_id = 16;
@@ -777,17 +880,13 @@ message PgPerformOptionsPB {
   uint32 force_tablespace_locality_oid = 30;
   bool is_all_region_local = 28;
 
-  // When set,
-  // - Sets the read time locally.
-  // - Clamps the read uncertainty window.
-  // See the commit desc for more info.
-  bool clamp_uncertainty_window = 24;
-
   bool xcluster_target_ddl_bypass = 26;
 
   uint32 xrepl_origin_id = 31;
 
   bool is_using_table_locks = 32;
+
+  ReadTimeOptionsPB read_time_options = 34;
 }
 
 message PgPerformRequestPB {
@@ -998,6 +1097,15 @@ message PgIsObjectPartOfXReplResponsePB {
   bool is_object_part_of_xrepl = 2;
 }
 
+message PgIsNamespacePartOfCDCSDKRequestPB {
+  uint32 database_oid = 1;
+}
+
+message PgIsNamespacePartOfCDCSDKResponsePB {
+  AppStatusPB status = 1;
+  bool is_namespace_part_of_cdcsdk = 2;
+}
+
 message PgGetTserverCatalogVersionInfoRequestPB {
   // True if we only want to return the size of the catalog version map from tserver.
   bool size_only = 1;
@@ -1185,6 +1293,16 @@ message PgTabletsMetadataResponsePB {
   repeated tablet.TabletStatusPB tablets = 2;
 }
 
+message PgGetTabletForKeyRequestPB {
+  bytes table_id = 1;
+  bytes partition_key = 2;
+}
+
+message PgGetTabletForKeyResponsePB {
+  AppStatusPB status = 1;
+  string tablet_id = 2;
+}
+
 message PgServersMetricsRequestPB {
   reserved 1; // ASH metadata is now passed in RequestHeader PB
 }
@@ -1240,6 +1358,31 @@ message PgDatabaseCloneInfoPB {
   string state = 5;
   fixed64 as_of_time = 6;
   string failure_reason = 7;
+}
+
+message PgQueryAutoAnalyzeRequestPB {
+  reserved 1; // ASH metadata is now passed in RequestHeader PB
+  uint32 database_oid = 2;
+}
+
+message PgQueryAutoAnalyzeResponsePB {
+  AppStatusPB status = 1;
+  repeated PgAutoAnalyzeDataPB rows = 2;
+}
+
+message PgAutoAnalyzeDataPB {
+  uint32 table_oid = 1;
+  uint64 mutations = 2;
+  bytes last_analyze_info = 3;
+}
+
+message PgResetAutoAnalyzeMutationCountersRequestPB {
+  uint32 database_oid = 1;
+  uint32 table_relfilenode_oid = 2;
+}
+
+message PgResetAutoAnalyzeMutationCountersResponsePB {
+  AppStatusPB status = 1;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1301,26 +1444,56 @@ enum ObjectLockMode {
   ACCESS_EXCLUSIVE_LOCK = 8;
 }
 
+message ObjectLockOid {
+  uint64 database_oid = 1;
+  uint64 relation_oid = 2;
+  uint64 object_oid = 3;
+  uint64 object_sub_oid = 4;
+  uint32 tablespace_oid = 5;
+}
+
 message PgAcquireObjectLockRequestPB {
   uint64 session_id = 1;
   PgPerformOptionsPB options = 2;
 
-  message LockOId {
-    uint64 database_oid = 1;
-    uint64 relation_oid = 2;
-    uint64 object_oid = 3;
-    uint64 object_sub_oid = 4;
-    uint32 tablespace_oid = 5;
-  }
-  LockOId lock_oid = 3;
+  ObjectLockOid lock_oid = 3;
 
   // Cannot use TableLockType enum due to proto2/3 compatibility issues.
   ObjectLockMode lock_type = 4;
 
   reserved 5; // ASH metadata is now passed in RequestHeader PB
+
+  bool is_session_lock = 6;
 }
 
 message PgAcquireObjectLockResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgReleaseSessionObjectLockRequestPB {
+  uint64 session_id = 1;
+
+  PgPerformOptionsPB DEPRECATED_options = 2;
+
+  ObjectLockOid lock_oid = 3;
+  bool release_all = 4;
+}
+
+message PgReleaseSessionObjectLockResponsePB {
+  AppStatusPB status = 1;
+}
+
+message PgWaitForLockersMultipleRequestPB {
+  message ObjectLockEntry {
+    ObjectLockOid lock_oid = 1;
+    ObjectLockMode lock_mode = 2;
+  }
+  uint64 session_id = 1;
+  PgPerformOptionsPB options = 2;
+  repeated ObjectLockEntry lock_entries = 3;
+}
+
+message PgWaitForLockersMultipleResponsePB {
   AppStatusPB status = 1;
 }
 
@@ -1360,3 +1533,14 @@ message PgTriggerRelcacheInitConnectionRequestPB {
 }
 
 message PgTriggerRelcacheInitConnectionResponsePB { AppStatusPB status = 1; }
+
+message PgGetYbSystemTableInfoRequestPB {
+  uint32 namespace_oid = 1; // pg_class.relnamesapce
+  string table_name = 2; // pg_class.relname
+}
+
+message PgGetYbSystemTableInfoResponsePB {
+  AppStatusPB status = 1;
+  uint32 table_oid = 2; // pg_class.oid
+  uint32 relfilenode = 3; // pg_class.relfilenode
+}

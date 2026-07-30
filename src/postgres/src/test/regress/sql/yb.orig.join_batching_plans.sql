@@ -24,9 +24,9 @@ CREATE INDEX p5_hash ON p5((a,b) hash);
 CREATE INDEX p5_hash_asc ON p5(a hash, b asc);
 ANALYZE p5;
 
-SET yb_enable_optimizer_statistics = on;
-SET yb_enable_base_scans_cost_model = on;
+SET yb_enable_cbo = on;
 SET yb_prefer_bnl = off;
+SET max_parallel_workers_per_gather = 0;
 
 -- We're testing nested loop join batching in this file
 SET yb_bnl_batch_size = 1024;
@@ -56,36 +56,13 @@ explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 
 
 EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
 
-CREATE TABLE t10 (r1 int, r2 int, r3 int, r4 int);
-
-INSERT INTO t10
-  SELECT DISTINCT
-    i1, i2+5, i3, i4
-  FROM generate_series(1, 5) i1,
-       generate_series(1, 5) i2,
-       generate_series(1, 5) i3,
-       generate_series(1, 10) i4;
-
-CREATE index i_t ON t10 (r1 ASC, r2 ASC, r3 ASC, r4 ASC);
-
-CREATE TABLE t11 (c1 int, c3 int, x int);
-INSERT INTO t11 VALUES (1,2,0), (1,3,0), (5,2,0), (5,3,0), (5,4,0);
-
-CREATE TABLE t12 (c4 int, c2 int, y int);
-INSERT INTO t12 VALUES (3,7,0),(6,9,0),(9,7,0),(4,9,0);
-ANALYZE;
-
-EXPLAIN (COSTS OFF) SELECT t10.* FROM t12, t11, t10 WHERE x = y AND c1 = r1 AND c2 = r2 AND c3 = r3 AND c4 = r4 order by c1, c2, c3, c4;
-
-DROP TABLE t10;
-DROP TABLE t11;
-DROP TABLE t12;
-
 EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;
 
-EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
+EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b) s ON t3.b = s.a;
 
-/*+YbBatchedNL(t1 t2) Leading(((t1 t2) t3))*/ EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
+-- Try forcing right join.  Should choose Hash/Merge RIGHT or BNL LEFT.
+/*+ Leading((t3 (t1 t2))) YbBatchedNL(t1 t2) YbBatchedNL(t1 t2 t3) */
+EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b) s ON t3.b = s.a;
 
 -- anti join--
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.a) AND t1.a <= 40;
@@ -103,9 +80,15 @@ explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a =
 
 /*+NoYbBatchedNL(a c)*/ explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
 
+-- Test sorted input
 CREATE INDEX p1_a_asc ON p1(a asc);
 CREATE INDEX p2_a_asc ON p2(a asc);
-ANALYZE;
+ANALYZE p1;
+ANALYZE p2;
+
+-- Lower work_mem to penalize explicit sort but not too smal to trigger
+-- multi-batch HJ.
+SET work_mem TO '2MB';
 
 -- Since we don't have many rows in p1, p2 it isn't too bad to use the extra
 -- sort operator imposed by nested loop join batching.
@@ -115,7 +98,8 @@ explain (costs off) select * from p1, p2 where p1.a = p2.a order by p2.a asc;
 
 INSERT INTO p1 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(600, 200000) i WHERE i % 2 = 0;
 INSERT INTO p2 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(600, 500000) i WHERE i % 3 = 0;
-ANALYZE;
+ANALYZE p1;
+ANALYZE p2;
 
 -- After we have inserted many rows into each table, we expect that other
 -- join methods that preserve the sort order of its input relations to be better.
@@ -125,6 +109,7 @@ explain (costs off) select * from p1, p2 where p1.a = p2.a order by p2.a asc;
 -- the batched nested loop join option again.
 -- Commenting this test until CBO is updated.
 -- explain (costs off) select * from p1, p2 where p1.a = p2.a;
+RESET work_mem;
 
 DROP TABLE p1;
 DROP TABLE p2;
@@ -132,15 +117,43 @@ DROP TABLE p3;
 DROP TABLE p4;
 DROP TABLE p5;
 
+CREATE TABLE t10 (r1 int, r2 int, r3 int, r4 int);
+
+INSERT INTO t10
+  SELECT DISTINCT
+    i1, i2+5, i3, i4
+  FROM generate_series(1, 5) i1,
+       generate_series(1, 5) i2,
+       generate_series(1, 5) i3,
+       generate_series(1, 10) i4;
+
+CREATE index i_t ON t10 (r1 ASC, r2 ASC, r3 ASC, r4 ASC);
+
+CREATE TABLE t11 (c1 int, c3 int, x int);
+INSERT INTO t11 VALUES (1,2,0), (1,3,0), (5,2,0), (5,3,0), (5,4,0);
+
+CREATE TABLE t12 (c4 int, c2 int, y int);
+INSERT INTO t12 VALUES (3,7,0),(6,9,0),(9,7,0),(4,9,0);
+ANALYZE t11;
+ANALYZE t12;
+
+EXPLAIN (COSTS OFF) SELECT t10.* FROM t12, t11, t10 WHERE x = y AND c1 = r1 AND c2 = r2 AND c3 = r3 AND c4 = r4 order by c1, c2, c3, c4;
+
+DROP TABLE t10;
+DROP TABLE t11;
+DROP TABLE t12;
+
 CREATE TABLE s1(r1 int, r2 int, r3 int);
 CREATE TABLE s2(r1 int, r2 int, r3 int);
 CREATE TABLE s3(r1 int, r2 int);
-CREATE INDEX ON s3 (r1 asc, r2 asc);
+CREATE INDEX ON s3 ((r1, r2) hash);
 
 INSERT INTO s1 select i,i,i from generate_series(1,10) i;
 INSERT INTO s2 select i,i,i from generate_series(1,10) i;
 INSERT INTO s3 select i,i from generate_series(1,100) i;
-ANALYZE;
+ANALYZE s1;
+ANALYZE s2;
+ANALYZE s3;
 explain (costs off) select s3.* from s1, s2, s3 where s3.r1 = s1.r1 and s3.r2 = s2.r2 and s1.r3 = s2.r3 order by s3.r1, s3.r2;
 
 DROP TABLE s3;
@@ -154,7 +167,9 @@ create table s3(a int, primary key (a asc));
 insert into s1 select generate_series(1,10);
 insert into s2 select generate_series(1,10);
 insert into s3 select generate_series(1,10);
-ANALYZE;
+ANALYZE s1;
+ANALYZE s2;
+ANALYZE s3;
 
 explain (costs off) /*+Leading(( ( s1 s2 ) s3 )) MergeJoin(s1 s2)*/select * from s1 left outer join s2
 on s1.a = s2.a left outer join s3 on s2.a = s3.a where s1.a < 5;
@@ -167,7 +182,9 @@ create table test2 (a int, pp int, b int, pp2 int, c int, primary key(a asc, pp 
 insert into test2 values (1,0, 2,0,1), (2,0, 3,0,3), (2,0,3,0,5);
 create table test1 (a int, pp int, b int, pp2 int, c int, primary key(a asc, pp asc, b asc, pp2 asc, c asc));
 insert into test1 values (1,0,2,0,1), (1,0,2,0,2), (2,0,3,0,3), (2,0,4,0,4), (2,0,4,0,5), (2,0,4,0,6);
-ANALYZE;
+ANALYZE test1;
+ANALYZE test2;
+-- BNL wouldn't be chosen because of high skip-scan cost
 explain (costs off) /*+IndexScan(p2)*/ select * from test1 p1 join test2 p2 on p1.a = p2.a AND p1.b = p2.b AND p1.c = p2.c;
 explain (costs off) /*+IndexScan(p2) YbBatchedNL(p1 p2)*/ select * from test1 p1 join test2 p2 on p1.a = p2.a AND p1.b = p2.b AND p1.c = p2.c;
 drop table test1;
@@ -180,7 +197,8 @@ INSERT INTO m1 SELECT i*2 FROM generate_series(1, 2000) i;
 
 CREATE TABLE m2 (a money, primary key(a asc));
 INSERT INTO m2 SELECT i*5 FROM generate_series(1, 2000) i;
-ANALYZE;
+ANALYZE m1;
+ANALYZE m2;
 
 EXPLAIN (COSTS OFF, TIMING OFF, SUMMARY OFF, ANALYZE) SELECT * FROM m1 t1 JOIN m2 t2 ON t1.a = t2.a WHERE t1.a <= 50::money;
 
@@ -205,16 +223,40 @@ explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1
 
 explain (costs off) select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
 
+
+delete from q1;
+delete from q2;
+insert into q1 values
+  (10, 1), (20, 2), (30, 3), (40, 4), (50, 5), (60, 6),
+  (5, 10), (99, 99), (88, 88), (77, 77), (41, 99), (42, 99);
+insert into q2 values
+  (10, 1), (20, 2), (30, 3), (40, 4), (50, 5), (60, 6),
+  (5, 10), (70, 7), (80, 8), (90, 9), (91, 11), (92, 12);
+analyze q1;
+analyze q2;
 create table q3(a int, b int, c name, primary key(a,b));
 create index q3_range on q3(a asc);
+insert into q3 values
+  (1, 1, 'q3row01_AAAAAAAAAAAA'), (2, 2, 'q3row02_BBBBBBBBBBBB'), (3, 3, 'q3row03_CCCCCCCCCCCC'),
+  (4, 4, 'q3row04_DDDDDDDDDDDD'), (5, 5, 'q3row05_EEEEEEEEEEEE'), (6, 6, 'q3row06_FFFFFFFFFFFF'),
+  (7, 7, 'q3row07_GGGGGGGGGGGG'), (8, 8, 'q3row08_HHHHHHHHHHHH'), (9, 9, 'q3row09_IIIIIIIIIIII'),
+  (10, 10, 'q3row10_JJJJJJJJJJJJ'), (100, 10, 'q3row11_KKKKKKKKKKKK'), (12, 12, 'q3row12_LLLLLLLLLLLL');
+analyze q3;
 
-explain (costs off) select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1 on j1.a1 = p1.c1;
+explain (costs off)
+select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1
+  on j1.a1 = p1.c1;
 
--- this should not be a batched NL join as it contains an unbatchable clause
--- (j1.a2 <= p1.c1) even though the batchable clause (j1.a1 = p1.c1) is also
--- present
+explain (costs off)
+select * from q1 p1 left join (select p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1
+  on j1.a1 = p1.c1 and j1.a1 + j1.a2 = p1.c1 + p1.c2;
 
-explain (costs off) select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1 on j1.a1 = p1.c1 and j1.a2 <= p1.c1;
+explain (costs off)
+select * from
+    q1 p1 left join
+    (select p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1
+      on j1.a1 = p1.c1 and j1.a2 <= p1.c1
+      and j1.a1 + j1.a2 = p1.c1 + p1.c2;
 
 DROP TABLE q1;
 DROP TABLE q2;

@@ -33,6 +33,8 @@
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
 
+#include "yb/gutil/port.h"
+
 #include "yb/qlexpr/ql_expr.h"
 
 // TODO(sergei) Wrong dependency
@@ -490,7 +492,7 @@ const dockv::SchemaPackingStorage& DocRowwiseIterator::schema_packing_storage() 
 
 Result<DocHybridTime> DocRowwiseIterator::GetTableTombstoneTime(Slice root_doc_key) const {
   if (!doc_read_context_.schema().has_colocation_id() ||
-      !GetAtomicFlag(&FLAGS_enable_colocated_table_tombstone_cache)) {
+      !FLAGS_enable_colocated_table_tombstone_cache) {
     return docdb::GetTableTombstoneTime(
         root_doc_key, doc_db_, txn_op_context_, read_operation_data_);
   }
@@ -676,7 +678,12 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
   return FetchNextImpl(QLTableRowPair{table_row, projection, static_row, static_projection});
 }
 
+// Pin the FetchNextImpl entry to a cache-line boundary. This ~7 KB template
+// instantiation is the hottest function in read-heavy workloads (~10% of tserver
+// samples); under full-LTO its address shifts unpredictably across builds and the
+// resulting i-cache misalignment shows up as small (~1%) CPU-share swings.
 template <class TableRow>
+CACHELINE_ALIGNED
 Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
   VLOG_WITH_FUNC(4) << "done_: " << done_;
 
@@ -749,21 +756,22 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     }
     first_iteration = false;
 
-    RETURN_NOT_OK(InitIterKey(key_data.key, dockv::IsFullRowValue(key_data.value)));
-    row_key = row_key_.AsSlice();
-
-    if (has_bound_key_ && is_forward_scan_ == (row_key.compare(bound_key_) >= 0)) {
+    if (has_bound_key_ && is_forward_scan_ == (key_data.key.compare(bound_key_) >= 0)) {
       VLOG(3) << "Done since " << dockv::SubDocKey::DebugSliceToString(key_data.key)
               << " out of bound: " << dockv::SubDocKey::DebugSliceToString(bound_key_);
       done_ = true;
       return false;
     }
 
+    RETURN_NOT_OK(InitIterKey(key_data.key, dockv::IsFullRowValue(key_data.value)));
+    row_key = row_key_.AsSlice();
+
     VLOG(4) << " sub_doc_key part of iter_key_ is " << dockv::DocKey::DebugSliceToString(row_key);
 
     bool is_static_column = IsFetchedRowStatic();
     if (!is_static_column &&
-        !VERIFY_RESULT(scan_choices_->InterestedInRow(&row_key_, *db_iter_))) {
+        !VERIFY_RESULT(scan_choices_->InterestedInRow(
+            &row_key_, *db_iter_, max_seen_ht_checkpoint_))) {
       continue;
     }
 
@@ -785,6 +793,7 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
 
     const auto write_time = key_data.write_time;
     const auto doc_found = VERIFY_RESULT(FetchRow(key_data, table_row));
+    max_seen_ht_checkpoint_ = db_iter_->ObtainMaxSeenHtCheckpoint();
     // Use the write_time of the entire row.
     // May lose some precision by not examining write time of every column.
     IncrementKeyFoundStats(doc_found == DocReaderResult::kNotFound, write_time);
@@ -800,6 +809,17 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
   }
   return true;
 }
+
+// Explicit instantiations with CACHELINE_ALIGNED. Under full-LTO, Clang's
+// attribute-on-template-definition placement is honored inconsistently across
+// instantiations (the QLTableRowPair variant aligned but the PgTableRow* one
+// didn't). Attaching CACHELINE_ALIGNED to explicit instantiations forces both
+// specializations' entry points onto 64-byte boundaries.
+template CACHELINE_ALIGNED Result<bool>
+DocRowwiseIterator::FetchNextImpl<dockv::PgTableRow*>(dockv::PgTableRow*);
+template CACHELINE_ALIGNED Result<bool>
+DocRowwiseIterator::FetchNextImpl<DocRowwiseIterator::QLTableRowPair>(
+    DocRowwiseIterator::QLTableRowPair);
 
 Result<DocReaderResult> DocRowwiseIterator::FetchRow(
     const FetchedEntry& fetched_entry, dockv::PgTableRow* table_row) {

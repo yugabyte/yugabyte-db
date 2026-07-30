@@ -10,7 +10,7 @@
 SET client_min_messages TO 'warning';
 DROP DATABASE IF EXISTS px_colocated WITH (force);
 CREATE DATABASE px_colocated WITH colocation = on;
-ALTER DATABASE px_colocated SET yb_parallel_range_rows = 1000;
+ALTER DATABASE px_colocated SET yb_parallel_range_rows = 10000;
 ALTER DATABASE px_colocated SET yb_enable_parallel_append = on;
 ALTER DATABASE px_colocated SET yb_enable_cbo = on;
 \c px_colocated
@@ -270,6 +270,9 @@ SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a, b, c HAVING avg(b) > 7 O
 SET min_parallel_table_scan_size TO '8kB';
 SET parallel_setup_cost TO 0;
 
+-- YB: enable parallelism for the smallest partition
+SET yb_parallel_range_rows TO 1999;
+
 -- Full aggregation at level 1 as GROUP BY clause matches with PARTITION KEY
 -- for level 1 only. For subpartitions, GROUP BY clause does not match with
 -- PARTITION KEY, thus we will have a partial aggregation for them.
@@ -342,6 +345,8 @@ SELECT x, sum(y), avg(y), sum(x+y), count(*), avg(x+y) FROM pagg_tab_para GROUP 
 -- Reset parallelism parameters to get partitionwise aggregation plan.
 RESET min_parallel_table_scan_size;
 RESET parallel_setup_cost;
+
+RESET yb_parallel_range_rows;
 
 EXPLAIN (COSTS OFF)
 SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;

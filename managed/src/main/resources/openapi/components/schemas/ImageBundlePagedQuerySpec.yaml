@@ -1,0 +1,10 @@
+title: ImageBundlePagedQuerySpec
+description: |
+  Paged list of image bundles for a provider. 
+  Rows are ordered by bundle name (case-insensitive), then UUID. The order is ascending by default.
+type: object
+allOf:
+  - $ref: "./PaginationSpec.yaml"
+properties:
+  filter:
+    $ref: "./ImageBundleApiFilter.yaml"

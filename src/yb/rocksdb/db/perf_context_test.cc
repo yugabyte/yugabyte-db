@@ -607,26 +607,26 @@ int main(int argc, char** argv) {
     char junk;
 
     if (sscanf(argv[i], "--write_buffer_size=%d%c", &n, &junk) == 1) {
-      FLAGS_write_buffer_size = n;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_write_buffer_size) = n;
     }
 
     if (sscanf(argv[i], "--total_keys=%d%c", &n, &junk) == 1) {
-      FLAGS_total_keys = n;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_total_keys) = n;
     }
 
     if (sscanf(argv[i], "--random_key=%d%c", &n, &junk) == 1 &&
         (n == 0 || n == 1)) {
-      FLAGS_random_key = n;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_random_key) = n;
     }
 
     if (sscanf(argv[i], "--use_set_based_memetable=%d%c", &n, &junk) == 1 &&
         (n == 0 || n == 1)) {
-      FLAGS_use_set_based_memetable = n;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_set_based_memetable) = n;
     }
 
     if (sscanf(argv[i], "--verbose=%d%c", &n, &junk) == 1 &&
         (n == 0 || n == 1)) {
-      FLAGS_verbose = n;
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_verbose) = n;
     }
   }
 

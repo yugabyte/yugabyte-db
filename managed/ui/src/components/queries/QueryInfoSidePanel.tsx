@@ -200,7 +200,9 @@ export const QueryInfoSidePanel = ({
       | YcqlLiveQueryPrimitiveFields
       | YsqlSlowQueryPrimitiveFields
   ): string => {
-    const queryDataEntry = queryData?.[ysqlQueryKey];
+    const queryDataEntry = queryData
+      ? (queryData as unknown as Record<string, unknown>)[ysqlQueryKey]
+      : undefined;
 
     // The following formatters expect only string or finite number types.
     // This guard is used to catch undefined values or unhandled types.
@@ -214,8 +216,10 @@ export const QueryInfoSidePanel = ({
       return NO_DATA_PLACEHOLDER_TEXT;
     }
 
+    const primitive = queryDataEntry as string | number;
+
     if ((DURATION_FIELDS as readonly string[]).includes(ysqlQueryKey)) {
-      const duration = parseFloatIfDefined(queryDataEntry);
+      const duration = parseFloatIfDefined(primitive);
       return duration === undefined || isNaN(duration)
         ? NO_DATA_PLACEHOLDER_TEXT
         : `${duration?.toFixed(DURATION_FIELD_DECIMALS)} ms`;
@@ -223,13 +227,13 @@ export const QueryInfoSidePanel = ({
 
     if ((TIMESTAMP_FIELDS as readonly string[]).includes(ysqlQueryKey)) {
       return formatDatetime(
-        queryDataEntry,
+        primitive,
         YBTimeFormats.YB_DEFAULT_TIMESTAMP,
         YB_LIVE_QUERY_TIMESTAMP_FORMAT
       );
     }
 
-    return queryDataEntry.toString();
+    return primitive.toString();
   };
 
   /** `yb_latency_histogram` is not returned from queries on older YBDB versions */
@@ -271,7 +275,7 @@ export const QueryInfoSidePanel = ({
       </div>
       {queryData && (
         <div className={classes.content}>
-          <CodeBlock code={queryData.query} />
+          {queryData.query && <CodeBlock code={queryData.query} />}
           {isLatencyPercentilesSupported ? (
             <TabContext value={currentTab}>
               <TabList
@@ -289,13 +293,23 @@ export const QueryInfoSidePanel = ({
                 <TabPanel value={QueryInfoTab.RESPONSE_TIME}>
                   <div>
                     <Box display="flex" flexDirection="column" gridGap="24px" marginBottom={2}>
-                      <Box>
-                        <Typography variant="body1" className={classes.totalCountMetric}>
-                          {t('field.calls')}
-                        </Typography>
-                        <Typography variant="body2" className={classes.totalCountMetric}>
-                          {formatQueryData('calls')}
-                        </Typography>
+                      <Box display="flex" gridGap="16px">
+                        <Box>
+                          <Typography variant="body1" className={classes.totalCountMetric}>
+                            {t('field.calls')}
+                          </Typography>
+                          <Typography variant="body2" className={classes.totalCountMetric}>
+                            {formatQueryData('calls')}
+                          </Typography>
+                        </Box>
+                        <Box>
+                          <Typography variant="body1" className={classes.totalCountMetric}>
+                            {translateWithFallback('field.total_time', 'total_time')}
+                          </Typography>
+                          <Typography variant="body2" className={classes.totalCountMetric}>
+                            {formatQueryData('total_time')}
+                          </Typography>
+                        </Box>
                       </Box>
                       <Box display="flex" gridGap="16px">
                         {(['max_time', 'min_time', 'mean_time'] as const).map(

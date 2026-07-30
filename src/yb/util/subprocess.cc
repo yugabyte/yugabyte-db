@@ -146,27 +146,6 @@ void LogWaitCode(int ret_code, const std::string &process_name) {
 
 } // namespace util
 
-namespace {
-
-class LogTailerThread {
- public:
-  LogTailerThread(
-      const std::string& process_name, const int child_fd, int severity = google::GLOG_INFO);
-
-  ~LogTailerThread();
-
- private:
-  void Run(const int child_fd);
-
-  std::string SeverityStr() const;
-
- private:
-  std::atomic<bool> stopped_{false};
-  const std::string process_name_;
-  const int severity_;
-  scoped_refptr<Thread> thread_;
-};
-
 LogTailerThread::LogTailerThread(const std::string& process_name, const int child_fd, int severity)
     : process_name_(process_name), severity_(severity) {
   CHECK_GE(severity_, google::GLOG_INFO);
@@ -232,7 +211,6 @@ LogTailerThread::~LogTailerThread() {
   stopped_ = true;
   thread_->Join();
 }
-}  // namespace
 
 Subprocess::Subprocess(string program, vector<string> argv)
     : program_(std::move(program)),
@@ -269,24 +247,6 @@ Subprocess::~Subprocess() {
 void Subprocess::SetEnv(const std::string& key, const std::string& value) {
   CHECK_EQ(state_, SubprocessState::kNotStarted);
   env_[key] = value;
-}
-
-void Subprocess::AddPIDToCGroup(const string& path, pid_t pid) {
-#if defined(__APPLE__)
-  LOG(WARNING) << "Writing to cgroup.procs is not supported";
-#else
-  const char* filename = path.c_str();
-  FILE *fptr = fopen(const_cast<char *>(filename), "w");
-  if (fptr == NULL) {
-    LOG(WARNING) << "Couldn't open " << path;
-  } else {
-    int ret = fprintf(fptr, "%d\n", pid);
-    if (ret < 0) {
-      LOG(WARNING) << "Cannot write to " << path  << ". Return = " << ret;
-    }
-    fclose(fptr);
-  }
-#endif
 }
 
 void Subprocess::SetFdShared(int stdfd, SubprocessStreamMode mode) {

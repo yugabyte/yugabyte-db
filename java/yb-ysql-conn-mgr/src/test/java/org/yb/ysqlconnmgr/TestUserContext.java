@@ -17,10 +17,13 @@ package org.yb.ysqlconnmgr;
 import java.sql.*;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
 import org.yb.pgsql.ConnectionEndpoint;
+import org.yb.util.RequiresLinux;
 import static org.yb.AssertionWrappers.*;
 
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestUserContext extends BaseYsqlConnMgr {
   @Override
   public int getTestMethodTimeoutSec() {

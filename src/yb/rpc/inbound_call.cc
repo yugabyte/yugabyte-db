@@ -39,6 +39,7 @@
 
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/logging.h"
+#include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
 #include "yb/util/trace.h"
 
@@ -188,6 +189,10 @@ ThreadPoolTask* InboundCall::BindTask(InboundCallHandler* handler, int64_t rpc_q
   tracker_ = handler;
   task_.Bind(handler, shared_this);
   return &task_;
+}
+
+void InboundCall::RecordCallRejectedDueToMemoryPressure() const {
+  IncrementCounter(rpc_metrics_->inbound_calls_rejected_because_memory_pressure);
 }
 
 void InboundCall::RecordHandlingCompleted() {

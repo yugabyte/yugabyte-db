@@ -32,6 +32,7 @@
 
 #include "yb/common/types.h"
 
+
 #include <memory>
 
 #include "yb/gutil/singleton.h"
@@ -39,6 +40,7 @@
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/uuid.h"
 
 using std::shared_ptr;

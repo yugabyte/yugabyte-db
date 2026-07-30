@@ -11,8 +11,6 @@ export const DrConfigAction = {
 export type DrConfigAction = typeof DrConfigAction[keyof typeof DrConfigAction];
 
 export const DurationUnit = {
-  SECOND: 'second',
-  MINUTE: 'minute',
   HOUR: 'hour',
   DAY: 'day'
 } as const;
@@ -24,22 +22,12 @@ export type DurationUnit = typeof DurationUnit[keyof typeof DurationUnit];
  * The map should include all possible DurationUnit.
  */
 export const DURATION_UNIT_TO_SECONDS: { [key in DurationUnit]: number } = {
-  [DurationUnit.SECOND]: 1,
-  [DurationUnit.MINUTE]: 60,
   [DurationUnit.HOUR]: 60 * 60,
   [DurationUnit.DAY]: 24 * 60 * 60
 } as const;
 
 // The expectation is that all `DurationUnit`s are presented as options here.
 export const PITR_RETENTION_PERIOD_UNIT_OPTIONS: ReactSelectOption[] = [
-  {
-    label: 'Seconds',
-    value: DurationUnit.SECOND
-  },
-  {
-    label: 'Minutes',
-    value: DurationUnit.MINUTE
-  },
   {
     label: 'Hours',
     value: DurationUnit.HOUR

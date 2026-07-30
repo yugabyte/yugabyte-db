@@ -33,7 +33,7 @@
 #include "yb/tserver/universe_key_test_util.h"
 
 #include "yb/util/path_util.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/test_util.h"
 
 using std::string;

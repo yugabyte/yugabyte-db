@@ -145,8 +145,7 @@ YB_STRONGLY_TYPED_BOOL(IncludeDeleted);
 YB_STRONGLY_TYPED_BOOL(IsSystemObject);
 
 
-YB_DEFINE_ENUM(
-    CollectFlag,
+YB_DEFINE_ENUM(CollectFlag,
     (kAddIndexes)(kIncludeParentColocatedTable)(kSucceedIfCreateInProgress)(kAddUDTypes)
     (kIncludeHiddenTables));
 

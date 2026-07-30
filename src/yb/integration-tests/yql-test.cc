@@ -1,5 +1,5 @@
 //--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -95,10 +95,13 @@ TEST_F(YqlTest, TabletMetadataViewsWithYcqlAndYsql) {
   ASSERT_TRUE(found_ysql) << "ysql_test_table not found in yb_get_tablet_metadata()";
   ASSERT_TRUE(found_ycql) << "ycql_test_table not found in yb_get_tablet_metadata()";
 
-  // Query yb_tablet_metadata view - should show only YSQL tables
+  // Query yb_tablet_metadata view - should show only YSQL tables.  The view is
+  // global, so scope it to the current database to avoid matching same-named
+  // tables in other databases.
   auto ysql_only_result = ASSERT_RESULT(pg_conn.FetchRows<std::string>(
       "SELECT relname FROM yb_tablet_metadata "
-      "WHERE relname IN ('ysql_test_table', 'ycql_test_table') "
+      "WHERE db_name = current_database() "
+      "AND relname IN ('ysql_test_table', 'ycql_test_table') "
       "ORDER BY relname"));
 
   // Check that only YSQL table is present and YCQL table is not

@@ -12,6 +12,8 @@ menu:
     parent: migration-types
     weight: 102
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 The following page describes the steps to perform and verify a successful offline migration to YugabyteDB.
@@ -74,9 +76,23 @@ Create a new database user, and assign the necessary user permissions.
   {{% includeMarkdown "./postgresql.md" %}}
   </div>
   <div id="mysql" class="tab-pane fade" role="tabpanel" aria-labelledby="mysql-tab">
+
+{{< warning title="MySQL offline migration deprecated" >}}
+
+MySQL offline migration using YugabyteDB Voyager is deprecated and will no longer be supported after October 13, 2026. Contact {{% support-general %}} for guidance on migration options.
+
+{{< /warning >}}
+
   {{% includeMarkdown "./mysql.md" %}}
   </div>
   <div id="oracle" class="tab-pane fade" role="tabpanel" aria-labelledby="oracle-tab">
+
+{{< warning title="Oracle offline migration deprecated" >}}
+
+Oracle offline migration using YugabyteDB Voyager is deprecated and will no longer be supported after October 13, 2026. Contact {{% support-general %}} for guidance on migration options.
+
+{{< /warning >}}
+
   {{% includeMarkdown "./oracle.md" %}}
   </div>
 </div>
@@ -826,3 +842,7 @@ REASSIGN OWNED BY ybvoyager TO yugabyte;
 DROP OWNED BY ybvoyager;
 DROP USER ybvoyager;
 ```
+
+## Limitation
+
+- Special characters in the schema name and table name are not supported.

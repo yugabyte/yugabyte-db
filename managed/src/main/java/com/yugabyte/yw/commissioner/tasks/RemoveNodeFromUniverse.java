@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
+import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
@@ -20,6 +21,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.NodeActionFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
@@ -78,33 +80,38 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
     runBasicChecks(getUniverse());
   }
 
-  // Check that there is a place to move the tablets and if not, make sure there are no tablets
-  // assigned to this tserver. Otherwise, do not allow the remove node task to succeed.
-  public void performPrecheck() {
-    Universe universe = getUniverse();
-    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
-
-    if (!isTabletMovementAvailable(taskParams().nodeName)) {
-      log.debug(
-          "Tablets have nowhere to move off of tserver on node: {}. Checking if there are still"
-              + " tablets assigned to it. A healthy tserver should not be removed.",
-          currentNode.getNodeName());
-      // TODO: Move this into a subtask.
-      checkNoTabletsOnNode(universe, currentNode);
+  // Read Replica (ASYNC) clusters use asynchronous replication from the primary cluster and do
+  // not participate in quorum-based tablet replication. Removing a Read Replica node therefore
+  // does not require waiting for tablet/data movement off the node, nor does it need the
+  // "safe to take down" check that is meant to protect primary-cluster RF guarantees.
+  private boolean isReadReplicaNode(Universe universe, NodeDetails node) {
+    if (node == null || node.placementUuid == null) {
+      return false;
     }
-    log.debug("Pre-check succeeded");
+    Cluster cluster = universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
+    return cluster != null && cluster.clusterType == ClusterType.ASYNC;
   }
 
   @Override
   protected void createPrecheckTasks(Universe universe) {
     // Check again after locking.
     NodeDetails currentNode = runBasicChecks(getUniverse());
+    boolean isReadReplicaNode = isReadReplicaNode(universe, currentNode);
     boolean alwaysWaitForDataMove =
         confGetter.getConfForScope(getUniverse(), UniverseConfKeys.alwaysWaitForDataMove);
-    if (alwaysWaitForDataMove) {
-      performPrecheck();
+    if (alwaysWaitForDataMove && !isReadReplicaNode) {
+      createCheckTabletsMovementAvailableTask(taskParams().nodeName);
     }
     addBasicPrecheckTasks();
+    // Skip the "safe to take down" check for Read Replica nodes since RR tservers do not host
+    // primary-cluster tablet replicas and their removal cannot violate primary RF.
+    if (isFirstTry() && !isReadReplicaNode) {
+      createCheckNodesAreSafeToTakeDownTask(
+          Collections.singletonList(
+              UpgradeTaskBase.MastersAndTservers.from(currentNode, currentNode.getAllProcesses())),
+          null,
+          false);
+    }
     // Pick new only on first try.
     replacementMasterName = findReplacementMasterIfApplicable(universe, currentNode, isFirstTry());
   }
@@ -149,6 +156,7 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
 
       Cluster currCluster =
           universe.getUniverseDetails().getClusterByUuid(taskParams().placementUuid);
+      boolean isReadReplicaNode = isReadReplicaNode(universe, currentNode);
       boolean masterReachable = false;
       // Update Node State to being removed.
       createSetNodeStateTask(currentNode, NodeState.Removing)
@@ -159,7 +167,9 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
               Collections.singleton(currentNode), universe.getUniverseDetails().clusters)
           .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
-      if (alwaysWaitForDataMove || isTabletMovementAvailable(taskParams().nodeName)) {
+      // Read Replica tservers do not hold primary-cluster tablet replicas, so there is no data
+      // to move off the node when it is being removed. Skip the wait-for-data-move step.
+      if (alwaysWaitForDataMove && !isReadReplicaNode) {
         createWaitForDataMoveTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
       }
 

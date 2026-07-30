@@ -8,6 +8,8 @@ menu:
     identifier: create-clusters-multisync
     parent: create-clusters
     weight: 60
+rightNav:
+  hideH4: true
 type: docs
 ---
 
@@ -52,15 +54,16 @@ To create a multi-region replicated cluster, on the **Clusters** page, click **A
 
 The **Create Cluster** wizard has the following pages:
 
-1. [General Settings](#general-and-database-settings)
-1. [Cluster Setup](#cluster-setup)
+1. [General](#general)
+1. [Cluster Settings](#cluster-settings)
+1. [Database](#database)
 1. [Network Access](#network-access)
 1. [Security](#security)
 1. [DB Credentials](#database-credentials)
 
 {{% includeMarkdown "include-general-settings.md" %}}
 
-### Cluster Setup
+### Cluster Settings
 
 Select **Multi-Region Deployment** and set the following options.
 
@@ -77,6 +80,8 @@ Select the [Fault tolerance](../../create-clusters-overview/#fault-tolerance) fo
 - Resilient to 3 region outages; requires a minimum of 7 nodes across 7 regions.
 
 Clusters can be scaled in increments of 1 node per region; for example, a cluster with fault tolerance of 2 regions can be scaled in multiples of 5 nodes, one per region.
+
+To create a cluster that is resilient to _two zone outages_, click **Advanced Options** and set [Replication Factor](../../../../architecture/docdb-replication/replication/#replication-factor) to **RF5**. This configuration provides quicker failover; with two replicas in the preferred region, when a leader fails, a local follower can be elected as a leader, rather than a follower in a different region. This configuration requires a minimum of 5 nodes, across 5 availability zones, across 3 regions; two regions have 2 zones while the third region has a single zone. The cluster can be scaled in increments of 2-2-1 nodes per region. When setting the [Preferred region](#preferred-region), set it to one of the regions with two zones. 
 
 #### Select regions and node size
 
@@ -97,6 +102,8 @@ The node throughput will be scaled according to the IOPS value. For large datase
 Clusters replicated across regions support both horizontal and vertical scaling; you can change the cluster configuration and preferred region after the cluster is created. Refer to [Scale and configure clusters](../../../cloud-clusters/configure-clusters/#replicate-across-regions-clusters).
 
 Monthly costs for the cluster are estimated automatically.
+
+{{% includeMarkdown "include-database-settings.md" %}}
 
 {{% includeMarkdown "network-access.md" %}}
 
@@ -124,7 +131,7 @@ Save your database credentials. If you lose them, you won't be able to use the d
 
 After you complete the wizard, the **Clusters** page appears, showing the provisioning of your new cluster in progress.
 
-When the cluster is ready, the cluster [Overview](../../../cloud-monitor/overview/) tab is displayed.
+When the cluster is ready, the cluster **Overview** tab is displayed.
 
 You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Aeon with the database admin credentials you specified.
 

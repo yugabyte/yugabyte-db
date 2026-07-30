@@ -103,7 +103,7 @@ SELECT documentdb_api.shard_collection('db', 'densify', '{"a": "hashed"}', false
 SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": [8, 12], "step": 1 } } }]}');
 SELECT document FROM bson_aggregation_pipeline('db',
-    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "partition", "step": 1 } } }]}');
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "partition", "step": 1 } } }, {"$sort": { "a": 1, "cost": 1}}]}');
 SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a"], "range": { "bounds": "full", "step": 1 } } }]}');
 
@@ -121,7 +121,7 @@ SELECT documentdb_api.shard_collection('db', 'densify', '{"a": "hashed", "quanti
 SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a", "quantity"], "range": { "bounds": [8, 12], "step": 1 } } }]}');
 SELECT document FROM bson_aggregation_pipeline('db',
-    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a", "quantity"], "range": { "bounds": "partition", "step": 1 } } }]}');
+    '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a", "quantity"], "range": { "bounds": "partition", "step": 1 } } }, {"$sort": { "a": 1, "quantity": 1, "cost": 1}}]}');
 SELECT document FROM bson_aggregation_pipeline('db',
     '{ "aggregate": "densify", "pipeline":  [{"$densify": { "field": "cost", "partitionByFields": ["a", "quantity"], "range": { "bounds": "full", "step": 1 } } }]}');
 

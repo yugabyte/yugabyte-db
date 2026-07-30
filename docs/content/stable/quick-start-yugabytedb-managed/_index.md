@@ -9,6 +9,7 @@ aliases:
 layout: single
 type: docs
 rightNav:
+  hideH3: true
   hideH4: true
 unversioned: true
 ---
@@ -32,7 +33,7 @@ The quickest way to get started with YugabyteDB is to create a free Sandbox clus
 
 1. [Sign up](https://cloud.yugabyte.com/signup?utm_medium=direct&utm_source=docs&utm_campaign=YBM_signup).
 1. [Log in](https://cloud.yugabyte.com/login).
-1. Click **Create a Free cluster**.
+1. Click **Create Cluster**.
 
 The first time you log in, YugabyteDB Aeon provides a welcome experience with a 15 minute guided tutorial. Complete the steps in the **Get Started** tutorial to do the following:
 
@@ -74,7 +75,7 @@ To create your Sandbox cluster:
 
 ![Create a Sandbox cluster](/images/yb-cloud/cloud-add-free-cluster.gif)
 
-1. Click **Create a Free cluster** on the welcome screen, or click **Add Cluster** on the **Clusters** page to open the **Create Cluster** wizard.
+1. Click **Create Cluster** on the welcome screen, or click **Add Cluster** on the **Clusters** page to open the **Create Cluster** wizard.
 
 1. Select Sandbox and click **Choose**.
 
@@ -130,7 +131,7 @@ To connect to your cluster, do the following:
 
 The command line interface (CLI) being used is called [ysqlsh](/stable/api/ysqlsh/). ysqlsh is the CLI for interacting with YugabyteDB using the PostgreSQL-compatible [YSQL API](/stable/api/ysql/). Cloud Shell also supports [ycqlsh](/stable/api/ycqlsh/), a CLI for the [YCQL API](/stable/api/ycql/).
 
-For information on other ways to connect to your cluster, refer to [Connect to clusters](/stable/yugabyte-cloud/cloud-connect).
+For information on other ways to connect to your cluster, refer to [Connect to clusters](/stable/yugabyte-cloud/cloud-connect/).
 
 ## Explore distributed SQL
 
@@ -162,7 +163,7 @@ For PostgreSQL users seeking to transition to a modern, horizontally scalable da
 
 YugabyteDB enables midsize applications running on single-node instances to effortlessly migrate to a fully distributed database environment. As applications grow, YugabyteDB seamlessly transitions to distributed mode, allowing for massive scaling capabilities.
 
-[YugabyteDB Voyager](/stable/yugabyte-voyager/) simplifies the end-to-end database migration process, including cluster setup, schema migration, and data migration. It supports migrating data from PostgreSQL, MySQL, and Oracle databases to various YugabyteDB offerings, including Aeon, Anywhere, and the core open-source database.
+[YugabyteDB Voyager](/stable/yugabyte-voyager/) simplifies the end-to-end database migration process, including cluster setup, schema migration, and data migration. It supports offline and live migration from PostgreSQL to various YugabyteDB offerings, including Aeon, Anywhere, and the core open-source database.
 
 You can [install](/stable/yugabyte-voyager/install-yb-voyager/) YugabyteDB Voyager on different operating systems such as RHEL, Ubuntu, macOS, or deploy it via Docker or Airgapped installations.
 

@@ -6,7 +6,7 @@ xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xs
 	<parent>
 		<groupId>org.yb</groupId>
 		<artifactId>yb-anywhere-modules</artifactId>
-		<version>${revision}</version>
+		<version>0.0.1-SNAPSHOT</version>
 		<relativePath>../parent-module/pom.xml</relativePath>
 	</parent>
 

@@ -151,7 +151,8 @@ class IndexMergeTest : public YBTest {
           .distance_kind = DistanceKind::kL2Squared};
 
     hnswlib_index_factory_ = [hnsw_options](FactoryMode) -> VectorIndexIfPtr<FloatVector, float> {
-      return HnswlibIndexFactory<FloatVector, float>::Create(FactoryMode::kCreate, hnsw_options);
+      return SimplifiedHnswlibIndexFactory<FloatVector, float>::Create(
+          FactoryMode::kCreate, hnsw_options);
     };
     usearch_index_factory_ = [hnsw_options](FactoryMode) -> VectorIndexIfPtr<FloatVector, float> {
       return SimplifiedUsearchIndexFactory<FloatVector, float>::Create(

@@ -253,7 +253,8 @@ Result<bool> ShouldTakeWeakLockForPrefix(dockv::AncestorDocKey ancestor_doc_key,
       LOG(WARNING) << msg;
       return false;
     }
-    return static_cast<bool>(pk_is_known);
+    // Always take strong key on top level key for SERIALIZABLE
+    return false;
   }
   return true;
 }

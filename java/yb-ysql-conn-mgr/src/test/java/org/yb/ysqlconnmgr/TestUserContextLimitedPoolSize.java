@@ -17,10 +17,13 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.junit.runner.RunWith;
+import org.yb.YBTestRunner;
 import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.util.RequiresLinux;
 
 // TODO (janand) #18837: Use Parameterized test runner with pool size as the parameter.
-@RunWith(value = YBTestRunnerYsqlConnMgr.class)
+@RequiresLinux
+@RunWith(value = YBTestRunner.class)
 public class TestUserContextLimitedPoolSize extends TestUserContext {
   // TODO: Revert to 2 connections after bug fix DB-7395 lands.
   private final int POOL_SIZE = 3;

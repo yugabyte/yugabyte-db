@@ -37,7 +37,7 @@ class FixedSizeFilterTest : public RocksDBTest {
 };
 
 TEST_F(FixedSizeFilterTest, SingleChunk) {
-  FixedSizeFilterBlockBuilder builder(nullptr, table_options_);
+  FixedSizeFilterBlockBuilder builder(nullptr, table_options_, /* mem_tracker = */ nullptr);
   builder.StartBlock(0);
   builder.Add("foo");
   builder.Add("bar");
@@ -55,7 +55,7 @@ TEST_F(FixedSizeFilterTest, SingleChunk) {
 }
 
 TEST_F(FixedSizeFilterTest, MultipleChunks) {
-  FixedSizeFilterBlockBuilder builder(nullptr, table_options_);
+  FixedSizeFilterBlockBuilder builder(nullptr, table_options_, /* mem_tracker = */ nullptr);
 
   // First block
   builder.StartBlock(0);

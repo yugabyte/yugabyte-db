@@ -11,6 +11,8 @@ menu:
     parent: back-up-restore-universes
     identifier: configure-backup-storage
     weight: 10
+rightNav:
+  hideH4: true
 type: docs
 ---
 
@@ -22,11 +24,21 @@ Depending on your environment, you can save your YugabyteDB universe data to a v
 
 You can configure AWS S3 and S3-compatible storage as your backup target.
 
-{{< note title="S3-compatible storage requires S3 path style access" >}}
-By default, the option to use S3 path style access is not available.
+### Prerequisites
 
-To enable the feature in YugabyteDB Anywhere, set the **Enable Path Access Style for Amazon S3** Global Runtime Configuration option (config key `yb.ui.feature_flags.enable_path_style_access`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
-{{< /note >}}
+- S3-compatible storage requires S3 path style access.
+
+    By default, the option to use S3 path style access is not available.
+
+    To enable S3 path style access in YugabyteDB Anywhere, set the **Enable Path Access Style for Amazon S3** Global Runtime Configuration option (config key `yb.ui.feature_flags.enable_path_style_access`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). Note that only a Super Admin user can modify Global configuration settings.
+
+- S3 storage requires certificate verification.
+
+    If you are using custom self-signed or CA certificates, to connect to your S3 storage, you must add the certificates to the YugabyteDB Anywhere Trust Store. Refer to [Add certificates to your trust store](../../security/enable-encryption-in-transit/trust-store/).
+
+    {{< note title="Certificate validation can't be disabled" >}}
+If you set the **Server certificate verification for S3 backup/restore** (`yb.certVerifyBackupRestore.is_enforced`) Global Runtime Configuration option to False, the setting will be ignored.
+    {{< /note >}}
 
 ### Create an AWS backup configuration
 
@@ -90,6 +102,16 @@ Typically, the signing region is the AWS region where the S3 bucket is located (
 
 By default, the **Signing region** field is not available in the UI. To make it available, set the **Enable Signing Region** Global Runtime Configuration option (config key `yb.ui.feature_flags.enable_signing_region`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags.
 
+### Using a proxy
+
+By default, **Proxy Configuration** for S3 storage is not available in the UI. To make it available (v2025.2.3.0 and later), set the **Enable S3 Backup Proxy** Global Runtime Configuration option (config key `yb.ui.feature_flags.enable_s3_backup_proxy`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/). You must be a Super Admin to set global runtime configuration flags. (To make the feature available in versions prior to v2025.2.3.0, navigate to `https://<my-yugabytedb-anywhere-ip>/features` and enable the **enableS3BackupProxy** option.)
+
+Configure a proxy for your S3 backup configuration by setting the following options under **Proxy Configuration**:
+
+- **Host**: The full URL or IP address of the HTTP/HTTPS proxy server.
+- **Port**: The port used by the HTTP/HTTPS proxy server.
+- **Username** and **Password**: If your proxy requires authentication, enter the Username and Password.
+
 ## Google Cloud Storage
 
 You can configure Google Cloud Storage (GCS) as your backup target.
@@ -129,6 +151,196 @@ To create a GCP backup configuration, do the following:
 
 1. Click **Save**.
 
+## Azure Storage
+
+You can configure Azure as your backup target.
+
+### Prerequisites
+
+- Azure storage account.
+- [Blob container](https://learn.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-portal#create-a-container).
+- [SAS Token](https://learn.microsoft.com/en-us/azure/storage/common/storage-sas-overview?toc=/azure/storage/blobs/toc.json&bc=/azure/storage/blobs/breadcrumb/toc.json) or [Managed identity (IAM)](#azure-managed-identity-authentication).
+
+### Create an Azure storage configuration
+
+In YugabyteDB Anywhere:
+
+1. Navigate to **Integrations > Backup > Azure Storage**.
+
+1. Click **Create AZ Backup**.
+
+    ![Azure Configuration](/images/yp/cloud-provider-configuration-backup-azure.png)
+
+1. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
+
+1. Enter the **Container URL** of the container you created. You can obtain the container URL in Azure by navigating to **Container > Properties**.
+
+1. Provide the **SAS Token** you generated. You can copy the SAS Token directly from **Shared access signature** page in Azure.
+
+1. Click **Save**.
+
+### Azure Managed Identity authentication
+
+{{<tags/feature/ea idea="986">}}YugabyteDB Anywhere supports Azure Managed Identity (IAM) authentication for backup storage configurations, providing an alternative to SAS tokens. (Available in v2025.2.1.0 and later.)
+
+Note that this feature is currently supported only for VM-based universes and via API.
+
+When Azure IAM is enabled (via the parameter `USE_AZURE_IAM` set using the API):
+
+- YugabyteDB Anywhere stores the IAM-based Azure storage configuration and validates it using the identity of the YugabyteDB Anywhere host VM or Service Principal.
+- During backup and restore, YB Controller on each database node authenticates to Azure using the node's Managed Identity or Service Principal, and then performs blob operations against the configured container.
+- SAS tokens are not required for authentication.
+
+#### Prerequisites
+
+Before configuring Azure IAM authentication, ensure the following:
+
+- **YugabyteDB Anywhere VM**. Ensure the YugabyteDB Anywhere VM has _one_ of the following:
+
+  - Managed Identity enabled. YugabyteDB Anywhere supports system- and user-assigned managed identity.
+
+    For more information, refer to [Configure managed identities on Azure virtual machines](https://learn.microsoft.com/en-us/azure/active-directory/managed-identities-azure-resources/qs-configure-portal-windows-vm) in the Azure documentation.
+
+  - App registration (Service Principal) configured.
+
+    Ensure the following environment variables are set on the YugabyteDB Anywhere VM:
+
+      ```sh
+      AZURE_TENANT_ID=<tenant-id>
+      AZURE_CLIENT_ID=<client-id>
+      AZURE_CLIENT_SECRET=<client-secret>
+      ```
+
+    For more information, refer to [Register a Microsoft Entra app and create a service principal](https://learn.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal) in the Azure documentation.
+
+- **Database nodes**. Ensure your database nodes are hosted on Azure VMs with one of the following:
+
+  - Managed Identity enabled.
+
+    For each database node VM, enable system- or user-assigned managed identity.
+
+    This is the recommended approach as it requires no additional credentials.
+
+  - App registration with Azure credentials configured in the environment.
+    - Use the same Service Principal as created for the YugabyteDB Anywhere VM.
+    - Set the following environment variables on each database node VM:
+
+      ```sh
+      AZURE_TENANT_ID=<tenant-id>
+      AZURE_CLIENT_ID=<client-id>
+      AZURE_CLIENT_SECRET=<client-secret>
+      ```
+
+- **Azure IAM role and permissions**. Assign the **Storage Blob Data Contributor** role (or a stricter role) on the target storage account/container to the Managed Identity or Service Principal.
+
+  For more information, refer to [Assign Azure roles using the Azure portal](https://learn.microsoft.com/en-us/azure/role-based-access-control/role-assignments-portal) in the Azure documentation.
+
+#### Configure Azure storage with IAM using the API
+
+Currently, you can only configure Azure storage with IAM using the [YugabyteDB Anywhere API](../../anywhere-automation/anywhere-api/).
+
+To create a storage configuration for a single Azure container with IAM:
+
+```bash
+curl -X POST \
+  'https://<yba-ip>/api/v1/customers/<customer-uuid>/configs' \
+  -H 'Content-Type: application/json' \
+  -H 'X-AUTH-YW-API-TOKEN: <api-token>' \
+  -d '{
+    "configName": "azure-iam-backup",
+    "type": "STORAGE",
+    "name": "AZ",
+    "data": {
+      "BACKUP_LOCATION": "https://storageaccount.blob.core.windows.net/container",
+      "USE_AZURE_IAM": true
+    }
+  }'
+```
+
+To create a storage configuration for multiple Azure regions with IAM:
+
+```bash
+curl -X POST \
+  'https://<yba-ip>/api/v1/customers/<customer-uuid>/configs' \
+  -H 'Content-Type: application/json' \
+  -H 'X-AUTH-YW-API-TOKEN: <api-token>' \
+  -d '{
+    "configName": "azure-multi-region-iam",
+    "type": "STORAGE",
+    "name": "AZ",
+    "data": {
+      "BACKUP_LOCATION": "https://account1.blob.core.windows.net/container1",
+      "USE_AZURE_IAM": true,
+      "REGION_LOCATIONS": [
+        {
+          "REGION": "us-west1",
+          "LOCATION": "https://account1.blob.core.windows.net/container1"
+        },
+        {
+          "REGION": "us-east1",
+          "LOCATION": "https://account2.blob.core.windows.net/container2"
+        }
+      ]
+    }
+  }'
+```
+
+Use the following configuration parameters:
+
+| Parameter | Description |
+| :--- | :--- |
+| `configName` | A meaningful name for your storage configuration. |
+| `type` | Must be `"STORAGE"`. |
+| `name` | Must be `"AZ"` for Azure. |
+| `data.BACKUP_LOCATION` | The container URL in the format `https://storageaccount.blob.core.windows.net/container`. |
+| `data.USE_AZURE_IAM` | Set to `true` to enable IAM authentication. When this is `true`, do not include SAS token credentials. |
+| `data.REGION_LOCATIONS` | Optional. Array of region-specific locations for multi-region configurations. Each entry contains:<br><ul><li>`REGION`: The region name (for example, `us-west1`).</li><li>`LOCATION`: The container URL for that region.</li><ul> |
+
+{{< note title="Mutually exclusive authentication" >}}
+You cannot use both SAS token and Azure IAM authentication in the same configuration. When `USE_AZURE_IAM` is `true`, do not include SAS token credentials in the request.
+{{< /note >}}
+
+<!-- idea="986" This can be used when the feature has UI support
+#### Create an Azure storage configuration with IAM
+
+To create an Azure backup configuration using Managed Identity, in YugabyteDB Anywhere:
+
+1. Navigate to **Integrations > Backup > Azure Storage**.
+
+1. Click **Create AZ Backup**.
+
+1. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
+
+1. Enter the **Container URL** of the container you created. You can obtain the container URL in Azure by navigating to **Container > Properties**.
+
+1. Enable **Use Azure IAM** to use Managed Identity authentication instead of SAS tokens.
+
+    {{< note title="Mutually exclusive authentication" >}}
+    You cannot use both SAS token and Azure IAM authentication in the same configuration. When **Use Azure IAM** is enabled, do not provide a SAS token.
+    {{< /note >}}
+
+1. Click **Save**.
+
+#### Multi-region backup configuration with IAM
+
+For multi-region backup configurations with IAM enabled, you do not need to provide SAS tokens for each region. Configure as follows:
+
+1. Navigate to **Integrations > Backup > Azure Storage**.
+
+1. Click **Create AZ Backup**.
+
+1. Enter a **Configuration Name**.
+
+1. Enter the primary **Container URL**.
+
+1. Enable **Use Azure IAM**.
+
+1. Add region-specific locations in the **Region Locations** section:
+   - For each region, enter the **Region** name and corresponding **Location** (container URL).
+   - No SAS tokens are required for any region when IAM is enabled.
+
+1. Click **Save**. -->
+
 ## Network File System
 
 You can configure Network File System (NFS) as your backup target, as follows:
@@ -148,55 +360,6 @@ You can configure Network File System (NFS) as your backup target, as follows:
 {{< warning title="Prevent back up failure due to NFS unmount on cloud VM restart" >}}
 To avoid potential backup and restore errors, add the NFS mount to `/etc/fstab` on the nodes of universes using the backup configuration. When a cloud VM is restarted, the NFS mount may get unmounted if its entry is not in `/etc/fstab`. This can lead to backup failures, and errors during [backup](../back-up-universe-data/) or [restore](../restore-universe-data/).
 {{< /warning >}}
-
-## Azure Storage
-
-You can configure Azure as your backup target.
-
-### Configure storage on Azure
-
-1. Create a storage account in Azure, as follows:
-
-    - Navigate to **Portal > Storage Account** and click **Add** (+).
-    - Complete the mandatory fields, such as **Resource group**, **Storage account name**, and **Location**, as per the following illustration:
-
-        ![Azure storage account creation](/images/yp/cloud-provider-configuration-backup-azure-account.png)
-
-1. Create a blob container, as follows:
-
-    - Open the storage account (for example, **storagetestazure**, as shown in the following illustration).
-    - Navigate to **Blob service > Containers > + Container** and then click **Create**.
-
-        ![Azure blob container creation](/images/yp/cloud-provider-configuration-backup-azure-blob-container.png)
-
-1. Generate an SAS Token, as follows:
-
-    - Navigate to **Storage account > Shared access signature**, as shown in the following illustration. (Note that you must generate the SAS Token on the Storage Account, not the Container. Generating the SAS Token on the container will prevent the configuration from being applied.)
-    - Under **Allowed resource types**, select **Container** and **Object**.
-    - Under **Allowed permissions**, select all options as shown.
-    - Click **Generate SAS and connection string** and copy the SAS token.
-
-        ![Azure Shared Access Signature page](/images/yp/cloud-provider-configuration-backup-azure-generate-token.png)
-
-### Create an Azure storage configuration
-
-In YugabyteDB Anywhere:
-
-1. Navigate to **Integrations > Backup > Azure Storage**.
-
-1. Click **Create AZ Backup**.
-
-    ![Azure Configuration](/images/yp/cloud-provider-configuration-backup-azure.png)
-
-1. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
-
-1. Enter the **Container URL** of the container you created. You can obtain the container URL in Azure by navigating to **Container > Properties**, as shown in the following illustration:
-
-    ![Azure container properties](/images/yp/cloud-provider-configuration-backup-azure-container-properties.png)
-
-1. Provide the **SAS Token** you generated. You can copy the SAS Token directly from **Shared access signature** page in Azure.
-
-1. Click **Save**.
 
 ## Local storage
 

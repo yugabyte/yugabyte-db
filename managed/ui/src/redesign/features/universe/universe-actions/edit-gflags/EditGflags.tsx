@@ -50,6 +50,7 @@ interface EditGflagsModalProps {
   onClose: () => void;
   universeData: Universe;
   isGFlagMultilineConfEnabled: boolean;
+  isNonRestartGFlagUpgradeOptionEnabled: boolean;
 }
 
 export const useStyles = makeStyles((theme) => ({
@@ -107,7 +108,8 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
   open,
   onClose,
   universeData,
-  isGFlagMultilineConfEnabled
+  isGFlagMultilineConfEnabled,
+  isNonRestartGFlagUpgradeOptionEnabled
 }) => {
   const { t } = useTranslation();
   const { universeDetails, universeUUID, rollMaxBatchSize } = universeData;
@@ -153,6 +155,12 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
   const isNotRuntime = () => {
     if (!isPrimary) return asyncFlags?.some((f) => !f?.tags?.includes('runtime'));
     else return primaryFlags.some((f) => !f?.tags?.includes('runtime'));
+  };
+
+  const isRestartRequired = () => {
+    const flags = !isPrimary ? asyncFlags : primaryFlags;
+    if (!flags?.length) return false;
+    return flags.some((f) => f?.requiresRestart === true);
   };
 
   const handleFormSubmit = (runOnlyPrechecks = false) =>
@@ -246,7 +254,16 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
     if (event.target.checked) {
       if (_.isEmpty(asyncFlags)) setValue('inheritFlagsFromPrimary', true);
       else setOpenInheritRRModal(true);
-    } else setValue('inheritFlagsFromPrimary', false);
+    } else {
+      setValue('inheritFlagsFromPrimary', false);
+      if (_.isEmpty(asyncFlags) && !_.isEmpty(primaryFlags)) {
+        const tserverOnlyFlags = primaryFlags
+          .filter((flag) => flag.TSERVER !== undefined)
+          .map((flag) => _.omit(flag, 'MASTER'));
+        setValue('asyncGflags', tserverOnlyFlags);
+      }
+      setIsPrimary(false);
+    }
   };
 
   useUpdateEffect(() => {
@@ -254,7 +271,7 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
   }, [inheritFromPrimary]);
 
   const handleNumNodeChangePrimary = (e: FocusEvent<HTMLInputElement>) => {
-    const fieldValue = (e.target.value as unknown) as number;
+    const fieldValue = e.target.value as unknown as number;
     if (fieldValue > rollMaxBatchSize?.primaryBatchSize)
       setValue('numNodesToUpgradePrimary', rollMaxBatchSize?.primaryBatchSize);
     else if (fieldValue < 1) setValue('numNodesToUpgradePrimary', 1);
@@ -311,8 +328,10 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
           {t('universeForm.gFlags.nonRollingMsg')}
         </Box>
       )
-    },
-    {
+    }
+  ];
+  if (isNonRestartGFlagUpgradeOptionEnabled) {
+    GFLAG_UPDATE_OPTIONS.push({
       value: UpgradeOptions.NonRestart,
       label: (
         <Box display="flex" className="upgrade-radio-label" mb={1}>
@@ -320,8 +339,8 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({
             `${isNotRuntime() ? t('universeForm.gFlags.nonRestartRuntime') : ''}`}
         </Box>
       )
-    }
-  ];
+    });
+  }
 
   const canEditGFlags = hasNecessaryPerm({
     onResource: universeUUID,

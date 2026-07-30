@@ -49,21 +49,21 @@ ERROR:  duplicate key value violates unique constraint "test_1_pkey"
 EXPLAIN (COSTS OFF) SELECT * FROM test WHERE h1 = 1 AND h2 = 4 AND h3 = 3;
                      QUERY PLAN                     
 ----------------------------------------------------
- Index Scan using test_1_pkey on test_1 test
+ Index Scan using test_1_pkey on test_1
    Index Cond: ((h1 = 1) AND (h2 = 4) AND (h3 = 3))
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM test WHERE h1 = 1 ORDER BY h2;
-                 QUERY PLAN                  
----------------------------------------------
- Index Scan using test_1_pkey on test_1 test
+               QUERY PLAN               
+----------------------------------------
+ Index Scan using test_1_pkey on test_1
    Index Cond: (h1 = 1)
 (2 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM test WHERE h1 = 1 AND h2 = 4 ORDER BY h3;
-                 QUERY PLAN                  
----------------------------------------------
- Index Scan using test_1_pkey on test_1 test
+               QUERY PLAN               
+----------------------------------------
+ Index Scan using test_1_pkey on test_1
    Index Cond: ((h1 = 1) AND (h2 = 4))
 (2 rows)
 
@@ -118,7 +118,7 @@ ERROR:  duplicate key value violates unique constraint "person_americas_pkey"
 EXPLAIN (COSTS OFF) SELECT * FROM person WHERE person_id=1 AND country='United States';
                               QUERY PLAN                               
 -----------------------------------------------------------------------
- Index Scan using person_americas_pkey on person_americas person
+ Index Scan using person_americas_pkey on person_americas person_1
    Index Cond: ((person_id = 1) AND (country = 'United States'::text))
 (2 rows)
 
@@ -151,9 +151,9 @@ INSERT INTO parted VALUES (1, '1');
 INSERT INTO parted VALUES (1, '1');
 ERROR:  duplicate key value violates unique constraint "part_a_1_5_pkey"
 EXPLAIN (COSTS OFF) SELECT * FROM parted WHERE a = 1 ORDER BY b DESC;
-                      QUERY PLAN                       
--------------------------------------------------------
- Index Scan using part_a_1_5_pkey on part_a_1_5 parted
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Index Scan using part_a_1_5_pkey on part_a_1_5 parted_1
    Index Cond: (a = 1)
 (2 rows)
 

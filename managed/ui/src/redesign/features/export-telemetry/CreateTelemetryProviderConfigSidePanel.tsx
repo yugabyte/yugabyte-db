@@ -2,8 +2,9 @@ import { FC } from 'react';
 import { toast } from 'react-toastify';
 import { useMutation, useQuery } from 'react-query';
 import { useTranslation, Trans } from 'react-i18next';
-import { useForm, FormProvider } from 'react-hook-form';
-import { Box, Typography, MenuItem, Divider } from '@material-ui/core';
+import { useForm, FormProvider, useFieldArray } from 'react-hook-form';
+import { Box, Typography, MenuItem, Divider, IconButton } from '@material-ui/core';
+import { CloseSharp } from '@material-ui/icons';
 import clsx from 'clsx';
 
 import {
@@ -14,7 +15,8 @@ import {
   RadioGroupOrientation,
   YBSelect,
   YBTooltip,
-  YBPasswordField
+  YBPasswordField,
+  YBButton
 } from '../../components';
 import { YBDropZoneField } from '../../../components/configRedesign/providerRedesign/components/YBDropZone/YBDropZoneField';
 import { createErrorMessage } from '../universe/universe-form/utils/helpers';
@@ -25,7 +27,8 @@ import {
   ExportLogPayload,
   TelemetryProviderItem
 } from './types';
-import { DATADOG_SITES, LOKI_AUTH_TYPES } from './constants';
+import { DATADOG_SITES, LOKI_AUTH_TYPES, OTLP_AUTH_TYPES, OTLP_PROTOCOLS } from './constants';
+import { headerItemsToRecord, headerRecordToItems } from './utils';
 import { api, runtimeConfigQueryKey } from '../../helpers/api';
 import InfoIcon from '../../assets/info-message.svg?img';
 
@@ -56,12 +59,20 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
   const pillClasses = usePillStyles();
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const isViewMode = formProps !== null;
-  const formDefaultValues = isViewMode
-    ? formProps
+  const formDefaultValues: ExportLogFormFields = isViewMode
+    ? {
+        ...formProps,
+        config: {
+          ...formProps.config,
+          headerItems: headerRecordToItems(formProps.config?.headers)
+        }
+      }
     : {
+        name: '',
         config: {
           type: TelemetryProviderType.DATA_DOG,
-          site: DATADOG_SITES[0].value
+          site: DATADOG_SITES[0].value,
+          headerItems: []
         }
       };
 
@@ -71,7 +82,15 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
     reValidateMode: 'onChange'
   });
 
-  const { control, handleSubmit, watch, setValue } = formMethods;
+  const { control, handleSubmit, watch, setValue, getValues } = formMethods;
+  const {
+    fields: headerFields,
+    append: appendHeader,
+    remove: removeHeader
+  } = useFieldArray({
+    control,
+    name: 'config.headerItems'
+  });
 
   const createTelemetryProvider = useMutation(
     (values: ExportLogPayload) => {
@@ -90,7 +109,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
 
   const providerTypeValue = watch('config.type');
   const dataDogSiteValue = watch('config.site');
-  const lokiAuthTypeValue = watch('config.authType');
+  const authTypeValue = watch('config.authType');
 
   const runtimeConfigQuery = useQuery(runtimeConfigQueryKey.globalScope(), () =>
     api.fetchRuntimeConfigs()
@@ -98,6 +117,9 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
   const runtimeConfigEntries = runtimeConfigQuery.data.configEntries ?? [];
   const isLokiTelemetryEnabled =
     runtimeConfigEntries.find((config: any) => config.key === RuntimeConfigKey.LOKI_TELEMETRY_ALLOW)
+      ?.value ?? false;
+  const isOtlpTelemetryEnabled =
+    runtimeConfigEntries.find((config: any) => config.key === RuntimeConfigKey.OTLP_TELEMETRY_ALLOW)
       ?.value ?? false;
 
   const handleFormSubmit = handleSubmit(async (values) => {
@@ -156,6 +178,25 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
       if (values.config.type === TelemetryProviderType.DYNATRACE) {
         payload.config.endpoint = values.config?.endpoint;
         payload.config.apiToken = values.config?.apiToken;
+      }
+      if (values.config.type === TelemetryProviderType.OTLP) {
+        payload.config.endpoint = values.config?.endpoint;
+        payload.config.protocol = values.config?.protocol ?? 'gRPC';
+        payload.config.authType = values.config?.authType ?? 'NoAuth';
+        if (values.config?.basicAuth) {
+          payload.config.basicAuth = values.config.basicAuth;
+        }
+        if (values.config?.bearerToken?.token) {
+          payload.config.bearerToken = { token: values.config.bearerToken.token };
+        }
+        const headers = headerItemsToRecord(values.config?.headerItems);
+        if (headers) {
+          payload.config.headers = headers;
+        }
+        payload.config.logsEndpoint = values.config?.logsEndpoint ?? undefined;
+        payload.config.metricsEndpoint = values.config?.metricsEndpoint ?? undefined;
+        payload.config.compression = values.config?.compression ?? 'gzip';
+        payload.config.timeoutSeconds = values.config?.timeoutSeconds ?? 5;
       }
       return await createTelemetryProvider.mutateAsync(payload);
     } catch (e) {}
@@ -241,7 +282,12 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
     return (
       <>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
-          <YBLabel>{t('splunkToken')}</YBLabel>
+          <YBLabel>
+            {t('splunkToken')} &nbsp;
+            <YBTooltip title={t('splunkTokenTooltip')}>
+              <img src={InfoIcon} />
+            </YBTooltip>
+          </YBLabel>
           <YBInputField
             control={control}
             name="config.token"
@@ -253,11 +299,16 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
           />
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
-          <YBLabel>{t('endpointURL')}</YBLabel>
+          <YBLabel>
+            {t('endpointURL')} &nbsp;
+            <YBTooltip title={t('splunkURLTooltip')}>
+              <img src={InfoIcon} />
+            </YBTooltip>
+          </YBLabel>
           <YBInputField
             control={control}
             name="config.endpoint"
-            placeholder="https://"
+            placeholder={t('splunkURLPlaceholder')}
             fullWidth
             disabled={isViewMode}
             inputProps={{
@@ -357,7 +408,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
             orientation={RadioGroupOrientation.VERTICAL}
             isDisabled={isViewMode}
           />
-          {lokiAuthTypeValue === 'BasicAuth' && renderLokiBasicAuthForm()}
+          {authTypeValue === 'BasicAuth' && renderLokiBasicAuthForm()}
         </Box>
       </>
     );
@@ -608,6 +659,7 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
             name="config.apiToken"
             fullWidth
             disabled={isViewMode}
+            hidePasswordButton={isViewMode}
             inputProps={{
               'data-testid': 'DynatraceForm-AccessToken'
             }}
@@ -628,6 +680,211 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
               />
             </Typography>
           </Box>
+        </Box>
+      </>
+    );
+  };
+
+  const renderOtlpForm = () => {
+    return (
+      <>
+        <Box display="flex" flexDirection="column" width="100%" mt={3}>
+          <YBLabel>
+            {t('otlp.endpoint')}
+            <YBTooltip title={t('otlp.endpointTooltip')}>
+              <img src={InfoIcon} />
+            </YBTooltip>
+          </YBLabel>
+          <YBInputField
+            control={control}
+            name="config.endpoint"
+            fullWidth
+            placeholder="https://"
+            disabled={isViewMode}
+            inputProps={{ 'data-testid': 'OtlpForm-Endpoint' }}
+            required={true}
+            rules={{ required: t('otlp.validationEndpointRequired') }}
+          />
+        </Box>
+        <Box display="flex" flexDirection="column" width="100%" mt={3}>
+          <YBLabel>{t('otlp.protocol')}</YBLabel>
+          <YBRadioGroupField
+            name="config.protocol"
+            control={control}
+            options={OTLP_PROTOCOLS}
+            orientation={RadioGroupOrientation.HORIZONTAL}
+            isDisabled={isViewMode}
+            rules={{ required: t('otlp.validationProtocolRequired') }}
+          />
+        </Box>
+        <Box className={classes.mainFieldContainer} mt={3}>
+          <YBLabel>{t('authType')}</YBLabel>
+          <YBRadioGroupField
+            name="config.authType"
+            control={control}
+            options={OTLP_AUTH_TYPES}
+            orientation={RadioGroupOrientation.VERTICAL}
+            isDisabled={isViewMode}
+            rules={{ required: t('otlp.validationFieldRequired') }}
+          />
+          {authTypeValue === 'BasicAuth' && (
+            <>
+              <Box display="flex" flexDirection="column" width="100%" mt={2}>
+                <YBLabel>{t('lokiUsername')}</YBLabel>
+                <YBInputField
+                  control={control}
+                  name="config.basicAuth.username"
+                  fullWidth
+                  disabled={isViewMode}
+                  rules={{ required: t('otlp.validationFieldRequired') }}
+                />
+              </Box>
+              <Box display="flex" flexDirection="column" width="100%" mt={2}>
+                <YBLabel>{t('lokiPassword')}</YBLabel>
+                <YBPasswordField
+                  control={control}
+                  name="config.basicAuth.password"
+                  fullWidth
+                  disabled={isViewMode}
+                  hidePasswordButton={isViewMode}
+                  rules={{ required: t('otlp.validationFieldRequired') }}
+                />
+              </Box>
+            </>
+          )}
+          {authTypeValue === 'BearerToken' && (
+            <Box display="flex" flexDirection="column" width="100%" mt={2}>
+              <YBLabel>{t('otlp.bearerToken')}</YBLabel>
+              <YBPasswordField
+                control={control}
+                name="config.bearerToken.token"
+                fullWidth
+                disabled={isViewMode}
+                hidePasswordButton={isViewMode}
+                rules={{ required: t('otlp.validationFieldRequired') }}
+              />
+            </Box>
+          )}
+        </Box>
+        <Box display="flex" flexDirection="column" width="100%" mt={3}>
+          <YBLabel className={classes.ybLabel}>
+            {t('otlp.headers')}
+            <YBTooltip title={t('otlp.headersTooltip')}>
+              <img src={InfoIcon} />
+            </YBTooltip>
+          </YBLabel>
+          {headerFields.map((headerField, headerIndex) => (
+            <Box key={headerField.id} className={classes.headerRow}>
+              <Box className={classes.headerInput}>
+                <YBInputField
+                  control={control}
+                  name={`config.headerItems.${headerIndex}.key`}
+                  fullWidth
+                  disabled={isViewMode}
+                  placeholder={t('otlp.headerKeyPlaceholder')}
+                  inputProps={{
+                    'data-testid': `OtlpForm-HeaderKey-${headerIndex}`
+                  }}
+                  rules={{
+                    validate: (headerKeyValue) => {
+                      const headerValue = getValues(`config.headerItems.${headerIndex}.value`);
+                      if (headerValue && !String(headerKeyValue ?? '').trim()) {
+                        return t('otlp.validationHeaderKeyRequired');
+                      }
+                      return true;
+                    }
+                  }}
+                />
+              </Box>
+              <Box className={classes.headerInput}>
+                <YBInputField
+                  control={control}
+                  name={`config.headerItems.${headerIndex}.value`}
+                  fullWidth
+                  disabled={isViewMode}
+                  placeholder={t('otlp.headerValuePlaceholder')}
+                  inputProps={{
+                    'data-testid': `OtlpForm-HeaderValue-${headerIndex}`
+                  }}
+                />
+              </Box>
+              {!isViewMode && (
+                <IconButton
+                  color="default"
+                  size="medium"
+                  data-testid={`OtlpForm-RemoveHeader-${headerIndex}`}
+                  onClick={() => removeHeader(headerIndex)}
+                >
+                  <CloseSharp />
+                </IconButton>
+              )}
+            </Box>
+          ))}
+          {!isViewMode && (
+            <Box mt={1}>
+              <YBButton
+                variant="secondary"
+                data-testid="OtlpForm-AddHeader"
+                onClick={() => appendHeader({ key: '', value: '' })}
+                size="medium"
+              >
+                <span className="fa fa-plus" />
+                &nbsp;{t('otlp.addHeader')}
+              </YBButton>
+            </Box>
+          )}
+          {isViewMode && headerFields.length === 0 && (
+            <Typography variant="body2" color="textSecondary">
+              —
+            </Typography>
+          )}
+        </Box>
+        <Box mt={3}>
+          <Divider />
+        </Box>
+        <Box display="flex" flexDirection="column" width="100%" mt={3}>
+          <YBLabel>
+            {t('otlp.logsEndpoint')}
+            <YBTooltip title={t('otlp.logsEndpointTooltip')}>
+              <img src={InfoIcon} />
+            </YBTooltip>
+          </YBLabel>
+          <YBInputField
+            control={control}
+            name="config.logsEndpoint"
+            fullWidth
+            placeholder={t('otlp.logsEndpointPlaceholder')}
+            disabled={isViewMode}
+            inputProps={{ 'data-testid': 'OtlpForm-LogsEndpoint' }}
+          />
+        </Box>
+        <Box display="flex" flexDirection="column" width="100%" mt={3}>
+          <YBLabel>
+            {t('otlp.metricsEndpoint')}
+            <YBTooltip title={t('otlp.metricsEndpointTooltip')}>
+              <img src={InfoIcon} />
+            </YBTooltip>
+          </YBLabel>
+          <YBInputField
+            control={control}
+            name="config.metricsEndpoint"
+            fullWidth
+            placeholder={t('otlp.metricsEndpointPlaceholder')}
+            disabled={isViewMode}
+            inputProps={{ 'data-testid': 'OtlpForm-MetricsEndpoint' }}
+          />
+        </Box>
+        <Box display="flex" flexDirection="column" width="100%" mt={3}>
+          <YBLabel>{t('otlp.timeoutSeconds')}</YBLabel>
+          <YBInputField
+            control={control}
+            name="config.timeoutSeconds"
+            fullWidth
+            type="number"
+            disabled={isViewMode}
+            placeholder={t('otlp.timeoutSecondsPlaceholder')}
+            inputProps={{ 'data-testid': 'OtlpForm-Timeout', min: 1 }}
+          />
         </Box>
       </>
     );
@@ -720,6 +977,22 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
         </div>
       ),
       value: TelemetryProviderType.DYNATRACE
+    },
+    {
+      label: (
+        <div className={classes.telemetryRadioOptionLabel}>
+          <Typography variant="body2">{t('telemetryProviderOption.label.otlp')}</Typography>
+          <div className={classes.pillContainer}>
+            <div className={clsx(pillClasses.pill, classes.exportSupportPill)}>
+              {t('telemetryProviderOption.exportSupport.metrics')}
+            </div>
+            <div className={clsx(pillClasses.pill, classes.exportSupportPill)}>
+              {t('telemetryProviderOption.exportSupport.logs')}
+            </div>
+          </div>
+        </div>
+      ),
+      value: TelemetryProviderType.OTLP
     }
   ];
   return (
@@ -785,6 +1058,9 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
               isLokiTelemetryEnabled &&
               renderLokiForm()}
             {providerTypeValue === TelemetryProviderType.DYNATRACE && renderDynatraceForm()}
+            {providerTypeValue === TelemetryProviderType.OTLP &&
+              (isOtlpTelemetryEnabled || isViewMode) &&
+              renderOtlpForm()}
           </Box>
         </Box>
       </FormProvider>

@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next';
 import {
   OptionProps,
   RadioGroupOrientation,
+  YBButton as YBRedesignedButton,
   YBInputField,
   YBRadioGroupField,
   YBToggleField
@@ -64,12 +65,9 @@ import { RegionOperation } from '../configureRegion/constants';
 import { NTP_SERVER_REGEX } from '../constants';
 import { AWSProviderCredentialType, VPC_SETUP_OPTIONS } from './constants';
 import { YBBanner, YBBannerVariant } from '../../../../common/descriptors';
-import { YBButton as YBRedesignedButton } from '../../../../../redesign/components';
 import { isAxiosError, isYBPBeanValidationError } from '../../../../../utils/errorHandlingUtils';
 import { getInvalidFields, useValidationStyles } from './utils';
-import { CloudType } from '../../../../../redesign/helpers/dtos';
-
-import { YBPError, YBPStructuredError } from '../../../../../redesign/helpers/dtos';
+import { CloudType, YBPError, YBPStructuredError } from '../../../../../redesign/helpers/dtos';
 import { AWSAvailabilityZoneMutation, AWSRegionMutation, YBProviderMutation } from '../../types';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import {
@@ -244,7 +242,7 @@ export const AWSProviderCreateForm = ({
       error.response?.data.error
     ) {
       // Handle YBBeanValidationError
-      const { errorSource, ...validationErrors } = error.response?.data.error;
+      const { errorSource, ...validationErrors } = error.response?.data.error ?? {};
       const invalidFields = validationErrors ? getInvalidFields(validationErrors) : [];
       if (invalidFields) {
         setQuickValidationErrors(validationErrors ?? null);

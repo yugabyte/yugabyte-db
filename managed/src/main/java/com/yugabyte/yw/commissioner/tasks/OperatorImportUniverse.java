@@ -222,9 +222,7 @@ public class OperatorImportUniverse extends UniverseTaskBase {
         createSubTaskGroup("ImportProviderSecrets", SubTaskGroupType.OperatorImportResource);
     OperatorImportResource.Params params = new OperatorImportResource.Params();
 
-    UUID providerUUID =
-        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
-    Provider provider = Provider.getOrBadRequest(providerUUID);
+    Provider provider = Util.getSingleProvider(universe.getUniverseDetails().getPrimaryCluster());
 
     String secretKeyTemplate = provider.getName() + "-%s-kubeconfig";
     Map<String, String> secretMap = new HashMap<>();
@@ -256,14 +254,13 @@ public class OperatorImportUniverse extends UniverseTaskBase {
                       });
             });
     if (secretMap.size() > 0) {
-      log.info("Creating {} secrets for provider {}", secretMap.size(), providerUUID);
+      log.info("Creating {} secrets for provider {}", secretMap.size(), provider.getUuid());
       for (Map.Entry<String, String> entry : secretMap.entrySet()) {
         createImportSecretSubtask(entry.getKey(), "kubeconfig", entry.getValue(), secretGroup);
       }
     }
     OperatorImportResource task = createTask(OperatorImportResource.class);
-    params.providerUUID =
-        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+    params.providerUUID = provider.getUuid();
     params.universeUUID = universe.getUniverseUUID();
     params.resourceType = OperatorImportResource.Params.ResourceType.PROVIDER;
     params.namespace = taskParams().namespace;

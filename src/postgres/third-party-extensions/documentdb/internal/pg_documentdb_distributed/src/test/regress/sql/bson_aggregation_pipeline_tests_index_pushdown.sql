@@ -47,7 +47,6 @@ ANALYZE documentdb_data.documents_4160;
 
 -- First scenario with enable_indexscan to off: This technically loads 25000 rows on the bitmap scan
 BEGIN;
-set local documentdb.enableRumIndexScan to off;
 set local seq_page_cost to 5;
 set local rum.enable_semifast_gettuple to on;
 set local documentdb.enableNewSelectivityMode to on;
@@ -56,7 +55,6 @@ ROLLBACK;
 
 -- now turn on the flag - we should only load as many rows as the skip/limit
 BEGIN;
-set local documentdb.enableRumIndexScan to on;
 set local seq_page_cost to 5;
 set local rum.enable_semifast_gettuple to on;
 set local documentdb.enableNewSelectivityMode to on;

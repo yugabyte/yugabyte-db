@@ -20,6 +20,7 @@ interface CurrentFormStepProps {
   sourceUniverse: Universe;
   tableSelectProps: TableSelectProps;
   categorizedNeedBootstrapPerTableResponse: CategorizedNeedBootstrapPerTableResponse | null;
+  skipPitrSnapshotSchedules?: boolean;
 }
 
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.config.createModal';
@@ -29,7 +30,8 @@ export const CurrentFormStep = ({
   isFormDisabled,
   sourceUniverse,
   tableSelectProps,
-  categorizedNeedBootstrapPerTableResponse
+  categorizedNeedBootstrapPerTableResponse,
+  skipPitrSnapshotSchedules = false
 }: CurrentFormStepProps) => {
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const classes = useModalStyles();
@@ -48,16 +50,18 @@ export const CurrentFormStep = ({
             </li>
           </ol>
           <TableSelect {...tableSelectProps} />
-          <div className={classes.bannerContainer}>
-            <YBBanner variant={YBBannerVariant.INFO}>
-              <Typography variant="body2">
-                <Trans
-                  i18nKey={`${TRANSLATION_KEY_PREFIX}.step.selectDatabases.pitrSetUpNote`}
-                  components={{ bold: <b /> }}
-                />
-              </Typography>
-            </YBBanner>
-          </div>
+          {!skipPitrSnapshotSchedules && (
+            <div className={classes.bannerContainer}>
+              <YBBanner variant={YBBannerVariant.INFO}>
+                <Typography variant="body2">
+                  <Trans
+                    i18nKey={`${TRANSLATION_KEY_PREFIX}.step.selectDatabases.pitrSetUpNote`}
+                    components={{ bold: <b /> }}
+                  />
+                </Typography>
+              </YBBanner>
+            </div>
+          )}
         </div>
       );
     case FormStep.BOOTSTRAP_SUMMARY:

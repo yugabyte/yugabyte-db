@@ -1461,12 +1461,15 @@ doDeletion(const ObjectAddress *object, int flags, bool ybOriginalObject)
 
 					Assert(object->objectSubId == 0);
 
-					Relation	index = RelationIdGetRelation(object->objectId);
+					Relation	yb_index = RelationIdGetRelation(object->objectId);
 
-					if (IsYBRelation(index) && !index->rd_index->indisprimary)
-						YBCDropIndex(index);
+					if (yb_index)
+					{
+						if (IsYBRelation(yb_index) && !yb_index->rd_index->indisprimary)
+							YBCDropIndex(yb_index);
 
-					RelationClose(index);
+						RelationClose(yb_index);
+					}
 
 					index_drop(object->objectId, concurrent, concurrent_lock_mode);
 				}
@@ -1477,36 +1480,58 @@ doDeletion(const ObjectAddress *object, int flags, bool ybOriginalObject)
 						Relation	yb_rel =
 							RelationIdGetRelation(object->objectId);
 
-						/* YB note: perform YBCDropColumn() */
-						if (IsYBRelation(yb_rel))
+						if (yb_rel)
 						{
-							bool		skip_if_original =
-								(flags & YB_SKIP_YB_DROP_ORIGNAL_COLUMN) &&
-								ybOriginalObject;
-							bool		skip_if_pk =
-								(flags & YB_SKIP_YB_DROP_PK_COLUMN) &&
-								YbIsAttrPrimaryKeyColumn(yb_rel,
-														 object->objectSubId);
+							/* YB note: perform YBCDropColumn() */
+							if (IsYBRelation(yb_rel))
+							{
+								bool		skip_if_original =
+									(flags & YB_SKIP_YB_DROP_ORIGNAL_COLUMN) &&
+									ybOriginalObject;
+								bool		skip_if_pk =
+									(flags & YB_SKIP_YB_DROP_PK_COLUMN) &&
+									YbIsAttrPrimaryKeyColumn(yb_rel,
+															 object->objectSubId);
 
-							if (!skip_if_original && !skip_if_pk)
-								YBCDropColumn(yb_rel, object->objectSubId);
+								if (!skip_if_original && !skip_if_pk)
+									YBCDropColumn(yb_rel, object->objectSubId);
+							}
+
+							RelationClose(yb_rel);
 						}
-
-						RelationClose(yb_rel);
 
 						RemoveAttributeById(object->objectId,
 											object->objectSubId);
 					}
 					else
 					{
-						Relation	rel = RelationIdGetRelation(object->objectId);
+						Relation	yb_rel = RelationIdGetRelation(object->objectId);
 
-						if (IsYBRelation(rel))
-							YBCDropTable(rel);
+						if (yb_rel)
+						{
+							if (IsYBRelation(yb_rel))
+								YBCDropTable(yb_rel);
 
-						RelationClose(rel);
+							RelationClose(yb_rel);
+						}
 
 						heap_drop_with_catalog(object->objectId);
+
+						/*
+						 * In YugabyteDB, heap_drop_with_catalog modifies distributed
+						 * catalog tables (like pg_class) in DocDB. This can legitimately
+						 * hit a transaction conflict (ERRCODE_YB_TXN_CONFLICT) if there
+						 * is concurrent catalog activity. This fault injection simulates
+						 * that exact scenario, which will abort the transaction and
+						 * trigger the transparent DDL retry mechanism.
+						 */
+						if (yb_test_fail_drop_after_heap_drop)
+						{
+							yb_test_fail_drop_after_heap_drop = false;
+							ereport(ERROR,
+									(errcode(ERRCODE_YB_TXN_CONFLICT),
+									 errmsg("failed DROP operation as requested")));
+						}
 					}
 				}
 

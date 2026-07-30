@@ -450,28 +450,28 @@ SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "redactTest
 ERROR:  $redact's parameter must be an expression or string valued as $$KEEP, $$DESCEND, and $$PRUNE, but input as '1'.
 /*redact input as string*/
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "redactTest3", "pipeline": [ { "$redact": "string" }], "cursor": {} }');
-ERROR:  $redact's expression should not return anything aside from the variables $$KEEP, $$DESCEND, and $$PRUNE, but returned '"string"'.
+ERROR:  The $redact stage must evaluate to one of the variables $$KEEP, $$DESCEND, or $$PRUNE, but instead it produced '"string"'.
 /*redact input as boolean*/
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "redactTest3", "pipeline": [ { "$redact": true }], "cursor": {} }');
 ERROR:  $redact's parameter must be an expression or string valued as $$KEEP, $$DESCEND, and $$PRUNE, but input as 'true'.
 /*redact input system variable not KEEP or PRUNE or DESCEND*/
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "redactTest3", "pipeline": [ { "$redact": "$$NOTVALID"}], "cursor": {} }');
-ERROR:  Use of undefined variable: NOTVALID
+ERROR:  Attempting to use an undefined variable: NOTVALID
 /*redact input as array*/
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "redactTest3", "pipeline": [ { "$redact": ["$$KEEP", "$$PRUNE"]} ], "cursor": {} }');
 ERROR:  $redact's parameter must be an expression or string valued as $$KEEP, $$DESCEND, and $$PRUNE, but input as '[ "$$KEEP", "$$PRUNE" ]'.
 /*redact input cond return not KEEP or PRUNE or DESCEND*/
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "redactTest3", "pipeline": [ { "$redact": { "$cond": {"if": {"$eq": ["$level", 1]}, "then": "$$KEEP", "else": "$$NOTVALID"} } } ], "cursor": {} }');
-ERROR:  Use of undefined variable: NOTVALID
+ERROR:  Attempting to use an undefined variable: NOTVALID
 /*throw exception when $$KEEP $$PRUEN $$DESCEND are used in other stages*/
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "redactTest3", "pipeline": [ { "$project": {"filteredField" : "$$PRUNE"} } ], "cursor": {} }');
-ERROR:  Use of undefined variable: PRUNE
+ERROR:  Reference to variable PRUNE is not defined
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "redactTest3", "pipeline": [ { "$project": {"newField" : "$$DESCEND"} } ], "cursor": {} }');
-ERROR:  Use of undefined variable: DESCEND
+ERROR:  Usage of an undefined variable detected: DESCEND
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "redactTest3", "pipeline": [ { "$project": {"newField" :{ "$add":["$$KEEP",1]} } } ], "cursor": {} }');
-ERROR:  Use of undefined variable: KEEP
+ERROR:  Reference to variable KEEP is not defined
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "redactTest3", "pipeline": [ { "$addFields": {"newField" : "$$DESCEND"} } ], "cursor": {} }');
-ERROR:  Use of undefined variable: DESCEND
+ERROR:  Usage of an undefined variable detected: DESCEND
 /*EXPLAIN*/
 EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('db', '{ "aggregate": "redactTest3", "pipeline": [ { "$redact": "$$KEEP" } ] }');
                                                                                                                                                                     QUERY PLAN                                                                                                                                                                     

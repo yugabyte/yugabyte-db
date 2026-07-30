@@ -2,3 +2,4 @@
 
 test: yb.port.pg_stat_statements
 test: yb.orig.pg_stat_statements
+test: yb.orig.backfill_queryid

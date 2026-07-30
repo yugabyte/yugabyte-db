@@ -2,6 +2,7 @@
 
 package api.v2.handlers;
 
+import static api.v2.handlers.HandlerPagingSupport.normalize;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.METHOD_NOT_ALLOWED;
@@ -10,19 +11,40 @@ import api.v2.mappers.ClusterMapper;
 import api.v2.mappers.UniverseDefinitionTaskParamsMapper;
 import api.v2.mappers.UniverseResourceDetailsMapper;
 import api.v2.mappers.UniverseRespMapper;
+import api.v2.mappers.UserIntentMapper;
 import api.v2.models.AttachUniverseSpec;
+import api.v2.models.CheckResizeOptionsResp;
+import api.v2.models.CheckResizeOptionsSpec;
 import api.v2.models.ClusterAddSpec;
 import api.v2.models.ClusterEditSpec;
 import api.v2.models.ClusterSpec;
 import api.v2.models.ClusterSpec.ClusterTypeEnum;
+import api.v2.models.CollectFilesRequest;
+import api.v2.models.CollectFilesResponse;
+import api.v2.models.CollectedFileResult;
 import api.v2.models.DetachUniverseSpec;
+import api.v2.models.ExecutionSummary;
+import api.v2.models.FileCollectionOptions;
+import api.v2.models.FileCollectionSummary;
+import api.v2.models.NodeFileCollectionResult;
+import api.v2.models.NodeScriptResult;
+import api.v2.models.NodeSelection;
+import api.v2.models.ResizeUpdateOption;
+import api.v2.models.RunScriptRequest;
+import api.v2.models.RunScriptResponse;
+import api.v2.models.ScriptOptions;
 import api.v2.models.UniverseCreateSpec;
 import api.v2.models.UniverseDeleteSpec;
 import api.v2.models.UniverseEditSpec;
 import api.v2.models.UniverseOperatorImportReq;
+import api.v2.models.UniversePagedQuerySpec;
+import api.v2.models.UniversePagedResp;
 import api.v2.models.UniverseSpec;
+import api.v2.models.UniverseValidateKubernetesOverrides;
 import api.v2.models.YBATask;
+import api.v2.models.YBAValidationResponse;
 import api.v2.utils.ApiControllerUtils;
+import api.v2.utils.NormalizedPaginationSpec;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
@@ -33,18 +55,28 @@ import com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
+import com.yugabyte.yw.common.FileCollectionDownloader;
+import com.yugabyte.yw.common.LocalhostAccessChecker;
+import com.yugabyte.yw.common.NodeFileCollector;
+import com.yugabyte.yw.common.NodeScriptRunner;
+import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.common.rbac.RoleBindingUtil;
+import com.yugabyte.yw.controllers.handlers.KubernetesOverridesHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.RunQueryFormData;
@@ -52,8 +84,10 @@ import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.AttachDetachSpec;
 import com.yugabyte.yw.models.AttachDetachSpec.PlatformPaths;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
@@ -68,53 +102,160 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
+import io.ebean.PagedList;
 import io.ebean.annotation.Transactional;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import play.libs.Json;
 import play.mvc.Http.Request;
 
 @Slf4j
 public class UniverseManagementHandler extends ApiControllerUtils {
-  @Inject private RuntimeConfGetter confGetter;
-  @Inject private ReleaseManager releaseManager;
-  @Inject private SwamperHelper swamperHelper;
-  @Inject private ConfigHelper configHelper;
-  @Inject private UniverseCRUDHandler universeCRUDHandler;
-  @Inject private UniverseInfoHandler universeInfoHandler;
-  @Inject private Commissioner commissioner;
-  @Inject private YsqlQueryExecutor ysqlQueryExecutor;
+  private final RuntimeConfGetter confGetter;
+  private final ReleaseManager releaseManager;
+  private final SwamperHelper swamperHelper;
+  private final ConfigHelper configHelper;
+  private final UniverseCRUDHandler universeCRUDHandler;
+  private final UniverseInfoHandler universeInfoHandler;
+  private final Commissioner commissioner;
+  private final YsqlQueryExecutor ysqlQueryExecutor;
+  private final NodeScriptRunner nodeScriptRunner;
+  private final NodeFileCollector nodeFileCollector;
+  private final FileCollectionDownloader fileCollectionDownloader;
+  private final LocalhostAccessChecker localhostChecker;
+  private final RoleBindingUtil roleBindingUtil;
+  private final KubernetesOverridesHandler kubernetesOverridesHandler;
+
+  @Inject
+  public UniverseManagementHandler(
+      AuditService auditService,
+      RuntimeConfGetter confGetter,
+      ReleaseManager releaseManager,
+      SwamperHelper swamperHelper,
+      ConfigHelper configHelper,
+      UniverseCRUDHandler universeCRUDHandler,
+      UniverseInfoHandler universeInfoHandler,
+      Commissioner commissioner,
+      YsqlQueryExecutor ysqlQueryExecutor,
+      NodeScriptRunner nodeScriptRunner,
+      NodeFileCollector nodeFileCollector,
+      FileCollectionDownloader fileCollectionDownloader,
+      LocalhostAccessChecker localhostChecker,
+      RoleBindingUtil roleBindingUtil,
+      KubernetesOverridesHandler kubernetesOverridesHandler) {
+    super(auditService);
+    this.confGetter = confGetter;
+    this.releaseManager = releaseManager;
+    this.swamperHelper = swamperHelper;
+    this.configHelper = configHelper;
+    this.universeCRUDHandler = universeCRUDHandler;
+    this.universeInfoHandler = universeInfoHandler;
+    this.commissioner = commissioner;
+    this.ysqlQueryExecutor = ysqlQueryExecutor;
+    this.nodeScriptRunner = nodeScriptRunner;
+    this.nodeFileCollector = nodeFileCollector;
+    this.fileCollectionDownloader = fileCollectionDownloader;
+    this.localhostChecker = localhostChecker;
+    this.roleBindingUtil = roleBindingUtil;
+    this.kubernetesOverridesHandler = kubernetesOverridesHandler;
+  }
 
   private static final String RELEASES_PATH = "yb.releases.path";
+
+  /** Default max script file size for audit logging (1 MB) */
+  private static final long DEFAULT_MAX_SCRIPT_FILE_SIZE_BYTES = 1024 * 1024;
+
+  private static final int DEFAULT_MAX_PARALLEL_NODES = 50;
 
   public api.v2.models.Universe getUniverse(UUID cUUID, UUID uniUUID)
       throws JsonProcessingException {
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+    // When new UI is turned on, initializing single partition if needed.
+    if (isNewUI()) {
+      for (Cluster cluster : universe.getUniverseDetails().clusters) {
+        initPartitions(cluster);
+      }
+    }
     // get v1 Universe
     com.yugabyte.yw.forms.UniverseResp v1Response =
         com.yugabyte.yw.forms.UniverseResp.create(universe, null, confGetter);
     log.info("Getting Universe with UUID: {}", uniUUID);
-    // map to v2 Universe
-    api.v2.models.Universe v2Response = UniverseRespMapper.INSTANCE.toV2Universe(v1Response);
+    api.v2.models.Universe v2Response =
+        UniverseRespMapper.INSTANCE.toV2Universe(v1Response, universe);
     if (log.isTraceEnabled()) {
       log.trace("Got Universe {}", prettyPrint(v2Response));
     }
     return v2Response;
+  }
+
+  public UniversePagedResp pageListUniverses(UUID cUUID, UniversePagedQuerySpec spec)
+      throws Exception {
+    Users user = CommonUtils.getUserFromContext();
+    NormalizedPaginationSpec normalized = normalize(spec);
+
+    Set<UUID> resourceUUIDs =
+        roleBindingUtil.getResourceUuids(user.getUuid(), ResourceType.UNIVERSE, Action.READ);
+
+    if (resourceUUIDs.isEmpty()) {
+      UniversePagedResp resp = new UniversePagedResp().setEntities(new ArrayList<>());
+      resp.setTotalCount(0).setHasNext(false).setHasPrev(false);
+      return resp;
+    }
+
+    String nameFilter =
+        spec.getFilter() != null ? StringUtils.trimToNull(spec.getFilter().getName()) : null;
+
+    Customer customer = Customer.getOrNotFound(cUUID);
+    var expr =
+        CommonUtils.appendInClause(
+            Universe.find.query().where().eq("customer_id", customer.getId()),
+            "universeUUID",
+            resourceUUIDs);
+    if (nameFilter != null) {
+      expr = expr.eq("name", nameFilter);
+    }
+
+    String order = normalized.order();
+    // sort: case-insensitive name, then UUID; null names sort like empty.
+    String orderBy = String.format("coalesce(lower(name), '') %s, universe_uuid %s", order, order);
+
+    PagedList<Universe> pagedList = HandlerPagingSupport.getPagedList(expr, normalized, orderBy);
+    Universe.loadUniverseDetails(pagedList.getList());
+    List<UniverseResp> page = UniverseResp.create(customer, pagedList.getList(), confGetter);
+
+    List<api.v2.models.Universe> v2Universes = new ArrayList<>(page.size());
+    for (int i = 0; i < page.size(); i++) {
+      UniverseResp r = page.get(i);
+      Universe u = pagedList.getList().get(i);
+      v2Universes.add(UniverseRespMapper.INSTANCE.toV2Universe(r, u));
+    }
+
+    return new UniversePagedResp(pagedList).setEntities(v2Universes);
   }
 
   public YBATask createUniverse(Request request, UUID cUUID, UniverseCreateSpec universeSpec) {
@@ -131,6 +272,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     // create universe with v1 spec
     v1Params.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
     v1Params.currentClusterType = ClusterType.PRIMARY;
+    v1Params.newUI =
+        !CollectionUtils.isEmpty(v1Params.getPrimaryCluster().getPartitions()) && isNewUI();
 
     universeCRUDHandler.configure(customer, v1Params);
 
@@ -166,13 +309,21 @@ public class UniverseManagementHandler extends ApiControllerUtils {
 
   public YBATask editUniverse(
       Request request, UUID cUUID, UUID uniUUID, UniverseEditSpec universeEditSpec) {
+    boolean isNewUI = isNewUI();
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe dbUniverse = Universe.getOrBadRequest(uniUUID);
+    JsonNode dbUniverseJson = Json.toJson(dbUniverse);
+    UniverseCRUDHandler.checkInstanceTypeConsistency(dbUniverse);
     log.info("Edit Universe with v2 spec: {}", prettyPrint(universeEditSpec));
     // inherit RR cluster properties from primary cluster in given edit spec
     UniverseSpec v2Universe =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toV2UniverseSpec(
             dbUniverse.getUniverseDetails());
+    if (isNewUI) {
+      // For V2 users which are still editing placement instead of partitions
+      // we need to update partitions (otherwise this will be noOp)
+      verifyPartitionsEdit(universeEditSpec, v2Universe, dbUniverse);
+    }
     ClusterSpec primaryV2Cluster =
         v2Universe.getClusters().stream()
             .filter(c -> c.getClusterType().equals(ClusterTypeEnum.PRIMARY))
@@ -191,11 +342,23 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     UniverseConfigureTaskParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toUniverseConfigureTaskParams(
             v1DefnParams, request);
+    for (Cluster cluster : v1Params.clusters) {
+      if (!cluster.userIntent.dedicatedNodes) {
+        // Since in V2 API is based on partial updates,
+        // we cannot detect the case when these fields are removed (during dedicated mode switch)
+        // Keeping these fields will lead to error in validation.
+        cluster.userIntent.masterInstanceType = null;
+        cluster.userIntent.masterDeviceInfo = null;
+      }
+    }
     log.debug("Edit Universe translated to v1 spec: {}", prettyPrint(v1Params));
 
     // edit universe with v1 spec
     v1Params.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.EDIT;
     v1Params.currentClusterType = ClusterType.PRIMARY;
+    v1Params.newUI =
+        (hasPartitions(dbUniverse.getUniverseDetails()) || hasPartitions(v1Params)) && isNewUI;
+
     universeCRUDHandler.configure(customer, v1Params);
     // Handle ASYNC cluster edit
     if (isRREdited) {
@@ -209,7 +372,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     }
 
     TaskType taskType = TaskType.EditUniverse;
-    if (primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+    if (Util.isKubernetesBasedUniverse(dbUniverse)) {
       taskType = TaskType.EditKubernetesUniverse;
       universeCRUDHandler.notHelm2LegacyOrBadRequest(dbUniverse);
       universeCRUDHandler.checkHelmChartExists(primaryCluster.userIntent.ybSoftwareVersion);
@@ -232,6 +395,16 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         CustomerTask.TaskType.Update,
         dbUniverse.getName(),
         CustomerTaskManager.getCustomTaskName(CustomerTask.TaskType.Update, v1Params, null));
+    // Additional audit call so that old UI can show changes for edit operation.
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.Universe,
+            dbUniverse.getUniverseUUID().toString(),
+            Audit.ActionType.Update,
+            Json.toJson(v1Params),
+            taskUUID,
+            dbUniverseJson);
     return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
   }
 
@@ -248,13 +421,27 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     v1Params.currentClusterType = ClusterType.ASYNC;
     // to construct the new v1 cluster, start with a copy of primary cluster
     Cluster primaryCluster = dbUniverse.getUniverseDetails().getPrimaryCluster();
-    Cluster newReadReplica = new Cluster(ClusterType.ASYNC, primaryCluster.userIntent);
+    Cluster newReadReplica = new Cluster(ClusterType.ASYNC, primaryCluster.userIntent.clone());
     // overwrite the copy of primary cluster with user provided spec for read replica
     newReadReplica.setUuid(UUID.randomUUID());
     newReadReplica = ClusterMapper.INSTANCE.overwriteClusterAddSpec(clusterAddSpec, newReadReplica);
+    if (!newReadReplica.userIntent.dedicatedNodes) {
+      // Copied from a dedicated primary; clear master fields for non-dedicated RR.
+      newReadReplica.userIntent.masterInstanceType = null;
+      newReadReplica.userIntent.masterDeviceInfo = null;
+    }
     // prepare the v1Params with only the read replica cluster in the payload
     v1Params.clusters.clear();
     v1Params.clusters.add(newReadReplica);
+    v1Params.newUI =
+        (hasPartitions(dbUniverse.getUniverseDetails()) || hasPartitions(v1Params)) && isNewUI();
+    if (v1Params.newUI) {
+      if (newReadReplica.getOverallPlacement() == null) {
+        throw new PlatformServiceException(BAD_REQUEST, "Placement should be provided");
+      }
+      initPartitions(newReadReplica);
+    }
+
     universeCRUDHandler.configure(customer, v1Params);
     // start the add cluster task
     UUID taskUUID = universeCRUDHandler.createCluster(customer, dbUniverse, v1Params);
@@ -428,6 +615,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
               .backups(backups)
               .customerConfigs(customerConfigs)
               .ybReleaseMetadata(release != null ? release.toImportExportRelease() : null)
+              .yugawareProperty(Json.toJson(YugawareProperty.getAll()))
               .oldPlatformPaths(platformPaths)
               .skipReleases(detachUniverseSpec.getSkipReleases())
               .build();
@@ -487,14 +675,21 @@ public class UniverseManagementHandler extends ApiControllerUtils {
             String.valueOf(
                 configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion).get("version")),
             "-");
-    String srcVersion =
-        StringUtils.substringBefore(
-            attachDetachSpec.getUniverse().getUniverseDetails().getPlatformVersion(), "-");
-    if (!srcVersion.equalsIgnoreCase(destVersion)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "Software versions do not match, please attach to a platform with software version: "
-              + srcVersion);
+    String rawSourceVersion = attachDetachSpec.resolveSourceYbaSoftwareVersionForAttach();
+    if (StringUtils.isBlank(rawSourceVersion)) {
+      log.warn(
+          "Could not determine source YBA software version from attach bundle yugaware_property"
+              + " (SoftwareVersion or YugawareMetadata); cannot validate platform version match.");
+    } else {
+      String srcVersion = StringUtils.substringBefore(rawSourceVersion, "-");
+      if (!srcVersion.equalsIgnoreCase(destVersion)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Software versions do not match, please attach to a platform with software version: "
+                + srcVersion
+                + ", current YBA version: "
+                + destVersion);
+      }
     }
     attachDetachSpec.save(
         platformPaths, releaseManager, swamperHelper, configHelper, ysqlQueryExecutor, confGetter);
@@ -758,6 +953,8 @@ public class UniverseManagementHandler extends ApiControllerUtils {
 
     v1Params.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
     v1Params.currentClusterType = ClusterType.PRIMARY;
+    v1Params.newUI = isNewUI();
+
     universeCRUDHandler.configure(customer, v1Params);
 
     if (v1Params.clusters.stream().anyMatch(cluster -> cluster.clusterType == ClusterType.ASYNC)) {
@@ -853,5 +1050,548 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         universe.getName());
     YBATask ybaTask = new YBATask().taskUuid(taskUuid).resourceUuid(universe.getUniverseUUID());
     return ybaTask;
+  }
+
+  /**
+   * Runs a script on selected nodes in a universe and returns the results.
+   *
+   * @param request The HTTP request
+   * @param cUUID Customer UUID
+   * @param uniUUID Universe UUID
+   * @param runScriptRequest The request containing script options and node selection
+   * @return RunScriptResponse with execution results from all targeted nodes
+   */
+  public RunScriptResponse runScript(
+      Request request, UUID cUUID, UUID uniUUID, RunScriptRequest runScriptRequest) {
+    localhostChecker.checkLocalhost(request);
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    // Check if the feature is enabled
+    boolean nodeScriptEnabled =
+        confGetter.getConfForScope(universe, UniverseConfKeys.nodeScriptEnabled);
+    if (!nodeScriptEnabled) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Node script execution API is not enabled for this universe. "
+              + "Please set the runtime config 'yb.node_script.enabled' to true.");
+    }
+
+    // Validate request
+    ScriptOptions scriptOptions = runScriptRequest.getScriptOptions();
+    if (scriptOptions == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "script_options is required");
+    }
+
+    String scriptContent = scriptOptions.getScriptContent();
+    String scriptFile = scriptOptions.getScriptFile();
+
+    if (StringUtils.isBlank(scriptContent) && StringUtils.isBlank(scriptFile)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Either script_content or script_file must be provided");
+    }
+
+    if (StringUtils.isNotBlank(scriptContent) && StringUtils.isNotBlank(scriptFile)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Only one of script_content or script_file should be provided");
+    }
+
+    // If script_file is provided, validate it exists and read the content for auditing
+    String scriptFileContents = null;
+    if (StringUtils.isNotBlank(scriptFile)) {
+      File file = new File(scriptFile);
+      if (!file.exists()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, String.format("Script file not found: %s", scriptFile));
+      }
+      if (!file.canRead()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, String.format("Script file is not readable: %s", scriptFile));
+      }
+      double fileSizeMB = file.length() / (1024.0 * 1024.0);
+      log.info("Script file {} size: {} MB", scriptFile, String.format("%.2f", fileSizeMB));
+      // Limit file size to avoid memory issues during auditing (default 1MB)
+      long maxFileSizeBytes =
+          scriptOptions.getMaxScriptFileSizeBytes() != null
+              ? scriptOptions.getMaxScriptFileSizeBytes()
+              : DEFAULT_MAX_SCRIPT_FILE_SIZE_BYTES;
+      if (file.length() > maxFileSizeBytes) {
+        log.warn(
+            "Script file {} exceeds max size ({} bytes), skipping content capture for auditing",
+            scriptFile,
+            maxFileSizeBytes);
+      } else {
+        try {
+          scriptFileContents = Files.readString(file.toPath());
+        } catch (Exception e) {
+          throw new PlatformServiceException(
+              BAD_REQUEST, String.format("Failed to read script file: %s", scriptFile));
+        }
+      }
+    }
+
+    // Build script params
+    long timeoutSecs =
+        scriptOptions.getTimeoutSecs() != null ? scriptOptions.getTimeoutSecs() : 60L;
+    String linuxUser = scriptOptions.getLinuxUser();
+    NodeScriptRunner.ScriptParams scriptParams =
+        NodeScriptRunner.ScriptParams.builder()
+            .scriptContent(scriptContent)
+            .scriptFile(scriptFile)
+            .params(scriptOptions.getParams())
+            .timeoutSecs(timeoutSecs)
+            .linuxUser(linuxUser)
+            .build();
+
+    // Build node filter (validates that requested node_names exist in the universe)
+    NodeScriptRunner.NodeFilter nodeFilter = buildNodeFilter(universe, runScriptRequest.getNodes());
+
+    // Execute via service
+    NodeScriptRunner.ExecutionResult result =
+        nodeScriptRunner.runScript(universe, scriptParams, nodeFilter);
+
+    if (result.getTotalNodes() == 0) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "No nodes found matching the selection criteria");
+    }
+
+    // Map to API response
+    Map<String, NodeScriptResult> nodeResults = new LinkedHashMap<>();
+    for (Map.Entry<String, NodeScriptRunner.NodeResult> entry :
+        result.getNodeResults().entrySet()) {
+      NodeScriptRunner.NodeResult nr = entry.getValue();
+      nodeResults.put(
+          entry.getKey(),
+          new NodeScriptResult()
+              .nodeName(nr.getNodeName())
+              .nodeAddress(nr.getNodeAddress())
+              .exitCode(nr.getExitCode())
+              .stdout(nr.getStdout())
+              .stderr(nr.getStderr())
+              .executionTimeMs(nr.getExecutionTimeMs())
+              .success(nr.isSuccess())
+              .errorMessage(nr.getErrorMessage()));
+    }
+
+    ExecutionSummary summary =
+        new ExecutionSummary()
+            .totalNodes(result.getTotalNodes())
+            .successfulNodes(result.getSuccessfulNodes())
+            .failedNodes(result.getFailedNodes())
+            .totalExecutionTimeMs(result.getTotalExecutionTimeMs())
+            .allSucceeded(result.isAllSucceeded());
+
+    // Create audit entry with the script details including file contents if applicable
+    JsonNode additionalDetails = null;
+    if (scriptFileContents != null) {
+      additionalDetails = Json.newObject().put("script_file_contents", scriptFileContents);
+    }
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.Universe,
+            uniUUID.toString(),
+            Audit.ActionType.RunScript,
+            Json.toJson(runScriptRequest),
+            null /* taskUUID - this is a synchronous operation */,
+            additionalDetails);
+
+    return new RunScriptResponse().summary(summary).results(nodeResults);
+  }
+
+  /**
+   * Create a file collection from database nodes in a universe.
+   *
+   * <p>This API is restricted to localhost access only for security.
+   */
+  public CollectFilesResponse createFileCollection(
+      Request request, UUID cUUID, UUID uniUUID, CollectFilesRequest collectFilesRequest) {
+    localhostChecker.checkLocalhost(request);
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    // Check if node script feature is enabled for this universe
+    if (!confGetter.getConfForScope(universe, UniverseConfKeys.nodeScriptEnabled)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "File collection is not enabled for this universe. "
+              + "Set runtime config 'yb.node_script.enabled' to true.");
+    }
+
+    FileCollectionOptions collectionOptions = collectFilesRequest.getCollectionOptions();
+    if (collectionOptions == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "collection_options is required");
+    }
+
+    // Validate that at least file_paths or directory_paths is provided
+    boolean hasFilePaths = CollectionUtils.isNotEmpty(collectionOptions.getFilePaths());
+    boolean hasDirPaths = CollectionUtils.isNotEmpty(collectionOptions.getDirectoryPaths());
+    if (!hasFilePaths && !hasDirPaths) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "At least one of file_paths or directory_paths must be provided");
+    }
+
+    // Build collection params
+    // Build collection params - use builder pattern with conditional setters
+    // Defaults are defined in CollectionParams via @Builder.Default
+    NodeFileCollector.CollectionParams.CollectionParamsBuilder paramsBuilder =
+        NodeFileCollector.CollectionParams.builder()
+            .filePaths(collectionOptions.getFilePaths())
+            .directoryPaths(collectionOptions.getDirectoryPaths())
+            .linuxUser(collectionOptions.getLinuxUser());
+
+    if (collectionOptions.getMaxDepth() != null) {
+      paramsBuilder.maxDepth(collectionOptions.getMaxDepth());
+    }
+    if (collectionOptions.getMaxFileSizeBytes() != null) {
+      paramsBuilder.maxFileSizeBytes(collectionOptions.getMaxFileSizeBytes());
+    }
+    if (collectionOptions.getMaxTotalSizeBytes() != null) {
+      paramsBuilder.maxTotalSizeBytes(collectionOptions.getMaxTotalSizeBytes());
+    }
+    if (collectionOptions.getTimeoutSecs() != null) {
+      paramsBuilder.timeoutSecs(collectionOptions.getTimeoutSecs());
+    }
+
+    NodeFileCollector.CollectionParams collectionParams = paramsBuilder.build();
+
+    NodeScriptRunner.NodeFilter nodeFilter =
+        buildNodeFilter(universe, collectFilesRequest.getNodes());
+
+    log.info(
+        "Collecting files from universe {} with {} file paths, {} directory paths",
+        uniUUID,
+        hasFilePaths ? collectionOptions.getFilePaths().size() : 0,
+        hasDirPaths ? collectionOptions.getDirectoryPaths().size() : 0);
+
+    // Execute file collection - creates tar on remote nodes (no download to YBA)
+    NodeFileCollector.CollectionResult result =
+        nodeFileCollector.collectFiles(cUUID, universe, collectionParams, nodeFilter);
+
+    // Convert to API response
+    FileCollectionSummary summary =
+        new FileCollectionSummary()
+            .collectionUuid(result.getCollectionUuid())
+            .totalNodes(result.getTotalNodes())
+            .successfulNodes(result.getSuccessfulNodes())
+            .failedNodes(result.getFailedNodes())
+            .totalFilesCollected(result.getTotalFilesCollected())
+            .totalFilesSkipped(result.getTotalFilesSkipped())
+            .totalFilesFailed(result.getTotalFilesFailed())
+            .totalBytesCollected(result.getTotalBytesCollected())
+            .totalExecutionTimeMs(result.getTotalExecutionTimeMs())
+            .allSucceeded(result.isAllSucceeded());
+
+    Map<String, NodeFileCollectionResult> nodeResults = new LinkedHashMap<>();
+    for (Map.Entry<String, NodeFileCollector.NodeResult> entry :
+        result.getNodeResults().entrySet()) {
+      NodeFileCollector.NodeResult nr = entry.getValue();
+
+      List<CollectedFileResult> fileResults = new ArrayList<>();
+      if (nr.getFiles() != null) {
+        for (NodeFileCollector.FileResult fr : nr.getFiles()) {
+          fileResults.add(
+              new CollectedFileResult()
+                  .remotePath(fr.getRemotePath())
+                  .fileSizeBytes(fr.getFileSizeBytes())
+                  .success(fr.isSuccess())
+                  .errorMessage(fr.getErrorMessage())
+                  .skipped(fr.isSkipped())
+                  .skipReason(fr.getSkipReason()));
+        }
+      }
+
+      nodeResults.put(
+          entry.getKey(),
+          new NodeFileCollectionResult()
+              .nodeName(nr.getNodeName())
+              .nodeAddress(nr.getNodeAddress())
+              .success(nr.isSuccess())
+              .filesCollected(nr.getFilesCollected())
+              .filesSkipped(nr.getFilesSkipped())
+              .filesFailed(nr.getFilesFailed())
+              .totalBytesCollected(nr.getTotalBytesCollected())
+              .executionTimeMs(nr.getExecutionTimeMs())
+              .errorMessage(nr.getErrorMessage())
+              .remoteTarPath(nr.getRemoteTarPath())
+              .files(fileResults));
+    }
+
+    return new CollectFilesResponse().summary(summary).results(nodeResults);
+  }
+
+  /**
+   * Download a file collection from database nodes and stream to client.
+   *
+   * <p>This API does NOT have localhost restriction by default. However, if cleanupDbNodesAfter is
+   * true, localhost restriction applies since it modifies files on database nodes.
+   *
+   * @param cleanupDbNodesAfter If true, delete collected files from DB nodes after download
+   *     (requires localhost access)
+   */
+  public InputStream downloadFileCollection(
+      Request request, UUID cUUID, UUID uniUUID, UUID collectionUuid, Boolean cleanupDbNodesAfter) {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    // If cleanup is requested, enforce localhost restriction
+    if (Boolean.TRUE.equals(cleanupDbNodesAfter)) {
+      localhostChecker.checkLocalhost(request);
+    }
+
+    // Check if node script feature is enabled for this universe
+    if (!confGetter.getConfForScope(universe, UniverseConfKeys.nodeScriptEnabled)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "File collection/download is not enabled for this universe. "
+              + "Set runtime config 'yb.node_script.enabled' to true.");
+    }
+
+    log.info("Downloading collection {} from universe {}", collectionUuid, uniUUID);
+
+    // Download files from nodes and stream to client
+    InputStream stream = fileCollectionDownloader.downloadAsStream(collectionUuid, universe);
+
+    // After successful download to YBA, cleanup DB nodes if requested
+    // (files are already downloaded to YBA at this point, so safe to delete from nodes)
+    if (Boolean.TRUE.equals(cleanupDbNodesAfter)) {
+      log.info("Cleaning up DB node files for collection {} after download", collectionUuid);
+      fileCollectionDownloader.cleanupCollection(
+          collectionUuid, universe, true /* deleteFromDbNodes */, false /* deleteFromYba */);
+    }
+
+    return stream;
+  }
+
+  /** Get the filename for a file collection download. */
+  public String getFileCollectionFileName(UUID collectionUuid) {
+    return fileCollectionDownloader.getDownloadFileName(collectionUuid);
+  }
+
+  /**
+   * Delete a file collection from database nodes and/or YBA local storage.
+   *
+   * <p>This API has localhost restriction - can only be called from the YBA server itself.
+   *
+   * @param deleteFromDbNodes Whether to delete tar files from DB nodes (default: true)
+   * @param deleteFromYba Whether to delete downloaded files from YBA local storage (default: true)
+   */
+  public int deleteFileCollection(
+      Request request,
+      UUID cUUID,
+      UUID uniUUID,
+      UUID collectionUuid,
+      boolean deleteFromDbNodes,
+      boolean deleteFromYba) {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    Universe universe = Universe.getOrBadRequest(uniUUID, customer);
+
+    // Localhost restriction - same as collect-files
+    localhostChecker.checkLocalhost(request);
+
+    // Check if node script feature is enabled for this universe
+    if (!confGetter.getConfForScope(universe, UniverseConfKeys.nodeScriptEnabled)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "File collection/cleanup is not enabled for this universe. "
+              + "Set runtime config 'yb.node_script.enabled' to true.");
+    }
+
+    log.info(
+        "Deleting collection {} from universe {} (DB nodes: {}, YBA: {})",
+        collectionUuid,
+        uniUUID,
+        deleteFromDbNodes,
+        deleteFromYba);
+
+    return fileCollectionDownloader.cleanupCollection(
+        collectionUuid, universe, deleteFromDbNodes, deleteFromYba);
+  }
+
+  public YBAValidationResponse validateKubernetesOverrides(
+      Request request, UUID cUUID, UniverseValidateKubernetesOverrides spec)
+      throws JsonProcessingException {
+    Set<String> errors =
+        kubernetesOverridesHandler.validateKubernetesOverrides(
+            spec.getYbSoftwareVersion(),
+            spec.getNodePrefix(),
+            ClusterMapper.INSTANCE.toV1PlacementInfo(spec.getPlacementSpec()),
+            spec.getIsReadonlyCluster(),
+            spec.getOverrides(),
+            spec.getAzOverrides());
+    YBAValidationResponse response = new YBAValidationResponse();
+    errors.forEach(response::addErrorsItem);
+    return response;
+  }
+
+  /**
+   * Helper method to convert NodeSelection API model to NodeScriptRunner.NodeFilter. Reused by both
+   * runScript and collectFiles handlers.
+   */
+  private NodeScriptRunner.NodeFilter buildNodeFilter(
+      Universe universe, NodeSelection nodeSelection) {
+    if (nodeSelection == null) {
+      return null;
+    }
+    if (Boolean.TRUE.equals(nodeSelection.getMastersOnly())
+        && Boolean.TRUE.equals(nodeSelection.getTserversOnly())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "masters_only and tservers_only cannot both be true");
+    }
+    validateRequestedNodeNames(universe, nodeSelection.getNodeNames());
+    int maxParallelNodes =
+        nodeSelection.getMaxParallelNodes() != null
+            ? nodeSelection.getMaxParallelNodes()
+            : DEFAULT_MAX_PARALLEL_NODES;
+    return NodeScriptRunner.NodeFilter.builder()
+        .nodeNames(nodeSelection.getNodeNames())
+        .clusterUuid(nodeSelection.getClusterUuid())
+        .mastersOnly(nodeSelection.getMastersOnly())
+        .tserversOnly(nodeSelection.getTserversOnly())
+        .maxParallelNodes(maxParallelNodes)
+        .build();
+  }
+
+  private void validateRequestedNodeNames(Universe universe, List<String> requestedNodeNames) {
+    if (CollectionUtils.isEmpty(requestedNodeNames)) {
+      return;
+    }
+    Set<String> universeNodeNames =
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .map(n -> n.nodeName)
+            .collect(Collectors.toSet());
+    List<String> unmatchedNodeNames =
+        requestedNodeNames.stream()
+            .filter(name -> !universeNodeNames.contains(name))
+            .distinct()
+            .collect(Collectors.toList());
+    if (!unmatchedNodeNames.isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "The following node_names were not found in universe %s: %s",
+              universe.getUniverseUUID(), unmatchedNodeNames));
+    }
+  }
+
+  private boolean isNewUI() {
+    return confGetter.getGlobalConf(GlobalConfKeys.editUniverseV2UiEnabled);
+  }
+
+  private void initPartitions(Cluster cluster) {
+    if (CollectionUtils.isEmpty(cluster.getPartitions())) {
+      // Setting default partition.
+      UniverseDefinitionTaskParams.PartitionInfo partitionInfo =
+          new UniverseDefinitionTaskParams.PartitionInfo();
+      partitionInfo.setDefaultPartition(true);
+      partitionInfo.setPlacement(cluster.getOverallPlacement());
+      partitionInfo.setUuid(UUID.randomUUID());
+      partitionInfo.setReplicationFactor(cluster.userIntent.replicationFactor);
+      partitionInfo.setName("Default");
+      cluster.setPartitions(Collections.singletonList(partitionInfo));
+    }
+  }
+
+  private boolean hasPartitions(UniverseDefinitionTaskParams params) {
+    for (Cluster cluster : params.clusters) {
+      if (!CollectionUtils.isEmpty(cluster.getPartitions())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private void verifyPartitionsEdit(
+      UniverseEditSpec universeEditSpec, UniverseSpec v2Universe, Universe dbUniverse) {
+    for (@Valid ClusterEditSpec clusterEditSpec : universeEditSpec.getClusters()) {
+      ClusterSpec clusterSpec =
+          v2Universe.getClusters().stream()
+              .filter(c -> c.getUuid().equals(clusterEditSpec.getUuid()))
+              .findFirst()
+              .orElseThrow(
+                  () ->
+                      new PlatformServiceException(
+                          BAD_REQUEST, "Unknown clusterEditSpec " + clusterEditSpec.getUuid()));
+      // When user is trying to edit placement for a universe with partitions.
+      // That's probably old API client.
+      // Updating partition accordingly (there should be only single one).
+      if (CollectionUtils.isEmpty(clusterEditSpec.getPartitionsSpec())
+          && clusterEditSpec.getPlacementSpec() != null
+          && !CollectionUtils.isEmpty(clusterSpec.getPartitionsSpec())) {
+        Cluster v1Cluster = ClusterMapper.INSTANCE.toV1Cluster(clusterSpec);
+        UniverseDefinitionTaskParams v1DefnParams =
+            UniverseDefinitionTaskParamsMapper.INSTANCE
+                .toV1UniverseDefinitionTaskParamsFromEditSpec(
+                    universeEditSpec, dbUniverse.getUniverseDetails());
+        Cluster v1NewCluster = v1DefnParams.getClusterByUuid(v1Cluster.uuid);
+        if (v1NewCluster != null) {
+          if (!PlacementInfoUtil.isSamePlacement(
+                  v1Cluster.placementInfo, v1NewCluster.placementInfo)
+              || v1NewCluster.userIntent.replicationFactor
+                  != v1Cluster.userIntent.replicationFactor) {
+            if (v1Cluster.isGeoPartitioned()) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST,
+                  "Cluster is geo partitioned, please modify partitions instead of the whole"
+                      + " placement");
+            }
+            clusterEditSpec.setPartitionsSpec(clusterSpec.getPartitionsSpec());
+            log.info(
+                "Detected attempt to update placement info for cluster {} with new schema!"
+                    + " Updating partition spec {}",
+                clusterEditSpec,
+                clusterSpec.getPartitionsSpec());
+            clusterEditSpec
+                .getPartitionsSpec()
+                .get(0)
+                .placement(clusterEditSpec.getPlacementSpec())
+                .replicationFactor(v1NewCluster.userIntent.replicationFactor);
+          }
+        }
+      }
+    }
+  }
+
+  public CheckResizeOptionsResp checkResizeOptions(
+      UUID cUUID, UUID uniUUID, CheckResizeOptionsSpec spec) {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    UniverseDefinitionTaskParams taskParams =
+        Universe.getOrBadRequest(uniUUID, customer).getUniverseDetails();
+
+    Cluster cluster = taskParams.getClusterByUuid(spec.getClusterUuid());
+    if (cluster == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format("Cluster with UUID '%s' does not exist.", spec.getClusterUuid()));
+    }
+    UserIntentMapper.INSTANCE.fillUserIntentFromClusterNodeSpec(
+        spec.getNodeSpec(), cluster.userIntent);
+    log.debug(
+        "Spec {} userIntent {}", Json.toJson(spec.getNodeSpec()), Json.toJson(cluster.userIntent));
+
+    Universe dbUniverse = Universe.getOrBadRequest(uniUUID, customer);
+
+    PlacementInfoUtil.updateUniverseDefinitionV2(
+        dbUniverse,
+        taskParams,
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions =
+        UniverseCRUDHandler.getUpdateOptions(
+            taskParams, UniverseConfigureTaskParams.ClusterOperationType.EDIT, cluster, dbUniverse);
+    log.info(
+        "Check resize options for universe {} cluster {}: {}",
+        uniUUID,
+        spec.getClusterUuid(),
+        updateOptions);
+    List<ResizeUpdateOption> res = new ArrayList<>();
+    for (UniverseDefinitionTaskParams.UpdateOptions updateOption : updateOptions) {
+      try {
+        res.add(ResizeUpdateOption.valueOf(updateOption.name()));
+      } catch (Exception ignored) {
+        log.error("Incorrect option: " + updateOption);
+      }
+    }
+    return new CheckResizeOptionsResp().options(res);
   }
 }

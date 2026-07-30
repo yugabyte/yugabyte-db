@@ -48,6 +48,7 @@ using namespace std::literals;
 DECLARE_string(pggate_master_addresses);
 DECLARE_string(test_leave_files);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 
 namespace yb {
 namespace pggate {
@@ -91,6 +92,10 @@ uint16_t GetSessionReplicationOriginId() {
 }
 
 void CheckForInterruptsNoOp() {
+}
+
+bool IsInParallelModeNoOp() {
+  return false;
 }
 
 } // namespace
@@ -146,7 +151,9 @@ void PggateTest::SetUp() {
   // (and thus acquiring relevant object locks). As a result, the sanity check which ensures
   // that some object locks are taken before performing a read/write fails for these tests.
   // Hence, disabling the object locks feature for this suite.
+  // Concurrent DDL requires object locking, so keep the two flags consistent.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
   YBTest::SetUp();
 }
 
@@ -186,11 +193,12 @@ Status PggateTest::Init(
   callbacks.GetCatalogSnapshotReadPoint = &GetCatalogSnapshotReadPoint;
   callbacks.GetSessionReplicationOriginId = &GetSessionReplicationOriginId;
   callbacks.CheckForInterrupts = &CheckForInterruptsNoOp;
+  callbacks.IsInParallelMode = &IsInParallelModeNoOp;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_tserver_shared_memory_uuid) =
       cluster_->tablet_server(0)->instance_id().permanent_uuid();
 
-  ash_metadata.query_id = 5; // to make sure a DCHECK passes during metadata serialization
+  ash_metadata.qp.query_id = 5; // to make sure a DCHECK passes during metadata serialization
   ash_config.metadata = &ash_metadata;
 
   YbcPgInitPostgresInfo init_info{
@@ -243,6 +251,8 @@ void PggateTest::BeginDDLTransaction() {
 
 void PggateTest::CommitDDLTransaction() {
   CHECK_YBC_STATUS(YBCPgExitSeparateDdlTxnMode(0 /* db_oid */, false /* is_silent_altering */));
+  // Next reads from catalog tables have to see changes made by the DDL transaction.
+  YBCPgResetCatalogReadTime();
 }
 
 void PggateTest::BeginTransaction() {

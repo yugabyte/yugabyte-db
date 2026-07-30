@@ -12,4 +12,6 @@ export interface InstanceSettingProps {
   tserverK8SNodeResourceSpec?: K8NodeSpec | null;
   masterK8SNodeResourceSpec?: K8NodeSpec | null;
   keepMasterTserverSame?: boolean;
+  enableEbsVolumeEncryption?: boolean;
+  ebsKmsConfigUUID?: string | null;
 }
