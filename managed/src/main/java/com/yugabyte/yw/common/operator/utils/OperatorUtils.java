@@ -840,7 +840,7 @@ public class OperatorUtils {
     return masterDeviceInfo;
   }
 
-  public DeviceInfo defaultMasterDeviceInfo() {
+  public static DeviceInfo defaultMasterDeviceInfo() {
     DeviceInfo masterDeviceInfo = new DeviceInfo();
     masterDeviceInfo.volumeSize = 50;
     masterDeviceInfo.numVolumes = 1;

@@ -399,6 +399,34 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             mockBaseTaskDependencies.getConfGetter()));
   }
 
+  @Test
+  public void testResizeRejectsClearingMasterDeviceInfoForDedicated() {
+    modifyToDedicated();
+    UniverseDefinitionTaskParams.UserIntent currentIntent =
+        defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    UniverseDefinitionTaskParams.UserIntent targetIntent = currentIntent.clone();
+    targetIntent.deviceInfo.volumeSize = currentIntent.deviceInfo.volumeSize + 10;
+    targetIntent.masterDeviceInfo = null;
+
+    assertFalse(
+        ResizeNodeParams.checkResizeIsPossible(
+            defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid,
+            currentIntent,
+            targetIntent,
+            defaultUniverse,
+            mockBaseTaskDependencies.getConfGetter()));
+
+    ResizeNodeParams taskParams = createResizeParams();
+    UniverseDefinitionTaskParams.Cluster cluster =
+        new UniverseDefinitionTaskParams.Cluster(
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY, targetIntent);
+    cluster.uuid = defaultUniverse.getUniverseDetails().getPrimaryCluster().uuid;
+    taskParams.clusters = Collections.singletonList(cluster);
+    Exception thrown =
+        assertThrows(RuntimeException.class, () -> taskParams.verifyParams(defaultUniverse, true));
+    assertTrue(thrown.getMessage().contains("Cannot clear masterDeviceInfo"));
+  }
+
   private void applyConfig(
       String conf, UniverseDefinitionTaskParams.UserIntent intent, boolean toMaster) {
     char instType = conf.charAt(0);
