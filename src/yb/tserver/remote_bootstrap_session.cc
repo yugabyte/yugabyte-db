@@ -136,7 +136,7 @@ Result<OpId> RemoteBootstrapSession::CreateSnapshot(int retry) {
   // Read the SuperBlock from disk.
   RETURN_NOT_OK(ReadSuperblockFromDisk());
   if (retry == 0 && FLAGS_TEST_rbs_sleep_after_taking_metadata_ms > 0) {
-    LOG(INFO) << "TEST: Sleeping after taking tablet metadata";
+    LOG_WITH_PREFIX(INFO) << "TEST: Sleeping after taking tablet metadata";
     std::this_thread::sleep_for(
         std::chrono::milliseconds(FLAGS_TEST_rbs_sleep_after_taking_metadata_ms));
   }
@@ -148,6 +148,15 @@ Result<OpId> RemoteBootstrapSession::CreateSnapshot(int retry) {
   auto last_logged_opid = tablet_peer_->GetLatestLogEntryOpId();
 
   auto tablet = VERIFY_RESULT(GetRunningTablet());
+
+  // Bail out with a terminal (non-TryAgain) status once the tablet starts shutting down. Otherwise
+  // CreateCheckpoint below keeps failing with TryAgain -- its read operation cannot be acquired
+  // because the pending-op counter is disabled (but not yet stopped) while StartShutdownStorages
+  // drains ops -- and the caller's retry loop would spin until the RPC times out, wedging tablet
+  // shutdown. See issue #32211.
+  if (tablet->IsShutdownRequested()) {
+    return STATUS(ShutdownInProgress, "Tablet is shutting down, aborting checkpoint creation");
+  }
 
   MonoTime now = MonoTime::Now();
   auto* kv_store = tablet_superblock_.mutable_kv_store();
@@ -170,7 +179,7 @@ Result<OpId> RemoteBootstrapSession::CreateSnapshot(int retry) {
       if (AsString(tablet_superblock_) != AsString(new_superblock)) {
         auto msg = "Metadata changed while creating checkpoint";
         status = retry >= max_retries ? STATUS(IllegalState, msg) : STATUS(TryAgain, msg);
-        LOG(INFO) << status;
+        LOG_WITH_PREFIX(INFO) << status;
         return status;
       }
       if (PREDICT_FALSE(FLAGS_TEST_rbs_fail_checkpoint) && retry + 1 < max_retries) {
@@ -189,15 +198,16 @@ Result<OpId> RemoteBootstrapSession::CreateSnapshot(int retry) {
 void RemoteBootstrapSession::RemoveCheckpointDir() {
   // Delete checkpoint directory.
   if (checkpoint_dir_.empty()) {
-    LOG(INFO) << "No checkpoint directory was created for this session";
+    LOG_WITH_PREFIX(INFO) << "No checkpoint directory was created for this session";
     return;
   }
   auto s = env()->DeleteRecursively(checkpoint_dir_);
   if (!s.ok()) {
-    LOG(WARNING) << Format("Unable to delete checkpoint directory $0: $1", checkpoint_dir_, s);
+    LOG_WITH_PREFIX(WARNING)
+        << Format("Unable to delete checkpoint directory $0: $1", checkpoint_dir_, s);
     return;
   }
-  LOG(INFO) << "Successfully deleted checkpoint directory " << checkpoint_dir_;
+  LOG_WITH_PREFIX(INFO) << "Successfully deleted checkpoint directory " << checkpoint_dir_;
 }
 
 Status RemoteBootstrapSession::InitBootstrapSession() {
@@ -237,13 +247,14 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
       retryable_requests_filepath_ = JoinPathSegments(checkpoint_dir_, kRetryableRequestsFileName);
       auto copy_result = tablet_peer_->CopyBootstrapStateTo(*retryable_requests_filepath_);
       if (!copy_result.ok()) {
-        LOG(WARNING) << "Copy retryable requests failed: " << s;
+        LOG_WITH_PREFIX(WARNING) << "Copy retryable requests failed: " << s;
         retryable_requests_filepath_.reset();
       } else {
         min_synced_op_id = *copy_result;
       }
     } else {
-      LOG(WARNING) << "Remote bootstrap session: flush retryable requests failed: " << s;
+      LOG_WITH_PREFIX(WARNING)
+          << "Remote bootstrap session: flush retryable requests failed: " << s;
     }
   }
 
@@ -255,7 +266,7 @@ Status RemoteBootstrapSession::InitBootstrapSession() {
   // incorrectly detect them as duplicate.
   if (min_synced_op_id) {
     auto log_msg = Format("wait for OP($0) to be synced", *min_synced_op_id);
-    LOG(INFO) << "Start to " << log_msg;
+    LOG_WITH_PREFIX(INFO) << "Start to " << log_msg;
     auto wait_result = tablet_peer_->log()->WaitForSafeOpIdToApply(*min_synced_op_id);
     if (wait_result.empty()) {
       return STATUS_FORMAT(TimedOut, "Failed to $0", log_msg);
@@ -414,7 +425,7 @@ Status RemoteBootstrapSession::ValidateDataId(const yb::tserver::DataIdPB& data_
     case DataIdPB::UNKNOWN:
       return STATUS(InvalidArgument, "Type not supported", data_id.ShortDebugString());
   }
-  LOG(FATAL) << "Invalid data id type: " << data_id.type();
+  LOG_WITH_PREFIX(FATAL) << "Invalid data id type: " << data_id.type();
 }
 
 Status RemoteBootstrapSession::GetDataPiece(const DataIdPB& data_id, GetDataPieceInfo* info) {
@@ -657,7 +668,7 @@ void RemoteBootstrapSession::InitRateLimiter() {
       if (nsessions > 0) {
         return FLAGS_remote_bootstrap_rate_limit_bytes_per_sec / nsessions;
       } else {
-        LOG(DFATAL) << "Invalid number of sessions: " << nsessions;
+        LOG_WITH_PREFIX(DFATAL) << "Invalid number of sessions: " << nsessions;
         return FLAGS_remote_bootstrap_rate_limit_bytes_per_sec;
       }
     });

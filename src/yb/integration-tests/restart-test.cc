@@ -68,7 +68,7 @@ class RestartTest : public YBTableTestBase {
   }
 
   void ShutdownTabletPeer(const std::shared_ptr<tablet::TabletPeer> &tablet_peer) {
-    ASSERT_OK(tablet_peer->Shutdown(tablet::ShouldAbortActiveTransactions::kTrue,
+    ASSERT_OK(tablet_peer->TEST_Shutdown(tablet::ShouldAbortActiveTransactions::kTrue,
                                     tablet::DisableFlushOnShutdown::kFalse));
   }
 

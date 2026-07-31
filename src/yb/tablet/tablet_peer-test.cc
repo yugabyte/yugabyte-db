@@ -265,7 +265,7 @@ class TabletPeerTest : public YBTabletTest {
     multi_raft_manager_->StartShutdown();
     messenger_->Shutdown();
     WARN_NOT_OK(
-        tablet_peer_->Shutdown(
+        tablet_peer_->TEST_Shutdown(
             ShouldAbortActiveTransactions::kFalse, DisableFlushOnShutdown::kFalse),
         "Tablet peer shutdown failed");
     multi_raft_manager_->CompleteShutdown();
@@ -544,7 +544,7 @@ TEST_F(TabletPeerTest, TestAddTableUpdatesLastChangeMetadataOpId) {
 }
 
 TEST_F(TabletPeerTest, TestRollLogAfterTabletPeerShutdown) {
-  ASSERT_OK(tablet_peer_->Shutdown(
+  ASSERT_OK(tablet_peer_->TEST_Shutdown(
       ShouldAbortActiveTransactions::kFalse, DisableFlushOnShutdown::kFalse));
   auto s = tablet_peer_->log()->AsyncAllocateSegmentAndRollover();
   ASSERT_NOK_STR_CONTAINS(s, "Invalid log state");
@@ -873,7 +873,7 @@ TEST_F(TabletBootstrapStateFlusherTest, WaitFlushIdleBeforeShutdown) {
   ASSERT_OK(WaitForFlushState(TabletBootstrapFlushState::kFlushing));
   thread_holder.AddThreadFunctor([&] {
     WARN_NOT_OK(
-        tablet_peer_->Shutdown(
+        tablet_peer_->TEST_Shutdown(
             ShouldAbortActiveTransactions::kFalse, DisableFlushOnShutdown::kFalse),
             "Tablet peer shutdown failed");
     auto order = finish_order.fetch_add(1);

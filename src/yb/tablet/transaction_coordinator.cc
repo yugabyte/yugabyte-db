@@ -1229,7 +1229,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
   }
 
   virtual ~Impl() {
-    Shutdown();
+    StartShutdown();
+    CompleteShutdown();
   }
 
   void RemoveInactiveTransactions(Waiters* waiters) override {
@@ -1286,10 +1287,17 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     return TransactionInfo{it->first_touch(), it->pg_session_req_version()};
   }
 
-  void Shutdown() {
+  // Stops the pollers so that no leader actions (which submit transaction status update operations)
+  // run after this returns. This must happen before the tablet pauses its read/write operations
+  // during shutdown, otherwise a poll could try to submit an operation against a paused tablet and
+  // fail with a non-shutdown status. See issue #32211.
+  void StartShutdown() {
     deadlock_detection_poller_.Shutdown();
-    deadlock_detector_.Shutdown();
     poller_.Shutdown();
+  }
+
+  void CompleteShutdown() {
+    deadlock_detector_.Shutdown();
     rpcs_.Shutdown();
   }
 
@@ -2181,8 +2189,12 @@ void TransactionCoordinator::Start() {
   impl_->Start();
 }
 
-void TransactionCoordinator::Shutdown() {
-  impl_->Shutdown();
+void TransactionCoordinator::StartShutdown() {
+  impl_->StartShutdown();
+}
+
+void TransactionCoordinator::CompleteShutdown() {
+  impl_->CompleteShutdown();
 }
 
 Status TransactionCoordinator::PrepareForDeletion(const CoarseTimePoint& deadline) {
