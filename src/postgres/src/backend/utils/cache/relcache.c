@@ -1671,17 +1671,25 @@ YbAttrDefaultFetch(Relation relation, const YbTupleCache *pg_attrdef_cache)
 }
 
 /*
- * YbCheckConstraintFetch performs same actions as PG's CheckConstraintFetch
- * but with using in memory tuple cache instead of relation scan.
- * Most code is borrowed from PG's CheckConstraintFetch.
+ * YbCheckNNConstraintFetch performs the same actions as PG's
+ * CheckNNConstraintFetch but using the in-memory tuple cache instead of a
+ * relation scan.  Most code is borrowed from PG's CheckNNConstraintFetch.
  */
 static void
-YbCheckConstraintFetch(Relation relation, const YbTupleCache *pg_constraint_cache)
+YbCheckNNConstraintFetch(Relation relation, const YbTupleCache *pg_constraint_cache)
 {
-	ConstrCheck *check = relation->rd_att->constr->check;
-	uint16		ncheck = relation->rd_att->constr->num_check;
+	ConstrCheck *check;
+	uint16		ncheck = relation->rd_rel->relchecks;
 	Relation	conrel = pg_constraint_cache->rel;
 	uint16		found = 0;
+
+	/* Allocate array with room for as many entries as expected, if needed */
+	if (ncheck > 0)
+		check = (ConstrCheck *)
+			MemoryContextAllocZero(CacheMemoryContext,
+								   ncheck * sizeof(ConstrCheck));
+	else
+		check = NULL;
 
 	Oid			relid = RelationGetRelid(relation);
 	const YbTupleCacheEntry *entry = hash_search(pg_constraint_cache->data,
@@ -1694,7 +1702,30 @@ YbCheckConstraintFetch(Relation relation, const YbTupleCache *pg_constraint_cach
 		HeapTuple	htup = (HeapTuple) lfirst(cell);
 		Form_pg_constraint conform = (Form_pg_constraint) GETSTRUCT(htup);
 
-		/* We want check constraints only */
+		/*
+		 * If this is a not-null constraint, then only look at it if it's
+		 * invalid, and if so, mark the TupleDesc entry as known invalid.
+		 * Otherwise move on.  We'll mark any remaining columns that are still
+		 * in UNKNOWN state as known valid later.  This allows us not to have
+		 * to extract the attnum from this constraint tuple in the vast
+		 * majority of cases.
+		 */
+		if (conform->contype == CONSTRAINT_NOTNULL)
+		{
+			if (!conform->convalidated)
+			{
+				AttrNumber	attnum = extractNotNullColumn(htup);
+
+				Assert(relation->rd_att->compact_attrs[attnum - 1].attnullability ==
+					   ATTNULLABLE_UNKNOWN);
+				relation->rd_att->compact_attrs[attnum - 1].attnullability =
+					ATTNULLABLE_INVALID;
+			}
+
+			continue;
+		}
+
+		/* For what follows, consider check constraints only */
 		if (conform->contype != CONSTRAINT_CHECK)
 			continue;
 
@@ -1702,6 +1733,7 @@ YbCheckConstraintFetch(Relation relation, const YbTupleCache *pg_constraint_cach
 			elog(ERROR, "unexpected constraint record found for rel %s",
 				 RelationGetRelationName(relation));
 
+		check[found].ccenforced = conform->conenforced;
 		check[found].ccvalid = conform->convalidated;
 		check[found].ccnoinherit = conform->connoinherit;
 		check[found].ccname =
@@ -1733,6 +1765,10 @@ YbCheckConstraintFetch(Relation relation, const YbTupleCache *pg_constraint_cach
 	/* Sort the records so that CHECKs are applied in a deterministic order */
 	if (ncheck > 1)
 		qsort(check, ncheck, sizeof(ConstrCheck), CheckConstraintCmp);
+
+	/* Install array only after it's fully valid */
+	relation->rd_att->constr->check = check;
+	relation->rd_att->constr->num_check = found;
 }
 
 typedef struct YbRelationAttrsProcessingState
@@ -1923,6 +1959,8 @@ YbCompleteAttrProcessingImpl(const YbAttrProcessorState *state)
 	/* Set up constraint/default info */
 	if (constr->has_not_null || ndef > 0 || attrmiss || relation->rd_rel->relchecks)
 	{
+		bool		is_catalog = IsCatalogRelation(relation);
+
 		if (relation->rd_att->constr)
 			pfree(relation->rd_att->constr);
 		relation->rd_att->constr = constr;
@@ -1941,16 +1979,31 @@ YbCompleteAttrProcessingImpl(const YbAttrProcessorState *state)
 
 		constr->missing = attrmiss;
 
-		if (relation->rd_rel->relchecks > 0)	/* CHECKs */
-		{
-			constr->num_check = relation->rd_rel->relchecks;
-			constr->check = (ConstrCheck *)
-				MemoryContextAllocZero(CacheMemoryContext,
-									   constr->num_check * sizeof(ConstrCheck));
-			YbCheckConstraintFetch(relation, state->pg_constraint_cache);
-		}
+		/* CHECK and NOT NULLs */
+		if (relation->rd_rel->relchecks > 0 ||
+			(!is_catalog && constr->has_not_null))
+			YbCheckNNConstraintFetch(relation, state->pg_constraint_cache);
 		else
 			constr->num_check = 0;
+
+		/*
+		 * Any not-null constraint that wasn't marked invalid by
+		 * YbCheckNNConstraintFetch must necessarily be valid; make it so in the
+		 * CompactAttribute array.
+		 */
+		if (!is_catalog)
+		{
+			for (int i = 0; i < relation->rd_rel->relnatts; i++)
+			{
+				CompactAttribute *attr = TupleDescCompactAttr(relation->rd_att, i);
+
+				if (attr->attnullability == ATTNULLABLE_UNKNOWN)
+					attr->attnullability = ATTNULLABLE_VALID;
+				else
+					Assert(attr->attnullability == ATTNULLABLE_INVALID ||
+						   attr->attnullability == ATTNULLABLE_UNRESTRICTED);
+			}
+		}
 	}
 	else
 	{
