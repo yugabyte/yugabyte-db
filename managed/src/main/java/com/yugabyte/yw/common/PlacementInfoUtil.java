@@ -386,7 +386,7 @@ public class PlacementInfoUtil {
     LOG.info("Start update universe definition V2. ");
     Cluster cluster = taskParams.getClusterByUuid(placementUuid);
     // Removing nodes if it is full move (instance type change, etc)
-    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(cluster);
+    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(taskParams);
     taskParams.getNodesInCluster(cluster.uuid).stream()
         .forEach(
             node -> {
@@ -535,14 +535,9 @@ public class PlacementInfoUtil {
     taskParams.getNodesInCluster(cluster.uuid).stream()
         .forEach(
             node -> {
+              Provider provider = providerGetter.apply(node);
               boolean shouldReplaceNode =
-                  shouldReplaceNode(
-                      node,
-                      cluster,
-                      providerGetter.apply(node),
-                      taskParams,
-                      universe,
-                      clusterOpType);
+                  shouldReplaceNode(node, cluster, provider, taskParams, universe, clusterOpType);
               if (node.state == NodeState.ToBeRemoved) {
                 if (!shouldReplaceNode) {
                   NodeDetails addedNode =
@@ -778,6 +773,9 @@ public class PlacementInfoUtil {
       UniverseDefinitionTaskParams taskParams,
       Universe universe,
       ClusterOperationType clusterOpType) {
+    if (provider == null) {
+      return true;
+    }
     if (!Objects.equals(
             node.cloudInfo.instance_type, cluster.userIntent.getInstanceTypeForNode(node))
         && !(provider.getCloudCode() == CloudType.kubernetes)) {
@@ -894,20 +892,33 @@ public class PlacementInfoUtil {
     AvailableNodeTracker availableNodeTracker =
         new AvailableNodeTracker(cluster.uuid, clusters, nodes);
     List<String> errors = new ArrayList<>();
-    if (availableNodeTracker.isOnprem()) {
+    if (cluster.userIntent.getAllCloudTypes().contains(CloudType.onprem)) {
       PlacementInfo placementInfo = cluster.getOverallPlacement();
       Map<UUID, Integer> nodeCountByAz = PlacementInfoUtil.getAzUuidToNumNodes(placementInfo);
-      for (Cluster clust : clusters) {
-        PlacementInfo clusterPlacement = clust.getOverallPlacement();
-        if (!cluster.uuid.equals(clust.uuid)
-            && clusterPlacement != null
-            && clust.userIntent != null
-            && Objects.equals(clust.userIntent.instanceType, cluster.userIntent.instanceType)) {
-          clusterPlacement.azStream().forEach(az -> nodeCountByAz.merge(az.uuid, 1, Integer::sum));
+      for (Cluster otherCluster : clusters) {
+        PlacementInfo otherClusterPlacement = otherCluster.getOverallPlacement();
+        if (!cluster.uuid.equals(otherCluster.uuid)
+            && otherClusterPlacement != null
+            && otherCluster.userIntent != null) {
+          otherClusterPlacement
+              .azStream()
+              .filter(az -> nodeCountByAz.containsKey(az.uuid))
+              .forEach(
+                  az -> {
+                    if (Objects.equals(
+                        otherCluster.userIntent.getInstanceType(az.uuid),
+                        cluster.userIntent.getInstanceType(az.uuid))) {
+                      nodeCountByAz.merge(az.uuid, az.numNodesInAZ, Integer::sum);
+                    }
+                  });
         }
       }
-      placementInfo
+      // Non-onprem zones are unlimited (getFreeInDB returns Integer.MAX_VALUE), so skip them:
+      // adding occupied/willBeFreed to that would overflow and report a bogus shortage.
+      cluster
+          .getOverallPlacement()
           .azStream()
+          .filter(az -> availableNodeTracker.isOnpremZone(az.uuid))
           .forEach(
               az -> {
                 int available = availableNodeTracker.getFreeInDB(az.uuid);
@@ -1883,7 +1894,7 @@ public class PlacementInfoUtil {
       boolean mastersPreferable) {
     List<NodeDetails> items =
         nodes.stream()
-            .filter(node -> nodeFilter.test(node) && node.azUuid.equals(targetAZUuid))
+            .filter(node -> Objects.equals(node.azUuid, targetAZUuid) && nodeFilter.test(node))
             .collect(Collectors.toList());
     items.sort(
         Comparator.comparing((NodeDetails node) -> node.isMaster == mastersPreferable)

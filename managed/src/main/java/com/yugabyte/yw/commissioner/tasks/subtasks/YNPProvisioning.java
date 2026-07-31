@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.YNPConfigGenerator;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
@@ -181,6 +182,8 @@ public class YNPProvisioning extends NodeTaskBase {
                     .getConfForScope(provider, ProviderConfKeys.ynpProvisionTimeout)
                     .toSeconds())
             .build();
+    NodeUniverseContext nodeContext =
+        NodeUniverseContext.of(universe, node, shellContext, taskParams().userIntent);
     ensureAzureLunIndexes(node, provider);
 
     /*
@@ -189,7 +192,7 @@ public class YNPProvisioning extends NodeTaskBase {
      *  clean up the tmp directory where the YNP config is created.
      */
     AnsibleSetupServer.Params ansibleParams =
-        buildDualNicSetupParams(universe, node, provider, taskParams().userIntent);
+        buildDualNicSetupParams(universe, node, taskParams().userIntent);
     nodeManager
         .nodeCommand(NodeManager.NodeCommandType.Provision, ansibleParams)
         .processErrors("Dual NIC setup failed");
@@ -203,7 +206,7 @@ public class YNPProvisioning extends NodeTaskBase {
         generateProvisionConfig(
             universe, node, provider, nodeAgentHomePath, taskParams().userIntent);
     nodeUniverseManager.uploadFileToNode(
-        node, universe, tmpConfigFilepath.toString(), targetConfigPath, "755", shellContext);
+        nodeContext, tmpConfigFilepath.toString(), targetConfigPath, "755");
     // Copy the conf file to scripts folder and run the provisioning script as in manual onprem.
     StringBuilder sb = new StringBuilder();
     sb.append("cd ").append(nodeAgentScriptsPath);
@@ -218,9 +221,7 @@ public class YNPProvisioning extends NodeTaskBase {
     List<String> command = getCommand("/bin/bash", "-c", sb.toString());
     log.debug("Running YNP installation command: {}", command);
 
-    nodeUniverseManager
-        .runCommand(node, universe, command, shellContext)
-        .processErrors("Installation failed");
+    nodeUniverseManager.runCommand(nodeContext, command).processErrors("Installation failed");
     // YNP lays out only the USER layout, taking over a root-level unit if one is there.
     saveUniverseDetails(
         u -> {
@@ -232,11 +233,12 @@ public class YNPProvisioning extends NodeTaskBase {
   }
 
   private AnsibleSetupServer.Params buildDualNicSetupParams(
-      Universe universe, NodeDetails node, Provider provider, UserIntent taskUserIntent) {
+      Universe universe, NodeDetails node, UserIntent taskUserIntent) {
     AnsibleSetupServer.Params ansibleParams = new AnsibleSetupServer.Params();
-    fillSetupParamsForNode(ansibleParams, universe.getCluster(node.placementUuid), node);
+    fillSetupParamsForNode(ansibleParams, taskUserIntent, node);
     ansibleParams.sshUserOverride = node.sshUserOverride;
     ansibleParams.sshPortOverride = node.sshPortOverride;
+    ansibleParams.userIntent = taskUserIntent;
     return ansibleParams;
   }
 

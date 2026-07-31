@@ -403,7 +403,7 @@ public class NodeUniverseManagerSupportBundleTest extends FakeDBApplication {
     expected.code = 0;
     doReturn(expected)
         .when(nodeUniverseManager)
-        .runCommand(eq(node), eq(universe), anyList(), any(), eq(false));
+        .runCommand(NodeUniverseContextMatchers.forNode(node, universe), anyList(), eq(false));
 
     ShellResponse response =
         nodeUniverseManager.runYsqlSupportBundleBatchCommands(
@@ -416,6 +416,7 @@ public class NodeUniverseManagerSupportBundleTest extends FakeDBApplication {
             false);
 
     assertEquals(expected, response);
-    verify(nodeUniverseManager).runCommand(eq(node), eq(universe), anyList(), any(), eq(false));
+    verify(nodeUniverseManager)
+        .runCommand(NodeUniverseContextMatchers.forNode(node, universe), anyList(), eq(false));
   }
 }

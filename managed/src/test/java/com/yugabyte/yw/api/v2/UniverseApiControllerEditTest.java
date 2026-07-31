@@ -181,8 +181,10 @@ public class UniverseApiControllerEditTest extends UniverseTestBase {
         univ -> {
           UserIntent intent = univ.getUniverseDetails().getPrimaryCluster().userIntent;
           TestUtils.existingProviderInitializer(intent).setInstanceType("c5.4xlarge");
+          int nodeIndex = 0;
           for (NodeDetails n : univ.getUniverseDetails().nodeDetailsSet) {
             n.state = NodeState.Live;
+            n.nodeName = "host-n" + nodeIndex++;
             if (n.cloudInfo != null) {
               n.cloudInfo.instance_type = "c5.4xlarge";
             }

@@ -84,7 +84,12 @@ public class AnsibleConfigureServerTest extends CommissionerBaseTest {
         ModelFactory.createUniverse(
             cloudType.name() + "-universe", defaultCustomer.getId(), cloudType);
     // Save the updates to the universe.
-    Universe.saveDetails(universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          ApiUtils.mockUniverseUpdater().run(u);
+          u.getNodes().forEach(n -> n.azUuid = az.getUuid());
+        });
   }
 
   @Test

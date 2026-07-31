@@ -163,7 +163,7 @@ public class ResizeNode extends UpgradeTaskBase {
     }
     Universe universe = getUniverse();
     boolean flagsProvided = taskParams().flagsProvided(universe);
-    UserIntent userIntentForFlags = getUserIntent();
+    UserIntent userIntentForFlags = getStoredUserIntent();
     nodesToApplyCalculated = new NodesToApply();
     LinkedHashSet<NodeDetails> allNodes = fetchNodesForCluster();
     LinkedHashSet<NodeDetails> nodesNotUpdated = new LinkedHashSet<>(allNodes);
@@ -268,7 +268,7 @@ public class ResizeNode extends UpgradeTaskBase {
 
           Universe universe = getUniverse();
 
-          UserIntent userIntentForFlags = getUserIntent();
+          UserIntent userIntentForFlags = getStoredUserIntent();
 
           boolean flagsProvided = taskParams().flagsProvided(universe);
 

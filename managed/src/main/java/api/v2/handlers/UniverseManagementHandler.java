@@ -384,6 +384,11 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     for (Cluster readOnlyCluster : dbUniverse.getUniverseDetails().getReadOnlyClusters()) {
       UniverseCRUDHandler.validateConsistency(primaryCluster, readOnlyCluster);
     }
+    // dbUniverse.getUniverseDetails() was the MapStruct @MappingTarget above, so it already holds
+    // the request. Validate against the snapshot taken before that mapping.
+    Universe storedUniverse = Universe.getOrBadRequest(dbUniverse.getUniverseUUID());
+    universeCRUDHandler.checkCanEdit(customer, storedUniverse);
+    universeCRUDHandler.checkTaskParamsForUpdate(storedUniverse, customer, v1Params, false);
 
     TaskType taskType = TaskType.EditUniverse;
     if (Util.isKubernetesBasedUniverse(dbUniverse)) {

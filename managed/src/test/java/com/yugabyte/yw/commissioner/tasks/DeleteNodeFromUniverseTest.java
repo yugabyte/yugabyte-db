@@ -71,7 +71,7 @@ public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
   @Before
   public void setUp() {
     Region region = Region.create(defaultProvider, "region-1", "Region 1", "yb-image-1");
-    AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
+    AvailabilityZone az = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
     // create default universe
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
@@ -92,6 +92,7 @@ public class DeleteNodeFromUniverseTest extends CommissionerBaseTest {
         ApiUtils.mockUniverseUpdaterWithNodeCallback(
             userIntent,
             node -> {
+              node.azUuid = az.getUuid();
               if (node.nodeName.equals("host-n1")) {
                 node.state = NodeState.InstanceCreated;
               }

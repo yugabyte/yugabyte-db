@@ -23,6 +23,7 @@ import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.CallHomeManager;
 import com.yugabyte.yw.common.NodeUIApiHelper;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
@@ -521,8 +522,11 @@ public class GFlagsUtil {
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     Cluster cluster = universeDetails.getClusterByUuid(node.placementUuid);
-    UserIntent userIntent = cluster.userIntent;
-    Provider provider = Util.getProviderForNode(node, cluster);
+    UserIntent userIntent = taskParam.userIntent;
+    if (userIntent == null) {
+      userIntent = cluster.userIntent;
+    }
+    Provider provider = Util.getProviderByAz(node.azUuid);
     String ybHomeDir = provider.getYbHome();
     Map<String, String> ybcFlags = new TreeMap<>();
     ybcFlags.put("v", "1");
@@ -590,7 +594,7 @@ public class GFlagsUtil {
     String ybcTempDir = GFlagsUtil.getCustomTmpDirectory(confGetter, node, universe);
     // PLAT-10007 use ybc-data instead of /tmp
     if (ybcTempDir.equals("/tmp")) {
-      ybcTempDir = getDataDirectoryPath(universe, node, config) + "/ybc-data";
+      ybcTempDir = getDataDirectoryPath(provider, userIntent, node, config) + "/ybc-data";
     }
     ybcFlags.put(TMP_DIRECTORY, ybcTempDir);
     if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
@@ -2705,15 +2709,14 @@ public class GFlagsUtil {
       try {
         ShellResponse response =
             nodeUniverseManager.runCommand(
-                nodeDetails,
-                universe,
+                NodeUniverseContext.of(
+                    universe, nodeDetails, ShellProcessContext.builder().build()),
                 Arrays.asList(
                     "cat",
                     provider.getYbHome()
                         + "/"
                         + serverType.name().toLowerCase()
-                        + "/conf/server.conf"),
-                ShellProcessContext.builder().build());
+                        + "/conf/server.conf"));
         String contents = response.extractRunCommandOutput();
         return parseConfigContents(contents);
       } catch (Exception ignored) {

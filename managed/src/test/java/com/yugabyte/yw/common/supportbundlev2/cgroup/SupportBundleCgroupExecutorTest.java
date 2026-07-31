@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common.supportbundlev2.cgroup;
 
+import static com.yugabyte.yw.common.NodeUniverseContextMatchers.nodeContext;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
@@ -29,6 +30,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.NodeUniverseManager.RemoteBashRunSpec;
 import com.yugabyte.yw.common.RemoteTransportSimulator;
@@ -158,10 +160,10 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
   /** mkdir, rm and the unit stop succeed; any other command is recorded and gets the response. */
   private void stubRunCommand() {
     lenient().when(mockNodeUniverseManager.getYbHomeDir(any(), any())).thenReturn(YB_HOME_DIR);
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any(), eq(false)))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList(), eq(false)))
         .thenAnswer(
             invocation -> {
-              List<String> command = invocation.getArgument(2);
+              List<String> command = invocation.getArgument(1);
               if (command.get(0).equals("mkdir") || command.get(0).equals("rm")) {
                 return ok("");
               }
@@ -287,7 +289,7 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
     expected.addAll(PARAMS);
     assertEquals(expected, commandsRun.get(0));
     verify(mockNodeUniverseManager, times(1))
-        .uploadFileToNode(any(), any(), anyString(), anyString(), anyString(), any());
+        .uploadFileToNode(any(NodeUniverseContext.class), anyString(), anyString(), anyString());
     // Not wrapped, so the output is returned as is.
     assertEquals(commandResponse.getMessage(), response.getMessage());
   }
@@ -332,7 +334,7 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
         List.of("bash", stagedScript(), "--run_timeout_secs", "330"),
         commandsRun.get(0).subList(0, 4));
     verify(mockNodeUniverseManager, times(1))
-        .uploadFileToNode(any(), any(), anyString(), anyString(), anyString(), any());
+        .uploadFileToNode(any(NodeUniverseContext.class), anyString(), anyString(), anyString());
   }
 
   @Test
@@ -351,7 +353,7 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
         List.of("bash", stagedScript(), "--run_timeout_secs", "330"),
         commandsRun.get(0).subList(0, 4));
     verify(mockNodeUniverseManager, times(1))
-        .uploadFileToNode(any(), any(), anyString(), anyString(), anyString(), any());
+        .uploadFileToNode(any(NodeUniverseContext.class), anyString(), anyString(), anyString());
   }
 
   @Test
@@ -367,17 +369,19 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
     assertTrue(argv.toString(), argv.subList(0, argv.indexOf("--exec")).contains("--no_cgroup"));
     // It can't write the yugabyte-owned staging directory, so its TMPDIR stays /tmp.
     assertFalse(argv.toString(), argv.contains("--tmp_dir"));
-    ArgumentCaptor<ShellProcessContext> stageContext =
-        ArgumentCaptor.forClass(ShellProcessContext.class);
+    ArgumentCaptor<NodeUniverseContext> stageContext =
+        ArgumentCaptor.forClass(NodeUniverseContext.class);
     verify(mockNodeUniverseManager, times(2))
-        .uploadFileToNode(
-            any(), any(), anyString(), anyString(), eq("755"), stageContext.capture());
+        .uploadFileToNode(stageContext.capture(), anyString(), anyString(), eq("755"));
     stageContext
         .getAllValues()
         .forEach(
-            context -> assertEquals(ShellProcessContext.DEFAULT_REMOTE_USER, context.getSshUser()));
+            context ->
+                assertEquals(
+                    ShellProcessContext.DEFAULT_REMOTE_USER,
+                    context.getShellProcessContext().getSshUser()));
     verify(mockNodeUniverseManager)
-        .runCommand(any(), any(), eq(argv), eq(asProviderUser), eq(false));
+        .runCommand(nodeContext(null, null, asProviderUser), eq(argv), eq(false));
   }
 
   @Test
@@ -400,19 +404,22 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
     runScript(context300(), true);
 
     verify(mockNodeUniverseManager, times(1))
-        .uploadFileToNode(any(), any(), anyString(), eq(stagedScript()), eq("755"), any());
+        .uploadFileToNode(
+            any(NodeUniverseContext.class), anyString(), eq(stagedScript()), eq("755"));
     verify(mockNodeUniverseManager, times(1))
-        .uploadFileToNode(any(), any(), anyString(), eq(stagedLimitsScript()), eq("755"), any());
+        .uploadFileToNode(
+            any(NodeUniverseContext.class), anyString(), eq(stagedLimitsScript()), eq("755"));
     assertEquals(2, commandsRun.size());
   }
 
   @Test
   public void testScriptThatCantBeStagedFailsTheComponent() {
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any(), eq(false)))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList(), eq(false)))
         .thenReturn(ok(""));
     doThrow(new RuntimeException("No space left on device"))
         .when(mockNodeUniverseManager)
-        .uploadFileToNode(any(), any(), anyString(), eq(stagedScript()), anyString(), any());
+        .uploadFileToNode(
+            any(NodeUniverseContext.class), anyString(), eq(stagedScript()), anyString());
 
     RuntimeException thrown =
         assertThrows(RuntimeException.class, () -> runScript(context300(), true));
@@ -420,10 +427,8 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
     assertTrue(thrown.getMessage(), thrown.getMessage().contains("No space left on device"));
     verify(mockNodeUniverseManager, never())
         .runCommand(
-            any(),
-            any(),
+            any(NodeUniverseContext.class),
             argThat((List<String> cmd) -> cmd.size() > 1 && stagedScript().equals(cmd.get(1))),
-            any(),
             anyBoolean());
   }
 
@@ -433,7 +438,8 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
     stubRunCommand();
     doThrow(new RuntimeException("upload failed"))
         .when(mockNodeUniverseManager)
-        .uploadFileToNode(any(), any(), anyString(), eq(stagedLimitsScript()), anyString(), any());
+        .uploadFileToNode(
+            any(NodeUniverseContext.class), anyString(), eq(stagedLimitsScript()), anyString());
     ListAppender<ILoggingEvent> logs = capture(SupportBundleCgroupScriptExecutor.class);
 
     runScript(context300(), true);
@@ -453,7 +459,8 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
     stubRunCommand();
     doThrow(new CancellationException("upload cancelled"))
         .when(mockNodeUniverseManager)
-        .uploadFileToNode(any(), any(), anyString(), eq(stagedLimitsScript()), anyString(), any());
+        .uploadFileToNode(
+            any(NodeUniverseContext.class), anyString(), eq(stagedLimitsScript()), anyString());
 
     assertThrows(CancellationException.class, () -> runScript(context300(), true));
 
@@ -618,12 +625,13 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
     assertEquals("none", argv.get(argv.indexOf("--cpu_fallback") + 1));
     assertEquals("60", argv.get(argv.indexOf("--runtime_max_secs") + 1));
     assertEquals(spec.command, argv.subList(argv.indexOf("--exec") + 1, argv.size()));
-    ArgumentCaptor<ShellProcessContext> context =
-        ArgumentCaptor.forClass(ShellProcessContext.class);
-    verify(mockNodeUniverseManager)
-        .runCommand(any(), any(), eq(argv), context.capture(), eq(false));
-    assertEquals(30L, context.getValue().getTimeoutSecs());
-    assertEquals(spec.context.getRedactedVals(), context.getValue().getRedactedVals());
+    ArgumentCaptor<NodeUniverseContext> context =
+        ArgumentCaptor.forClass(NodeUniverseContext.class);
+    verify(mockNodeUniverseManager).runCommand(context.capture(), eq(argv), eq(false));
+    assertEquals(30L, context.getValue().getShellProcessContext().getTimeoutSecs());
+    assertEquals(
+        spec.context.getRedactedVals(),
+        context.getValue().getShellProcessContext().getRedactedVals());
     assertEquals("out\n", response.getMessage());
   }
 
@@ -640,7 +648,7 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
 
     assertEquals("rows", response.getMessage());
     verify(mockNodeUniverseManager, never())
-        .uploadFileToNode(any(), any(), anyString(), anyString(), anyString(), any());
+        .uploadFileToNode(any(NodeUniverseContext.class), anyString(), anyString(), anyString());
   }
 
   @Test
@@ -661,7 +669,7 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
     assertEquals(2, commandsRun.size());
     commandsRun.forEach(argv -> assertEquals(stagedLimitsScript(), argv.get(1)));
     verify(mockNodeUniverseManager, times(1))
-        .uploadFileToNode(any(), any(), anyString(), anyString(), anyString(), any());
+        .uploadFileToNode(any(NodeUniverseContext.class), anyString(), anyString(), anyString());
   }
 
   @Test
@@ -672,11 +680,11 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
         .thenReturn(
             new RemoteBashRunSpec(
                 List.of("bash", "-c", "ysqlsh"), ShellProcessContext.builder().build()));
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any(), eq(false)))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList(), eq(false)))
         .thenReturn(ok(""));
     doThrow(new RuntimeException("upload failed"))
         .when(mockNodeUniverseManager)
-        .uploadFileToNode(any(), any(), anyString(), anyString(), anyString(), any());
+        .uploadFileToNode(any(NodeUniverseContext.class), anyString(), anyString(), anyString());
     when(mockNodeUniverseManager.runYsqlSupportBundleBatchCommands(
             any(), any(), any(), anyList(), anyLong(), anyBoolean(), anyBoolean()))
         .thenReturn(ok("rows"));
@@ -696,7 +704,7 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
         .thenReturn(
             new RemoteBashRunSpec(
                 List.of("bash", "-c", "ysqlsh"), ShellProcessContext.builder().build()));
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any(), eq(false)))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList(), eq(false)))
         .thenReturn(cancelledResponse());
 
     assertThrows(
@@ -757,11 +765,13 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
         stop.contains(
             "systemctl --user stop 'yb-sb-" + bundleUuid.toString().substring(0, 8) + "-*.scope'"));
     verify(mockNodeUniverseManager)
-        .runCommand(any(), any(), eq(List.of("rm", "-rf", stagingDir)), any(), eq(false));
+        .runCommand(
+            any(NodeUniverseContext.class), eq(List.of("rm", "-rf", stagingDir)), eq(false));
     // Closed: a collection thread still running after the abort can't stage and run again.
     assertThrows(CancellationException.class, () -> runScript(context300(), true));
     verify(mockNodeUniverseManager, times(1))
-        .uploadFileToNode(any(), any(), anyString(), eq(stagedScript()), eq("755"), any());
+        .uploadFileToNode(
+            any(NodeUniverseContext.class), anyString(), eq(stagedScript()), eq("755"));
   }
 
   @Test
@@ -775,14 +785,16 @@ public class SupportBundleCgroupExecutorTest extends FakeDBApplication {
 
     assertTrue(commandsRun.isEmpty());
     verify(mockNodeUniverseManager)
-        .runCommand(any(), any(), eq(List.of("rm", "-rf", stagingDir)), any(), eq(false));
+        .runCommand(
+            any(NodeUniverseContext.class), eq(List.of("rm", "-rf", stagingDir)), eq(false));
   }
 
   @Test
   public void testCleanupOfAnUnstagedBundleTouchesNoNode() {
     scriptExecutor.cleanupBundle(bundleUuid, universe);
 
-    verify(mockNodeUniverseManager, never()).runCommand(any(), any(), anyList(), any(), eq(false));
+    verify(mockNodeUniverseManager, never())
+        .runCommand(any(NodeUniverseContext.class), anyList(), eq(false));
   }
 
   /** Both argv shapes, plain and under the limits script, must reach the node intact. */

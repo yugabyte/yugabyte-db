@@ -36,6 +36,7 @@ import com.yugabyte.yw.common.EmailHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeAgentClient;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformScheduler;
@@ -308,13 +309,15 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   private void verifyNodeUniverseManager(int uploads, int commands) {
     verify(mockNodeUniverseManager, times(uploads))
-        .uploadFileToNode(any(), any(), any(), any(), any(), any());
-    verify(mockNodeUniverseManager, times(commands)).runCommand(any(), any(), anyList(), any());
+        .uploadFileToNode(any(NodeUniverseContext.class), any(), any(), any());
+    verify(mockNodeUniverseManager, times(commands))
+        .runCommand(any(NodeUniverseContext.class), anyList());
   }
 
   private void verifyK8sHealthManager() {
     ArgumentCaptor<List<String>> command = ArgumentCaptor.forClass(List.class);
-    verify(mockNodeUniverseManager, times(1)).runCommand(any(), any(), command.capture(), any());
+    verify(mockNodeUniverseManager, times(1))
+        .runCommand(any(NodeUniverseContext.class), command.capture());
     // TODO assert
   }
 
@@ -392,7 +395,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     ShellResponse dummyShellResponseFail = ShellResponse.create(1, "Should error");
     doAnswer(i -> dummyShellResponseFail)
         .when(mockNodeUniverseManager)
-        .runCommand(any(), any(), anyList(), any());
+        .runCommand(any(NodeUniverseContext.class), anyList());
 
     testSingleUniverse(u, null, true, 2);
   }
@@ -784,7 +787,7 @@ public class HealthCheckerTest extends FakeDBApplication {
   public void testCheckSingleUniverse_ScriptFailure() {
     ShellResponse dummyShellResponseFail = ShellResponse.create(1, "Should error");
 
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenReturn(dummyShellResponseFail);
     Universe u = setupUniverse("univ1");
     setupAlertingData(null, false, false);
@@ -823,7 +826,7 @@ public class HealthCheckerTest extends FakeDBApplication {
             u, defaultCustomer, true, false, false, null, false /*runImmediately*/));
     ArgumentCaptor<List<String>> expectedCommand = ArgumentCaptor.forClass(List.class);
     verify(mockNodeUniverseManager, times(4))
-        .runCommand(any(), any(), expectedCommand.capture(), any());
+        .runCommand(any(NodeUniverseContext.class), expectedCommand.capture());
 
     assertThat(
         expectedCommand.getValue(), equalTo(ImmutableList.of("/home/yugabyte/bin/node_health.py")));
@@ -877,7 +880,7 @@ public class HealthCheckerTest extends FakeDBApplication {
 
     ArgumentCaptor<List<String>> command = ArgumentCaptor.forClass(List.class);
     verify(mockNodeUniverseManager, atLeastOnce())
-        .runCommand(any(), any(), command.capture(), any());
+        .runCommand(any(NodeUniverseContext.class), command.capture());
     return command.getValue();
   }
 
@@ -924,14 +927,14 @@ public class HealthCheckerTest extends FakeDBApplication {
   }
 
   private void mockGoodHealthResponse() {
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenAnswer(
             i -> {
-              NodeDetails nodeDetails = i.getArgument(0);
+              NodeDetails nodeDetails = ((NodeUniverseContext) i.getArgument(0)).getNode();
 
               return ShellResponse.create(
                   0,
-                  ("{''error'': false, ''data'': [ {''node'':''"
+                  ("Command output:\n{''error'': false, ''data'': [ {''node'':''"
                           + nodeDetails.cloudInfo.private_ip
                           + "'', ''has_error'': false, ''message'':''"
                           + dummyCheck
@@ -943,10 +946,10 @@ public class HealthCheckerTest extends FakeDBApplication {
   }
 
   private void mockBadHealthResponse() {
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenAnswer(
             i -> {
-              NodeDetails nodeDetails = i.getArgument(0);
+              NodeDetails nodeDetails = ((NodeUniverseContext) i.getArgument(0)).getNode();
 
               return ShellResponse.create(
                   0,
@@ -1019,7 +1022,7 @@ public class HealthCheckerTest extends FakeDBApplication {
         .thenReturn(EmailFixtures.createSmtpData());
     setupAlertingData(YB_ALERT_TEST_EMAIL, false, false);
 
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenReturn(ShellResponse.create(9, StringUtils.EMPTY));
     healthChecker.checkSingleUniverse(
         new HealthChecker.CheckSingleUniverseParams(

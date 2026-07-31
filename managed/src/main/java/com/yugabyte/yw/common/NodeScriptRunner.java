@@ -211,7 +211,9 @@ public class NodeScriptRunner {
         // Run script from file path using runScript which handles Node Agent and SSH fallback
         response =
             nodeUniverseManager.runScript(
-                node, universe, scriptParams.getScriptFile(), params, context);
+                NodeUniverseContext.of(universe, node, context),
+                scriptParams.getScriptFile(),
+                params);
       } else {
         List<String> cmd = new ArrayList<>();
         cmd.add("bash");
@@ -221,7 +223,9 @@ public class NodeScriptRunner {
           cmd.add("--"); // $0 placeholder required by bash -c for positional args to work
           cmd.addAll(params); // become $1, $2, ...
         }
-        response = nodeUniverseManager.runCommand(node, universe, cmd, context, false);
+        response =
+            nodeUniverseManager.runCommand(
+                NodeUniverseContext.of(universe, node, context), cmd, false);
       }
 
       long executionTime = System.currentTimeMillis() - nodeStartTime;

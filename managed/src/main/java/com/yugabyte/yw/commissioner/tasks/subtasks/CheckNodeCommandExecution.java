@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
@@ -103,7 +104,9 @@ public class CheckNodeCommandExecution extends NodeTaskBase {
             .build();
 
     try {
-      ShellResponse response = nodeUniverseManager.runCommand(node, universe, testCommand, context);
+      ShellResponse response =
+          nodeUniverseManager.runCommand(
+              NodeUniverseContext.of(universe, node, context), testCommand);
       if (response.isSuccess()) {
         String output = response.extractRunCommandOutput().trim();
         boolean isValid = output.equals("command-execution-test");

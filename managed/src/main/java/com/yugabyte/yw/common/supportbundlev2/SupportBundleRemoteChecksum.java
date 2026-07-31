@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common.supportbundlev2;
 
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
@@ -43,7 +44,9 @@ public final class SupportBundleRemoteChecksum {
     try {
       ShellResponse response =
           nodeUniverseManager.runCommand(
-              node, universe, List.of("md5sum", remotePath), context, false /* useBash */);
+              NodeUniverseContext.of(universe, node, context),
+              List.of("md5sum", remotePath),
+              false /* useBash */);
       SupportBundleCancellation.throwIfCancelled(response);
       if (!response.isSuccess()) {
         return Optional.empty();

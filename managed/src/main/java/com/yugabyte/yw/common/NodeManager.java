@@ -228,6 +228,9 @@ public class NodeManager extends DevopsBase {
 
   public UserIntent getUserIntentFromParams(Universe universe, NodeTaskParams nodeTaskParam) {
     NodeDetails nodeDetails = universe.getNode(nodeTaskParam.nodeName);
+    if (nodeTaskParam.userIntent != null) {
+      return nodeTaskParam.userIntent;
+    }
     if (nodeDetails == null) {
       // Use the placementUuid from the task params if available to find the correct cluster.
       // This is important for nodes not yet in the universe (e.g. ToBeAdded read replica nodes),
@@ -1732,7 +1735,8 @@ public class NodeManager extends DevopsBase {
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
     ImageBundle.NodeProperties toOverwriteNodeProperties = null;
-    UUID imageBundleUUID = getImageBundleUUID(arch, nodeTaskParam, userIntent);
+    UUID imageBundleUUID =
+        Util.retreiveImageBundleUUID(arch, userIntent, nodeTaskParam.getProvider());
     if (imageBundleUUID != null) {
       Region region = nodeTaskParam.getRegion();
       toOverwriteNodeProperties =
@@ -2253,11 +2257,12 @@ public class NodeManager extends DevopsBase {
           if (taskParam.shouldCheckVolumeAttached()) {
             NodeDetails node = universe.getNode(taskParam.nodeName);
             UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
+
             DeviceInfo deviceInfo = null;
             if (node != null
-                && cluster != null
+                && userIntent != null
                 && provider.getCloudCode() != Common.CloudType.onprem
-                && (deviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node)) != null) {
+                && (deviceInfo = userIntent.evaluateDeviceInfoForNode(node)) != null) {
               commandArgs.add("--num_volumes");
               commandArgs.add(String.valueOf(deviceInfo.numVolumes));
             }
@@ -2585,30 +2590,6 @@ public class NodeManager extends DevopsBase {
         }
       }
     }
-  }
-
-  /**
-   * Get current image bundle UUID. Checking these in order: 1) provided in params 2) used in
-   * userIntent 3) get default bundle for provider
-   *
-   * @param arch
-   * @param nodeTaskParam
-   * @param userIntent
-   * @return
-   */
-  private UUID getImageBundleUUID(
-      Architecture arch, NodeTaskParams nodeTaskParam, UserIntent userIntent) {
-    UUID imageBundleUUID = null;
-    if (nodeTaskParam instanceof AnsibleCreateServer.Params) {
-      imageBundleUUID = ((AnsibleCreateServer.Params) nodeTaskParam).imageBundleUUID;
-    }
-    if (nodeTaskParam instanceof AnsibleSetupServer.Params) {
-      imageBundleUUID = ((AnsibleSetupServer.Params) nodeTaskParam).imageBundleUUID;
-    }
-    if (imageBundleUUID == null) {
-      imageBundleUUID = Util.retreiveImageBundleUUID(arch, userIntent, nodeTaskParam.getProvider());
-    }
-    return imageBundleUUID;
   }
 
   private void appendCertPathsToCheck(List<String> commandArgs, UUID rootCA, boolean isClient) {

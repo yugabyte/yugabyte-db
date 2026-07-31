@@ -15,6 +15,8 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
+import com.yugabyte.yw.common.NodeUniverseContext;
+import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Universe;
@@ -162,10 +164,17 @@ public class TransferXClusterCerts extends NodeTaskBase {
           destinationCertPath,
           taskParams().getUniverseUUID());
 
+      NodeUniverseContext nodeContext =
+          NodeUniverseContext.builder()
+              .universe(destinationUniverse)
+              .node(node)
+              .shellProcessContext(ShellProcessContext.DEFAULT)
+              .userIntent(taskParams().userIntent)
+              .build();
+
       // Create the parent directory for the certificate file.
       nodeUniverseManager
-          .runCommand(
-              node, destinationUniverse, ImmutableList.of("mkdir", "-p", destinationCertsDirPath))
+          .runCommand(nodeContext, ImmutableList.of("mkdir", "-p", destinationCertsDirPath))
           .processErrors("Making certificate parent directory failed");
 
       // The permission for the certs used to be set to `400` which could be problematic in the case
@@ -173,8 +182,7 @@ public class TransferXClusterCerts extends NodeTaskBase {
       if (!Util.isKubernetesBasedUniverse(destinationUniverse)) {
         nodeUniverseManager
             .runCommand(
-                node,
-                destinationUniverse,
+                nodeContext,
                 ImmutableList.of(
                     "find",
                     destinationCertsDirPath,

@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
@@ -56,12 +57,12 @@ public class CheckMemoryTest extends CommissionerBaseTest {
     ShellResponse shellResponse = new ShellResponse();
     shellResponse.message = "Command output:\n2989898";
     shellResponse.code = 0;
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenReturn(shellResponse);
     CheckMemory checkMemoryTask = AbstractTaskBase.createTask(CheckMemory.class);
     checkMemoryTask.initialize(params);
     checkMemoryTask.run();
-    verify(mockNodeUniverseManager, times(1)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(1)).runCommand(any(NodeUniverseContext.class), anyList());
   }
 
   @Test
@@ -77,7 +78,7 @@ public class CheckMemoryTest extends CommissionerBaseTest {
     ShellResponse shellResponse = new ShellResponse();
     shellResponse.message = "COMMAND OUTPUT:";
     shellResponse.code = 0;
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenReturn(shellResponse);
     CheckMemory checkMemoryTask = AbstractTaskBase.createTask(CheckMemory.class);
     checkMemoryTask.initialize(params);
@@ -86,7 +87,8 @@ public class CheckMemoryTest extends CommissionerBaseTest {
     assertEquals(
         "Failed to fetch " + params.memoryType + " on node " + node.cloudInfo.private_ip,
         re.getMessage());
-    verify(mockNodeUniverseManager, atLeast(2)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, atLeast(2))
+        .runCommand(any(NodeUniverseContext.class), anyList());
   }
 
   @Test
@@ -103,7 +105,7 @@ public class CheckMemoryTest extends CommissionerBaseTest {
     long memoryOutput = AVAILABLE_MEMORY_LIMIT_KB - 1;
     shellResponse.message = "Command output:\n" + (memoryOutput);
     shellResponse.code = 0;
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenReturn(shellResponse);
     CheckMemory checkMemoryTask = AbstractTaskBase.createTask(CheckMemory.class);
     checkMemoryTask.initialize(params);
@@ -111,6 +113,6 @@ public class CheckMemoryTest extends CommissionerBaseTest {
     assertEquals(
         "Insufficient memory " + memoryOutput + "kB available on node " + node.cloudInfo.private_ip,
         re.getMessage());
-    verify(mockNodeUniverseManager, times(1)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(1)).runCommand(any(NodeUniverseContext.class), anyList());
   }
 }

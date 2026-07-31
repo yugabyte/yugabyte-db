@@ -35,6 +35,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.ShellResponse;
@@ -123,7 +124,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     factory.globalRuntimeConf().setValue("yb.checks.change_master_config.enabled", "false");
     mockLocaleCheckResponse(mockNodeUniverseManager);
     when(mockNodeUniverseManager.runCommand(
-            any(), any(), eq(ImmutableList.of("cat", "/etc/fstab")), any()))
+            any(NodeUniverseContext.class), eq(ImmutableList.of("cat", "/etc/fstab"))))
         .thenReturn(
             ShellResponse.create(
                 0, ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + "UUID=abc /mnt/d0 xfs defaults 0 0"));
@@ -282,7 +283,10 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     ArgumentCaptor<String> uploadedSourceCaptor = ArgumentCaptor.forClass(String.class);
     verify(mockNodeUniverseManager, atLeast(nodeOrder.size()))
         .uploadFileToNode(
-            any(), any(), uploadedSourceCaptor.capture(), anyString(), anyString(), any());
+            any(NodeUniverseContext.class),
+            uploadedSourceCaptor.capture(),
+            anyString(),
+            anyString());
     List<JsonNode> ynpConfigs =
         uploadedSourceCaptor.getAllValues().stream()
             .map(

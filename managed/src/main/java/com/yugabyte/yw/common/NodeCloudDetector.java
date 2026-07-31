@@ -182,7 +182,8 @@ public class NodeCloudDetector {
       Universe universe, NodeDetails node, ShellProcessContext context, List<String> command) {
     ShellResponse response;
     try {
-      response = nodeUniverseManager.runCommand(node, universe, command, context);
+      response =
+          nodeUniverseManager.runCommand(NodeUniverseContext.of(universe, node, context), command);
     } catch (Exception e) {
       log.warn("Cloud detection probe {} could not be run: {}", command, e.getMessage());
       return null;

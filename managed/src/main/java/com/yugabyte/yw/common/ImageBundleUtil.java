@@ -411,17 +411,15 @@ public class ImageBundleUtil {
 
   /** Find and return the SSH user that works for the node. */
   public String findEffectiveSshUser(
-      Provider provider, Universe universe, NodeDetails nodeDetails) {
+      Provider provider, Universe universe, UserIntent userIntent, NodeDetails nodeDetails) {
     ProviderDetails providerDetails = provider.getDetails();
     String sshUser = providerDetails.getSshUser();
     if (StringUtils.isBlank(sshUser)) {
       CloudType cloudType = universe.getNodeDeploymentMode(nodeDetails);
       sshUser = cloudType.getSshUser();
     }
-    Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
     UUID imageBundleUUID =
-        Util.retreiveImageBundleUUID(
-            universe.getUniverseDetails().arch, cluster.userIntent, provider);
+        Util.retreiveImageBundleUUID(universe.getUniverseDetails().arch, userIntent, provider);
     if (imageBundleUUID != null) {
       ImageBundle.NodeProperties toOverwriteNodeProperties =
           getNodePropertiesOrFail(

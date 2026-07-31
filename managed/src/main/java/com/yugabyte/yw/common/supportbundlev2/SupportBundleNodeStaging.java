@@ -6,6 +6,7 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
@@ -160,7 +161,8 @@ public class SupportBundleNodeStaging {
       String path,
       ShellProcessContext context) {
     ShellResponse response =
-        nodeUniverseManager.runCommand(node, universe, fileExistsCommand(path), context, false);
+        nodeUniverseManager.runCommand(
+            NodeUniverseContext.of(universe, node, context), fileExistsCommand(path), false);
     SupportBundleCancellation.throwIfCancelled(response);
     if (!response.isSuccess()) {
       throw new RuntimeException(
@@ -232,7 +234,9 @@ public class SupportBundleNodeStaging {
       Universe universe, NodeDetails node, String dir, ShellProcessContext context) {
     ShellResponse mkdir =
         nodeUniverseManager.runCommand(
-            node, universe, List.of("mkdir", "-p", "-m", "755", dir), context, false);
+            NodeUniverseContext.of(universe, node, context),
+            List.of("mkdir", "-p", "-m", "755", dir),
+            false);
     return SupportBundleCancellation.throwIfCancelled(mkdir);
   }
 
@@ -244,7 +248,7 @@ public class SupportBundleNodeStaging {
       ShellProcessContext context) {
     String remotePath = dir + "/" + localFile.getFileName();
     nodeUniverseManager.uploadFileToNode(
-        node, universe, localFile.toString(), remotePath, "755", context);
+        NodeUniverseContext.of(universe, node, context), localFile.toString(), remotePath, "755");
     return remotePath;
   }
 
@@ -255,7 +259,8 @@ public class SupportBundleNodeStaging {
     }
     try {
       ShellResponse response =
-          nodeUniverseManager.runCommand(node, universe, List.of("rm", "-rf", dir), context, false);
+          nodeUniverseManager.runCommand(
+              NodeUniverseContext.of(universe, node, context), List.of("rm", "-rf", dir), false);
       if (response.isSuccess()) {
         log.info("Removed support bundle directory {} on node '{}'", dir, node.getNodeName());
       } else {

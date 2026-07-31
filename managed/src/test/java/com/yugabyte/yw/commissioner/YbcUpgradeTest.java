@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ReleaseManager;
@@ -110,7 +111,7 @@ public class YbcUpgradeTest extends FakeDBApplication {
 
     ShellResponse dummyShellUploadResponse = ShellResponse.create(0, "");
     lenient()
-        .when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+        .when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenReturn(dummyShellUploadResponse);
     lenient().when(mockYbcManager.getYbcPackageTmpLocation(any(), any(), any())).thenReturn("/tmp");
     mockYbcClient = mock(YbcClient.class);

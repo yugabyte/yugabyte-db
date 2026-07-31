@@ -32,6 +32,7 @@ public class AvailableNodeTracker {
   private final Map<Pair<String, UUID>, Integer> occupied = new HashMap();
   // Map, tracking changes that are not yet flushed to DB (nodes marked as ToBeAdded or ToBeRemoved)
   private final Map<Pair<String, UUID>, Integer> temporaryCounts = new HashMap<>();
+  private final Map<UUID, Common.CloudType> cloudTypeByAz = new HashMap<>();
 
   public AvailableNodeTracker(
       UUID currentClusterId,
@@ -48,7 +49,12 @@ public class AvailableNodeTracker {
     occupied.clear();
     for (NodeDetails node : currentNodes) {
       UniverseDefinitionTaskParams.Cluster cluster = clusters.get(node.placementUuid);
-      if (cluster == null || cluster.getProviderCloudType(node) != Common.CloudType.onprem) {
+      if (cluster == null) {
+        continue;
+      }
+      Common.CloudType cloudType = cluster.getProviderCloudType(node);
+      cloudTypeByAz.put(node.getAzUuid(), cloudType);
+      if (cloudType != Common.CloudType.onprem) {
         continue;
       }
       if (isTemporaryOccupied(node)) {
@@ -89,8 +95,18 @@ public class AvailableNodeTracker {
     return getAvailableForZone(zoneId, UniverseTaskBase.ServerType.TSERVER);
   }
 
+  private Common.CloudType getCloudTypeForAz(UUID zoneId) {
+    return cloudTypeByAz.computeIfAbsent(
+        zoneId, azUUID -> Util.getProviderByAz(azUUID).getCloudCode());
+  }
+
+  /** Only onprem zones have a limited pool of nodes; other zones are never tracked. */
+  public boolean isOnpremZone(UUID zoneId) {
+    return getCloudTypeForAz(zoneId) == Common.CloudType.onprem;
+  }
+
   public int getAvailableForZone(UUID zoneId, UniverseTaskBase.ServerType serverType) {
-    if (!isOnprem()) {
+    if (getCloudTypeForAz(zoneId) != Common.CloudType.onprem) {
       return Integer.MAX_VALUE;
     }
     String instanceType = getUserIntent().getInstanceType(serverType, zoneId);
@@ -113,7 +129,7 @@ public class AvailableNodeTracker {
   }
 
   public void acquire(UUID zoneId, UniverseTaskBase.ServerType serverType) {
-    if (!isOnprem()) {
+    if (getCloudTypeForAz(zoneId) != Common.CloudType.onprem) {
       return;
     }
     int available = getAvailableForZone(zoneId, serverType);
@@ -123,10 +139,6 @@ public class AvailableNodeTracker {
           "No available instances of type " + instanceType + " in zone " + zoneId);
     }
     addToTemporaryCounts(instanceType, zoneId, 1);
-  }
-
-  public boolean isOnprem() {
-    return getUserIntent().getAllCloudTypes().contains(Common.CloudType.onprem);
   }
 
   private UniverseDefinitionTaskParams.UserIntent getUserIntent() {
@@ -151,6 +163,9 @@ public class AvailableNodeTracker {
   }
 
   public int getFreeInDB(UUID zoneId, UniverseTaskBase.ServerType serverType) {
+    if (getCloudTypeForAz(zoneId) != Common.CloudType.onprem) {
+      return Integer.MAX_VALUE;
+    }
     String instanceType = getUserIntent().getInstanceType(serverType, zoneId);
     return dbCounts.computeIfAbsent(
         new Pair(instanceType, zoneId), k -> NodeInstance.listByZone(zoneId, instanceType).size());
@@ -161,6 +176,9 @@ public class AvailableNodeTracker {
   }
 
   public int getWillBeFreed(UUID zoneId, UniverseTaskBase.ServerType serverType) {
+    if (!isOnpremZone(zoneId)) {
+      return 0;
+    }
     String instanceType = getUserIntent().getInstanceType(serverType, zoneId);
     return (int)
         currentNodes.stream()

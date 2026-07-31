@@ -67,6 +67,7 @@ import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeUIApiHelper;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
@@ -421,10 +422,12 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         .thenReturn(ybcReleaseMetadata);
     ShellResponse response = ShellResponse.create(0, "Command output: Linux x86_64");
     lenient()
-        .when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+        .when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenReturn(response);
     lenient()
-        .when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any(), anyBoolean()))
+        .when(
+            mockNodeUniverseManager.runCommand(
+                any(NodeUniverseContext.class), anyList(), anyBoolean()))
         .thenReturn(response);
     lenient().when(mockNodeAgentManager.getSoftwareVersion()).thenReturn("2.25.1.0-PRE_RELEASE");
     NodeAgentManager.InstallerFiles.InstallerFilesBuilder builder =
@@ -1157,7 +1160,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     shellResponse2.message = "Command output:\\nLocale is present";
     shellResponse2.code = 0;
     lenient()
-        .when(mockNodeUniverseManager.runCommand(any(), any(), eq(command), any()))
+        .when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), eq(command)))
         .thenReturn(shellResponse2);
   }
 
@@ -1171,40 +1174,53 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     lenient()
         .when(
             mockNodeUniverseManager.runCommand(
-                any(),
-                any(),
+                any(NodeUniverseContext.class),
                 ArgumentMatchers.<List<String>>argThat(
                     cmd ->
                         cmd != null
                             && !cmd.isEmpty()
                             && "bash".equals(cmd.get(0))
                             && cmd.stream()
-                                .anyMatch(arg -> arg != null && arg.contains("python3"))),
-                any()))
+                                .anyMatch(arg -> arg != null && arg.contains("python3")))))
         .thenReturn(response);
   }
 
   protected void mockClockSyncResponse(NodeUniverseManager nodeUniverseManager) {
-    when(mockNodeUniverseManager.runCommand(any(), any(), any()))
-        .thenReturn(
-            ShellResponse.create(0, ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + "/usr/bin/chronyc"))
-        .thenReturn(
-            ShellResponse.create(
-                ShellResponse.ERROR_CODE_SUCCESS,
-                ShellResponse.RUN_COMMAND_OUTPUT_PREFIX
-                    + "Reference ID    : A9FEA9FE (metadata.google.internal)\n"
-                    + "    Stratum         : 3\n"
-                    + "    Ref time (UTC)  : Mon Jun 12 16:18:24 2023\n"
-                    + "    System time     : 0.000000003 seconds slow of NTP time\n"
-                    + "    Last offset     : +0.000019514 seconds\n"
-                    + "    RMS offset      : 0.000011283 seconds\n"
-                    + "    Frequency       : 99.154 ppm slow\n"
-                    + "    Residual freq   : +0.009 ppm\n"
-                    + "    Skew            : 0.106 ppm\n"
-                    + "    Root delay      : 0.000162946 seconds\n"
-                    + "    Root dispersion : 0.000101734 seconds\n"
-                    + "    Update interval : 32.3 seconds\n"
-                    + "    Leap status     : Normal"));
+    ShellResponse chronycPresent =
+        ShellResponse.create(0, ShellResponse.RUN_COMMAND_OUTPUT_PREFIX + "/usr/bin/chronyc");
+    ShellResponse chronycTracking =
+        ShellResponse.create(
+            ShellResponse.ERROR_CODE_SUCCESS,
+            ShellResponse.RUN_COMMAND_OUTPUT_PREFIX
+                + "Reference ID    : A9FEA9FE (metadata.google.internal)\n"
+                + "    Stratum         : 3\n"
+                + "    Ref time (UTC)  : Mon Jun 12 16:18:24 2023\n"
+                + "    System time     : 0.000000003 seconds slow of NTP time\n"
+                + "    Last offset     : +0.000019514 seconds\n"
+                + "    RMS offset      : 0.000011283 seconds\n"
+                + "    Frequency       : 99.154 ppm slow\n"
+                + "    Residual freq   : +0.009 ppm\n"
+                + "    Skew            : 0.106 ppm\n"
+                + "    Root delay      : 0.000162946 seconds\n"
+                + "    Root dispersion : 0.000101734 seconds\n"
+                + "    Update interval : 32.3 seconds\n"
+                + "    Leap status     : Normal");
+    // Only chronyc commands. A blanket stub would also answer uname -sm, which SetupYNP parses
+    // as the node OS.
+    lenient()
+        .when(
+            nodeUniverseManager.runCommand(
+                any(NodeUniverseContext.class),
+                ArgumentMatchers.<List<String>>argThat(
+                    cmd -> cmd != null && cmd.stream().anyMatch(arg -> "chronyc".equals(arg)))))
+        .thenAnswer(
+            inv -> {
+              List<String> cmd = inv.getArgument(1);
+              if (cmd.contains("tracking")) {
+                return chronycTracking;
+              }
+              return chronycPresent;
+            });
   }
 
   protected void setMockLiveTabletServers(YBClientApi mockClient, Universe universe) {

@@ -15,7 +15,6 @@ import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
@@ -23,12 +22,14 @@ import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.NodeAgent;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -210,12 +211,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
         resetMasterState,
         universe.getUniverseUUID(),
         taskParams().resetMasterState);
-    Common.CloudType providerType =
-        universe
-            .getUniverseDetails()
-            .getClusterByUuid(nodeDetails.placementUuid)
-            .getProviderCloudType(nodeDetails);
-    boolean isNodeAgentSupported = NodeAgentClient.isCloudTypeSupported(providerType);
+    Provider provider = Util.getProviderByAz(nodeDetails.azUuid);
+    boolean isNodeAgentSupported = NodeAgentClient.isCloudTypeSupported(provider.getCloudCode());
     taskParams().resetMasterState = resetMasterState;
     taskParams().skipDownloadSoftware = isNodeAgentSupported;
     if (isNodeAgentSupported

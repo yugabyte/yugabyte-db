@@ -34,6 +34,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SaveSoftwareUpgradeProgress;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseSoftwareUpgradeState;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseContainer;
@@ -131,7 +132,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     command.add("awk");
     command.add(String.format("/%s/ {print$2}", Util.AVAILABLE_MEMORY));
     command.add("/proc/meminfo");
-    when(mockNodeUniverseManager.runCommand(any(), any(), eq(command), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), eq(command)))
         .thenReturn(shellResponse);
 
     mockLocaleCheckResponse(mockNodeUniverseManager);
@@ -194,7 +195,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     verify(mockNodeManager, times(45)).nodeCommand(any(), any());
-    verify(mockNodeUniverseManager, times(15)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(15))
+        .runCommand(any(NodeUniverseContext.class), anyList());
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
@@ -330,7 +332,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     verify(mockNodeManager, times(45)).nodeCommand(any(), any());
-    verify(mockNodeUniverseManager, times(15)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(15))
+        .runCommand(any(NodeUniverseContext.class), anyList());
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
@@ -431,7 +434,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     verify(mockNodeManager, times(45)).nodeCommand(any(), any());
-    verify(mockNodeUniverseManager, times(15)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(15))
+        .runCommand(any(NodeUniverseContext.class), anyList());
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
@@ -514,7 +518,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size());
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     verify(mockNodeManager, times(63)).nodeCommand(any(), any());
-    verify(mockNodeUniverseManager, times(24)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(24))
+        .runCommand(any(NodeUniverseContext.class), anyList());
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade
@@ -570,7 +575,8 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     TaskInfo taskInfo = submitTask(taskParams, defaultUniverse.getVersion());
     ArgumentCaptor<NodeTaskParams> commandParams = ArgumentCaptor.forClass(NodeTaskParams.class);
     verify(mockNodeManager, times(25)).nodeCommand(any(), commandParams.capture());
-    verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, times(10))
+        .runCommand(any(NodeUniverseContext.class), anyList());
 
     MockUpgrade mockUpgrade = initMockUpgrade();
     mockUpgrade

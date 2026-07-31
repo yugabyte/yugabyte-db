@@ -438,7 +438,8 @@ public class FileCollectionDownloader {
       }
 
       nodeUniverseManager.runCommand(
-          node, universe, List.of("rm", "-f", remoteTarPath), ShellProcessContext.DEFAULT);
+          NodeUniverseContext.of(universe, node, ShellProcessContext.DEFAULT),
+          List.of("rm", "-f", remoteTarPath));
       log.info("Cleaned up remote tar file {} on node {}", remoteTarPath, node.nodeName);
       return true;
     } catch (Exception e) {

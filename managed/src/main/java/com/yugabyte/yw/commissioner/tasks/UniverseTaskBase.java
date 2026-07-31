@@ -200,6 +200,7 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
+import javax.validation.constraints.NotNull;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
@@ -912,8 +913,69 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return curCluster.userIntent.replicationFactor > 1;
   }
 
-  protected UserIntent getUserIntent() {
-    return getUniverse().getUniverseDetails().getPrimaryCluster().userIntent;
+  /**
+   * User intent for {@code clusterUUID} from current task params (for subclasses of
+   * UniverseDefinitionTaskBase) Otherwise the intent persisted on the universe.
+   *
+   * @param clusterUUID cluster whose intent is required
+   * @return pending intent from the task params, or the persisted intent if the cluster is absent
+   *     there
+   */
+  protected UserIntent getUpdatedUserIntent(UUID clusterUUID) {
+    if (taskParams() instanceof UniverseDefinitionTaskParams) {
+      Cluster cluster = ((UniverseDefinitionTaskParams) taskParams()).getClusterByUuid(clusterUUID);
+      if (cluster != null) {
+        return cluster.userIntent;
+      }
+    }
+    return getStoredUserIntent(clusterUUID);
+  }
+
+  /**
+   * User intent persisted on the universe for the primary cluster.
+   *
+   * @return primary cluster intent as stored on the universe
+   */
+  protected UserIntent getStoredUserIntent() {
+    return getStoredUserIntent(ClusterType.PRIMARY);
+  }
+
+  /**
+   * User intent persisted on the universe for the single cluster of {@code clusterType}.
+   *
+   * @param clusterType cluster type to look up; only one cluster of each type is supported
+   * @return persisted intent for that cluster type
+   * @throws IllegalArgumentException if the universe has no cluster of {@code clusterType}
+   */
+  protected UserIntent getStoredUserIntent(@NotNull ClusterType clusterType) {
+    return getUserIntent(clusterType, getUniverse().getUniverseDetails())
+        .orElseThrow(
+            () -> new IllegalArgumentException("Cannot find cluster of type " + clusterType));
+  }
+
+  /**
+   * User intent persisted on the universe for {@code clusterUUID}.
+   *
+   * @param clusterUUID cluster whose intent is required
+   * @return persisted intent for that cluster
+   * @throws IllegalStateException if the universe has no cluster with {@code clusterUUID}
+   */
+  protected UserIntent getStoredUserIntent(@NotNull UUID clusterUUID) {
+    Cluster cluster = getUniverse().getUniverseDetails().getClusterByUuid(clusterUUID);
+    if (cluster == null) {
+      throw new IllegalStateException("Cannot find cluster " + clusterUUID);
+    }
+    return cluster.userIntent;
+  }
+
+  protected Optional<UserIntent> getUserIntent(
+      ClusterType clusterType, UniverseDefinitionTaskParams udtp) {
+    List<Cluster> clusters = udtp.getClusterByType(clusterType);
+    if (clusters.isEmpty()) {
+      return Optional.empty();
+    }
+    // Right now we can have only single cluster per type.
+    return Optional.of(clusters.iterator().next().userIntent);
   }
 
   protected void putDateIntoCache(String key) {
@@ -1582,6 +1644,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.enableYCQL = userIntent.enableYCQL;
     params.enableYCQLAuth = userIntent.enableYCQLAuth;
     params.enableYSQLAuth = userIntent.enableYSQLAuth;
+    params.userIntent = userIntent;
 
     // Add audit log config from the primary cluster
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
@@ -2239,6 +2302,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           CheckLocale.Params params = new CheckLocale.Params();
           params.setUniverseUUID(taskParams().getUniverseUUID());
           params.nodeNames = nodes.stream().map(node -> node.nodeName).collect(Collectors.toSet());
+          params.userIntentMap = new HashMap<>();
+          nodes.forEach(
+              node -> {
+                params.userIntentMap.computeIfAbsent(
+                    node.placementUuid, clusterUUID -> getUpdatedUserIntent(clusterUUID));
+              });
           task.initialize(params);
           subTaskGroup.addSubTask(task);
         });
@@ -2255,6 +2324,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           params.setUniverseUUID(taskParams().getUniverseUUID());
           params.ybSoftwareVersion = ybSoftwareVersion;
           params.nodeNames = nodes.stream().map(node -> node.nodeName).collect(Collectors.toSet());
+          params.userIntentMap = new HashMap<>();
+          nodes.forEach(
+              node -> {
+                params.userIntentMap.computeIfAbsent(
+                    node.placementUuid, clusterUUID -> getUpdatedUserIntent(clusterUUID));
+              });
           task.initialize(params);
           subTaskGroup.addSubTask(task);
         });
@@ -2439,7 +2514,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       boolean skipDestroyPrecheck,
       boolean skipUpdateNodeState) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleDestroyServers");
-    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     nodes = filterUniverseNodes(universe, nodes, n -> true);
 
     // TODO: Update to use node whitelist when the db implements this.
@@ -2449,9 +2523,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     for (NodeDetails node : nodes) {
       Cluster cluster = universe.getCluster(node.placementUuid);
+      UserIntent userIntent = cluster.userIntent;
       AnsibleDestroyServer.Params params = new AnsibleDestroyServer.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
-      params.deviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node);
+      params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
       // Set the region name to the proper provider code so we can use it in the cloud API calls.
       params.azUuid = node.azUuid;
       // Add the node name.
@@ -2471,6 +2546,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // Assign the node IP to ensure deletion of the correct node.
       params.nodeIP = node.cloudInfo.private_ip;
       params.useSystemd = userIntent.useSystemd;
+      params.userIntent = userIntent;
       params.otelCollectorInstalled = universe.getUniverseDetails().otelCollectorEnabled;
       params.skipUpdateNodeState = skipUpdateNodeState;
       // Create the Ansible task to destroy the server.
@@ -2577,7 +2653,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                   NodeTaskParams params = new NodeTaskParams();
                   params.setUniverseUUID(taskParams().getUniverseUUID());
                   params.nodeName = n.nodeName;
-                  params.nodeName = n.nodeName;
                   params.azUuid = n.azUuid;
                   task.initialize(params);
                   subTaskGroup.addSubTask(task);
@@ -2658,8 +2733,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                           ProviderConfKeys.nodeAgentUseUniverseCertificatesOnInstall.getKey()));
                 }
               }
+              params.userIntent = getUpdatedUserIntent(n.placementUuid);
               params.certificateUuid = certificateInfo == null ? null : certificateInfo.getUuid();
-              params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
+              params.sshUser =
+                  imageBundleUtil.findEffectiveSshUser(provider, universe, params.userIntent, n);
               params.airgap = provider.getAirGapInstall();
               params.nodeName = n.nodeName;
               params.customerUuid = customer.getUuid();
@@ -3339,11 +3416,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       ServerType processType,
       String command,
       Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
-    return createServerControlTasks(getUserIntent(), nodes, processType, command, paramsCustomizer);
+    return createServerControlTasks(
+        n -> getStoredUserIntent(n.placementUuid), nodes, processType, command, paramsCustomizer);
   }
 
   public SubTaskGroup createServerControlTasks(
-      UserIntent userIntent,
+      Function<NodeDetails, UserIntent> intentGetter,
       Collection<NodeDetails> nodes,
       ServerType processType,
       String command,
@@ -3351,7 +3429,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleClusterServerCtl");
     for (NodeDetails node : nodes) {
       subTaskGroup.addSubTask(
-          getServerControlTask(userIntent, node, processType, command, 0, paramsCustomizer));
+          getServerControlTask(
+              intentGetter.apply(node), node, processType, command, 0, paramsCustomizer));
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
@@ -3369,7 +3448,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       int sleepAfterCmdMillis,
       @Nullable Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
     return getServerControlTask(
-        getUserIntent(), node, processType, command, sleepAfterCmdMillis, paramsCustomizer);
+        getStoredUserIntent(node.placementUuid),
+        node,
+        processType,
+        command,
+        sleepAfterCmdMillis,
+        paramsCustomizer);
   }
 
   private AnsibleClusterServerCtl getServerControlTask(
@@ -3390,6 +3474,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.process = processType.toString().toLowerCase();
     params.command = command;
     params.sleepAfterCmdMills = sleepAfterCmdMillis;
+    params.userIntent = userIntent;
 
     params.setEnableYbc(taskParams().isEnableYbc());
     params.setYbcSoftwareVersion(taskParams().getYbcSoftwareVersion());
@@ -3873,7 +3958,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       NodeDetails currentNode, String taskType, boolean isIgnoreError) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleClusterServerCtl");
     AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
-    UserIntent userIntent = getUserIntent();
+    UserIntent userIntent = getStoredUserIntent(currentNode.placementUuid);
     // Add the node name.
     params.nodeName = currentNode.nodeName;
     // Add the universe uuid.
@@ -3887,6 +3972,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Set the InstanceType
     params.instanceType = currentNode.cloudInfo.instance_type;
     params.useSystemd = userIntent.useSystemd;
+    params.userIntent = userIntent;
     // Create the Ansible task to get the server info.
     AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
     task.initialize(params);
@@ -3986,7 +4072,13 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Collection<NodeDetails> nodes,
       ServerType serverType,
       @Nullable Consumer<AnsibleClusterServerCtl.Params> paramsCustomizer) {
-    return createServerControlTasks(nodes, serverType, "start", paramsCustomizer);
+    return createServerControlTasks(
+        // While starting new servers we need fresh userIntent.
+        n -> getUpdatedUserIntent(n.placementUuid),
+        nodes,
+        serverType,
+        "start",
+        paramsCustomizer);
   }
 
   /**
@@ -6099,8 +6191,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     ImmutableMap.Builder<String, String> expectedTags = ImmutableMap.builder();
     Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
     NodeDetails node = universe.getNodeOrBadRequest(taskParams.getNodeName());
-    Cluster cluster = universe.getCluster(node.placementUuid);
-    if (cluster.getProviderCloudType(node) != CloudType.onprem) {
+    Provider provider = Util.getProviderByAz(node.azUuid);
+    if (provider.getCloudCode() != CloudType.onprem) {
       expectedTags.put("universe_uuid", taskParams.getUniverseUUID().toString());
       if (taskParams.nodeUuid == null) {
         taskParams.nodeUuid = node.nodeUuid;
@@ -6593,6 +6685,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       params.nodeName = node.nodeName;
       params.setUniverseUUID(taskParams().getUniverseUUID());
       params.azUuid = node.azUuid;
+      params.userIntent = getUpdatedUserIntent(node.placementUuid);
 
       NodeTaskBase task = createTask(taskClass);
       task.initialize(params);
@@ -6618,38 +6711,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       }
       return param;
     }
-  }
-
-  protected SubTaskGroup createWaitForClockSyncTasks(
-      Universe universe,
-      Collection<NodeDetails> nodes,
-      long acceptableClockSkewNs,
-      long subtaskTimeoutMs) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("WaitForClockSync");
-    for (NodeDetails node : nodes) {
-      WaitForClockSync.Params waitForClockSyncParams = new WaitForClockSync.Params();
-      waitForClockSyncParams.setUniverseUUID(universe.getUniverseUUID());
-      waitForClockSyncParams.nodeName = node.nodeName;
-      waitForClockSyncParams.acceptableClockSkewNs = acceptableClockSkewNs;
-      waitForClockSyncParams.subtaskTimeoutMs = subtaskTimeoutMs;
-
-      WaitForClockSync waitForClockSyncTask = createTask(WaitForClockSync.class);
-      waitForClockSyncTask.initialize(waitForClockSyncParams);
-      subTaskGroup.addSubTask(waitForClockSyncTask);
-    }
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  protected SubTaskGroup createWaitForClockSyncTasks(
-      Universe universe, Collection<NodeDetails> nodes) {
-    return createWaitForClockSyncTasks(
-        universe,
-        nodes,
-        this.confGetter
-            .getGlobalConf(GlobalConfKeys.waitForClockSyncMaxAcceptableClockSkew)
-            .toNanos(),
-        this.confGetter.getGlobalConf(GlobalConfKeys.waitForClockSyncTimeout).toMillis());
   }
 
   protected SubTaskGroup createWaitForDurationSubtask(Universe universe, Duration waitTime) {
@@ -6923,6 +6984,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       transferParams.replicationGroupName = replicationGroupName;
       transferParams.destinationCertsDir = certificate;
       transferParams.ignoreErrors = ignoreErrors;
+      transferParams.userIntent = getUpdatedUserIntent(node.placementUuid);
 
       TransferXClusterCerts transferXClusterCertsTask = createTask(TransferXClusterCerts.class);
       transferXClusterCertsTask.initialize(transferParams);
@@ -7378,6 +7440,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // sshPortOverride, in case the passed imageBundle has a different port
       // configured for the region.
       transferParams.sshPortOverride = node.sshPortOverride;
+      transferParams.userIntent = getUpdatedUserIntent(node.placementUuid);
 
       TransferXClusterCerts transferXClusterCertsTask = createTask(TransferXClusterCerts.class);
       transferXClusterCertsTask.initialize(transferParams);

@@ -1353,7 +1353,9 @@ public class HealthChecker {
     if (nodeInfo.isK8s() || nodeCheckContext.isDisableNodeAgentHealthChecker()) {
       ShellResponse response =
           nodeUniverseManager
-              .runCommand(nodeInfo.getNodeDetails(), universe, commandToRun, context)
+              .runCommand(
+                  NodeUniverseContext.of(universe, nodeInfo.getNodeDetails(), context),
+                  commandToRun)
               .processErrors();
 
       return Json.fromJson(Json.parse(response.extractRunCommandOutput()), Details.class);
@@ -1431,23 +1433,19 @@ public class HealthChecker {
       log.info("Uploading metrics collection script to node {}", nodeInfo.getNodeName());
       String scriptPath = nodeInfo.getYbHomeDir() + "/bin/collect_metrics.sh";
       nodeUniverseManager.uploadFileToNode(
-          nodeInfo.nodeDetails,
-          universe,
+          NodeUniverseContext.of(universe, nodeInfo.nodeDetails, context),
           generatedScriptPath,
           scriptPath,
-          SCRIPT_PERMISSIONS,
-          context);
+          SCRIPT_PERMISSIONS);
     }
 
     log.info("Uploading health check script to node {}", nodeInfo.getNodeName());
     String generatedScriptPath = generateNodeCheckScript(universe.getUniverseUUID(), nodeInfo);
     nodeUniverseManager.uploadFileToNode(
-        nodeInfo.nodeDetails,
-        universe,
+        NodeUniverseContext.of(universe, nodeInfo.nodeDetails, context),
         generatedScriptPath,
         getNodeHealthScriptPath(nodeInfo),
-        SCRIPT_PERMISSIONS,
-        context);
+        SCRIPT_PERMISSIONS);
 
     // Only record the node as up to date after both uploads succeeded, so a failed upload is
     // retried on the next cycle.

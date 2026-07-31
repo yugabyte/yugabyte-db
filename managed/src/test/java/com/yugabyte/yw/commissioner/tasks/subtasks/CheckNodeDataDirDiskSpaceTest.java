@@ -15,6 +15,7 @@ import static org.mockito.Mockito.when;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -62,7 +63,8 @@ public class CheckNodeDataDirDiskSpaceTest extends CommissionerBaseTest {
     try (MockedStatic<Util> utilMock = mockStatic(Util.class)) {
       utilMock.when(() -> Util.getDataDirectoryPath(any(), any(), any())).thenReturn(DATA_DIR);
       ShellResponse response = ShellResponse.create(0, DF_NUMBER_SUFFICIENT);
-      when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any())).thenReturn(response);
+      when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
+          .thenReturn(response);
 
       CheckNodeDataDirDiskSpace.Params params = new CheckNodeDataDirDiskSpace.Params();
       params.setUniverseUUID(defaultUniverse.getUniverseUUID());
@@ -72,7 +74,8 @@ public class CheckNodeDataDirDiskSpaceTest extends CommissionerBaseTest {
       task.initialize(params);
       task.run();
 
-      verify(mockNodeUniverseManager, times(1)).runCommand(any(), any(), anyList(), any());
+      verify(mockNodeUniverseManager, times(1))
+          .runCommand(any(NodeUniverseContext.class), anyList());
     }
   }
 
@@ -81,7 +84,8 @@ public class CheckNodeDataDirDiskSpaceTest extends CommissionerBaseTest {
     try (MockedStatic<Util> utilMock = mockStatic(Util.class)) {
       utilMock.when(() -> Util.getDataDirectoryPath(any(), any(), any())).thenReturn(DATA_DIR);
       ShellResponse response = ShellResponse.create(0, DF_NUMBER_INSUFFICIENT);
-      when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any())).thenReturn(response);
+      when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
+          .thenReturn(response);
 
       CheckNodeDataDirDiskSpace.Params params = new CheckNodeDataDirDiskSpace.Params();
       params.setUniverseUUID(defaultUniverse.getUniverseUUID());
@@ -94,7 +98,8 @@ public class CheckNodeDataDirDiskSpaceTest extends CommissionerBaseTest {
       assertTrue(re.getMessage().contains("insufficient free disk space"));
       assertTrue(re.getMessage().contains("required"));
       assertTrue(re.getMessage().contains("available"));
-      verify(mockNodeUniverseManager, times(1)).runCommand(any(), any(), anyList(), any());
+      verify(mockNodeUniverseManager, times(1))
+          .runCommand(any(NodeUniverseContext.class), anyList());
     }
   }
 
@@ -109,7 +114,7 @@ public class CheckNodeDataDirDiskSpaceTest extends CommissionerBaseTest {
     IllegalArgumentException re = assertThrows(IllegalArgumentException.class, () -> task.run());
 
     assertTrue(re.getMessage().contains("Node nonexistent-node not found"));
-    verify(mockNodeUniverseManager, never()).runCommand(any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, never()).runCommand(any(NodeUniverseContext.class), anyList());
   }
 
   @Test
@@ -118,7 +123,8 @@ public class CheckNodeDataDirDiskSpaceTest extends CommissionerBaseTest {
       utilMock.when(() -> Util.getDataDirectoryPath(any(), any(), any())).thenReturn(DATA_DIR);
       // Output may have leading newline (e.g. from wrapper); parser takes last line
       ShellResponse response = ShellResponse.create(0, "\n" + DF_NUMBER_SUFFICIENT);
-      when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any())).thenReturn(response);
+      when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
+          .thenReturn(response);
 
       CheckNodeDataDirDiskSpace.Params params = new CheckNodeDataDirDiskSpace.Params();
       params.setUniverseUUID(defaultUniverse.getUniverseUUID());
@@ -128,7 +134,8 @@ public class CheckNodeDataDirDiskSpaceTest extends CommissionerBaseTest {
       task.initialize(params);
       task.run();
 
-      verify(mockNodeUniverseManager, times(1)).runCommand(any(), any(), anyList(), any());
+      verify(mockNodeUniverseManager, times(1))
+          .runCommand(any(NodeUniverseContext.class), anyList());
     }
   }
 
@@ -137,7 +144,8 @@ public class CheckNodeDataDirDiskSpaceTest extends CommissionerBaseTest {
     try (MockedStatic<Util> utilMock = mockStatic(Util.class)) {
       utilMock.when(() -> Util.getDataDirectoryPath(any(), any(), any())).thenReturn(DATA_DIR);
       ShellResponse response = ShellResponse.create(1, "df: cannot access path");
-      when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any())).thenReturn(response);
+      when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
+          .thenReturn(response);
 
       CheckNodeDataDirDiskSpace.Params params = new CheckNodeDataDirDiskSpace.Params();
       params.setUniverseUUID(defaultUniverse.getUniverseUUID());
@@ -147,7 +155,8 @@ public class CheckNodeDataDirDiskSpaceTest extends CommissionerBaseTest {
       task.initialize(params);
       assertThrows(RuntimeException.class, () -> task.run());
 
-      verify(mockNodeUniverseManager, times(1)).runCommand(any(), any(), anyList(), any());
+      verify(mockNodeUniverseManager, times(1))
+          .runCommand(any(NodeUniverseContext.class), anyList());
     }
   }
 
@@ -156,7 +165,8 @@ public class CheckNodeDataDirDiskSpaceTest extends CommissionerBaseTest {
     try (MockedStatic<Util> utilMock = mockStatic(Util.class)) {
       utilMock.when(() -> Util.getDataDirectoryPath(any(), any(), any())).thenReturn(DATA_DIR);
       ShellResponse response = ShellResponse.create(0, "");
-      when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any())).thenReturn(response);
+      when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
+          .thenReturn(response);
 
       CheckNodeDataDirDiskSpace.Params params = new CheckNodeDataDirDiskSpace.Params();
       params.setUniverseUUID(defaultUniverse.getUniverseUUID());
@@ -167,7 +177,8 @@ public class CheckNodeDataDirDiskSpaceTest extends CommissionerBaseTest {
       RuntimeException re = assertThrows(RuntimeException.class, () -> task.run());
 
       assertTrue(re.getMessage().contains("Empty or invalid df output"));
-      verify(mockNodeUniverseManager, times(1)).runCommand(any(), any(), anyList(), any());
+      verify(mockNodeUniverseManager, times(1))
+          .runCommand(any(NodeUniverseContext.class), anyList());
     }
   }
 
@@ -176,7 +187,8 @@ public class CheckNodeDataDirDiskSpaceTest extends CommissionerBaseTest {
     try (MockedStatic<Util> utilMock = mockStatic(Util.class)) {
       utilMock.when(() -> Util.getDataDirectoryPath(any(), any(), any())).thenReturn(DATA_DIR);
       ShellResponse response = ShellResponse.create(0, "invalid");
-      when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any())).thenReturn(response);
+      when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
+          .thenReturn(response);
 
       CheckNodeDataDirDiskSpace.Params params = new CheckNodeDataDirDiskSpace.Params();
       params.setUniverseUUID(defaultUniverse.getUniverseUUID());
@@ -187,7 +199,8 @@ public class CheckNodeDataDirDiskSpaceTest extends CommissionerBaseTest {
       RuntimeException re = assertThrows(RuntimeException.class, () -> task.run());
 
       assertTrue(re.getMessage().contains("Failed to parse available disk space"));
-      verify(mockNodeUniverseManager, times(1)).runCommand(any(), any(), anyList(), any());
+      verify(mockNodeUniverseManager, times(1))
+          .runCommand(any(NodeUniverseContext.class), anyList());
     }
   }
 }

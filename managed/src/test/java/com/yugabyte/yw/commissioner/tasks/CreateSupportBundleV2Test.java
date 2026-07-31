@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.NodeUniverseContextMatchers.nodeContext;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -29,6 +30,7 @@ import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParamsV2;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -271,13 +273,12 @@ public class CreateSupportBundleV2Test extends CommissionerBaseTest {
     // Limits need no per-node setup or sweep, so a bundle whose components staged nothing runs no
     // script on any node.
     verify(mockNodeUniverseManager, never())
-        .runScript(any(), any(), any(), anyList(), any(ShellProcessContext.class));
+        .runScript(any(NodeUniverseContext.class), any(), anyList());
     // An unreachable node costs only its probe: nothing else runs on it before collection.
     verify(mockNodeUniverseManager, never())
-        .runCommand(eq(unreachableNode), any(), anyList(), any(ShellProcessContext.class));
+        .runCommand(nodeContext(unreachableNode, null), anyList());
     verify(mockNodeUniverseManager, never())
-        .runCommand(
-            eq(unreachableNode), any(), anyList(), any(ShellProcessContext.class), anyBoolean());
+        .runCommand(nodeContext(unreachableNode, null), anyList(), anyBoolean());
   }
 
   /** Collection sees the bundle's chosen node; the task forgets it once the bundle is done. */
@@ -507,10 +508,10 @@ public class CreateSupportBundleV2Test extends CommissionerBaseTest {
     UUID bundleUuid = supportBundle.getBundleUUID();
     List<SupportBundleV2StatusType> statusAtCleanup =
         Collections.synchronizedList(new ArrayList<>());
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any(), eq(false)))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList(), eq(false)))
         .thenAnswer(
             invocation -> {
-              if ("rm".equals(((List<?>) invocation.getArgument(2)).get(0))) {
+              if ("rm".equals(((List<?>) invocation.getArgument(1)).get(0))) {
                 statusAtCleanup.add(SupportBundleV2.get(bundleUuid).getStatus());
               }
               return ShellResponse.create(0, "");

@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common.supportbundlev2.cgroup;
 
+import static com.yugabyte.yw.common.NodeUniverseContextMatchers.nodeContext;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
@@ -17,6 +18,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
@@ -253,7 +255,7 @@ public class SupportBundleCgroupSupportTest {
   public void testStopBundleUnitsStopsOnlyThisBundlesScopes() {
     ArgumentCaptor<List<String>> command = ArgumentCaptor.forClass(List.class);
     when(mockNodeUniverseManager.runCommand(
-            eq(node), eq(universe), command.capture(), any(), eq(false)))
+            nodeContext(node, universe), command.capture(), eq(false)))
         .thenReturn(ok(""));
 
     cgroupSupport.stopBundleUnits(BUNDLE_UUID, universe, node);
@@ -268,7 +270,7 @@ public class SupportBundleCgroupSupportTest {
 
   @Test
   public void testStopBundleUnitsNeverThrows() {
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any(), eq(false)))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList(), eq(false)))
         .thenThrow(new RuntimeException("node unreachable"));
 
     cgroupSupport.stopBundleUnits(BUNDLE_UUID, universe, node);

@@ -382,13 +382,14 @@ public class NodeUniverseManagerTransportTest extends FakeDBApplication {
     expected.code = 0;
     doReturn(expected)
         .when(nodeUniverseManager)
-        .runCommand(eq(node), eq(universe), anyList(), any(), eq(false));
+        .runCommand(NodeUniverseContextMatchers.forNode(node, universe), anyList(), eq(false));
 
     ShellResponse response =
         nodeUniverseManager.runYsqlBatchCommands(
             node, universe, "yugabyte", List.of("SELECT 1;"), 300L, false, false);
 
     assertEquals(expected, response);
-    verify(nodeUniverseManager).runCommand(eq(node), eq(universe), anyList(), any(), eq(false));
+    verify(nodeUniverseManager)
+        .runCommand(NodeUniverseContextMatchers.forNode(node, universe), anyList(), eq(false));
   }
 }

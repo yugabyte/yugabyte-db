@@ -36,6 +36,7 @@ import static org.yb.CommonTypes.YQLDatabase.YQL_DATABASE_PGSQL;
 
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
@@ -528,7 +529,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     when(mockClient.listSnapshotSchedules(eq(targetPitrUUID))).thenReturn(targetListPITRResponse);
     when(mockClient.listSnapshotSchedules(null)).thenReturn(sourceListPITRResponse);
     when(mockClient.listSnapshots(snapshotUUID, true)).thenReturn(listSnapshotsResponse);
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenReturn(successShellResponse);
     when(mockClient.isCreateXClusterReplicationDone(anyString(), anySet()))
         .thenReturn(isDoneResponse);

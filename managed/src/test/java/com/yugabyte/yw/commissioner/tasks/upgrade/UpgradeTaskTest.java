@@ -31,6 +31,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
@@ -288,7 +289,8 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
       lenient()
           .when(
               mockNodeUniverseManager.runCommand(
-                  any(), any(), eq(Arrays.asList("echo", "command-execution-test")), any()))
+                  any(NodeUniverseContext.class),
+                  eq(Arrays.asList("echo", "command-execution-test"))))
           .thenReturn(ShellResponse.create(0, "Command output:\ncommand-execution-test"));
     } catch (Exception ignored) {
       fail();

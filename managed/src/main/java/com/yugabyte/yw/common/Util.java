@@ -2054,17 +2054,29 @@ public class Util {
    * @return the path to "yb-data/" folder on the node
    */
   public static String getDataDirectoryPath(Universe universe, NodeDetails node, Config config) {
-    String dataDirPath = config.getString("yb.support_bundle.default_mount_point_prefix") + "0";
+    Provider provider = Util.getProviderForNode(node, universe);
     Cluster cluster = universe.getCluster(node.placementUuid);
-    Provider provider = getProviderForNode(node, cluster);
+    return getDataDirectoryPath(provider, cluster.userIntent, node, config);
+  }
 
+  /**
+   * Gets the path to "yb-data/" folder on the node (Ex: "/mnt/d0", "/mnt/disk0")
+   *
+   * @param universe
+   * @param node
+   * @param config
+   * @return the path to "yb-data/" folder on the node
+   */
+  public static String getDataDirectoryPath(
+      Provider provider, UserIntent userIntent, NodeDetails node, Config config) {
+    String dataDirPath = config.getString("yb.support_bundle.default_mount_point_prefix") + "0";
     if (provider.getCloudCode() == CloudType.onprem) {
       // On prem universes:
       // Onprem universes have to specify the mount points for the volumes at the time of provider
       // creation itself.
       // This is stored at universe.cluster.userIntent.deviceInfo.mountPoints
       try {
-        String mountPoints = cluster.userIntent.evaluateDeviceInfoForNode(node).mountPoints;
+        String mountPoints = userIntent.evaluateDeviceInfoForNode(node).mountPoints;
         dataDirPath = mountPoints.split(",")[0];
       } catch (Exception e) {
         log.error(String.format("On prem invalid mount points. Defaulting to %s", dataDirPath), e);

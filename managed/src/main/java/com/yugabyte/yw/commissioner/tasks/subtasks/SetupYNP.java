@@ -6,6 +6,7 @@ import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeAgentManager;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
@@ -59,18 +60,16 @@ public class SetupYNP extends NodeTaskBase {
     return 2;
   }
 
-  void removeNodeAgentDirectory(
-      NodeDetails node, Universe universe, ShellProcessContext shellContext, String nodeAgentHome) {
+  void removeNodeAgentDirectory(NodeUniverseContext nodeContext, String nodeAgentHome) {
     List<String> command = getCommand("/bin/bash", "-c", "rm -rf", nodeAgentHome);
     log.info("Clearing node-agent directory: {}", command);
-    nodeUniverseManager.runCommand(node, universe, command, shellContext).isSuccess();
+    nodeUniverseManager.runCommand(nodeContext, command).isSuccess();
   }
 
-  private Path getNodeAgentPackagePath(
-      Universe universe, NodeDetails node, ShellProcessContext shellContext) {
+  private Path getNodeAgentPackagePath(NodeUniverseContext nodeContext) {
     String output =
         nodeUniverseManager
-            .runCommand(node, universe, Arrays.asList("uname", "-sm"), shellContext)
+            .runCommand(nodeContext, Arrays.asList("uname", "-sm"))
             .processErrors()
             .extractRunCommandOutput();
     if (StringUtils.isBlank(output)) {
@@ -87,13 +86,13 @@ public class SetupYNP extends NodeTaskBase {
 
   @Override
   public void run() {
-    ShellProcessContext shellContext = defaultShellContext;
+    ShellProcessContext shellContext = defaultShellContext.toBuilder().build();
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = universe.getNodeOrBadRequest(taskParams().nodeName);
     if (taskParams().sshUser != null) {
-      shellContext = defaultShellContext.toBuilder().sshUser(taskParams().sshUser).build();
+      shellContext = shellContext.toBuilder().sshUser(taskParams().sshUser).build();
     }
-    Provider provider = Util.getProviderForNode(node, universe);
+    Provider provider = Util.getProviderByAz(node.azUuid);
     // Bound the remote setup commands so a hung upload or extraction fails the subtask instead of
     // blocking the universe task forever (PLAT-22154).
     shellContext =
@@ -101,6 +100,8 @@ public class SetupYNP extends NodeTaskBase {
             .timeoutSecs(
                 confGetter.getConfForScope(provider, ProviderConfKeys.ynpSetupTimeout).toSeconds())
             .build();
+    NodeUniverseContext nodeContext =
+        NodeUniverseContext.of(universe, node, shellContext, taskParams().userIntent);
 
     String customTmpDirectory =
         confGetter.getConfForScope(provider, ProviderConfKeys.remoteTmpDirectory);
@@ -110,8 +111,8 @@ public class SetupYNP extends NodeTaskBase {
 
     // Clean up the previous stale data.
     NodeAgent.maybeGetByIp(node.cloudInfo.private_ip).ifPresent(nodeAgentManager::purge);
-    removeNodeAgentDirectory(node, universe, shellContext, nodeAgentHomePath.toString());
-    Path packagePath = getNodeAgentPackagePath(universe, node, shellContext);
+    removeNodeAgentDirectory(nodeContext, nodeAgentHomePath.toString());
+    Path packagePath = getNodeAgentPackagePath(nodeContext);
     // Clean and create the staging path where the node agent release will be uploaded.
     StringBuilder sb = new StringBuilder();
     sb.append("rm -rf ").append(ynpStagingDir);
@@ -119,7 +120,7 @@ public class SetupYNP extends NodeTaskBase {
 
     List<String> command = getCommand("/bin/bash", "-c", sb.toString());
     log.info("Creating staging directory: {}", command);
-    nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
+    nodeUniverseManager.runCommand(nodeContext, command).processErrors();
 
     // Create the release path and upload file as the current SSH user.
     command =
@@ -129,10 +130,10 @@ public class SetupYNP extends NodeTaskBase {
             .build();
     log.info("Creating release path in staging directory: {}", command);
 
-    nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
+    nodeUniverseManager.runCommand(nodeContext, command).processErrors();
     log.info("Uploading {} to {}", packagePath, targetPackagePath);
     nodeUniverseManager.uploadFileToNode(
-        node, universe, packagePath.toString(), targetPackagePath.toString(), "755", shellContext);
+        nodeContext, packagePath.toString(), targetPackagePath.toString(), "755");
 
     Path nodeAgentInstallPath = nodeAgentHomePath.getParent();
 
@@ -152,7 +153,7 @@ public class SetupYNP extends NodeTaskBase {
     sb.append(" && chmod 755 ").append(nodeAgentHomePath);
     command = getCommand("/bin/bash", "-c", sb.toString());
     nodeUniverseManager
-        .runCommand(node, universe, command, shellContext)
+        .runCommand(nodeContext, command)
         .processErrors("Extracting node-agent failed");
   }
 

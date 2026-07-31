@@ -6,6 +6,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.AppConfigHelper;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
@@ -250,10 +251,11 @@ class SupportBundleCgroupSupport {
     try {
       ShellResponse response =
           nodeUniverseManager.runCommand(
-              node,
-              universe,
+              NodeUniverseContext.of(
+                  universe,
+                  node,
+                  ShellProcessContext.builder().timeoutSecs(STOP_UNITS_TIMEOUT_SECS).build()),
               List.of("bash", "-c", script),
-              ShellProcessContext.builder().timeoutSecs(STOP_UNITS_TIMEOUT_SECS).build(),
               false);
       if (!response.isSuccess()) {
         log.warn(

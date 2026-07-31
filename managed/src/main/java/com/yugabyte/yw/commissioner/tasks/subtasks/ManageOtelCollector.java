@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
@@ -185,7 +186,8 @@ public class ManageOtelCollector extends NodeTaskBase {
         String.format("if [ -f \"%s\" ]; then echo present; else echo absent; fi", serviceFilePath);
     ShellResponse result =
         nodeUniverseManager.runCommand(
-            node, universe, Arrays.asList("bash", "-c", checkCmd), shellContext);
+            NodeUniverseContext.of(universe, node, shellContext),
+            Arrays.asList("bash", "-c", checkCmd));
     // result.isSuccess() means the command executed, not the file exists.
     if (!result.isSuccess()) {
       throw new RuntimeException(

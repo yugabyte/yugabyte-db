@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.Universe;
@@ -52,7 +53,8 @@ public class RunNodeCommand extends UniverseTaskBase {
     } else {
       response =
           nodeUniverseManager.runCommand(
-              node, universe, taskParams().command, taskParams().shellContext);
+              NodeUniverseContext.of(universe, node, taskParams().shellContext),
+              taskParams().command);
     }
     taskParams().responseConsumer.accept(response);
   }

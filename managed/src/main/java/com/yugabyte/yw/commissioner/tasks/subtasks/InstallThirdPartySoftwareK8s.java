@@ -5,6 +5,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -134,8 +135,7 @@ public class InstallThirdPartySoftwareK8s extends AbstractTaskBase {
             // target already exists, and the target persists on the PV across tasks.
             for (File jwksFile : jwksFiles) {
               nodeUniverseManager.uploadFileToNode(
-                  node,
-                  universe,
+                  NodeUniverseContext.of(universe, node, context),
                   jwksFile.getAbsolutePath(),
                   remoteGFlagPath + jwksFile.getName(),
                   JWKS_FILE_PERMISSIONS,
@@ -184,14 +184,17 @@ public class InstallThirdPartySoftwareK8s extends AbstractTaskBase {
       String xxhsumTargetPathParent = nodeUniverseManager.getYbTmpDir();
       String xxhsumTargetPath = xxhsumTargetPathParent + "/xxhash.tar.gz";
       nodeUniverseManager.uploadFileToNode(
-          node, universe, xxhsumPackagePath, xxhsumTargetPath, PACKAGE_PERMISSIONS, context);
+          NodeUniverseContext.of(universe, node, context),
+          xxhsumPackagePath,
+          xxhsumTargetPath,
+          PACKAGE_PERMISSIONS);
 
       String extractxxhSumBinaryCmd =
           String.format(
               "cd %s && tar -xvf xxhash.tar.gz && rm xxhash.tar.gz", xxhsumTargetPathParent);
       List<String> unTarxxhSumBinariesCmd = Arrays.asList("bash", "-c", extractxxhSumBinaryCmd);
       nodeUniverseManager
-          .runCommand(node, universe, unTarxxhSumBinariesCmd, context)
+          .runCommand(NodeUniverseContext.of(universe, node, context), unTarxxhSumBinariesCmd)
           .processErrors();
     }
   }

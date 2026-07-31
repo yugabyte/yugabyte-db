@@ -285,7 +285,8 @@ public class NodeFileCollector {
       // Add individual file paths - check existence and size before download
       if (params.getFilePaths() != null) {
         for (String filePath : params.getFilePaths()) {
-          if (!nodeUniverseManager.checkNodeIfFileExists(node, universe, filePath, context)) {
+          if (!nodeUniverseManager.checkNodeIfFileExists(
+              NodeUniverseContext.of(universe, node, context), filePath)) {
             // checkNodeIfFileExists uses `test -e`, which returns false both when the file is
             // missing AND when the caller lacks traversal (+x) permission on a parent directory.
             // Surface both cases in the message instead of asserting "not found", which would be
@@ -386,7 +387,10 @@ public class NodeFileCollector {
 
             Map<String, Long> filesInDir =
                 nodeUniverseManager.getNodeFilePathAndSizes(
-                    node, universe, resolvedDirPath, params.getMaxDepth(), "f", context);
+                    NodeUniverseContext.of(universe, node, context),
+                    resolvedDirPath,
+                    params.getMaxDepth(),
+                    "f");
             for (Map.Entry<String, Long> entry : filesInDir.entrySet()) {
               String filePath = entry.getKey();
               Long fileSize = entry.getValue();
@@ -555,7 +559,8 @@ public class NodeFileCollector {
       // Use stat to get file size - format %s gives size in bytes
       // Using -L to follow symlinks
       List<String> cmd = List.of("stat", "-L", "-c", "%s", filePath);
-      ShellResponse response = nodeUniverseManager.runCommand(node, universe, cmd, context);
+      ShellResponse response =
+          nodeUniverseManager.runCommand(NodeUniverseContext.of(universe, node, context), cmd);
 
       if (response.getCode() == 0 && response.getMessage() != null) {
         String output = response.extractRunCommandOutput();
@@ -593,7 +598,9 @@ public class NodeFileCollector {
       List<String> params = List.of("check_dir_accessible", dirPath, String.valueOf(maxDepth));
       ShellResponse response =
           nodeUniverseManager.runScript(
-              node, universe, NodeUniverseManager.NODE_UTILS_SCRIPT, params, context);
+              NodeUniverseContext.of(universe, node, context),
+              NodeUniverseManager.NODE_UTILS_SCRIPT,
+              params);
       if (!response.isSuccess()) {
         log.warn(
             "check_dir_accessible failed for {} on node {}: {}",
@@ -654,7 +661,8 @@ public class NodeFileCollector {
               ? String.format("test -r %s && test -x %s", quoted, quoted)
               : String.format("test -r %s", quoted);
       List<String> cmd = List.of("bash", "-c", testExpr);
-      ShellResponse response = nodeUniverseManager.runCommand(node, universe, cmd, context);
+      ShellResponse response =
+          nodeUniverseManager.runCommand(NodeUniverseContext.of(universe, node, context), cmd);
       return response.getCode() == 0;
     } catch (Exception e) {
       log.warn(
@@ -691,7 +699,8 @@ public class NodeFileCollector {
       NodeDetails node, Universe universe, String path, ShellProcessContext context) {
     try {
       List<String> cmd = List.of("readlink", "-f", path);
-      ShellResponse response = nodeUniverseManager.runCommand(node, universe, cmd, context);
+      ShellResponse response =
+          nodeUniverseManager.runCommand(NodeUniverseContext.of(universe, node, context), cmd);
 
       if (response.getCode() == 0 && response.getMessage() != null) {
         String resolvedPath = response.extractRunCommandOutput();
@@ -758,7 +767,10 @@ public class NodeFileCollector {
         // Upload file list to remote node (owned by linux_user; deleted below as the same user).
         String remoteFileListPath = remoteTmpDir + "/" + localTempFile.getFileName().toString();
         nodeUniverseManager.uploadFileToNode(
-            node, universe, localTempFile.toString(), remoteFileListPath, "644", context);
+            NodeUniverseContext.of(universe, node, context),
+            localTempFile.toString(),
+            remoteFileListPath,
+            "644");
 
         // Create tar inside the shared, yugabyte-owned staging directory. Every entry is
         // prefixed with the node name via --transform so that when the caller extracts each
@@ -774,23 +786,27 @@ public class NodeFileCollector {
                         + " 2>/dev/null; echo $?",
                     baseDir, node.nodeName, remoteTarPath, remoteFileListPath));
 
-        ShellResponse response = nodeUniverseManager.runCommand(node, universe, cmd, context);
+        ShellResponse response =
+            nodeUniverseManager.runCommand(NodeUniverseContext.of(universe, node, context), cmd);
 
         // Clean up remote file list
         nodeUniverseManager.runCommand(
-            node, universe, List.of("rm", "-f", remoteFileListPath), context);
+            NodeUniverseContext.of(universe, node, context),
+            List.of("rm", "-f", remoteFileListPath));
 
         if (response.getCode() == 0) {
           // Verify tar file was created. Run the check as linux_user (via context) so it matches
           // the user that wrote the tar -- the staging dir is yugabyte-owned and yugabyte could
           // traverse it too, but using linux_user here keeps existence checks consistent with the
           // surrounding tar/chmod operations.
-          if (nodeUniverseManager.checkNodeIfFileExists(node, universe, remoteTarPath, context)) {
+          if (nodeUniverseManager.checkNodeIfFileExists(
+              NodeUniverseContext.of(universe, node, context), remoteTarPath)) {
             // Force the tar to be world-readable so the download path (default user) can read
             // it regardless of linux_user's umask. Must run as linux_user because only the file
             // owner can chmod.
             nodeUniverseManager.runCommand(
-                node, universe, List.of("chmod", "0644", remoteTarPath), context);
+                NodeUniverseContext.of(universe, node, context),
+                List.of("chmod", "0644", remoteTarPath));
 
             log.info(
                 "Created tar file {} on node {} with {} files",
@@ -825,12 +841,10 @@ public class NodeFileCollector {
   private void ensureCollectionTarDir(
       NodeDetails node, Universe universe, String collectionTarDir) {
     nodeUniverseManager.runCommand(
-        node,
-        universe,
+        NodeUniverseContext.of(universe, node, ShellProcessContext.DEFAULT),
         List.of(
             "bash",
             "-c",
-            String.format("mkdir -p '%s' && chmod 0777 '%s'", collectionTarDir, collectionTarDir)),
-        ShellProcessContext.DEFAULT);
+            String.format("mkdir -p '%s' && chmod 0777 '%s'", collectionTarDir, collectionTarDir)));
   }
 }

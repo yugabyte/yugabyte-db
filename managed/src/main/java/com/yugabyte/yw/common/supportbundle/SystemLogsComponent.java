@@ -2,6 +2,7 @@ package com.yugabyte.yw.common.supportbundle;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
@@ -213,10 +214,8 @@ public class SystemLogsComponent implements SupportBundleComponent {
               nodeUniverseManager.getRemoteTmpDir(node, universe), UUID.randomUUID());
       ShellResponse response =
           nodeUniverseManager.runCommand(
-              node,
-              universe,
-              journaldDumpCommand(access, startDate, endDate, remoteArchive),
-              commandContext);
+              NodeUniverseContext.of(universe, node, commandContext),
+              journaldDumpCommand(access, startDate, endDate, remoteArchive));
       if (!response.isSuccess()) {
         // A missing journalctl, a login user without passwordless sudo and a dump that died
         // halfway all land here, and only the node knows which, so pass its output on.
@@ -230,7 +229,9 @@ public class SystemLogsComponent implements SupportBundleComponent {
       Path localArchive = Paths.get(bundlePath.toString(), JOURNAL_ARCHIVE_NAME);
       // Untimed: JOURNALD_TIMEOUT_SEC bounds one journalctl command, not a file transfer.
       nodeUniverseManager.copyFileFromNode(
-          node, universe, remoteArchive, localArchive.toString(), sshContext);
+          NodeUniverseContext.of(universe, node, sshContext),
+          remoteArchive,
+          localArchive.toString());
       return Files.exists(localArchive);
     } catch (Exception e) {
       log.error("Error while collecting journald logs on node {}: ", node.getNodeName(), e);
@@ -239,7 +240,8 @@ public class SystemLogsComponent implements SupportBundleComponent {
       if (remoteArchive != null) {
         try {
           nodeUniverseManager.runCommand(
-              node, universe, Arrays.asList("rm", "-f", remoteArchive), commandContext);
+              NodeUniverseContext.of(universe, node, commandContext),
+              Arrays.asList("rm", "-f", remoteArchive));
         } catch (Exception e) {
           log.warn(
               "Could not remove {} from node {}: {}",
@@ -420,12 +422,10 @@ public class SystemLogsComponent implements SupportBundleComponent {
     List<VarLogFile> files = new ArrayList<>();
     ShellResponse response =
         nodeUniverseManager.runCommand(
-            node,
-            universe,
+            NodeUniverseContext.of(universe, node, ShellProcessContext.DEFAULT),
             // Double quotes so bash passes the backslash through to find, which is what expands
             // \n; single quotes are not available here, see bashCommand.
-            bashCommand("find " + VAR_LOG_DIR + " -maxdepth 1 -type f -printf \"%T@ %s %p\\n\""),
-            ShellProcessContext.DEFAULT);
+            bashCommand("find " + VAR_LOG_DIR + " -maxdepth 1 -type f -printf \"%T@ %s %p\\n\""));
     if (!response.isSuccess()) {
       log.warn(
           "Could not list '{}' on node {}: {}",
@@ -519,7 +519,8 @@ public class SystemLogsComponent implements SupportBundleComponent {
       Universe universe, NodeDetails node, JournalAccess access, ShellProcessContext context) {
     ShellResponse response =
         nodeUniverseManager.runCommand(
-            node, universe, bashCommand(access.journalctl + " --disk-usage --no-pager"), context);
+            NodeUniverseContext.of(universe, node, context),
+            bashCommand(access.journalctl + " --disk-usage --no-pager"));
     if (!response.isSuccess()) {
       return 0L;
     }
@@ -541,10 +542,8 @@ public class SystemLogsComponent implements SupportBundleComponent {
     // that as a failed command and discard a line that was in fact received.
     ShellResponse response =
         nodeUniverseManager.runCommand(
-            node,
-            universe,
-            bashCommand(access.journalctl + " --since @0 --no-pager -o short-iso -q | head -1"),
-            context);
+            NodeUniverseContext.of(universe, node, context),
+            bashCommand(access.journalctl + " --since @0 --no-pager -o short-iso -q | head -1"));
     if (!response.isSuccess()) {
       return null;
     }
@@ -595,15 +594,13 @@ public class SystemLogsComponent implements SupportBundleComponent {
       Universe universe, NodeDetails node, ShellProcessContext context) {
     ShellResponse response =
         nodeUniverseManager.runCommand(
-            node,
-            universe,
+            NodeUniverseContext.of(universe, node, context),
             bashCommand(
                 String.format(
                     "if ! command -v journalctl >/dev/null 2>&1; then echo %s;"
                         + " elif sudo -n true >/dev/null 2>&1; then echo %s;"
                         + " else echo %s; fi",
-                    JOURNALCTL_MISSING, SUDO_OK, SUDO_DENIED)),
-            context);
+                    JOURNALCTL_MISSING, SUDO_OK, SUDO_DENIED)));
     if (!response.isSuccess()) {
       log.debug(
           "Could not probe journal access on node {}: {}",

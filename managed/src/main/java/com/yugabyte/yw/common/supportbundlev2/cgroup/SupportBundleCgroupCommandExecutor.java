@@ -4,6 +4,7 @@ package com.yugabyte.yw.common.supportbundlev2.cgroup;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.NodeUniverseManager.RemoteBashRunSpec;
 import com.yugabyte.yw.common.ShellProcessContext;
@@ -130,7 +131,9 @@ public class SupportBundleCgroupCommandExecutor {
               node, nodeUniverseManager, universe, commands, commandArgs, timeoutSecs);
       return SupportBundleCancellation.throwIfCancelled(
           nodeUniverseManager.runCommand(
-              node, universe, spec.command, spec.context, false /* useBash */));
+              NodeUniverseContext.of(universe, node, spec.context),
+              spec.command,
+              false /* useBash */));
     }
 
     RemoteBashRunSpec spec =
@@ -150,7 +153,9 @@ public class SupportBundleCgroupCommandExecutor {
               SupportBundleRemoteCommandBuilder.buildYbAdminSupportBundleBatchRunSpec(
                   node, nodeUniverseManager, universe, commands, commandArgs, timeoutSecs);
           return nodeUniverseManager.runCommand(
-              node, universe, directSpec.command, directSpec.context, false /* useBash */);
+              NodeUniverseContext.of(universe, node, directSpec.context),
+              directSpec.command,
+              false /* useBash */);
         });
   }
 
@@ -201,10 +206,9 @@ public class SupportBundleCgroupCommandExecutor {
             spec.command);
     ShellResponse response =
         nodeUniverseManager.runCommand(
-            node,
-            universe,
+            NodeUniverseContext.of(
+                universe, node, cgroupSupport.mergeCgroupContext(baseContext, spec.context)),
             argv,
-            cgroupSupport.mergeCgroupContext(baseContext, spec.context),
             false /* useBash */);
     response = SupportBundleCancellation.throwIfCancelled(response);
     cgroupSupport.logAppliedLimits(universe, node, componentLabel, response);

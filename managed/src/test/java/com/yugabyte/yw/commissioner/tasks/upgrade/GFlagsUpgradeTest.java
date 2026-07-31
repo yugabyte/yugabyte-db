@@ -42,6 +42,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetFlagInMemory;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
@@ -120,7 +121,7 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
       // CheckNodeCommandExecution runs echo "command-execution-test"; return that output.
       org.mockito.stubbing.Answer<ShellResponse> runCommandAnswer =
           inv -> {
-            List<String> cmd = inv.getArgument(2);
+            List<String> cmd = inv.getArgument(1);
             if (cmd != null && cmd.toString().contains("df")) {
               return ShellResponse.create(0, "104004792");
             }
@@ -132,9 +133,10 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
             }
             return ShellResponse.create(0, "Command output: Linux x86_64");
           };
-      when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+      when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
           .thenAnswer(runCommandAnswer);
-      when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any(), anyBoolean()))
+      when(mockNodeUniverseManager.runCommand(
+              any(NodeUniverseContext.class), anyList(), anyBoolean()))
           .thenAnswer(runCommandAnswer);
     } catch (Exception e) {
       throw new RuntimeException(e);

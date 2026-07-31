@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.NOT_FOUND;
 import api.v2.models.ClusterAddSpec;
 import api.v2.models.ClusterEditSpec;
 import api.v2.models.ClusterInfo;
+import api.v2.models.ClusterPartitionSpec;
 import api.v2.models.ClusterPlacementSpec;
 import api.v2.models.ClusterSpec;
 import api.v2.models.PlacementAZ;
@@ -159,6 +160,11 @@ public interface ClusterMapper {
   @Mapping(target = "partitions", source = "partitionsSpec")
   Cluster overwriteClusterAddSpec(
       ClusterAddSpec clusterAddSpec, @MappingTarget Cluster newReadReplica);
+
+  // null check is required here to avoid overwriting the auto generated uuid with null
+  @Mapping(target = "uuid", nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
+  UniverseDefinitionTaskParams.PartitionInfo toV1PartitionInfo(
+      ClusterPartitionSpec clusterPartitionSpec);
 
   // used implicitly in above mapping
   @Mapping(target = "numNodesInAZ", source = "numNodesInAz")

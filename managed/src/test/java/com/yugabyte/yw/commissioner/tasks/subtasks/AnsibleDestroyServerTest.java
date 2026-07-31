@@ -20,7 +20,7 @@ import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.ShellProcessContext;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -147,10 +147,9 @@ public class AnsibleDestroyServerTest extends CommissionerBaseTest {
     verify(mockNodeAgentClient, times(1)).getAndUpgradeOrThrow(eq(node.cloudInfo.private_ip));
     verify(mockNodeUniverseManager, times(1))
         .runCommand(
-            any(NodeDetails.class),
-            any(Universe.class),
-            eq(STOP_NODE_AGENT_CMD),
-            argThat(ShellProcessContext::isUseSshConnectionOnly));
+            argThat(
+                (NodeUniverseContext ctx) -> ctx.getShellProcessContext().isUseSshConnectionOnly()),
+            eq(STOP_NODE_AGENT_CMD));
     verify(mockNodeAgentManager, times(1))
         .purge(argThat(n -> node.cloudInfo.private_ip.equals(n.getIp())));
   }
@@ -167,10 +166,11 @@ public class AnsibleDestroyServerTest extends CommissionerBaseTest {
 
     verify(mockNodeUniverseManager, times(1))
         .runCommand(
-            any(NodeDetails.class),
-            any(Universe.class),
-            eq(STOP_NODE_AGENT_CMD),
-            argThat(ctx -> ctx.isUseSshConnectionOnly() && "ec2-user".equals(ctx.getSshUser())));
+            argThat(
+                (NodeUniverseContext ctx) ->
+                    ctx.getShellProcessContext().isUseSshConnectionOnly()
+                        && "ec2-user".equals(ctx.getShellProcessContext().getSshUser())),
+            eq(STOP_NODE_AGENT_CMD));
   }
 
   @Test
@@ -182,7 +182,7 @@ public class AnsibleDestroyServerTest extends CommissionerBaseTest {
     runDestroy();
 
     verify(mockNodeUniverseManager, never())
-        .runCommand(any(), any(), eq(STOP_NODE_AGENT_CMD), any());
+        .runCommand(any(NodeUniverseContext.class), eq(STOP_NODE_AGENT_CMD));
     verify(mockNodeAgentManager, never()).purge(any());
   }
 
@@ -191,7 +191,7 @@ public class AnsibleDestroyServerTest extends CommissionerBaseTest {
     runDestroy();
 
     verify(mockNodeUniverseManager, never())
-        .runCommand(any(), any(), eq(STOP_NODE_AGENT_CMD), any());
+        .runCommand(any(NodeUniverseContext.class), eq(STOP_NODE_AGENT_CMD));
     verify(mockNodeAgentManager, never()).purge(any());
   }
 
@@ -236,7 +236,7 @@ public class AnsibleDestroyServerTest extends CommissionerBaseTest {
 
     verify(mockNodeManager, times(1)).nodeCommand(eq(NodeManager.NodeCommandType.Destroy), any());
     verify(mockNodeUniverseManager, never())
-        .runCommand(any(), any(), eq(STOP_NODE_AGENT_CMD), any());
+        .runCommand(any(NodeUniverseContext.class), eq(STOP_NODE_AGENT_CMD));
   }
 
   @Test
@@ -244,12 +244,12 @@ public class AnsibleDestroyServerTest extends CommissionerBaseTest {
     createNodeAgent(node.cloudInfo.private_ip);
     doThrow(new RuntimeException("ssh failed"))
         .when(mockNodeUniverseManager)
-        .runCommand(any(), any(), eq(STOP_NODE_AGENT_CMD), any());
+        .runCommand(any(NodeUniverseContext.class), eq(STOP_NODE_AGENT_CMD));
 
     runDestroy();
 
     verify(mockNodeUniverseManager, times(1))
-        .runCommand(any(), any(), eq(STOP_NODE_AGENT_CMD), any());
+        .runCommand(any(NodeUniverseContext.class), eq(STOP_NODE_AGENT_CMD));
     // Best-effort stop must not block purge.
     verify(mockNodeAgentManager, times(1))
         .purge(argThat(n -> node.cloudInfo.private_ip.equals(n.getIp())));

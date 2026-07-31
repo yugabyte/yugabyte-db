@@ -513,9 +513,7 @@ public class NodeAgentRpcPayload {
           (int) confGetter.getGlobalConf(GlobalConfKeys.waitForClockSyncTimeout).toSeconds());
     }
     NodeDetails node = universe.getNode(taskParams.nodeName);
-    if (node != null
-        && cluster != null
-        && cluster.getProviderCloudType(nodeDetails).isPublicCloud()) {
+    if (node != null && cluster != null && provider.getCloudCode().isPublicCloud()) {
       configureServerInputBuilder.setCheckDataVolumes(true);
     }
     return configureServerInputBuilder.build();
@@ -828,8 +826,14 @@ public class NodeAgentRpcPayload {
         UniverseDefinitionTaskParams.Cluster cluster =
             Objects.requireNonNull(universe.getCluster(node.placementUuid));
         CloudType cloudType = Util.getProviderForNode(nodeDetails, cluster).getCloudCode();
+
+        UserIntent userIntent = taskParams.userIntent;
+        if (userIntent == null) {
+          log.debug("Picking user intent from database");
+          userIntent = cluster.userIntent;
+        }
         if (cloudType != CloudType.onprem
-            && (deviceInfo = cluster.userIntent.evaluateDeviceInfoForNode(node)) != null) {
+            && (deviceInfo = userIntent.evaluateDeviceInfoForNode(node)) != null) {
           serverControlInputBuilder.addAllMountPoints(getMountPoints(deviceInfo, cloudType));
           serverControlInputBuilder.setCheckDataVolumes(true);
         }

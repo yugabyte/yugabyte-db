@@ -21,6 +21,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -117,10 +118,10 @@ public class SystemLogsComponentTest extends FakeDBApplication {
     // journald commands through the same runCommand, so they cannot be stubbed separately.
     when(mockNodeUniverseManager.getRemoteTmpDir(any(), any())).thenReturn(REMOTE_TMP_DIR);
     when(mockNodeUniverseManager.runCommand(
-            any(), any(), ArgumentMatchers.<List<String>>any(), any()))
+            any(NodeUniverseContext.class), ArgumentMatchers.<List<String>>any()))
         .thenAnswer(
             invocation -> {
-              List<String> parts = invocation.getArgument(2);
+              List<String> parts = invocation.getArgument(1);
               // Re-stubbing invokes the mock to record matchers, and that call carries no args.
               return parts == null ? null : answerNodeCommand(String.join(" ", parts));
             });
@@ -304,7 +305,7 @@ public class SystemLogsComponentTest extends FakeDBApplication {
     @SuppressWarnings("unchecked")
     ArgumentCaptor<List<String>> commandCaptor = ArgumentCaptor.forClass(List.class);
     verify(mockNodeUniverseManager, atLeastOnce())
-        .runCommand(any(), any(), commandCaptor.capture(), any());
+        .runCommand(any(NodeUniverseContext.class), commandCaptor.capture());
     return commandCaptor.getAllValues().stream()
         .filter(SystemLogsComponentTest::isJournaldDumpCommand)
         .map(command -> command.get(command.size() - 1))
@@ -316,11 +317,11 @@ public class SystemLogsComponentTest extends FakeDBApplication {
   private void mockJournalArrivesInBundle() {
     doAnswer(
             invocation -> {
-              Files.createFile(Paths.get(invocation.getArgument(3).toString()));
+              Files.createFile(Paths.get(invocation.getArgument(2).toString()));
               return null;
             })
         .when(mockNodeUniverseManager)
-        .copyFileFromNode(any(), any(), anyString(), anyString(), any());
+        .copyFileFromNode(any(NodeUniverseContext.class), anyString(), anyString());
   }
 
   private Date daysAgo(int days) {
@@ -682,10 +683,8 @@ public class SystemLogsComponentTest extends FakeDBApplication {
     // The archive is removed from the node whether or not the collection succeeded.
     verify(mockNodeUniverseManager, times(1))
         .runCommand(
-            any(),
-            any(),
-            ArgumentMatchers.<List<String>>argThat(command -> command.contains("rm")),
-            any());
+            any(NodeUniverseContext.class),
+            ArgumentMatchers.<List<String>>argThat(command -> command.contains("rm")));
   }
 
   /** The pattern is operator editable, so a bad value must name itself and cost only the files. */
@@ -706,10 +705,8 @@ public class SystemLogsComponentTest extends FakeDBApplication {
     // Unusable means unusable: the node is not even listed.
     verify(mockNodeUniverseManager, never())
         .runCommand(
-            any(),
-            any(),
-            ArgumentMatchers.<List<String>>argThat(SystemLogsComponentTest::isVarLogListing),
-            any());
+            any(NodeUniverseContext.class),
+            ArgumentMatchers.<List<String>>argThat(SystemLogsComponentTest::isVarLogListing));
     assertTrue(Files.exists(fakeBundlePath.resolve(SystemLogsComponent.JOURNAL_ARCHIVE_NAME)));
   }
 
@@ -744,7 +741,7 @@ public class SystemLogsComponentTest extends FakeDBApplication {
 
     // Nothing is copied off the node, and the /var/log copy is untouched.
     verify(mockNodeUniverseManager, never())
-        .copyFileFromNode(any(), any(), anyString(), anyString(), any());
+        .copyFileFromNode(any(NodeUniverseContext.class), anyString(), anyString());
     verify(mockNodeUniverseManager, times(1))
         .downloadRootFiles(any(), any(), any(), any(), anyString());
   }
@@ -785,12 +782,10 @@ public class SystemLogsComponentTest extends FakeDBApplication {
 
     verify(mockNodeUniverseManager, never())
         .runCommand(
-            any(),
-            any(),
-            ArgumentMatchers.<List<String>>argThat(SystemLogsComponentTest::isJournaldDumpCommand),
-            any());
+            any(NodeUniverseContext.class),
+            ArgumentMatchers.<List<String>>argThat(SystemLogsComponentTest::isJournaldDumpCommand));
     verify(mockNodeUniverseManager, never())
-        .copyFileFromNode(any(), any(), anyString(), anyString(), any());
+        .copyFileFromNode(any(NodeUniverseContext.class), anyString(), anyString());
     // No file and no journal is the state that must never pass unremarked.
     assertWarned("no OS level evidence", node.getNodeName());
   }
@@ -804,7 +799,7 @@ public class SystemLogsComponentTest extends FakeDBApplication {
     @SuppressWarnings("unchecked")
     ArgumentCaptor<List<String>> commandCaptor = ArgumentCaptor.forClass(List.class);
     verify(mockNodeUniverseManager, atLeastOnce())
-        .runCommand(any(), any(), commandCaptor.capture(), any());
+        .runCommand(any(NodeUniverseContext.class), commandCaptor.capture());
     for (List<String> command : commandCaptor.getAllValues()) {
       String joined = String.join(" ", command);
       if (joined.contains("--disk-usage") || joined.contains("head -1")) {
@@ -890,7 +885,7 @@ public class SystemLogsComponentTest extends FakeDBApplication {
     @SuppressWarnings("unchecked")
     ArgumentCaptor<List<String>> commandCaptor = ArgumentCaptor.forClass(List.class);
     verify(mockNodeUniverseManager, atLeastOnce())
-        .runCommand(any(), any(), commandCaptor.capture(), any());
+        .runCommand(any(NodeUniverseContext.class), commandCaptor.capture());
     for (List<String> command : commandCaptor.getAllValues()) {
       String joined = String.join(" ", command);
       assertFalse("estimate must not count the window's bytes", joined.contains("wc -c"));
@@ -925,9 +920,7 @@ public class SystemLogsComponentTest extends FakeDBApplication {
     assertEquals(varLogPaths("syslog"), sizes.keySet());
     verify(mockNodeUniverseManager, never())
         .runCommand(
-            any(),
-            any(),
-            ArgumentMatchers.<List<String>>argThat(SystemLogsComponentTest::isJournaldCommand),
-            any());
+            any(NodeUniverseContext.class),
+            ArgumentMatchers.<List<String>>argThat(SystemLogsComponentTest::isJournaldCommand));
   }
 }

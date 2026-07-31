@@ -6,6 +6,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
@@ -140,7 +141,8 @@ public class SupportBundleNodeBinarySupport {
       NodeDetails node, Universe universe, ShellProcessContext context) {
     try {
       ShellResponse response =
-          nodeUniverseManager.runCommand(node, universe, Arrays.asList("uname", "-m"), context);
+          nodeUniverseManager.runCommand(
+              NodeUniverseContext.of(universe, node, context), Arrays.asList("uname", "-m"));
       SupportBundleCancellation.throwIfCancelled(response);
       if (!response.isSuccess()) {
         log.warn(
@@ -281,7 +283,8 @@ public class SupportBundleNodeBinarySupport {
       }
       String binDir = nodeUniverseManager.getYbHomeDir(node, universe) + "/bin";
       nodeUniverseManager
-          .runCommand(node, universe, Arrays.asList("mkdir", "-p", binDir), context)
+          .runCommand(
+              NodeUniverseContext.of(universe, node, context), Arrays.asList("mkdir", "-p", binDir))
           .processErrors();
       uploadThenRename(node, universe, localBinary.get(), remotePath, context);
       // Verified after upload because uploadFileToNode can return without error while the file is
@@ -331,10 +334,12 @@ public class SupportBundleNodeBinarySupport {
     boolean renamed = false;
     try {
       nodeUniverseManager.uploadFileToNode(
-          node, universe, localBinary.toString(), tmpPath, "755", context);
+          NodeUniverseContext.of(universe, node, context), localBinary.toString(), tmpPath, "755");
       nodeUniverseManager
           .runCommand(
-              node, universe, Arrays.asList("mv", "-f", tmpPath, remotePath), context, false)
+              NodeUniverseContext.of(universe, node, context),
+              Arrays.asList("mv", "-f", tmpPath, remotePath),
+              false)
           .processErrors();
       renamed = true;
     } finally {
@@ -343,7 +348,9 @@ public class SupportBundleNodeBinarySupport {
         try {
           ShellResponse removed =
               nodeUniverseManager.runCommand(
-                  node, universe, Arrays.asList("rm", "-f", tmpPath), context, false);
+                  NodeUniverseContext.of(universe, node, context),
+                  Arrays.asList("rm", "-f", tmpPath),
+                  false);
           if (removed != null && !removed.isSuccess()) {
             log.warn(
                 "Could not remove '{}' on node {}: {}",

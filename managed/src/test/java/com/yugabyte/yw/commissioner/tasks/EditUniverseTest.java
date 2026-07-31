@@ -46,9 +46,11 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.local.LocalProviderUniverseTestBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
@@ -57,12 +59,15 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.DeltaEvaluator;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeDetailsArrayComparator;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -76,10 +81,14 @@ import com.yugabyte.yw.forms.YbcThrottleTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.ManagedLoadBalancer;
 import com.yugabyte.yw.models.helpers.ManagedLoadBalancerState;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -346,7 +355,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     factory
         .forUniverse(universe)
         .setValue(UniverseConfKeys.enableComprehensivePrechecks.getKey(), "true");
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenAnswer(
             inv -> {
               List<String> cmd = inv.getArgument(2);
@@ -754,6 +763,121 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     setDumpEntitiesMock(defaultUniverse, "", false);
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testEditReplacesSingleAzWithNewProvider() {
+    ImageBundleDetails originalDetails = new ImageBundleDetails();
+    originalDetails.setGlobalYbImage("original-ami");
+    ImageBundle originalBundle =
+        ImageBundle.create(defaultProvider, "original-ib", originalDetails, true);
+    Universe universe =
+        Universe.saveDetails(
+            defaultUniverse.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams.UserIntent intent =
+                  u.getUniverseDetails().getPrimaryCluster().userIntent;
+              TestUtils.specificationProviderInitializer(intent, defaultProvider.getUuid())
+                  .setProviderType(defaultProvider.getCloudCode())
+                  .setInstanceType(intent.instanceType)
+                  .setDeviceInfo(intent.deviceInfo)
+                  .setAccessCode(intent.accessKeyCode)
+                  .setImageBundleUUID(originalBundle.getUuid());
+            });
+    UniverseDefinitionTaskParams.UserIntent savedIntent =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    assertTrue(savedIntent.isMulticloudSupport());
+    assertEquals(1, savedIntent.providerSpecifications.size());
+    assertEquals(
+        defaultProvider.getUuid(), savedIntent.providerSpecifications.get(0).getProviderUUID());
+
+    Provider newProvider = ModelFactory.newProvider(defaultCustomer, CloudType.azu, "azu");
+    Region newRegion = Region.create(newProvider, "region-2", "Region 2", "yb-image-2");
+    AvailabilityZone newZone =
+        AvailabilityZone.createOrThrow(newRegion, "az-new", "AZ new", "subnet-new");
+    createAccessKeyForProvider("default-key-azu", newProvider);
+    ImageBundleDetails newDetails = new ImageBundleDetails();
+    newDetails.setGlobalYbImage("new-provider-ami");
+    ImageBundle newBundle = ImageBundle.create(newProvider, "new-ib", newDetails, true);
+
+    factory
+        .forUniverse(universe)
+        .setValue(UniverseConfKeys.targetNodeDiskUsagePercentage.getKey(), "0");
+    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.nodePrefix = universe.getUniverseDetails().nodePrefix;
+    taskParams.nodeDetailsSet = universe.getUniverseDetails().nodeDetailsSet;
+    taskParams.clusters = universe.getUniverseDetails().clusters;
+    taskParams.creatingUser = defaultUser;
+    Cluster primaryCluster = taskParams.getPrimaryCluster();
+    UniverseDefinitionTaskParams.UserIntent newIntent = primaryCluster.userIntent.clone();
+    taskParams.getPrimaryCluster().userIntent = newIntent;
+
+    DeviceInfo deviceInfo = new DeviceInfo();
+    deviceInfo.numVolumes = 2;
+    deviceInfo.volumeSize = 100;
+    deviceInfo.storageType = PublicCloudConstants.StorageType.Premium_LRS;
+
+    TestUtils.specificationProviderInitializer(newIntent, newProvider.getUuid())
+        .setProviderType(newProvider.getCloudCode())
+        .setInstanceType("azu_instance_type")
+        .setDeviceInfo(deviceInfo)
+        .setAccessCode("default-key-azu")
+        .setImageBundleUUID(newBundle.getUuid());
+    newIntent.regionList = ImmutableList.of(newRegion.getUuid());
+    newIntent.numNodes = 3;
+    PlacementInfo placementInfo = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(newZone.getUuid(), placementInfo, 3, 3, true);
+    primaryCluster.placementInfo = placementInfo;
+    PlacementInfoUtil.updateUniverseDefinition(
+        taskParams, defaultCustomer.getId(), primaryCluster.uuid, EDIT);
+    assertTrue(
+        taskParams.nodeDetailsSet.stream()
+            .anyMatch(n -> n.state == NodeState.ToBeAdded && newZone.getUuid().equals(n.azUuid)));
+    updateIPs(taskParams);
+    List<String> newIps = new ArrayList<>();
+    for (NodeDetails node : taskParams.nodeDetailsSet) {
+      if (node.state == NodeState.ToBeAdded) {
+        newIps.add(node.cloudInfo.private_ip);
+      }
+    }
+    UniverseModifyBaseTest.mockMasterAndPeerRoles(mockClient, newIps);
+    setDumpEntitiesMock(universe, "", false);
+    clearInvocations(mockNodeManager);
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    if (taskInfo.getTaskState() == TaskInfo.State.Failure) {
+      throw new IllegalStateException(
+          "Task failed " + LocalProviderUniverseTestBase.getAllErrorsStr(taskInfo));
+    }
+
+    ArgumentCaptor<NodeTaskParams> createParamsCaptor =
+        ArgumentCaptor.forClass(NodeTaskParams.class);
+    // The List mock reports the instance as already present, so AnsibleCreateServer waits for
+    // SSH instead of issuing Create. The params are the ones Create would have used.
+    verify(mockNodeManager, atLeastOnce()).nodeCommand(any(), createParamsCaptor.capture());
+    NodeManager nodeManager = mock(NodeManager.class, Mockito.CALLS_REAL_METHODS);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    boolean sawNewProviderCreate = false;
+    for (NodeTaskParams nodeTaskParams : createParamsCaptor.getAllValues()) {
+      if (!(nodeTaskParams instanceof AnsibleCreateServer.Params)) {
+        continue;
+      }
+      AnsibleCreateServer.Params createParams = (AnsibleCreateServer.Params) nodeTaskParams;
+      if (!newZone.getUuid().equals(createParams.azUuid)) {
+        continue;
+      }
+      sawNewProviderCreate = true;
+      UniverseDefinitionTaskParams.UserIntent resolved =
+          nodeManager.getUserIntentFromParams(universe, createParams);
+      UUID imageBundle =
+          Util.retreiveImageBundleUUID(
+              universe.getUniverseDetails().arch, resolved, createParams.getProvider());
+      assertEquals(newBundle.getUuid(), imageBundle);
+      assertEquals(newProvider.getUuid(), createParams.getProvider().getUuid());
+    }
+    assertTrue(sawNewProviderCreate);
   }
 
   @Test

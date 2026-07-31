@@ -35,8 +35,8 @@ public class NodeCloudDetectorTest {
 
   /** Runs detection with the node's metadata services answering as {@code fakeNode} describes. */
   private CloudType detect(FakeNode fakeNode) {
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
-        .thenAnswer(invocation -> fakeNode.run(invocation.getArgument(2)));
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
+        .thenAnswer(invocation -> fakeNode.run(invocation.getArgument(1)));
     return nodeCloudDetector.detect(mockUniverse, new NodeDetails(), Duration.ofSeconds(30));
   }
 

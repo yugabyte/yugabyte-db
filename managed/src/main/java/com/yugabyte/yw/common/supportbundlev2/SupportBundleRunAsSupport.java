@@ -82,7 +82,9 @@ public class SupportBundleRunAsSupport {
       NodeDetails node) {
     try {
       Provider provider = Util.getProviderForNode(node, universe);
-      String sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, node);
+      String sshUser =
+          imageBundleUtil.findEffectiveSshUser(
+              provider, universe, universe.getCluster(node.placementUuid).userIntent, node);
       if (StringUtils.isNotBlank(node.sshUserOverride)) {
         sshUser = node.sshUserOverride;
       }

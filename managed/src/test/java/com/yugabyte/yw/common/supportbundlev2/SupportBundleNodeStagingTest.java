@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common.supportbundlev2;
 
+import static com.yugabyte.yw.common.NodeUniverseContextMatchers.nodeContext;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -21,6 +22,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
@@ -80,7 +82,7 @@ public class SupportBundleNodeStagingTest {
   }
 
   private void mkdirSucceeds() {
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any(), eq(false)))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList(), eq(false)))
         .thenReturn(response(0));
   }
 
@@ -100,13 +102,12 @@ public class SupportBundleNodeStagingTest {
     assertEquals(expected, second);
     verify(mockNodeUniverseManager, times(1))
         .runCommand(
-            eq(node1),
-            eq(universe),
+            nodeContext(node1, universe, CONTEXT),
             eq(List.of("mkdir", "-p", "-m", "755", dir(id, "10.0.0.1"))),
-            eq(CONTEXT),
             eq(false));
     verify(mockNodeUniverseManager, times(1))
-        .uploadFileToNode(node1, universe, LOCAL.toString(), expected, "755", CONTEXT);
+        .uploadFileToNode(
+            NodeUniverseContext.of(universe, node1, CONTEXT), LOCAL.toString(), expected, "755");
     assertTrue(staging.isStaged(id, node1, "support_bundle_utils.sh"));
     assertFalse(staging.isStaged(id, node1, "other.sh"));
   }
@@ -127,7 +128,7 @@ public class SupportBundleNodeStagingTest {
 
   @Test
   public void testFailedMkdirThrowsAndIsRetriedNextTime() {
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any(), eq(false)))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList(), eq(false)))
         .thenReturn(response(1), response(0));
 
     RuntimeException thrown =
@@ -145,7 +146,7 @@ public class SupportBundleNodeStagingTest {
     mkdirSucceeds();
     doThrow(new RuntimeException("No space left on device"))
         .when(mockNodeUniverseManager)
-        .uploadFileToNode(any(), any(), anyString(), anyString(), anyString(), any());
+        .uploadFileToNode(any(NodeUniverseContext.class), anyString(), anyString(), anyString());
 
     assertThrows(RuntimeException.class, () -> staging.stage(id, universe, node1, LOCAL, CONTEXT));
     assertFalse(staging.isStaged(id, node1, "support_bundle_utils.sh"));
@@ -164,28 +165,22 @@ public class SupportBundleNodeStagingTest {
     assertEquals(2, cleaned.size());
     verify(mockNodeUniverseManager)
         .runCommand(
-            eq(node1),
-            eq(universe),
-            eq(List.of("rm", "-rf", dir(id, "10.0.0.1"))),
-            any(),
-            eq(false));
+            nodeContext(node1, universe), eq(List.of("rm", "-rf", dir(id, "10.0.0.1"))), eq(false));
     verify(mockNodeUniverseManager)
         .runCommand(
-            eq(node2),
-            eq(universe),
-            eq(List.of("rm", "-rf", dir(id, "10.0.0.2"))),
-            any(),
-            eq(false));
+            nodeContext(node2, universe), eq(List.of("rm", "-rf", dir(id, "10.0.0.2"))), eq(false));
     verify(mockNodeUniverseManager, never())
         .runCommand(
-            any(), any(), eq(List.of("rm", "-rf", dir(other, "10.0.0.1"))), any(), eq(false));
+            any(NodeUniverseContext.class),
+            eq(List.of("rm", "-rf", dir(other, "10.0.0.1"))),
+            eq(false));
     assertFalse(staging.isStaged(id, node1, "support_bundle_utils.sh"));
     assertTrue(staging.isStaged(other, node1, "support_bundle_utils.sh"));
   }
 
   @Test
   public void testCleanupNeverThrows() {
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any(), eq(false)))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList(), eq(false)))
         .thenReturn(response(0))
         .thenThrow(new RuntimeException("node unreachable"));
     staging.stage(id, universe, node1, LOCAL, CONTEXT);
@@ -197,7 +192,8 @@ public class SupportBundleNodeStagingTest {
   @Test
   public void testCleanupOfANullIdIsANoOp() {
     assertTrue(staging.cleanup(null, universe).isEmpty());
-    verify(mockNodeUniverseManager, never()).runCommand(any(), any(), anyList(), any(), eq(false));
+    verify(mockNodeUniverseManager, never())
+        .runCommand(any(NodeUniverseContext.class), anyList(), eq(false));
   }
 
   private static ShellResponse checkPrints(String answer) {
@@ -210,17 +206,16 @@ public class SupportBundleNodeStagingTest {
   public void testFileExistsRunsTheCheckWithThePathAsAnArgument() {
     String path = "/tmp/a $(touch x).tar.gz";
     when(mockNodeUniverseManager.runCommand(
-            eq(node1),
-            eq(universe),
+            nodeContext(node1, universe, CONTEXT),
             eq(List.of("bash", "-c", SupportBundleNodeStaging.FILE_EXISTS_SCRIPT, "bash", path)),
-            eq(CONTEXT),
             eq(false)))
         .thenReturn(checkPrints("1"));
 
     assertTrue(
         SupportBundleNodeStaging.fileExists(
             mockNodeUniverseManager, node1, universe, path, CONTEXT));
-    verify(mockNodeUniverseManager, never()).runScript(any(), any(), any(), anyList(), any());
+    verify(mockNodeUniverseManager, never())
+        .runScript(any(NodeUniverseContext.class), any(), anyList());
   }
 
   @Test
@@ -247,7 +242,7 @@ public class SupportBundleNodeStagingTest {
 
   @Test
   public void testFileExistsIsFalseWhenTheNodePrintsZero() {
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any(), eq(false)))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList(), eq(false)))
         .thenReturn(checkPrints("0"));
 
     assertFalse(
@@ -260,7 +255,7 @@ public class SupportBundleNodeStagingTest {
     // Output that reads as "exists" must not hide the failure.
     ShellResponse failed = checkPrints("1");
     failed.code = 1;
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any(), eq(false)))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList(), eq(false)))
         .thenReturn(failed);
 
     assertThrows(
@@ -273,7 +268,7 @@ public class SupportBundleNodeStagingTest {
   /** A cancelled command is an abort, not a failure the caller logs and moves past. */
   @Test
   public void testCancelledCommandsThrowCancellation() {
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any(), eq(false)))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList(), eq(false)))
         .thenReturn(response(ShellResponse.ERROR_CODE_EXECUTION_CANCELLED));
 
     assertThrows(
@@ -284,7 +279,7 @@ public class SupportBundleNodeStagingTest {
     assertThrows(
         CancellationException.class, () -> staging.stage(id, universe, node1, LOCAL, CONTEXT));
     verify(mockNodeUniverseManager, never())
-        .uploadFileToNode(any(), any(), anyString(), anyString(), anyString(), any());
+        .uploadFileToNode(any(NodeUniverseContext.class), anyString(), anyString(), anyString());
   }
 
   /** A thread still running after its bundle's cleanup can stage nothing, so it runs nothing. */
@@ -294,7 +289,8 @@ public class SupportBundleNodeStagingTest {
 
     assertThrows(
         CancellationException.class, () -> staging.stage(id, universe, node1, LOCAL, CONTEXT));
-    verify(mockNodeUniverseManager, never()).runCommand(any(), any(), anyList(), any(), eq(false));
+    verify(mockNodeUniverseManager, never())
+        .runCommand(any(NodeUniverseContext.class), anyList(), eq(false));
 
     mkdirSucceeds();
     staging.stage(UUID.randomUUID(), universe, node1, LOCAL, CONTEXT);
@@ -306,10 +302,10 @@ public class SupportBundleNodeStagingTest {
     CountDownLatch inMkdir = new CountDownLatch(1);
     CountDownLatch release = new CountDownLatch(1);
     List<String> mkdir = List.of("mkdir", "-p", "-m", "755", dir(id, "10.0.0.1"));
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any(), eq(false)))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList(), eq(false)))
         .thenAnswer(
             invocation -> {
-              if (mkdir.equals(invocation.getArgument(2))) {
+              if (mkdir.equals(invocation.getArgument(1))) {
                 inMkdir.countDown();
                 release.await();
               }
@@ -329,11 +325,7 @@ public class SupportBundleNodeStagingTest {
     assertNull(thrown.get());
     verify(mockNodeUniverseManager)
         .runCommand(
-            eq(node1),
-            eq(universe),
-            eq(List.of("rm", "-rf", dir(id, "10.0.0.1"))),
-            any(),
-            eq(false));
+            nodeContext(node1, universe), eq(List.of("rm", "-rf", dir(id, "10.0.0.1"))), eq(false));
   }
 
   /**
@@ -344,7 +336,7 @@ public class SupportBundleNodeStagingTest {
   public void testALateThreadCreatesNoDirectoryOnceTheIdIsClosed() throws Exception {
     CountDownLatch inMkdir = new CountDownLatch(1);
     CountDownLatch release = new CountDownLatch(1);
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any(), eq(false)))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList(), eq(false)))
         .thenAnswer(
             invocation -> {
               inMkdir.countDown();
@@ -365,7 +357,8 @@ public class SupportBundleNodeStagingTest {
     late.join(10_000);
 
     assertTrue(String.valueOf(lateThrown.get()), lateThrown.get() instanceof CancellationException);
-    verify(mockNodeUniverseManager, times(1)).runCommand(any(), any(), anyList(), any(), eq(false));
+    verify(mockNodeUniverseManager, times(1))
+        .runCommand(any(NodeUniverseContext.class), anyList(), eq(false));
     assertTrue(staging.cleanup(id, universe).isEmpty());
   }
 
@@ -406,9 +399,11 @@ public class SupportBundleNodeStagingTest {
 
     verify(mockNodeUniverseManager, times(1))
         .runCommand(
-            any(), any(), eq(List.of("mkdir", "-p", "-m", "755", expected)), any(), eq(false));
+            any(NodeUniverseContext.class),
+            eq(List.of("mkdir", "-p", "-m", "755", expected)),
+            eq(false));
     verify(mockNodeUniverseManager)
-        .runCommand(any(), any(), eq(List.of("rm", "-rf", expected)), any(), eq(false));
+        .runCommand(any(NodeUniverseContext.class), eq(List.of("rm", "-rf", expected)), eq(false));
   }
 
   /** A tmp directory that can't be used falls back to /tmp, and cleanup removes the one used. */
@@ -418,19 +413,22 @@ public class SupportBundleNodeStagingTest {
     when(mockNodeUniverseManager.getRemoteTmpDir(node2, universe))
         .thenThrow(new RuntimeException("no provider"));
     String refused = "/data/tmp/yba-support-bundle-" + id + "-10_0_0_1";
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any(), eq(false)))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList(), eq(false)))
         .thenAnswer(
             invocation ->
-                response(invocation.getArgument(2, List.class).contains(refused) ? 1 : 0));
+                response(invocation.getArgument(1, List.class).contains(refused) ? 1 : 0));
 
     assertEquals(dir(id, "10.0.0.1"), staging.dir(id, universe, node1, CONTEXT));
     assertEquals(dir(id, "10.0.0.2"), staging.dir(id, universe, node2, CONTEXT));
     staging.cleanup(id, universe);
 
     verify(mockNodeUniverseManager)
-        .runCommand(any(), any(), eq(List.of("rm", "-rf", dir(id, "10.0.0.1"))), any(), eq(false));
+        .runCommand(
+            any(NodeUniverseContext.class),
+            eq(List.of("rm", "-rf", dir(id, "10.0.0.1"))),
+            eq(false));
     verify(mockNodeUniverseManager, never())
-        .runCommand(any(), any(), eq(List.of("rm", "-rf", refused)), any(), eq(false));
+        .runCommand(any(NodeUniverseContext.class), eq(List.of("rm", "-rf", refused)), eq(false));
   }
 
   @Test
@@ -466,10 +464,10 @@ public class SupportBundleNodeStagingTest {
   /** One INFO line per node whose directory was removed, and none for a removal that failed. */
   @Test
   public void testCleanupLogsEachRemovedDirectory() throws Exception {
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any(), eq(false)))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList(), eq(false)))
         .thenAnswer(
             invocation -> {
-              List<String> command = invocation.getArgument(2);
+              List<String> command = invocation.getArgument(1);
               boolean failed = command.get(0).equals("rm") && command.get(2).endsWith("10_0_0_2");
               return response(failed ? 1 : 0);
             });

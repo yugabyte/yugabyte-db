@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
@@ -105,7 +106,7 @@ public class CheckNodeDataDirDiskSpace extends NodeTaskBase {
 
     ShellResponse response =
         nodeUniverseManager
-            .runCommand(node, universe, command, context)
+            .runCommand(NodeUniverseContext.of(universe, node, context), command)
             .processErrors("Failed to get disk space on node " + node.nodeName);
 
     String output;

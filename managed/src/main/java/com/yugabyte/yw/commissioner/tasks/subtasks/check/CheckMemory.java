@@ -8,6 +8,7 @@ import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.ShellProcessContext;
@@ -69,7 +70,7 @@ public class CheckMemory extends UniverseTaskBase {
                             .build();
                     ShellResponse response =
                         nodeUniverseManager
-                            .runCommand(node, universe, command, context)
+                            .runCommand(NodeUniverseContext.of(universe, node, context), command)
                             .processErrors();
                     return Long.parseLong(response.extractRunCommandOutput());
                   } catch (Exception e) {

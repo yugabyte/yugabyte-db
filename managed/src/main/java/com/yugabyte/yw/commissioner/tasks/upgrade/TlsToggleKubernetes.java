@@ -67,7 +67,7 @@ public class TlsToggleKubernetes extends KubernetesUpgradeTaskBase {
   public void run() {
     runUpgrade(
         () -> {
-          updateUniverseHttpsEnabledUI(taskParams().getNodeToNodeChange(getUserIntent()));
+          updateUniverseHttpsEnabledUI(taskParams().getNodeToNodeChange(getStoredUserIntent()));
           Universe universe = getUniverse();
           syncUniverseDetailToTaskParams();
 

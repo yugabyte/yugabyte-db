@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.payload.NodeAgentRpcPayload;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
@@ -91,9 +92,14 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     if (nodeDetails.cloudInfo == null || StringUtils.isEmpty(nodeDetails.cloudInfo.private_ip)) {
       return;
     }
-    UniverseDefinitionTaskParams.Cluster cluster =
-        universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid);
-    Provider provider = Util.getProviderForNode(nodeDetails, cluster);
+    UniverseDefinitionTaskParams.UserIntent userIntent = taskParams().userIntent;
+    if (userIntent == null) {
+      UniverseDefinitionTaskParams.Cluster cluster =
+          universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid);
+      userIntent = cluster.userIntent;
+    }
+
+    Provider provider = Util.getProviderByAz(nodeDetails.azUuid);
     if (!provider.isNonManualOnprem()) {
       return;
     }
@@ -108,7 +114,8 @@ public class AnsibleDestroyServer extends NodeTaskBase {
             .timeoutSecs(DESTROY_REMOTE_COMMAND_TIMEOUT_SECS)
             .logCmdOutput(true)
             .build();
-    String sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, nodeDetails);
+    String sshUser =
+        imageBundleUtil.findEffectiveSshUser(provider, universe, userIntent, nodeDetails);
     if (StringUtils.isNotEmpty(nodeDetails.sshUserOverride)) {
       sshUser = nodeDetails.sshUserOverride;
     }
@@ -131,7 +138,8 @@ public class AnsibleDestroyServer extends NodeTaskBase {
         stopCmd);
     try {
       ShellResponse response =
-          nodeUniverseManager.runCommand(nodeDetails, universe, command, shellContext);
+          nodeUniverseManager.runCommand(
+              NodeUniverseContext.of(universe, nodeDetails, shellContext, userIntent), command);
       if (response.isSuccess()) {
         log.info(
             "Successfully stopped node agent service on node {} (IP {}) via SSH as user {}",
@@ -168,9 +176,8 @@ public class AnsibleDestroyServer extends NodeTaskBase {
           universe.getUniverseUUID());
       return;
     }
-    UniverseDefinitionTaskParams.Cluster cluster =
-        universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid);
-    CloudType cloudType = cluster.getProviderCloudType(nodeDetails);
+    Provider provider = Util.getProviderByAz(nodeDetails.azUuid);
+    CloudType cloudType = provider.getCloudCode();
     if (cloudType == Common.CloudType.onprem
         && (nodeDetails.cloudInfo == null
             || StringUtils.isEmpty(nodeDetails.cloudInfo.private_ip))) {
@@ -186,7 +193,6 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     }
     boolean cleanupFailed = true;
     try {
-      Provider provider = Util.getProviderForNode(nodeDetails, cluster);
       boolean cleanupOnly =
           provider.getCloudCode() == CloudType.onprem
               && NodeAgentClient.isCloudTypeSupported(provider.getCloudCode());

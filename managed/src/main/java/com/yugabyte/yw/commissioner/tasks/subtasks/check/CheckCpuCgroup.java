@@ -6,6 +6,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
@@ -117,10 +118,8 @@ public class CheckCpuCgroup extends UniverseTaskBase {
     try {
       response =
           nodeUniverseManager.runCommand(
-              node,
-              universe,
+              NodeUniverseContext.of(universe, node, context),
               Collections.singletonList(remoteScriptPath),
-              context,
               false /* useBash */);
     } catch (Exception e) {
       log.error("CPU cgroup precheck errored on node {}", node.nodeName, e);

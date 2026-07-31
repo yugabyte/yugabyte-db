@@ -8,6 +8,7 @@ import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RetryTaskUntilCondition;
@@ -18,8 +19,11 @@ import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -38,19 +42,31 @@ public class CheckLocale extends UniverseTaskBase {
 
   public static class Params extends UniverseTaskParams {
     public Set<String> nodeNames;
+    // Map by clusterUUID
+    public Map<UUID, UniverseDefinitionTaskParams.UserIntent> userIntentMap;
   }
 
   protected CheckLocale.Params params() {
     return (CheckLocale.Params) taskParams;
   }
 
+  protected Map<UUID, UniverseDefinitionTaskParams.UserIntent> getUserIntentMap() {
+    if (params().userIntentMap != null) {
+      return params().userIntentMap;
+    }
+    Map<UUID, UniverseDefinitionTaskParams.UserIntent> result = new HashMap<>();
+    return getUniverse().getUniverseDetails().clusters.stream()
+        .collect(Collectors.toMap(c -> c.uuid, c -> c.userIntent));
+  }
+
   @Override
   public void run() {
     try {
       Universe universe = getUniverse();
-      UniverseDefinitionTaskParams.Cluster cluster =
-          universe.getUniverseDetails().getPrimaryCluster();
-      if (cluster.userIntent.getAllCloudTypes().contains(Common.CloudType.local)) {
+      Map<UUID, UniverseDefinitionTaskParams.UserIntent> userIntentMap = getUserIntentMap();
+
+      if (userIntentMap.values().stream()
+          .anyMatch(u -> u.getAllCloudTypes().contains(Common.CloudType.local))) {
         log.info("Skipping check for local provider");
         return;
       }
@@ -90,7 +106,10 @@ public class CheckLocale extends UniverseTaskBase {
                             .build();
                     ShellResponse response =
                         nodeUniverseManager
-                            .runCommand(node, universe, command, context)
+                            .runCommand(
+                                NodeUniverseContext.of(
+                                    universe, node, context, userIntentMap.get(node.placementUuid)),
+                                command)
                             .processErrors();
                     return response.extractRunCommandOutput();
                   } catch (Exception e) {

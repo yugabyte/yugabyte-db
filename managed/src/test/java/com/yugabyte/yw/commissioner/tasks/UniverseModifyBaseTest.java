@@ -25,6 +25,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ProviderInitializer;
 import com.yugabyte.yw.common.ShellResponse;
@@ -234,7 +235,8 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
       lenient()
           .when(
               mockNodeUniverseManager.runCommand(
-                  any(), any(), eq(Arrays.asList("echo", "command-execution-test")), any()))
+                  any(NodeUniverseContext.class),
+                  eq(Arrays.asList("echo", "command-execution-test"))))
           .thenReturn(ShellResponse.create(0, "Command output:\ncommand-execution-test"));
       // setCheckNodesAreSafeToTakeDown(mockClient);
       setMockLiveTabletServers(mockClient, universe);
