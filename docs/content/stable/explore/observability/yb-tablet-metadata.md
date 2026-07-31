@@ -20,6 +20,7 @@ The `yb_tablet_metadata` view is useful for:
 - Identifying the location of all tablets for a specific table.
 - Determining the leader node for a specific tablet.
 - Identifying the tablet for a given tuple in [hash-sharded](../../../architecture/docdb-sharding/sharding/#hash-sharding) tables, or the range boundaries for [range-sharded](../../../architecture/docdb-sharding/sharding/#range-sharding) tables.
+- Checking tablet lifecycle state across the cluster.
 
 Note that the view returns tablet information for YSQL objects and the system transaction table only.
 
@@ -38,7 +39,9 @@ The following table describes the columns of the `yb_tablet_metadata` view.
 | start_range | text | Starting range key (inclusive) for the tablet. (NULL for hash-sharded tables.) |
 | end_range | text | Ending range key (exclusive) for the tablet. (NULL for hash-sharded tables.) |
 | tablet_attrs | json | Reserved for future use. Currently empty. |
-| tablet_state | text | Current state of the tablet (for example, RUNNING, DELETED, or REPLACED). |
+| tablet_state | text | Current state of the tablet. <br>Possible tablet states are `PREPARING`, `CREATING`, `RUNNING`, `REPLACED`, or `DELETED`. |
+
+The `relname`, `start_range`, and `end_range` columns are masked for unprivileged users (shown as `<insufficient privilege>`). Only superusers or users with the `yb_db_admin` role can see the entire unmasked view.
 
 ## Examples
 
@@ -216,6 +219,48 @@ SELECT
 FROM yb_tablet_metadata
 WHERE relname = 'range_sharded_table'
 ORDER BY start_range;
+```
+
+### Check tablet state
+
+Use `tablet_state` to monitor tablet lifecycle: for example, to confirm that tablets for a table have finished creating and are serving traffic, or to find tablets that are stuck in a non-running state.
+
+To list the state of every tablet for a table:
+
+```sql
+SELECT
+    tablet_id,
+    relname,
+    tablet_state,
+    leader
+FROM yb_tablet_metadata
+WHERE relname = 'test_table'
+ORDER BY tablet_state, tablet_id;
+```
+
+```output
++----------------------------------+------------+--------------+----------------+
+| tablet_id                        | relname    | tablet_state | leader         |
+|----------------------------------+------------+--------------+----------------|
+| 3987b6a16bf94fbd92262744197350d7 | test_table | RUNNING      | 127.0.0.2:5433 |
+| 52176c704c614846bbd80f481678519e | test_table | RUNNING      | 127.0.0.1:5433 |
+| bed5b3c3eee747e99622a4e21acf437a | test_table | RUNNING      | 127.0.0.3:5433 |
+| da4bad5faa9f448f890cce57c775cd94 | test_table | RUNNING      | 127.0.0.2:5433 |
+| dd50b59c7dcb493680093ffa5b195634 | test_table | RUNNING      | 127.0.0.1:5433 |
+| ea252119fe774ba9bdc585504fae9398 | test_table | RUNNING      | 127.0.0.3:5433 |
++----------------------------------+------------+--------------+----------------+
+```
+
+To find tablets that are not yet (or no longer) running:
+
+```sql
+SELECT
+    db_name,
+    relname,
+    tablet_id,
+    tablet_state
+FROM yb_tablet_metadata
+WHERE tablet_state <> 'RUNNING';
 ```
 
 ### Join with Active Session History
