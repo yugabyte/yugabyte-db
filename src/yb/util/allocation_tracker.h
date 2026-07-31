@@ -16,6 +16,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <atomic> // IWYU pragma: keep
 #include <mutex>
 #include <string>
 #include <typeinfo>

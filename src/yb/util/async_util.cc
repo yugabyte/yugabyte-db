@@ -18,6 +18,7 @@
 #include "yb/gutil/bind.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/logging.h" // Required in NDEBUG mode
+#include "yb/util/status_log.h" // IWYU pragma: keep
 #include "yb/gutil/bind_helpers.h"
 #include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
 #include "yb/gutil/callback.h"

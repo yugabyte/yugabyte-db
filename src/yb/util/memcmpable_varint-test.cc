@@ -45,6 +45,7 @@
 #include "gtest/gtest.h"
 #include "yb/util/faststring.h"
 #include "yb/util/slice.h"
+#include "yb/util/stopwatch.h" // IWYU pragma: keep
 
 using std::pair;
 using std::make_pair;
