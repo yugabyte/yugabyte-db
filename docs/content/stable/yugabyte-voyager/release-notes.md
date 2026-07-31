@@ -29,6 +29,26 @@ Oracle and MySQL [offline migration](../migrate/migrate-steps/) was deprecated o
 
 Contact {{% support-general %}} to discuss alternative tools and migration approaches.
 
+## v2026.8.1 - August 4, 2026
+
+### Overview
+
+This release of Voyager mainly focuses on improving live migration throughput.
+
+### Enhancements
+
+- Live migration  performance improvements:
+
+  - Added the `cdc-partition-key-overrides` setting for [import data](../reference/data-migration/import-data/) so individual tables can override the default CDC partition key during live migration. Renamed `cdc-partitioning-strategy` to `cdc-partition-key` (update existing configs accordingly).
+
+  - Improved live migration import throughput on tables with unique indexes under heavy UPDATE and DELETE traffic.
+  - Reduced retriable errors when importing UPDATE and DELETE events into YugabyteDB under repeatable read isolation during live migration.
+- Optimized  [assess-migration](../reference/assess-migration/) sizing recommendations for v2025.2 release.
+
+### Bug fix
+
+- Fixed an issue where yb-voyager built on newer Apple Silicon Macs crashed with a segmentation fault before any command could run.
+
 ## v2026.7.2 - July 22, 2026
 
 ### Enhancements
