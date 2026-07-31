@@ -62,6 +62,7 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.EncryptionKey;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
+import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
@@ -374,6 +375,18 @@ public class UniverseCRUDHandler {
           BAD_REQUEST, "Only systemd is supported. Set useSystemd=true for the primary cluster");
     }
     UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
+    if (userIntent.dedicatedNodes) {
+      if (userIntent.masterDeviceInfo == null && userIntent.deviceInfo != null) {
+        if (Util.isKubernetesBasedUniverse(taskParams)) {
+          userIntent.masterDeviceInfo = OperatorUtils.defaultMasterDeviceInfo();
+        } else {
+          userIntent.masterDeviceInfo = userIntent.deviceInfo.clone();
+        }
+      }
+      if (userIntent.masterInstanceType == null) {
+        userIntent.masterInstanceType = userIntent.instanceType;
+      }
+    }
     if (userIntent.deviceInfo != null) {
       userIntent.deviceInfo.validate();
     }
