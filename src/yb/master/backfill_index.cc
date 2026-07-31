@@ -1027,6 +1027,7 @@ Status BackfillTable::Done(const Status& s, const std::unordered_set<TableId>& f
       return Status::OK();
     }();
     if (!completion_status.ok()) {
+      state_.store(State::kFailed, std::memory_order_release);
       LOG_WITH_PREFIX(WARNING) << "Failed to complete the backfill: " << completion_status;
       RETURN_NOT_OK_PREPEND(
           MarkIndexesAsFailed(requested_index_ids_, completion_status.message().ToBuffer()),
