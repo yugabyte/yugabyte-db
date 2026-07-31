@@ -433,25 +433,28 @@ DROP TABLE s1;
 create table s1(a int, primary key (a asc));
 create table s2(a int, primary key (a asc));
 create table s3(a int, primary key (a asc));
-insert into s1 select generate_series(1,10);
-insert into s2 select generate_series(1,10);
-insert into s3 select generate_series(1,10);
+-- s1 and s2 hold every tenth value of s3's range, so the rows the lower join
+-- produces are spread over the whole of s3 rather than over a prefix of it.
+insert into s1 select i * 10 from generate_series(1, 2048) i;
+insert into s2 select i * 10 from generate_series(1, 2048) i;
+insert into s3 select generate_series(1, 10240);
 ANALYZE s1;
 ANALYZE s2;
 ANALYZE s3;
+-- The unhinted top leg should be a batched nested loop join.
 explain (costs off) /*+Leading(( ( s1 s2 ) s3 )) MergeJoin(s1 s2)*/select * from s1 left outer join s2
-on s1.a = s2.a left outer join s3 on s2.a = s3.a where s1.a < 5;
-                 QUERY PLAN                 
---------------------------------------------
- Nested Loop Left Join
+on s1.a = s2.a left outer join s3 on s2.a = s3.a where s1.a <= 10240;
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ YB Batched Nested Loop Left Join
    Join Filter: (s2.a = s3.a)
    ->  Merge Left Join
          Merge Cond: (s1.a = s2.a)
          ->  Index Scan using s1_pkey on s1
-               Index Cond: (a < 5)
+               Index Cond: (a <= 10240)
          ->  Index Scan using s2_pkey on s2
-   ->  Materialize
-         ->  Index Scan using s3_pkey on s3
+   ->  Index Scan using s3_pkey on s3
+         Index Cond: (a = ANY (ARRAY[s2.a, $1, $2, ..., $1023]))
 (9 rows)
 
 drop table s1;
