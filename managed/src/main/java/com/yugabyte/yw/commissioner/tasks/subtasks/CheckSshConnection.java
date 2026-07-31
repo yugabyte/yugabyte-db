@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -56,7 +57,8 @@ public class CheckSshConnection extends NodeTaskBase {
     Provider provider = Util.getProviderForNode(node, universe);
     if (provider.getCloudCode() != CloudType.onprem || !provider.getDetails().skipProvisioning) {
       // Set custom user for CSPs and onprem non-manual, otherwise yugabyte user is the default.
-      String sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, node);
+      String sshUser =
+          imageBundleUtil.findEffectiveSshUser(provider, universe, cluster.userIntent, node);
       if (StringUtils.isNotEmpty(node.sshUserOverride)) {
         sshUser = node.sshUserOverride;
       }
@@ -66,7 +68,7 @@ public class CheckSshConnection extends NodeTaskBase {
     }
     List<String> testCmd = ImmutableList.of("/bin/bash", "-c", "echo 'test'");
     nodeUniverseManager
-        .runCommand(node, universe, testCmd, shellContext)
+        .runCommand(NodeUniverseContext.of(universe, node, shellContext), testCmd)
         .processErrors("SSH connection failed for user: " + shellContext.getSshUser());
   }
 }

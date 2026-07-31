@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.LocalNodeManager;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager.NodeCommandType;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
@@ -143,15 +144,14 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
       String customTmpDirectory = nodeUniverseManager.getRemoteTmpDir(node, universe);
       nodeUniverseManager
           .runCommand(
-              node,
-              universe,
+              NodeUniverseContext.of(
+                  universe, node, ShellProcessContext.builder().logCmdOutput(true).build()),
               ImmutableList.of(
                   "rm",
                   "-rf",
                   ybSoftwareDir + packageName,
                   ybSoftwareDir + versionName,
-                  customTmpDirectory + "/" + PG_UPGRADE_CHECK_LOG_FILE),
-              ShellProcessContext.builder().logCmdOutput(true).build())
+                  customTmpDirectory + "/" + PG_UPGRADE_CHECK_LOG_FILE))
           .processErrors();
     }
   }
@@ -335,14 +335,16 @@ public class PGUpgradeTServerCheck extends ServerSubTaskBase {
             .build();
 
     log.info("Running PG15 upgrade check on node: {} with command: {}", node.nodeName, command);
-    nodeUniverseManager.runCommand(node, universe, command, context);
+    nodeUniverseManager.runCommand(NodeUniverseContext.of(universe, node, context), command);
     List<String> readLogsCommand = new ArrayList<>();
     readLogsCommand.add("cat");
     readLogsCommand.add(String.format("%s/%s", customTmpDirectory, PG_UPGRADE_CHECK_LOG_FILE));
     log.info(
         "Reading PG15 upgrade check logs on node: {} with command: {}", node.nodeName, command);
     ShellResponse readLogsResponse =
-        nodeUniverseManager.runCommand(node, universe, readLogsCommand, context).processErrors();
+        nodeUniverseManager
+            .runCommand(NodeUniverseContext.of(universe, node, context), readLogsCommand)
+            .processErrors();
     ObjectNode output = parsePGUpgradeOutput(readLogsResponse.extractRunCommandOutput());
     log.info("PG upgrade check output on node: {} is: {}", node.nodeName, output);
     appendAuditDetails(output);

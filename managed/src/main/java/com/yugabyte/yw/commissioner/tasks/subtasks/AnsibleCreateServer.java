@@ -58,7 +58,7 @@ public class AnsibleCreateServer extends NodeTaskBase {
     // instance profile instead of an access key id and secret
     public String ipArnString;
     @Getter @Setter private String machineImage;
-    public UUID imageBundleUUID;
+    @Deprecated public UUID imageBundleUUID;
     public String capacityReservation;
   }
 
@@ -161,6 +161,7 @@ public class AnsibleCreateServer extends NodeTaskBase {
         destroyParams.deleteNode = false;
         destroyParams.deleteRootVolumes = true;
         destroyParams.instanceType = params.instanceType;
+        destroyParams.userIntent = params.userIntent;
         destroyParams.skipUpdateNodeState = true;
         AnsibleDestroyServer task = createTask(AnsibleDestroyServer.class);
         task.initialize(destroyParams);

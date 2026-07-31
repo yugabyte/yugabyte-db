@@ -24,6 +24,7 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.ReleaseContainer;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellResponse;
@@ -162,11 +163,11 @@ public class PGUpgradeTServerCheckTest extends CommissionerBaseTest {
     ShellResponse logReadResponse =
         ShellResponse.create(0, "Command output:\n" + SUCCESS_PG_UPGRADE_OUTPUT);
     ShellResponse okResponse = ShellResponse.create(0, "Command output: ok");
-    when(mockNodeUniverseManager.runCommand(any(), any(), anyList(), any()))
+    when(mockNodeUniverseManager.runCommand(any(NodeUniverseContext.class), anyList()))
         .thenAnswer(
             invocation -> {
               @SuppressWarnings("unchecked")
-              List<String> cmd = invocation.getArgument(2);
+              List<String> cmd = invocation.getArgument(1);
               if (cmd != null && !cmd.isEmpty() && "cat".equals(cmd.get(0))) {
                 return logReadResponse;
               }
@@ -194,7 +195,7 @@ public class PGUpgradeTServerCheckTest extends CommissionerBaseTest {
     @SuppressWarnings("unchecked")
     ArgumentCaptor<List<String>> cmdCaptor = ArgumentCaptor.forClass(List.class);
     verify(mockNodeUniverseManager, atLeastOnce())
-        .runCommand(any(), any(), cmdCaptor.capture(), any());
+        .runCommand(any(NodeUniverseContext.class), cmdCaptor.capture());
 
     String joinedCommands =
         cmdCaptor.getAllValues().stream().flatMap(List::stream).collect(Collectors.joining(" "));

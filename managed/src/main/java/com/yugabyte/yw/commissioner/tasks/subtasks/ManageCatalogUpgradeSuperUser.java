@@ -7,6 +7,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -141,19 +142,27 @@ public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
       command = command.replace("$", "\\$");
       nodeUniverseManager
           .runCommand(
-              node,
-              universe,
-              ImmutableList.of("/bin/bash", "-c", command),
-              ShellProcessContext.builder()
-                  .logCmdOutput(false)
-                  .redactedVals(ImmutableMap.of(command, redactedCommand))
-                  .build())
+              NodeUniverseContext.of(
+                  universe,
+                  node,
+                  ShellProcessContext.builder()
+                      .logCmdOutput(false)
+                      .redactedVals(ImmutableMap.of(command, redactedCommand))
+                      .build()),
+              ImmutableList.of("/bin/bash", "-c", command))
           .processErrors();
     } else {
       nodeUniverseManager
           .runCommand(
-              node,
-              universe,
+              NodeUniverseContext.of(
+                  universe,
+                  node,
+                  ShellProcessContext.builder()
+                      .logCmdOutput(false)
+                      .redactedVals(
+                          ImmutableMap.of(
+                              pgPassFileContent, "*:*:*:REDACTED_USERNAME:REDACTED_PASSWORD"))
+                      .build()),
               ImmutableList.of(
                   "rm",
                   "-f",
@@ -170,13 +179,7 @@ public class ManageCatalogUpgradeSuperUser extends UniverseTaskBase {
                   ";",
                   "chmod",
                   "600",
-                  pgPassFilePath),
-              ShellProcessContext.builder()
-                  .logCmdOutput(false)
-                  .redactedVals(
-                      ImmutableMap.of(
-                          pgPassFileContent, "*:*:*:REDACTED_USERNAME:REDACTED_PASSWORD"))
-                  .build())
+                  pgPassFilePath))
           .processErrors();
     }
   }

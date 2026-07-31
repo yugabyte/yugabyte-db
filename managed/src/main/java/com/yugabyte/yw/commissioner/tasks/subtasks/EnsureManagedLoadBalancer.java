@@ -73,7 +73,7 @@ public class EnsureManagedLoadBalancer extends UniverseTaskBase {
     // Read when the subtask runs: ConfigureDBApis stores the new ports after it creates this task.
     List<Integer> ports =
         ManageLoadBalancerGroup.getForwardedPorts(
-            getUserIntent(), getUniverse().getUniverseDetails().communicationPorts);
+            getStoredUserIntent(), getUniverse().getUniverseDetails().communicationPorts);
     String address =
         cloudAPI.ensureManagedLoadBalancer(
             provider, params.regionCode, params.lbName, zones, ports, params.tags);

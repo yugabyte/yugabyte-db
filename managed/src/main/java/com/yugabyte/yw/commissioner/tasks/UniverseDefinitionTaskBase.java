@@ -69,6 +69,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterAPIDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPorts;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ValidateNodeDiskSize;
+import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForClockSync;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitStartingFromTime;
@@ -571,11 +572,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *     failure after the reservation.
    */
   public void updateOnPremNodeUuidsOnTaskParams(boolean commitReservedNodes) {
-    Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(taskParams());
     for (Cluster cluster : taskParams().clusters) {
       Set<NodeDetails> onpremNodes = new HashSet<>();
       for (NodeDetails nodeDetails : taskParams().getNodesInCluster(cluster.uuid)) {
-        if (providerGetter.apply(nodeDetails).getCloudCode() == CloudType.onprem) {
+        if (cluster.getProviderCloudType(nodeDetails) == CloudType.onprem) {
           onpremNodes.add(nodeDetails);
         }
       }
@@ -1270,6 +1270,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     SubTaskGroup subTaskGroup = createSubTaskGroup("InstanceActions");
     for (NodeDetails node : nodes) {
       InstanceActions.Params params = new InstanceActions.Params();
+      UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
+      params.userIntent = userIntent;
       params.type = NodeManager.NodeCommandType.Tags;
       // Add the node name.
       params.nodeName = node.nodeName;
@@ -1314,6 +1316,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.nodeName = node.nodeName;
       // Add device info.
       params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
+      params.userIntent = userIntent;
       // Set numVolumes if user did not set it
       if (params.deviceInfo.numVolumes == null) {
         params.deviceInfo.numVolumes =
@@ -1369,6 +1372,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
       params.useSystemd = userIntent.useSystemd;
+      params.userIntent = userIntent;
       // Create the Ansible task to get the server info.
       AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
       task.initialize(params);
@@ -1416,6 +1420,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // sshPortOverride, in case the passed imageBundle has a different port
     // configured for the region.
     params.sshPortOverride = node.sshPortOverride;
+    params.userIntent = userIntent;
     // Create the Ansible task to get the server info.
     AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
     task.initialize(params);
@@ -1435,8 +1440,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   protected void fillSetupParamsForNode(
-      AnsibleSetupServer.Params params, Cluster cluster, NodeDetails node) {
-    UserIntent userIntent = cluster.userIntent;
+      AnsibleSetupServer.Params params, UserIntent userIntent, NodeDetails node) {
     CloudSpecificInfo cloudInfo = node.cloudInfo;
     params.deviceInfo = userIntent.evaluateDeviceInfoForNode(node);
     // Set the region code.
@@ -1451,8 +1455,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Set the instance type.
     params.instanceType = cloudInfo.instance_type;
     params.machineImage = node.machineImage;
-    params.imageBundleUUID =
-        userIntent.getImageBundleUUIDForProvider(cluster.getProviderUUIDForNode(node));
     params.useTimeSync = cloudInfo.useTimeSync;
     // Set the ports to provision a node to use
     params.communicationPorts =
@@ -1470,6 +1472,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Development testing variable.
     params.remotePackagePath = taskParams().remotePackagePath;
     params.cgroupSize = getCGroupSize(node);
+    params.userIntent = userIntent;
   }
 
   protected void fillCreateParamsForNode(
@@ -1504,6 +1507,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.ipArnString = userIntent.getAwsInstanceProfileForProvider(providerUUID);
     params.useSpotInstance = userIntent.useSpotInstance;
     params.spotPrice = userIntent.spotPrice;
+    params.userIntent = userIntent;
   }
 
   /**
@@ -1518,7 +1522,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     for (NodeDetails node : nodes) {
       Cluster cluster = taskParams().getClusterByUuid(node.placementUuid);
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
-      fillSetupParamsForNode(params, cluster, node);
+      fillSetupParamsForNode(params, cluster.userIntent, node);
       params.useSystemd = cluster.userIntent.useSystemd;
       params.sshUserOverride = node.sshUserOverride;
       params.sshPortOverride = node.sshPortOverride;
@@ -1802,6 +1806,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.nodeUuid = node.nodeUuid;
       // Add the universe uuid.
       params.setUniverseUUID(taskParams().getUniverseUUID());
+      params.userIntent = userIntent;
       // Create the Ansible task to get the server info.
       AnsibleUpdateNodeInfo ansibleFindCloudHost = createTask(AnsibleUpdateNodeInfo.class);
       ansibleFindCloudHost.initialize(params);
@@ -1837,6 +1842,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         for (UUID providerUUID : cluster.userIntent.getAllProviderUUIDs()) {
           Map<String, String> instanceTags =
               cluster.userIntent.getInstanceTagsForProvider(providerUUID);
+          if (instanceTags == null) {
+            instanceTags = new HashMap<>();
+          }
           if (instanceTags.containsKey(NODE_NAME_KEY)) {
             if (univCluster == null) {
               throw new IllegalStateException(
@@ -1844,6 +1852,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             }
             Map<String, String> oldInstanceTags =
                 univCluster.userIntent.getInstanceTagsForProvider(providerUUID);
+            if (oldInstanceTags == null) {
+              oldInstanceTags = new HashMap<>();
+            }
             if (!Objects.equals(
                 instanceTags.get(NODE_NAME_KEY), oldInstanceTags.get(NODE_NAME_KEY))) {
               throw new IllegalArgumentException("'Name' tag value cannot be changed.");
@@ -2037,7 +2048,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s", subTaskGroupType, taskParams().nodePrefix);
     SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
-    UserIntent userIntent = getUserIntent();
+    UserIntent userIntent = getStoredUserIntent();
 
     for (NodeDetails node : nodes) {
       AnsibleConfigureServers.Params params =
@@ -2059,7 +2070,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s", subTaskGroupType, taskParams().nodePrefix);
     SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
-    UserIntent userIntent = getUserIntent();
+    UserIntent userIntent = getStoredUserIntent();
 
     for (NodeDetails node : nodes) {
       AnsibleConfigureServers.Params params =
@@ -2079,7 +2090,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s", subTaskGroupType, taskParams().nodePrefix);
     SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
-    UserIntent userIntent = getUserIntent();
+    UserIntent userIntent = getStoredUserIntent();
 
     for (NodeDetails node : nodes) {
       AnsibleConfigureServers.Params params =
@@ -2109,10 +2120,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   protected UniverseSetTlsParams.Params createSetTlsParams(SubTaskGroupType subTaskGroupType) {
+    UserIntent userIntent = getStoredUserIntent();
     UniverseSetTlsParams.Params params = new UniverseSetTlsParams.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.enableNodeToNodeEncrypt = getUserIntent().enableNodeToNodeEncrypt;
-    params.enableClientToNodeEncrypt = getUserIntent().enableClientToNodeEncrypt;
+    params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
+    params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
     params.allowInsecure = getUniverse().getUniverseDetails().allowInsecure;
     params.rootCA = taskParams().rootCA;
     params.clientRootCA = taskParams().getClientRootCA();
@@ -2331,6 +2343,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                               params.isTserver = node.isTserver;
                               params.setUniverseUUID(taskParams().getUniverseUUID());
                               params.rootCA = rootCA;
+                              params.userIntent = userIntent;
                               params.setClientRootCA(clientRootCA);
                               UniverseTaskParams.CommunicationPorts.exportToCommunicationPorts(
                                   params.communicationPorts, node);
@@ -2440,6 +2453,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                                   createTask(CheckCertificateConfig.class);
                               CheckCertificateConfig.Params params =
                                   new CheckCertificateConfig.Params();
+                              params.userIntent = cluster.userIntent;
                               params.nodeName = node.nodeName;
                               params.nodeUuid = node.nodeUuid;
                               params.azUuid =
@@ -2532,9 +2546,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     nodes.forEach(
         n -> {
           SetupYNP.Params params = new SetupYNP.Params();
+          params.userIntent = getUpdatedUserIntent(n.placementUuid);
           Provider provider = providerGetter.apply(n);
           if (imageBundleUtil != null) {
-            params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
+            params.sshUser =
+                imageBundleUtil.findEffectiveSshUser(provider, universe, params.userIntent, n);
           }
           params.nodeName = n.nodeName;
           params.azUuid = n.azUuid;
@@ -2555,6 +2571,44 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return subTaskGroup;
   }
 
+  protected SubTaskGroup createWaitForClockSyncTasks(
+      Universe universe,
+      Collection<NodeDetails> nodes,
+      long acceptableClockSkewNs,
+      long subtaskTimeoutMs) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("WaitForClockSync");
+    for (NodeDetails node : nodes) {
+      WaitForClockSync.Params waitForClockSyncParams = new WaitForClockSync.Params();
+      waitForClockSyncParams.setUniverseUUID(universe.getUniverseUUID());
+      waitForClockSyncParams.nodeName = node.nodeName;
+      waitForClockSyncParams.acceptableClockSkewNs = acceptableClockSkewNs;
+      waitForClockSyncParams.subtaskTimeoutMs = subtaskTimeoutMs;
+      waitForClockSyncParams.userIntent = getUpdatedUserIntent(node.placementUuid);
+
+      WaitForClockSync waitForClockSyncTask = createTask(WaitForClockSync.class);
+      waitForClockSyncTask.initialize(waitForClockSyncParams);
+      subTaskGroup.addSubTask(waitForClockSyncTask);
+    }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected SubTaskGroup createWaitForClockSyncTasks(
+      Universe universe, Collection<NodeDetails> nodes) {
+    return createWaitForClockSyncTasks(
+        universe,
+        nodes,
+        this.confGetter
+            .getGlobalConf(GlobalConfKeys.waitForClockSyncMaxAcceptableClockSkew)
+            .toNanos(),
+        this.confGetter.getGlobalConf(GlobalConfKeys.waitForClockSyncTimeout).toMillis());
+  }
+
+  /**
+   * Creates a task to do the provisioning via YNP.
+   *
+   * @param nodes a collection of nodes to be processed.
+   */
   public SubTaskGroup createYNPProvisioningTask(
       Universe universe,
       Collection<NodeDetails> nodes,
@@ -2571,12 +2625,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     Customer customer = Customer.get(universe.getCustomerId());
     nodes.forEach(
         n -> {
-          UserIntent userIntent = taskParams().getClusterByUuid(n.placementUuid).userIntent;
+          UserIntent userIntent = getUpdatedUserIntent(n.placementUuid);
           YNPProvisioning.Params params = new YNPProvisioning.Params();
           params.deviceInfo = userIntent.evaluateDeviceInfoForNode(n);
           Provider provider = providerGetter.apply(n);
           if (imageBundleUtil != null) {
-            params.sshUser = imageBundleUtil.findEffectiveSshUser(provider, universe, n);
+            params.sshUser =
+                imageBundleUtil.findEffectiveSshUser(provider, universe, userIntent, n);
           }
           params.deviceInfo = userIntent.evaluateDeviceInfoForNode(n);
           params.nodeName = n.nodeName;
@@ -3066,7 +3121,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             params.nodeDetailsSet = taskParams().nodeDetailsSet;
             params.sourceNode = sourceNode;
             params.targetNodes = targetNodes;
-
+            params.userIntentMap = new HashMap<>();
+            params.userIntentMap.put(
+                sourceNode.placementUuid, getUpdatedUserIntent(sourceNode.placementUuid));
+            targetNodes.forEach(
+                node -> {
+                  params.userIntentMap.computeIfAbsent(
+                      node.placementUuid, clusterUUID -> getUpdatedUserIntent(clusterUUID));
+                });
             CheckDbNodePortConnectivity task = createTask(CheckDbNodePortConnectivity.class);
             task.initialize(params);
             subTaskGroup.addSubTask(task);
@@ -3506,6 +3568,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             params.nodeUuid = node.nodeUuid;
             params.azUuid = node.azUuid;
             params.placementUuid = node.placementUuid;
+            params.userIntent = parentTaskParams.getClusterByUuid(node.placementUuid).userIntent;
             params.clusters = parentTaskParams.clusters;
             InstanceExistCheck task = createTask(InstanceExistCheck.class);
             task.initialize(params);
@@ -4556,7 +4619,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       String httpsEnabledUI =
           (nodeToNodeChange > 0
                   && Universe.shouldEnableHttpsUI(
-                      true, getUserIntent().ybSoftwareVersion, isNodeUIHttpsEnabled))
+                      true, getStoredUserIntent().ybSoftwareVersion, isNodeUIHttpsEnabled))
               ? "true"
               : "false";
       saveUniverseDetails(

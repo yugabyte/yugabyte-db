@@ -4,6 +4,7 @@ package com.yugabyte.yw.common.supportbundlev2;
 
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
@@ -426,10 +427,11 @@ abstract class AbstractScriptTarNodeComponent implements SupportBundleComponent 
           () ->
               response[0] =
                   nodeUniverseManager.runCommand(
-                      node,
-                      universe,
+                      NodeUniverseContext.of(
+                          universe,
+                          node,
+                          context.toBuilder().timeoutSecs(REMOTE_TAR_REMOVE_TIMEOUT_SECS).build()),
                       Arrays.asList("rm", "-f", remoteTarPath),
-                      context.toBuilder().timeoutSecs(REMOTE_TAR_REMOVE_TIMEOUT_SECS).build(),
                       false));
     } catch (Exception e) {
       log.warn(
@@ -470,7 +472,9 @@ abstract class AbstractScriptTarNodeComponent implements SupportBundleComponent 
     Path downloaded = downloadTarget(node, universe, context, localTar);
     try {
       nodeUniverseManager.copyFileFromNode(
-          node, universe, generatedTarPath, downloaded.toAbsolutePath().toString(), context);
+          NodeUniverseContext.of(universe, node, context),
+          generatedTarPath,
+          downloaded.toAbsolutePath().toString());
       if (!Files.exists(downloaded)) {
         log.warn(
             "Remote tar '{}' was reported for component '{}' on node '{}', but local copy"

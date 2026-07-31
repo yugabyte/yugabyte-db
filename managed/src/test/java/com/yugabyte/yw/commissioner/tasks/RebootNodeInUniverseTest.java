@@ -236,14 +236,14 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
     lenient()
         .when(
             mockNodeUniverseManager.runCommand(
-                any(), any(), eq(Arrays.asList("echo", "command-execution-test")), any()))
+                any(), eq(Arrays.asList("echo", "command-execution-test"))))
         .thenReturn(ShellResponse.create(0, "Command output:\ncommand-execution-test"));
   }
 
   private void mockCommandExecutionFailure() {
     doReturn(ShellResponse.create(1, "command failed"))
         .when(mockNodeUniverseManager)
-        .runCommand(any(), any(), eq(Arrays.asList("echo", "command-execution-test")), any());
+        .runCommand(any(), eq(Arrays.asList("echo", "command-execution-test")));
   }
 
   private List<TaskType> rebootNodeTaskSequence(boolean isHardReboot) {

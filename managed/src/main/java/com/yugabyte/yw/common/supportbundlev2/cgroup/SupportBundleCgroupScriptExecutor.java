@@ -4,6 +4,7 @@ package com.yugabyte.yw.common.supportbundlev2.cgroup;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
@@ -151,7 +152,9 @@ public class SupportBundleCgroupScriptExecutor {
         node.getNodeName(),
         StringUtils.defaultIfBlank(context.getSshUser(), "default"),
         StringUtils.defaultIfBlank(stageContext.getSshUser(), "default"));
-    ShellResponse response = nodeUniverseManager.runCommand(node, universe, argv, context, false);
+    ShellResponse response =
+        nodeUniverseManager.runCommand(
+            NodeUniverseContext.of(universe, node, context), argv, false);
     response = stripOutputPrefix(SupportBundleCancellation.throwIfCancelled(response));
     if (!wrapped) {
       return response;

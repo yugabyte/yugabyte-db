@@ -18,6 +18,7 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
@@ -152,12 +153,10 @@ public class ProvisionUniverseNodesTest extends CommissionerBaseTest {
     lenient()
         .when(
             mockNodeUniverseManager.runCommand(
-                any(),
-                any(),
+                any(NodeUniverseContext.class),
                 argThat(
                     (List<String> cmd) ->
-                        cmd != null && cmd.stream().anyMatch(a -> a.contains("ActiveState"))),
-                any()))
+                        cmd != null && cmd.stream().anyMatch(a -> a.contains("ActiveState")))))
         .thenReturn(ShellResponse.create(0, "Command output: " + activeState));
   }
 

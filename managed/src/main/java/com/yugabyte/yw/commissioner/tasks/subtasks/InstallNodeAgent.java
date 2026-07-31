@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeAgentManager.CopyType;
 import com.yugabyte.yw.common.NodeAgentManager.InstallerFiles;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
@@ -74,14 +75,11 @@ public class InstallNodeAgent extends NodeTaskBase {
   }
 
   private NodeAgent createNodeAgent(
-      Universe universe,
-      NodeDetails node,
-      String nodeAgentHome,
-      DeployContext deployContext,
-      ShellProcessContext shellContext) {
+      NodeUniverseContext nodeContext, String nodeAgentHome, DeployContext deployContext) {
+    NodeDetails node = nodeContext.getNode();
     String output =
         nodeUniverseManager
-            .runCommand(node, universe, Arrays.asList("uname", "-sm"), shellContext)
+            .runCommand(nodeContext, Arrays.asList("uname", "-sm"))
             .processErrors()
             .extractRunCommandOutput();
     if (StringUtils.isBlank(output)) {
@@ -104,8 +102,7 @@ public class InstallNodeAgent extends NodeTaskBase {
     return nodeAgentManager.create(nodeAgent, deployContext, false);
   }
 
-  private boolean doesNodeAgentPackageExist(
-      NodeDetails node, Universe universe, ShellProcessContext shellContext, String nodeAgentHome) {
+  private boolean doesNodeAgentPackageExist(NodeUniverseContext nodeContext, String nodeAgentHome) {
     StringBuilder sb = new StringBuilder();
     sb.append("test -f ");
     sb.append(nodeAgentHome);
@@ -113,7 +110,7 @@ public class InstallNodeAgent extends NodeTaskBase {
     String cmd = sb.toString();
     List<String> command = getCommand("/bin/bash", "-c", sb.toString());
     log.info("Running command: {}", cmd);
-    return nodeUniverseManager.runCommand(node, universe, command, shellContext).isSuccess();
+    return nodeUniverseManager.runCommand(nodeContext, command).isSuccess();
   }
 
   private Path getTopLevelPath(Path homePath, Path path) {
@@ -130,10 +127,15 @@ public class InstallNodeAgent extends NodeTaskBase {
   public NodeAgent install() {
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = universe.getNodeOrBadRequest(taskParams().nodeName);
-    ShellProcessContext shellContext =
-        taskParams().sshUser == null
-            ? defaultShellContext
-            : defaultShellContext.toBuilder().sshUser(taskParams().sshUser).build();
+    ShellProcessContext.ShellProcessContextBuilder shellContextBuilder =
+        defaultShellContext.toBuilder();
+    if (taskParams().sshUser != null) {
+      shellContextBuilder.sshUser(taskParams().sshUser);
+    }
+    NodeUniverseContext nodeContext =
+        NodeUniverseContext.of(
+            universe, node, shellContextBuilder.build(), taskParams().userIntent);
+
     Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(node.cloudInfo.private_ip);
     if (optional.isPresent()) {
       NodeAgent nodeAgent = optional.get();
@@ -146,7 +148,7 @@ public class InstallNodeAgent extends NodeTaskBase {
     Path nodeAgentHomePath = Paths.get(taskParams().nodeAgentInstallDir, NodeAgent.NODE_AGENT_DIR);
     // Force update the package on reinstall.
     if (taskParams().reinstall
-        || !doesNodeAgentPackageExist(node, universe, shellContext, nodeAgentHomePath.toString())) {
+        || !doesNodeAgentPackageExist(nodeContext, nodeAgentHomePath.toString())) {
       // Re-download the installer payload on the remote node.
       SetupYNP task = createTask(SetupYNP.class);
       task.initialize(getSetupYNPParams(taskParams()));
@@ -155,8 +157,7 @@ public class InstallNodeAgent extends NodeTaskBase {
     DeployContext deployContext =
         DeployContext.builder().certificateUuid(taskParams().certificateUuid).build();
     // Create the node agent record.
-    NodeAgent nodeAgent =
-        createNodeAgent(universe, node, nodeAgentHomePath.toString(), deployContext, shellContext);
+    NodeAgent nodeAgent = createNodeAgent(nodeContext, nodeAgentHomePath.toString(), deployContext);
     // Get the node agent installer files.
     InstallerFiles installerFiles = nodeAgentManager.getInstallerFiles(nodeAgent, deployContext);
 
@@ -173,7 +174,7 @@ public class InstallNodeAgent extends NodeTaskBase {
     sb.append("rm -rf ").append(String.join(" ", deleteDirs));
     List<String> command = getCommand("/bin/bash", "-c", sb.toString());
     log.info("Deleting stale directories {} for node agent {}", deleteDirs, nodeAgent.getUuid());
-    nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
+    nodeUniverseManager.runCommand(nodeContext, command).processErrors();
 
     // Create the new installation directories.
     Set<String> createDirs =
@@ -189,7 +190,7 @@ public class InstallNodeAgent extends NodeTaskBase {
     sb.append("umask 022 && mkdir -m 777 -p ").append(String.join(" ", createDirs));
     command = getCommand("/bin/bash", "-c", sb.toString());
     log.info("Creating directories {} for node agent {}", createDirs, nodeAgent.getUuid());
-    nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
+    nodeUniverseManager.runCommand(nodeContext, command).processErrors();
 
     // Copy the files to the already created paths with the shell context.
     installerFiles.getCopyFileInfos().stream()
@@ -205,12 +206,10 @@ public class InstallNodeAgent extends NodeTaskBase {
                     filePerm,
                     nodeAgent.getUuid());
                 nodeUniverseManager.uploadFileToNode(
-                    node,
-                    universe,
+                    nodeContext,
                     f.getSourcePath().toString(),
                     f.getTargetPath().toString(),
-                    filePerm,
-                    shellContext);
+                    filePerm);
               } else if (f.getCopyType() == CopyType.REMOTE_COPY) {
                 log.info(
                     "Remote copying file {} to {} on node agent {}",
@@ -222,7 +221,7 @@ public class InstallNodeAgent extends NodeTaskBase {
                     ImmutableList.of(
                         "cp", "-f", f.getSourcePath().toString(), f.getTargetPath().toString());
                 nodeUniverseManager
-                    .runCommand(node, universe, cmd, shellContext)
+                    .runCommand(nodeContext, cmd)
                     .processErrors(
                         () ->
                             String.format(
@@ -230,7 +229,7 @@ public class InstallNodeAgent extends NodeTaskBase {
                                 f.getSourcePath(), f.getTargetPath(), nodeAgent));
                 cmd = ImmutableList.of("chmod", filePerm, f.getTargetPath().toString());
                 nodeUniverseManager
-                    .runCommand(node, universe, cmd, shellContext)
+                    .runCommand(nodeContext, cmd)
                     .processErrors(
                         () ->
                             String.format(
@@ -275,9 +274,7 @@ public class InstallNodeAgent extends NodeTaskBase {
     log.debug("Running node agent installation command: {}", command);
 
     try {
-      nodeUniverseManager
-          .runCommand(node, universe, command, shellContext)
-          .processErrors("Installation failed");
+      nodeUniverseManager.runCommand(nodeContext, command).processErrors("Installation failed");
     } catch (RuntimeException e) {
       nodeAgent.updateLastError(new YBAError(Code.INSTALLATION_ERROR, e.getMessage()));
       throw e;
@@ -293,9 +290,7 @@ public class InstallNodeAgent extends NodeTaskBase {
     log.debug("Waiting for node agent service to be running");
     log.debug("Running systemd command: {}", command);
     try {
-      nodeUniverseManager
-          .runCommand(node, universe, command, shellContext)
-          .processErrors("Service startup failed");
+      nodeUniverseManager.runCommand(nodeContext, command).processErrors("Service startup failed");
     } catch (Exception e) {
       nodeAgent.updateLastError(new YBAError(Code.SERVICE_START_ERROR, e.getMessage()));
       throw e;

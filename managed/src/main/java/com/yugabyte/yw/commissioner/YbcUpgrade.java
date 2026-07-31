@@ -13,6 +13,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.NodeAgentClient;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.NodeUniverseContext;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ShellProcessContext;
@@ -694,7 +695,10 @@ public class YbcUpgrade {
             .build();
     String targetFile = ybcManager.getYbcPackageTmpLocation(universe, node, ybcVersion);
     nodeUniverseManager.uploadFileToNode(
-        node, universe, ybcServerPackage, targetFile, PACKAGE_PERMISSIONS, context);
+        NodeUniverseContext.of(universe, node, context),
+        ybcServerPackage,
+        targetFile,
+        PACKAGE_PERMISSIONS);
   }
 
   private void checkCronStatus(Universe universe, NodeDetails node) {
@@ -726,6 +730,8 @@ public class YbcUpgrade {
     cmd.add(")");
     cmd.add("|");
     cmd.addAll(Arrays.asList("crontab", "-", ";"));
-    nodeUniverseManager.runCommand(node, universe, cmd, context).processErrors();
+    nodeUniverseManager
+        .runCommand(NodeUniverseContext.of(universe, node, context), cmd)
+        .processErrors();
   }
 }
