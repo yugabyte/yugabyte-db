@@ -1672,6 +1672,23 @@ TEST_P(PgLibPqTableRewrite,
   }
   ASSERT_OK(WaitForDroppedTablesCleanup());
 
+  // Because rollback was paused, the failed DDLs returned before master reverted the DocDB
+  // metadata on the surviving tables. Those reverts are AlterTables that bump the tablet schema
+  // version and may run after the orphan drops, so a read can hit a retryable "schema version
+  // mismatch" (40001). Wait until reads stop seeing it.
+  for (const auto& table_name : {kTable, kTable2}) {
+    ASSERT_OK(LoggedWaitFor([&conn, &table_name]() -> Result<bool> {
+      const auto res = conn.FetchRows<int32_t, int32_t>(Format("SELECT * FROM $0", table_name));
+      if (res.ok()) {
+        return true;
+      }
+      if (IsRetryable(res.status())) {
+        return false;
+      }
+      return res.status();
+    }, MonoDelta::FromSeconds(60), Format("Wait for $0 schema version to converge", table_name)));
+  }
+
   // Verify the data.
   ASSERT_OK(conn.ExecuteFormat(
       "UPDATE pg_index SET indisvalid = 't' WHERE indexrelid = '$0'::regclass", kIndex));
