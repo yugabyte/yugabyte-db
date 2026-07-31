@@ -1372,6 +1372,26 @@ class Tablet : public AbstractTablet,
 
   std::atomic<int64_t> last_committed_write_index_{0};
 
+  // Whether MayModifyIntentsDbFlushedOpId may force-advance the intents DB flushed frontier to the
+  // regular DB's.
+  //
+  // An external (xCluster target) batch is applied as two RocksDB writes: the regular DB first,
+  // which fills the intents write batch as a side effect, then the intents DB. A regular DB flush
+  // completing in between sees an empty intents memtable, so the force-advance would persist an
+  // intents frontier covering an op whose external intents are still only in memory. An ungraceful
+  // crash then drops them, tablet bootstrap skips the op, and the replicated rows are silently lost
+  // on this replica (GH#32694).
+  //
+  // NonTransactionalBatchWriter clears this at the end of Apply(), by then the intents write batch
+  // has been filled and the data has been written to regular db memtable. Apply() runs inside the
+  // regular DB's write thread and a memtable switch needs that same thread, so the clear always
+  // happens before any regular DB flush can cover the op.
+  //
+  // Nothing sets it back for now except restarting tserver. TODO: It may be safe to reset the
+  // variable to true right after the intents write -- by then those intents are in the intents
+  // memtable, so GetFlushAbility() reports kHasNewData and the force-advance is skipped.
+  std::atomic<bool> can_advance_intents_flush_op_id_{true};
+
   HybridTimeLeaseProvider ht_lease_provider_;
 
   Result<HybridTime> DoGetSafeTime(

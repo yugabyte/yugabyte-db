@@ -345,10 +345,11 @@ DEFINE_test_flag(bool, skip_remove_intent, false,
 DEFINE_test_flag(bool, simulate_load_txn_for_cdc, false,
     "If true GetMinStartHTRunningTxnsForCDCProducer returns kInvalid");
 
-DEFINE_RUNTIME_bool(advance_intents_flushed_op_id_to_match_regular, false,
+DEFINE_RUNTIME_bool(advance_intents_flushed_op_id_to_match_regular, true,
     "If true, the flushed op id of intents db may be updated to match that of "
-    "regular db during flushing regular db memtable. "
-    "Don't enable it on xcluster target side for now");
+    "regular db during flushing regular db memtable. Implicitly disabled for a "
+    "tablet once it has applied an external (xCluster target) write batch, until "
+    "the next tserver restart.");
 
 DEFINE_RUNTIME_bool(vector_index_include_into_post_split_compaction, true,
     "Whether to include vector indexes into tablet's post split compaction");
@@ -2133,7 +2134,7 @@ Status Tablet::ApplyKeyValueRowOperations(
     docdb::NonTransactionalBatchWriter batcher(
         put_batch, write_hybrid_time, batch_hybrid_time, intents_db_.get(), &intents_write_batch,
         GetSchemaPackingProvider(), frontiers, vector_indexes_->List().impl(), apply_to_storages,
-        table_type());
+        table_type(), &can_advance_intents_flush_op_id_);
 
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetDirectWriter(&batcher);
@@ -4347,6 +4348,25 @@ Status Tablet::MayModifyIntentsDbFlushedOpId() {
                                                      /*invalid_if_no_new_data*/ false);
   OpId intents_op_id = docdb::MaxPersistentOpIdForDb(intents_db_.get(),
                                                      /*invalid_if_no_new_data*/ false);
+
+  // Read the flag AFTER 'regular_op_id', never before. An external batch goes through these steps,
+  // in this order:
+  //   1. its entries are written into the regular db memtable M;
+  //   2. still inside that same write, NonTransactionalBatchWriter::Apply clears the flag -- and
+  //      only after Apply returns does WriteBatch::Iterate stamp M's frontier with the op id;
+  //   3. M is switched, which needs the write thread, so only after that write completes;
+  //   4. M is flushed, and only now does the batch's op id reach regular_op_id.
+  // So if 'regular_op_id' covers an external batch, the flag was cleared in step 2, before its op
+  // id was even stamped into M's frontier -- this load must read false. Reading the flag before
+  // 'regular_op_id' has no such ordering: with multiple flush threads, an earlier flush's listener
+  // could pass the check while a later flush covers the batch, bringing the bug back.
+  //
+  // Conversely, if the flag is true here, nothing covered by 'regular_op_id' is waiting for an
+  // intents db write => advancing the intents flushed op id up to 'regular_op_id' is safe.
+  if (!can_advance_intents_flush_op_id_.load(std::memory_order_acquire)) {
+    VLOG_WITH_PREFIX(4) << "Skip updating intents DB flushed op id: external intents write seen";
+    return Status::OK();
+  }
 
   auto intents_flush_ability = intents_db_->GetFlushAbility();
   VLOG_WITH_PREFIX(4) << "regular_op_id: " << regular_op_id << ", intents_op_id: " << intents_op_id
