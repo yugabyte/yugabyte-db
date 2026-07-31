@@ -10,20 +10,33 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <stdint.h>
+#include <atomic>
+#include <memory>
+#include <optional>
+#include <set>
+#include <string>
+#include <vector>
+
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/xcluster_types.h"
-
 #include "yb/client/client_fwd.h"
-
 #include "yb/consensus/opid_util.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
-#include "yb/tserver/tserver.fwd.h"
 #include "yb/tserver/xcluster_async_executor.h"
-#include "yb/tserver/xcluster_write_interface.h"
-
 #include "yb/util/format.h"
+#include "yb/cdc/cdc_types.h"
+#include "yb/client/meta_cache.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.pb.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/util/locks.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 #pragma once
 
@@ -36,8 +49,19 @@ class RateLimiter;
 namespace yb {
 
 class ThreadPool;
+class SchemaPB;
+namespace client {
+class YBClient;
+class YBTable;
+}  // namespace client
+namespace rpc {
+class Rpcs;
+}  // namespace rpc
 
 namespace tserver {
+class GetCompatibleSchemaVersionRequestPB;
+class GetCompatibleSchemaVersionResponsePB;
+class XClusterWriteInterface;
 
 struct XClusterOutputClientResponse {
   Status status;

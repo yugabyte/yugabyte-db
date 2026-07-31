@@ -19,12 +19,23 @@
 //
 
 #pragma once
-#include <vector>
+#include <stddef.h>
+#include <stdint.h>
 #include <string>
 
 #include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/compaction.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace rocksdb {
+class ColumnFamilyData;
+class Comparator;
+class Version;
+struct DBOptions;
+struct Options;
 
 class CompactedDBImpl : public DBImpl {
  public:

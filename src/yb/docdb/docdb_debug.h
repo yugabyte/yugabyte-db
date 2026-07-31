@@ -13,25 +13,27 @@
 
 #pragma once
 
-#include <stddef.h>
-#include <stdint.h>
-
-#include <memory>
 #include <ostream>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
-#include "yb/docdb/doc_operation.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_types.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
 
-#include "yb/rocksdb/iterator.h"
-#include "yb/rocksdb/listener.h"
+namespace rocksdb {
+class DB;
+class Iterator;
+}  // namespace rocksdb
 
 namespace yb {
 namespace docdb {
+class SchemaPackingProvider;
+struct DocDB;
+struct DocOperationApplyData;
 
 std::string EntryToString(
     const rocksdb::Iterator& iterator,

@@ -14,27 +14,24 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <cstdint>
 #include <functional>
 #include <list>
 #include <memory>
 #include <string>
 #include <utility>
+#include <unordered_map>
 
 #include "yb/common/schema.h"
-
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
-
-#include "yb/qlexpr/ql_expr.h"
-
 #include "yb/util/result.h"
-#include "yb/util/status_fwd.h"
-
 #include "yb/yql/pggate/pg_memctx.h"
 #include "yb/yql/pggate/pg_session_fwd.h"
-#include "yb/yql/pggate/pg_value.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/common/value.pb.h"
+#include "yb/util/status.h"
 
 namespace yb::pggate {
 

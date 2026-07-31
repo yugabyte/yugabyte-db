@@ -15,27 +15,22 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <future>
 #include <memory>
-
-#include "yb/client/client_fwd.h"
+#include <chrono>
+#include <functional>
+#include <string>
 
 #include "yb/common/hybrid_time.h"
-
 #include "yb/docdb/deadlock_detector.h"
-
-#include "yb/gutil/ref_counted.h"
-
 #include "yb/server/server_fwd.h"
-
-#include "yb/tablet/tablet_fwd.h"
-
-#include "yb/tserver/tserver_fwd.h"
-#include "yb/tserver/tserver_service.pb.h"
-
 #include "yb/util/metrics_fwd.h"
-#include "yb/util/status_fwd.h"
-#include "yb/util/enums.h"
+#include "yb/common/transaction.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace google {
 namespace protobuf {
@@ -46,7 +41,27 @@ class RepeatedPtrField;
 
 
 namespace yb {
+namespace client {
+class YBClient;
+}  // namespace client
+namespace server {
+class Clock;
+}  // namespace server
+namespace tserver {
+class GetOldTransactionsRequestPB;
+class GetOldTransactionsResponsePB;
+class GetTransactionStatusResponsePB;
+class ProbeTransactionDeadlockRequestPB;
+class ProbeTransactionDeadlockResponsePB;
+class UpdateTransactionWaitingForStatusRequestPB;
+class UpdateTransactionWaitingForStatusResponsePB;
+}  // namespace tserver
+struct OpId;
+
 namespace tablet {
+class LWTransactionStatePB;
+class TabletMetrics;
+class UpdateTxnOperation;
 
 // Get current transaction timeout.
 std::chrono::microseconds GetTransactionTimeout();
@@ -177,6 +192,7 @@ class TransactionCoordinator {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

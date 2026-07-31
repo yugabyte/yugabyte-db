@@ -11,26 +11,56 @@
 // under the License.
 //
 
-#include "yb/client/client.h"
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <chrono>
+#include <functional>
+#include <map>
+#include <memory>
+#include <ratio>
+#include <string>
+#include <thread>
+#include <utility>
+#include <vector>
 
+#include "yb/client/client.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/raft_consensus.h"
-
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/client/table_handle.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.h"
+#include "yb/consensus/log.pb.h"
+#include "yb/consensus/log_fwd.h"
+#include "yb/consensus/log_util.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/walltime.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tsan_util.h"
+
+namespace yb {
+namespace client {
+class YBTableName;
+}  // namespace client
+}  // namespace yb
 
 using std::string;
 using namespace std::literals;

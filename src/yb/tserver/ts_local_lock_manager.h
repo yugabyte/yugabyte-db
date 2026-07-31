@@ -15,31 +15,56 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <memory>
+#include <functional>
+#include <optional>
+#include <ostream>
+#include <unordered_map>
 
-#include "yb/common/common_fwd.h"
 #include "yb/common/transaction.h"
-
 #include "yb/docdb/object_lock_shared_fwd.h"
-
 #include "yb/server/clock.h"
-#include "yb/server/server_fwd.h"
-
-#include "yb/tserver/tablet_server_interface.h"
-#include "yb/tserver/tserver.pb.h"
-
-#include "yb/util/metrics.h"
 #include "yb/util/status_callback.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/object_lock_data.h"
+#include "yb/util/metrics_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace google {
+namespace protobuf {
+template <typename T> class RepeatedPtrField;
+}  // namespace protobuf
+}  // namespace google
 
 namespace yb {
 
 class ObjectLockTracker;
 class ThreadPool;
+class ObjectLockInfoPB;
+namespace client {
+class YBClient;
+}  // namespace client
+namespace docdb {
+class LocalWaitingTxnRegistry;
+class ObjectLockPB;
+class ObjectLockSharedStateManager;
+}  // namespace docdb
+namespace server {
+class RpcServerBase;
+}  // namespace server
 
 namespace master {
 class ReleaseObjectLocksGlobalRequestPB;
 }
 namespace tserver {
+class AcquireObjectLockRequestPB;
+class DdlLockEntriesPB;
+class ReleaseObjectLockRequestPB;
+class TabletServerIf;
+
 // LockManager for acquiring table/object locks of type TableLockType on a given object id.
 // TSLocalLockManager uses LockManagerImpl<ObjectLockPrefix> to acheive the locking/unlocking
 // behavior, yet the scope of the object lock is not just limited to the scope of the lock rpc
@@ -130,6 +155,7 @@ class TSLocalLockManager {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

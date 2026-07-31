@@ -78,6 +78,14 @@
 #endif
 
 #include <inttypes.h>
+#include <assert.h>
+#include <glog/logging.h>
+#include <string.h>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "yb/rocksdb/db/builder.h"
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/dbformat.h"
@@ -98,8 +106,22 @@
 #include "yb/rocksdb/table/table_reader.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/logging.h"
-
 #include "yb/util/status_log.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/db/column_family.h"
+#include "yb/rocksdb/db/table_properties_collector.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/rocksdb/table/internal_iterator.h"
+#include "yb/rocksdb/table_properties.h"
+#include "yb/rocksdb/types.h"
+#include "yb/rocksdb/util/arena.h"
+#include "yb/rocksdb/util/mutable_cf_options.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/util/file_system.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 using std::unique_ptr;
 

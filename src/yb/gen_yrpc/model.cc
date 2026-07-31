@@ -14,15 +14,16 @@
 #include "yb/gen_yrpc/model.h"
 
 #include <boost/algorithm/string/predicate.hpp>
-
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/descriptor.pb.h>
+#include <utility>
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/split.h"
-
 #include "yb/rpc/service.pb.h"
+#include "yb/gutil/strings/stringpiece.h"
+#include "yb/rpc/lightweight_message.pb.h"
 
 using google::protobuf::internal::WireFormatLite;
 

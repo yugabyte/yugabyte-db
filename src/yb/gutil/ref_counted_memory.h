@@ -19,12 +19,13 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <string>
 #include <vector>
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/port.h"
+#include "yb/gutil/threading/thread_collision_warner.h"
 
 #ifndef BASE_EXPORT
 #define BASE_EXPORT

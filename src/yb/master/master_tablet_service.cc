@@ -13,26 +13,42 @@
 
 #include "yb/master/master_tablet_service.h"
 
-#include <optional>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <chrono>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <string_view>
+#include <unordered_set>
+#include <utility>
 
 #include "yb/common/common_flags.h"
 #include "yb/common/entity_ids.h"
-#include "yb/common/wire_protocol.h"
-
 #include "yb/dockv/doc_key.h"
-
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/ysql/ysql_manager.h"
-
 #include "yb/rpc/rpc_context.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/value.messages.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/gutil/port.h"
+#include "yb/master/master_tserver.h"
+#include "yb/rpc/rpc_header.pb.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/random_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 DEFINE_test_flag(int32, ysql_catalog_write_rejection_percentage, 0,
     "Reject specified percentage of writes to the YSQL catalog tables.");

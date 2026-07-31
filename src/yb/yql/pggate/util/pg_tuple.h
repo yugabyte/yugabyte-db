@@ -14,9 +14,10 @@
 
 #pragma once
 
-#include "yb/yql/pggate/util/pg_wire.h"
-#include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include <stddef.h>
+#include <stdint.h>
 
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/util/debug-util.h"
 
 namespace yb::pggate {

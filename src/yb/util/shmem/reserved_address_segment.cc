@@ -13,19 +13,39 @@
 
 #include "yb/util/shmem/reserved_address_segment.h"
 
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <unistd.h>
+// IWYU pragma: no_include <boost/metaparse/v1/cpp11/impl/string.hpp>
+// IWYU pragma: no_include <boost/metaparse/v1/cpp11/impl/string_at.hpp>
+// IWYU pragma: no_include <boost/metaparse/v1/cpp11/string.hpp>
 
+#include <sys/mman.h>
+#include <unistd.h>
+#include <errno.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <string.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <cstddef>
+#include <atomic>
+#include <ostream>
+#include <vector>
 
 #include "yb/gutil/dynamic_annotations.h"
-
 #include "yb/util/cast.h"
 #include "yb/util/crash_point.h"
 #include "yb/util/enums.h"
-#include "yb/util/flags.h"
 #include "yb/util/math_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
@@ -34,6 +54,12 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/tsan_util.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
 
 DEFINE_test_flag(uint64, address_segment_negotiator_initial_address, 0,
                  "Used for initial address for AddressSegmentNegotiator negotiation if nonzero.");

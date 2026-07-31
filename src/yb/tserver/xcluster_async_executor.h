@@ -13,12 +13,26 @@
 
 #pragma once
 
+#include <absl/base/dynamic_annotations.h>
+#include <stdint.h>
 #include <string>
+#include <atomic>
+#include <functional>
+#include <memory>
+#include <mutex>
+
 #include "yb/rpc/rpc.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/gutil/thread_annotations.h"
+#include "yb/rpc/rpc_fwd.h"
+
+namespace yb {
+namespace rpc {
+class Messenger;
+}  // namespace rpc
+}  // namespace yb
 
 #define BIND_FUNCTION_AND_ARGS(func, ...) #func, std::bind(&func, this, ##__VA_ARGS__)
 

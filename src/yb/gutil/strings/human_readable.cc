@@ -17,8 +17,10 @@
 
 #include "yb/gutil/strings/human_readable.h"
 
-#include <stddef.h>
 #include <string.h>
+#include <glog/logging.h>
+#include <inttypes.h>
+#include <stdlib.h>
 
 #include "yb/util/logging.h"
 #include "yb/gutil/stringprintf.h"

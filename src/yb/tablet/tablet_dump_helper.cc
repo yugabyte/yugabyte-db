@@ -13,6 +13,14 @@
 
 #include "yb/tablet/tablet_dump_helper.h"
 
+#include <string.h>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <sstream>
+#include <unordered_map>
+#include <vector>
+
 #include "yb/client/client.h"
 #include "yb/common/colocated_util.h"
 #include "yb/docdb/doc_read_context.h"
@@ -24,6 +32,26 @@
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 #include "yb/qlexpr/ql_expr.h"
 #include "yb/util/status_format.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/ql_value.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/schema.h"
+#include "yb/common/transaction.h"
+#include "yb/common/types.h"
+#include "yb/common/value.pb.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/gutil/casts.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/util/faststring.h"
+#include "yb/util/file_system.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
 
 namespace yb::tablet {
 

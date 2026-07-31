@@ -14,8 +14,18 @@
 #pragma once
 
 #include <random>
+#include <vector>
 
 #include "yb/dockv/dockv_fwd.h"
+#include "yb/common/value.pb.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/dockv/value_type.h"
+
+namespace yb {
+enum class DataType;
+}  // namespace yb
 
 namespace yb::dockv {
 

@@ -14,19 +14,33 @@
 #include "yb/gen_yrpc/substitutions.h"
 
 #include <boost/algorithm/string/case_conv.hpp>
-
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/descriptor.pb.h>
+#include <google/protobuf/wire_format_lite.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/iterator/iterator_facade.hpp>
+#include <algorithm>
+#include <cctype>
+#include <optional>
+#include <unordered_set>
+#include <utility>
+#include <functional>
 
 #include "yb/gen_yrpc/model.h"
-
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/strings/split.h"
-
 #include "yb/rpc/service.pb.h"
-
 #include "yb/util/format.h"
 #include "yb/util/string_case.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+namespace rpc {
+enum RpcSides : int;
+}  // namespace rpc
+}  // namespace yb
 
 using std::string;
 

@@ -13,6 +13,10 @@
 
 #include "yb/client/table_handle.h"
 
+#include <glog/logging.h>
+#include <algorithm>
+#include <ostream>
+
 #include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/schema.h"
@@ -20,17 +24,20 @@
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/dockv/partition.h"
 #include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
-
 #include "yb/master/master_client.pb.h"
-
-#include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/ql_value.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
 
 using std::string;
 

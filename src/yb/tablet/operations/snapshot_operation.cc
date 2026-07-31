@@ -2,25 +2,36 @@
 
 #include "yb/tablet/operations/snapshot_operation.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <google/protobuf/stubs/port.h>
+#include <functional>
+#include <memory>
+#include <ostream>
+
 #include "yb/common/snapshot.h"
-
-#include "yb/consensus/consensus_round.h"
 #include "yb/consensus/consensus.messages.h"
-
 #include "yb/docdb/consensus_frontier.h"
-
 #include "yb/tablet/snapshot_coordinator.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_snapshots.h"
-
 #include "yb/tserver/backup.pb.h"
 #include "yb/tserver/tserver_error.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
+#include "yb/common/opid.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/gutil/macros.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/types.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/path_util.h"
+#include "yb/util/slice.h"
 
 using std::string;
 

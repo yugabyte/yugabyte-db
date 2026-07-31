@@ -14,10 +14,14 @@
 #pragma once
 
 #include <memory>
+#include <string>
 
-#include "yb/rpc/rpc_fwd.h"
-
-#include "yb/util/monotime.h"
+namespace yb {
+class MonoDelta;
+namespace rpc {
+class Reactor;
+}  // namespace rpc
+}  // namespace yb
 
 namespace yb::rpc {
 
@@ -30,6 +34,7 @@ class ReactorMonitor {
   void Track(Reactor& reactor);
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

@@ -13,11 +13,47 @@
 
 #include "yb/yql/redis/redisserver/redis_service.h"
 
-#include <thread>
-
 #include <boost/algorithm/string/case_conv.hpp>
 #include <boost/lockfree/queue.hpp>
-#include <boost/thread/locks.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <boost/container/small_vector.hpp>
+#include <boost/iterator/iterator_facade.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/stringize.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/thread/lock_guard.hpp>
+#include <thread>
+#include <array>
+#include <atomic>
+#include <cctype>
+#include <chrono>
+#include <cmath>
+#include <deque>
+#include <functional>
+#include <mutex>
+#include <ratio>
+#include <sstream>
+#include <string_view>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "yb/client/client.h"
 #include "yb/client/error.h"
@@ -27,20 +63,14 @@
 #include "yb/client/table.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/redis_protocol.pb.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/master/master_heartbeat.pb.h"
-
 #include "yb/rpc/connection.h"
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/mc_types.h"
@@ -49,10 +79,52 @@
 #include "yb/util/result.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
-
 #include "yb/yql/redis/redisserver/redis_commands.h"
 #include "yb/yql/redis/redisserver/redis_encoding.h"
 #include "yb/yql/redis/redisserver/redis_rpc.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/redis_protocol.messages.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/join.h"
+#include "yb/gutil/strings/strcat.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/rpc/outbound_data.h"
+#include "yb/rpc/rpc_service.h"
+#include "yb/rpc/service_if.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/util/atomic.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/rw_semaphore.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
+#include "yb/yql/redis/redisserver/redis_fwd.h"
+#include "yb/yql/redis/redisserver/redis_server.h"
+
+namespace yb {
+namespace client {
+class YBSchema;
+class YBStatusCallback;
+}  // namespace client
+}  // namespace yb
 
 using std::string;
 using std::vector;
@@ -361,6 +433,7 @@ class SessionPool {
 };
 
 class Block;
+
 typedef std::shared_ptr<Block> BlockPtr;
 
 class Block : public std::enable_shared_from_this<Block> {

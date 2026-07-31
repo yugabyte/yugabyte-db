@@ -15,32 +15,52 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <atomic>
-#include <mutex>
-#include <memory>
 #include <optional>
-#include <utility>
+#include <string>
+#include <string_view>
+#include <unordered_map>
 
-#include "yb/common/clock.h"
-#include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
-
-#include "yb/docdb/object_lock_shared_fwd.h"
-
 #include "yb/gutil/ref_counted.h"
-
-#include "yb/tserver/pg_client.fwd.h"
 #include "yb/tserver/pg_client.pb.h"
-#include "yb/tserver/tserver_fwd.h"
-
 #include "yb/util/enums.h"
 #include "yb/util/scope_exit.h"
-
 #include "yb/yql/pggate/pg_client.h"
-#include "yb/yql/pggate/pg_callbacks.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
-#include "yb/yql/pggate/pg_setup_perform_options_accessor_tag.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/common/pg_types.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace docdb {
+enum class ObjectLockFastpathLockType;
+}  // namespace docdb
+namespace pggate {
+class SetupPerformOptionsAccessorTag;
+struct PgDdlCommitInfo;
+}  // namespace pggate
+}  // namespace yb
 
 namespace yb::pggate {
 

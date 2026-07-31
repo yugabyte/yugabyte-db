@@ -30,27 +30,20 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <stdint.h>
 #include <atomic>
-#include <chrono>
 #include <functional>
-#include <limits>
 #include <memory>
-#include <thread>
-#include <vector>
+#include <string>
 
-#include "yb/util/flags.h"
-#include "yb/util/logging.h"
-#include <gtest/gtest.h>
-
-#include "yb/gutil/atomicops.h"
-
-#include "yb/util/blocking_queue.h"
-#include "yb/util/countdown_latch.h"
-#include "yb/util/scope_exit.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/taskstream.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/threadpool.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 using std::atomic;
 using std::string;

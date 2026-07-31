@@ -31,43 +31,55 @@
 //
 #pragma once
 
-#include <functional>
-#include <future>
+#include <stdint.h>
 #include <memory>
-#include <set>
 #include <string>
-#include <type_traits>
-#include <utility>
 #include <vector>
-
-#include <boost/range/iterator_range.hpp>
-
-#include "yb/common/common_fwd.h"
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
+#include <optional>
 
 #include "yb/consensus/consensus.service.h"
-
 #include "yb/gutil/ref_counted.h"
-
-#include "yb/rpc/rpc_context.h"
-
 #include "yb/tablet/tablet_fwd.h"
-
 #include "yb/tserver/read_query.h"
-#include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/tserver_fwd.h"
-#include "yb/tserver/tserver_admin.pb.h"
 #include "yb/tserver/tserver_admin.service.h"
 #include "yb/tserver/tserver_service.service.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
 
 namespace yb {
-class Schema;
 class Status;
-class HybridTime;
+namespace consensus {
+class LWConsensusResponsePB;
+}  // namespace consensus
+namespace rpc {
+class RpcContext;
+}  // namespace rpc
+namespace tablet {
+class ChangeMetadataRequestPB;
+class TabletPeer;
+}  // namespace tablet
 
 namespace tserver {
 
 class TabletPeerLookupIf;
 class TabletServer;
+class ChangeMetadataResponsePB;
+class ChecksumRequestPB;
+class ClonePgSchemaRequestPB;
+class ClonePgSchemaResponsePB;
+class CreateTabletRequestPB;
+class CreateTabletResponsePB;
+class EnableDbConnsRequestPB;
+class EnableDbConnsResponsePB;
+class TabletServerIf;
 
 class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvider {
  public:

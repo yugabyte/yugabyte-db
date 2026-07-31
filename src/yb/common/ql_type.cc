@@ -14,15 +14,26 @@
 #include "yb/common/ql_type.h"
 
 #include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <unordered_set>
+#include <functional>
 
 #include "yb/common/common.messages.h"
 #include "yb/common/types.h"
-
-#include "yb/gutil/macros.h"
-
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_case.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/value.pb.h"
 
 namespace yb {
 

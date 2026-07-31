@@ -13,8 +13,33 @@
 //
 //
 
-#include <shared_mutex>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/types.h>
+#include <boost/asio/ip/basic_endpoint.hpp>
+#include <boost/regex.hpp>
 #include <thread>
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <future>
+#include <initializer_list>
+#include <limits>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/error.h"
@@ -24,49 +49,37 @@
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/raft_consensus.h"
-
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_test_util.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/integration-tests/test_workload.h"
-
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_ddl.proxy.h"
-
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/types.h"
-
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/server/skewed_clock.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_retention_policy.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging_test_util.h"
@@ -77,8 +90,74 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/cql/ql/util/statement_result.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/table.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/constants.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/transaction.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/docdb/bounded_rocksdb_iterator.h"
+#include "yb/docdb/docdb_compaction_context.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/mini_master.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/options.h"
+#include "yb/server/clock.h"
+#include "yb/server/rpc_server.h"
+#include "yb/storage/frontier.h"
+#include "yb/tablet/mvcc.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/cow_object.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
 
 using std::vector;
 using std::string;

@@ -11,11 +11,14 @@
 // under the License.
 //
 
+#include <glog/logging.h>
 #include <map>
+#include <ostream>
 
 #include "yb/gutil/singleton.h"
 #include "yb/util/flags/auto_flags.h"
 #include "yb/util/flags.h"
+#include "yb/util/logging.h"
 
 using std::string;
 

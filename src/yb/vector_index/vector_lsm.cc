@@ -13,23 +13,32 @@
 
 #include "yb/vector_index/vector_lsm.h"
 
+#include <boost/function.hpp>
+#include <boost/intrusive/list.hpp>
+#include <gflags/gflags.h>
+#include <boost/intrusive/link_mode.hpp>
+#include <boost/intrusive/list_hook.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <functional>
 #include <queue>
 #include <thread>
-
-#include <boost/function.hpp>
-#include <boost/intrusive/list.hpp>
+#include <algorithm>
+#include <chrono>
+#include <compare>
+#include <iterator>
+#include <limits>
+#include <mutex>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <shared_mutex>
+#include <tuple>
 
 #include "yb/ash/wait_state.h"
-
 #include "yb/gutil/strings/human_readable.h"
-
-#include "yb/rpc/thread_pool.h"
-
 #include "yb/storage/frontier.h"
-
-#include "yb/util/countdown_latch.h"
-#include "yb/util/flags.h"
+#include "yb/util/file_system.h"
 #include "yb/util/path_util.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/scope_exit.h"
@@ -39,8 +48,29 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
-
 #include "yb/vector_index/vector_lsm_metadata.h"
+#include "yb/gutil/casts.h"
+#include "yb/util/env.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/math_util.h"
+#include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_log.h"
+#include "yb/util/std_util.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/thread_pool.h"
+#include "yb/util/tostring.h"
+#include "yb/vector_index/vector_lsm.pb.h"
+#include "yb/vector_index/vector_lsm_metrics.h"
+
+namespace boost {
+namespace intrusive {
+template <link_mode_type LinkType> struct link_mode;
+}  // namespace intrusive
+}  // namespace boost
 
 using namespace std::literals;
 using namespace yb::size_literals;

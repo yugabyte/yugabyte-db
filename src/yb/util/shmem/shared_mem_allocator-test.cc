@@ -12,15 +12,22 @@
 //
 
 #include <unistd.h>
-
-#include <cstddef>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <sys/wait.h>
+#include <boost/intrusive/slist.hpp>
 #include <limits>
-#include <map>
 #include <unordered_map>
 #include <string_view>
 #include <vector>
+#include <cstdlib>
+#include <functional>
+#include <memory>
+#include <new>
+#include <ostream>
+#include <string>
+#include <utility>
 
-#include "yb/util/backoff_waiter.h"
 #include "yb/util/cast.h"
 #include "yb/util/random_util.h"
 #include "yb/util/shmem/interprocess_semaphore.h"
@@ -29,6 +36,13 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "gtest/gtest.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/shmem/reserved_address_segment.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 using namespace std::literals;
 

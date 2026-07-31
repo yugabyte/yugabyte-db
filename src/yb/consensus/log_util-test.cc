@@ -11,10 +11,13 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <gflags/gflags.h>
+#include <string>
 
 #include "yb/consensus/log_util.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
 
 DECLARE_string(fs_data_dirs);
 

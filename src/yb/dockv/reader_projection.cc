@@ -13,8 +13,13 @@
 
 #include "yb/dockv/reader_projection.h"
 
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <memory>
+
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
+#include "yb/common/value.messages.h"
+#include "yb/util/tostring.h"
 
 namespace yb::dockv {
 

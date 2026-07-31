@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include "yb/util/flags.h"
+#include <gflags/gflags.h>
 
 static constexpr int kAutoDetectNumShardsPerTServer = -1;
 

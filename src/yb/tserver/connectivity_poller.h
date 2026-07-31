@@ -13,11 +13,18 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+
 #include "yb/server/server_fwd.h"
-#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/util/status.h"
 
 namespace yb {
 class Cgroup;
+namespace server {
+class RpcServerBase;
+}  // namespace server
 } // namespace yb
 
 namespace yb::tserver {
@@ -36,6 +43,7 @@ class ConnectivityPoller {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

@@ -32,15 +32,15 @@
 
 #include "yb/master/master-test_base.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <memory>
-
-#include <gtest/gtest.h>
+#include <functional>
+#include <ostream>
 
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/master.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster_client.h"
@@ -48,15 +48,28 @@
 #include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/ts_descriptor.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "gtest/gtest.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/env.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/test_macros.h"
+
+namespace yb {
+class Schema;
+}  // namespace yb
 
 using std::make_shared;
 

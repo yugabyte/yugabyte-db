@@ -13,26 +13,25 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <vector>
 #include <string>
 
-#include "yb/util/flags.h"
-
-#include "yb/master/master_fwd.h"
 #include "yb/master/table_index.h"
-
-#include "yb/tablet/tablet_fwd.h"
-
-#include "yb/tserver/tserver_fwd.h"
-#include "yb/tserver/tserver_admin.fwd.h"
-
-#include "yb/util/status_fwd.h"
+#include "yb/tablet/operations.pb.h"
+#include "yb/util/status.h"
 
 namespace yb {
+namespace tablet {
+class Tablet;
+class TabletPeer;
+}  // namespace tablet
+
 namespace master {
 
 struct LeaderEpoch;
 class YsqlManagerIf;
+class SysCatalogTable;
 
 // Used by the catalog manager to prepare an initial sys catalog snapshot.
 class InitialSysCatalogSnapshotWriter {

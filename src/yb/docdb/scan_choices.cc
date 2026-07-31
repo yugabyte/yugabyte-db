@@ -13,25 +13,28 @@
 
 #include "yb/docdb/scan_choices.h"
 
-#include "yb/common/schema.h"
+#include <absl/base/dynamic_annotations.h>
+#include <glog/logging.h>
+#include <memory>
+#include <ostream>
 
-#include "yb/docdb/doc_ql_scanspec.h"
-#include "yb/docdb/doc_pgsql_scanspec.h"
+#include "yb/common/schema.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/hybrid_scan_choices.h"
-
-#include "yb/dockv/doc_key.h"
-#include "yb/dockv/doc_path.h"
-#include "yb/dockv/value_type.h"
-
-#include "yb/qlexpr/doc_scanspec_util.h"
 #include "yb/qlexpr/ql_scanspec.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/dockv/key_bytes.h"
 
 namespace yb {
+namespace dockv {
+class DocKey;
+class DocKeyDecoder;
+class KeyEntryValue;
+enum class KeyEntryType;
+struct KeyEntryTypeAsChar;
+}  // namespace dockv
 
 int TEST_scan_trivial_expectation = -1;
 

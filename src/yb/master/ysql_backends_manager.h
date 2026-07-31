@@ -14,28 +14,49 @@
 #ifndef YB_MASTER_YSQL_BACKENDS_MANAGER_H
 #define YB_MASTER_YSQL_BACKENDS_MANAGER_H
 
+#include <stdint.h>
+#include <sys/types.h>
 #include <map>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <atomic>
+#include <mutex>
+#include <functional>
 
 #include "yb/ash/wait_state.h"
 #include "yb/common/pg_types.h"
 #include "yb/gutil/thread_annotations.h"
-#include "yb/master/async_rpc_tasks.h"
-#include "yb/master/master.h"
-#include "yb/master/master_admin.pb.h"
-#include "yb/master/object_lock_info_manager.h"
-#include "yb/rpc/rpc_context.h"
 #include "yb/server/monitored_task.h"
+#include "yb/ash/ash_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/master/async_rpc_tasks_base.h"
+#include "yb/tserver/tserver_admin.pb.h"
+#include "yb/util/condition_variable.h"
+#include "yb/util/locks.h"
+#include "yb/util/monotime.h"
+#include "yb/util/mutex.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class ThreadPool;
+
+namespace rpc {
+class RpcContext;
+}  // namespace rpc
+
 namespace master {
 
 class BackendsCatalogVersionJob;
-class BackendsCatalogVersionTS;
+class AccessYsqlBackendsManagerTestRegisterRequestPB;
+class AccessYsqlBackendsManagerTestRegisterResponsePB;
+class Master;
+class ObjectLockInfoManager;
+class WaitForYsqlBackendsCatalogVersionRequestPB;
+class WaitForYsqlBackendsCatalogVersionResponsePB;
 
 // YSQL Backends Manager receives WaitForYsqlBackendsCatalogVersion requests from clients and
 // queries tservers to gather the information to fulfill those requests.  It uses an async model on

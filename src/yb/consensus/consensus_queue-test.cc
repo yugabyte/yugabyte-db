@@ -30,28 +30,70 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
-
 #include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/log-test-base.h"
 #include "yb/consensus/log_anchor_registry.h"
-#include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/replicate_msgs_holder.h"
-
 #include "yb/fs/fs_manager.h"
-
 #include "yb/server/hybrid_clock.h"
-
 #include "yb/util/metrics.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.messages.h"
+#include "yb/common/opid.pb.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus.messages.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_types.messages.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/log.h"
+#include "yb/consensus/log_cache.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/opid_util.h"
+#include "yb/consensus/raft_consensus.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/thread_pool.h"
+#include "yb/server/clock.h"
+#include "yb/tserver/tserver_types.messages.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/restart_safe_clock.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strand.h"
+#include "yb/util/thread_pool.h"
 
 using std::string;
 

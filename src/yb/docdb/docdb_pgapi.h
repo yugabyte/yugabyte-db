@@ -23,24 +23,19 @@
 
 #pragma once
 
-#include <map>
+#include <stdint.h>
 #include <string>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
-#include "yb/common/column_id.h"
-#include "yb/common/common_fwd.h"
-#include "yb/common/pgsql_error.h"
-
-#include "yb/dockv/dockv_fwd.h"
-
 #include "yb/master/master_replication.pb.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
-#include "yb/qlexpr/qlexpr_fwd.h"
-
-#include "yb/util/status_fwd.h"
-#include "yb/util/decimal.h"
+namespace yb {
+class DatumMessagePB;
+class QLValuePB;
+}  // namespace yb
 
 namespace yb::docdb {
 

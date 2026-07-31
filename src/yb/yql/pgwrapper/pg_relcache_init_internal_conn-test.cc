@@ -18,18 +18,21 @@
 // (pg_yb_utils.c YbUseMinimalCatalogCachesPreload) and the recursion gate
 // (relcache.c RelationCacheInitializePhase3) key off.
 
+#include <stddef.h>
 #include <optional>
 #include <string>
-
-#include <gtest/gtest.h>
+#include <memory>
+#include <string_view>
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
-
 #include "yb/util/test_macros.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb::pgwrapper {
 

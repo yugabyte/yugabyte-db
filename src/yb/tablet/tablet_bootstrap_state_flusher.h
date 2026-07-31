@@ -13,15 +13,41 @@
 
 #pragma once
 
-#include "yb/consensus/retryable_requests.h"
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <atomic>
+#include <condition_variable>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <utility>
 
-#include "yb/util/status_fwd.h"
 #include "yb/util/threadpool.h"
-
-#include "yb/tablet/tablet_bootstrap_state_manager.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/enums.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+namespace consensus {
+class RaftConsensus;
+}  // namespace consensus
+
 namespace tablet {
+class TabletBootstrapStateManager;
 
 // State change:
 // submit flush task: IDLE -> SUBMITTED

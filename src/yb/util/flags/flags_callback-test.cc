@@ -11,9 +11,16 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <string>
+
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/flags.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
 
 DEFINE_RUNTIME_bool(cb_test, false, "test flag");
 static bool global1_called = false;

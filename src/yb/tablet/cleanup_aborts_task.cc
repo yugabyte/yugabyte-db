@@ -13,15 +13,28 @@
 
 #include "yb/tablet/cleanup_aborts_task.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/uuid/uuid.hpp>
+#include <chrono>
+#include <ostream>
+#include <thread>
+#include <unordered_set>
+#include <utility>
+
 #include "yb/tablet/transaction_intent_applier.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/transaction_participant_context.h"
-
 #include "yb/util/callsite_profiling.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 using namespace std::literals;
 

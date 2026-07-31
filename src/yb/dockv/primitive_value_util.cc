@@ -12,17 +12,21 @@
 //
 #include "yb/dockv/primitive_value_util.h"
 
-#include "yb/qlexpr/ql_expr.h"
+#include <glog/logging.h>
+#include <ostream>
+#include <string>
+
 #include "yb/common/ql_value.h"
-#include "yb/common/pgsql_protocol.messages.h"
 #include "yb/common/schema.h"
-
 #include "yb/dockv/key_entry_value.h"
-#include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/status.h"
 
 namespace yb::dockv {
 

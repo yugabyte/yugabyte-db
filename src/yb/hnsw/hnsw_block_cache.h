@@ -13,13 +13,29 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <cstddef>
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "yb/hnsw/types.h"
-
-#include "yb/rocksdb/rocksdb_fwd.h"
-
-#include "yb/util/env.h"
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace rocksdb {
+class Cache;
+}  // namespace rocksdb
+namespace yb {
+class Env;
+class RandomAccessFile;
+namespace hnsw {
+class BlockCache;
+}  // namespace hnsw
+}  // namespace yb
 
 namespace yb::hnsw {
 

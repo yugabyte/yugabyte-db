@@ -13,10 +13,12 @@
 
 #include "yb/rpc/connection_context.h"
 
-#include "yb/rpc/connection.h"
+#include <gflags/gflags.h>
 
+#include "yb/rpc/connection.h"
+#include "yb/util/format.h"
 #include "yb/util/mem_tracker.h"
-#include "yb/util/flags.h"
+#include "yb/util/flags/flag_tags.h"
 
 DEFINE_UNKNOWN_int64(read_buffer_memory_limit, -5,
              "Overall limit for read buffers. "

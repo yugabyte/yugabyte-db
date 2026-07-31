@@ -15,13 +15,15 @@
 #pragma once
 
 #include <signal.h>
-
+#include <glog/logging.h>
 #include <vector>
 #include <type_traits>
+#include <ostream>
+#include <utility>
 
 #include "yb/util/logging.h"
-
 #include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

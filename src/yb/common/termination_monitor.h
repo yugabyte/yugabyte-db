@@ -12,12 +12,14 @@
 
 #pragma once
 
+#include <ev++.h>
 #include <mutex>
 #include <condition_variable>
-#include <ev++.h>
+#include <memory>
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/thread_annotations.h"
+#include "yb/gutil/macros.h"
 
 namespace yb {
 

@@ -12,7 +12,14 @@
 //
 
 #include "yb/docdb/conflict_data.h"
+
+#include <glog/logging.h>
+
 #include "yb/common/transaction.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/util/cast.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 
 namespace yb::docdb {
 

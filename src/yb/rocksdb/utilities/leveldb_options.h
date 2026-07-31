@@ -33,8 +33,6 @@ class Env;
 class FilterPolicy;
 class Logger;
 struct Options;
-class Snapshot;
-
 enum CompressionType : char;
 
 // Options to control the behavior of a database (passed to

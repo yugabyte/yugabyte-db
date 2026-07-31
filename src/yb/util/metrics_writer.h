@@ -15,12 +15,26 @@
 
 #pragma once
 
-#include "yb/util/metrics_aggregator.h"
-#include "yb/util/prometheus_metric_filter.h"
+#include <stdint.h>
+#include <memory>
+#include <optional>
+#include <sstream>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <functional>
+
+#include "yb/util/metric_entity.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
 YB_STRONGLY_TYPED_BOOL(ExportHelpAndType);
+class MetricPrototype;
+class MetricsAggregator;
+class PrometheusMetricFilter;
 
 class PrometheusWriter {
  public:

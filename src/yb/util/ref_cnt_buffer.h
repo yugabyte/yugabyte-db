@@ -15,15 +15,16 @@
 
 #pragma once
 
-#include <stdlib.h>
-#include <string.h>
-
+#include <glog/logging.h>
+#include <stdint.h>
 #include <atomic>
 #include <string>
+#include <algorithm>
+#include <cstddef>
+#include <utility>
 
-#include "yb/util/hash_util.h"
-#include "yb/util/logging.h"
 #include "yb/util/slice.h"
+#include "yb/gutil/strings/fastmem.h"
 
 namespace yb {
 

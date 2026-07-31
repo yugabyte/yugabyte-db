@@ -33,9 +33,13 @@
 #pragma once
 
 #include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
-#include "yb/util/status_fwd.h"
 #include "yb/util/result.h"
+#include "yb/util/status.h"
+
 namespace yb {
 
 class Env;

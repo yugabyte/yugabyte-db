@@ -16,15 +16,17 @@
 #include <memory>
 
 #include "yb/common/common.pb.h"
-
 #include "yb/hnsw/hnsw_fwd.h"
-
-#include "yb/util/result.h"
-
-#include "yb/vector_index/hnsw_options.h"
 #include "yb/vector_index/coordinate_types.h"
 #include "yb/vector_index/vector_index_if.h"
-#include "yb/vector_index/vector_index_wrapper_util.h"
+#include "yb/vector_index/distance.h"
+
+namespace yb {
+class MemTracker;
+namespace vector_index {
+struct HNSWOptions;
+}  // namespace vector_index
+}  // namespace yb
 
 namespace yb::ann_methods {
 

@@ -13,14 +13,18 @@
 
 #pragma once
 
-#include "yb/rpc/strand.h"
+#include <atomic>
+#include <string>
 
 #include "yb/tablet/running_transaction_context.h"
-
 #include "yb/util/operation_counter.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/strand.h"
 
 namespace yb {
 namespace tablet {
+class TransactionIntentApplier;
+struct TransactionApplyData;
 
 // Used by RunningTransaction to apply its intents.
 class ApplyIntentsTask : public rpc::StrandTask {

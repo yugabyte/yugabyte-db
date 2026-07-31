@@ -23,7 +23,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "yb/yql/pggate/util/ybc_guc.h"
+#include "yb/yql/pggate/util/ybc_guc.h"  // IWYU pragma: keep
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 #ifdef __cplusplus

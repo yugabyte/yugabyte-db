@@ -13,12 +13,14 @@
 
 #include "yb/rpc/poller.h"
 
-#include "yb/rpc/scheduler.h"
+#include <glog/logging.h>
+#include <ostream>
 
+#include "yb/rpc/scheduler.h"
 #include "yb/util/callsite_profiling.h"
-#include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/unique_lock.h"
+#include "yb/util/status.h"
 
 using namespace std::placeholders;
 

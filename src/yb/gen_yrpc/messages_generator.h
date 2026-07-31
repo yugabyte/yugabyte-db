@@ -13,13 +13,19 @@
 
 #pragma once
 
-#include <unordered_map>
-#include <unordered_set>
 
-#include "yb/gen_yrpc/printer.h"
+
+#include <memory>
+
+namespace google {
+namespace protobuf {
+class FileDescriptor;
+}  // namespace protobuf
+}  // namespace google
 
 namespace yb {
 namespace gen_yrpc {
+class YBPrinter;
 
 class MessagesGenerator {
  public:

@@ -32,18 +32,21 @@
 
 #include "yb/tablet/operations/operation.h"
 
+#include <ostream>
+#include <type_traits>
+
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_round.h"
-
 #include "yb/tablet/tablet.h"
-
 #include "yb/tserver/tserver_error.h"
-
 #include "yb/util/async_util.h"
 #include "yb/util/logging.h"
-#include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
+#include "yb/server/clock.h"
+#include "yb/tablet/mvcc.h"
+#include "yb/util/format.h"
+#include "yb/util/memory/arena.h"
 
 namespace yb {
 namespace tablet {

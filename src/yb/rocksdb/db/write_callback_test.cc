@@ -19,22 +19,29 @@
 //
 
 
+#include <stdint.h>
 #include <atomic>
 #include <string>
 #include <utility>
 #include <vector>
+#include <functional>
+#include <initializer_list>
+#include <thread>
 
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/write_callback.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/write_batch.h"
-#include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-
 #include "yb/util/sync_point.h"
-#include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/db/write_thread.h"
+#include "yb/rocksdb/options.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 using std::atomic;
 using std::string;

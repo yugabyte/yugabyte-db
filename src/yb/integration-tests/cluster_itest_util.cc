@@ -32,18 +32,20 @@
 
 #include "yb/integration-tests/cluster_itest_util.h"
 
-#include <stdint.h>
-
+#include <glog/stl_logging.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <algorithm>
 #include <limits>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
-
-#include <glog/stl_logging.h>
-#include <gtest/gtest.h>
+#include <compare>
+#include <functional>
+#include <iterator>
+#include <ostream>
+#include <ratio>
 
 #include "yb/client/schema.h"
 #include "yb/client/client.h"
@@ -51,23 +53,18 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
-
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_types.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
-
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/external_mini_cluster.h"
-
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_client.pb.h"
@@ -75,35 +72,60 @@
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_util.h"
 #include "yb/master/mini_master.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/server/server_base.proxy.h"
-
-#include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/backup.proxy.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tablet_server_test_util.h"
 #include "yb/tserver/tserver_admin.proxy.h"
-#include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/enums.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
-#include "yb/util/net/net_fwd.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.pb.h"
+#include "yb/common/schema.h"
+#include "yb/common/transaction.h"
+#include "yb/common/value.messages.h"
+#include "yb/consensus/consensus.messages.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_types.messages.h"
+#include "yb/consensus/metadata.messages.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/port.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_ddl_client.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/tablet/tablet.pb.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tserver.messages.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_admin.pb.h"
+#include "yb/tserver/tserver_types.messages.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
+#include "yb/util/tsan_util.h"
+#include "yb/consensus/consensus.h"
+
+namespace yb {
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+}  // namespace yb
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int32(heartbeat_interval_ms);

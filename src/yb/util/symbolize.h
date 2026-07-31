@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <string>
+
 #include "yb/util/stack_trace.h"
 
 namespace yb {

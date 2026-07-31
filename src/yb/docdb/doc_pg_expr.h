@@ -16,17 +16,23 @@
 #include <functional>
 #include <memory>
 #include <vector>
-
-#include "yb/common/pgsql_protocol.fwd.h"
-#include "yb/dockv/dockv_fwd.h"
+#include <optional>
 
 #include "yb/qlexpr/ql_expr.h"
-
 #include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/memory/arena_fwd.h"
 
 namespace yb {
 class Schema;
+class LWPgsqlColRefPB;
+class LWPgsqlExpressionPB;
+class PgsqlColRefPB;
+class PgsqlExpressionPB;
+namespace dockv {
+class PgTableRow;
+struct ReaderProjection;
+}  // namespace dockv
 
 namespace docdb {
 

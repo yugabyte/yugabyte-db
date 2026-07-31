@@ -25,7 +25,7 @@
 
 #include <assert.h>         // for use with down_cast<>
 #include <string.h>         // for memcpy
-
+#include <limits.h>
 #include <limits>
 #include <string>
 #include <type_traits>

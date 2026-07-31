@@ -10,10 +10,23 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/cdc/cdc_service.pb.h"
-#include "yb/cdc/cdc_state_table.h"
+#include <stdint.h>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <tuple>
+#include <vector>
+
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "libpq-fe.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/postgres-minicluster.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 namespace yb {
 namespace cdc {

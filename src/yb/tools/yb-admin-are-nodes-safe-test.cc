@@ -10,15 +10,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include <gtest/gtest.h>
+#include <memory>
+#include <string>
 
-#include "yb/integration-tests/cql_test_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
-
 #include "yb/tools/admin-test-base.h"
-
-#include "yb/util/status_format.h"
-#include "yb/util/subprocess.h"
+#include "gtest/gtest.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
 
 namespace yb::tools {
 

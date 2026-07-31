@@ -34,14 +34,15 @@
 #include <semaphore.h>
 #if defined(__APPLE__)
 #include <dispatch/dispatch.h>
+
 #include "yb/util/atomic.h"
 #endif  // define(__APPLE__)
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
-#include "yb/util/monotime.h"
 
 namespace yb {
+class MonoDelta;
 
 // Wrapper for POSIX semaphores.
 class Semaphore {

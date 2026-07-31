@@ -30,15 +30,20 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <gtest/gtest.h>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
+#include <functional>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/util/rwc_lock.h"
 #include "yb/util/test_util.h"
 #include "yb/util/locks.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
 

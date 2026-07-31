@@ -13,16 +13,22 @@
 
 #include "yb/util/symbolize.h"
 
+#include <cxxabi.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
 #ifdef __linux__
 #include <backtrace.h>
 #endif // __linux__
 
 #include <string>
-#include <thread>
+#include <initializer_list>
+#include <mutex>
 
-#include "yb/util/flags.h"
 #include "yb/util/stack_trace.h"
 #include "yb/util/libbacktrace_util.h"
+#include "yb/gutil/stringprintf.h"
 
 // A hack to grab a couple of useful functions from glog.
 // TODO: consider switching to the corresponding functions from Abseil.

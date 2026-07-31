@@ -13,6 +13,9 @@
 
 #include "yb/yql/cql/ql/ptree/pt_dml_using_clause.h"
 
+#include "yb/util/memory/arena.h"
+#include "yb/util/status.h"
+
 namespace yb {
 namespace ql {
 

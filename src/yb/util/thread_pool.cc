@@ -15,22 +15,31 @@
 
 #include "yb/util/thread_pool.h"
 
+#include <boost/intrusive/list.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/core/addressof.hpp>
+#include <boost/intrusive/list_hook.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
-
-#include <boost/intrusive/list.hpp>
+#include <ostream>
+#include <ranges>
+#include <thread>
 
 #include "yb/util/cgroups.h"
-#include "yb/util/debug-util.h"
-#include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread.h"
-#include "yb/util/thread_restrictions.h"
 #include "yb/util/unique_lock.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/shared_lock.h"
 
 using namespace std::literals;
 
@@ -46,7 +55,6 @@ void YBThreadPool::DisableDetailedLogging() { detailed_logging = false; }
 
 namespace {
 
-class Worker;
 struct WorkerLink;
 
 using TaskQueue = SemiFairQueue<ThreadPoolTask>;

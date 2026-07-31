@@ -31,14 +31,16 @@
 //
 #pragma once
 
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor/stringize.hpp>
 #include <cerrno>
 #include <string>
 #include <string_view>
 
-#include <gflags/gflags_declare.h>
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/status_ec.h"
+#include "yb/util/status.h"
 
 using namespace std::literals;
 

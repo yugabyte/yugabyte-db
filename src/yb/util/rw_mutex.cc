@@ -32,10 +32,13 @@
 
 #include "yb/util/rw_mutex.h"
 
+#include <errno.h>
+#include <glog/logging.h>
+#include <string.h>
 #include <mutex>
+#include <ostream>
 
 #include "yb/util/logging.h"
-
 #include "yb/gutil/map-util.h"
 #include "yb/util/env.h"
 

@@ -30,11 +30,16 @@
 // under the License.
 //
 
+#include <math.h>
+#include <stdint.h>
 #include <limits>
 #include <unordered_set>
+#include <string>
+#include <vector>
 
 #include "yb/util/random.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
 
 using std::vector;
 

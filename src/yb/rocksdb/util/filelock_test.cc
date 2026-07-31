@@ -19,16 +19,13 @@
 //
 
 #include <string>
-#include <vector>
-
-#include <gtest/gtest.h>
 
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/testharness.h"
-
-#include "yb/util/status.h"
 #include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
+#include "gtest/gtest.h"
+#include "yb/util/file_system.h"
 
 namespace rocksdb {
 

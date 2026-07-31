@@ -32,12 +32,23 @@
 
 #include "yb/consensus/raft_consensus.h"
 
+#include <absl/base/dynamic_annotations.h>
+#include <glog/logging.h>
+#include <boost/function.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
 #include <algorithm>
 #include <memory>
 #include <mutex>
+#include <chrono>
+#include <cmath>
+#include <compare>
+#include <functional>
+#include <limits>
+#include <ratio>
+#include <thread>
+#include <unordered_set>
 
 #include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_context.h"
 #include "yb/consensus/consensus_peers.h"
@@ -49,20 +60,14 @@
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/replica_state.h"
 #include "yb/consensus/state_change_context.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
-
 #include "yb/master/sys_catalog_constants.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/periodic.h"
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/server/clock.h"
-
 #include "yb/tserver/tserver_error.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/debug-util.h"
@@ -87,6 +92,39 @@
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/url-coding.h"
+#include "yb/ash/wait_state.h"
+#include "yb/common/common_consensus_util.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/opid.messages.h"
+#include "yb/common/opid.pb.h"
+#include "yb/consensus/consensus_types.h"
+#include "yb/consensus/consensus_types.messages.h"
+#include "yb/consensus/consensus_util.h"
+#include "yb/consensus/leader_lease.h"
+#include "yb/consensus/metadata.messages.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/tserver/tserver_types.messages.h"
+#include "yb/util/atomic.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/locks.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/restart_safe_clock.h"
+#include "yb/util/slice.h"
+#include "yb/util/strand.h"
+
+namespace yb {
+class MemTracker;
+namespace consensus {
+class MultiRaftManager;
+}  // namespace consensus
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+}  // namespace yb
 
 using namespace std::literals;
 using namespace std::placeholders;

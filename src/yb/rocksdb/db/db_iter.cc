@@ -23,26 +23,37 @@
 
 #include "yb/rocksdb/db/db_iter.h"
 
+#include <assert.h>
+#include <glog/logging.h>
+#include <stddef.h>
 #include <deque>
 #include <limits>
+#include <new>
+#include <ostream>
 
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/merge_operator.h"
-#include "yb/rocksdb/options.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/util/arena.h"
-#include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/stop_watch.h"
-
 #include "yb/util/logging.h"
-#include "yb/util/stack_trace.h"
 #include "yb/util/stats/perf_step_timer.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/perf_context.h"
+#include "yb/rocksdb/slice_transform.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/util/coding.h"
+#include "yb/util/byte_buffer.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
+#include "yb/rocksdb/status_fwd.h"
 
 #ifndef NDEBUG
 

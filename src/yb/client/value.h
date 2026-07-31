@@ -31,8 +31,9 @@
 //
 #pragma once
 
+#include <stdint.h>
+
 #include "yb/gutil/macros.h"
-#include "yb/gutil/port.h"
 #include "yb/util/slice.h"
 
 namespace yb {
@@ -65,6 +66,7 @@ class YBValue {
   friend class YBColumnSpec;
 
   class Data;
+
   explicit YBValue(Data* d);
 
   // Owned.

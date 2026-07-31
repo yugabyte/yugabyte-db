@@ -13,8 +13,12 @@
 
 #include "yb/util/shutdown_controller.h"
 
+#include <string_view>
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/lw_function.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 

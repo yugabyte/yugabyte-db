@@ -13,25 +13,58 @@
 
 #pragma once
 
-#include <functional>
-#include <utility>
-
 #include <boost/container/small_vector.hpp>
-
-#include "yb/common/pgsql_protocol.pb.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <functional>
+#include <optional>
+#include <string>
+#include <tuple>
 
 #include "yb/docdb/doc_expr.h"
 #include "yb/docdb/doc_operation.h"
-#include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
-
-#include "yb/util/operation_counter.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/write_buffer.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/transaction.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/qlexpr/ql_expr.h"
+#include "yb/util/format.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class ColumnSchema;
+class HybridTime;
+class LWPgsqlResponsePB;
+class Schema;
+class ScopedRWOperation;
+enum IsolationLevel : int;
+namespace docdb {
+class DocWriteBatch;
+class IntentAwareIterator;
+class LWKeyValueWriteBatchPB;
+class YQLStorageIf;
+struct DocReadContext;
+struct ReadOperationData;
+}  // namespace docdb
+namespace dockv {
+class DocPath;
+}  // namespace dockv
+namespace rpc {
+class Sidecars;
+}  // namespace rpc
+struct ReadHybridTime;
+struct ReadRestartData;
+}  // namespace yb
 
 namespace yb::docdb {
 

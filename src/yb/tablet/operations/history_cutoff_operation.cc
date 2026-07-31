@@ -13,16 +13,22 @@
 
 #include "yb/tablet/operations/history_cutoff_operation.h"
 
-#include "yb/consensus/consensus_round.h"
+#include <glog/logging.h>
+#include <memory>
+#include <ostream>
 
 #include "yb/docdb/consensus_frontier.h"
-
 #include "yb/rocksdb/db.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_retention_policy.h"
-
 #include "yb/util/logging.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/docdb/docdb_compaction_context.h"
+#include "yb/gutil/casts.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/util/result.h"
 
 namespace yb {
 namespace tablet {

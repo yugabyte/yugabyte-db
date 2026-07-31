@@ -13,8 +13,25 @@
 
 #include "yb/master/xcluster/add_table_to_xcluster_source_task.h"
 
+#include <glog/logging.h>
+#include <ostream>
+#include <utility>
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+
+namespace yb {
+namespace master {
+struct LeaderEpoch;
+}  // namespace master
+namespace rpc {
+class Messenger;
+}  // namespace rpc
+}  // namespace yb
 
 namespace yb::master {
 

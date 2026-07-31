@@ -30,25 +30,43 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <functional>
 #include <memory>
 #include <string>
-#include <unordered_map>
-
-#include <gtest/gtest.h>
+#include <chrono>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <vector>
 
 #include "yb/common/wire_protocol-test-util.h"
-#include "yb/common/wire_protocol.h"
-
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
-
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
+#include "gtest/gtest.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/integration-tests/cluster_itest_util.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
+#include "yb/tablet/tablet.pb.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 using yb::consensus::PeerMemberType;
 using yb::itest::TServerDetails;

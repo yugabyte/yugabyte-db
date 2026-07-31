@@ -11,16 +11,23 @@
 // under the License.
 //
 
+#include <glog/logging.h>
 #include <ranges>
 #include <regex>
 #include <string>
 #include <vector>
+#include <algorithm>
+#include <functional>
+#include <ostream>
+#include <utility>
 
 #include "yb/integration-tests/path_handlers_util.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/status_format.h"
+#include "yb/util/faststring.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 
 namespace yb::integration_tests::path_handlers_util {
 

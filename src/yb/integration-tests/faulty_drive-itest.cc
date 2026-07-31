@@ -12,26 +12,36 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <stddef.h>
+#include <boost/asio/ip/basic_endpoint.hpp>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <string>
+#include <thread>
 
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
-
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
-
 #include "yb/rocksdb/util/multi_drive_test_env.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/faststring.h"
 #include "yb/util/multi_drive_test_env.h"
 #include "yb/util/result.h"
+#include "gtest/gtest.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/rocksdb/env.h"
+#include "yb/util/env.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 namespace integration_tests {

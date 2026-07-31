@@ -20,7 +20,9 @@
 
 #include "yb/rocksdb/utilities/table_properties_collectors/compact_on_deletion_collector.h"
 
+#include <assert.h>
 #include <memory>
+
 #include "yb/rocksdb/utilities/table_properties_collectors.h"
 
 namespace rocksdb {

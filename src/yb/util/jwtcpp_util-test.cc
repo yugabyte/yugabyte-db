@@ -11,14 +11,22 @@
 // under the License.
 
 #include <jwt-cpp/jwt.h>
-
-#include <gtest/gtest.h>
+#include <jwt-cpp/traits/kazuho-picojson/defaults.h>
+#include <jwt-cpp/traits/kazuho-picojson/traits.h>
+#include <stdint.h>
+#include <chrono>
+#include <set>
+#include <string>
+#include <vector>
 
 #include "yb/util/format.h"
 #include "yb/util/jwtcpp_util.h"
 #include "yb/util/jwt_test_keys.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb::util {
 

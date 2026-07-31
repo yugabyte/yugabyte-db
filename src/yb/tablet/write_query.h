@@ -13,28 +13,49 @@
 
 #pragma once
 
-#include "yb/client/client_fwd.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <functional>
+#include <memory>
+#include <utility>
+#include <vector>
 
-#include "yb/docdb/docdb_fwd.h"
+#include "yb/client/client_fwd.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/lock_batch.h"
-
-#include "yb/rpc/rpc_context.h"
-
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/transaction_participant.h"
-
 #include "yb/tserver/tserver_fwd.h"
-
 #include "yb/util/operation_counter.h"
+#include "yb/client/yb_op.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/transaction.h"
+#include "yb/docdb/cql_operation.h"
+#include "yb/docdb/pgsql_operation.h"
+#include "yb/tablet/operations/write_operation.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
-namespace tablet {
+enum IsolationLevel : int;
 
-struct UpdateQLIndexesTask;
+namespace client {
+struct FlushStatus;
+}  // namespace client
+namespace rpc {
+class RpcContext;
+}  // namespace rpc
+
+namespace tablet {
+class LWWritePB;
+class WriteQueryContext;
 
 class WriteQuery {
  public:

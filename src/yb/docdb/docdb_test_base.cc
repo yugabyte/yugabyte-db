@@ -13,8 +13,11 @@
 
 #include "yb/docdb/docdb_test_base.h"
 
-#include "yb/docdb/docdb.h"
+#include <glog/logging.h>
+
 #include "yb/docdb/docdb_test_util.h"
+#include "gtest/gtest.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 namespace docdb {

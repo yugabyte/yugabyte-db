@@ -32,6 +32,8 @@
 
 #include "yb/util/atomic.h"
 
+#include <stdint.h>
+
 namespace yb {
 
 

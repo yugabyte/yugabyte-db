@@ -13,15 +13,14 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <optional>
 #include <string>
 #include <string_view>
 
 #include "yb/common/pg_types.h"
 #include "yb/common/transaction.h"
-
 #include "yb/gutil/macros.h"
-
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 

@@ -13,9 +13,12 @@
 
 #pragma once
 
-#include "yb/docdb/docdb_fwd.h"
+#include <memory>
+#include <ostream>
 
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/util/monotime.h"
+#include "yb/gutil/port.h"
 
 namespace yb::docdb {
 
@@ -44,6 +47,7 @@ class SharedLockManager {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

@@ -13,7 +13,12 @@
 
 #include "yb/docdb/docdb_filter_policy.h"
 
+#include <glog/logging.h>
+#include <utility>
+
 #include "yb/dockv/doc_key.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
 
 namespace yb::docdb {
 

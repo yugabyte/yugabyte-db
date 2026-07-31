@@ -13,21 +13,36 @@
 #pragma once
 
 #include <future>
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "yb/client/client_fwd.h"
-
-#include "yb/server/server_base_options.h"
 #include "yb/server/server_fwd.h"
-
 #include "yb/util/atomic.h"
 #include "yb/util/one_time_bool.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/server/clock.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 class Thread;
+class MemTracker;
+class MetricEntity;
+class MonoDelta;
+namespace rpc {
+class Messenger;
+}  // namespace rpc
+namespace server {
+class ServerBaseOptions;
+}  // namespace server
 
 namespace client {
 
 YB_STRONGLY_TYPED_BOOL(AutoStart);
+class YBClient;
+class YBClientBuilder;
 
 class AsyncClientInitializer {
  public:

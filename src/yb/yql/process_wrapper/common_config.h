@@ -15,12 +15,7 @@
 
 #include <string>
 
-#include "yb/fs/fs_manager.h"
-
-#include "yb/server/server_base_options.h"
-
-#include "yb/util/net/net_util.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

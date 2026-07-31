@@ -13,11 +13,19 @@
 
 #pragma once
 
-#include "yb/rpc/strand.h"
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "yb/common/transaction.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/strand.h"
 
-#include "yb/tablet/tablet_fwd.h"
+namespace yb {
+namespace tablet {
+class TransactionIntentApplier;
+}  // namespace tablet
+}  // namespace yb
 
 namespace yb::tablet {
 

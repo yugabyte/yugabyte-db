@@ -12,19 +12,41 @@
 
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_wrapper.h"
 
-#include <boost/algorithm/string.hpp>
+#include <signal.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdlib.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <memory>
+#include <mutex>
+#include <sstream>
+#include <unordered_set>
+#include <utility>
 
 #include "yb/util/env_util.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/format.h"
-#include "yb/util/net/net_util.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/path_util.h"
-#include "yb/util/pg_util.h"
-
-#include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/util/flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/subprocess.h"
 
 DECLARE_bool(enable_ysql_conn_mgr_stats);
 DECLARE_int32(ysql_max_connections);

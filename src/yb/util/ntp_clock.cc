@@ -13,7 +13,10 @@
 
 #include "yb/util/ntp_clock.h"
 
+#include <utility>
+
 #include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

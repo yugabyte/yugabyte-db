@@ -33,11 +33,10 @@
 #include "yb/common/key_encoder.h"
 
 #include <array>
-#include <functional>
-#include <string>
+#include <memory>
+#include <utility>
 
 #include "yb/gutil/singleton.h"
-
 #include "yb/util/faststring.h"
 
 namespace yb {

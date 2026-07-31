@@ -14,19 +14,14 @@
 #pragma once
 
 #include <variant>
+#include <memory>
+#include <string>
 
 #include "yb/encryption/universe_key_manager.h"
-
-#include "yb/util/env.h"
 #include "yb/util/result.h"
 
 namespace yb {
-
-namespace encryption {
-
-class UniverseKeyManager;
-
-}  // namespace encryption
+class Env;
 
 namespace pb_util {
 

@@ -11,9 +11,22 @@
 // under the License.
 //
 
-#include "yb/util/status_log.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <memory>
+#include <string>
 
+#include "yb/util/status_log.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_bool(ysql_enable_documentdb);
 DECLARE_bool(enable_pg_cron);

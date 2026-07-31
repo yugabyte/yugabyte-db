@@ -15,6 +15,10 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <functional>
+
 #include "yb/util/metric_entity.h"
 
 namespace yb {

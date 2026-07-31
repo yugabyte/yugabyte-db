@@ -32,19 +32,21 @@
 
 #include "yb/rpc/rpc.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <functional>
 #include <string>
 #include <thread>
-
-#include "yb/ash/wait_state.h"
+#include <algorithm>
+#include <chrono>
+#include <compare>
+#include <ostream>
+#include <ratio>
 
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_header.pb.h"
-
 #include "yb/util/callsite_profiling.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
 #include "yb/util/source_location.h"
@@ -52,6 +54,17 @@
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/math_util.h"
+#include "yb/util/result.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+}  // namespace yb
 
 using namespace std::literals;
 using namespace std::placeholders;

@@ -13,8 +13,16 @@
 
 #pragma once
 
-#include "yb/util/metrics_fwd.h"
-#include "yb/tserver/tserver_fwd.h"
+#include <stdint.h>
+
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/metrics.h"
+
+namespace yb {
+namespace tserver {
+class TSTabletManager;
+}  // namespace tserver
+}  // namespace yb
 
 namespace yb::tserver {
 

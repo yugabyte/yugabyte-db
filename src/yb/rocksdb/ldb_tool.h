@@ -22,10 +22,13 @@
 
 #include <string>
 #include <vector>
-#include "yb/rocksdb/db.h"
+#include <memory>
+
 #include "yb/rocksdb/options.h"
+#include "yb/util/slice.h"
 
 namespace rocksdb {
+struct ColumnFamilyDescriptor;
 
 // An interface for converting a slice to a readable string
 class SliceFormatter {

@@ -33,11 +33,12 @@
 #include "yb/gutil/hash/city.h"
 
 #include <sys/types.h>
-
-#include "yb/util/logging.h"
+#include <glog/logging.h>
+#include <utility>
 
 #include "yb/gutil/endian.h"
 #include "yb/gutil/hash/hash128to64.h"
+#include "yb/gutil/port.h"
 
 using std::make_pair;
 using std::pair;

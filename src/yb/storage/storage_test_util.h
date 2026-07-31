@@ -13,7 +13,16 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <algorithm>
+#include <memory>
+#include <string>
+
 #include "yb/storage/frontier.h"
+#include "yb/gutil/casts.h"
+#include "yb/storage/storage_fwd.h"
+#include "yb/util/enums.h"
+#include "yb/util/slice.h"
 
 namespace yb::storage {
 

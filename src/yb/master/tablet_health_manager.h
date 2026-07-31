@@ -12,19 +12,45 @@
 //
 #pragma once
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <condition_variable>
 #include <unordered_map>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+#include <functional>
 
-#include "yb/master/catalog_manager_if.h"
-#include "yb/tserver/tserver.pb.h"
-#include "yb/util/status_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+namespace rpc {
+class RpcContext;
+}  // namespace rpc
+namespace tserver {
+class CheckTserverTabletHealthResponsePB;
+}  // namespace tserver
+
 namespace master {
 
 class Master;
-class CatalogManager;
-class TableInfo;
+class AreNodesSafeToTakeDownRequestPB;
+class AreNodesSafeToTakeDownResponsePB;
+class CatalogManagerIf;
+class CheckMasterTabletHealthRequestPB;
+class CheckMasterTabletHealthResponsePB;
+class GetMasterHeartbeatDelaysRequestPB;
+class GetMasterHeartbeatDelaysResponsePB;
 
 using ReplicaCountMap = std::unordered_map<TabletId, size_t>;
 using ServerUuidSet = std::unordered_set<std::string>;

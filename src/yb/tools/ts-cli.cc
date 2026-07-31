@@ -31,41 +31,39 @@
 //
 // Tool to query tablet server operational data
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <memory>
+#include <iostream>
+#include <limits>
+#include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
-
 #include "yb/common/hybrid_time.h"
 #include "yb/common/opid.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/metadata.pb.h"
-
 #include "yb/dockv/partition.h"
-
-#include "yb/qlexpr/ql_rowblock.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/secure_stream.h"
-
 #include "yb/server/server_base.proxy.h"
-
 #include "yb/tablet/tablet.pb.h"
-
 #include "yb/tools/tools_utils.h"
-
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
-#include "yb/util/faststring.h"
 #include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
@@ -73,6 +71,23 @@
 #include "yb/util/protobuf_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/gutil/macros.h"
+#include "yb/server/server_base.pb.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_admin.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 using yb::cdc::CDCServiceProxy;
 using yb::cdc::UpdateCdcReplicatedIndexRequestPB;

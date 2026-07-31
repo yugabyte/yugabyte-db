@@ -31,11 +31,13 @@
 //
 
 
+#include <stdint.h>
+#include <string>
+
 // Must come before gtest.h.
 #include "yb/gutil/mathlimits.h"
-
-#include <gtest/gtest.h>
 #include "yb/util/safe_math.h"
+#include "gtest/gtest.h"
 
 namespace yb {
 template<typename T>

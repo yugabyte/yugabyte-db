@@ -32,40 +32,46 @@
 
 #include "yb/tablet/tablet_metadata.h"
 
+#include <gflags/gflags.h>
+#include <string.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <algorithm>
 #include <mutex>
 #include <string>
+#include <map>
+#include <sstream>
+#include <string_view>
 
 #include "yb/ash/wait_state.h"
-
 #include "yb/common/colocated_util.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/consensus_util.h"
-
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/key_bounds.h"
-
 #include "yb/dockv/reader_projection.h"
-
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/sys_catalog_constants.h"
-
 #include "yb/qlexpr/index.h"
-
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
-
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet_options.h"
-
+#include "yb/util/debug.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/flags.h"
@@ -77,6 +83,27 @@
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
 #include "yb/util/trace.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/constants.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/port.h"
+#include "yb/util/compare_util.h"
+#include "yb/util/env.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/metrics.h"
+#include "yb/util/path_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace dockv {
+class SchemaPackingPB;
+}  // namespace dockv
+}  // namespace yb
 
 DEPRECATE_FLAG(bool, enable_tablet_orphaned_block_deletion, "10_2022");
 

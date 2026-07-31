@@ -33,24 +33,15 @@
 
 #include <string>
 #include <unordered_map>
+#include <memory>
+#include <ostream>
+#include <functional>
 
-#include "yb/util/flags.h"
-
-#include "yb/consensus/log_fwd.h"
-#include "yb/consensus/consensus_util.h"
-#include "yb/consensus/multi_raft_batcher.h"
-
-#include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
-#include "yb/gutil/ref_counted.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
-#include "yb/util/shared_lock.h"
 
 namespace yb {
 
-class MemTracker;
 class ThreadPoolToken;
 
 namespace consensus {
@@ -60,6 +51,8 @@ class Peer;
 class PeerMessageQueue;
 class PeerProxyFactory;
 class RaftConfigPB;
+class MultiRaftManager;
+enum class RequestTriggerMode;
 
 // Manages the set of local and remote peers that pull data from the queue into the local log/remote
 // machines.  Methods are virtual to ease mocking.

@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <string>
+
 #include "yb/server/server_base_options.h"
 
 namespace yb {

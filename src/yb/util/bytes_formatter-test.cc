@@ -11,12 +11,12 @@
 // under the License.
 //
 
-#include "yb/util/bytes_formatter.h"
-
 #include <string>
-#include <gtest/gtest.h>
+#include <string_view>
 
+#include "yb/util/bytes_formatter.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
 
 using std::string;
 

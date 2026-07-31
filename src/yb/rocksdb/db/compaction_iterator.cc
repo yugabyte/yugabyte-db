@@ -21,12 +21,22 @@
 //
 
 #include "yb/rocksdb/db/compaction_iterator.h"
-#include <iterator>
+
+#include <assert.h>
+#include <glog/logging.h>
+#include <ostream>
 
 #include "yb/rocksdb/table/internal_iterator.h"
-
-#include "yb/util/status_log.h"
 #include "yb/util/logging.h"
+#include "yb/gutil/port.h"
+#include "yb/rocksdb/compaction_filter.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/db/compaction.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/util/log_buffer.h"
+#include "yb/storage/storage_types.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 namespace rocksdb {
 

@@ -13,6 +13,13 @@
 
 #include "yb/tools/tools_test_utils.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <algorithm>
+#include <ostream>
+#include <string_view>
+
 #include "yb/integration-tests/mini_cluster_base.h"
 #include "yb/util/json_document.h"
 #include "yb/util/net/net_util.h"
@@ -21,8 +28,15 @@
 #include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
-#include "yb/util/flags.h"
 #include "yb/integration-tests/external_yb_controller.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/env.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
 
 using std::string;
 

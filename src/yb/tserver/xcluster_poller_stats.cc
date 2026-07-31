@@ -13,8 +13,14 @@
 
 #include "yb/tserver/xcluster_poller_stats.h"
 
+#include <boost/move/utility_core.hpp>
+#include <mutex>
+#include <utility>
+
 #include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 

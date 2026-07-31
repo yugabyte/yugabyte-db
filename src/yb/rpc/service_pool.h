@@ -32,34 +32,23 @@
 
 #pragma once
 
-#include <stdint.h>
-
+#include <stddef.h>
 #include <string>
-#include <type_traits>
-#include <vector>
+#include <functional>
+#include <memory>
 
-#include "yb/gutil/integral_types.h"
-#include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc_service.h"
 
-#include "yb/util/status_fwd.h"
-#include "yb/util/blocking_queue.h"
-#include "yb/util/mutex.h"
-
 namespace yb {
 
-template<class T>
-class AtomicGauge;
-
 class Counter;
-class EventStats;
 class MetricEntity;
-class Socket;
 
 namespace rpc {
+class Scheduler;
+class ServicePoolImpl;
 
 using ThreadPoolProvider = std::function<ThreadPoolPtr(ThreadPoolTag)>;
 

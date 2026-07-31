@@ -15,28 +15,49 @@
 
 #pragma once
 
-#include <stdint.h>
-
-#include <type_traits>
-
 #include <boost/container/small_vector.hpp>
-#include <boost/version.hpp>
+#include <stddef.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <atomic>
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
 
-#include "yb/common/redis_protocol.pb.h"
-
-#include "yb/rpc/connection_context.h"
 #include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/rpc_with_queue.h"
 #include "yb/rpc/reactor_thread_role.h"
-
-#include "yb/util/net/net_fwd.h"
-#include "yb/util/size_literals.h"
-
 #include "yb/yql/redis/redisserver/redis_fwd.h"
+#include "yb/gutil/atomicops.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/rpc_header.pb.h"
+#include "yb/rpc/rpc_introspection.pb.h"
+#include "yb/util/enums.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/socket.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb {
-
-class MemTracker;
+class LWRedisResponsePB;
+namespace rpc {
+class CallStateListenerFactory;
+struct CallData;
+struct RpcMethodMetrics;
+}  // namespace rpc
 
 namespace redisserver {
 

@@ -13,31 +13,63 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/container_hash/hash.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <atomic>
 #include <memory>
 #include <unordered_set>
 #include <vector>
-
-#include <boost/container/small_vector.hpp>
-#include <boost/functional/hash.hpp>
+#include <functional>
+#include <limits>
+#include <mutex>
+#include <optional>
+#include <ostream>
+#include <string>
 
 #include "yb/common/column_id.h"
-#include "yb/common/common_types.pb.h"
 #include "yb/common/hybrid_time.h"
-
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/dockv/expiration.h"
-
 #include "yb/dockv/value_type.h"
 #include "yb/gutil/thread_annotations.h"
-
-#include "yb/rocksdb/compaction_filter.h"
-#include "yb/rocksdb/db/compaction_context.h"
-#include "yb/rocksdb/metadata.h"
-
-#include "yb/server/hybrid_clock.h"
-
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/rocksdb/db/version_edit.h"
+#include "yb/rocksdb/options.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
+
+namespace yb {
+enum TableType : int;
+namespace docdb {
+class DocDBStatistics;
+struct KeyBounds;
+}  // namespace docdb
+namespace dockv {
+class SchemaPacking;
+}  // namespace dockv
+namespace storage {
+class UserFrontier;
+}  // namespace storage
+struct ReadHybridTime;
+}  // namespace yb
 
 namespace yb::docdb {
 

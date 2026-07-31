@@ -30,9 +30,13 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <string>
 
 #include "yb/common/types.h"
+#include "gtest/gtest.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/mathlimits.h"
 
 using std::string;
 

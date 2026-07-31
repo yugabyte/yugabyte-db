@@ -13,10 +13,22 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <string>
+
 #include "yb/master/yql_virtual_table.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/schema.h"
+#include "yb/util/status.h"
 
 namespace yb {
+namespace qlexpr {
+class QLRow;
+}  // namespace qlexpr
+
 namespace master {
+class Master;
 
 // VTable implementation of system_schema.columns.
 class YQLColumnsVTable : public YQLVirtualTable {

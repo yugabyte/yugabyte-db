@@ -14,12 +14,18 @@
 #include "yb/util/varint.h"
 
 #include <openssl/bn.h>
+#include <glog/logging.h>
+#include <openssl/crypto.h>
+#include <string.h>
+#include <limits>
+#include <vector>
 
 #include "yb/gutil/casts.h"
-
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
-#include "yb/util/status_log.h"
+#include "yb/gutil/port.h"
+#include "yb/util/cast.h"
+#include "yb/util/logging.h"
 
 using std::ostream;
 

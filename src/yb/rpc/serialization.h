@@ -34,33 +34,33 @@
 
 #include <inttypes.h>
 #include <string.h>
-
+#include <boost/range/iterator_range_core.hpp>
 #include <string>
-
-#include <boost/range/iterator_range.hpp>
-
-#include <google/protobuf/message.h>
-#include <google/protobuf/repeated_field.h>
+#include <optional>
+#include <utility>
 
 #include "yb/rpc/rpc_fwd.h"
-
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
+#include "yb/rpc/lightweight_message.h"
 
 namespace google {
 namespace protobuf {
-class MessageLite;
+class Message;
 }  // namespace protobuf
 }  // namespace google
 
 namespace yb {
 
-class faststring;
 class RefCntBuffer;
-class Slice;
 class Status;
 
 namespace rpc {
+class ReceivedSidecars;
+class RequestHeader;
+class ResponseHeader;
+class Sidecars;
+struct CallData;
 
 Result<std::pair<RefCntBuffer, size_t>> SerializeResponse(
     size_t body_size, size_t additional_size, const google::protobuf::Message& header,

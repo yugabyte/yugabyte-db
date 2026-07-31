@@ -30,21 +30,24 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <stdint.h>
 #include <mutex>
 #include <shared_mutex>
 #include <thread>
 #include <vector>
+#include <ostream>
+#include <string>
 
-#include <gtest/gtest.h>
-
-#include "yb/gutil/integral_types.h"
 #include "yb/util/atomic.h"
 #include "yb/util/format.h"
-#include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/rw_mutex.h"
 #include "yb/util/test_util.h"
 #include "yb/util/shared_lock.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/logging.h"
 
 using std::lock_guard;
 using std::thread;

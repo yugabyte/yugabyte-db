@@ -20,6 +20,7 @@
 
 #include "yb/rocksdb/table/block_prefix_index.h"
 
+#include <assert.h>
 #include <vector>
 
 #include "yb/util/slice.h"
@@ -27,6 +28,7 @@
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/hash.h"
+#include "yb/util/status.h"
 
 namespace rocksdb {
 

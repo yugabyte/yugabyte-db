@@ -15,6 +15,17 @@
 
 #include "yb/tserver/tserver_error.h"
 
+#include <optional>
+
+#include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus_error.h"
+#include "yb/consensus/consensus_types.pb.h"
+
+namespace yb {
+class AppStatusPB;
+class Status;
+}  // namespace yb
+
 namespace yb::tserver {
 
 void SetupError(TabletServerErrorPB* error, const Status& s) {

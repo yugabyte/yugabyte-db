@@ -32,14 +32,19 @@
 
 #include "yb/rpc/rpc_controller.h"
 
+#include <glog/logging.h>
 #include <mutex>
+#include <chrono>
+#include <ostream>
+#include <utility>
 
 #include "yb/util/logging.h"
-
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/sidecars.h"
-
 #include "yb/util/result.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rpc/rpc_introspection.pb.h"
+#include "yb/util/slice.h"
 
 namespace yb { namespace rpc {
 

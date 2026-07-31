@@ -10,12 +10,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include <gtest/gtest.h>
+#include <glog/logging.h>
+#include <boost/uuid/uuid.hpp>
+#include <ostream>
+#include <string>
 
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/util/status.h"
+#include "yb/util/uuid.h"
 
 namespace yb {
 namespace util {

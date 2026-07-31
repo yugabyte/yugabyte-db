@@ -32,28 +32,53 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <mutex>
 #include <string>
+#include <atomic>
+#include <functional>
+#include <memory>
+#include <utility>
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/opid.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/consensus_types.pb.h"
-
 #include "yb/rpc/lightweight_message.h"
-
 #include "yb/tablet/tablet_fwd.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
 #include "yb/util/operation_counter.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/enums.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
 class Synchronizer;
+namespace consensus {
+class LWReplicateMsg;
+}  // namespace consensus
 
 namespace tablet {
 

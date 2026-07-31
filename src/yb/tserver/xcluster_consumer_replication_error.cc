@@ -13,7 +13,11 @@
 
 #include "yb/tserver/xcluster_consumer_replication_error.h"
 
+#include <ostream>
+#include <utility>
+
 #include "yb/gutil/map-util.h"
+#include "yb/util/logging.h"
 
 namespace yb::tserver {
 

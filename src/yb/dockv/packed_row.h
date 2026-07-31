@@ -13,22 +13,33 @@
 
 #pragma once
 
-#include <optional>
-#include <unordered_map>
-
 #include <boost/function.hpp>
-#include <boost/functional/hash.hpp>
-
-#include <google/protobuf/repeated_field.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/types.h>
+#include <functional>
+#include <string>
+#include <utility>
+#include <variant>
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
-
-#include "yb/dockv/dockv_fwd.h"
-
 #include "yb/dockv/value_type.h"
-#include "yb/util/byte_buffer.h"
 #include "yb/util/kv_util.h"
+#include "yb/dockv/packed_value.h"
+#include "yb/dockv/schema_packing.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class LWQLValuePB;
+class QLValuePB;
+class Schema;
+namespace dockv {
+struct ValueControlFields;
+}  // namespace dockv
+}  // namespace yb
 
 namespace yb::dockv {
 

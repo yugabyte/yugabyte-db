@@ -11,8 +11,17 @@
 // under the License.
 //
 
+#include <stdint.h>
+#include <memory>
+#include <string>
+
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/test_workload.h"
+#include "gtest/gtest.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/monotime.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 

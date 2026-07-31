@@ -13,15 +13,21 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <glog/logging.h>
+#include <stdint.h>
+#include <memory>
+#include <string>
+
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/table_properties_constants.h"
-
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/status_log.h"
-
 #include "yb/yql/cql/ql/test/ql-test-base.h"
+#include "gtest/gtest.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/util/logging.h"
+#include "yb/util/test_macros.h"
 
 using std::string;
 using strings::Substitute;

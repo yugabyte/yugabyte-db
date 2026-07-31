@@ -24,11 +24,15 @@
 #pragma once
 
 #include <stdint.h>
+#include <assert.h>
+#include <stddef.h>
 #include <string>
+#include <memory>
+
 #include "yb/util/slice.h"
-#include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/table.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/types.h"
 
 namespace yb {
 
@@ -37,9 +41,9 @@ class MemTracker;
 }
 
 namespace rocksdb {
-
-class Block;
-struct ReadOptions;
+class Env;
+class RandomAccessFileReader;
+enum ChecksumType : char;
 
 // the length of the magic number in bytes.
 const int kMagicNumberLengthByte = 8;

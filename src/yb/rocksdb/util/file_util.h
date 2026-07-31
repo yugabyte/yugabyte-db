@@ -21,6 +21,7 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <string>
 
 #include "yb/rocksdb/env.h"
@@ -29,6 +30,7 @@
 YB_STRONGLY_TYPED_BOOL(CopyFileSync);
 
 namespace rocksdb {
+struct DBOptions;
 
 // Copy a file up to a specified size. If passed size is 0 - copy the whole file.
 // Will return "file too small" error status if `size` is larger than size of the source file.

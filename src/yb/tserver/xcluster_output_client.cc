@@ -12,15 +12,24 @@
 
 #include "yb/tserver/xcluster_output_client.h"
 
-#include "yb/ash/wait_state.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/container/stable_vector.hpp>
+#include <algorithm>
+#include <functional>
+#include <future>
+#include <initializer_list>
+#include <mutex>
+#include <ostream>
+#include <unordered_map>
+#include <utility>
 
+#include "yb/ash/wait_state.h"
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/xcluster_rpc.h"
-
 #include "yb/common/colocated_util.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/xcluster_util.h"
-
 #include "yb/client/client_fwd.h"
 #include "yb/client/client.h"
 #include "yb/client/client_error.h"
@@ -28,30 +37,44 @@
 #include "yb/client/meta_cache.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
-#include "yb/dockv/value_type.h"
-
 #include "yb/master/master_replication.pb.h"
-
 #include "yb/rocksdb/rate_limiter.h"
-
 #include "yb/rpc/rpc.h"
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/tserver/tserver.messages.h"
-#include "yb/tserver/xcluster_consumer.h"
 #include "yb/tserver/xcluster_poller.h"
 #include "yb/tserver/xcluster_write_interface.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
-#include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stopwatch.h"
+#include "yb/ash/ash_fwd.h"
+#include "yb/cdc/cdc_consumer.pb.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/constants.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/ql_value.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/value_type.h"  // IWYU pragma: keep
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/port.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/operations.pb.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_types.messages.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/io.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/yb_partition.h"
 
 DECLARE_int32(cdc_write_rpc_timeout_ms);
 

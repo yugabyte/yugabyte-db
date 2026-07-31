@@ -13,27 +13,49 @@
 
 #include "yb/master/async_rpc_tasks_base.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <algorithm>
+#include <chrono>
+#include <limits>
+#include <ostream>
+#include <ratio>
+#include <thread>
+
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_meta.h"
-
 #include "yb/master/master.h"
 #include "yb/master/master_test.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/ts_manager.h"
-
 #include "yb/rpc/messenger.h"
-
 #include "yb/tserver/backup.proxy.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/source_location.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/threadpool.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/ts_descriptor.h"
+#include "yb/util/async_task_util.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace tserver {
+class TabletServerErrorPB;
+}  // namespace tserver
+}  // namespace yb
 
 using namespace std::literals;
 

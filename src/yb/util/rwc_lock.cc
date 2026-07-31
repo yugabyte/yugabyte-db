@@ -33,12 +33,19 @@
 #include "yb/util/rwc_lock.h"
 
 #include <algorithm>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <chrono>
+#include <ostream>
+#include <ratio>
 
 #include "yb/util/debug-util.h"
-#include "yb/util/flags.h"
 #include "yb/util/thread.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/tostring.h"
 
 DEFINE_RUNTIME_bool(enable_rwc_lock_debugging, false,
     "Enable additional debug logging for RWC lock.  This can hurt performance significantly since "

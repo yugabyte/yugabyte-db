@@ -11,17 +11,34 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <chrono>
 #include <initializer_list>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <ratio>
+#include <tuple>
+#include <vector>
 
 #include "yb/util/json_document.h"
-
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gtest/gtest.h"
+#include "libpq-fe.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 using namespace std::literals;
 

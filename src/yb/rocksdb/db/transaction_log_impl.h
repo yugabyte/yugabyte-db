@@ -19,18 +19,24 @@
 //
 
 #pragma once
-#include <vector>
+#include <stddef.h>
+#include <stdint.h>
+#include <memory>
+#include <string>
 
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/options.h"
 #include "yb/rocksdb/types.h"
 #include "yb/rocksdb/transaction_log.h"
-#include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/db/log_reader.h"
 #include "yb/rocksdb/db/filename.h"
-#include "yb/rocksdb/port/port.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/util/slice.h"
 
 namespace rocksdb {
+class SequentialFileReader;
+class VersionSet;
+struct DBOptions;
 
 class LogFileImpl : public LogFile {
  public:

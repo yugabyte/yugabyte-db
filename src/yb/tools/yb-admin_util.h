@@ -12,8 +12,7 @@
 
 #pragma once
 
-#include <set>
-#include <utility>
+#include <string>
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/master/master_cluster.pb.h"

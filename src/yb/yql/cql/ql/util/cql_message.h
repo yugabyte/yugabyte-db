@@ -20,46 +20,39 @@
 #pragma once
 
 #include <stdint.h>
-
-#include <functional>
+#include <glog/logging.h>
+#include <stddef.h>
 #include <memory>
-#include <set>
 #include <string>
-#include <type_traits>
 #include <unordered_map>
-#include <unordered_set>
-#include <utility>
+#include <ostream>
+#include <vector>
+#include <functional>
 
-#include <boost/range/iterator_range.hpp>
-#include <boost/version.hpp>
 #include "yb/util/logging.h"
-#include <rapidjson/document.h>
-
-#include "yb/common/entity_ids.h"
-#include "yb/common/jsonb.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/common/wire_protocol.h"
-
-#include "yb/gutil/callback.h"
-#include "yb/gutil/callback_internal.h"
 #include "yb/gutil/casts.h"
-#include "yb/gutil/template_util.h"
-
 #include "yb/rpc/server_event.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/memory_usage.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/slice.h"
-
 #include "yb/yql/cql/ql/util/statement_params.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/gutil/endian.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class ColumnSchema;
+class QLType;
+class faststring;
+
 namespace ql {
 
-class CQLRequest;
 class CQLResponse;
 
 // ---------------------------------- Generic CQL message ---------------------------------

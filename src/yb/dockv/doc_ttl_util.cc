@@ -12,9 +12,13 @@
 //
 #include "yb/dockv/doc_ttl_util.h"
 
+#include <string>
+
 #include "yb/common/schema.h"
 #include "yb/dockv/value.h"
 #include "yb/util/monotime.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/util/status.h"
 
 using std::string;
 

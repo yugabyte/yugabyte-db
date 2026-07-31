@@ -12,16 +12,20 @@
 //
 #include "yb/consensus/consensus_round.h"
 
+#include <glog/logging.h>
+#include <ostream>
+
 #include "yb/consensus/consensus.messages.h"
-
 #include "yb/tserver/tserver_error.h"
-
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
-#include "yb/util/status_log.h"
+#include "yb/gutil/port.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/logging.h"
 
 namespace yb {
 namespace consensus {
+class Consensus;
 
 ConsensusRound::ConsensusRound(Consensus* consensus,
                                ReplicateMsgPtr replicate_msg)

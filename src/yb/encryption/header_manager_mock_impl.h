@@ -12,12 +12,12 @@
 //
 #pragma once
 
+#include <stdint.h>
 #include <memory>
 #include <string>
 
 #include "yb/encryption/header_manager.h"
-
-#include "yb/util/status_fwd.h"
+#include "yb/encryption/encryption_util.h"
 
 namespace yb {
 namespace encryption {

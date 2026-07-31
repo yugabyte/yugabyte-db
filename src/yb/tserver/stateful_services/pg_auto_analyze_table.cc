@@ -15,19 +15,22 @@
 
 #include <utility>
 #include <vector>
+#include <memory>
 
 #include "yb/bfql/gen_opcodes.h"
-
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/ql_protocol_util.h"
-
 #include "yb/master/master_defaults.h"
-
 #include "yb/util/status.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
 
 namespace yb::stateful_service {
 namespace {

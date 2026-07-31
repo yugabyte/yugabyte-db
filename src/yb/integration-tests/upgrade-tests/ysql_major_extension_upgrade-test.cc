@@ -11,10 +11,23 @@
 // under the License.
 //
 
-#include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <optional>
+#include <string>
+#include <tuple>
+#include <vector>
 
+#include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
 #include "yb/util/env_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/path_util.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 

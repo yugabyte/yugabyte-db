@@ -13,11 +13,18 @@
 
 #pragma once
 
-#include "yb/dockv/dockv_fwd.h"
+#include <string>
 
 #include "yb/util/format.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
+#include "yb/common/value.pb.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/util/result.h"
+
+namespace yb {
+enum class DataType;
+}  // namespace yb
 
 namespace yb::dockv {
 

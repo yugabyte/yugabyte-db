@@ -30,21 +30,32 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <boost/asio/io_context.hpp>
+#include <boost/asio/ip/address.hpp>
+#include <boost/system/error_code.hpp>
+#include <chrono>
+#include <compare>
+#include <future>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <string_view>
+#include <thread>
+
 #include "yb/util/net/dns_resolver.h"
-
-#include <vector>
-
-#include <gtest/gtest.h>
-
 #include "yb/gutil/strings/util.h"
-
-#include "yb/util/countdown_latch.h"
-#include "yb/util/metrics.h"
-#include "yb/util/net/sockaddr.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/net/net_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/tostring.h"
 
 using namespace std::literals;
 

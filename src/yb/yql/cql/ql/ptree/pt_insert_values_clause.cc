@@ -17,12 +17,17 @@
 
 #include "yb/yql/cql/ql/ptree/pt_insert_values_clause.h"
 
-#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include <glog/logging.h>
+#include <ostream>
 
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace ql {
+class SemContext;
 
 PTInsertValuesClause::PTInsertValuesClause(MemoryContext* memctx,
                                            YBLocationPtr loc,

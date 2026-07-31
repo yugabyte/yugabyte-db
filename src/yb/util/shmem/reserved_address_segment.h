@@ -15,9 +15,12 @@
 
 #include <cstddef>
 #include <utility>
+#include <memory>
+#include <new>
 
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

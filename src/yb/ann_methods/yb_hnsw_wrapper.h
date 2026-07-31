@@ -13,10 +13,18 @@
 
 #pragma once
 
-#include "yb/hnsw/types.h"
+#include <string>
 
-#include "yb/vector_index/hnsw_options.h"
+#include "yb/hnsw/types.h"
 #include "yb/vector_index/vector_index_if.h"
+#include "yb/hnsw/hnsw_fwd.h"
+#include "yb/util/result.h"
+
+namespace yb {
+namespace vector_index {
+struct HNSWOptions;
+}  // namespace vector_index
+}  // namespace yb
 
 namespace yb::ann_methods {
 

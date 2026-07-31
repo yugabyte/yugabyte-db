@@ -13,11 +13,25 @@
 
 #pragma once
 
-#include <google/protobuf/repeated_ptr_field.h>
+#include <stddef.h>
+#include <vector>
 
-#include "yb/dockv/dockv_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/util/memory/arena_fwd.h"
 
-#include "yb/util/memory/arena_list.h"
+namespace google {
+namespace protobuf {
+template <typename Element> class RepeatedPtrField;
+}  // namespace protobuf
+}  // namespace google
+namespace yb {
+class LWPgsqlExpressionPB;
+class PgsqlExpressionPB;
+class Schema;
+template <class Entry> class ArenaList;
+}  // namespace yb
 
 namespace yb::qlexpr {
 

@@ -13,13 +13,36 @@
 
 #pragma once
 
-#include "yb/common/doc_hybrid_time.h"
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <array>
+#include <type_traits>
+
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
-
 #include "yb/util/enums.h"
 #include "yb/util/slice.h"
 #include "yb/util/slice_parts.h"
+#include "yb/util/cast.h"
+
+namespace yb {
+class DocHybridTime;
+class HybridTime;
+}  // namespace yb
 
 DECLARE_bool(dump_transactions);
 

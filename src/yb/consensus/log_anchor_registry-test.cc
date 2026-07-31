@@ -30,12 +30,17 @@
 // under the License.
 //
 
-#include "yb/util/logging.h"
-#include <gtest/gtest.h>
+#include <stdint.h>
+#include <string>
 
 #include "yb/consensus/log_anchor_registry.h"
-
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 using std::string;
 

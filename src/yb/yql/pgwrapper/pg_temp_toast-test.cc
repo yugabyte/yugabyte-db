@@ -10,17 +10,33 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
+#include <rapidjson/allocators.h>
+#include <rapidjson/document.h>
+#include <rapidjson/rapidjson.h>
+#include <stddef.h>
 #include <string>
+#include <algorithm>
+#include <initializer_list>
+#include <map>
+#include <optional>
+#include <random>
+#include <sstream>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include "gtest/gtest.h"
-
 #include "yb/common/json_util.h"
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/status_format.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
-#include "yb/yql/pgwrapper/pg_test_utils.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/format.h"
+#include "yb/util/random_util.h"
+#include "yb/util/result.h"
 
 DECLARE_uint64(vector_index_initial_chunk_size);
 

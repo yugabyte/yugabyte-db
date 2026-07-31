@@ -13,35 +13,65 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <chrono>
+#include <functional>
+#include <memory>
+#include <ratio>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/txn-test-base.h"
-
 #include "yb/docdb/docdb_fwd.h"
-
-#include "yb/integration-tests/cluster_itest_util.h"
-
-#include "yb/integration-tests/create-table-itest-base.h"
-
-#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
-
 #include "yb/tablet/tablet_fwd.h"
-
-#include "yb/tserver/tserver_fwd.h"
-
 #include "yb/util/size_literals.h"
 #include "yb/util/tsan_util.h"
+#include "yb/common/constants.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/mini_master.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 
 class TestYcqlWorkload;
 
+namespace itest {
+struct TServerDetails;
+}  // namespace itest
+namespace master {
+class CatalogManagerIf;
+class MasterAdminProxy;
+}  // namespace master
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+namespace tablet {
+class Tablet;
+}  // namespace tablet
+
 namespace client {
 
 class SnapshotTestUtil;
+class TableHandle;
+class YBTableName;
 
 }
 

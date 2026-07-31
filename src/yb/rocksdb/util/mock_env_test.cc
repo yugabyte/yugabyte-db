@@ -21,13 +21,13 @@
 #include <string>
 #include <vector>
 
-#include <gtest/gtest.h>
-
 #include "yb/rocksdb/util/mock_env.h"
-
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/util/slice.h"
 
 using std::unique_ptr;
 

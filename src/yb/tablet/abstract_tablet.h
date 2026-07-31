@@ -13,25 +13,38 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <functional>
+#include <string>
+
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.pb.h"
-
 #include "yb/docdb/docdb_fwd.h"
-
 #include "yb/tablet/tablet_fwd.h"
-
-#include "yb/util/operation_counter.h"
 #include "yb/util/result.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class WriteBuffer;
+class LWTransactionMetadataPB;
+class ScopedRWOperation;
+class TransactionMetadataPB;
+namespace docdb {
+class YQLStorageIf;
+struct PgsqlReadOperationData;
+struct ReadOperationData;
+}  // namespace docdb
+struct TransactionOperationContext;
 
 namespace tablet {
 
 class TabletRetentionPolicy;
+struct PgsqlReadRequestResult;
+struct QLReadRequestResult;
 
 class AbstractTablet {
  public:

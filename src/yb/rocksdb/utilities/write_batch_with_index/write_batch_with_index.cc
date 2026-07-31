@@ -21,8 +21,10 @@
 
 #include "yb/rocksdb/utilities/write_batch_with_index.h"
 
-#include <limits>
+#include <assert.h>
+#include <stdint.h>
 #include <memory>
+#include <new>
 
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/merge_context.h"
@@ -32,8 +34,18 @@
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/utilities/write_batch_with_index/write_batch_with_index_internal.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/db/write_batch_internal.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/options.h"
+#include "yb/util/status.h"
 
 namespace rocksdb {
+class Env;
+class Logger;
+class MergeOperator;
+class Statistics;
 
 // when direction == forward
 // * current_at_base_ <=> base_iterator > delta_iterator

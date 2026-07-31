@@ -32,21 +32,18 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <string>
 
-#include "yb/common/common_types.pb.h"
-#include "yb/common/common_consensus_util.h"
-
-#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/metadata.pb.h"
-
-#include "yb/util/status_fwd.h"
-#include "yb/util/net/net_fwd.h"
 
 namespace yb {
 class Status;
+class CloudInfoPB;
+class HostPort;
 
 namespace consensus {
+class ChangeConfigRequestPB;
 
 enum RaftConfigState {
   UNCOMMITTED_QUORUM,

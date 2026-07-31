@@ -12,6 +12,11 @@
 
 #include "yb/yql/process_wrapper/process_wrapper.h"
 
+#include <signal.h>
+#include <glog/logging.h>
+#include <chrono>
+#include <ostream>
+
 #ifdef __linux__
 #include "yb/util/cgroups.h"
 #endif
@@ -22,6 +27,9 @@
 #include "yb/util/status_log.h"
 #include "yb/util/unique_lock.h"
 #include "yb/util/date_time.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
 
 using namespace std::literals;
 

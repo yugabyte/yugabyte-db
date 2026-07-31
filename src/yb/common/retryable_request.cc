@@ -13,6 +13,9 @@
 
 #include "yb/common/retryable_request.h"
 
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
 namespace yb {
 
 YB_STRONGLY_TYPED_UUID_IMPL(ClientId);

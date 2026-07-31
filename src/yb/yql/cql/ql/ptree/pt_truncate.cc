@@ -17,11 +17,18 @@
 
 #include "yb/yql/cql/ql/ptree/pt_truncate.h"
 
-#include "yb/client/table.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <ostream>
 
+#include "yb/client/table.h"
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_require_drop_privs_for_truncate);

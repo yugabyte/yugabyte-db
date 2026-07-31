@@ -15,6 +15,13 @@
 
 #include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/docdb/docdb.pb.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/slice.h"
 
 using std::string;
 

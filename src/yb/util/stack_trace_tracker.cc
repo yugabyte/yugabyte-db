@@ -12,22 +12,30 @@
 //
 #include "yb/util/stack_trace_tracker.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <mutex>
 #include <thread>
 #include <unordered_map>
+#include <algorithm>
+#include <ostream>
+#include <string_view>
+#include <utility>
+#include <functional>
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/thread_annotations.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/debug.h"
-#include "yb/util/flags.h"
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/result.h"
 #include "yb/util/stack_trace.h"
 #include "yb/util/status_format.h"
 #include "yb/util/tsan_util.h"
-#include "yb/util/unique_lock.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 DEFINE_RUNTIME_bool(track_stack_traces, yb::kIsDebug && !yb::IsTsan(),
                     "Whether to enable stack trace tracking");

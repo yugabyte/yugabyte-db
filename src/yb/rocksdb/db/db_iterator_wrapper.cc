@@ -12,9 +12,12 @@
 
 #include "yb/rocksdb/db/db_iterator_wrapper.h"
 
-#include "yb/util/bytes_formatter.h"
+#include <glog/logging.h>
+#include <ostream>
+
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/gutil/stringprintf.h"
 
 using yb::Format;
 

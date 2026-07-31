@@ -32,21 +32,37 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "yb/rpc/rpc_fwd.h"
-
-#include "yb/server/server_base.proxy.h"
-
 #include "yb/tools/ysck.h"
-
-#include "yb/tserver/tablet_server.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class Schema;
+class HostPort;
+namespace client {
+class YBTableName;
+}  // namespace client
+namespace master {
+class MasterClientProxy;
+class MasterClusterProxy;
+class MasterDdlProxy;
+}  // namespace master
+namespace rpc {
+class Messenger;
+class ProxyCache;
+}  // namespace rpc
+namespace server {
+class GenericServiceProxy;
+}  // namespace server
+namespace tserver {
+class TabletServerServiceProxy;
+}  // namespace tserver
 
 namespace tools {
 

@@ -14,18 +14,23 @@
 
 #pragma once
 
+#include <boost/container/small_vector.hpp>
 #include <memory>
 #include <optional>
 
-#include <boost/container/small_vector.hpp>
-
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
-#include "yb/util/status_fwd.h"
-
 #include "yb/yql/pggate/pg_select.h"
-#include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_tools.h"
+#include "yb/util/status.h"
+#include "yb/yql/pggate/pg_doc_op_fetch_stream.h"
+#include "yb/yql/pggate/pg_session_fwd.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
+namespace yb {
+class LWPgsqlReadRequestPB;
+struct PgObjectId;
+}  // namespace yb
 
 namespace yb::pggate {
 

@@ -18,11 +18,13 @@
 // under the License.
 //
 
+#include <stdint.h>
 #include <algorithm>
-#include <map>
 #include <string>
-
-#include <gtest/gtest.h>
+#include <limits>
+#include <memory>
+#include <set>
+#include <utility>
 
 #include "yb/rocksdb/db/file_numbers.h"
 #include "yb/rocksdb/db/filename.h"
@@ -33,11 +35,30 @@
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-
 #include "yb/storage/storage_test_util.h"
-
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/column_family.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/db/job_context.h"
+#include "yb/rocksdb/db/log_writer.h"
+#include "yb/rocksdb/db/memtable.h"
+#include "yb/rocksdb/db/memtable_list.h"
+#include "yb/rocksdb/db/version_edit.h"
+#include "yb/rocksdb/db/write_controller.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/util/event_logger.h"
+#include "yb/rocksdb/util/instrumented_mutex.h"
+#include "yb/rocksdb/util/random.h"
+#include "yb/util/file_system.h"
+#include "yb/util/slice.h"
+#include "yb/util/slice_parts.h"
+#include "yb/util/tostring.h"
 
 using std::unique_ptr;
 

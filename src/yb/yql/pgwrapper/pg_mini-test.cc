@@ -11,55 +11,70 @@
 // under the License.
 //
 
+#include <absl/base/dynamic_annotations.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <string.h>
+#include <sys/types.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/regex.hpp>
 #include <atomic>
-#include <fstream>
 #include <optional>
 #include <thread>
 #include <string_view>
-
-#include <boost/preprocessor/seq/for_each.hpp>
-
-#include <gtest/gtest.h>
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <functional>
+#include <initializer_list>
+#include <map>
+#include <memory>
+#include <ranges>
+#include <ratio>
+#include <sstream>
+#include <string>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
-
-#include "yb/common/common_flags.h"
 #include "yb/common/pgsql_error.h"
-
 #include "yb/dockv/value_type.h"
-
 #include "yb/integration-tests/mini_cluster.h"
-
 #include "yb/master/master.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
-#include "yb/master/ts_manager.h"
 #include "yb/rocksdb/db.h"
-
 #include "yb/server/skewed_clock.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/pg_client.pb.h"
-#include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/tablet_server.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/transaction_participant.h"
-
 #include "yb/gutil/casts.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/random_util.h"
@@ -71,16 +86,52 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/rpc/rpc_context.h"
-
 #include "yb/yql/pggate/pggate_flags.h"
-
 #include "yb/yql/pgwrapper/libpq_test_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
-
-#include "yb/common/advisory_locks_error.h"
+#include "gtest/gtest.h"
+#include "libpq-fe.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/schema.h"
+#include "yb/common/transaction.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/docdb/doc_read_context.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_defaults.h"
+#include "yb/master/master_fwd.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/test_util.h"
+#include "yb/util/thread_holder.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
+#include "yb/util/yb_pg_errcodes.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 using std::string;
 

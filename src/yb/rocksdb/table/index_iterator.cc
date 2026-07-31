@@ -13,8 +13,15 @@
 
 #include "yb/rocksdb/table/index_iterator.h"
 
+#include <stddef.h>
+#include <algorithm>
+#include <initializer_list>
+
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/merger.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace rocksdb {
 

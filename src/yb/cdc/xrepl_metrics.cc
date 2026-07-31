@@ -32,7 +32,6 @@
 #include "yb/cdc/xrepl_metrics.h"
 
 #include "yb/util/metrics.h"
-#include "yb/util/trace.h"
 
 
 // xCluster Tablet metrics.

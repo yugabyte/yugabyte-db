@@ -30,20 +30,25 @@
 // under the License.
 //
 
-#include <cstddef>
+#include <glog/logging.h>
+#include <stdint.h>
 #include <set>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+#include <functional>
 
 #include "yb/util/logging.h"
-
 #include "yb/common/opid.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
-
 #include "yb/fs/fs_manager.h"
-
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/tablet-test-harness.h"
@@ -51,12 +56,30 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_snapshots.h"
-
 #include "yb/util/env.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
+#include "gtest/gtest.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/dockv/partition.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/server/clock.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/backup.messages.h"
+#include "yb/tserver/backup.pb.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/qlexpr/index.h"
 
 using std::string;
 

@@ -17,11 +17,19 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <utility>
+
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
+#include "yb/yql/cql/ql/ptree/tree_node.h"
 
 namespace yb {
 namespace ql {
+class SemContext;
 
 class PTInsertValuesClause : public PTCollection {
  public:

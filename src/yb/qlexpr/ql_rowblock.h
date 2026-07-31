@@ -15,18 +15,27 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <memory>
 #include <vector>
+#include <string>
+#include <string_view>
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/common_types.pb.h"
-
 #include "yb/util/ref_cnt_buffer.h"
-#include "yb/util/status_fwd.h"
+#include "yb/common/ql_value.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class WriteBuffer;
+class ColumnId;
+class QLType;
+class QLValuePB;
+class Schema;
+enum QLClient : int;
 
 }
 

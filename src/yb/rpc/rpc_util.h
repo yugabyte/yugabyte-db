@@ -15,12 +15,11 @@
 
 #pragma once
 
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/util/slice.h"
 
 namespace yb {
 namespace rpc {
+class Messenger;
 
 struct MessengerShutdownDeleter {
   void operator()(Messenger* messenger) const;

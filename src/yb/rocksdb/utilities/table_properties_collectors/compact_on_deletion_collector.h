@@ -20,7 +20,15 @@
 
 #pragma once
 
-#include "yb/rocksdb/utilities/table_properties_collectors.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <string>
+
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/table_properties.h"
+#include "yb/rocksdb/types.h"
+#include "yb/util/slice.h"
+
 namespace rocksdb {
 
 // A factory of a table property collector that marks a SST

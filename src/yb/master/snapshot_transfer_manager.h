@@ -12,20 +12,23 @@
 //
 #pragma once
 
+#include <glog/logging.h>
+#include <stdint.h>
 #include <future>
-#include <unordered_set>
 #include <vector>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <functional>
 
-#include "yb/master/catalog_entity_info.h"
-#include "yb/master/leader_epoch.h"
 #include "yb/master/master_backup.pb.h"
-#include "yb/master/master_admin.fwd.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_fwd.h"
-
-#include "yb/util/flags.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/snapshot.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
@@ -34,12 +37,14 @@ class YBClient;
 }  // namespace client
 
 namespace master {
+class CatalogManagerIf;
+struct LeaderEpoch;
 
 using TableMetaPB = ImportSnapshotMetaResponsePB::TableMetaPB;
 
 class Master;
-class CatalogManager;
 class AsyncSnapshotTransferTask;
+
 typedef std::shared_ptr<AsyncSnapshotTransferTask> AsyncSnapshotTransferTaskPtr;
 
 // Handle SnapshotTransfer related operations. Currently, the class is solely used for xCluster

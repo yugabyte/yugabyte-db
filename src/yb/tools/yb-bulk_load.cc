@@ -11,44 +11,51 @@
 // under the License.
 //
 
-#include <thread>
-
-#include <boost/algorithm/string.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <boost/algorithm/string/case_conv.hpp>
+#include <boost/algorithm/string/classification.hpp>
+#include <boost/algorithm/string/split.hpp>
+#include <boost/algorithm/string/trim.hpp>
+#include <boost/iterator/iterator_categories.hpp>
+#include <boost/iterator/iterator_facade.hpp>
+#include <boost/token_functions.hpp>
+#include <cstddef>
+#include <functional>
+#include <iostream>
+#include <iterator>
+#include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
-
-#include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/doc_read_context.h"
-
 #include "yb/dockv/partition.h"
-
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_util.h"
-
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/tools/bulk_load_docdb_util.h"
 #include "yb/tools/bulk_load_utils.h"
 #include "yb/tools/yb-generate_partitions.h"
-
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -59,6 +66,45 @@
 #include "yb/util/stol_utils.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/threadpool.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/transaction.h"
+#include "yb/common/types.h"
+#include "yb/common/value.messages.h"
+#include "yb/docdb/doc_write_batch.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/docdb/read_operation_data.h"
+#include "yb/dockv/schema_packing.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/operation_counter.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/timestamp.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace qlexpr {
+class IndexMap;
+}  // namespace qlexpr
+}  // namespace yb
 
 using std::pair;
 using std::string;

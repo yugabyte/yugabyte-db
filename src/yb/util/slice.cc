@@ -30,11 +30,17 @@
 // under the License.
 //
 #include "yb/util/slice.h"
-#include "yb/util/slice_parts.h"
 
+#include <ctype.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdio.h>
+
+#include "yb/util/slice_parts.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
-#include "yb/util/flags.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/util/flags/flag_tags.h"
 
 DEFINE_UNKNOWN_int32(non_graph_characters_percentage_to_use_hexadecimal_rendering, 10,
              "Non graph charaters percentage to use hexadecimal rendering");

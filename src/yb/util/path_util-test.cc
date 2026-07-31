@@ -30,12 +30,12 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <string>
 
 #include "yb/util/env.h"
 #include "yb/util/path_util.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
 
 using std::string;
 

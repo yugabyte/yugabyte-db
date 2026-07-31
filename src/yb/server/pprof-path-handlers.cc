@@ -43,6 +43,12 @@
 
 #include "yb/server/pprof-path-handlers.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <tcmalloc/malloc_extension.h>
+
 #if YB_GPERFTOOLS_TCMALLOC
 #include <gperftools/heap-profiler.h>
 #include <gperftools/malloc_extension.h>
@@ -53,18 +59,21 @@
 #include <iomanip>
 #include <string>
 #include <vector>
+#include <algorithm>
+#include <cmath>
+#include <map>
+#include <optional>
+#include <sstream>
+#include <utility>
 
 #include "yb/util/logging.h"
-
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/stringpiece.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
-
 #include "yb/server/webserver.h"
-
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/env.h"
 #include "yb/util/html_print_helper.h"
@@ -77,6 +86,12 @@
 #include "yb/util/tcmalloc_profile.h"
 #include "yb/util/tcmalloc_util.h"
 #include "yb/util/url-coding.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/gutil/strings/strip.h"
+#include "yb/util/faststring.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
 
 DECLARE_bool(enable_process_lifetime_heap_profiling);
 DECLARE_string(heap_profile_path);

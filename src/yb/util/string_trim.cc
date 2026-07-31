@@ -13,10 +13,15 @@
 
 #include "yb/util/string_trim.h"
 
+#include <stddef.h>
 #include <limits>
 #include <regex>
 #include <sstream> // for istringstream
 #include <string>
+#include <cctype>
+#include <compare>
+#include <locale>
+#include <vector>
 
 using std::string;
 

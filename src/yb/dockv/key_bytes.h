@@ -13,14 +13,22 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <string>
-
-#include "yb/common/common_fwd.h"
-
-#include "yb/dockv/dockv_fwd.h"
+#include <string_view>
 
 #include "yb/util/kv_util.h"
 #include "yb/util/slice.h"
+#include "yb/util/byte_buffer.h"
+
+namespace yb {
+class ColumnId;
+class DocHybridTime;
+namespace dockv {
+enum class KeyEntryType;
+}  // namespace dockv
+}  // namespace yb
 
 namespace yb::dockv {
 

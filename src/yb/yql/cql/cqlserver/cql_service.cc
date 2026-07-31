@@ -14,24 +14,31 @@
 #include "yb/yql/cql/cqlserver/cql_service.h"
 
 #include <openssl/sha.h>
-
+#include <errno.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <sys/socket.h>
+#include <boost/asio/ip/address.hpp>
+#include <boost/asio/ip/basic_endpoint.hpp>
+#include <boost/intrusive/list.hpp>
+#include <boost/optional/optional.hpp>
 #include <fstream>
 #include <mutex>
-#include <thread>
-
-#include <boost/compute/detail/lru_cache.hpp>
+#include <algorithm>
+#include <functional>
+#include <initializer_list>
+#include <iterator>
+#include <limits>
+#include <list>
+#include <utility>
 
 #include "yb/client/meta_data_cache.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_shared_mem.h"
-
-#include "yb/util/bytes_formatter.h"
 #include "yb/util/cql_pg_util.h"
 #include "yb/util/csv_util.h"
 #include "yb/util/curl_util.h"
@@ -43,15 +50,53 @@
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/trace.h"
-
 #include "yb/yql/cql/cqlserver/cql_processor.h"
 #include "yb/yql/cql/cqlserver/cql_rpc.h"
 #include "yb/yql/cql/cqlserver/cql_server.h"
 #include "yb/yql/cql/cqlserver/system_query_cache.h"
 #include "yb/yql/cql/ql/parser/parser.h"
 #include "yb/util/flags.h"
-
 #include "ybgate/ybgate_cpp_util.h"
+#include "yb/ash/wait_state.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/escaping.h"
+#include "yb/rpc/inbound_call.h"
+#include "yb/rpc/rpc_header.pb.h"
+#include "yb/rpc/rpc_service.h"
+#include "yb/util/concurrent_value.h"
+#include "yb/util/crypt.h"
+#include "yb/util/errno.h"
+#include "yb/util/faststring.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/path_util.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
+#include "yb/yql/cql/ql/statement.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
+#include "yb/yql/cql/ql/util/ql_env.h"
+#include "yb/yql/cql/ql/util/statement_params.h"
+#include "ybgate/ybgate_api.h"
+#include "ybgate/ybgate_status.h"
+
+namespace yb {
+namespace client {
+class TransactionPool;
+class YBClient;
+}  // namespace client
+namespace cqlserver {
+class CQLServerOptions;
+}  // namespace cqlserver
+namespace server {
+class Clock;
+}  // namespace server
+}  // namespace yb
 
 using namespace std::placeholders;
 using namespace yb::size_literals;

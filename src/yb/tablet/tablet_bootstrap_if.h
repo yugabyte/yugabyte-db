@@ -31,46 +31,41 @@
 //
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/container/small_vector.hpp>
 #include <memory>
 #include <shared_mutex>
 #include <string>
-#include <vector>
-
-#include "yb/client/client_fwd.h"
+#include <optional>
 
 #include "yb/common/opid.h"
-
 #include "yb/consensus/log_fwd.h"
-#include "yb/consensus/consensus_fwd.h"
-
-#include "yb/gutil/ref_counted.h"
-
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_options.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/shared_lock.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
-class MetricRegistry;
 class ThreadPool;
+namespace docdb {
+class StorageSet;
+}  // namespace docdb
 
 namespace consensus {
 struct ConsensusBootstrapInfo;
+class ConsensusMetadata;
+class RetryableRequests;
 } // namespace consensus
 
-namespace server {
-class Clock;
-}
-
 namespace tablet {
-class RaftGroupMetadata;
-class Tablet;
 class TabletBootstrapStateManager;
-class TransactionCoordinatorContext;
-class TransactionParticipantContext;
-struct TabletOptions;
 
 struct RbsProgressInfo {
   TabletServerId source_ts_uuid;

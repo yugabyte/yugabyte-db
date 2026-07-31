@@ -16,11 +16,22 @@
 #ifndef YB_UTIL_MEMORY_MEMORY_USAGE_TEST_H
 #define YB_UTIL_MEMORY_MEMORY_USAGE_TEST_H
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <algorithm>
+#include <initializer_list>
+#include <limits>
+#include <ostream>
+#include <string>
+
 #include "yb/util/memory/memory_usage.h"
 #include "yb/util/memory/memory_usage_test_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/test_util.h"
-#include "yb/util/flags.h"
+#include "gtest/gtest.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
 
 DEFINE_NON_RUNTIME_bool(print_memory_usage, false, "Print real memory usage instead of assert.");
 

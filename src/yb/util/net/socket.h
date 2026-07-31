@@ -32,14 +32,19 @@
 #pragma once
 
 #include <sys/uio.h>
-#include <string>
-
 #include <boost/container/small_vector.hpp>
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/types.h>
+#include <string>
+#include <vector>
 
 #include "yb/gutil/macros.h"
-
 #include "yb/util/net/sockaddr.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+struct iovec;
 
 namespace yb {
 

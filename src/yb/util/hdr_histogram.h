@@ -55,19 +55,17 @@
 // tracked value (1 hour), it would still maintain a resolution of 3.6 seconds
 // (or better).
 
-#include <iosfwd>
+#include <stddef.h>
+#include <stdint.h>
 #include <memory>
+#include <ostream>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/macros.h"
 
-#include "yb/util/status_fwd.h"
-
 namespace yb {
 
-class AbstractHistogramIterator;
 class Status;
-class RecordedValuesIterator;
 
 // This implementation allows you to specify a range and accuracy (significant
 // digits) to support in an instance of a histogram. The class takes care of

@@ -13,21 +13,31 @@
 
 #pragma once
 
-#include <ev++.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/reactor_thread_role.h"
-
 #include "yb/util/net/socket.h"
 #include "yb/util/result.h"
-#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+
+namespace ev {
+struct loop_ref;
+}  // namespace ev
 
 namespace yb {
 
 class MemTracker;
 
 namespace rpc {
+class StreamReadBuffer;
 
 typedef std::function<void()> IdleListener;
 

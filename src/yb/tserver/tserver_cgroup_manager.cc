@@ -12,6 +12,36 @@
 
 #include "yb/tserver/tserver_cgroup_manager.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <functional>
+#include <optional>
+#include <ranges>
+#include <ratio>
+#include <span>
+#include <string_view>
+#include <utility>
+
+#include "yb/gutil/stringprintf.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/flags/flags_callback.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/status_format.h"
+#include "yb/util/tostring.h"
+
 #ifdef __linux__
 
 #include <algorithm>
@@ -19,7 +49,6 @@
 #include <thread>
 
 #include "yb/gutil/sysinfo.h"
-
 #include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
 #include "yb/util/flag_validators.h"

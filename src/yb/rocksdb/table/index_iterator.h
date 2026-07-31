@@ -13,12 +13,18 @@
 
 #pragma once
 
-#include "yb/rocksdb/rocksdb_fwd.h"
-#include "yb/rocksdb/types.h"
+#include <glog/logging.h>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <utility>
 
 #include "yb/rocksdb/iterator.h"
-
-#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/rocksdb/table/internal_iterator.h"
+#include "yb/rocksdb/table/merger.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 

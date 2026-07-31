@@ -24,22 +24,26 @@
 #pragma once
 
 #include <stdint.h>
-
+#include <stddef.h>
 #include <limits>
 #include <string>
-#include <utility>
-#include <vector>
+#include <memory>
 
-#include "yb/rocksdb/options.h"
-#include "yb/rocksdb/status.h"
-#include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table/table_builder.h"
+#include "yb/rocksdb/db/table_properties_collector.h"
+#include "yb/util/slice.h"
+#include "yb/rocksdb/status_fwd.h"
 
 namespace rocksdb {
 
 class BlockBuilder;
 class BlockHandle;
 struct BlockBasedTableOptions;
+class InternalKeyComparator;
+class WritableFileWriter;
+enum CompressionType : char;
+struct CompressionOptions;
+struct ImmutableCFOptions;
 
 extern const uint64_t kBlockBasedTableMagicNumber;
 extern const uint64_t kLegacyBlockBasedTableMagicNumber;
@@ -126,6 +130,7 @@ class BlockBasedTableBuilder : public TableBuilder {
   struct Rep;
   class BlockBasedTablePropertiesCollectorFactory;
   class BlockBasedTablePropertiesCollector;
+
   Rep* rep_;
 
   // Flush the current data block into disk. next_block_first_key should be nullptr if this is the

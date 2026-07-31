@@ -13,12 +13,18 @@
 
 #include "yb/util/pg_util.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <string.h>
 #include <string>
-#include <boost/algorithm/string/replace.hpp>
+#include <ostream>
 
 #include "yb/util/format.h"
 #include "yb/util/hash_util.h"
 #include "yb/util/path_util.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/net_util.h"
 
 DECLARE_string(tmp_dir);
 

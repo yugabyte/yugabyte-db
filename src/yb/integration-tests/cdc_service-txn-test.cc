@@ -10,39 +10,59 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <glog/logging.h>
+#include <stdint.h>
+#include <functional>
+#include <future>
+#include <memory>
+#include <ostream>
+#include <string>
+
 #include "yb/common/wire_protocol.h"
-#include "yb/common/wire_protocol-test-util.h"
-
-#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.proxy.h"
-
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/transaction.h"
 #include "yb/client/txn-test-base.h"
-
-#include "yb/dockv/primitive_value.h"
-#include "yb/dockv/value_type.h"
 #include "yb/docdb/docdb_test_util.h"
-
 #include "yb/integration-tests/cdc_test_util.h"
-
 #include "yb/master/master_client.pb.h"
-
-#include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging.h"
-
 #include "yb/util/metrics.h"
-#include "yb/util/slice.h"
+#include "gtest/gtest.h"
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/xrepl_metrics.h"
+#include "yb/client/client.h"
+#include "yb/client/ql-dml-test-base.h"
+#include "yb/client/table_handle.h"
+#include "yb/common/opid.pb.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/value.pb.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/tablet/operations.pb.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_macros.h"
+
+namespace yb {
+class Schema;
+
+namespace cdc {
+class CDCServiceImpl;
+}  // namespace cdc
+}  // namespace yb
 
 using std::string;
 

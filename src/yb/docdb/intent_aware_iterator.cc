@@ -13,14 +13,17 @@
 
 #include "yb/docdb/intent_aware_iterator.h"
 
-#include <future>
+#include <absl/base/dynamic_annotations.h>
+#include <gflags/gflags.h>
 #include <type_traits>
+#include <array>
+#include <compare>
+#include <functional>
+#include <string_view>
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
-
-#include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -29,22 +32,27 @@
 #include "yb/docdb/intent_format.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/transaction_dump.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/key_bytes.h"
-#include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
-
-#include "yb/util/bytes_formatter.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/kv_util.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
-#include "yb/util/status_format.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/docdb/read_operation_data.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/rocksdb/options.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/status_log.h"
+
+namespace rocksdb {
+class Statistics;
+}  // namespace rocksdb
 
 using namespace std::literals;
 

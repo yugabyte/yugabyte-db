@@ -10,31 +10,44 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include <cmath>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <cstdio>
 #include <fstream>
 #include <optional>
 #include <string>
+#include <chrono>
+#include <functional>
+#include <memory>
 
-#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"
-
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
-#include "yb/master/sys_catalog_constants.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/master/master.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/test_util.h"
+
+namespace yb {
+class MetricEntity;
+}  // namespace yb
 
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(stream_compression_algo);

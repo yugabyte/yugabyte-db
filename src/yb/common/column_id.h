@@ -14,14 +14,14 @@
 #pragma once
 
 #include <stdint.h>
-
-#include <iosfwd>
+#include <stddef.h>
+#include <boost/container_hash/hash.hpp>
 #include <limits>
 #include <string>
+#include <ostream>
+#include <functional>
 
-#include "boost/functional/hash.hpp"
-
-#include "yb/util/status_fwd.h"
+#include "yb/util/result.h"
 
 namespace yb {
 

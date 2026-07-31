@@ -10,17 +10,26 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <memory>
+#include <string>
+
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/test_macros.h"
-
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/test_util.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 using yb::tablet::Tablet;
 using yb::tablet::TabletPeer;

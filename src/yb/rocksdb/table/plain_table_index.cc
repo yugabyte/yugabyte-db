@@ -24,11 +24,15 @@
 #endif
 
 #include <inttypes.h>
+#include <assert.h>
 
 #include "yb/rocksdb/table/plain_table_index.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/hash.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/rocksdb/util/arena.h"
+#include "yb/util/status.h"
 
 namespace rocksdb {
 

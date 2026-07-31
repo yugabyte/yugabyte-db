@@ -32,19 +32,36 @@
 
 #include "yb/util/mem_tracker.h"
 
+#include <boost/range/algorithm_ext/erase.hpp>
+#include <gflags/gflags.h>
+#include <string.h>
+#include <sys/types.h>
+#include <tcmalloc/malloc_extension.h>
+#include <boost/container/vector.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/stringize.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <algorithm>
 #include <limits>
 #include <sstream>
 #include <utility>
+#include <chrono>
+#include <compare>
+#include <cstdlib>
+#include <string_view>
 
-#include <boost/range/algorithm_ext/erase.hpp>
-
-#include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/tserver/server_main_util.h"
-
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
@@ -52,16 +69,19 @@
 #include "yb/util/format.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
-#include "yb/util/mutex.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
-#include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/logging.h"
 #include "yb/util/tcmalloc_profile.h"
 #include "yb/util/tcmalloc_trace.h"
 #include "yb/util/tcmalloc_util.h"
-#include "yb/util/tcmalloc_impl_util.h"
+#include "yb/gutil/atomicops.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/metrics_fwd.h"
 
 using namespace std::literals;
 

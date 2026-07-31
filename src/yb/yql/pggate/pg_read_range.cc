@@ -14,14 +14,20 @@
 
 #include "yb/yql/pggate/pg_read_range.h"
 
-#include "yb/client/yb_op.h"
+#include <ostream>
+#include <string>
+
 #include "yb/common/schema.h"
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
-
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb::pggate {
 

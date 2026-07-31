@@ -11,17 +11,32 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <string>
+
 #include "yb/client/snapshot_test_util.h"
-
 #include "yb/integration-tests/mini_cluster.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
-
 #include "yb/util/backoff_waiter.h"
-
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 namespace yb::master {
 

@@ -11,15 +11,47 @@
 // under the License.
 //
 
-#include <ranges>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <atomic>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <thread>
+#include <vector>
 
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/test_thread_holder.h"
-
 #include "yb/yql/pgwrapper/libpq_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/common/opid.pb.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/tablet/tablet.pb.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/util/atomic.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
+#include "yb/util/tsan_util.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_bool(enable_tablet_split_of_tables_with_vector_index);
 DECLARE_bool(vector_index_enable_compactions);

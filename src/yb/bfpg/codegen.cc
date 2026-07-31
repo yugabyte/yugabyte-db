@@ -12,14 +12,19 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
+#include <glog/logging.h>
+#include <string.h>
 #include <fstream>
 #include <vector>
+#include <map>
+#include <string>
 
 #include "yb/util/logging.h"
-
 #include "yb/bfpg/directory.h"
 #include "yb/common/ql_type.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/bfpg/bfdecl.h"
+#include "yb/common/value.messages.h"
 
 using std::endl;
 using std::map;

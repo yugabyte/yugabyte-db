@@ -22,8 +22,9 @@
 
 #include <assert.h>
 #include <string.h>
-
 #include <algorithm>
+
+#include "yb/gutil/integral_types.h"
 
 using std::string;
 

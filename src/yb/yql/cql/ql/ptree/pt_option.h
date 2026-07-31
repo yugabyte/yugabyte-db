@@ -18,8 +18,7 @@
 
 #pragma once
 
-#include <cmath> // Include cmath to get DOMAIN definition and undef it here
-#include <iosfwd>
+#include <ostream>
 
 namespace yb {
 namespace ql {

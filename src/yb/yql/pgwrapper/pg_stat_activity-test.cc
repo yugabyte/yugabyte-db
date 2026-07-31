@@ -10,10 +10,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <absl/base/dynamic_annotations.h>
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <chrono>
 #include <map>
 #include <optional>
 #include <vector>
+#include <functional>
+#include <string>
+#include <tuple>
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
@@ -21,9 +28,15 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/uuid.h"
-
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 

@@ -13,26 +13,52 @@
 
 #include "yb/dockv/pg_row.h"
 
-#include "yb/common/constants.h"
+#include <glog/logging.h>
+#include <string.h>
+#include <boost/intrusive/list.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <ostream>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-#include "yb/common/types.h"
-
 #include "yb/dockv/doc_bson.h"
-#include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/packed_value.h"
 #include "yb/dockv/reader_projection.h"
 #include "yb/dockv/value_packing.h"
 #include "yb/dockv/value_type.h"
-
-#include "yb/util/decimal.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/status_format.h"
-#include "yb/util/status_log.h"
-
 #include "yb/yql/pggate/util/pg_doc_data.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+#include "yb/util/algorithm_util.h"
+#include "yb/util/byte_buffer.h"
+#include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/status_log.h"  // IWYU pragma: keep
+#include "yb/util/write_buffer.h"
+#include "yb/yql/pggate/util/pg_wire.h"
 
 namespace yb::dockv {
 

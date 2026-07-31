@@ -10,15 +10,15 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include <shared_mutex>
+#include <boost/move/utility.hpp>
+#include <boost/move/utility_core.hpp>
+#include <mutex>
 
 #include "yb/master/tasks_tracker.h"
-
 #include "yb/gutil/strings/substitute.h"
-
-#include "yb/util/atomic.h"
-#include "yb/util/flags.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/monotime.h"
 
 DEFINE_UNKNOWN_int32(tasks_tracker_num_tasks, 100,
              "Number of most recent tasks to track for displaying in utilities UI.");

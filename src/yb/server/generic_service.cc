@@ -31,10 +31,13 @@
 //
 #include "yb/server/generic_service.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <string>
-
-#include <boost/preprocessor/cat.hpp>
-#include <boost/preprocessor/stringize.hpp>
+#include <map>
+#include <ostream>
+#include <utility>
+#include <vector>
 
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/clock.h"
@@ -42,7 +45,11 @@
 #include "yb/util/flags.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
-#include "yb/util/status_fwd.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/server/server_base.pb.h"
+#include "yb/util/enums.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 using std::string;
 

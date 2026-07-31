@@ -22,7 +22,9 @@
 //
 
 #pragma once
-#include "yb/rocksdb/slice_transform.h"
+#include <stddef.h>
+#include <stdint.h>
+
 #include "yb/rocksdb/memtablerep.h"
 
 namespace rocksdb {

@@ -17,23 +17,22 @@
 
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
 
+#include <gflags/gflags.h>
 #include <unordered_map>
+#include <list>
+#include <map>
 
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
-
 #include "yb/common/common.pb.h"
 #include "yb/qlexpr/index.h"
 #include "yb/qlexpr/index_column.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-
 #include "yb/yql/cql/ql/ptree/column_arg.h"
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/pt_dml_using_clause.h"
@@ -41,6 +40,18 @@
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/ycql_predtest.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/qlexpr/ql_name.h"
+#include "yb/util/format.h"
+#include "yb/util/slice.h"
+#include "yb/yql/cql/ql/ptree/sem_state.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
+#include "yb/common/ql_datatype.h"
 
 using std::string;
 

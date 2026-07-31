@@ -44,10 +44,11 @@
 #pragma once
 
 #include <stdint.h>
-
+#include <glog/logging.h>
 #include <sstream>
 #include <string>
 #include <vector>
+#include <iterator>
 
 #include "yb/util/logging.h"
 

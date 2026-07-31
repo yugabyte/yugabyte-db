@@ -13,28 +13,37 @@
 
 #pragma once
 
-#include <queue>
-
-#include <boost/range/iterator_range.hpp>
+#include <boost/container/vector.hpp>
+#include <boost/range/iterator_range_core.hpp>
+#include <cstddef>
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/hnsw/types.h"
-
 #include "yb/rocksdb/util/heap.h"
-
 #include "yb/util/misaligned_ptr.h"
-
 #include "yb/vector_index/vector_index_fwd.h"
 #include "yb/vector_index/distance.h"
-#include "yb/vector_index/hnsw_util.h"
-#include "yb/vector_index/hnswlib_include.h"
-#include "yb/vector_index/usearch_include_wrapper_internal.h"
+#include "usearch/index.hpp"
+#include "usearch/index_dense.hpp"  // IWYU pragma: keep
+#include "usearch/index_plugins.hpp"
+#include "yb/hnsw/hnsw_fwd.h"
+#include "yb/util/cast.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb {
-
-class Env;
-class RandomAccessFile;
-
-} // namespace yb
+namespace hnsw {
+class FileBlockCache;
+class YbHnsw;
+}  // namespace hnsw
+namespace vector_index {
+struct SearchOptions;
+}  // namespace vector_index
+}  // namespace yb
 
 namespace yb::hnsw {
 

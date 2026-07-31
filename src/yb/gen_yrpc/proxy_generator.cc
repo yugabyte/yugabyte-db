@@ -14,9 +14,13 @@
 #include "yb/gen_yrpc/proxy_generator.h"
 
 #include <google/protobuf/descriptor.h>
+#include <string>
+#include <vector>
 
 #include "yb/gen_yrpc/metric_descriptor.h"
 #include "yb/gen_yrpc/model.h"
+#include "yb/gen_yrpc/printer.h"
+#include "yb/rpc/lightweight_message.pb.h"
 
 namespace yb {
 namespace gen_yrpc {

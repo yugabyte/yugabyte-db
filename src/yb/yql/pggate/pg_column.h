@@ -18,18 +18,27 @@
 #pragma once
 
 #include <boost/iterator/transform_iterator.hpp>
+#include <stddef.h>
+#include <functional>
+#include <string>
 
-#include "yb/common/common_fwd.h"
 #include "yb/common/ql_datatype.h"
-
-#include "yb/dockv/dockv_fwd.h"
 #include "yb/dockv/key_entry_value.h"
-
-#include "yb/yql/pggate/pg_gate_fwd.h"
-
-#include "yb/util/memory/arena_fwd.h"
 #include "yb/util/memory/arena_list.h"
-#include "yb/util/status_fwd.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class ColumnSchema;
+class LWQLValuePB;
+class Schema;
+enum class SortingType;
+namespace pggate {
+class PgDml;
+class PgExpr;
+}  // namespace pggate
+}  // namespace yb
 
 namespace yb::pggate {
 namespace pg_column::internal {

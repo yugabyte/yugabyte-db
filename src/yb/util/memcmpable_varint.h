@@ -40,11 +40,14 @@
 
 #pragma once
 
-#include "yb/util/faststring.h"
-#include "yb/util/slice.h"
-#include "yb/util/status_fwd.h"
+#include <stdint.h>
+#include <string>
+
+#include "yb/util/status.h"
 
 namespace yb {
+class Slice;
+class faststring;
 
 // Appends the varint to the end of the string.
 void PutMemcmpableVarint64(std::string *dst, uint64_t value);

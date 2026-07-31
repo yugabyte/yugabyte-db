@@ -13,20 +13,45 @@
 
 #include "yb/yql/pggate/pg_ybctid_reader.h"
 
+#include <boost/container/small_vector.hpp>
+#include <glog/logging.h>
+#include <boost/container/vector.hpp>
 #include <algorithm>
 #include <functional>
-
-#include <boost/container/small_vector.hpp>
+#include <ostream>
+#include <utility>
 
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/transaction_error.h"
-
 #include "yb/util/std_util.h"
-
 #include "yb/yql/pggate/pg_doc_op.h"
 #include "yb/yql/pggate/pg_doc_op_fetch_stream.h"
 #include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_table.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/gutil/port.h"
+#include "yb/util/logging.h"
+#include "yb/util/lw_function.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/yql/pggate/pg_doc_metrics.h"
+#include "yb/yql/pggate/pg_gate_fwd.h"
+#include "yb/yql/pggate/pg_op.h"
+#include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
+namespace yb {
+enum PgsqlMetricsCaptureType : int;
+namespace pggate {
+enum class PgSessionRunOperationMarker;
+}  // namespace pggate
+}  // namespace yb
 
 namespace yb::pggate {
 namespace {

@@ -17,18 +17,28 @@
 
 #include "yb/yql/cql/ql/ptree/pt_alter_table.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <ostream>
+
 #include "yb/client/table.h"
-
 #include "yb/qlexpr/index.h"
-#include "yb/common/schema.h"
-
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
-
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
+#include "yb/client/schema.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/yql/cql/ql/ptree/pt_table_property.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
+
+namespace yb {
+class TableProperties;
+}  // namespace yb
 
 DEFINE_RUNTIME_bool(ycql_enable_alter_rename_column_with_index, false,
     "Whether renaming a column which is used in an index is enabled.");

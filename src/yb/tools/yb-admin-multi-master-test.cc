@@ -31,18 +31,36 @@
 //
 // Tests for the yb-admin command-line tool with multiple masters.
 
+#include <glog/logging.h>
+#include <stddef.h>
 #include <regex>
-
-#include <gtest/gtest.h>
-
-#include "yb/client/client.h"
+#include <algorithm>
+#include <chrono>
+#include <functional>
+#include <initializer_list>
+#include <iterator>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <vector>
 
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 namespace tools {

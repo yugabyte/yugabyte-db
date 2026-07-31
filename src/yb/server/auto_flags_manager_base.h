@@ -13,16 +13,29 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <shared_mutex>
+#include <optional>
+#include <string>
+#include <unordered_set>
 
 #include "yb/common/wire_protocol.pb.h"
-#include "yb/server/server_base_options.h"
-#include "yb/util/status_fwd.h"
+#include "yb/common/clock.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/server/server_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
-class ClockBase;
 class FsManager;
+namespace rpc {
+class Messenger;
+}  // namespace rpc
 
 // There are two common ways in which a new config is loaded.
 //

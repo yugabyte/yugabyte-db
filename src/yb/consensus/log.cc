@@ -32,6 +32,12 @@
 
 #include "yb/consensus/log.h"
 
+#include <absl/base/dynamic_annotations.h>
+#include <errno.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <sys/types.h>
+#include <boost/memory_order.hpp>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -40,29 +46,26 @@
 #include <mutex>
 #include <thread>
 #include <vector>
-
-#include <boost/algorithm/string/predicate.hpp>
+#include <compare>
+#include <deque>
+#include <ostream>
+#include <ratio>
 
 #include "yb/ash/wait_state.h"
-
 #include "yb/common/opid.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
-
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.messages.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/log_metrics.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
-
 #include "yb/fs/fs_manager.h"
-
 #include "yb/gutil/bind.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
-
 #include "yb/util/async_util.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/debug-util.h"
@@ -77,7 +80,6 @@
 #include "yb/util/metrics.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/path_util.h"
-#include "yb/util/pb_util.h"
 #include "yb/util/random.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
@@ -90,6 +92,30 @@
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
+#include "yb/consensus/consensus.messages.h"
+#include "yb/gutil/bind_helpers.h"
+#include "yb/gutil/callback.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/util/errno.h"
+#include "yb/util/faststring.h"
+#include "yb/util/file_system.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/restart_safe_clock.h"
+#include "yb/util/slice.h"
+#include "yb/util/threadpool.h"
+#include "yb/util/uuid.h"
+
+namespace yb {
+class MemTracker;
+}  // namespace yb
 
 using namespace yb::size_literals;  // NOLINT.
 using namespace std::literals;  // NOLINT.

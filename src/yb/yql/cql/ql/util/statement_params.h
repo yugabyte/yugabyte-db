@@ -17,14 +17,21 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <memory>
+#include <string>
+
 #include "yb/common/common_fwd.h"
 #include "yb/common/ql_protocol.pb.h"
-
-#include "yb/util/status_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 struct ReadHybridTime;
+class QLType;
+class QLValue;
+enum YBConsistencyLevel : int;
 
 namespace ql {
 

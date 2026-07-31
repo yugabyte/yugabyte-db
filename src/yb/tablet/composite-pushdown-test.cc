@@ -30,35 +30,43 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <stdint.h>
 #include <algorithm>
-#include <limits>
 #include <string>
-#include <unordered_set>
 #include <vector>
+#include <compare>
+#include <memory>
+#include <ostream>
 
 #include "yb/util/logging.h"
-#include <gtest/gtest.h>
-
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/schema.h"
-
 #include "yb/docdb/read_operation_data.h"
-
-#include "yb/dockv/partial_row.h"
-
-#include "yb/gutil/strings/numbers.h"
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/qlexpr/ql_rowblock.h"
-
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/read_result.h"
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
-
-#include "yb/util/env.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/write_buffer.h"
 
 using std::string;
 using std::vector;

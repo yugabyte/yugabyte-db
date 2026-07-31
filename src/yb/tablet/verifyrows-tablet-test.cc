@@ -30,29 +30,45 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <memory>
-
-#include <gtest/gtest.h>
+#include <ostream>
+#include <string>
+#include <vector>
 
 #include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_protocol_util.h"
-
-#include "yb/docdb/ql_rowwise_iterator_interface.h"
-
 #include "yb/dockv/reader_projection.h"
-
-#include "yb/gutil/macros.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/tablet-test-base.h"
-#include "yb/tablet/tablet.h"
-
+#include "yb/tablet/tablet.h" // IWYU pragma: keep
 #include "yb/util/countdown_latch.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_graph.h"
 #include "yb/util/thread.h"
-#include "yb/util/flags.h"
+#include "gtest/gtest.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
+#include "yb/common/value.pb.h"
+#include "yb/dockv/partial_row.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/faststring.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/stopwatch.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 
 DEFINE_NON_RUNTIME_int32(num_counter_threads, 8, "Number of counting threads to launch");
 DEFINE_NON_RUNTIME_int32(num_summer_threads, 1, "Number of summing threads to launch");

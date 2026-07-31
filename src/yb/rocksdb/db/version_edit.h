@@ -25,32 +25,42 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
-#include <string.h>
-
-#include <algorithm>
-#include <limits>
-#include <memory>
-#include <set>
-#include <stack>
+#include <boost/move/iterator.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <glog/logging.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <set>  // IWYU pragma: keep
+#include <optional>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "yb/gutil/atomicops.h"
-
 #include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/listener.h"
-#include "yb/rocksdb/options.h"
-#include "yb/rocksdb/status_fwd.h"
+#include "yb/rocksdb/status.h"
+#include "yb/storage/frontier.h"
+#include "yb/storage/storage_fwd.h"
+#include "yb/util/enums.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/db/dbformat.h"  // IWYU pragma: keep
 #include "yb/rocksdb/types.h"
 
 namespace rocksdb {
-
+class TableReader;
 class TableCache;
-class VersionSet;
 class VersionEditPB;
 
 // In-memory packing of an SST file number and path_id (index into DBOptions::db_paths) into a

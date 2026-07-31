@@ -909,6 +909,15 @@ set(YB_SUBDIR_NAMES
     yql
    )
 
+# ------------------------------------------------------------------------------------------------
+# Include What You Use (IWYU) integration
+# ------------------------------------------------------------------------------------------------
+# Must be set BEFORE add_subdirectory calls so CMAKE_CXX_INCLUDE_WHAT_YOU_USE applies to targets
+include(YugabyteIWYU)
+if("$ENV{YB_ENABLE_IWYU}" STREQUAL "1")
+  yb_enable_iwyu_for_compilation()
+endif()
+
 foreach(subdir_name IN LISTS YB_SUBDIR_NAMES)
   add_subdirectory("src/yb/${subdir_name}")
 endforeach()
@@ -941,6 +950,10 @@ endif()
 if(YB_BUILD_ODYSSEY)
   yb_setup_odyssey()
 endif()
+
+# Create IWYU targets for on-demand analysis (ninja iwyu)
+# These always get created, regardless of native IWYU mode
+yb_create_iwyu_target()
 
 # Note "yb-server", without the "t" -- this is not a typo. "yb-server" is the unified LTO executable
 # that contains the functionality of both yb-master and yb-tserver, and yb-master/yb-tserver are

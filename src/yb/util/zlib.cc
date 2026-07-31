@@ -15,14 +15,16 @@
 // specific language governing permissions and limitations
 // under the License.
 #include "yb/util/zlib.h"
-#include <zlib.h>
 
+#include <zlib.h>
+#include <stdint.h>
+#include <string.h>
+#include <zconf.h>
 #include <memory>
 #include <string>
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/macros.h"
-
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"

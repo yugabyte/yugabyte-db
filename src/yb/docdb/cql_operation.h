@@ -13,20 +13,67 @@
 
 #pragma once
 
-#include "yb/common/ql_protocol.pb.h"
-#include "yb/common/typedefs.h"
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <unordered_map>
+#include <vector>
 
+#include "yb/common/typedefs.h"
 #include "yb/docdb/doc_expr.h"
 #include "yb/dockv/doc_key.h"
 #include "yb/docdb/doc_operation.h"
-#include "yb/docdb/intent_aware_iterator.h"
-
-#include "yb/util/operation_counter.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/transaction.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/dockv/doc_path.h"
+#include "yb/util/format.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+class ColumnSchema;
+class HybridTime;
+class Schema;
+class ScopedRWOperation;
+
+namespace bfql {
+enum class TSOpcode : int32_t;
+}  // namespace bfql
+namespace dockv {
+struct ReaderProjection;
+}  // namespace dockv
+namespace qlexpr {
+class IndexInfo;
+class IndexMap;
+class QLExprExecutor;
+class QLResultSet;
+class QLRowBlock;
+class QLScanSpec;
+class QLTableRow;
+}  // namespace qlexpr
+struct ReadHybridTime;
+struct ReadRestartData;
+
 namespace docdb {
 
 YB_STRONGLY_TYPED_BOOL(IsInsert);
+class DocWriteBatch;
+class IntentAwareIterator;
+class LWKeyValueWriteBatchPB;
+class YQLRowwiseIteratorIf;
+class YQLStorageIf;
+struct DocReadContext;
+struct ReadOperationData;
 
 class QLWriteOperation :
     public DocOperationBase<DocOperationType::QL_WRITE_OPERATION, QLWriteRequestMsg>,

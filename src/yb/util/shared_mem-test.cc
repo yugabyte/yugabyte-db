@@ -12,13 +12,25 @@
 //
 
 #include <signal.h>
-
+#include <glog/logging.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <thread>
-
-#include <gtest/gtest.h>
+#include <atomic>
+#include <chrono>
+#include <new>
+#include <ostream>
+#include <string>
 
 #include "yb/util/shared_mem.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 using namespace std::literals;
 

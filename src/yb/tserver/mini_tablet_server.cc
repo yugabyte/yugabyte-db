@@ -32,36 +32,57 @@
 
 #include "yb/tserver/mini_tablet_server.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/asio/ip/address.hpp>
 #include <functional>
 #include <memory>
 #include <string>
 #include <utility>
+#include <optional>
+#include <ostream>
 
 #include "yb/common/schema.h"
 #include "yb/consensus/consensus_util.h"
-
 #include "yb/dockv/partition.h"
-
 #include "yb/rpc/messenger.h"
-
 #include "yb/server/rpc_server.h"
-
 #include "yb/tablet/tablet-test-harness.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/tunnel.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/server/clock.h"
+#include "yb/server/server_base.h"
+#include "yb/server/webserver.h"
+#include "yb/server/webserver_options.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/slice.h"
 
-#include "yb/yql/pgwrapper/libpq_utils.h"
+namespace yb {
+class MetricEntity;
+enum TableType : int;
+}  // namespace yb
 
 using std::pair;
 using std::string;

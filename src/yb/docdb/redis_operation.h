@@ -13,17 +13,33 @@
 
 #pragma once
 
-#include "yb/common/redis_protocol.messages.h"
+#include <stdint.h>
+#include <functional>
+#include <optional>
+#include <string>
 
 #include "yb/docdb/deadline_info.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/dockv/expiration.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
-
 #include "yb/rocksdb/cache.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/redis_protocol.pb.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/read_operation_data.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class LWRedisResponsePB;
+class LWRedisWriteRequestPB;
+
+namespace dockv {
+enum class ValueEntryType;
+}  // namespace dockv
+
 namespace docdb {
 
 // Redis value data with attached type of this value.

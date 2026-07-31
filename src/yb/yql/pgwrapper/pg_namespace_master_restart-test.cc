@@ -10,13 +10,23 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/master/mini_master.h"
-#include "yb/master/master.h"
-#include "yb/util/monotime.h"
-#include "yb/util/backoff_waiter.h"
+#include <gflags/gflags.h>
+#include <atomic>
+#include <chrono>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gtest/gtest.h"
+#include "libpq-fe.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_bool(TEST_hang_on_namespace_transition);
 

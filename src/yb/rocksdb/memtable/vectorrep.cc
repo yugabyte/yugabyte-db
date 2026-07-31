@@ -17,21 +17,28 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include <unordered_set>
-#include <set>
+#include <assert.h>
+#include <stddef.h>
 #include <memory>
 #include <algorithm>
 #include <type_traits>
+#include <new>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/rocksdb/memtablerep.h"
-
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/memtable/stl_wrappers.h"
-#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/mutexlock.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/util/slice.h"
 
 namespace rocksdb {
+class MemTableAllocator;
+
 namespace {
 
 using stl_wrappers::Compare;

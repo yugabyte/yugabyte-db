@@ -16,11 +16,14 @@
 //--------------------------------------------------------------------------------------------------
 #include "yb/yql/cql/ql/util/statement_result.h"
 
+#include <glog/logging.h>
+#include <ostream>
+#include <utility>
+
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_op.h"
 #include "yb/common/ql_protocol.messages.h"
-#include "yb/common/ql_protocol_util.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/schema.h"
@@ -30,8 +33,16 @@
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_list.h"
 
 namespace yb {
+class QLType;
+
 namespace ql {
 
 using std::string;

@@ -13,11 +13,40 @@
 
 #pragma once
 
-#include "yb/common/entity_ids_types.h"
-
-#include "yb/master/async_rpc_tasks.h"
+#include <stddef.h>
+#include <boost/circular_buffer.hpp>
+#include <boost/container_hash/hash.hpp>
+#include <boost/core/pointer_traits.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "yb/util/enums.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/server/monitored_task.h"
+#include "yb/util/locks.h"
+#include "yb/util/monotime.h"
+
+namespace yb {
+namespace master {
+class RetryingRpcTask;
+}  // namespace master
+}  // namespace yb
 
 namespace yb::master {
 

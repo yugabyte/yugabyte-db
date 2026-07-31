@@ -20,14 +20,14 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <map>
 #include <queue>
 #include <string>
 
-#include "yb/gutil/ref_counted.h"
-#include "yb/rocksdb/port/port.h"
-
-#include "yb/rocksdb/status_fwd.h"
+#include "yb/gutil/ref_counted.h"  // IWYU pragma: keep
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/port/port_posix.h"
 
 namespace yb {
 class Thread;
@@ -35,8 +35,6 @@ class Thread;
 
 namespace rocksdb {
 
-class Env;
-class Logger;
 class SstFileManagerImpl;
 
 // DeleteScheduler allows the DB to enforce a rate limit on file deletion,

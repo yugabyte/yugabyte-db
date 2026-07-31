@@ -32,47 +32,54 @@
 
 #include "yb/rpc/outbound_call.h"
 
-#include <algorithm>
+#include <boost/range/adaptor/transformed.hpp>
+#include <gflags/gflags.h>
+#include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/wire_format_lite.h>
+#include <opentelemetry/nostd/shared_ptr.h>
+#include <opentelemetry/trace/span_metadata.h>
+#include <string.h>
+#include <boost/container_hash/hash.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/range/adaptor/argument_fwd.hpp>
+#include <boost/range/begin.hpp>
+#include <boost/range/end.hpp>
 #include <mutex>
 #include <string>
-#include <vector>
-
-#include <boost/functional/hash.hpp>
-#include <boost/range/adaptor/transformed.hpp>
-#include <google/protobuf/descriptor.h>
+#include <sstream>
 
 #include "opentelemetry/trace/span.h"
-
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
-
 #include "yb/rpc/connection.h"
 #include "yb/rpc/constants.h"
 #include "yb/rpc/proxy_base.h"
-#include "yb/rpc/rpc_context.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/serialization.h"
 #include "yb/rpc/sidecars.h"
 #include "yb/rpc/wait_state_if.h"
-
-#include "yb/util/crc.h"
 #include "yb/util/dist_trace.h"
 #include "yb/util/enums.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/endian.h"
+#include "yb/gutil/sysinfo.h"
+#include "yb/rpc/remote_method.h"
+#include "yb/util/cast.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/random_util.h"
 
 using std::string;
 

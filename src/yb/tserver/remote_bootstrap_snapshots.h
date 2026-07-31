@@ -13,13 +13,25 @@
 
 #pragma once
 
+#include <string>
+#include <unordered_set>
+#include <utility>
+
 #include "yb/common/entity_ids_types.h"
 #include "yb/tablet/tablet_fwd.h"
-
-#include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/remote_bootstrap_session.h"
+#include "yb/tserver/remote_bootstrap.pb.h"
+#include "yb/tserver/remote_bootstrap_file_downloader.h"
+#include "yb/tserver/remote_client_base.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class FsManager;
+namespace tablet {
+class RaftGroupReplicaSuperBlockPB;
+class SnapshotFilePB;
+}  // namespace tablet
+
 namespace tserver {
 
 class RemoteBootstrapSnapshotsComponent : public RemoteBootstrapComponent {

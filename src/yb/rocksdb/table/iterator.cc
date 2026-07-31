@@ -22,10 +22,16 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/iterator.h"
+
+#include <assert.h>
+#include <ostream>
+
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/iterator_helpers_internal.h"
+#include "yb/util/status.h"
 
 namespace rocksdb {
+class Arena;
 
 Cleanable::Cleanable() {
   cleanup_.function = nullptr;

@@ -11,13 +11,30 @@
 // under the License.
 //
 
-#include "yb/hnsw/hnsw.h"
-#include "yb/hnsw/vector_index_test_base.h"
+#include <glog/logging.h>
+#include <stddef.h>
+#include <cmath>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "yb/hnsw/vector_index_test_base.h"
 #include "yb/ann_methods/hnswlib_wrapper.h"
 #include "yb/ann_methods/usearch_wrapper.h"
-
 #include "yb/util/size_literals.h"
+#include "gtest/gtest.h"
+#include "yb/common/common.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
+#include "yb/vector_index/hnsw_options.h"
+#include "yb/vector_index/vector_index_fwd.h"
+#include "yb/vector_index/vector_index_if.h"
 
 namespace yb::ann_methods {
 

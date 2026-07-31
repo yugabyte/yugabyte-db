@@ -12,10 +12,12 @@
 //
 
 #include <vector>
+#include <string>
 
 #include "yb/util/range.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tostring.h"
+#include "gtest/gtest.h"
 
 namespace yb {
 

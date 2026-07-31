@@ -32,30 +32,32 @@
 
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <limits.h>
+#include <boost/multi_index_container.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <algorithm>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
-
-#include <boost/container/static_vector.hpp>
-#include <boost/none.hpp>
+#include <chrono>
+#include <deque>
+#include <ostream>
+#include <ratio>
+#include <string_view>
 
 #include "yb/ash/wait_state.h"
-
 #include "yb/cdc/cdc_service.h"
-
 #include "yb/client/client.h"
 #include "yb/client/meta_data_cache.h"
-#include "yb/client/transaction_manager.h"
-
 #include "yb/common/common_flags.h"
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/snapshot.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_util.h"
@@ -63,31 +65,20 @@
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/multi_raft_batcher.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/consensus/quorum_util.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/retryable_requests.h"
 #include "yb/consensus/state_change_context.h"
-
 #include "yb/docdb/docdb_rocksdb_util.h"
-
 #include "yb/fs/fs_manager.h"
-
 #include "yb/gutil/bind.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/hnsw/hnsw_block_cache.h"
-
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_heartbeat.pb.h"
-#include "yb/master/sys_catalog.h"
-
 #include "yb/qlexpr/index.h"
-
 #include "yb/rocksdb/util/task_metrics.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/poller.h"
-
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/operations/clone_operation.h"
 #include "yb/tablet/operations/split_operation.h"
@@ -98,9 +89,7 @@
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
-
 #include "yb/tablet/tablet_types.pb.h"
-
 #include "yb/tserver/full_compaction_manager.h"
 #include "yb/tserver/heartbeater.h"
 #include "yb/tserver/remote_bootstrap_client.h"
@@ -113,7 +102,6 @@
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.pb.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
-
 #include "yb/util/cgroups.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
@@ -127,7 +115,6 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
-#include "yb/util/pb_util.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
@@ -136,6 +123,58 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common_consensus_util.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_util.h"
+#include "yb/common/opid.h"
+#include "yb/common/schema.h"
+#include "yb/common/schema_pbutil.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/log_anchor_registry.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/docdb/local_waiting_txn_registry.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/bind_helpers.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/master/sys_catalog_constants.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/rate_limiter.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/rpc/thread_pool.h"
+#include "yb/server/clock.h"
+#include "yb/server/server_base.h"
+#include "yb/tablet/operations.messages.h"
+#include "yb/tablet/tablet_bootstrap_state_manager.h"
+#include "yb/tserver/tablet_memory_manager.h"
+#include "yb/tserver/tablet_server_options.h"
+#include "yb/tserver/ts_data_size_metrics.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/util/background_task.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/path_util.h"
+#include "yb/util/status_callback.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/thread_pool.h"
+#include "yb/util/threadpool.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace client {
+class TransactionManager;
+}  // namespace client
+namespace tablet {
+class SplitTabletRequestPB;
+}  // namespace tablet
+}  // namespace yb
 
 using namespace std::literals;
 using namespace std::placeholders;

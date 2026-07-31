@@ -31,9 +31,13 @@
 //
 #pragma once
 
-#include "yb/yql/cql/cqlserver/cql_service.h"
+#include <memory>
 
 namespace yb {
+namespace cqlserver {
+class CQLServiceImpl;
+}  // namespace cqlserver
+
 using cqlserver::CQLServiceImpl;
 
 class Webserver;

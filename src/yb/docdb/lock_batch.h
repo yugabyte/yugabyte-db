@@ -13,20 +13,22 @@
 
 #pragma once
 
-#include <string>
-
-#include "yb/util/logging.h"
+#include <stddef.h>
+#include <optional>
+#include <utility>
+#include <vector>
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/lock_util.h"
-
-#include "yb/dockv/intent.h"
-
 #include "yb/gutil/macros.h"
-
 #include "yb/util/monotime.h"
-#include "yb/util/ref_cnt_buffer.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
+
+namespace yb {
+namespace docdb {
+class SharedLockManager;
+}  // namespace docdb
+}  // namespace yb
 
 namespace yb::docdb {
 

@@ -18,23 +18,24 @@
 // under the License.
 //
 
+#include <assert.h>
+#include <gflags/gflags.h>
+#include <stdint.h>
+#include <boost/container/vector.hpp>
 #include <climits>
-
 #include <queue>
 #include <random>
-#include <utility>
-
-#include <gtest/gtest.h>
-
-#include "yb/util/logging.h"
+#include <string>
+#include <tuple>
 
 #include "yb/rocksdb/util/heap.h"
 #include "yb/rocksdb/util/testutil.h"
+#include "gtest/gtest.h"
+#include "yb/util/flags/flag_tags.h"
 
 #ifndef GFLAGS
 const int64_t ANNOTATE_UNPROTECTED_WRITE(FLAGS_iters) = 100000;
 #else
-#include "yb/util/flags.h"
 DEFINE_NON_RUNTIME_int64(iters, 100000, "number of pseudo-random operations in each test");
 #endif  // GFLAGS
 

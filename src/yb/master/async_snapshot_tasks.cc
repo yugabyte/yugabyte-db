@@ -12,27 +12,38 @@
 
 #include "yb/master/async_snapshot_tasks.h"
 
+#include <glog/logging.h>
+#include <memory>
+#include <ostream>
+
 #include "yb/ash/wait_state.h"
-
 #include "yb/consensus/consensus_error.h"
-
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/master_backup.pb.h"
-#include "yb/master/ts_descriptor.h"
-
-#include "yb/rpc/messenger.h"
-
 #include "yb/tserver/backup.proxy.h"
-
 #include "yb/util/debug-util.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/server/clock.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
+
+namespace yb {
+class ThreadPool;
+}  // namespace yb
 
 DEFINE_test_flag(bool, simulate_long_restore, false,
     "Simulate a long restore failing to transition task to completion state if successful, thereby "

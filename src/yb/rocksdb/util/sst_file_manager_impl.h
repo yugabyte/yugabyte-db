@@ -20,17 +20,18 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <string>
-
-#include "yb/rocksdb/port/port.h"
+#include <memory>
+#include <unordered_map>
+#include <functional>
 
 #include "yb/rocksdb/sst_file_manager.h"
 #include "yb/rocksdb/util/delete_scheduler.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/rocksdb/env.h"
 
 namespace rocksdb {
-
-class Env;
-class Logger;
 
 // SstFileManager is used to track SST files in the DB and control there
 // deletion rate.

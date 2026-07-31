@@ -32,21 +32,28 @@
 
 #include "yb/common/init.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdlib.h>
 #include <csignal>
 #include <string>
+#include <iostream>
+#include <mutex>
+#include <vector>
 
 #include "yb/common/version_info.h"
-
 #include "yb/gutil/cpu.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/flags/flags_callback.h"
+#include "yb/util/slice.h"
 
 #if defined(__linux__)
 #include <sys/prctl.h>

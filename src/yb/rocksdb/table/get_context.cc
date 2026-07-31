@@ -20,17 +20,23 @@
 
 #include "yb/rocksdb/table/get_context.h"
 
+#include <assert.h>
+
 #include "yb/rocksdb/db/merge_context.h"
-#include "yb/rocksdb/env.h"
 #include "yb/rocksdb/merge_operator.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/stop_watch.h"
-
 #include "yb/util/stats/perf_step_timer.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/perf_context.h"
+#include "yb/rocksdb/util/coding.h"
 
 namespace rocksdb {
+class Env;
+class Logger;
 
 namespace {
 

@@ -29,21 +29,28 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <string.h>
 #include <functional>
 #include <vector>
+#include <string>
 
-#include <gtest/gtest.h>
-
-#include "yb/gutil/atomicops.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/debug/leakcheck_disabler.h"
 #include "yb/util/metrics.h"
-#include "yb/util/monotime.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
-#include "yb/util/flags.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/env.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
 
 DEFINE_NON_RUNTIME_int32(mt_metrics_test_num_threads, 4,
              "Number of threads to spawn in mt metrics tests");

@@ -13,6 +13,9 @@
 
 #include "yb/util/split.h"
 
+#include <ctype.h>
+#include <string>
+
 #include "yb/util/status.h"
 
 using std::string;

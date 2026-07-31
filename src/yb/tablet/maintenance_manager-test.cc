@@ -29,20 +29,31 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <glog/logging.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <memory>
 #include <mutex>
-#include <vector>
-
-#include <gtest/gtest.h>
+#include <functional>
+#include <initializer_list>
+#include <ostream>
+#include <string>
 
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet.pb.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
-#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/condition_variable.h"
+#include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/mutex.h"
 
 using yb::tablet::MaintenanceManagerStatusPB;
 using std::shared_ptr;

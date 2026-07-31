@@ -31,11 +31,14 @@
 //
 #pragma once
 
+#include <stdint.h>
+#include <string.h>
 #include <string>
 
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/fastmem.h"
+#include "yb/gutil/port.h"
 
 namespace yb {
 

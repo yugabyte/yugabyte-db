@@ -13,22 +13,40 @@
 
 #include "yb/tablet/running_transaction.h"
 
-#include "yb/client/transaction_rpc.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <chrono>
+#include <functional>
+#include <future>
+#include <ostream>
+#include <ratio>
+#include <utility>
 
+#include "yb/client/transaction_rpc.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/tablet/transaction_participant_context.h"
-
 #include "yb/tserver/tserver_service.pb.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
-#include "yb/util/yb_pg_errcodes.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/dockv/value_type.h"
+#include "yb/tablet/transaction_intent_applier.h"
+#include "yb/util/cast.h"
+#include "yb/util/delayer.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/monotime.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uint_set.h"
+
+namespace yb {
+class ScopedRWOperation;
+namespace client {
+class YBClient;
+}  // namespace client
+}  // namespace yb
 
 using namespace std::placeholders;
 using namespace std::literals;

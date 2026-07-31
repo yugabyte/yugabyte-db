@@ -13,18 +13,19 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <bitset>
+#include <string>
 
-#include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
-
 #include "yb/util/slice.h"
 #include "yb/util/status_format.h"
-#include "yb/util/write_buffer.h"
+#include "yb/util/cast.h"
+#include "yb/util/status.h"
+#include "yb/util/write_buffer.h"  // IWYU pragma: keep
 
 namespace yb {
-
-class WriteBuffer;
 
 namespace pggate {
 

@@ -14,20 +14,24 @@
 #include "yb/dockv/intent.h"
 
 #include <boost/logic/tribool.hpp>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/preprocessor/cat.hpp>
 
 #include "yb/util/logging.h"
-
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/key_bytes.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/gutil/endian.h"
-
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/status_format.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/dockv/dockv.pb.h"
+#include "yb/util/enums.h"
+#include "yb/util/uuid.h"
 
 namespace yb::dockv {
 namespace {

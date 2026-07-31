@@ -35,29 +35,47 @@
 #include <sys/resource.h>
 #include <sys/syscall.h>
 #include <sys/time.h>
-#include <sys/types.h>
+#include <errno.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/core/addressof.hpp>
+#include <boost/intrusive/list_hook.hpp>
+#include <boost/intrusive/options.hpp>
 
 #include "yb/util/signal_util.h"
+#include "yb/gutil/bind_helpers.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/boost_yield_k.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/slice.h"
+#include "yb/util/threadlocal.h"
 
 #if defined(__linux__)
 #include <sys/prctl.h>
 #endif // defined(__linux__)
 
+#include <boost/intrusive/list.hpp>
 #include <algorithm>
-#include <array>
 #include <atomic>
 #include <functional>
 #include <map>
 #include <memory>
 #include <vector>
-
-#include <boost/intrusive/list.hpp>
+#include <mutex>
+#include <optional>
+#include <span>
+#include <sstream>
+#include <unordered_map>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/cgroups.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/errno.h"
@@ -66,7 +84,6 @@
 #include "yb/util/lockfree.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
-#include "yb/util/mutex.h"
 #include "yb/util/os-util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"

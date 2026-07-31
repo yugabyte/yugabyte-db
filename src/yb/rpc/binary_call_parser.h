@@ -13,13 +13,19 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <sys/types.h>
+#include <vector>
+
 #include "yb/util/mem_tracker.h"
 #include "yb/util/net/socket.h"
 #include "yb/util/strongly_typed_bool.h"
-
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/call_data.h"
 #include "yb/rpc/reactor_thread_role.h"
+#include "yb/rpc/connection_context.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace rpc {

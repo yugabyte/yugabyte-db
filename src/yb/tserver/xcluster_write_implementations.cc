@@ -10,35 +10,55 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <unordered_set>
-
-#include "yb/client/client_fwd.h"
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <unordered_map>
+#include <utility>
 
 #include "yb/common/transaction.h"
-
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_types.h"
-
-#include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/docdb.h"
-#include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/intent_format.h"
-#include "yb/docdb/rocksdb_writer.h"
-
-#include "yb/dockv/doc_key.h"
-#include "yb/dockv/key_bytes.h"
 #include "yb/dockv/packed_row.h"
-
 #include "yb/tserver/xcluster_write_interface.h"
 #include "yb/tserver/tserver.messages.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/size_literals.h"
-#include "yb/util/fast_varint.h"
 #include "yb/util/flags.h"
 #include "yb/util/status_format.h"
-
 #include "yb/common/hybrid_time.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/transaction.messages.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/value.pb.h"
+#include "yb/docdb/docdb.messages.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/dockv/value.h"
+#include "yb/dockv/value_type.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/stl_util.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/tablet/operations.pb.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/uint_set.h"
+#include "yb/util/uuid.h"
 
 // Below batch related configs are deprecated because splitting a single producer side
 // batch into multiple consumer side batches can cause overwrite of intents and lead to rocksdb

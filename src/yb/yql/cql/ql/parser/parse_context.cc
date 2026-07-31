@@ -14,13 +14,19 @@
 //--------------------------------------------------------------------------------------------------
 #include "yb/yql/cql/ql/parser/parse_context.h"
 
-#include <stdio.h>
+#include <glog/logging.h>
+#include <algorithm>
+#include <set>
 
 #include "yb/yql/cql/ql/ptree/parse_tree.h"
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/parser/location.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
 
 namespace yb {
 namespace ql {
+class location;
+enum class ErrorCode : int64_t;
 
 using std::istream;
 using std::min;

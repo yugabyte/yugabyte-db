@@ -31,13 +31,18 @@
 //
 
 #include <stdlib.h>
-
+#include <glog/logging.h>
+#include <signal.h>
+#include <stdio.h>
+#include <string.h>
 #include <string>
-
-#include <gtest/gtest.h>
+#include <map>
+#include <vector>
 
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/util/test_macros.h"
 
 using std::string;
 using std::vector;

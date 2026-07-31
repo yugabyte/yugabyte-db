@@ -13,6 +13,23 @@
 
 #include "yb/master/ts_descriptor_test_util.h"
 
+#include <utility>
+
+#include "yb/common/common_net.pb.h"
+#include "yb/master/ts_descriptor.h"
+#include "yb/util/cow_object.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class NodeInstancePB;
+namespace master {
+class TSRegistrationPB;
+}  // namespace master
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+}  // namespace yb
+
 namespace yb::master {
 
 Result<TSDescriptorPtr> TSDescriptorTestUtil::RegisterNew(

@@ -13,23 +13,46 @@
 
 #include "yb/master/xcluster/add_table_to_xcluster_target_task.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <functional>
+#include <ostream>
+#include <tuple>
+#include <utility>
+#include <vector>
+
 #include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
-
 #include "yb/common/xcluster_util.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
-
-#include "yb/rpc/messenger.h"
-
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/logging.h"
 #include "yb/util/sync_point.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_string.h"
+#include "yb/util/strongly_typed_uuid.h"
+
+namespace yb {
+namespace master {
+struct LeaderEpoch;
+}  // namespace master
+namespace rpc {
+class Messenger;
+}  // namespace rpc
+}  // namespace yb
 
 DEFINE_test_flag(bool, xcluster_fail_table_create_during_bootstrap, false,
     "Fail the table or index creation during xcluster bootstrap stage.");

@@ -21,9 +21,16 @@
 
 #pragma once
 
-#include "yb/rocksdb/env.h"
+#include <stdarg.h>
+#include <stddef.h>
+#include <sys/time.h>
+
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/autovector.h"
+
+namespace rocksdb {
+enum InfoLogLevel : unsigned char;
+}  // namespace rocksdb
 
 #define LOG_TO_BUFFER(...) LogToBufferWithContext(__FILE__, __LINE__, ##__VA_ARGS__)
 

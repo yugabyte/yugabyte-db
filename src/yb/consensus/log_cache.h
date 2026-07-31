@@ -32,42 +32,42 @@
 
 #pragma once
 
-#include <pthread.h>
-#include <sys/types.h>
-
+#include <boost/container/small_vector.hpp>
+#include <gtest/gtest_prod.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <map>
 #include <memory>
 #include <string>
 #include <vector>
-
-#include <boost/container/small_vector.hpp>
-#include <gtest/gtest_prod.h>
+#include <limits>
+#include <ostream>
 
 #include "yb/common/opid.h"
-
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/consensus_types.pb.h"
 #include "yb/consensus/log_fwd.h"
-#include "yb/consensus/log_util.h"
-
 #include "yb/gutil/macros.h"
-
 #include "yb/util/locks.h"
-#include "yb/util/metrics_fwd.h"
 #include "yb/util/monotime.h"
-#include "yb/util/restart_safe_clock.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/trace.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
 class MemTracker;
 class MetricEntity;
 class OpIdPB;
+class RestartSafeCoarseTimePoint;
 
 namespace consensus {
-
-class ReplicateMsg;
+enum OperationType : int;
 
 struct ReadOpsResult {
   ReplicateMsgs messages;

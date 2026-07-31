@@ -12,10 +12,22 @@
 //
 
 #include "yb/tserver/xcluster_async_executor.h"
+
+#include <glog/logging.h>
+#include <boost/container/stable_vector.hpp>
+#include <chrono>
+#include <ostream>
+#include <ratio>
+#include <utility>
+
 #include "yb/rpc/messenger.h"
 #include "yb/util/logging.h"
 #include "yb/util/source_location.h"
 #include "yb/util/threadpool.h"
+#include "yb/ash/wait_state.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
 
 #define RETURN_WHEN_OFFLINE \
   do { \

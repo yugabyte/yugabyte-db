@@ -11,20 +11,43 @@
 // under the License.
 //
 
-#include "yb/integration-tests/mini_cluster.h"
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <algorithm>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
 
+#include "yb/integration-tests/mini_cluster.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_error.h"
 #include "yb/master/mini_master.h"
-
 #include "yb/rpc/messenger.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(master_list_raft_peers_check_is_leader);

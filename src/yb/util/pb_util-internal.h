@@ -33,11 +33,16 @@
 // This header should not be included by anything but pb_util and its tests.
 #pragma once
 
-#include "yb/util/logging.h"
 #include <google/protobuf/io/zero_copy_stream.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <memory>
 
-#include "yb/util/env.h"
 #include "yb/util/status.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/util/file_system.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 namespace pb_util {

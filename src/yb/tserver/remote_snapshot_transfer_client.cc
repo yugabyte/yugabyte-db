@@ -32,17 +32,34 @@
 
 #include "yb/tserver/remote_snapshot_transfer_client.h"
 
-#include "yb/fs/fs_manager.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <ostream>
+#include <utility>
 
 #include "yb/rpc/rpc_controller.h"
-
-#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
-
 #include "yb/tserver/remote_bootstrap_snapshots.h"
-#include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/logging.h"
+#include "yb/gutil/walltime.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tserver/remote_bootstrap.pb.h"
+#include "yb/tserver/remote_bootstrap.proxy.h"
+#include "yb/tserver/remote_bootstrap_file_downloader.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+class FsManager;
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+}  // namespace yb
 
 using namespace yb::size_literals;
 

@@ -36,16 +36,24 @@
 #include <utility>
 
 #include "yb/common/schema.h"
-
-#include "yb/dockv/dockv_fwd.h"
-
-#include "yb/fs/fs_manager.h"
-
-#include "yb/server/clock.h"
-
 #include "yb/tablet/tablet_fwd.h"
-
 #include "yb/util/env.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/tablet/tablet_options.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class FsManager;
+class MetricRegistry;
+
+namespace server {
+class Clock;
+}  // namespace server
+}  // namespace yb
 
 
 namespace yb::tablet {

@@ -11,47 +11,50 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <algorithm>
 #include <map>
 #include <string>
 #include <utility>
 #include <chrono>
-#include <boost/assign.hpp>
-#include "yb/util/flags.h"
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <unordered_set>
+#include <vector>
 
-#include "yb/cdc/cdc_service.h"
-#include "yb/cdc/cdc_service.pb.h"
-#include "yb/cdc/cdc_service.proxy.h"
 #include "yb/client/client.h"
-#include "yb/client/client-test-util.h"
 #include "yb/client/schema.h"
-#include "yb/client/session.h"
 #include "yb/client/table.h"
-#include "yb/client/table_alterer.h"
-#include "yb/client/table_creator.h"
-#include "yb/client/table_handle.h"
-#include "yb/client/yb_op.h"
-#include "yb/consensus/log.h"
-
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/xcluster/xcluster_ycql_test_base.h"
-#include "yb/integration-tests/yb_mini_cluster_test_base.h"
-#include "yb/master/master_defaults.h"
-#include "yb/master/mini_master.h"
-#include "yb/master/master_replication.proxy.h"
-
-#include "yb/master/xcluster_consumer_registry_service.h"
-#include "yb/rpc/rpc_controller.h"
-#include "yb/server/hybrid_clock.h"
-#include "yb/tserver/mini_tablet_server.h"
-
-#include "yb/util/atomic.h"
-#include "yb/util/backoff_waiter.h"
-#include "yb/util/faststring.h"
-#include "yb/util/metrics.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
+#include "gtest/gtest.h"
+#include "yb/cdc/xcluster_types.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/transaction_manager.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/schema.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/xcluster/xcluster_test_base.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/server/clock.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
 
 using std::string;
 

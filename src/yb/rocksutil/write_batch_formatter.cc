@@ -12,9 +12,13 @@
 //
 #include "yb/rocksutil/write_batch_formatter.h"
 
-#include "yb/rocksdb/metadata.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/kv_util.h"
+#include "yb/rocksdb/types.h"
+#include "yb/storage/frontier.h"
+#include "yb/util/cast.h"
+#include "yb/util/status.h"
+#include "yb/rocksdb/status_fwd.h"
 
 using std::endl;
 using rocksdb::Status;

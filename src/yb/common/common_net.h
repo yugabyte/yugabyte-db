@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <string>
 
 #include "yb/common/common_net.pb.h"

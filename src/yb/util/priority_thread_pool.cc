@@ -13,21 +13,34 @@
 
 #include "yb/util/priority_thread_pool.h"
 
-#include <mutex>
-#include <unordered_map>
-
 #include <boost/container/stable_vector.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index/ranked_index.hpp>
 #include <boost/multi_index_container.hpp>
+#include <glog/logging.h>
+#include <boost/intrusive/list.hpp>
+#include <boost/multi_index/identity.hpp>
+#include <boost/multi_index/indexed_by.hpp>
+#include <boost/multi_index/tag.hpp>
+#include <boost/operators.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <mutex>
+#include <unordered_map>
+#include <algorithm>
+#include <atomic>
+#include <condition_variable>
+#include <functional>
+#include <iterator>
+#include <map>
+#include <optional>
+#include <ostream>
+#include <vector>
 
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/cgroups.h"
-#include "yb/util/compare_util.h"
 #include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/random_util.h"
@@ -35,6 +48,13 @@
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_log.h"
 #include "yb/util/unique_lock.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/thread.h"
+#include "yb/util/tostring.h"
 
 using namespace std::placeholders;
 
@@ -47,6 +67,7 @@ const Status kShutdownStatus = STATUS(ShutdownInProgress, "Priority thread pool 
 const Status kNoWorkersStatus = STATUS(Aborted, "No workers to perform task");
 
 class PriorityThreadPoolWorker;
+
 using TaskPtr = std::unique_ptr<PriorityThreadPoolTask>;
 
 constexpr int kEmptyQueueTaskPriority = -1;
@@ -1134,15 +1155,12 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
   // Tag for index ordered by original priority and serial no.
   // Used to determine desired tasks to run.
   class PriorityTag;
-
   // Tag for index ordered by state, priority and serial no.
   // Used to determine which task should be started/resumed when worker is paused.
   class StateAndPriorityTag;
-
   // Tag for index hashed by serial no.
   // Used to find task for priority change.
   class SerialNoTag;
-
   // Tag for index hashed by group no.
   // Used to find tasks for group no to change priority.
   class GroupNoTag;

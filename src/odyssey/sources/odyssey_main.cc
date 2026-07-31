@@ -1,4 +1,16 @@
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <tcmalloc/malloc_extension.h>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 #ifdef YB_GOOGLE_TCMALLOC
+#include "yb/util/format.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/tcmalloc_profile.h"
 #include "yb/util/tcmalloc_util.h"

@@ -32,17 +32,21 @@
 
 #include "yb/util/errno.h"
 
-#include <errno.h>
 #include <string.h>
+#include <features.h>
+#include <glog/logging.h>
+#include <ostream>
 
 #if defined(__APPLE__)
 #include <libproc.h>
 #include <sys/proc_info.h>
 #endif
 
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/status.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 DEFINE_UNKNOWN_bool(suicide_on_eio, true,
             "Kill the process if an I/O operation results in EIO");

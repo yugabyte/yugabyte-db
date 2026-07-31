@@ -32,27 +32,29 @@
 
 #include "yb/consensus/replica_state.h"
 
+#include <gflags/gflags.h>
+#include <boost/function.hpp>
+#include <boost/memory_order.hpp>
+#include <algorithm>
+#include <chrono>
+#include <compare>
+#include <limits>
+#include <ostream>
+#include <utility>
+
 #include "yb/ash/wait_state.h"
-
 #include "yb/common/opid.h"
-
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_context.h"
 #include "yb/consensus/consensus_round.h"
-#include "yb/consensus/log_util.h"
 #include "yb/consensus/quorum_util.h"
-
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/casts.h"
-
 #include "yb/tserver/tserver_error.h"
-
 #include "yb/util/atomic.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/enums.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
@@ -62,6 +64,21 @@
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.messages.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_queue.h"
+#include "yb/consensus/metadata.messages.h"
+#include "yb/gutil/macros.h"
+#include "yb/tablet/operations.messages.h"
+#include "yb/tablet/operations/operation.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/slice.h"
+
+namespace yb {
+class RestartSafeCoarseMonoClock;
+}  // namespace yb
 
 using namespace std::literals;
 

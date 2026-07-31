@@ -13,21 +13,24 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/common/common.pb.h"
-#include "yb/common/constants.h"
+#include <functional>
+#include <string>
+
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
-
-#include "yb/util/status_log.h"
-
 #include "yb/yql/pggate/test/pggate_test.h"
-#include "yb/yql/pggate/util/ybc-internal.h"
-#include "yb/yql/pggate/ybc_pggate.h"
-#include "yb/yql/pggate/pg_expr.h"
-#include "yb/yql/pggate/pg_value.h"
+#include "gtest/gtest.h"
+#include "pg_type_d.h"
+#include "yb/common/column_id.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 using std::string;
 

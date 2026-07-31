@@ -31,20 +31,25 @@
 //
 #pragma once
 
+#include <stdint.h>
 #include <functional>
 #include <string>
+#include <atomic>
+#include <memory>
 
 #include "yb/common/entity_ids_types.h"
-#include "yb/gutil/macros.h"
-#include "yb/tserver/remote_bootstrap.pb.h"
 #include "yb/tserver/remote_bootstrap_file_downloader.h"
-#include "yb/tserver/remote_bootstrap_session.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class Env;
+class FsManager;
+namespace tablet {
+class RaftGroupReplicaSuperBlockPB;
+}  // namespace tablet
 
 namespace tserver {
-class TSTabletManager;
+class RemoteBootstrapServiceProxy;
 
 class RemoteBootstrapComponent {
  public:

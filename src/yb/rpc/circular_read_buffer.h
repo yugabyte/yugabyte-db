@@ -13,9 +13,14 @@
 
 #pragma once
 
-#include "yb/rpc/stream.h"
+#include <stdlib.h>
+#include <memory>
+#include <string>
 
+#include "yb/rpc/stream.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/net/socket.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 namespace rpc {

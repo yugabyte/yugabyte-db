@@ -13,14 +13,13 @@
 
 #include "yb/tablet/operations/truncate_operation.h"
 
-#include "yb/util/logging.h"
+#include <gflags/gflags.h>
 
-#include "yb/consensus/consensus_round.h"
 #include "yb/consensus/consensus.messages.h"
-
 #include "yb/tablet/tablet.h"
-
 #include "yb/util/trace.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/result.h"
 
 DEFINE_test_flag(bool, skip_applying_truncate, false,
                  "If true, the test will skip applying tablet truncate operation."

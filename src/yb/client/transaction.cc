@@ -15,11 +15,41 @@
 
 #include "yb/client/transaction.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/atomic/atomic.hpp>
+#include <boost/container/small_vector.hpp>
+#include <boost/container/stable_vector.hpp>
+#include <boost/memory_order.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <atomic>
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
-#include <boost/atomic.hpp>
+#include <algorithm>
+#include <chrono>
+#include <iterator>
+#include <mutex>
+#include <ostream>
+#include <ratio>
+#include <shared_mutex>
+#include <string_view>
+#include <thread>
+#include <type_traits>
 
 #include "yb/client/batcher.h"
 #include "yb/client/client.h"
@@ -29,21 +59,16 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_rpc.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/advisory_locks_error.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/scheduler.h"
-
 #include "yb/tserver/tserver_service.pb.h"
-
 #include "yb/util/atomic.h"
 #include "yb/util/countdown_latch.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -56,6 +81,35 @@
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
+#include "yb/ash/wait_state.h"
+#include "yb/client/async_rpc.h"
+#include "yb/common/clock.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/pg_types.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/stl_util.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/master_fwd.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/tablet/operations.pb.h"
+#include "yb/util/async_util.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uint_set.h"
 
 using std::vector;
 
@@ -128,6 +182,7 @@ YB_STRONGLY_TYPED_BOOL(Child);
 YB_STRONGLY_TYPED_BOOL(SendHeartbeatToNewTablet);
 YB_STRONGLY_TYPED_BOOL(SetReady);
 YB_STRONGLY_TYPED_BOOL(TransactionPromoting);
+
 YB_DEFINE_ENUM(TransactionState, (kRunning)(kAborted)(kCommitted)(kReleased)(kSealed)(kPromoting));
 YB_DEFINE_ENUM(OldTransactionState, (kRunning)(kAborting)(kAborted)(kNone));
 

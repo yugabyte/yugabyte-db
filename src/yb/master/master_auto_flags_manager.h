@@ -13,18 +13,59 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <functional>
+#include <shared_mutex>
+#include <string>
+#include <utility>
+
 #include "yb/server/auto_flags_manager_base.h"
-
-#include "yb/master/master_cluster.pb.h"
-
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/unique_lock.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/server/server_fwd.h"
+#include "yb/util/enums.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class AutoFlagsConfigPB;
+enum class AutoFlagClass;
+
+namespace rpc {
+class Messenger;
+}  // namespace rpc
+
 namespace master {
 
 class CatalogManager;
 class Master;
+class DemoteSingleAutoFlagRequestPB;
+class DemoteSingleAutoFlagResponsePB;
+class GetAutoFlagsConfigRequestPB;
+class GetAutoFlagsConfigResponsePB;
+class PromoteAutoFlagsRequestPB;
+class PromoteAutoFlagsResponsePB;
+class PromoteSingleAutoFlagRequestPB;
+class PromoteSingleAutoFlagResponsePB;
+class RollbackAutoFlagsRequestPB;
+class RollbackAutoFlagsResponsePB;
+class ValidateAutoFlagsConfigRequestPB;
+class ValidateAutoFlagsConfigResponsePB;
 
 YB_DEFINE_ENUM(PromoteAutoFlagsOutcome, (kNoFlagsPromoted)(kNewFlagsPromoted));
 

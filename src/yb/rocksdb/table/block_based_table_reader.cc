@@ -23,12 +23,23 @@
 
 #include "yb/rocksdb/table/block_based_table_reader.h"
 
+#include <assert.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <string.h>
 #include <string>
 #include <utility>
+#include <algorithm>
+#include <atomic>
+#include <initializer_list>
+#include <limits>
+#include <map>
+#include <mutex>
+#include <ostream>
+#include <unordered_map>
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/macros.h"
-
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/db/dbformat.h"
@@ -42,8 +53,6 @@
 #include "yb/rocksdb/table/block_based_filter_block.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/block_based_table_internal.h"
-#include "yb/rocksdb/table/block_hash_index.h"
-#include "yb/rocksdb/table/block_prefix_index.h"
 #include "yb/rocksdb/table/filter_block.h"
 #include "yb/rocksdb/table/fixed_size_filter_block.h"
 #include "yb/rocksdb/table/format.h"
@@ -60,18 +69,24 @@
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/stop_watch.h"
-
 #include "yb/util/atomic.h"
-#include "yb/util/bytes_formatter.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/stats/perf_step_timer.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/tostring.h"
+#include "yb/gutil/port.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/perf_context.h"
+#include "yb/rocksdb/slice_transform.h"
+#include "yb/util/byte_buffer.h"
+#include "yb/util/file_system.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/status.h"
 
 using yb::operator""_KB;
 

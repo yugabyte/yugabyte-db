@@ -21,9 +21,13 @@
 
 #pragma once
 
-#include <algorithm>
-
 #include <boost/container/small_vector.hpp>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <algorithm>
+#include <functional>
+#include <ostream>
+#include <utility>
 
 #include "yb/util/logging.h"
 

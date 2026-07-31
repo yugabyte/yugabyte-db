@@ -31,14 +31,19 @@
 //
 #include "yb/tools/data_gen_util.h"
 
+#include <glog/logging.h>
+#include <memory>
+#include <ostream>
+
 #include "yb/client/schema.h"
 #include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_type.h"
-
-#include "yb/gutil/casts.h"
-
 #include "yb/util/random.h"
-#include "yb/util/status_fwd.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/util/enums.h"
+#include "yb/util/logging.h"
 
 namespace yb {
 namespace tools {

@@ -17,10 +17,21 @@
 
 #include "yb/yql/cql/ql/ptree/pt_create_type.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <ostream>
+#include <vector>
+
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/sem_state.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/ql_type.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 DECLARE_bool(use_cassandra_authentication);
 

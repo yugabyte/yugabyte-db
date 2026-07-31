@@ -14,9 +14,27 @@
 
 #include "yb/yql/dist_rag_wrapper/dist_rag_wrapper.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <signal.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <string>
 #include <vector>
 #include <utility>
+#include <memory>
+#include <optional>
+#include <ostream>
 
 #include "yb/gutil/strings/strip.h"
 #include "yb/tserver/tablet_server.h"
@@ -29,6 +47,12 @@
 #include "yb/util/result.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/status_format.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 DEFINE_RUNTIME_string(pg_dist_rag_conf_csv, "",
     "Comma-separated list of Distributed RAG service configuration parameters. "

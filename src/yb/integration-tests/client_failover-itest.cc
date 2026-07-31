@@ -30,19 +30,38 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/types.h>
 #include <memory>
 #include <set>
 #include <unordered_map>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <vector>
+#include <functional>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/table_handle.h"
-
 #include "yb/common/wire_protocol.h"
-
 #include "yb/gutil/map-util.h"
-
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/test_workload.h"
+#include "gtest/gtest.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/integration-tests/cluster_itest_util.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 
 using yb::client::CountTableRows;

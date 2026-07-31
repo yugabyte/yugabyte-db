@@ -19,7 +19,6 @@
 #ifndef YB_YQL_PGGATE_UTIL_YBC_GUC_H
 #define YB_YQL_PGGATE_UTIL_YBC_GUC_H
 
-#include <stdbool.h>  // Needed for bool in C.
 #include <stdint.h>
 
 #ifdef __cplusplus

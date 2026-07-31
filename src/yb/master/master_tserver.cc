@@ -13,38 +13,43 @@
 
 #include "yb/master/master_tserver.h"
 
-#include <map>
-#include <set>
-
-#include <boost/preprocessor/cat.hpp>
-#include <boost/preprocessor/stringize.hpp>
+#include <gflags/gflags.h>
+#include <utility>
+#include <vector>
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service_context.h"
-
 #include "yb/client/client.h"
-#include "yb/client/transaction_pool.h"
-
 #include "yb/common/pg_types.h"
-#include "yb/common/wire_protocol.h"
-
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog_constants.h"
-
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/tserver.pb.h"
-#include "yb/tserver/pg_client.pb.h"
-#include "yb/tserver/pg_client_session.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_format.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/tserver/pg_txn_snapshot_manager.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/ysql_lease.h"
+#include "yb/util/concurrent_value.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+
+namespace yb {
+class MetricRegistry;
+namespace rpc {
+class ServiceIf;
+}  // namespace rpc
+}  // namespace yb
 
 DEFINE_NON_RUNTIME_int32(master_xrepl_get_changes_concurrency, 3,
   "This determines the max number of concurrent GetChanges RPCs that can be "

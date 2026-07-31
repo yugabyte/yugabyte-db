@@ -13,7 +13,11 @@
 
 #pragma once
 
+#include <utility>
+
 #include "yb/yql/cql/ql/ptree/tree_node.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 
 namespace yb {
 namespace ql {

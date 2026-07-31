@@ -13,12 +13,14 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <bitset>
 #include <string>
-
-#include "yb/common/common_types.pb.h"
+#include <vector>
 
 namespace yb {
+enum PermissionType : int;
+enum ResourceType : int;
 
 static constexpr size_t kMaxPermissions = 7;
 typedef std::bitset<kMaxPermissions> Permissions;

@@ -30,19 +30,24 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <stdint.h>
+#include <boost/range/algorithm/equal.hpp>
+#include <boost/range/begin.hpp>
+#include <boost/range/end.hpp>
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <utility>
 
-#include "yb/common/common_fwd.h"
 #include "yb/common/transaction.h"
-#include "yb/common/transaction.fwd.h"
 #include "yb/common/transaction.messages.h"
 #include "yb/common/transaction.pb.h"
-
 #include "yb/util/result.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
-#include "yb/util/uint_set.h"
+#include "gtest/gtest.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace tablet {

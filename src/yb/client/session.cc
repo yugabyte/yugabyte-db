@@ -13,25 +13,45 @@
 
 #include "yb/client/session.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/function.hpp>
+#include <algorithm>
+#include <chrono>
+#include <functional>
+#include <ostream>
+#include <utility>
+
 #include "yb/client/async_rpc.h"
 #include "yb/client/client.h"
 #include "yb/client/client_error.h"
 #include "yb/client/error.h"
-#include "yb/client/error_collector.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/consistent_read_point.h"
-
 #include "yb/consensus/consensus_error.h"
-
 #include "yb/tserver/tserver_error.h"
-
 #include "yb/util/debug-util.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
-#include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
+#include "yb/client/batcher.h"
+#include "yb/client/transaction.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/gutil/port.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+struct TransactionMetadata;
+}  // namespace yb
 
 using namespace std::literals;
 using namespace std::placeholders;

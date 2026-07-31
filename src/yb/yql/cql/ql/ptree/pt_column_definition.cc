@@ -17,12 +17,22 @@
 
 #include "yb/yql/cql/ql/ptree/pt_column_definition.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <ostream>
+
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/pt_create_index.h"
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
-#include "yb/util/flags.h"
+#include "yb/common/constants.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/value.messages.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/yql/cql/ql/ptree/sem_state.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 using std::string;
 

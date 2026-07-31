@@ -13,27 +13,53 @@
 
 #pragma once
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <string>
 #include <unordered_set>
-
-#include "yb/cdc/cdc_consumer.pb.h"
-#include "yb/cdc/cdc_types.h"
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <utility>
+#include <vector>
 
 #include "yb/client/transaction_manager.h"
 #include "yb/client/client.h"
-
-#include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
-
-#include "yb/master/master_replication.fwd.h"
-
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/client/table.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/master/master_replication.proxy.h"
+#include "yb/tserver/tserver_xcluster_context_if.h"  // IWYU pragma: keep
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/subprocess.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+enum ReplicationErrorPb : int;
+namespace client {
+class YBSchema;
+}  // namespace client
+}  // namespace yb
 
 DECLARE_bool(TEST_allow_ycql_transactional_xcluster);
 DECLARE_bool(TEST_check_broadcast_address);

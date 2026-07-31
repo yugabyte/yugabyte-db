@@ -10,26 +10,35 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <gflags/gflags.h>
+#include <stddef.h>
 #include <algorithm>
-
-#include <gtest/gtest.h>
+#include <chrono>
+#include <functional>
+#include <iterator>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "yb/common/wire_protocol.h"
-
-#include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/consensus.proxy.h"
-
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
-
 #include "yb/master/master_cluster.proxy.h"
-
 #include "yb/tools/yb-admin_client.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 

@@ -21,21 +21,17 @@
 #pragma once
 
 #include <stdio.h>
-#include <string.h>
-
+#include <glog/logging.h>
 #include <map>
-#include <set>
 #include <string>
 #include <vector>
+#include <algorithm>
+#include <utility>
 
 #include "yb/gutil/integral_types.h"
-#include "yb/gutil/macros.h"
-#include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/strcat.h"    // For backward compatibility.
 #include "yb/gutil/strings/stringpiece.h"
-
 #include "yb/util/format.h"
-#include "yb/util/logging.h"
 
 // ----------------------------------------------------------------------
 // JoinUsing()

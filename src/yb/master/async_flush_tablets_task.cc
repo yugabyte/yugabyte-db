@@ -13,12 +13,26 @@
 
 #include "yb/master/async_flush_tablets_task.h"
 
-#include "yb/common/wire_protocol.h"
+#include <glog/logging.h>
+#include <memory>
+#include <ostream>
+#include <utility>
 
+#include "yb/common/wire_protocol.h"
 #include "yb/master/flush_manager.h"
 #include "yb/master/master.h"
-
 #include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/server/clock.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class ThreadPool;
+}  // namespace yb
 
 namespace yb::master {
 

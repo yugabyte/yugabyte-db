@@ -32,8 +32,10 @@
 #pragma once
 
 #include <inttypes.h>
-
+#include <stddef.h>
 #include <memory>
+#include <sstream>
+#include <string>
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/stringpiece.h"

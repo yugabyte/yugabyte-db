@@ -30,12 +30,16 @@
 // under the License.
 //
 
-#include <vector>
-
-#include <gtest/gtest.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <memory>
+#include <string>
 
 #include "yb/util/inline_slice.h"
 #include "yb/util/memory/arena.h"
+#include "gtest/gtest.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 

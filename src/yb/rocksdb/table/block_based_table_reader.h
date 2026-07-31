@@ -24,18 +24,38 @@
 #pragma once
 
 #include <stdint.h>
-
+#include <stddef.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <memory>
 #include <string>
-#include <utility>
+#include <functional>
 
-#include "yb/rocksdb/immutable_options.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/statistics.h"
-#include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/table/table_reader.h"
-
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/types.h"
+#include "yb/util/enums.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+
+namespace yb {
+class MemTracker;
+class WritableFile;
+}  // namespace yb
 
 namespace rocksdb {
 
@@ -44,19 +64,15 @@ class BlockIter;
 class BlockHandle;
 class Cache;
 class FilterBlockReader;
-class BlockBasedFilterBlockReader;
-class FullFilterBlockReader;
 class Footer;
-class InternalKeyComparator;
-class Iterator;
-class TableCache;
-class TableReader;
 struct BlockBasedTableOptions;
 struct EnvOptions;
-struct ReadOptions;
-class GetContext;
 class InternalIterator;
 class IndexReader;
+class RandomAccessFileReader;
+class Statistics;
+struct FilterKeyCache;
+struct ImmutableCFOptions;
 
 // Index reader special unique pointer to control the instance's way of deletion. Can be removed
 // when https://github.com/yugabyte/yugabyte-db/issues/4720 is resolved.
@@ -220,13 +236,11 @@ class BlockBasedTable : public TableReader {
 
  private:
   struct BlockRetrievalInfo;
-
   template <class TValue>
   struct CachableEntry;
-
   struct FileReaderWithCachePrefix;
-
   struct Rep;
+
   Rep* rep_;
 
   class BlockEntryIteratorState;

@@ -38,21 +38,25 @@
 #include <signal.h>
 #include <spawn.h>
 #include <sys/wait.h>
-
+#include <errno.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
+#include <functional>
+#include <sstream>
 
-#include <boost/container/small_vector.hpp>
 #include "yb/util/logging.h"
-
 #include "yb/gutil/once.h"
 #include "yb/gutil/port.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
-
 #include "yb/util/errno.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
@@ -62,6 +66,10 @@
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 #include "yb/util/unique_lock.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
 
 using std::mutex;
 using std::string;

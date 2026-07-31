@@ -32,18 +32,22 @@
 
 #include "yb/consensus/quorum_util.h"
 
+#include <glog/logging.h>
 #include <set>
 #include <string>
+#include <ostream>
 
 #include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus.pb.h"
-
 #include "yb/gutil/map-util.h"
-
 #include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
+#include "yb/common/common_consensus_util.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 namespace consensus {

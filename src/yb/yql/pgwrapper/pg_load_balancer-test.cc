@@ -11,26 +11,32 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <ratio>
+#include <string>
+
 #include "yb/common/common_types.pb.h"
 #include "yb/gutil/dynamic_annotations.h"
-
-#include "yb/master/catalog_manager_if.h"
-#include "yb/master/mini_master.h"
-
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tablet/tablet_types.pb.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/test_thread_holder.h"
-
 #include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/util/result.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int32(cleanup_split_tablets_interval_sec);

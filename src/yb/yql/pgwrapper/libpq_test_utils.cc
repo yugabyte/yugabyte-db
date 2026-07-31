@@ -13,6 +13,10 @@
 
 #include "yb/yql/pgwrapper/libpq_test_utils.h"
 
+#include <string>
+
+#include "yb/yql/pgwrapper/libpq_utils.h"
+
 namespace yb::pgwrapper {
 
 Result<uint64_t> GetCatalogVersion(PGConn* conn) {

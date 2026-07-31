@@ -13,20 +13,46 @@
 
 #pragma once
 
-#include <unordered_set>
+#include <stddef.h>
+#include <stdint.h>
+#include <shared_mutex>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <vector>
+#include <functional>
 
-#include "yb/master/leader_epoch.h"
-#include "yb/master/master_admin.pb.h"
 #include "yb/master/master_fwd.h"
-
-#include "yb/rpc/rpc_context.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+namespace rpc {
+class RpcContext;
+}  // namespace rpc
+
 namespace master {
 
 YB_STRONGLY_TYPED_BOOL(IgnoreTtlValidation);
 YB_STRONGLY_TYPED_BOOL(IgnoreDisabledList);
 YB_STRONGLY_TYPED_BOOL(IgnoreVectorIndexesValidation);
+class CatalogManagerIf;
+class DisableTabletSplittingRequestPB;
+class DisableTabletSplittingResponsePB;
+class IsTabletSplittingCompleteRequestPB;
+class IsTabletSplittingCompleteResponsePB;
+class Master;
+class TableInfo;
+class TabletInfo;
+struct LeaderEpoch;
+struct SplitTabletIds;
 
 Status CheckLiveReplicasForSplit(
     const TabletId& tablet_id, const TabletReplicaMap& replicas, size_t rf);

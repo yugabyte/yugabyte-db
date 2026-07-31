@@ -13,6 +13,9 @@
 
 #include "yb/util/debug/lock_debug.h"
 
+#include <ostream>
+#include <string>
+
 #include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 #include "yb/util/rwc_lock.h"

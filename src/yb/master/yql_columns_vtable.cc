@@ -14,21 +14,25 @@
 #include "yb/master/yql_columns_vtable.h"
 
 #include <stdint.h>
+#include <glog/logging.h>
+#include <memory>
+#include <vector>
 
 #include "yb/util/logging.h"
-
 #include "yb/qlexpr/ql_name.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
-
 #include "yb/util/status_log.h"
-#include "yb/util/uuid.h"
+#include "yb/common/constants.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/util/enums.h"
+#include "yb/util/result.h"
 
 using std::string;
 

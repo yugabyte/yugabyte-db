@@ -31,16 +31,19 @@
 //
 #include "yb/consensus/opid_util.h"
 
+#include <glog/logging.h>
 #include <limits>
+#include <utility>
 
 #include "yb/common/opid.h"
-
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
-
 #include "yb/consensus/consensus.messages.h"
 #include "yb/gutil/port.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/common/opid.messages.h"
+#include "yb/common/opid.pb.h"
+#include "yb/util/memory/arena_list.h"
 
 namespace yb {
 namespace consensus {

@@ -14,8 +14,7 @@
 #include "yb/vector_index/index_wrapper_base.h"
 
 #include "yb/rocksdb/cache.h"
-
-#include "yb/util/flags.h"
+#include "yb/util/flags/flag_tags.h"
 
 DEFINE_RUNTIME_bool(vector_index_enable_block_cache_reservation, true,
     "Whether a usearch/hnswlib vector index chunk reserves space in the block cache for its "

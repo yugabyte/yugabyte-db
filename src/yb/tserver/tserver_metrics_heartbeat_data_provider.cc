@@ -13,23 +13,39 @@
 
 #include "yb/tserver/tserver_metrics_heartbeat_data_provider.h"
 
-#include "yb/consensus/log.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <math.h>
+#include <stddef.h>
+#include <chrono>
+#include <memory>
+#include <ostream>
+#include <set>
+#include <string>
+#include <string_view>
+
 #include "yb/consensus/raft_consensus.h"
-
 #include "yb/master/master_heartbeat.pb.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_vector_indexes.h"
-
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.service.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/util/env.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/result.h"
 
 DEFINE_RUNTIME_int32(tserver_heartbeat_metrics_interval_ms, 5000,
     "Interval (in milliseconds) at which tserver sends its metrics in a heartbeat to master.");

@@ -13,25 +13,26 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
-
-#include "yb/rpc/rpc_fwd.h"
-
-#include "yb/tablet/metadata.pb.h"
+#include <optional>
 
 #include "yb/tserver/remote_bootstrap.pb.h"
-
 #include "yb/util/monotime.h"
-#include "yb/util/status_fwd.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class Env;
 class FsManager;
-class MonoDelta;
+namespace tablet {
+class FilePB;
+}  // namespace tablet
 
 namespace tserver {
 

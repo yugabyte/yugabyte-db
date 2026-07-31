@@ -20,6 +20,8 @@
  */
 
 #pragma once
+#include <string>
+
 #include "yb/rocksdb/merge_operator.h"
 #include "yb/util/slice.h"
 

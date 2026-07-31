@@ -32,54 +32,64 @@
 #pragma once
 
 #include <stdint.h>
-
+#include <boost/range/any_range.hpp>
+#include <google/protobuf/stubs/port.h>
+#include <gtest/gtest_prod.h>
+#include <stddef.h>
+#include <sys/types.h>
+#include <boost/iterator/iterator_categories.hpp>
 #include <future>
 #include <string>
 #include <vector>
-
-#include <boost/range/any_range.hpp>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
 
 #include "yb/cdc/cdc_types.h"
-
 #include "yb/client/client_fwd.h"
-
 #include "yb/common/common_fwd.h"
-#include "yb/common/common_types.fwd.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/retryable_request.h"
 #include "yb/common/snapshot.h"
-
 #include "yb/common/transaction.h"
-#include "yb/encryption/encryption.fwd.h"
-
-#include "yb/dockv/dockv_fwd.h"
-
 #include "yb/gutil/macros.h"
-
-#include "yb/master/catalog_entity_info.fwd.h"
-#include "yb/master/master_backup.fwd.h"
-#include "yb/master/master_client.fwd.h"
-#include "yb/master/master_ddl.fwd.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/master_replication.fwd.h"
-#include "yb/master/master_types.fwd.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
-#include "yb/tablet/operations.fwd.h"
-#include "yb/tablet/tablet.fwd.h"
-
 #include "yb/server/server_fwd.h"
-
-#include "yb/tserver/pg_client.fwd.h"
-
-#include "yb/util/flags/auto_flags.h"
-#include "yb/util/net/net_fwd.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/strongly_typed_bool.h"
-
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/client/namespace_alterer.h"
+#include "yb/client/session.h"
+#include "yb/client/table_alterer.h"
+#include "yb/client/table_creator.h"
+#include "yb/client/table_info.h"
+#include "yb/client/tablet_server.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/schema.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/encryption/encryption.pb.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/master/master_backup.pb.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/server/clock.h"
+#include "yb/tablet/tablet.pb.h"
+#include "yb/tserver/pg_client.pb.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_string.h"
 
 template<class T> class scoped_refptr;
 
@@ -92,16 +102,37 @@ class MemTracker;
 class MetricEntity;
 class ThreadPool;
 class ThreadPoolToken;
+class PlacementInfoPB;
+class ReplicationInfoPB;
+enum ReplicationSlotLsnType : int;
+enum class AutoFlagClass;
+enum ReplicationSlotOrderingMode : int;
 
+namespace dockv {
+class PartitionSchema;
+}  // namespace dockv
 namespace master {
-class TabletLocationsPB;
-class GetAutoFlagsConfigResponsePB;
-}
+class DeleteCDCStreamResponsePB;
+class NamespaceIdentifierPB;
+class ProducerSplitTabletInfoPB;
+class SysCDCStreamEntryPB;
+class UpdateConsumerOnProducerMetadataResponsePB;
+enum XClusterSafeTimeFilter : int;
+}  // namespace master
+namespace rpc {
+class Messenger;
+class ProxyCache;
+}  // namespace rpc
+namespace tablet {
+class ChangeMetadataRequestPB;
+enum FullCompactionState : int;
+}  // namespace tablet
 
 namespace tserver {
 class LocalTabletServer;
 class TabletConsensusInfoPB;
 class TabletServerServiceProxy;
+class LWTabletConsensusInfoPB;
 }
 
 namespace xcluster {
@@ -111,6 +142,23 @@ YB_STRONGLY_TYPED_STRING(ReplicationGroupId);
 namespace client {
 
 YB_STRONGLY_TYPED_BOOL(IncludeNonrunningNamespaces);
+class YBClient;
+class YBSchema;
+class YBTable;
+
+namespace internal {
+class AsyncRpc;
+class Batcher;
+class GetColocatedTabletSchemaRpc;
+class GetTableSchemaRpc;
+class GetTablegroupSchemaRpc;
+class LookupRpc;
+class MetaCache;
+class PermissionsCache;
+class RemoteTablet;
+class RemoteTabletServer;
+class TabletInvoker;
+}  // namespace internal
 
 // Returns the default CDCSDK dynamic-tables option value
 // (CDCSDKDynamicTablesOption::DYNAMIC_TABLES_ENABLED). Declared here so that

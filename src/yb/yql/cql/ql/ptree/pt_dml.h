@@ -17,22 +17,40 @@
 
 #pragma once
 
-#include <iosfwd>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <functional>
+#include <memory>
+#include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/client/client_fwd.h"
-
-#include "yb/common/common_fwd.h"
-
 #include "yb/util/memory/arena.h"
 #include "yb/util/memory/mc_types.h"
-
 #include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
-
 #include "yb/yql/cql/ql/ptree/column_arg.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
 
 namespace yb {
+class ColumnSchema;
+namespace client {
+class YBTable;
+}  // namespace client
+
 namespace ql {
+class SemContext;
+class YBLocation;
 
 //--------------------------------------------------------------------------------------------------
 // Counter of operators on each column. "gt" includes ">" and ">=". "lt" includes "<" and "<=".

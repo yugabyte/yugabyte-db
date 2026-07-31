@@ -48,6 +48,7 @@
 
 #include "yb/gutil/manual_constructor.h"
 #include "yb/gutil/sysinfo.h"
+#include "yb/util/logging.h"  // IWYU pragma: keep
 
 namespace yb {
 

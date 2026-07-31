@@ -32,22 +32,27 @@
 
 #include "yb/client/schema.h"
 
+#include <glog/logging.h>
 #include <unordered_map>
+#include <optional>
+#include <utility>
 
 #include "yb/util/logging.h"
-
 #include "yb/client/schema-internal.h"
-
 #include "yb/dockv/partial_row.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
-
-#include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/common/column_id.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/slice.h"
+
+namespace yb {
+class SchemaPB;
+}  // namespace yb
 
 using std::shared_ptr;
 using std::unordered_map;

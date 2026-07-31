@@ -29,11 +29,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <glog/stl_logging.h>
+#include <stdint.h>
+#include <unistd.h>
 #include <string>
 #include <vector>
-
-#include "yb/util/logging.h"
-#include <glog/stl_logging.h>
+#include <memory>
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
@@ -43,6 +44,9 @@
 #include "yb/util/rolling_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/strings/stringpiece.h"
+#include "yb/util/faststring.h"
 
 using std::string;
 using std::vector;

@@ -13,14 +13,34 @@
 
 #include "yb/rocksdb/table/index_reader.h"
 
+#include <sys/types.h>
+#include <boost/container/small_vector.hpp>
+#include <boost/intrusive/list.hpp>
+#include <functional>
+#include <initializer_list>
+#include <ostream>
+
 #include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/block_based_table_internal.h"
 #include "yb/rocksdb/table/iterator_wrapper.h"
 #include "yb/rocksdb/table/meta_blocks.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_format.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/table/block_hash_index.h"
+#include "yb/rocksdb/table/block_prefix_index.h"
+#include "yb/rocksdb/table/internal_iterator.h"
+#include "yb/util/format.h"
+#include "yb/util/status.h"
+#include "yb/rocksdb/status.h"
+
+namespace yb {
+class MemTracker;
+}  // namespace yb
 
 namespace rocksdb {
+class SliceTransform;
 
 using namespace std::placeholders;
 

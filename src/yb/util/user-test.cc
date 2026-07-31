@@ -29,14 +29,15 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <glog/logging.h>
 #include <string>
-
-#include <gtest/gtest.h>
+#include <ostream>
 
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/user.h"
+#include "gtest/gtest.h"
 
 namespace yb {
 

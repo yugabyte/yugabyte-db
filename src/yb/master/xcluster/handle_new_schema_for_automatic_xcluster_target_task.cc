@@ -13,12 +13,37 @@
 
 #include "yb/master/xcluster/handle_new_schema_for_automatic_xcluster_target_task.h"
 
+#include <glog/logging.h>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <utility>
+
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_replication.pb.h"
 #include "yb/util/status.h"
+#include "yb/common/constants.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/status_format.h"
+
+namespace yb {
+class ThreadPool;
+namespace master {
+struct LeaderEpoch;
+}  // namespace master
+namespace rpc {
+class Messenger;
+}  // namespace rpc
+}  // namespace yb
 
 #define SCHEDULE_WITH_DELAY(task, ...) \
   ScheduleNextStepWithDelay( \

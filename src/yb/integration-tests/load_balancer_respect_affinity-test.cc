@@ -11,25 +11,38 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <algorithm>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "yb/client/client.h"
-
-#include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/consensus.proxy.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
-
 #include "yb/master/master_cluster.proxy.h"
-
 #include "yb/tools/yb-admin_client.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/result.h"
+#include "gtest/gtest.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+
+namespace yb {
+class ExternalDaemon;
+}  // namespace yb
 
 using namespace std::literals;
 

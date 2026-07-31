@@ -12,19 +12,10 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <memory>
-#include <string>
-#include <thread>
+#include <vector>
 
-#include <gflags/gflags_declare.h>
-#include <gtest/gtest.h>
-
-#include "yb/gutil/dynamic_annotations.h"
-
-#include "yb/util/flags.h"
-#include "yb/util/logging.h"
-#include "yb/util/monotime.h"
-#include "yb/util/size_literals.h"
 #include "yb/util/tcmalloc_profile.h"
 #include "yb/util/test_util.h"
 

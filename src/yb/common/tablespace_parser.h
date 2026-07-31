@@ -14,19 +14,30 @@
 
 #pragma once
 
+#include <rapidjson/document.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <string>
 #include <vector>
 
-#include <rapidjson/document.h>
-
-#include "yb/common/ql_value.h"
-
 #include "yb/common/common_net.pb.h"
-#include "yb/common/replica_type.h"
-
 #include "yb/util/result.h"
+#include "yb/util/enums.h"
+#include "yb/util/status.h"
 
 namespace yb {
+enum class ReplicaType;
 
 // enum depicting the locality level of two PeerMessageQueue::TrackedPeer s'.
 YB_DEFINE_ENUM(LocalityLevel, (kNone)(kRegion)(kZone));

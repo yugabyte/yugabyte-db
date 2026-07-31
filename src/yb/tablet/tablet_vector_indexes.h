@@ -13,20 +13,46 @@
 
 #pragma once
 
+#include <google/protobuf/repeated_field.h>
+#include <stdint.h>
+#include <boost/container/small_vector.hpp>
 #include <shared_mutex>
+#include <atomic>
+#include <memory>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+#include <functional>
 
 #include "yb/common/entity_ids_types.h"
-
 #include "yb/hnsw/hnsw_fwd.h"
-
 #include "yb/tablet/tablet_component.h"
 #include "yb/tablet/tablet_options.h"
-
 #include "yb/util/shutdown_controller.h"
+#include "yb/docdb/docdb_compaction_context.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class ScopedRWOperation;
+class HybridTime;
+class MetricRegistry;
+
+namespace docdb {
+class ConsensusFrontier;
+}  // namespace docdb
+namespace tablet {
+class Tablet;
+struct TableInfo;
+}  // namespace tablet
+struct OpId;
 
 }
 

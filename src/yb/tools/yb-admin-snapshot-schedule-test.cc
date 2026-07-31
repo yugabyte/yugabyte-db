@@ -11,6 +11,29 @@
 // under the License.
 //
 
+#include <cassandra.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <rapidjson/allocators.h>
+#include <rapidjson/document.h>
+#include <rapidjson/encodings.h>
+#include <rapidjson/rapidjson.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/types.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <algorithm>
 #include <atomic>
 #include <optional>
@@ -20,43 +43,37 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <initializer_list>
+#include <map>
+#include <ostream>
+#include <ratio>
+#include <string_view>
+#include <tuple>
 
-#include "yb/client/client_fwd.h"
 #include "yb/client/namespace_info.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/table_handle.h"
-#include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/json_util.h"
-
 #include "yb/common/snapshot.h"
-#include "yb/gutil/logging-inl.h"
-
 #include "yb/gutil/strings/split.h"
 #include "yb/integration-tests/cql_test_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/load_balancer_test_util.h"
-
-#include "yb/master/master_admin.proxy.h"
-#include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.proxy.h"
-#include "yb/master/master_util.h"
-
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/tools/admin-test-base.h"
 #include "yb/tools/test_admin_client.h"
-
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/date_time.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
@@ -67,8 +84,45 @@
 #include "yb/util/stol_utils.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "postgres_ext.h"
+#include "yb/client/client.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/stl_util.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_backup.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/tablet/tablet.pb.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_admin.pb.h"
+#include "yb/util/enums.h"
+#include "yb/util/logging.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/timestamp.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace client {
+class YBSession;
+}  // namespace client
+}  // namespace yb
 
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_int32(num_tablet_servers);

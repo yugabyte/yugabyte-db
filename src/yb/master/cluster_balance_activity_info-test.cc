@@ -10,9 +10,19 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/master/cluster_balance_activity_info.h"
+#include <atomic>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "yb/util/test_util.h"
+#include "yb/master/cluster_balance_activity_info.h"
+#include "gtest/gtest.h"
+#include "yb/master/async_rpc_tasks_base.h"
+#include "yb/server/monitored_task.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 namespace yb::master {
 

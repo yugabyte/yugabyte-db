@@ -13,11 +13,19 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <vector>
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "yb/util/file_system.h"
 #include "yb/util/malloc.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 using namespace yb::size_literals;
 

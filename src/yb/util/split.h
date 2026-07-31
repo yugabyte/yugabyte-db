@@ -12,13 +12,11 @@
 
 #pragma once
 
-#include <string>
+#include <boost/container/small_vector.hpp>
 #include <vector>
 
-#include <boost/container/small_vector.hpp>
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace util {

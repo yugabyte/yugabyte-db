@@ -21,19 +21,24 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include <algorithm>
-#include <vector>
-
 #include <gtest/gtest.h>
+#include <assert.h>
+#include <glog/logging.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <vector>
+#include <cmath>
+#include <memory>
+#include <string>
 
 #include "yb/rocksdb/table_properties.h"
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/utilities/table_properties_collectors.h"
-
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/logging.h"
 
 namespace rocksdb {
 

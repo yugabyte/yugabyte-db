@@ -13,17 +13,36 @@
 
 #include "yb/docdb/docdb_debug.h"
 
+#include <glog/logging.h>
+#include <functional>
+#include <memory>
+#include <sstream>
+#include <utility>
+
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/kv_debug.h"
-
 #include "yb/rocksdb/db.h"
-
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/result.h"
+#include "yb/docdb/doc_operation.h"
+#include "yb/dockv/value_type.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/options.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace docdb {
+class SchemaPackingProvider;
+}  // namespace docdb
+}  // namespace yb
 
 using std::ostream;
 

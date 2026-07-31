@@ -13,12 +13,15 @@
 
 #include "yb/common/common_types_util.h"
 
+#include <glog/logging.h>
 #include <array>
 #include <utility>
+#include <ostream>
 
 #include "yb/util/result.h"
-#include "yb/util/status_log.h"
 #include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
 
 using std::array;
 using std::make_pair;

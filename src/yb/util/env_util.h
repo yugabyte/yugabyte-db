@@ -31,13 +31,22 @@
 //
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <memory>
 #include <string>
 
 #include "yb/gutil/macros.h"
 #include "yb/util/env.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class RandomAccessFile;
+class SequentialFile;
+class Slice;
+class WritableFile;
+
 namespace env_util {
 
 // Searches for the suitable "YugaByte distribution root" directory that contains the given

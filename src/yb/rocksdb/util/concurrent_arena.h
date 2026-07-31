@@ -24,8 +24,12 @@
 
 #pragma once
 
+#include <assert.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <atomic>
 #include <mutex>
+#include <memory>
 
 #include "yb/rocksdb/util/allocator.h"
 #include "yb/rocksdb/util/arena.h"
@@ -46,8 +50,6 @@ class MemTracker;
 }
 
 namespace rocksdb {
-
-class Logger;
 
 // ConcurrentArena wraps an Arena.  It makes it thread safe using a fast
 // inlined spinlock, and adds small per-core allocation caches to avoid

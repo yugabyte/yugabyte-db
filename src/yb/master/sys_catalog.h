@@ -31,54 +31,83 @@
 //
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <atomic>
+#include <functional>
+#include <memory>
+#include <shared_mutex>
 
 #include "yb/common/pg_types.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/read_hybrid_time.h"
-
-#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/metadata.pb.h"
-
 #include "yb/docdb/docdb_fwd.h"
-
 #include "yb/gutil/callback.h"
-
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/sys_catalog_types.h"
 #include "yb/master/sys_catalog_constants.h"
-
-#include "yb/tserver/tablet_memory_manager.h"
-
-#include "yb/util/mem_tracker.h"
-#include "yb/util/metrics_fwd.h"
-#include "yb/util/pb_util.h"
 #include "yb/util/shutdown_controller.h"
-#include "yb/util/status_fwd.h"
-#include "yb/util/tostring.h"
 #include "yb/util/unique_lock.h"
+#include "yb/common/column_id.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace google {
+namespace protobuf {
+class Message;
+}  // namespace protobuf
+}  // namespace google
 
 namespace yb {
 
 class Schema;
 class FsManager;
 class ThreadPool;
-
+class Counter;
+class EventStats;
+class MetricEntity;
+class MetricRegistry;
+namespace consensus {
+class MultiRaftManager;
+struct StateChangeContext;
+}  // namespace consensus
+namespace docdb {
+struct DocReadContext;
+}  // namespace docdb
+namespace dockv {
+struct ReaderProjection;
+}  // namespace dockv
+namespace tablet {
+class TabletPeer;
+}  // namespace tablet
 namespace tserver {
-class WriteRequestPB;
-class WriteResponsePB;
-}
+class TabletMemoryManager;
+}  // namespace tserver
+template <typename T> class AtomicGauge;
 
 namespace master {
 class Master;
 class MasterOptions;
-
 // Forward declaration from internal header file.
 class VisitorBase;
 class SysCatalogWriter;
+class DdlLogEntryPB;
 
 struct PgTableReadData {
   TableId table_id;
@@ -528,5 +557,3 @@ class SysCatalogTable {
 
 } // namespace master
 } // namespace yb
-
-#include "yb/master/sys_catalog-internal.h"

@@ -11,30 +11,42 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <stdint.h>
 #include <algorithm>
 #include <sstream>
 #include <string>
-
-#include <gtest/gtest.h>
+#include <chrono>
+#include <cstddef>
+#include <functional>
+#include <memory>
+#include <ratio>
+#include <utility>
+#include <vector>
 
 #include "yb/integration-tests/cluster_itest_util.h"
-#include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/integration-tests/yb_table_test_base.h"
-
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_admin.proxy.h"
-#include "yb/master/sys_catalog_constants.h"
-
 #include "yb/tools/yb-admin_client.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/client/table_handle.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/faststring.h"
+#include "yb/util/format.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 DECLARE_int32(are_nodes_safe_to_take_down_timeout_buffer_ms);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);

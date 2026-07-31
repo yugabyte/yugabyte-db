@@ -14,11 +14,18 @@
 //
 #include "yb/yql/redis/redisserver/redis_encoding.h"
 
-#include "yb/util/logging.h"
 #include <google/protobuf/repeated_field.h>
+#include <glog/logging.h>
+#include <string.h>
+#include <algorithm>
+#include <type_traits>
+#include <utility>
 
 #include "yb/gutil/strings/numbers.h"
 #include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/cast.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/slice.h"
 
 using namespace std::literals; // NOLINT
 

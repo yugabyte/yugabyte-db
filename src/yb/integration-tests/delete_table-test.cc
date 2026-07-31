@@ -30,34 +30,38 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/types.h>
 #include <algorithm>
 #include <memory>
 #include <string>
 #include <thread>
-
-#include <gtest/gtest.h>
+#include <chrono>
+#include <functional>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <unordered_set>
+#include <vector>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/dockv/partition.h"
-
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/wire_protocol.h"
-
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_backup.proxy.h"
@@ -67,23 +71,55 @@
 #include "yb/master/master_ddl_client.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/mini_master.h"
-
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/tablet/tablet.pb.h"
-
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/schema.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/master_backup.pb.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tserver_admin.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/faststring.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/pstack_watcher.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
 
 using yb::client::YBSchema;
 using yb::client::YBTableCreator;

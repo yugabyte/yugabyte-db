@@ -13,22 +13,45 @@
 
 #include "yb/tserver/pg_table_cache.h"
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/container/small_vector.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <algorithm>
 #include <atomic>
 #include <mutex>
 #include <vector>
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <optional>
+#include <ostream>
+#include <string_view>
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
-
 #include "yb/gutil/thread_annotations.h"
-
-#include "yb/tserver/pg_client.pb.h"
-
-#include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
+#include "yb/common/entity_ids.h"
+#include "yb/gutil/stl_util.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/tostring.h"
 
 namespace yb::tserver {
 namespace {

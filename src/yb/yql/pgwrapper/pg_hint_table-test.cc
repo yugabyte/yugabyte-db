@@ -11,17 +11,33 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <stdint.h>
 #include <string>
+#include <atomic>
+#include <initializer_list>
+#include <mutex>
+#include <ostream>
+#include <string_view>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/util/json_document.h"
-#include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
-#include "yb/yql/pgwrapper/pg_test_utils.h"
+#include "gtest/gtest.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 namespace yb::pgwrapper {
 

@@ -21,10 +21,24 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include "yb/rocksdb/db/db_test_util.h"
+#include <memory>
+#include <string>
 
+#include "yb/rocksdb/db/db_test_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/filter_policy.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/slice_transform.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/table.h"
+#include "yb/rocksdb/util/testharness.h"
+#include "yb/util/result.h"
 
 using std::unique_ptr;
 

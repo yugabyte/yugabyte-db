@@ -30,19 +30,22 @@
 // under the License.
 //
 
+#include <stdint.h>
+#include <string.h>
+#include <boost/container/small_vector.hpp>
 #include <bitset>
 #include <random>
 #include <vector>
-
-#include <gtest/gtest.h>
+#include <algorithm>
+#include <string>
 
 #include "yb/gutil/strings/join.h"
-
 #include "yb/util/bitmap.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
 
 namespace yb {
 

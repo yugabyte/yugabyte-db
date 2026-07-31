@@ -22,22 +22,20 @@
 #include "yb/rocksdb/table/plain_table_builder.h"
 
 #include <assert.h>
-
+#include <glog/logging.h>
 #include <limits>
-#include <map>
 
-#include "yb/rocksdb/comparator.h"
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/options.h"
 #include "yb/rocksdb/table.h"
-#include "yb/rocksdb/table/block_builder.h"
 #include "yb/rocksdb/table/bloom_block.h"
 #include "yb/rocksdb/table/format.h"
 #include "yb/rocksdb/table/meta_blocks.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
-
 #include "yb/util/status_log.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/table/plain_table_index.h"
+#include "yb/rocksdb/util/hash.h"
+#include "yb/util/logging.h"
 
 namespace rocksdb {
 

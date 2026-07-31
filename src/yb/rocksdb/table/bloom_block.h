@@ -19,12 +19,17 @@
 //
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <vector>
 #include <string>
+
 #include "yb/rocksdb/util/dynamic_bloom.h"
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 class Logger;
+class Allocator;
 
 class BloomBlockBuilder {
  public:

@@ -11,37 +11,61 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/tools/yb-admin-test-base.h"
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <thread>
+#include <utility>
+#include <vector>
 
+#include "yb/tools/yb-admin-test-base.h"
 #include "yb/client/client.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
-#include "yb/client/table_info.h"
-
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_replication.proxy.h"
-
-#include "yb/rpc/secure_stream.h"
-
 #include "yb/tools/admin-test-base.h"
-#include "yb/tools/yb-admin_util.h"
-
-#include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/date_time.h"
-#include "yb/util/env_util.h"
-#include "yb/util/flags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status_format.h"
-#include "yb/util/subprocess.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/client/table_handle.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/schema.h"
+#include "yb/common/transaction.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/walltime.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/master/mini_master.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/env.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+
+namespace yb {
+namespace master {
+class ListSnapshotsResponsePB;
+}  // namespace master
+}  // namespace yb
 
 DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
 DECLARE_bool(TEST_allow_ycql_transactional_xcluster);

@@ -32,14 +32,17 @@
 
 #include "yb/consensus/consensus_peers.h"
 
-#include <algorithm>
+#include <gflags/gflags.h>
 #include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
+#include <compare>
+#include <functional>
+#include <optional>
+#include <ratio>
 
 #include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_meta.h"
@@ -47,26 +50,48 @@
 #include "yb/consensus/replicate_msgs_holder.h"
 #include "yb/consensus/multi_raft_batcher.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/rpc/periodic.h"
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/tablet/tablet_error.h"
 #include "yb/tserver/tserver_error.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/fault_injection.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/status_format.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/url-coding.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.messages.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/consensus.messages.h"
+#include "yb/consensus/consensus_types.messages.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/consensus_util.h"
+#include "yb/consensus/opid_util.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/server/clock.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tserver_types.messages.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+}  // namespace yb
 
 using namespace std::literals;
 using namespace std::placeholders;

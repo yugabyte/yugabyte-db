@@ -16,9 +16,12 @@
 #pragma once
 
 #include <ev++.h>
+#include <glog/logging.h>
+#include <ostream>
 
 #include "yb/util/atomic.h"
 #include "yb/util/monotime.h"
+#include "yb/util/logging.h"
 
 namespace yb {
 

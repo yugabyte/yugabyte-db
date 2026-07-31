@@ -32,18 +32,23 @@
 
 #pragma once
 
-#include <type_traits>
-
 #include <boost/preprocessor/cat.hpp>
+#include <string>
 
-#include "yb/master/catalog_loading_state.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master_fwd.h"
 #include "yb/master/permissions_manager.h"
-#include "yb/master/sys_catalog.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/sys_catalog-internal.h"
 
 namespace yb {
 namespace master {
+class SysNamespaceEntryPB;
+class SysTablesEntryPB;
+class SysTabletsEntryPB;
+struct SysCatalogLoadingState;
 
 #define DECLARE_LOADER_CLASS(name, key_type, entry_pb_name, mutex) \
   class BOOST_PP_CAT(name, Loader) : \

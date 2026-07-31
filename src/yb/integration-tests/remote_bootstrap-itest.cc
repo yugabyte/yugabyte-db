@@ -30,32 +30,35 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <memory>
 #include <string>
-#include <unordered_map>
-
-#include <gtest/gtest.h>
+#include <algorithm>
+#include <chrono>
+#include <functional>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <thread>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/schema.h"
-#include "yb/client/session.h"
 #include "yb/client/table_creator.h"
-
 #include "yb/common/opid.h"
 #include "yb/common/wire_protocol-test-util.h"
-
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/raft_consensus.h"
-
 #include "yb/fs/fs_manager.h"
-
-#include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/create-table-itest-base.h"
@@ -64,29 +67,23 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/mini_master.h"
-
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/remote_bootstrap_session.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver.pb.h"
-#include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/metrics.h"
@@ -94,10 +91,57 @@
 #include "yb/util/pstack_watcher.h"
 #include "yb/util/status_log.h"
 #include "yb/util/tsan_util.h"
-#include "yb/util/flags.h"
 #include "yb/util/sync_point.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "yb/client/table.h"
+#include "yb/client/table_handle.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/tablet.pb.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tserver_types.messages.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/env.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/path_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+}  // namespace yb
 
 using namespace std::literals;
 

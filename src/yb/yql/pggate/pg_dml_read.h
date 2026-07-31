@@ -14,24 +14,49 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/container/small_vector.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <vector>
-
-#include "yb/common/pgsql_protocol.fwd.h"
-
-#include "yb/docdb/docdb_fwd.h"
+#include <span>
 
 #include "yb/util/result.h"
-#include "yb/util/status_fwd.h"
-
 #include "yb/yql/pggate/pg_dml.h"
 #include "yb/yql/pggate/pg_doc_op.h"
 #include "yb/yql/pggate/pg_read_range.h"
-#include "yb/yql/pggate/pg_session.h"
-#include "yb/yql/pggate/pg_statement.h"
-#include "yb/yql/pggate/pg_tools.h"
+#include "yb/common/pg_types.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/util/enums.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/yql/pggate/pg_doc_op_fetch_stream.h"
+#include "yb/yql/pggate/pg_session_fwd.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
+namespace yb {
+namespace pggate {
+class PgColumn;
+class PgExpr;
+struct Bound;
+struct YbctidGenerator;
+}  // namespace pggate
+}  // namespace yb
 
 namespace yb::pggate {
 

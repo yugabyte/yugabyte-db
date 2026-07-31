@@ -12,19 +12,30 @@
 
 #include "yb/util/tcmalloc_util.h"
 
-#include <cstdint>
-
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <tcmalloc/malloc_extension.h>
+#include <unistd.h>
+#include <cstdint>
+#include <algorithm>
+#include <limits>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <string_view>
 
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
-#include "yb/util/tcmalloc_impl_util.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/util/flags/flag_tags.h"
 
 #if YB_GPERFTOOLS_TCMALLOC
 #include <gperftools/heap-profiler.h>

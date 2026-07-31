@@ -13,15 +13,12 @@
 
 #pragma once
 
-#include <string>
+#include <stddef.h>
 #include <vector>
 
-#include "yb/rocksdb/db.h"
-
 #include "yb/docdb/docdb_test_util.h"
-#include "yb/dockv/key_bytes.h"
-#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace docdb {

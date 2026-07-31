@@ -34,14 +34,16 @@
 
 #include <stdio.h>
 #include <sys/types.h>
-
+#include <errno.h>
+#include <glog/logging.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <functional>
-#include <memory>
 #include <string>
 #include <vector>
+#include <utility>
 
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
@@ -49,6 +51,8 @@
 #include "yb/util/status.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/thread.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 

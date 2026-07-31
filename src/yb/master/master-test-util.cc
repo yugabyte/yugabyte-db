@@ -15,19 +15,23 @@
 
 #include "yb/master/master-test-util.h"
 
-#include <gtest/gtest.h>
+#include <glog/logging.h>
+#include <algorithm>
+#include <ostream>
+#include <string>
+#include <vector>
 
 #include "yb/client/yb_table_name.h"
-
-#include "yb/common/schema_pbutil.h"
-
 #include "yb/master/catalog_manager_if.h"
-#include "yb/master/leader_epoch.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/mini_master.h"
-
 #include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
 
 
 namespace yb {

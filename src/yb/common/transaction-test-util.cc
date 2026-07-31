@@ -15,6 +15,7 @@
 #include "yb/common/transaction-test-util.h"
 
 #include "yb/util/status_format.h"
+#include "yb/common/transaction.pb.h"
 
 namespace yb {
 

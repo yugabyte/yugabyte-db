@@ -11,25 +11,26 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <future>
+#include <chrono>
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
 
 #include "google/protobuf/text_format.h"
-
 #include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_info.h"
-
-#include "yb/common/value.pb.h"
-
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 #include "yb/tablet/metadata.pb.h"
-
 #include "yb/tools/yb-admin_client.h"
-
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/env.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/random_util.h"
@@ -37,6 +38,25 @@
 #include "yb/util/status_format.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/schema.h"
+#include "yb/common/value.messages.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/tablet/tablet.pb.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/path_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
 
 DECLARE_int32(heartbeat_interval_ms);
 

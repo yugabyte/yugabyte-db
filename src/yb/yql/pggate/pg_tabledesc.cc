@@ -15,21 +15,26 @@
 
 #include "yb/yql/pggate/pg_tabledesc.h"
 
+#include <glog/logging.h>
+#include <algorithm>
+#include <ostream>
+
 #include "yb/dockv/partition.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
-
 #include "yb/dockv/doc_key.h"
-
-#include "yb/gutil/casts.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/tostring.h"
-
 #include "yb/yql/pggate/pg_client.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/constants.h"
+#include "yb/common/entity_ids.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/util/format.h"
 
 using std::string;
 

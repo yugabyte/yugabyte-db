@@ -32,61 +32,67 @@
 
 #pragma once
 
-#include <string.h>
 #include <sys/types.h>
-
-#include <fstream>
+#include <gtest/gtest_prod.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <strings.h>
 #include <functional>
 #include <memory>
 #include <string>
-#include <thread>
 #include <vector>
-
-#include <gtest/gtest_prod.h>
+#include <atomic>
+#include <mutex>
+#include <optional>
+#include <string_view>
+#include <utility>
 
 #include "yb/common/entity_ids_types.h"
-
-#include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/consensus_types.pb.h"
 #include "yb/consensus/metadata.pb.h"
-
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/external_daemon.h"
 #include "yb/integration-tests/external_yb_controller.h"
 #include "yb/integration-tests/mini_cluster_base.h"
-
-#include "yb/server/server_fwd.h"
-
-#include "yb/tserver/tserver_admin.proxy.h"
-#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_types.pb.h"
-
-#include "yb/util/curl_util.h"
-#include "yb/util/env.h"
-#include "yb/util/metrics.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/path_util.h"
 #include "yb/util/status.h"
 #include "yb/util/tsan_util.h"
+#include "yb/consensus/consensus.proxy.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/server/server_base.proxy.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_admin.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/util/file_system.h"
+#include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+class MetricEntityPrototype;
+class MetricPrototype;
+
+namespace client {
+class YBClient;
+}  // namespace client
+namespace consensus {
+enum ChangeConfigType : int;
+enum OpIdType : int;
+}  // namespace consensus
+namespace rpc {
+class Messenger;
+class ProxyCache;
+}  // namespace rpc
 
 using strings::Substitute;
 
-class ExternalDaemon;
 class ExternalMaster;
 class ExternalTabletServer;
-class HostPort;
-class HybridTime;
 class OpIdPB;
-class NodeInstancePB;
-class Subprocess;
+
 using ExternalMasterPtr = scoped_refptr<ExternalMaster>;
 
 namespace pgwrapper {
@@ -250,7 +256,6 @@ struct ExternalMiniClusterOptions {
 };
 
 YB_STRONGLY_TYPED_BOOL(RequireExitCode0);
-
 class LogWaiter;
 
 // A mini-cluster made up of subprocesses running each of the daemons separately. This is useful for

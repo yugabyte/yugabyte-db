@@ -40,6 +40,12 @@
 
 #include "yb/gutil/walltime.h"
 
+#include <glog/logging.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/resource.h>
+#include <sys/time.h>
+
 #if defined(__APPLE__)
 #include <mach/clock.h>
 #include <mach/mach.h>
@@ -47,7 +53,6 @@
 
 #include <memory>
 
-#include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 
 #if defined(__APPLE__)

@@ -15,15 +15,16 @@
 
 #pragma once
 
-#include <string>
+#include <stdint.h>
 
-#include "yb/common/common_fwd.h"
 #include "yb/common/hybrid_time.h"
-
-#include "yb/dockv/dockv_fwd.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
+#include "yb/util/result.h"
+
+namespace yb {
+class EncodedDocHybridTime;
+class Schema;
+}  // namespace yb
 
 namespace yb::dockv {
 

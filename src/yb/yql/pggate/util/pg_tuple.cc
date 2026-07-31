@@ -14,9 +14,9 @@
 
 #include "yb/yql/pggate/util/pg_tuple.h"
 
-#include "yb/util/logging.h"
-
-#include "yb/yql/pggate/util/ybc-internal.h"
+#include <glog/logging.h>
+#include <string.h>
+#include <ostream>
 
 namespace yb::pggate {
 

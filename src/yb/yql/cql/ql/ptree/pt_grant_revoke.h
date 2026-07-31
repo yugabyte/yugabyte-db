@@ -17,29 +17,26 @@
 
 #pragma once
 
-#include <inttypes.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <string.h>
-
-#include <limits>
 #include <string>
-
-#include "yb/client/client_fwd.h"
+#include <map>
+#include <memory>
+#include <utility>
 
 #include "yb/common/roles_permissions.h"
-
-#include "yb/gutil/integral_types.h"
-
-#include "yb/util/enums.h"
-
 #include "yb/yql/cql/ql/ptree/ptree_fwd.h"
-#include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/mc_types.h"
 
 namespace yb {
+namespace client {
+enum class GrantRevokeStatementType;
+}  // namespace client
+
 namespace ql {
+class SemContext;
 
 //--------------------------------------------------------------------------------------------------
 // GRANT Role Statement.

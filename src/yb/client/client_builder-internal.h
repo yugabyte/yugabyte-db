@@ -32,24 +32,21 @@
 #pragma once
 
 #include <stdint.h>
-
-#include <functional>
-#include <set>
+#include <sys/types.h>
 #include <string>
-#include <type_traits>
-#include <utility>
 #include <vector>
-
-#include <boost/version.hpp>
+#include <memory>
 
 #include "yb/client/client.h"
-
 #include "yb/common/common_net.pb.h"
-#include "yb/common/entity_ids.h"
-
 #include "yb/gutil/ref_counted.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
+class MemTracker;
+class MetricEntity;
 
 namespace client {
 

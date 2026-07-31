@@ -20,6 +20,8 @@
 
 #include "yb/rocksdb/util/dynamic_bloom.h"
 
+#include <string.h>
+
 #include "yb/rocksdb/util/allocator.h"
 #include "yb/rocksdb/util/hash.h"
 

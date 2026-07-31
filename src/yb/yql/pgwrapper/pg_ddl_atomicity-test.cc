@@ -10,33 +10,34 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
 #include <utility>
+#include <atomic>
+#include <chrono>
+#include <functional>
+#include <initializer_list>
+#include <ostream>
+#include <ratio>
+#include <tuple>
+#include <unordered_set>
 
-#include "yb/client/client_fwd.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/client/client-test-util.h"
-
-#include "yb/common/common.pb.h"
-#include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
-
-#include "yb/master/master.h"
-#include "yb/master/master_client.pb.h"
-#include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
-
 #include "yb/tserver/tserver_service.pb.h"
-
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
@@ -46,13 +47,34 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_ddl_atomicity_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
-
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/client/schema.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/snapshot.h"
+#include "yb/gutil/callback.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
 
 using namespace std::literals;
 using std::string;
@@ -1335,6 +1357,7 @@ class PgDdlAtomicitySnapshotTest : public PgDdlAtomicitySanityTest {
   std::unique_ptr<client::YBClient> client_;
 
   YB_STRONGLY_TYPED_BOOL(ExpectSuccess);
+
   Status testListSnapshots(yb::pgwrapper::PGConn *conn, DdlErrorInjection inject_error,
       const string& ddl, const TxnSnapshotId& snapshot_id,
       ExpectSuccess expect_success = ExpectSuccess::kTrue) {

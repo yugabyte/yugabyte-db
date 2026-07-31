@@ -32,27 +32,83 @@
 
 #include <fcntl.h>
 #include <unistd.h>
-
+#include <glog/stl_logging.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <algorithm>
 #include <vector>
-
-#include <boost/function.hpp>
-#include <glog/stl_logging.h>
+#include <atomic>
+#include <chrono>
+#include <compare>
+#include <deque>
+#include <functional>
+#include <iterator>
+#include <limits>
+#include <map>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <thread>
+#include <utility>
 
 #include "yb/common/schema_pbutil.h"
-#include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/log.messages.h"
 #include "yb/consensus/log-test-base.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/opid_util.h"
-
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/stopwatch.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.messages.h"
+#include "yb/common/opid.pb.h"
+#include "yb/common/wire_protocol-test-util.h"
+#include "yb/consensus/consensus.messages.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/log.h"
+#include "yb/consensus/log.pb.h"
+#include "yb/consensus/log_anchor_registry.h"
+#include "yb/consensus/log_fwd.h"
+#include "yb/consensus/log_metrics.h"
+#include "yb/consensus/log_reader.h"
+#include "yb/consensus/log_util.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/callback.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/server/clock.h"
+#include "yb/util/async_util.h"
+#include "yb/util/env.h"
+#include "yb/util/file_system.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
+#include "yb/util/numbered_deque.h"
+#include "yb/util/random_util.h"
+#include "yb/util/restart_safe_clock.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
 
 DEFINE_NON_RUNTIME_int32(num_batches, 10000,
              "Number of batches to write to/read from the Log in TestWriteManyBatches");

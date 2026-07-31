@@ -14,20 +14,39 @@
 #include "yb/tserver/pg_client_session.h"
 
 #include <sys/types.h>
-
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/message_lite.h>
+#include <boost/container/vector.hpp>
+#include <boost/intrusive/list.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
 #include <mutex>
 #include <optional>
-#include <ostream>
 #include <set>
 #include <span>
 #include <string>
 #include <tuple>
 #include <unordered_map>
 #include <vector>
+#include <compare>
+#include <future>
+#include <initializer_list>
+#include <limits>
+#include <new>
+#include <numeric>
+#include <ranges>
+#include <ratio>
+#include <sstream>
+#include <string_view>
+#include <type_traits>
 
 #include "yb/client/batcher.h"
 #include "yb/client/client.h"
@@ -39,7 +58,6 @@
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/common.pb.h"
 #include "yb/common/common_util.h"
 #include "yb/common/pgsql_error.h"
@@ -49,18 +67,13 @@
 #include "yb/common/transaction_error.h"
 #include "yb/common/transaction_priority.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/docdb/object_lock_shared_state_manager.h"
-
 #include "yb/dockv/doc_vector_id.h"
-
 #include "yb/master/master_ddl.pb.h"
-
 #include "yb/rpc/lightweight_message.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/sidecars.h"
 #include "yb/rpc/scheduler.h"
-
 #include "yb/tserver/pg_client.messages.h"
 #include "yb/tserver/pg_create_table.h"
 #include "yb/tserver/pg_mutation_counter.h"
@@ -75,7 +88,6 @@
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
-
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/cast.h"
@@ -84,7 +96,6 @@
 #include "yb/util/enums.h"
 #include "yb/util/logging.h"
 #include "yb/util/lw_function.h"
-#include "yb/util/pb_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -94,9 +105,65 @@
 #include "yb/util/trace.h"
 #include "yb/util/transit_owner.h"
 #include "yb/util/write_buffer.h"
-#include "yb/util/yb_pg_errcodes.h"
-
 #include "yb/yql/pggate/util/pg_doc_data.h"
+#include "yb/ash/wait_state.h"
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/cdc_types.h"
+#include "yb/client/schema.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/clock.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/consistent_read_point.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/pg_types.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/object_lock_shared_fwd.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/endian.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/join.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rpc/rpc_header.pb.h"
+#include "yb/rpc/serialization.h"
+#include "yb/server/clock.h"
+#include "yb/tserver/pg_client.pb.h"
+#include "yb/tserver/tserver.messages.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_service.messages.h"
+#include "yb/tserver/tserver_types.messages.h"
+#include "yb/util/async_util.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/locks.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/shmem/annotations.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
+#include "yb/yql/pggate/util/pg_wire.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/tserver/backup.messages.h"
+
+namespace yb {
+enum class YBPgErrorCode : uint32_t;
+}  // namespace yb
 
 using namespace std::chrono_literals;
 

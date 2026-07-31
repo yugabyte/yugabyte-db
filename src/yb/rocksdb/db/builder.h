@@ -23,32 +23,29 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <string>
-#include <utility>
 #include <vector>
+#include <memory>
 
 #include "yb/rocksdb/db/table_properties_collector.h"
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/immutable_options.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/status_fwd.h"
-#include "yb/rocksdb/table_properties.h"
 #include "yb/rocksdb/types.h"
+#include "yb/util/io.h"
 
 namespace rocksdb {
 
-struct Options;
 struct FileMetaData;
-
-class Env;
 struct EnvOptions;
-class Iterator;
 class TableCache;
-class VersionEdit;
 class TableBuilder;
 class WritableFileWriter;
 class InternalStats;
 class InternalIterator;
+struct ImmutableCFOptions;
+struct TableProperties;
 
 std::unique_ptr<TableBuilder> NewTableBuilder(
     const ImmutableCFOptions& options,

@@ -13,21 +13,41 @@
 
 #pragma once
 
+#include <functional>
+#include <map>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "yb/gutil/integral_types.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/xcluster_consumer_registry_service.h"
-#include "yb/util/status_fwd.h"
+#include "yb/cdc/xcluster_types.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class IsOperationDoneResult;
-class SysCatalogTable;
+class AutoFlagsConfigPB;
+class SchemaPB;
 
 namespace client {
 class XClusterRemoteClientHolder;
 }  // namespace client
 
 namespace master {
+class CatalogManager;
+class DeleteUniverseReplicationResponsePB;
+class SysCatalogTable;
+class SysTablesEntryPB;
+struct LeaderEpoch;
 
 // TODO: #19714 Create XClusterReplicationGroup, a wrapper over UniverseReplicationInfo, that will
 // manage the ReplicationGroup and its ProducerEntryPB in ClusterConfigInfo.

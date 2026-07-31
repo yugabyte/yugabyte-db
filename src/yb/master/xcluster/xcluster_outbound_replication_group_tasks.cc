@@ -13,9 +13,28 @@
 
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <algorithm>
+#include <ostream>
+#include <utility>
+
 #include "yb/common/xcluster_util.h"
-#include "yb/master/catalog_manager.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+
+namespace yb {
+class ThreadPool;
+namespace master {
+struct LeaderEpoch;
+}  // namespace master
+namespace rpc {
+class Messenger;
+}  // namespace rpc
+}  // namespace yb
 
 DEFINE_test_flag(bool, block_xcluster_checkpoint_namespace_task, false,
     "When enabled XClusterCheckpointNamespaceTask will be blocked");

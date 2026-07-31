@@ -22,6 +22,7 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/master/leader_epoch.h"
+#include "yb/master/sys_catalog.h" // IWYU pragma: keep
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/sys_catalog_writer.h"
 

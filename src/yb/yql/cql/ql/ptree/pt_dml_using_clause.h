@@ -13,8 +13,13 @@
 
 #pragma once
 
+#include <memory>
+#include <utility>
+
 #include "yb/yql/cql/ql/ptree/pt_dml_using_clause_element.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 
 namespace yb {
 namespace ql {

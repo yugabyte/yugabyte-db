@@ -10,9 +10,10 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include <gtest/gtest.h>
+#include <string>
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
 
 namespace yb::pgwrapper {
 

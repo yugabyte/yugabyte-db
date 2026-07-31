@@ -32,22 +32,46 @@
 
 #include "yb/master/mini_master.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/asio/ip/basic_endpoint.hpp>
 #include <string>
+#include <initializer_list>
+#include <ostream>
+#include <utility>
 
 #include "yb/util/logging.h"
-
 #include "yb/gutil/dynamic_annotations.h"
-
-#include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
-
 #include "yb/rpc/messenger.h"
-
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/tunnel.h"
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_options.h"
+#include "yb/server/clock.h"
+#include "yb/server/rpc_server.h"
+#include "yb/server/server_base.h"
+#include "yb/server/server_fwd.h"
+#include "yb/server/webserver_options.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+class Env;
+namespace master {
+class CatalogManager;
+class FlushManager;
+class SysCatalogTable;
+class TSManager;
+}  // namespace master
+}  // namespace yb
 
 using std::string;
 using std::vector;

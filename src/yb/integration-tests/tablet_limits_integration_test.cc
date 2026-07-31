@@ -11,25 +11,39 @@
 // under the License.
 //
 
+#include <stddef.h>
+#include <stdint.h>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
-#include "yb/master/tablet_creation_limits.h"
-
 #include "yb/rpc/rpc_controller.h"
-
-#include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
-#include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 

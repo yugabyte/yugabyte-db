@@ -13,15 +13,107 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <memory>
 #include <vector>
+#include <atomic>
+#include <mutex>
+#include <ostream>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <functional>
 
 #include "yb/common/entity_ids_types.h"
-
-#include "yb/master/master_ddl.fwd.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/xcluster/xcluster_source_manager.h"
 #include "yb/master/xcluster/xcluster_target_manager.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/xcluster/master_xcluster_types.h"
+#include "yb/server/monitored_task.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace yb {
+enum XClusterNamespaceInfoPB_XClusterRole : int;
+
+namespace master {
+class AddNamespaceToXClusterReplicationRequestPB;
+class AddNamespaceToXClusterReplicationResponsePB;
+class CatalogManager;
+class CreateTableRequestPB;
+class CreateXClusterReplicationRequestPB;
+class CreateXClusterReplicationResponsePB;
+class DeleteUniverseReplicationRequestPB;
+class DeleteUniverseReplicationResponsePB;
+class GetReplicationStatusRequestPB;
+class GetReplicationStatusResponsePB;
+class GetUniverseReplicationInfoRequestPB;
+class GetUniverseReplicationInfoResponsePB;
+class GetUniverseReplicationsRequestPB;
+class GetUniverseReplicationsResponsePB;
+class GetXClusterOutboundReplicationGroupInfoRequestPB;
+class GetXClusterOutboundReplicationGroupInfoResponsePB;
+class GetXClusterOutboundReplicationGroupsRequestPB;
+class GetXClusterOutboundReplicationGroupsResponsePB;
+class GetXClusterSafeTimeForNamespaceRequestPB;
+class GetXClusterSafeTimeForNamespaceResponsePB;
+class GetXClusterSafeTimeRequestPB;
+class GetXClusterSafeTimeResponsePB;
+class GetXClusterStreamsRequestPB;
+class GetXClusterStreamsResponsePB;
+class HandleNewSchemaForAutomaticXClusterTargetRequestPB;
+class HandleNewSchemaForAutomaticXClusterTargetResponsePB;
+class InsertPackedSchemaForXClusterTargetRequestPB;
+class InsertPackedSchemaForXClusterTargetResponsePB;
+class IsAlterXClusterReplicationDoneRequestPB;
+class IsAlterXClusterReplicationDoneResponsePB;
+class IsCreateXClusterReplicationDoneRequestPB;
+class IsCreateXClusterReplicationDoneResponsePB;
+class IsSetupNamespaceReplicationWithBootstrapDoneRequestPB;
+class IsSetupNamespaceReplicationWithBootstrapDoneResponsePB;
+class IsSetupUniverseReplicationDoneRequestPB;
+class IsSetupUniverseReplicationDoneResponsePB;
+class IsXClusterBootstrapRequiredRequestPB;
+class IsXClusterBootstrapRequiredResponsePB;
+class IsXClusterFailoverDoneRequestPB;
+class IsXClusterFailoverDoneResponsePB;
+class Master;
+class RepairOutboundXClusterReplicationGroupAddTableRequestPB;
+class RepairOutboundXClusterReplicationGroupAddTableResponsePB;
+class RepairOutboundXClusterReplicationGroupRemoveTableRequestPB;
+class RepairOutboundXClusterReplicationGroupRemoveTableResponsePB;
+class SetUniverseReplicationEnabledRequestPB;
+class SetUniverseReplicationEnabledResponsePB;
+class SetupNamespaceReplicationWithBootstrapRequestPB;
+class SetupNamespaceReplicationWithBootstrapResponsePB;
+class SetupUniverseReplicationRequestPB;
+class SetupUniverseReplicationResponsePB;
+class SysCatalogTable;
+class SysTablesEntryPB;
+class XClusterAddNamespaceToOutboundReplicationGroupRequestPB;
+class XClusterAddNamespaceToOutboundReplicationGroupResponsePB;
+class XClusterCreateOutboundReplicationGroupRequestPB;
+class XClusterCreateOutboundReplicationGroupResponsePB;
+class XClusterDeleteOutboundReplicationGroupRequestPB;
+class XClusterDeleteOutboundReplicationGroupResponsePB;
+class XClusterEnsureSequenceUpdatesAreInWalRequestPB;
+class XClusterEnsureSequenceUpdatesAreInWalResponsePB;
+class XClusterFailoverRequestPB;
+class XClusterFailoverResponsePB;
+class XClusterRemoveNamespaceFromOutboundReplicationGroupRequestPB;
+class XClusterRemoveNamespaceFromOutboundReplicationGroupResponsePB;
+class XClusterReportNewAutoFlagConfigVersionRequestPB;
+class XClusterReportNewAutoFlagConfigVersionResponsePB;
+struct LeaderEpoch;
+}  // namespace master
+namespace rpc {
+class RpcContext;
+}  // namespace rpc
+}  // namespace yb
 
 namespace yb::master {
 
@@ -33,8 +125,6 @@ class PostTabletCreateTaskBase;
 class TSHeartbeatRequestPB;
 class TSHeartbeatResponsePB;
 class XClusterConfig;
-class XClusterSafeTimeService;
-struct SysCatalogLoadingState;
 struct XClusterSetupUniverseReplicationData;
 
 // The XClusterManager class is responsible for managing all yb-master related control logic of

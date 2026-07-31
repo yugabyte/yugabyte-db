@@ -18,10 +18,15 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <ostream>
+
 #include "yb/util/callsite_profiling.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/sync_point.h"
+#include "yb/gutil/port.h"
+#include "yb/util/flags/flag_tags.h"
 
 DEFINE_test_flag(bool, enable_sync_points, false, "Enable sync points for testing.");
 

@@ -13,12 +13,20 @@
 
 #include "yb/tserver/xcluster_ddl_queue_handler.h"
 
-#include <boost/algorithm/string.hpp>
-
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <rapidjson/allocators.h>
+#include <rapidjson/encodings.h>
+#include <rapidjson/rapidjson.h>
+#include <stdint.h>
+#include <boost/algorithm/string/case_conv.hpp>
+#include <boost/iterator/iterator_facade.hpp>
+#include <sstream>
+#include <utility>
 
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/client.h"
@@ -33,6 +41,15 @@
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "libpq-fe.h"
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status_format.h"
 
 DEFINE_RUNTIME_int32(xcluster_ddl_queue_max_retries_per_ddl, 5,
     "Maximum number of retries per DDL before we pause processing of the ddl_queue table.");
@@ -230,6 +247,7 @@ bool IsAllowedGucVariable(const std::string& name) {
   static const std::unordered_set<std::string> kAllowedGucVariableNames = {
 #define X(name) name,
 #include "postgres/yb-extensions/yb_xcluster_ddl_replication/xcluster_ddl_replication_gucs.def"
+
 #undef X
   };
   return kAllowedGucVariableNames.contains(boost::to_lower_copy(name));

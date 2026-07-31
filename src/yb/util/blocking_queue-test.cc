@@ -30,17 +30,19 @@
 // under the License.
 //
 
+#include <stddef.h>
+#include <stdint.h>
 #include <functional>
 #include <memory>
 #include <string>
 #include <thread>
 #include <vector>
-
-#include "yb/util/logging.h"
-#include <gtest/gtest.h>
+#include <map>
 
 #include "yb/util/blocking_queue.h"
 #include "yb/util/countdown_latch.h"
+#include "gtest/gtest.h"
+#include "yb/util/mutex.h"
 
 using std::string;
 using std::vector;

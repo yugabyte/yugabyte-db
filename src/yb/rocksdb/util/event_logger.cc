@@ -24,10 +24,9 @@
 
 #include "yb/rocksdb/util/event_logger.h"
 
-#include <inttypes.h>
-#include <cassert>
-#include <sstream>
 #include <string>
+
+#include "yb/rocksdb/util/log_buffer.h"
 
 
 namespace rocksdb {

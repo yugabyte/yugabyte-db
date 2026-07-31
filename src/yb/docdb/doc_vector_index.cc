@@ -14,33 +14,49 @@
 
 #include "yb/docdb/doc_vector_index.h"
 
-#include <boost/algorithm/string.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <ostream>
+#include <utility>
 
 #include "yb/ann_methods/usearch_wrapper.h"
-
 #include "yb/dockv/doc_vector_id.h"
-
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_util.h"
-#include "yb/docdb/key_bounds.h"
-#include "yb/docdb/read_operation_data.h"
 #include "yb/docdb/rocksdb_writer.h"
-
 #include "yb/hnsw/hnsw_block_cache.h"
-
 #include "yb/qlexpr/index.h"
-
-#include "yb/util/decimal.h"
 #include "yb/util/endian_util.h"
-#include "yb/util/flags.h"
-#include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
-
-#include "yb/vector_index/vectorann_util.h"
 #include "yb/vector_index/vector_lsm.h"
+#include "yb/ann_methods/hnswlib_wrapper.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/endian.h"
+#include "yb/rocksdb/compaction_filter.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/storage/frontier.h"
+#include "yb/util/clone_ptr.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/vector_index/coordinate_types.h"
+#include "yb/vector_index/distance.h"
+#include "yb/vector_index/hnsw_options.h"
+#include "yb/vector_index/vector_index_if.h"
+#include "yb/docdb/doc_write_batch.h"
+#include "yb/docdb/intent_aware_iterator.h"
+#include "yb/docdb/object_lock_shared_fwd.h"
 
 DEFINE_RUNTIME_uint64(vector_index_initial_chunk_size, 100000,
     "Number of vector in initial vector index chunk");

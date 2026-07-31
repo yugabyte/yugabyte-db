@@ -31,18 +31,24 @@
 //
 
 #include <vector>
-
-#include <gtest/gtest.h>
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "yb/consensus/consensus-test-util.h"
-#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/replica_state.h"
-
 #include "yb/fs/fs_manager.h"
-
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/opid.h"
+#include "yb/consensus/consensus_types.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/opid_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace consensus {

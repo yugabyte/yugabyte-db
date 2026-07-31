@@ -13,14 +13,25 @@
 
 #include "yb/master/clone/clone_tasks.h"
 
-#include "yb/master/master.h"
+#include <glog/logging.h>
+#include <memory>
+#include <ostream>
+#include <utility>
 
+#include "yb/master/master.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/status_log.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/server/clock.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 
 namespace yb {
+class ThreadPool;
+
 namespace master {
 
 // ============================================================================

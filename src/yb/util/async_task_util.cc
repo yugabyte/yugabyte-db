@@ -13,8 +13,12 @@
 
 #include "yb/util/async_task_util.h"
 
-#include "yb/util/logging.h"
+#include <glog/logging.h>
+#include <limits>
+#include <utility>
+
 #include "yb/util/status.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 

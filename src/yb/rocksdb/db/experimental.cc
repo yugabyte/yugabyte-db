@@ -20,6 +20,10 @@
 
 
 #include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace rocksdb {
 namespace experimental {

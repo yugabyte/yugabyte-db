@@ -30,12 +30,13 @@
 // under the License.
 //
 
-#include "yb/util/logging.h"
-#include <gtest/gtest.h>
+#include <string>
 
 #include "yb/server/logical_clock.h"
-#include "yb/util/monotime.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/gutil/ref_counted.h"
 
 namespace yb {
 namespace server {

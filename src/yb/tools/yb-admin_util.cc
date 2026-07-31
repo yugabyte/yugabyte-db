@@ -12,12 +12,18 @@
 
 #include "yb/tools/yb-admin_util.h"
 
+#include <stdint.h>
 #include <algorithm>
 #include <string_view>
+#include <compare>
 
 #include "yb/common/snapshot.h"
-
 #include "yb/util/result.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/cast.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 namespace yb {
 namespace tools {

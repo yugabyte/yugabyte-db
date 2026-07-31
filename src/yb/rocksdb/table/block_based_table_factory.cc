@@ -24,19 +24,29 @@
 #include "yb/rocksdb/table/block_based_table_factory.h"
 
 #include <stdint.h>
-
+#include <glog/logging.h>
+#include <stdio.h>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/flush_block_policy.h"
-#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/table/block_based_table_builder.h"
 #include "yb/rocksdb/table/block_based_table_reader.h"
 #include "yb/rocksdb/table/format.h"
-
 #include "yb/util/logging.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/rocksdb/table/table_builder.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+
+namespace rocksdb {
+class RandomAccessFileReader;
+class TableReader;
+}  // namespace rocksdb
 
 using std::unique_ptr;
 

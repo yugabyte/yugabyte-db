@@ -29,18 +29,26 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <string.h>
 #include <memory>
 #include <thread>
 #include <vector>
+#include <compare>
+#include <functional>
+#include <string>
 
 #include "yb/util/logging.h"
-#include <gtest/gtest.h>
-
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/memory/mc_types.h"
 #include "yb/util/memory/memory.h"
-#include "yb/util/flags.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/memory/arena_fwd.h"
 
 DEFINE_NON_RUNTIME_int32(num_threads, 16, "Number of threads to test");
 DEFINE_NON_RUNTIME_int32(allocs_per_thread, 10000, "Number of allocations each thread should do");

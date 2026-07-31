@@ -24,15 +24,16 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 #include <vector>
-
-#include "yb/rocksdb/types.h"
+#include <string>
 
 #include "yb/util/mem_tracked_byte_buffer.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/slice.h"
 
 namespace rocksdb {
+enum class KeyValueEncodingFormat;
 
 class BlockBuilder {
  public:

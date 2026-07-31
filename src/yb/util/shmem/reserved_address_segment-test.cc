@@ -11,7 +11,16 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <stdint.h>
 #include <functional>
+#include <cstddef>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 #include "yb/util/cast.h"
 #include "yb/util/shmem/reserved_address_segment.h"
@@ -19,6 +28,10 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 DECLARE_uint64(TEST_address_segment_negotiator_initial_address);
 DECLARE_bool(TEST_address_segment_negotiator_dfatal_map_failure);

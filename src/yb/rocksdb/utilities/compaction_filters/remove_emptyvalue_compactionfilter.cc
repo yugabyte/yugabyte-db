@@ -23,6 +23,7 @@
 
 #include "yb/util/slice.h"
 #include "yb/rocksdb/utilities/compaction_filters/remove_emptyvalue_compactionfilter.h"
+#include "yb/storage/storage_types.h"
 
 namespace rocksdb {
 

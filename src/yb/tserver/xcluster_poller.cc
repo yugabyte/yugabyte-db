@@ -13,32 +13,59 @@
 
 #include "yb/tserver/xcluster_poller.h"
 
-#include "yb/ash/wait_state.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/container/stable_vector.hpp>
+#include <algorithm>
+#include <chrono>
+#include <ostream>
+#include <ratio>
+#include <unordered_map>
+#include <utility>
 
-#include "yb/client/client_fwd.h"
+#include "yb/ash/wait_state.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/tserver/xcluster_consumer.h"
 #include "yb/tserver/xcluster_ddl_queue_handler.h"
-
 #include "yb/cdc/xcluster_rpc.h"
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/client/client.h"
-
 #include "yb/consensus/opid_util.h"
-
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/tserver/xcluster_consumer_auto_flags_info.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
-#include "yb/util/threadpool.h"
 #include "yb/util/unique_lock.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/opid.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/strings/stringpiece.h"
+#include "yb/rpc/rpc.h"
+#include "yb/tserver/xcluster_output_client.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/monotime.h"
+#include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/slice.h"
+#include "yb/util/uuid.h"
+
+namespace rocksdb {
+class RateLimiter;
+}  // namespace rocksdb
+namespace yb {
+namespace tserver {
+class TserverXClusterContextIf;
+}  // namespace tserver
+}  // namespace yb
 
 // Similar heuristic to heartbeat_interval in heartbeater.cc.
 DEFINE_RUNTIME_int32(async_replication_polling_delay_ms, 0,

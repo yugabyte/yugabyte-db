@@ -12,13 +12,23 @@
 
 #include "yb/tserver/tserver_call_home.h"
 
+#include <gflags/gflags.h>
+#include <span>
+#include <string>
+#include <vector>
+
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_cgroup_manager.h"
 #include "yb/tserver/ysql_call_home_stats.h"
-
-#include "yb/util/cgroups.h"
 #include "yb/util/format.h"
+
+namespace yb {
+class Cgroup;
+namespace server {
+class RpcAndWebServerBase;
+}  // namespace server
+}  // namespace yb
 
 DECLARE_bool(enable_ysql);
 

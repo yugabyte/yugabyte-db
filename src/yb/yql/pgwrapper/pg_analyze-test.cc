@@ -11,27 +11,41 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <functional>
+#include <initializer_list>
+#include <limits>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <set>
+#include <string>
+#include <string_view>
+#include <thread>
+#include <tuple>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/colocated_util.h"
-#include "yb/common/pgsql_error.h"
-
 #include "yb/integration-tests/cluster_itest_util.h"
-
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/tablet_split_manager.h"
-
 #include "yb/rocksdb/db.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/tserver.messages.h"
-
 #include "yb/util/async_util.h"
-#include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/protobuf_util.h"
 #include "yb/util/result.h"
@@ -39,9 +53,34 @@
 #include "yb/util/status_format.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/sync_point.h"
-
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
+#include "gtest/gtest.h"
+#include "libpq-fe.h"
+#include "yb/client/client.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/rocksdb/table_properties.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/util/cast.h"
+#include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/monotime.h"
+#include "yb/util/random_util.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
+#include "yb/util/tsan_util.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(TEST_refresh_partitions_after_fetched_sample_blocks);

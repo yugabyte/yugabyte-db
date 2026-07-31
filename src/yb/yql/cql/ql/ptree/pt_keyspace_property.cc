@@ -11,14 +11,20 @@
 // under the License.
 //
 
-#include <set>
-#include "yb/client/schema.h"
+#include <glog/logging.h>
+#include <stdint.h>
+#include <ostream>
+#include <string>
+#include <vector>
+
 #include "yb/yql/cql/ql/ptree/pt_keyspace_property.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/string_case.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 using std::string;
 using std::vector;

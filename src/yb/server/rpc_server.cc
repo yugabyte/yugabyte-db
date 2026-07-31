@@ -32,25 +32,30 @@
 
 #include "yb/server/rpc_server.h"
 
-#include <list>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <string>
 #include <vector>
-
-#include <boost/preprocessor/cat.hpp>
-#include <boost/preprocessor/stringize.hpp>
+#include <memory>
+#include <ostream>
+#include <utility>
 
 #include "yb/gutil/casts.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/service_pool.h"
-
-#include "yb/util/atomic.h"
-#include "yb/util/flags.h"
-#include "yb/util/metric_entity.h"
-#include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rpc/rpc_service.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/result.h"
+
+namespace yb {
+class MetricEntity;
+}  // namespace yb
 
 using yb::rpc::Messenger;
 using std::string;

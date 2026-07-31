@@ -15,53 +15,65 @@
 
 #include "yb/tablet/transaction_participant.h"
 
-#include <ctime>
-#include <queue>
-
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
+#include <absl/base/dynamic_annotations.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/container/stable_vector.hpp>
+#include <boost/multi_index/indexed_by.hpp>
+#include <boost/multi_index/tag.hpp>
+#include <boost/multi_index_container.hpp>
+#include <boost/multi_index_container_fwd.hpp>
+#include <boost/operators.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <queue>
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <compare>
+#include <condition_variable>
+#include <deque>
+#include <future>
+#include <limits>
+#include <mutex>
+#include <ostream>
+#include <ratio>
+#include <string_view>
+#include <thread>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 #include "yb/ash/wait_state.h"
-
 #include "yb/client/client.h"
 #include "yb/client/transaction_rpc.h"
 #include "yb/client/transaction_status_tablets.h"
-
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
-
 #include "yb/consensus/consensus_util.h"
-
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/transaction_dump.h"
-
 #include "yb/rocksdb/options.h"
-
 #include "yb/rpc/poller.h"
-
 #include "yb/server/clock.h"
-
-#include "yb/tablet/tablet.h"
 #include "yb/tablet/cleanup_aborts_task.h"
 #include "yb/tablet/cleanup_intents_task.h"
 #include "yb/tablet/operations/update_txn_operation.h"
-#include "yb/tablet/remove_intents_task.h"
 #include "yb/tablet/running_transaction.h"
 #include "yb/tablet/running_transaction_context.h"
 #include "yb/tablet/transaction_loader.h"
 #include "yb/tablet/transaction_participant_context.h"
 #include "yb/tablet/transaction_status_resolver.h"
 #include "yb/tablet/write_post_apply_metadata_task.h"
-
 #include "yb/tserver/tserver_service.pb.h"
-
 #include "yb/util/algorithm_util.h"
 #include "yb/util/async_util.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/countdown_latch.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/lru_cache.h"
@@ -73,6 +85,42 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
+#include "yb/ash/ash_fwd.h"
+#include "yb/common/clock.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/transaction.messages.h"
+#include "yb/docdb/bounded_rocksdb_iterator.h"
+#include "yb/docdb/docdb.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/docdb/wait_queue.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rpc/rpc.h"
+#include "yb/tablet/operations.messages.h"
+#include "yb/tablet/operations.pb.h"
+#include "yb/tablet/transaction_intent_applier.h"
+#include "yb/util/atomic.h"
+#include "yb/util/bitmap.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/random_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/uuid.h"
+#include "yb/util/yb_pg_errcodes.h"
+
+namespace yb {
+namespace rpc {
+class RpcContext;
+}  // namespace rpc
+}  // namespace yb
 
 using std::vector;
 

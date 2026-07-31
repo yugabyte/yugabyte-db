@@ -14,10 +14,16 @@
 
 #include "yb/common/tablespace_parser.h"
 
-#include <boost/algorithm/string/predicate.hpp>
-
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <rapidjson/allocators.h>
+#include <rapidjson/error/error.h>
+#include <rapidjson/rapidjson.h>
+#include <string.h>
+#include <optional>
+#include <ostream>
 
 #include "yb/util/enums.h"
 #include "yb/util/flags/flag_tags.h"
@@ -25,6 +31,9 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/common/replica_type.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 using std::string;
 using std::vector;

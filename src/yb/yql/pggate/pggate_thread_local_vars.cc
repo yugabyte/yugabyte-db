@@ -15,6 +15,7 @@
 #include "yb/yql/pggate/pggate_thread_local_vars.h"
 
 #include <stddef.h>
+#include <glog/logging.h>
 #include <optional>
 #include <vector>
 

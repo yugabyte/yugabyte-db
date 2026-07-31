@@ -12,10 +12,14 @@
 
 #include "yb/util/aggregate_stats.h"
 
+#include <glog/logging.h>
 #include <limits>
+#include <utility>
 
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/gutil/port.h"
+#include "yb/util/logging.h"
 
 namespace yb {
 

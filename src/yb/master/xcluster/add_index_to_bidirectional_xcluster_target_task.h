@@ -13,8 +13,18 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_entity_tasks.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/master_fwd.h"
+#include "yb/server/monitored_task.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
@@ -23,6 +33,9 @@ class XClusterRemoteClientHolder;
 }  // namespace client
 
 namespace master {
+class Master;
+class XClusterManagerIf;
+struct LeaderEpoch;
 
 // Wait for the index DocDB table on the other universe to get created, reach the backfill stage
 // and then add the index to replication.

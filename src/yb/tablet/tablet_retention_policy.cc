@@ -13,34 +13,27 @@
 
 #include "yb/tablet/tablet_retention_policy.h"
 
-#include <iosfwd>
-#include <map>
-#include <memory>
+#include <absl/base/dynamic_annotations.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <mutex>
 #include <string>
-#include <vector>
+#include <chrono>
+#include <compare>
+#include <ostream>
+#include <ratio>
+#include <utility>
 
-#include "yb/common/common_fwd.h"
 #include "yb/common/schema.h"
-#include "yb/common/snapshot.h"
 #include "yb/common/transaction_error.h"
-
 #include "yb/dockv/doc_ttl_util.h"
-
-#include "yb/gutil/ref_counted.h"
-
-#include "yb/rocksdb/options.h"
-#include "yb/rocksdb/types.h"
-
-#include "yb/server/hybrid_clock.h"
-
-#include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_metadata.h"
-
-#include "yb/util/enums.h"
 #include "yb/util/logging.h"
-#include "yb/util/strongly_typed_bool.h"
-#include "yb/util/flags.h"
+#include "yb/gutil/port.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
 
 using namespace std::literals;
 

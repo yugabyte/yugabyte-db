@@ -15,31 +15,54 @@
 
 #pragma once
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
 #include <functional>
-
-#include "yb/cdc/cdc_service.pb.h"
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <utility>
 
 #include "yb/common/wire_protocol.h"
-#include "yb/consensus/consensus.h"
-#include "yb/consensus/consensus_error.h"
 #include "yb/consensus/raft_consensus.h"
-
-#include "yb/master/master_heartbeat.fwd.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/clock.h"
-
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/tablet_peer_lookup.h"
-#include "yb/tablet/tablet_error.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tserver_error.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/status_format.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/tablet/abstract_tablet.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/status.h"
+
+namespace yb {
+enum YBConsistencyLevel : int;
+namespace master {
+class TSHeartbeatResponsePB;
+}  // namespace master
+namespace tserver {
+class LWTabletServerErrorPB;
+}  // namespace tserver
+}  // namespace yb
 
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_object_locking_infra);

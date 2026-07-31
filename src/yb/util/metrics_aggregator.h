@@ -15,13 +15,23 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <mutex>
 #include <shared_mutex>
 #include <unordered_set>
+#include <memory>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <functional>
 
 #include "yb/util/atomic.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/shared_lock.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

@@ -11,22 +11,47 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <algorithm>
 #include <functional>
 #include <future>
-
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
+#include <chrono>
+#include <initializer_list>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <span>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
+#include <variant>
+#include <vector>
 
 // #include "yb/common/ysql_operation_lease.h"
 
 #include "yb/docdb/lock_util.h"
 #include "yb/docdb/object_lock_data.h"
-
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_cluster_client.h"
@@ -34,24 +59,71 @@
 #include "yb/master/master_ddl_client.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/object_lock_info_manager.h"
-#include "yb/master/test_async_rpc_manager.h"
-#include "yb/master/ts_manager.h"
-
 #include "yb/rpc/messenger.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/status_callback.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/transaction.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/docdb/docdb.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/server/clock.h"
+#include "yb/server/hybrid_clock.h"
+#include "yb/tserver/ts_local_lock_manager.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/ysql_lease.h"
+#include "yb/util/async_util.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common_net.messages.h"
+#include "yb/common/common_types.messages.h"
+#include "yb/common/constants.h"
+#include "yb/common/opid.messages.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/redis_protocol.messages.h"
+#include "yb/common/schema.h"
+#include "yb/common/transaction.messages.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/wire_protocol.messages.h"
+#include "yb/util/bytes_formatter.h"
+#include "yb/util/io.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/stack_trace.h"
+#include "yb/util/subprocess.h"
 
 using namespace std::chrono_literals;
 

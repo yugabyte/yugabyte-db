@@ -12,10 +12,18 @@
 //
 
 #include "yb/util/background_task.h"
+
+#include <glog/logging.h>
+#include <ostream>
+#include <utility>
+
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/status_log.h"
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 

@@ -12,55 +12,90 @@
 //
 #include "yb/docdb/conflict_resolution.h"
 
-#include <atomic>
-#include <map>
-
 #include <boost/container/small_vector.hpp>
 #include <boost/logic/tribool.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/range/begin.hpp>
+#include <boost/range/end.hpp>
+#include <boost/range/iterator_range_core.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <atomic>
+#include <map>
+#include <chrono>
+#include <functional>
+#include <optional>
+#include <ostream>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "yb/ash/wait_state.h"
-
 #include "yb/common/hybrid_time.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction.pb.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/transaction_priority.h"
-
 #include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/doc_read_context.h"
-#include "yb/docdb/docdb_filter_policy.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/intent_format.h"
 #include "yb/docdb/iter_util.h"
 #include "yb/docdb/lock_util.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/transaction_dump.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/intent.h"
-
-#include "yb/gutil/stl_util.h"
-
 #include "yb/rocksdb/options.h"
-
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
-
 #include "yb/util/file_util.h"
 #include "yb/util/lazy_invoke.h"
 #include "yb/util/logging.h"
-#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
-#include "yb/util/stopwatch.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 #include "yb/util/memory/memory.h"
+#include "yb/ash/ash_fwd.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/constants.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/schema.h"
+#include "yb/common/transaction.messages.h"
+#include "yb/docdb/bounded_rocksdb_iterator.h"
+#include "yb/docdb/conflict_data.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/docdb/wait_queue.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/value_type.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/util/byte_buffer.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace docdb {
+class LockBatch;
+}  // namespace docdb
+}  // namespace yb
 
 using namespace std::literals;
 using namespace std::placeholders;

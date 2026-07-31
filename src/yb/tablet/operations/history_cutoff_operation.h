@@ -13,10 +13,12 @@
 
 #pragma once
 
-#include "yb/consensus/consensus.messages.h"
+#include <stdint.h>
+#include <utility>
 
-#include "yb/tablet/operations.messages.h"
+#include "yb/consensus/consensus.messages.h"
 #include "yb/tablet/operations/operation.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace tablet {

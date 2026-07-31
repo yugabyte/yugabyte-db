@@ -13,14 +13,15 @@
 
 #pragma once
 
-#include <functional>
-#include <memory>
+#include <stddef.h>
+#include <string>
 
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 #include "yb/docdb/ql_storage_interface.h"
-
-#include "yb/util/status_fwd.h"
+#include "yb/common/common_fwd.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/gutil/integral_types.h"
 
 namespace yb {
 namespace docdb {

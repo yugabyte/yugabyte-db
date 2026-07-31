@@ -31,10 +31,17 @@
 //
 #pragma once
 
-#include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/consensus/log_fwd.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
+namespace consensus {
+struct ConsensusBootstrapInfo;
+}  // namespace consensus
+
 namespace tablet {
+struct BootstrapTabletData;
 
 // Plays the log segments, rebuilding the portion of the Tablet's soft state that is present in
 // the log (additional soft state may be present in other replicas).  A successful call will yield

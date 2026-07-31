@@ -14,11 +14,24 @@
 
 #pragma once
 
-#include "yb/util/status_fwd.h"
-#include "yb/util/env.h"
-#include "yb/util/slice.h"
+#include <stdint.h>
+#include <future>
+#include <string>
 
-#include "yb/tablet/tablet.h"
+#include "yb/util/slice.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class WritableFile;
+namespace client {
+class YBClient;
+}  // namespace client
+namespace tablet {
+class Tablet;
+}  // namespace tablet
+}  // namespace yb
 
 namespace yb::tablet {
 

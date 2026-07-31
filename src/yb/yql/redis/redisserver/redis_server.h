@@ -13,15 +13,19 @@
 
 #pragma once
 
-#include <string>
+#include <stdint.h>
+#include <memory>
 
 #include "yb/gutil/macros.h"
 #include "yb/yql/redis/redisserver/redis_server_options.h"
 #include "yb/server/server_base.h"
-#include "yb/tserver/tserver_fwd.h"
-#include "yb/util/status_fwd.h"
 
 namespace yb {
+class MemTracker;
+namespace tserver {
+class TabletServerIf;
+}  // namespace tserver
+
 namespace redisserver {
 
 class RedisServer : public server::RpcAndWebServerBase {

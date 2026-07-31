@@ -13,43 +13,66 @@
 
 #include "yb/docdb/doc_rowwise_iterator.h"
 
+#include <gflags/gflags.h>
+#include <boost/range/iterator_range_core.hpp>
 #include <cstdint>
-#include <iterator>
 #include <ostream>
 #include <string>
 #include <vector>
+#include <algorithm>
+#include <chrono>
+#include <compare>
+#include <limits>
+#include <ratio>
+#include <utility>
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/doc_read_context.h"
-#include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/scan_choices.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_path.h"
-#include "yb/dockv/expiration.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
-
 #include "yb/gutil/port.h"
-
 #include "yb/qlexpr/ql_expr.h"
-
 // TODO(sergei) Wrong dependency
 #include "yb/tablet/tablet_metrics.h"
-
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
-#include "yb/util/metrics.h"
 #include "yb/util/result.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
-#include "yb/util/status_log.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/schema.h"
+#include "yb/common/value.pb.h"
+#include "yb/docdb/docdb_compaction_context.h"
+#include "yb/docdb/lock_util.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/value.h"
+#include "yb/dockv/value_type.h"
+#include "yb/qlexpr/ql_scanspec.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/monotime.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
+
+namespace rocksdb {
+class ReadFileFilter;
+}  // namespace rocksdb
+namespace yb {
+namespace dockv {
+class SchemaPackingStorage;
+}  // namespace dockv
+}  // namespace yb
 
 DEFINE_RUNTIME_bool(ysql_use_flat_doc_reader, true,
     "Use DocDBTableReader optimization that relies on having at most 1 subkey for YSQL.");

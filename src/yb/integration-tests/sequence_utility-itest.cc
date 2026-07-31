@@ -11,14 +11,35 @@
 // under the License.
 //
 
-#include <gmock/gmock.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <algorithm>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <vector>
 
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/ysql_sequence_util.h"
-
 #include "yb/tablet/tablet.h"
-
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/timestamp.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 namespace yb::master {
 

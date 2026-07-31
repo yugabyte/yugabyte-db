@@ -13,29 +13,23 @@
 
 #pragma once
 
-#include <functional>
-#include <locale>
 #include <set>
 #include <string>
-#include <type_traits>
-#include <unordered_set>
-#include <utility>
+#include <map>
+#include <memory>
+#include <vector>
 
-#include <boost/range/iterator_range.hpp>
-
-#include "yb/client/client_fwd.h"
 #include "yb/client/yb_table_name.h"
-
-#include "yb/gutil/ref_counted.h"
-
-#include "yb/master/master_client.fwd.h"
-#include "yb/master/master_fwd.h"
-
 #include "yb/tools/bulk_load_utils.h"
-
-#include "yb/util/status_fwd.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/util/status.h"
 
 namespace yb {
+namespace client {
+class YBClient;
+class YBTable;
+}  // namespace client
+
 namespace tools {
 
 typedef std::map<std::string, master::TabletLocationsPB> TabletMap;

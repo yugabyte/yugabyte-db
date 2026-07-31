@@ -13,8 +13,10 @@
 
 #include "yb/yql/pggate/pg_flush_future.h"
 
-#include "yb/ash/wait_state.h"
+#include <stdint.h>
+#include <utility>
 
+#include "yb/ash/wait_state.h"
 #include "yb/yql/pggate/pg_doc_metrics.h"
 #include "yb/yql/pggate/pg_session.h"
 

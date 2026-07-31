@@ -20,21 +20,23 @@
 #pragma once
 
 
-#include <limits>
+#include <stddef.h>
+#include <stdint.h>
 #include <string>
 #include <unordered_map>
 
-#include "yb/rocksdb/comparator.h"
-#include "yb/rocksdb/iterator.h"
 #include "yb/util/slice.h"
-#include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/utilities/write_batch_with_index.h"
-#include "yb/rocksdb/port/port.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/rocksdb/status_fwd.h"
 
 namespace rocksdb {
 
 class MergeContext;
-struct Options;
+class ColumnFamilyHandle;
+class Comparator;
+struct DBOptions;
 
 // Key used by skip list, as the binary searchable index of WriteBatchWithIndex.
 struct WriteBatchIndexEntry {

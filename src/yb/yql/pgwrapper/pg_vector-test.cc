@@ -10,7 +10,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <string>
+
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 namespace yb::pgwrapper {
 

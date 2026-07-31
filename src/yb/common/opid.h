@@ -14,9 +14,15 @@
 //
 #pragma once
 
-#include <iosfwd>
+#include <stddef.h>
+#include <stdint.h>
 #include <vector>
+#include <algorithm>
+#include <limits>
+#include <ostream>
+#include <string>
 
+#include "yb/util/result.h"
 #include "yb/util/slice.h"
 
 namespace yb {

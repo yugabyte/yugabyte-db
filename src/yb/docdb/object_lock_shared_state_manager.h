@@ -13,25 +13,47 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <atomic>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
+#include <span>
+#include <string>
+#include <utility>
+#include <functional>
 
 #include "yb/common/transaction.h"
-#include "yb/common/object_lock_tracker.h"
-
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/lock_util.h"
 #include "yb/docdb/object_lock_data.h"
 #include "yb/docdb/object_lock_shared_fwd.h"
 #include "yb/docdb/object_lock_shared_state.h"
-
 #include "yb/gutil/macros.h"
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/util/lw_function.h"
 #include "yb/util/tostring.h"
+#include "yb/common/entity_ids_types.h"
+
+namespace yb {
+class ObjectLockTracker;
+
+namespace docdb {
+class ObjectLockManager;
+}  // namespace docdb
+}  // namespace yb
 
 namespace yb::docdb {
 

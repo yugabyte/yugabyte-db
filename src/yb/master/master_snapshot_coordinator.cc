@@ -13,23 +13,56 @@
 
 #include "yb/master/master_snapshot_coordinator.h"
 
-#include <functional>
-#include <unordered_map>
-
 #include <boost/multi_index/composite_key.hpp>
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/asio/io_context.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <google/protobuf/any.pb.h>
+#include <stddef.h>
+#include <boost/iterator/iterator_facade.hpp>
+#include <boost/iterator/transform_iterator.hpp>
+#include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/indexed_by.hpp>
+#include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index/tag.hpp>
+#include <boost/multi_index_container.hpp>
+#include <boost/multi_index_container_fwd.hpp>
+#include <boost/operators.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/range/iterator_range_core.hpp>
+#include <boost/tuple/tuple.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <functional>
+#include <unordered_map>
+#include <algorithm>
+#include <chrono>
+#include <compare>
+#include <limits>
+#include <mutex>
+#include <ostream>
+#include <ratio>
+#include <string_view>
+#include <thread>
+#include <type_traits>
 
-#include "yb/common/common_types_util.h"
 #include "yb/common/constants.h"
 #include "yb/common/snapshot.h"
-
-#include "yb/docdb/consensus_frontier.h"
 #include "yb/dockv/doc_key.h"
-#include "yb/docdb/rocksdb_writer.h"
 #include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
@@ -42,29 +75,60 @@
 #include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/snapshot_schedule_state.h"
 #include "yb/master/snapshot_state.h"
-#include "yb/master/state_with_tablets.h"
 #include "yb/master/sys_catalog_writer.h"
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
-
 #include "yb/rpc/poller.h"
 #include "yb/rpc/scheduler.h"
-
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/write_query.h"
-
 #include "yb/util/async_util.h"
-#include "yb/util/backoff_waiter.h"
-#include "yb/util/flags.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/unique_lock.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/docdb/docdb.messages.h"
+#include "yb/docdb/storage_set.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/rpc/any.messages.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/server/clock.h"
+#include "yb/tablet/operations.messages.h"
+#include "yb/tablet/operations/operation.h"
+#include "yb/tserver/backup.messages.h"
+#include "yb/tserver/backup.pb.h"
+#include "yb/util/async_task_util.h"
+#include "yb/util/debug/long_operation_tracker.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace tablet {
+class RaftGroupMetadata;
+}  // namespace tablet
+}  // namespace yb
 
 using std::vector;
 using std::string;
@@ -2336,6 +2400,7 @@ class MasterSnapshotCoordinator::Impl {
   mutable std::mutex mutex_;
   class ScheduleTag;
   class SnapshotIdTag;
+
   using Snapshots = boost::multi_index_container<
       std::unique_ptr<SnapshotState>,
       boost::multi_index::indexed_by<

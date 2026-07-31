@@ -18,19 +18,11 @@
 #include <vector>
 #include <utility>
 
-#include "yb/client/client_fwd.h"
-
 #include "yb/gutil/macros.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/tserver/pg_client.pb.h"
-#include "yb/tserver/pg_client_session.h"
 #include "yb/tserver/tserver_fwd.h"
-
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/result.h"
-
 #include "yb/util/monotime.h"
 
 namespace yb {
@@ -41,6 +33,9 @@ class MetricEntity;
 namespace tserver {
 
 class PgResponseCacheWaiter;
+class LWPgPerformOptionsPB_LWCachingInfoPB;
+class LWPgPerformResponsePB;
+
 using PgResponseCacheWaiterPtr = std::shared_ptr<PgResponseCacheWaiter>;
 
 class PgResponseCache {
@@ -65,6 +60,7 @@ class PgResponseCache {
       const PgResponseCacheWaiterPtr& waiter);
 
   struct DisablerType;
+
   using Disabler = std::shared_ptr<DisablerType>;
 
   [[nodiscard]] Disabler Disable(KeyGroup key_group);

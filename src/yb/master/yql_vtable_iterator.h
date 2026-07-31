@@ -13,9 +13,18 @@
 
 #pragma once
 
-#include "yb/common/ql_protocol.pb.h"
+#include <stddef.h>
+#include <memory>
+#include <string>
+
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
-#include "yb/util/memory/arena_list.h"
+#include "yb/common/common_fwd.h"
+
+namespace yb {
+namespace qlexpr {
+class QLRowBlock;
+}  // namespace qlexpr
+}  // namespace yb
 
 namespace yb::master {
 

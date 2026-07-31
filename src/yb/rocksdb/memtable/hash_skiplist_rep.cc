@@ -20,16 +20,21 @@
 
 #include "yb/rocksdb/memtable/hash_skiplist_rep.h"
 
+#include <assert.h>
 #include <atomic>
+#include <memory>
+#include <new>
+#include <string>
 
 #include "yb/rocksdb/memtablerep.h"
 #include "yb/rocksdb/util/arena.h"
 #include "yb/util/slice.h"
 #include "yb/rocksdb/slice_transform.h"
-#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/murmurhash.h"
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/db/skiplist.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/db/memtable_allocator.h"
 
 namespace rocksdb {
 namespace {

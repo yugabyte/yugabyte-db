@@ -13,17 +13,22 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <memory>
 #include <optional>
 #include <span>
-#include <utility>
 
 #include "yb/gutil/macros.h"
-
-#include "yb/yql/pggate/pg_session_fwd.h"
 #include "yb/yql/pggate/pg_tools.h"
-
 #include "yb/util/result.h"
+#include "yb/common/pg_types.h"
+
+namespace yb {
+namespace pggate {
+class PgSession;
+enum class PgSessionRunOperationMarker;
+}  // namespace pggate
+}  // namespace yb
 
 namespace yb::pggate {
 

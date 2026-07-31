@@ -30,15 +30,17 @@
 // under the License.
 //
 
-#include <atomic>
 #include <string>
-
-#include <gtest/gtest.h>
+#include <functional>
+#include <memory>
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
 

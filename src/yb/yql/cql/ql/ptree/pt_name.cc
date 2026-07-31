@@ -18,12 +18,13 @@
 #include "yb/yql/cql/ql/ptree/pt_name.h"
 
 #include "yb/common/redis_constants_common.h"
-
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/slice.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 using std::string;
 

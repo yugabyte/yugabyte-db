@@ -24,13 +24,14 @@
 #pragma once
 
 #include <stdint.h>
-
+#include <stddef.h>
 #include <memory>
+#include <string>
 
 #include "yb/rocksdb/db/log_format.h"
 #include "yb/util/slice.h"
-#include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status.h"
 
 namespace rocksdb {
 

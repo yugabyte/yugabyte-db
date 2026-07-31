@@ -15,7 +15,11 @@
 
 #include "yb/bfpg/directory.h"
 
+#include <initializer_list>
+
 #include "yb/common/value.messages.h"
+#include "yb/bfcommon/bfdecl.h"
+#include "yb/bfpg/tserver_opcodes.h"
 
 namespace yb {
 namespace bfpg {

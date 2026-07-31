@@ -29,19 +29,24 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include <unordered_map>
+#include <stdint.h>
 #include <vector>
-
-#include "yb/util/logging.h"
-#include <gtest/gtest.h>
+#include <string>
+#include <utility>
 
 #include "yb/common/common.pb.h"
 #include "yb/common/row.h"
 #include "yb/common/schema.h"
-
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/format.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/common/column_id.h"
+#include "yb/common/types.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/strings/stringpiece.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 namespace tablet {

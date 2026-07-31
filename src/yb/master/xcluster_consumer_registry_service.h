@@ -15,26 +15,26 @@
 
 #include <map>
 #include <string>
-#include <google/protobuf/repeated_field.h>
+#include <vector>
 
 #include "yb/common/entity_ids_types.h"
-#include "yb/master/catalog_entity_info.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
+
+namespace google {
+namespace protobuf {
+template <typename T> class RepeatedPtrField;
+}  // namespace protobuf
+}  // namespace google
 
 namespace yb {
 namespace cdc {
 class StreamEntryPB;
 }  // namespace cdc
 
-namespace client {
-class YBClient;
-}  // namespace client
-
 namespace master {
 
-class ListTablesResponsePB;
-class GetTableLocationsResponsePB;
 class TabletLocationsPB;
+struct SplitTabletIds;
 
 struct KeyRange {
   std::string start_key;

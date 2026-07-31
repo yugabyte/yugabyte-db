@@ -12,11 +12,20 @@
 //
 
 #include "yb/master/catalog_entity_base.h"
-#include "yb/master/tasks_tracker.h"
 
+#include <algorithm>
+#include <mutex>
+#include <ostream>
+#include <vector>
+#include <memory>
+
+#include "yb/master/tasks_tracker.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
 #include "yb/util/tostring.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb::master {
 

@@ -18,6 +18,7 @@
 // under the License.
 //
 #include <sstream>
+#include <string>
 
 #include "yb/rocksdb/perf_context.h"
 

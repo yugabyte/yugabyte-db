@@ -13,19 +13,32 @@
 
 #include "yb/master/yql_virtual_table.h"
 
-#include "yb/common/ql_protocol.messages.h"
+#include <algorithm>
+#include <compare>
+#include <optional>
+
+#include "yb/common/ql_protocol.messages.h" // IWYU pragma: keep
 #include "yb/common/schema.h"
-
 #include "yb/docdb/doc_ql_scanspec.h"
-#include "yb/dockv/key_entry_value.h"
-
 #include "yb/master/master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/yql_vtable_iterator.h"
-
 #include "yb/util/metrics.h"
 #include "yb/util/status_format.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/types.h"
+#include "yb/master/ts_descriptor.h"
+#include "yb/qlexpr/ql_scanspec.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+
+namespace yb {
+namespace master {
+class CatalogManagerIf;
+}  // namespace master
+}  // namespace yb
 
 namespace yb::master {
 

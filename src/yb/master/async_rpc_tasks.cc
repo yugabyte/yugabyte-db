@@ -13,24 +13,56 @@
 
 #include "yb/master/async_rpc_tasks.h"
 
-#include "yb/common/wire_protocol.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <chrono>
+#include <ostream>
+#include <unordered_set>
 
+#include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_meta.h"
-
 #include "yb/master/async_rpc_tasks_base.h"
 #include "yb/master/master.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_test.proxy.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/ts_descriptor.h"
-
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/dockv/dockv.pb.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/master/alter_table_batch_tracker.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/tablet_health_manager.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/server/clock.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/cow_object.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+class ThreadPool;
+}  // namespace yb
 
 using namespace std::literals;
 

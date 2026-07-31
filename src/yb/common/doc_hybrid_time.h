@@ -13,14 +13,21 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <array>
 #include <string>
+#include <compare>
+#include <limits>
+#include <ostream>
 
 #include "yb/common/hybrid_time.h"
-
 #include "yb/util/compare_util.h"
 #include "yb/util/kv_util.h"
 #include "yb/util/slice.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

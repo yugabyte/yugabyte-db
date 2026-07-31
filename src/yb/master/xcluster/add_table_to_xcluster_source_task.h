@@ -13,9 +13,28 @@
 
 #pragma once
 
-#include "yb/client/client_fwd.h"
+#include <functional>
+#include <memory>
+#include <string>
 
 #include "yb/master/post_tablet_create_task_base.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/master/master_fwd.h"
+#include "yb/server/monitored_task.h"
+#include "yb/util/status.h"
+#include "yb/util/status_callback.h"
+
+namespace yb {
+namespace master {
+class CatalogManager;
+struct LeaderEpoch;
+}  // namespace master
+namespace rpc {
+class Messenger;
+}  // namespace rpc
+template <class TValue> class Result;
+}  // namespace yb
 
 namespace yb::master {
 

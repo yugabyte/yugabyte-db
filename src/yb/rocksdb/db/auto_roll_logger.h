@@ -23,25 +23,21 @@
 
 #pragma once
 
-#include <assert.h>
-
+#include <stdarg.h>
+#include <stddef.h>
 #include <cstdint>
-#include <functional>
 #include <list>
-#include <mutex>
-#include <stack>
 #include <string>
-#include <type_traits>
+#include <memory>
 
-#include "yb/rocksdb/db/filename.h"
-#include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/port/util_logger.h"
 #include "yb/rocksdb/util/mutexlock.h"
-
-#include "yb/util/cache_metrics.h"
 #include "yb/util/sync_point.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/rocksdb/status_fwd.h"  // IWYU pragma: keep
 
 namespace rocksdb {
+struct DBOptions;
 
 // Rolls the log file by size and/or time
 class AutoRollLogger : public Logger {

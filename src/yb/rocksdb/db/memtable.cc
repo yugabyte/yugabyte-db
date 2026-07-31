@@ -23,12 +23,14 @@
 
 #include "yb/rocksdb/db/memtable.h"
 
-#include <algorithm>
+#include <assert.h>
+#include <string.h>
 #include <limits>
+#include <new>
+#include <sstream>
 
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/merge_context.h"
-#include "yb/rocksdb/env.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/merge_operator.h"
 #include "yb/rocksdb/slice_transform.h"
@@ -40,9 +42,22 @@
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/stop_watch.h"
-
 #include "yb/util/mem_tracker.h"
 #include "yb/util/stats/perf_step_timer.h"
+#include "yb/gutil/macros.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/perf_context.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/util/dynamic_bloom.h"
+#include "yb/rocksdb/util/mutable_cf_options.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+
+namespace rocksdb {
+class Env;
+class Logger;
+}  // namespace rocksdb
 
 using std::ostringstream;
 

@@ -13,11 +13,16 @@
 
 #include "yb/docdb/deadline_info.h"
 
+#include <gflags/gflags.h>
 #include <string>
+#include <chrono>
+#include <compare>
 
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
+#include "yb/gutil/port.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/slice.h"
 
 using namespace std::literals;
 

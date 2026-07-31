@@ -24,10 +24,15 @@
 #pragma once
 
 #include "yb/rocksdb/rocksdb_fwd.h"
-#include "yb/rocksdb/iterator.h"
-#include "yb/rocksdb/table/internal_iterator.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace rocksdb {
+class Arena;
+class InternalIterator;
+class IteratorFilter;
+struct FilterKeyCache;
+struct QueryOptions;
 
 struct TwoLevelIteratorState {
   explicit TwoLevelIteratorState(bool _check_prefix_may_match)

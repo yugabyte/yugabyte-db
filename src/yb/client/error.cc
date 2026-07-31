@@ -13,8 +13,13 @@
 
 #include "yb/client/error.h"
 
+#include <utility>
+
+#include "yb/client/client_fwd.h"
+
 namespace yb {
 namespace client {
+class YBOperation;
 
 ////////////////////////////////////////////////////////////
 // Error

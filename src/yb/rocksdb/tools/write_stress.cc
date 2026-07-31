@@ -69,25 +69,33 @@ int main() {
 }
 #else
 
-#include "yb/util/flags.h"
 #include "yb/util/status_log.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
 
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
 #endif
 
 #include <inttypes.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdio.h>
 #include <atomic>
 #include <random>
 #include <set>
 #include <string>
 #include <thread>
+#include <cstdlib>
+#include <memory>
+#include <vector>
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/options.h"
-#include "yb/util/slice.h"
-
 #include "yb/rocksdb/db/filename.h"
 
 using GFLAGS::ParseCommandLineFlags;

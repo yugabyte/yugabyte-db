@@ -13,15 +13,16 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <condition_variable>
+#include <string>
 
 #include "yb/gutil/macros.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/gutil/thread_annotations.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace server {

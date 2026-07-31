@@ -32,6 +32,25 @@
 
 #pragma once
 
+#include <gtest/internal/gtest-internal.h>
+#include <glog/logging.h>
+#include <gtest/gtest_prod.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/container_hash/hash.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <functional>
 #include <list>
 #include <map>
@@ -41,54 +60,209 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-
-#include <boost/functional/hash.hpp>
-#include <gtest/internal/gtest-internal.h>
-
-#include "yb/cdc/cdc_service.fwd.h"
+#include <array>
+#include <atomic>
+#include <deque>
+#include <memory>
+#include <mutex>
+#include <ostream>
+#include <utility>
 
 #include "yb/client/client_fwd.h"
-
-#include "yb/common/ql_protocol.fwd.h"
-
 #include "yb/master/catalog_manager_if.h"
-#include "yb/master/master_admin.fwd.h"
-#include "yb/master/master_dcl.fwd.h"
-#include "yb/master/master_ddl.fwd.h"
-#include "yb/master/master_encryption.fwd.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/master_heartbeat.fwd.h"
 #include "yb/master/snapshot_coordinator_context.h"
-
 #include "yb/master/table_index.h"
-#include "yb/rocksdb/rocksdb_fwd.h"
-
 #include "yb/util/async_task_util.h"
 #include "yb/util/debug/lock_debug.h"
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/rw_mutex.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/unique_lock.h"
 #include "yb/util/version_tracker.h"
+#include "yb/cdc/cdc_consumer.pb.h"
+#include "yb/cdc/xcluster_types.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/pg_catversions.h"
+#include "yb/common/snapshot.h"
+#include "yb/common/transaction.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/atomicops.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/stl_util.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/async_rpc_tasks.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_backup.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_util.h"
+#include "yb/master/tablet_split_fwd.h"
+#include "yb/master/tasks_tracker.h"
+#include "yb/master/ts_descriptor.h"
+#include "yb/master/ysql_tablespace_manager.h"
+#include "yb/rocksdb/db.h"
+#include "yb/tablet/abstract_tablet.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tserver/backup.pb.h"
+#include "yb/util/enums.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 namespace yb {
 
-class AddTransactionStatusTabletRequestPB;
-class AddTransactionStatusTabletResponsePB;
-class AsyncTaskThrottlerBase;
 class Counter;
-class DynamicAsyncTaskThrottler;
 class IsOperationDoneResult;
 struct ReadHybridTime;
 class Schema;
 class ScopedRWOperation;
 class ThreadPool;
-class UniverseKeyRegistryPB;
-
 template<class T>
 class AtomicGauge;
+class IndexInfoPB;
+class QLTypePB;
+enum QLWriteRequestPB_QLStmtType : int;
+
+namespace cdc {
+enum CDCRequestSource : int;
+}  // namespace cdc
+namespace client {
+class UniverseKeyClient;
+class YBClient;
+class YBSchema;
+
+namespace internal {
+class RemoteTabletServer;
+}  // namespace internal
+}  // namespace client
+namespace consensus {
+class ConsensusStatePB;
+class RaftConfigPB;
+class RaftPeerPB;
+enum PeerMemberType : int;
+}  // namespace consensus
+namespace docdb {
+class DocWriteBatch;
+class KeyValuePairPB;
+struct DocReadContext;
+}  // namespace docdb
+namespace master {
+class BootstrapProducerRequestPB;
+class BootstrapProducerResponsePB;
+class CatalogManagerBgTasks;
+class CdcsdkManager;
+class ChangeEncryptionInfoRequestPB;
+class ChangeEncryptionInfoResponsePB;
+class ChangeXClusterRoleRequestPB;
+class ChangeXClusterRoleResponsePB;
+class ClusterLoadBalancer;
+class CreateCDCStreamRequestPB;
+class CreateCDCStreamResponsePB;
+class DeleteCDCStreamRequestPB;
+class DeleteCDCStreamResponsePB;
+class DisableDynamicTableAdditionOnCDCSDKStreamRequestPB;
+class DisableDynamicTableAdditionOnCDCSDKStreamResponsePB;
+class DumpMasterStateRequestPB;
+class DumpMasterStateResponsePB;
+class EncryptionManager;
+class GetCDCStreamRequestPB;
+class GetCDCStreamResponsePB;
+class GetFullUniverseKeyRegistryRequestPB;
+class GetFullUniverseKeyRegistryResponsePB;
+class GetIndexBackfillProgressRequestPB;
+class GetIndexBackfillProgressResponsePB;
+class GetStatefulServiceLocationRequestPB;
+class GetStatefulServiceLocationResponsePB;
+class GetTableSchemaFromSysCatalogRequestPB;
+class GetTableSchemaFromSysCatalogResponsePB;
+class GetTabletsMetadataRequestPB;
+class GetTabletsMetadataResponsePB;
+class GetTransactionStatusTabletsRequestPB;
+class GetTransactionStatusTabletsResponsePB;
+class GetUDTypeMetadataRequestPB;
+class GetUDTypeMetadataResponsePB;
+class GetUniverseReplicationRequestPB;
+class GetUniverseReplicationResponsePB;
+class GetYsqlCatalogConfigRequestPB;
+class GetYsqlCatalogConfigResponsePB;
+class GetYsqlYbSystemTableInfoRequestPB;
+class GetYsqlYbSystemTableInfoResponsePB;
+class GrantRevokePermissionRequestPB;
+class GrantRevokePermissionResponsePB;
+class IsBootstrapRequiredRequestPB;
+class IsBootstrapRequiredResponsePB;
+class IsEncryptionEnabledRequestPB;
+class IsEncryptionEnabledResponsePB;
+class IsLoadBalancerIdleRequestPB;
+class IsLoadBalancerIdleResponsePB;
+class Master;
+class NamespaceIdentifierPB;
+class ObjectLockInfoManager;
+class PermissionsManager;
+class RedisConfigGetRequestPB;
+class RedisConfigGetResponsePB;
+class RedisConfigSetRequestPB;
+class RedisConfigSetResponsePB;
+class RemoveTablesFromCDCSDKStreamRequestPB;
+class RemoveTablesFromCDCSDKStreamResponsePB;
+class RemoveUserTableFromCDCSDKStreamRequestPB;
+class RemoveUserTableFromCDCSDKStreamResponsePB;
+class ReservePgsqlOidsRequestPB;
+class ReservePgsqlOidsResponsePB;
+class SysCatalogTable;
+class SysCatalogWriter;
+class SystemTablet;
+class TSHeartbeatRequestPB;
+class TSHeartbeatResponsePB;
+class TableIdentifierPB;
+class TablegroupInfo;
+class TabletLocationsPB;
+class UpdateCDCStreamRequestPB;
+class UpdateCDCStreamResponsePB;
+class UpdateConsumerOnProducerMetadataRequestPB;
+class UpdateConsumerOnProducerMetadataResponsePB;
+class UpdateConsumerOnProducerSplitRequestPB;
+class UpdateConsumerOnProducerSplitResponsePB;
+class ValidateAndSyncCDCStateEntriesForCDCSDKStreamRequestPB;
+class ValidateAndSyncCDCStateEntriesForCDCSDKStreamResponsePB;
+class ValidateReplicationInfoRequestPB;
+class ValidateReplicationInfoResponsePB;
+class WaitForReplicationDrainRequestPB;
+class WaitForReplicationDrainResponsePB;
+class XClusterManager;
+class XClusterRpcTasks;
+class YQLPartitionsVTable;
+class YQLVirtualTable;
+class YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB;
+class YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB;
+class YsqlTablegroupManager;
+enum SysRowEntryType : int;
+struct SnapshotScheduleRestoration;
+}  // namespace master
+namespace rpc {
+class RpcContext;
+}  // namespace rpc
+namespace tablet {
+class ChangeMetadataRequestPB;
+class Operation;
+class RaftGroupMetadata;
+class Tablet;
+enum TabletDataState : int;
+}  // namespace tablet
 
 #define CALL_GTEST_TEST_CLASS_NAME_(...) GTEST_TEST_CLASS_NAME_(__VA_ARGS__)
 
@@ -104,6 +278,7 @@ class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, DropDBWithTables);
 }
 
 class CALL_GTEST_TEST_CLASS_NAME_(MasterPartitionedTest, VerifyOldLeaderStepsDown);
+
 #undef CALL_GTEST_TEST_CLASS_NAME_
 
 namespace rpc {
@@ -115,13 +290,6 @@ namespace docdb {
 struct HistoryCutoff;
 
 }  // namespace docdb
-
-namespace tablet {
-
-struct TableInfo;
-enum RaftGroupStatePB : int;
-
-}  // namespace tablet
 
 namespace cdc {
 class CDCServiceProxy;
@@ -146,7 +314,6 @@ struct SysCatalogLoadingState;
 struct TabletDeleteRetainerInfo;
 class AlterTableBatchTracker;
 class RestoreSysCatalogState;
-class YsqlInitDBAndMajorUpgradeHandler;
 class YsqlManager;
 class YsqlManagerIf;
 
@@ -204,6 +371,7 @@ YB_DEFINE_ENUM(DeleteYsqlDBTablesType,
 YB_DEFINE_ENUM(CDCStreamType, (kNone)(kLogicalReplication)(kgRPC));
 
 struct YsqlTableDdlTxnState;
+
 using google::protobuf::RepeatedPtrField;
 using TabletIdWithEntry = std::pair<TabletId, SysTabletsEntryPB>;
 using SysTabletsEntriesWithIds = std::vector<TabletIdWithEntry>;

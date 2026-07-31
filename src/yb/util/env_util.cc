@@ -32,11 +32,16 @@
 #include "yb/util/env_util.h"
 
 #include <sys/stat.h>
-
+#include <boost/container/small_vector.hpp>
+#include <errno.h>
+#include <glog/logging.h>
+#include <stdlib.h>
+#include <boost/intrusive/list.hpp>
 #include <memory>
 #include <string>
-
-#include <boost/container/small_vector.hpp>
+#include <algorithm>
+#include <ostream>
+#include <utility>
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
@@ -47,6 +52,9 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/file_system.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 using strings::Substitute;
 using std::shared_ptr;

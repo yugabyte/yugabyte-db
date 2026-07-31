@@ -32,35 +32,26 @@
 // This module is internal to the client and not a public API.
 #pragma once
 
-#include <stdint.h>
 #include <string.h>
-
-#include <cstdarg>
-#include <functional>
 #include <string>
-#include <type_traits>
 #include <vector>
-
-#include <boost/container/small_vector.hpp>
-#include <boost/version.hpp>
-#include "yb/util/flags.h"
+#include <memory>
 
 #include "yb/gutil/callback.h"
-#include "yb/gutil/integral_types.h"
-#include "yb/gutil/ref_counted.h"
-
 #include "yb/rpc/rpc.h"
-
-#include "yb/server/server_base_options.h"
-
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/net/sockaddr.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/server/server_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
-
-class ServerEntryPB;
-class HostPort;
+namespace rpc {
+class Messenger;
+class ProxyCache;
+}  // namespace rpc
 
 namespace master {
 

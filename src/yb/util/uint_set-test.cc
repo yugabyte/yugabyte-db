@@ -12,7 +12,15 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <algorithm>
+#include <limits>
+#include <set>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <functional>
 
 #include "yb/util/proto_container_test.pb.h"
 #include "yb/util/random.h"
@@ -20,6 +28,9 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/uint_set.h"
+#include "gtest/gtest.h"
+#include "yb/util/format.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

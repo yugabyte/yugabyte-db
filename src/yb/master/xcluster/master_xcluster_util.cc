@@ -13,14 +13,27 @@
 
 #include "yb/master/xcluster/master_xcluster_util.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <ostream>
+#include <utility>
+
 #include "yb/common/common_types.pb.h"
 #include "yb/common/xcluster_util.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/xcluster/xcluster_manager.h"
-
 #include "yb/util/async_util.h"
+#include "yb/cdc/xcluster_types.h"
+#include "yb/common/entity_ids.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
 
 DECLARE_uint32(xcluster_ysql_statement_timeout_sec);
 

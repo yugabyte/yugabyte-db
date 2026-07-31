@@ -21,8 +21,32 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <stddef.h>
+#include <stdint.h>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+#include <functional>
+
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/version_set.h"
+#include "yb/gutil/casts.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/background_error.h"
+#include "yb/rocksdb/db/column_family.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/db/version_edit.h"
+#include "yb/rocksdb/db/write_thread.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/rocksdb/util/autovector.h"
+#include "yb/rocksdb/util/instrumented_mutex.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 

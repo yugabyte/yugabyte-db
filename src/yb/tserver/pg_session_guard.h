@@ -13,23 +13,27 @@
 
 #pragma once
 
+#include <glog/logging.h>
 #include <condition_variable>
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <utility>
+#include <tuple>
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/gutil/port.h"
+#include "yb/util/monotime.h"
 
 namespace yb::tserver {
 
 struct PgSessionGuardState {
   YB_STRONGLY_TYPED_BOOL(IsCrossThreadLock);
+
   using BeforeReleaseLockFunctor = std::function<void(IsCrossThreadLock)>;
 
   PgSessionGuardState(std::mutex& mutex, BeforeReleaseLockFunctor&& before_release_lock)

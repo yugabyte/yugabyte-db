@@ -13,7 +13,20 @@
 
 #include "yb/client/snapshot_schedule-test.h"
 
-#include "yb/client/client-test-util.h"
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/uuid/uuid.hpp>
+#include <chrono>
+#include <functional>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <thread>
+#include <unordered_set>
+#include <vector>
+
 #include "yb/client/namespace_info.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/schema.h"
@@ -25,25 +38,42 @@
 #include "yb/client/txn-test-base.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/colocated_util.h"
-
-#include "yb/common/wire_protocol.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_retention_policy.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
-
 #include "yb/yql/cql/ql/util/errcodes.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/snapshot.h"
+#include "yb/common/value.messages.h"
+#include "yb/docdb/docdb_compaction_context.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/env.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 

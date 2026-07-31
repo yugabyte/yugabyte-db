@@ -11,37 +11,74 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <algorithm>
+#include <chrono>
+#include <functional>
+#include <initializer_list>
+#include <memory>
+#include <mutex>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "yb/client/client.h"
-
 #include "yb/client/table_creator.h"
-
 #include "yb/gutil/dynamic_annotations.h"
-
-#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
-
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master.h"
 #include "yb/master/ts_manager.h"
-
 #include "yb/rocksdb/util/multi_drive_test_env.h"
-
 #include "yb/tools/yb-admin_client.h"
-
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_server_options.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/multi_drive_test_env.h"
 #include "yb/util/status_format.h"
+#include "gtest/gtest.h"
+#include "yb/client/schema.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/value.messages.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/cluster_balance_activity_info.h"
+#include "yb/master/master_defaults.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/mini_master.h"
+#include "yb/master/ts_descriptor.h"
+#include "yb/rocksdb/env.h"
+#include "yb/server/monitored_task.h"
+#include "yb/util/env.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
+#include "yb/util/tsan_util.h"
 
 METRIC_DECLARE_gauge_uint32(blacklisted_leaders);
 METRIC_DECLARE_event_stats(load_balancer_duration);

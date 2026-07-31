@@ -31,18 +31,25 @@
 
 #pragma once
 
-#include "yb/client/client_fwd.h"
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <chrono>
+#include <memory>
+#include <string>
+
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/transaction.pb.h"
-
 #include "yb/util/monotime.h"
 
 namespace yb {
 
 class MiniClusterBase;
-class Thread;
+namespace client {
+class TransactionPool;
+class YBClient;
+}  // namespace client
 
 struct TestWorkloadOptions {
   static const client::YBTableName kDefaultTableName;

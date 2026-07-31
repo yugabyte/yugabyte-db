@@ -13,13 +13,27 @@
 
 #include "yb/client/in_flight_op.h"
 
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <string>
+#include <utility>
 
-#include "yb/client/meta_cache.h"
-#include "yb/client/yb_op.h"
+#include "yb/client/yb_op.h"  // IWYU pragma: keep
+#include "yb/util/tostring.h"
 
 namespace yb {
 namespace client {
+
 namespace internal {
 
 InFlightOp::InFlightOp(std::shared_ptr<YBOperation> yb_op_, size_t seq_no)

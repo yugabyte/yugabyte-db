@@ -13,26 +13,37 @@
 
 #include "yb/tools/yb-generate_partitions.h"
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/iterator/iterator_categories.hpp>
+#include <boost/iterator/iterator_facade.hpp>
+#include <boost/token_functions.hpp>
 #include <map>
+#include <iterator>
+#include <ostream>
 
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/common.pb.h"
 #include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-
 #include "yb/master/master_client.pb.h"
-
-#include "yb/server/clock.h"
-
 #include "yb/util/enums.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
-#include "yb/util/stol_utils.h"
 #include "yb/util/timestamp.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/types.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/stol_utils.h"  // IWYU pragma: keep
 
 namespace yb {
 namespace tools {

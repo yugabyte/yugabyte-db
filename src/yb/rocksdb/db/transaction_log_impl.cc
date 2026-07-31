@@ -23,9 +23,17 @@
 #endif
 
 #include <inttypes.h>
+#include <assert.h>
+#include <stdio.h>
+#include <utility>
+#include <vector>
+
 #include "yb/rocksdb/db/transaction_log_impl.h"
 #include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
+#include "yb/rocksdb/db/version_set.h"
+#include "yb/rocksdb/options.h"
+#include "yb/util/status.h"
 
 using std::unique_ptr;
 

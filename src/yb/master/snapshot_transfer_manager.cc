@@ -11,11 +11,31 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <mutex>
+#include <ostream>
+#include <utility>
+
 #include "yb/master/async_snapshot_transfer_task.h"
 #include "yb/master/snapshot_transfer_manager.h"
-#include "yb/master/ts_descriptor.h"
 #include "yb/client/client.h"
-#include "yb/util/trace.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+
+namespace yb {
+namespace master {
+struct LeaderEpoch;
+}  // namespace master
+}  // namespace yb
 
 DEFINE_test_flag(bool, xcluster_fail_snapshot_transfer, false,
     "In the SetupReplicationWithBootstrap flow, test failure to transfer snapshot on consumer.");

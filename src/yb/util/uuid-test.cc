@@ -11,11 +11,19 @@
 // under the License.
 //
 
-#include "yb/util/uuid.h"
+#include <glog/logging.h>
+#include <initializer_list>
+#include <ostream>
+#include <string>
 
+#include "yb/util/uuid.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 using namespace std::literals;
 

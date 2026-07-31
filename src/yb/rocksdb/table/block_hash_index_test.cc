@@ -20,16 +20,15 @@
 #include <memory>
 #include <string>
 #include <vector>
-
-#include <gtest/gtest.h>
+#include <map>
 
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/table/block_hash_index.h"
 #include "yb/rocksdb/table/internal_iterator.h"
-
 #include "yb/rocksdb/util/testutil.h"
+#include "gtest/gtest.h"
 
 namespace rocksdb {
 

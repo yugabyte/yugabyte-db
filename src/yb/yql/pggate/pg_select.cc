@@ -15,11 +15,20 @@
 
 #include "yb/yql/pggate/pg_select.h"
 
+#include <glog/logging.h>
 #include <memory>
 #include <utility>
 
 #include "yb/yql/pggate/pg_select_index.h"
-#include "yb/yql/pggate/util/pg_doc_data.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/yql/pggate/pg_doc_metrics.h"
+#include "yb/yql/pggate/pg_doc_op.h"
+#include "yb/yql/pggate/pg_op.h"
+#include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pg_table.h"
+#include "yb/yql/pggate/pg_tabledesc.h"
 
 namespace yb::pggate {
 

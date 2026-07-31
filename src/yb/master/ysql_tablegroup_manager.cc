@@ -14,18 +14,24 @@
 
 #include "yb/master/ysql_tablegroup_manager.h"
 
+#include <glog/logging.h>
+#include <boost/bimap/relation/mutant_relation.hpp>
+#include <boost/bimap/relation/structured_pair.hpp>
+#include <boost/iterator/iterator_facade.hpp>
+#include <boost/multi_index_container.hpp>
+#include <boost/operators.hpp>
+#include <ostream>
+#include <utility>
+
 #include "yb/util/logging.h"
-
 #include "yb/common/colocated_util.h"
-
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/master_defaults.h"
-#include "yb/master/master_util.h"
-
 #include "yb/gutil/map-util.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 namespace master {

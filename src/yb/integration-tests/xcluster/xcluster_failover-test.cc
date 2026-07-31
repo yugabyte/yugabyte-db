@@ -11,25 +11,48 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <vector>
 
 #include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
-#include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
-
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_ddl.pb.h"
-#include "yb/master/master_replication.proxy.h"
-
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/cdc/xcluster_types.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/xcluster/xcluster_test_base.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/is_operation_done_result.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(xcluster_safe_time_update_interval_secs);

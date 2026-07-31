@@ -13,6 +13,10 @@
 
 #include "yb/rocksdb/util/timeout_error.h"
 
+#include <utility>
+
+#include "yb/gutil/macros.h"
+
 using namespace std::literals;
 
 namespace rocksdb {

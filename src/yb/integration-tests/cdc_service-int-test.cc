@@ -1,11 +1,31 @@
 // Copyright (c) YugabyteDB, Inc.
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/types.h>
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <deque>
+#include <functional>
+#include <initializer_list>
+#include <iterator>
+#include <limits>
+#include <memory>
+#include <optional>
+#include <ratio>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_state_table.h"
-
 #include "yb/client/client-test-util.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
@@ -13,40 +33,30 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/opid.h"
 #include "yb/common/wire_protocol-test-util.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/raft_consensus.h"
-
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/walltime.h"
-
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/mini_master.h"
-
-#include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/env.h"
 #include "yb/util/format.h"
@@ -57,7 +67,52 @@
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
+#include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/cdc_types.h"
+#include "yb/cdc/cdc_util.h"
+#include "yb/cdc/xrepl_metrics.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.pb.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/schema.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/log_fwd.h"
+#include "yb/consensus/log_util.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/value.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/master_fwd.h"
+#include "yb/rpc/proxy.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tserver/tablet_server_options.h"
+#include "yb/tserver/tserver.messages.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/async_util.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/one_time_bool.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_callback.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_macros.h"
 
 using namespace std::chrono_literals;
 using std::string;
@@ -107,10 +162,6 @@ METRIC_DECLARE_gauge_int64(last_read_opid_index);
 
 DECLARE_bool(enable_metacache_partial_refresh);
 namespace yb {
-
-namespace log {
-class LogReader;
-}
 
 namespace cdc {
 

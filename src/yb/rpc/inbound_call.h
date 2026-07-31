@@ -31,39 +31,44 @@
 //
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <string>
-
-#include "yb/ash/wait_state.h"
+#include <atomic>
+#include <functional>
+#include <limits>
+#include <memory>
+#include <optional>
+#include <utility>
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/call_data.h"
 #include "yb/rpc/rpc_call.h"
 #include "yb/rpc/rpc_header.pb.h"
-#include "yb/rpc/thread_pool.h"
 #include "yb/rpc/wait_state_if.h"
-
 #include "yb/util/lockfree.h"
 #include "yb/util/locks.h"
-#include "yb/util/metrics_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/slice.h"
-#include "yb/util/status_fwd.h"
-
-namespace google::protobuf {
-class Message;
-} // namespace google::protobuf
+#include "yb/ash/ash_fwd.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/thread_pool.h"
 
 
 namespace yb {
 class EventStats;
 class Histogram;
 class Trace;
+class Counter;
+class Status;
 
 namespace rpc {
+class ConnectionContext;
+struct RpcMethodMetrics;
+struct RpcMetrics;
 
 struct InboundCallTiming {
   MonoTime time_received;   // Time the call was first accepted.

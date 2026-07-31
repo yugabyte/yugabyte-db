@@ -12,8 +12,10 @@
 //
 
 #include "yb/util/html_print_helper.h"
+
+#include <glog/logging.h>
+
 #include "yb/util/format.h"
-#include "yb/util/logging.h"
 
 namespace yb {
 

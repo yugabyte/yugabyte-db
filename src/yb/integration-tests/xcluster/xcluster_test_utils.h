@@ -14,11 +14,16 @@
 #pragma once
 
 #include <future>
+#include <functional>
+#include <string>
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/cdc/xcluster_types.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class MonoDelta;
 
 namespace client {
 class YBClient;

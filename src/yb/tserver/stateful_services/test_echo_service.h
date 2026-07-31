@@ -13,13 +13,39 @@
 
 #pragma once
 
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <string>
-#include "yb/client/yb_table_name.h"
+#include <future>
+
 #include "yb/tserver/stateful_services/stateful_service_base.h"
 #include "yb/tserver/stateful_services/test_echo_service.service.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/util/status.h"
+
+template <class T> class scoped_refptr;
 
 namespace yb {
+class MetricEntity;
+namespace client {
+class YBClient;
+}  // namespace client
+
 namespace stateful_service {
+class GetEchoCountRequestPB;
+class GetEchoCountResponsePB;
+class GetEchoRequestPB;
+class GetEchoResponsePB;
+
 class TestEchoService : public StatefulRpcServiceBase<TestEchoServiceIf> {
  public:
   TestEchoService(

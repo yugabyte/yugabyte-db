@@ -31,10 +31,15 @@
 //
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <memory>
+
 #include "yb/gutil/hash/city.h"
 #include "yb/gutil/macros.h"
 #include "yb/util/bitmap.h"
 #include "yb/util/slice.h"
+#include "yb/gutil/integral_types.h"
 
 namespace yb {
 

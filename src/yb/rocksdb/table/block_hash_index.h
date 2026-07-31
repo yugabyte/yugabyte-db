@@ -20,12 +20,13 @@
 
 #pragma once
 
-#include <string>
+#include <stdint.h>
+#include <stddef.h>
+
 #include <unordered_map>
 
 #include "yb/util/slice.h"
 #include "yb/rocksdb/status_fwd.h"
-
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/murmurhash.h"
 
@@ -34,6 +35,7 @@ namespace rocksdb {
 class Comparator;
 class InternalIterator;
 class SliceTransform;
+
 
 // Build a hash-based index to speed up the lookup for "index block".
 // BlockHashIndex accepts a key and, if found, returns its restart index within

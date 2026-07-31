@@ -22,16 +22,23 @@
 
 #include "yb/rocksdb/table/mock_table.h"
 
-#include <gtest/gtest.h>
+#include <glog/logging.h>
+#include <iostream>
+#include <memory>
+#include <tuple>
 
 #include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/table_properties.h"
 #include "yb/rocksdb/table/get_context.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
-
 #include "yb/util/status_log.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/env.h"
+#include "yb/util/file_system.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
 
 using std::unique_ptr;
 

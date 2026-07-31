@@ -30,12 +30,19 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <stdint.h>
+#include <string>
+#include <vector>
 
 #include "yb/dockv/partial_row.h"
 #include "yb/common/schema.h"
-
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/value.messages.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
 
 using std::string;
 

@@ -15,17 +15,14 @@
 // numbers in stack traces.
 
 #pragma once
-
-#ifdef __linux__
-#include <backtrace.h>
-#endif
-
+#include <gflags/gflags.h>
+#include <stdint.h>
 #include <mutex>
 #include <string>
 
-#include <gflags/gflags_declare.h>
-
 #include "yb/util/stack_trace.h"
+
+struct backtrace_state;
 
 DECLARE_bool(use_libbacktrace);
 

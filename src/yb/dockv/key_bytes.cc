@@ -13,26 +13,18 @@
 
 #include "yb/dockv/key_bytes.h"
 
-#include <cstdint>
+#include <glog/logging.h>
 #include <string>
-#include <vector>
 
 #include "yb/util/logging.h"
-
 #include "yb/common/column_id.h"
 #include "yb/common/doc_hybrid_time.h"
-#include "yb/common/hybrid_time.h"
-
 #include "yb/dockv/doc_bson.h"
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/util/bytes_formatter.h"
-#include "yb/util/enums.h"
 #include "yb/util/fast_varint.h"
-#include "yb/util/monotime.h"
 #include "yb/util/slice.h"
-#include "yb/util/strongly_typed_bool.h"
 
 namespace yb::dockv {
 

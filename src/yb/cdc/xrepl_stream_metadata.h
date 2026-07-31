@@ -12,19 +12,42 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <shared_mutex>
+#include <atomic>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <vector>
+#include <functional>
 
-#include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/cdc_service.pb.h" // IWYU pragma: keep
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/xrepl_stream_stats.h"
-#include "yb/common/common.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/gutil/thread_annotations.h"
-#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/util/shared_lock.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+enum CDCSDKSnapshotOption : int;
+enum PgReplicaIdentity : int;
+enum ReplicationSlotLsnType : int;
+enum ReplicationSlotOrderingMode : int;
+
+namespace master {
+enum SysCDCStreamEntryPB_State : int;
+}  // namespace master
 
 namespace client {
 class YBClient;

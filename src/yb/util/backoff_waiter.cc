@@ -12,11 +12,16 @@
 
 #include "yb/util/backoff_waiter.h"
 
+#include <glog/logging.h>
 #include <algorithm>
 #include <string>
+#include <ostream>
+#include <ratio>
 
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
 
 using std::string;
 

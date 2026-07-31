@@ -13,7 +13,29 @@
 //
 //
 
-#include "yb/client/error.h"
+#include <absl/base/dynamic_annotations.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <future>
+#include <initializer_list>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <thread>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
@@ -22,31 +44,20 @@
 #include "yb/client/transaction_rpc.h"
 #include "yb/client/txn-test-base.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/ql_value.h"
-
 #include "yb/consensus/consensus.messages.h"
-#include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/log.h"
-#include "yb/consensus/raft_consensus.h"
-
 #include "yb/rocksdb/db.h"
-
 #include "yb/rpc/rpc.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_coordinator.h"
-#include "yb/tablet/transaction_participant.h"
-#include "yb/tablet/operations/operation_driver.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/server_main_util.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.pb.h"
-
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/random_util.h"
@@ -55,9 +66,75 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/ql-dml-test-base.h"
+#include "yb/client/table_handle.h"
+#include "yb/client/transaction_manager.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/clock.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/consistent_read_point.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.messages.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/transaction.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/log.pb.h"
+#include "yb/consensus/log_fwd.h"
+#include "yb/consensus/log_util.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/server/clock.h"
+#include "yb/server/hybrid_clock.h"
+#include "yb/server/skewed_clock.h"
+#include "yb/tablet/operations.messages.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/util/cast.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/monotime.h"
+#include "yb/util/numbered_deque.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/thread_holder.h"
+#include "yb/util/tostring.h"
+#include "yb/server/server_fwd.h"
+
+namespace yb {
+namespace tablet {
+class TransactionParticipantContext;
+}  // namespace tablet
+}  // namespace yb
 
 using namespace std::literals;
 

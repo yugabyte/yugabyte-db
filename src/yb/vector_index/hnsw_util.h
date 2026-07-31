@@ -14,10 +14,6 @@
 #pragma once
 
 #include <cstdint>
-#include <iterator>
-#include <type_traits>
-
-#include "yb/gutil/endian.h"
 
 namespace yb::vector_index {
 

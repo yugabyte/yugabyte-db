@@ -13,17 +13,33 @@
 #include "yb/common/jsonb.h"
 
 #include <rapidjson/error/en.h>
+#include <glog/logging.h>
+#include <rapidjson/allocators.h>
+#include <rapidjson/encodings.h>
+#include <rapidjson/rapidjson.h>
+#include <boost/intrusive/list.hpp>
+#include <boost/iterator/iterator_facade.hpp>
+#include <boost/preprocessor/cat.hpp>
+#include <compare>
+#include <map>
+#include <ostream>
+#include <tuple>
 
 #include "yb/common/common.messages.h"
 #include "yb/common/json_util.h"
 #include "yb/common/ql_value.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/util/kv_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/varint.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/gutil/endian.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/logging.h"
 
 using std::string;
 

@@ -19,19 +19,29 @@
 
 #pragma once
 
-#include <condition_variable>
 #include <unordered_map>
+#include <chrono>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <vector>
 
 #include "yb/gutil/thread_annotations.h"
-
-#include "yb/rpc/io_thread_pool.h"
-
 #include "yb/util/condition_variable.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
-
 #include "yb/yql/cql/ql/util/statement_params.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace yb {
+namespace rpc {
+class IoThreadPool;
+class Scheduler;
+}  // namespace rpc
+}  // namespace yb
 
 namespace chrono = std::chrono;
 

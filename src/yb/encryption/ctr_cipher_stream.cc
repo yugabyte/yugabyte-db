@@ -12,14 +12,26 @@
 //
 
 #include <openssl/evp.h>
+#include <openssl/types.h>
+#include <stdint.h>
+#include <string.h>
+#include <algorithm>
+#include <functional>
+#include <limits>
+#include <memory>
+#include <mutex>
+#include <utility>
 
 #include "yb/encryption/cipher_stream.h"
 #include "yb/encryption/encryption_util.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
-
 #include "yb/util/status_format.h"
+#include "yb/encryption/cipher_stream_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 namespace encryption {

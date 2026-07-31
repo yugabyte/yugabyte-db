@@ -13,28 +13,29 @@
 
 #include "yb/util/shmem/shared_mem_allocator.h"
 
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
+// IWYU pragma: no_include <boost/metaparse/v1/cpp11/impl/string.hpp>
+// IWYU pragma: no_include <boost/metaparse/v1/cpp11/impl/string_at.hpp>
+// IWYU pragma: no_include <boost/metaparse/v1/cpp11/string.hpp>
 
 #include <algorithm>
-#include <bit>
 #include <cstddef>
-#include <limits>
+#include <atomic>
+#include <iterator>
+#include <mutex>
+#include <ostream>
 
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/util/cast.h"
 #include "yb/util/crash_point.h"
-#include "yb/util/errno.h"
 #include "yb/util/format.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/logging.h"
 #include "yb/util/math_util.h"
 #include "yb/util/shmem/robust_mutex.h"
 #include "yb/util/size_literals.h"
-#include "yb/util/types.h"
+#include "yb/gutil/port.h"
+#include "yb/util/tostring.h"
 
 using namespace std::literals;
 

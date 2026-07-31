@@ -32,36 +32,36 @@
 
 #pragma once
 
-#include <algorithm>
-#include <map>
 #include <memory>
-#include <mutex>
-#include <sstream>
 #include <string>
 #include <tuple>
-#include <vector>
-
-#include <boost/container/small_vector.hpp>
-#include <boost/version.hpp>
-#include "yb/util/flags.h"
-#include <gtest/gtest.h>
-
-#include "yb/common/common_types.pb.h"
+#include <optional>
+#include <set>
 
 #include "yb/gutil/strings/substitute.h"
-
-#include "yb/master/master_ddl.fwd.h"
-#include "yb/master/master_fwd.h"
-
-#include "yb/rpc/messenger.h"
-#include "yb/rpc/proxy_base.h"
+#include "yb/master/sys_catalog_constants.h"  // IWYU pragma: keep
 #include "yb/rpc/rpc_controller.h"
-
-#include "yb/tserver/tablet_server.h"
-
-#include "yb/util/status_fwd.h"
-#include "yb/util/net/sockaddr.h"
 #include "yb/util/test_util.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class Schema;
+enum YQLDatabase : int;
+namespace master {
+class MasterClientProxy;
+class MasterDdlProxy;
+class MasterHeartbeatProxy;
+class MasterReplicationProxy;
+class SysClusterConfigEntryPB;
+}  // namespace master
+namespace rpc {
+class Messenger;
+class MessengerBuilder;
+}  // namespace rpc
+}  // namespace yb
 
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;

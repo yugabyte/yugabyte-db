@@ -20,13 +20,26 @@
 
 #include "yb/rocksdb/db/db_impl_readonly.h"
 
+#include <assert.h>
+#include <memory>
+#include <vector>
+
 #include "yb/rocksdb/db/compacted_db_impl.h"
 #include "yb/rocksdb/db/db_iter.h"
 #include "yb/rocksdb/db/merge_context.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
-
 #include "yb/util/stats/perf_step_timer.h"
+#include "yb/rocksdb/db/column_family.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/db/memtable.h"
+#include "yb/rocksdb/db/snapshot_impl.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/perf_context.h"
+#include "yb/rocksdb/types.h"
+#include "yb/rocksdb/util/instrumented_mutex.h"
+#include "yb/rocksdb/util/mutable_cf_options.h"
 
 namespace rocksdb {
 

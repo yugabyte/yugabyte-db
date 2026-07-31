@@ -13,13 +13,18 @@
 
 #pragma once
 
-#include "yb/gutil/strings/substitute.h"
+#include <memory>
+#include <utility>
+
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/pt_property.h"
-#include "yb/yql/cql/ql/ptree/tree_node.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 
 namespace yb {
 namespace ql {
+class SemContext;
 
 enum class KeyspacePropertyType : int {
   kKVProperty = 0,

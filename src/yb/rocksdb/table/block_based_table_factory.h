@@ -24,18 +24,20 @@
 #pragma once
 
 #include <stdint.h>
-
 #include <memory>
 #include <string>
 
 #include "yb/rocksdb/table.h"
-#include "yb/rocksdb/table/block_based_table_reader.h"
+#include "yb/rocksdb/status.h"
 
 namespace rocksdb {
+class RandomAccessFileReader;
+class TableReader;
+enum class DataIndexLoadMode;
+enum class PrefetchFilter;
+struct TableReaderOptions;
 
-struct EnvOptions;
 
-class BlockBasedTableBuilder;
 
 class BlockBasedTableFactory : public TableFactory {
  public:

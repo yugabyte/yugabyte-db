@@ -13,13 +13,22 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <vector>
+
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/snapshot.h"
 #include "yb/master/catalog_entity_base.h"
 #include "yb/master/catalog_entity_info.pb.h"
-#include "yb/master/sys_catalog.h"
-
 #include "yb/util/countdown_latch.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/sys_catalog-internal.h" // IWYU pragma: keep
 
 namespace yb::master {
 

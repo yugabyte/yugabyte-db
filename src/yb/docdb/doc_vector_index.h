@@ -13,36 +13,67 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <atomic>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "yb/common/column_id.h"
-#include "yb/common/doc_hybrid_time.h"
 #include "yb/common/entity_ids_types.h"
-
 #include "yb/docdb/docdb_fwd.h"
-
 #include "yb/hnsw/hnsw_fwd.h"
-
-#include "yb/qlexpr/qlexpr_fwd.h"
-
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/rocksdb_fwd.h"
-
 #include "yb/rpc/rpc_fwd.h"
-
 #include "yb/storage/storage_types.h"
-
-#include "yb/tablet/tablet_fwd.h"
-
 #include "yb/util/kv_util.h"
 #include "yb/util/metrics.h"
-
 #include "yb/vector_index/vector_index_fwd.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/storage/storage_fwd.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/metrics_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
+namespace rocksdb {
+class DirectWriteHandler;
+}  // namespace rocksdb
 namespace yb {
-
-class Env;
-class PriorityThreadPool;
-
-} // namespace yb
+class DocHybridTime;
+class PgVectorIdxOptionsPB;
+namespace docdb {
+class DocDBStatistics;
+}  // namespace docdb
+namespace qlexpr {
+class IndexInfo;
+}  // namespace qlexpr
+namespace storage {
+class UserFrontiers;
+enum class UpdateUserValueType;
+}  // namespace storage
+namespace vector_index {
+struct SearchOptions;
+}  // namespace vector_index
+struct ReadHybridTime;
+}  // namespace yb
 
 namespace yb::docdb {
 

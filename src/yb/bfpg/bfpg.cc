@@ -15,11 +15,20 @@
 
 #include "yb/bfpg/bfpg.h"
 
+#include <stddef.h>
 #include <functional>
 #include <unordered_map>
 #include <string>
+#include <memory>
 
 #include "yb/common/ql_type.h"
+#include "yb/bfpg/base_operator.h"
+#include "yb/bfpg/bfpg_template.h"
+#include "yb/bfpg/gen_operator.h"
+#include "yb/bfpg/tserver_opcodes.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/slice.h"
 
 using std::function;
 using std::vector;

@@ -11,22 +11,49 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <memory>
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_admin.service.h"
-#include "yb/master/master_fwd.h"
 #include "yb/master/master_service.h"
 #include "yb/master/master_service_base.h"
 #include "yb/master/master_service_base-internal.h"
 #include "yb/master/tablet_split_manager.h"
-#include "yb/master/test_async_rpc_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ysql/ysql_manager.h"
 #include "yb/master/ysql_backends_manager.h"
-
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/master/flush_manager.h"
+#include "yb/master/master.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/scoped_leader_shared_lock-internal.h"
+#include "yb/master/scoped_leader_shared_lock.h"
+#include "yb/master/tablet_health_manager.h"
+#include "yb/rpc/rpc_context.h"
+#include "yb/tserver/tserver_admin.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
-#include "yb/util/flags.h"
+namespace yb {
+namespace rpc {
+class ServiceIf;
+}  // namespace rpc
+}  // namespace yb
 
 DEFINE_test_flag(int32, timeout_non_leader_master_rpcs_ms, 0,
     "Timeout all master requests to non leader for the specified number of milliseconds");

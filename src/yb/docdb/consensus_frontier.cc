@@ -14,15 +14,37 @@
 #include "yb/docdb/consensus_frontier.h"
 
 #include <google/protobuf/any.pb.h>
+#include <glog/logging.h>
+#include <string.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/facilities/identity.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <algorithm>
+#include <compare>
+#include <ostream>
+#include <utility>
 
 #include "yb/docdb/docdb.pb.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/stl_util.h"
-
 #include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/tostring.h"
+#include "yb/common/opid.pb.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/util/enums.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace docdb {

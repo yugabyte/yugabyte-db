@@ -15,11 +15,13 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <string>
 #include <string_view>
 
-#include "yb/util/status_fwd.h"
 #include "yb/gutil/endian.h"
+#include "yb/gutil/integral_types.h"
 
 namespace yb {
 

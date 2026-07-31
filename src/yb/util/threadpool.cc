@@ -30,29 +30,31 @@
 // under the License.
 //
 
-#include <algorithm>
+#include <errno.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <functional>
-#include <limits>
 #include <memory>
-
-#include "yb/util/flags.h"
+#include <deque>
+#include <ostream>
+#include <type_traits>
 
 #include "yb/gutil/callback.h"
-#include "yb/gutil/macros.h"
-#include "yb/gutil/map-util.h"
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/errno.h"
 #include "yb/util/logging.h"
-#include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
 #include "yb/util/strand.h"
-#include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/port.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/slice.h"
+#include "yb/util/unique_lock.h"
 
 DEFINE_RUNTIME_bool(threadpool_use_current_trace_for_tasks, false,
     "If true, the thread pool will use the current trace for tasks submitted to it.");

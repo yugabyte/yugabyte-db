@@ -13,12 +13,19 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <cstddef>
 #include <memory>
-
-#include "yb/rpc/rpc_fwd.h"
+#include <string>
+#include <utility>
 
 #include "yb/util/mem_tracker.h"
+
+namespace yb {
+namespace rpc {
+class Scheduler;
+}  // namespace rpc
+}  // namespace yb
 
 namespace yb::tserver {
 
@@ -107,6 +114,7 @@ class PgSharedMemoryPool {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

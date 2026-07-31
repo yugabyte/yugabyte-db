@@ -13,20 +13,32 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <vector>
 
 #include "yb/qlexpr/ql_scanspec.h"
-
-#include "yb/docdb/doc_ql_scanspec.h"
-#include "yb/docdb/docdb_fwd.h"
 #include "yb/dockv/key_bytes.h"
+#include "yb/common/column_id.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/gutil/macros.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/util/col_group.h"
+#include "yb/util/memory/arena_fwd.h"
 
-#include "yb/rocksdb/options.h"
-
-#include "yb/util/result.h"
+namespace yb {
+class Schema;
+class Slice;
+namespace dockv {
+class DocKey;
+}  // namespace dockv
+}  // namespace yb
 
 namespace yb::docdb {
 

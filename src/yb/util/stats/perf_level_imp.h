@@ -20,9 +20,8 @@
 
 #pragma once
 
-#include "yb/util/stats/perf_level.h"
-
 namespace yb {
+enum class PerfLevel;
 
 #if defined(IOS_CROSS_COMPILE)
 extern PerfLevel perf_level;

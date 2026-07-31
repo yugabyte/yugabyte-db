@@ -11,9 +11,21 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <string>
+#include <unordered_set>
+#include <vector>
+#include <functional>
+
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/flags.h"
-#include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
 
 using std::string;
 using std::vector;

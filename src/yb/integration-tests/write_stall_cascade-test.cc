@@ -11,45 +11,61 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <atomic>
 #include <thread>
 #include <vector>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <string_view>
 
 #include "yb/client/client.h"
 #include "yb/client/session.h"
-#include "yb/client/table.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/ql_protocol_util.h"
-
 #include "yb/consensus/consensus.h"
-#include "yb/consensus/consensus.pb.h"
-
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
-
 #include "yb/rpc/service_pool.h"
-
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/write_controller.h"
-
 #include "yb/server/rpc_server.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/cast.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/client/schema.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.h"
+#include "yb/common/ql_protocol.messages.h"  // IWYU pragma: keep
+#include "yb/common/value.messages.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
 
 using namespace std::literals;
 

@@ -14,6 +14,7 @@
 #pragma once
 
 #include "yb/util/metrics_fwd.h"
+#include "yb/util/metrics.h"
 
 namespace yb::vector_index {
 

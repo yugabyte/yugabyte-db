@@ -12,31 +12,31 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <string>
+#include <functional>
+
+#include "yb/util/metric_entity.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 #ifdef __linux__
 
 #include <condition_variable>
 #include <mutex>
-#include <optional>
 #include <ostream>
 #include <unordered_map>
 #include <vector>
 
 #include "yb/common/pg_types.h"
-
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/util/metrics_fwd.h"
 
 namespace yb {
 
 class Cgroup;
-class MetricRegistry;
 class Thread;
-struct CgroupCpuStats;
-
-template <typename T>
-class AtomicGauge;
 
 namespace tserver {
 

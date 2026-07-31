@@ -15,18 +15,41 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <future>
 #include <mutex>
 #include <string_view>
+#include <vector>
 
 #include "yb/client/client_fwd.h"
-
-#include "yb/tserver/pg_client.pb.h"
-
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
+#include "yb/client/meta_cache.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/enums.h"
+
+namespace yb {
+namespace client {
+class YBClient;
+}  // namespace client
+namespace tserver {
+enum AdvisoryLockMode : int;
+}  // namespace tserver
+}  // namespace yb
 
 namespace yb::tserver {
 

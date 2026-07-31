@@ -32,28 +32,85 @@
 
 #pragma once
 
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <atomic>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
+#include <condition_variable>
+#include <optional>
+#include <ostream>
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/opid.h"
-
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_queue.h"
-#include "yb/consensus/multi_raft_batcher.h"
-
 #include "yb/gutil/callback.h"
-
 #include "yb/rpc/scheduler.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/random.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_peers.h"
+#include "yb/consensus/consensus_round.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/log.h"
+#include "yb/consensus/log_cache.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/retryable_requests.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/enums.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_callback.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+class AtomicMillisLag;
+class EventStats;
+class MemTracker;
+class OpIdPB;
+
+namespace consensus {
+class ConsensusContext;
+class LWConsensusRequestPB;
+class LWConsensusResponsePB;
+class MultiRaftManager;
+struct ConsensusOptions;
+struct StateChangeContext;
+}  // namespace consensus
+namespace rpc {
+class Messenger;
+class ProxyCache;
+}  // namespace rpc
+template <typename T> class AtomicGauge;
+}  // namespace yb
 
 DECLARE_int32(leader_lease_duration_ms);
 DECLARE_int32(ht_lease_duration_ms);
@@ -62,7 +119,6 @@ namespace yb {
 
 class Cgroup;
 class Counter;
-class HostPort;
 class ThreadPool;
 class ThreadPoolToken;
 
@@ -76,9 +132,6 @@ class PeriodicTimer;
 
 namespace consensus {
 
-class ConsensusMetadata;
-class Peer;
-class PeerProxyFactory;
 class PeerManager;
 class ReplicaState;
 struct ElectionResult;

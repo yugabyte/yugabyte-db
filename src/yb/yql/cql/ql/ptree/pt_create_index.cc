@@ -5,6 +5,11 @@
 //--------------------------------------------------------------------------------------------------
 #include "yb/yql/cql/ql/ptree/pt_create_index.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <ostream>
+
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/common/schema.h"
@@ -14,7 +19,16 @@
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
-#include "yb/util/flags.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/value.messages.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/yql/cql/ql/ptree/list_node.h"
+#include "yb/yql/cql/ql/ptree/pt_name.h"
+#include "yb/yql/cql/ql/ptree/sem_state.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
+#include "yb/common/ql_datatype.h"
 
 DEFINE_UNKNOWN_bool(cql_raise_index_where_clause_error, false,
             "Raise unsupported error if where clause is specified for create index");

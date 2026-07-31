@@ -13,12 +13,15 @@
 
 #pragma once
 
+#include <rapidjson/document.h>
+#include <rapidjson/allocators.h>
+#include <rapidjson/rapidjson.h>
+#include <stdint.h>
 #include <string>
 #include <string_view>
 
-#include <rapidjson/document.h>
-
 #include "yb/util/status.h"
+#include "yb/util/result.h"
 
 namespace yb {
 

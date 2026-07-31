@@ -32,23 +32,21 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 #include <string>
-#include <vector>
-
-#include "yb/common/common_fwd.h"
-
-#include "yb/gutil/macros.h"
-#include "yb/gutil/port.h"
 
 #include "yb/util/slice.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb::client {
+template<typename KeyTypeWrapper> struct IntKeysTestSetup;    // IWYU pragma: keep
+template<typename KeyTypeWrapper> struct SliceKeysTestSetup;  // IWYU pragma: keep
+}  // namespace yb::client
 
-template<typename KeyTypeWrapper> struct SliceKeysTestSetup;
-template<typename KeyTypeWrapper> struct IntKeysTestSetup;
-
-} // namespace yb::client
+namespace yb {
+class ColumnSchema;
+class Schema;
+}  // namespace yb
 
 namespace yb::dockv {
 

@@ -35,20 +35,28 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <string.h>
 #include <compare>
 #include <string>
 #include <string_view>
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <ostream>
+#include <type_traits>
+#include <utility>
 
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/gutil/strings/stringpiece.h"
-
 #include "yb/util/cast.h"
 #include "yb/util/faststring.h"
-#include "yb/util/status_fwd.h"
+#include "yb/gutil/port.h"
 
 namespace yb {
 
 struct SliceParts;
+class Status;  // IWYU pragma: keep
 
 class Slice {
  public:

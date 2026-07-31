@@ -15,22 +15,42 @@
 
 #pragma once
 
-#include <functional>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <map>
 #include <unordered_map>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+#include <functional>
 
-#include "yb/gutil/callback_forward.h"
 #include "yb/gutil/map-util.h"
-
-#include "yb/util/enums.h"
 #include "yb/util/locks.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/memory_usage.h"
 #include "yb/util/metrics_fwd.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/status_log.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+class Metric;
+class MetricEntity;
+class MetricPrototype;
+class MetricRegistry;
+class MetricsAggregator;
+class PrometheusWriter;
 
 static const char* const kXClusterMetricEntityName = "xcluster";
 static const char* const kCdcsdkMetricEntityName = "cdcsdk";

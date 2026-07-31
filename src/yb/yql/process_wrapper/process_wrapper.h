@@ -12,16 +12,40 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <condition_variable>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
 
 #include "yb/util/status.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/thread.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/enums.h"
+#include "yb/util/result.h"
 
 namespace yb {
 
 class Cgroup;
+class MonoDelta;
 
 // ProcessWrapper is just a wrapper class for handling the details regarding running a
 // process (like, the Kill method used and command used for running the process).

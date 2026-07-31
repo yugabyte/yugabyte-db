@@ -10,21 +10,50 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <signal.h>
+#include <unistd.h>
+#include <boost/algorithm/string/case_conv.hpp>
+#include <boost/algorithm/string/predicate.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/range/iterator_range_core.hpp>
 #include <functional>
 #include <regex>
+#include <atomic>
+#include <chrono>
+#include <map>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <string_view>
+#include <thread>
+#include <tuple>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
-#include <boost/algorithm/string.hpp>
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/wire_protocol.h"
-
 #include "yb/master/master_admin.proxy.h"
-
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/server/server_base.pb.h"
 #include "yb/server/server_base.proxy.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
@@ -36,13 +65,33 @@
 #include "yb/util/test_util.h"
 #include "yb/util/to_stream.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/client/client.h"
 #include "yb/client/table_info.h"
-
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tserver_admin.pb.h"
+#include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
 
 using gflags::CommandLineFlagInfo;
 using yb::master::FlushTablesRequestPB;

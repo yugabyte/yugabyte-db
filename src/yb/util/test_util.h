@@ -32,23 +32,44 @@
 // Base test class, with various utility functions.
 #pragma once
 
-#include <dirent.h>
-
+#include <gtest/gtest.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <atomic>
 #include <functional>
-#include <future>
 #include <string>
-#include <type_traits>
-#include <utility>
-
-#include <gtest/gtest.h>
+#include <algorithm>
+#include <memory>
+#include <ostream>
+#include <string_view>
+#include <vector>
 
 #include "yb/util/enums.h"
-#include "yb/util/env.h"
 #include "yb/util/monotime.h"
 #include "yb/util/port_picker.h"
 #include "yb/util/logging.h"
 #include "yb/util/test_macros.h" // For convenience
+#include "yb/util/io.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class Env;
+}  // namespace yb
 
 #define ASSERT_EVENTUALLY(expr) do { \
   AssertEventually(expr); \
@@ -67,12 +88,6 @@
 namespace yb {
 
 class CurlGlobalInitializer;
-
-namespace rpc {
-
-class Messenger;
-
-} // namespace rpc
 
 // Our test string literals contain "\x00" that is treated as a C-string null-terminator.
 // So we need to call the std::string constructor that takes the length argument.

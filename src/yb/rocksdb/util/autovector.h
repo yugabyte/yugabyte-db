@@ -19,9 +19,11 @@
 //
 #pragma once
 
+#include <stddef.h>
 #include <algorithm>
 #include <cassert>
 #include <vector>
+#include <iterator>
 
 namespace rocksdb {
 

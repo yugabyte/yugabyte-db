@@ -11,7 +11,27 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <initializer_list>
+#include <limits>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <string_view>
+#include <vector>
+
 #include "yb/rocksdb/db/db_test_util.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 using namespace std::literals;
 
@@ -24,7 +44,7 @@ class DBStatisticsTest : public DBTestBase {
 
 namespace {
 
-Result<size_t> GetManifestFileSize(DB* db) {
+yb::Result<size_t> GetManifestFileSize(DB* db) {
   std::vector<std::string> live_files;
   uint64_t manifest_file_size;
   RETURN_NOT_OK(db->GetLiveFiles(

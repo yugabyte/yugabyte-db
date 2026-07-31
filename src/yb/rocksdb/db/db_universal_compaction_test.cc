@@ -21,12 +21,50 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <assert.h>
+#include <glog/logging.h>
+#include <limits.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <algorithm>
+#include <atomic>
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <set>
+#include <string>
+#include <thread>
+#include <tuple>
+#include <vector>
+
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/db/job_context.h"
 #include "yb/rocksdb/port/stack_trace.h"
 #include "yb/rocksdb/util/file_util.h"
-
 #include "yb/util/sync_point.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/compaction_filter.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/filter_policy.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/table.h"
+#include "yb/rocksdb/universal_compaction.h"
+#include "yb/rocksdb/util/compression.h"
+#include "yb/rocksdb/util/random.h"
+#include "yb/rocksdb/util/testutil.h"
+#include "yb/storage/storage_types.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/slice.h"
+#include "yb/util/string_util.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
 
 namespace rocksdb {
 

@@ -11,20 +11,20 @@
 // under the License.
 //
 
-#include <string>
-#include <type_traits>
-
-#include <gtest/gtest.h>
 #include <rapidjson/prettywriter.h>
+#include <glog/logging.h>
+#include <rapidjson/allocators.h>
+#include <rapidjson/document.h>
+#include <rapidjson/encodings.h>
+#include <rapidjson/rapidjson.h>
+#include <rapidjson/stringbuffer.h>
+#include <string>
+#include <ostream>
 
 #include "yb/common/jsonb.h"
-
-#include "yb/gutil/dynamic_annotations.h"
-
 #include "yb/util/logging.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/tostring.h"
+#include "gtest/gtest.h"
 
 namespace yb {
 namespace common {

@@ -21,6 +21,7 @@
 #pragma once
 
 #include "yb/util/env.h"
+#include "yb/util/stats/perf_level.h"  // IWYU pragma: keep
 #include "yb/util/stats/perf_level_imp.h"
 
 namespace yb {

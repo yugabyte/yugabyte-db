@@ -20,21 +20,30 @@
 
 #pragma once
 
-#include <functional>
+#include <boost/container_hash/hash.hpp>
 #include <memory>
+#include <atomic>
+#include <string>
+#include <unordered_set>
+#include <utility>
 
 #include "yb/client/yb_table_name.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/arena.h"
-
 #include "yb/yql/cql/ql/ptree/tree_node.h"
-#include "yb/yql/cql/ql/util/ql_env.h"
+#include "yb/client/table.h"
+#include "yb/common/common_fwd.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class BufferAllocator;
+
 namespace ql {
+class QLEnv;
+class SemContext;
 
 // Parse Tree
 class ParseTree {

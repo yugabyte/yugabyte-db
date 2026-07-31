@@ -14,22 +14,32 @@
 #pragma once
 
 #include <string>
+#include <memory>
+#include <optional>
 
-#include "yb/cdc/xcluster_types.h"
 #include "yb/client/client_fwd.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/master/leader_epoch.h"
 #include "yb/master/post_tablet_create_task_base.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/master_fwd.h"
+#include "yb/server/monitored_task.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+namespace rpc {
+class Messenger;
+}  // namespace rpc
 
 namespace client {
 class XClusterRemoteClientHolder;
 }  // namespace client
 
 namespace master {
-
-class UniverseReplicationInfo;
+class CatalogManager;
+class XClusterManagerIf;
+struct LeaderEpoch;
 
 // This task adds a newly created table in the consumer xCluster universe to transactional
 // replication group. The table must be in PREPARING state with all tablets created at the start of

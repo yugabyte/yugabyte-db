@@ -13,13 +13,21 @@
 
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 
+#include <glog/logging.h>
+#include <optional>
+#include <ostream>
+#include <vector>
+
 #include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
-
 #include "yb/master/master_ddl.pb.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/status.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
 
 namespace yb::XClusterTestUtils {
 

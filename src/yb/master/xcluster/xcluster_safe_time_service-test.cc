@@ -11,16 +11,33 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <stdint.h>
 #include <mutex>
+#include <map>
+#include <ostream>
+#include <string>
+#include <unordered_set>
+#include <vector>
+#include <functional>
 
 #include "yb/common/hybrid_time.h"
-
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
-
 #include "yb/util/format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/xcluster_util.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/master_defaults.h"
+#include "yb/master/xcluster/master_xcluster_types.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 using std::string;
 

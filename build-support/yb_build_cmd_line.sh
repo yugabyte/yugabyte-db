@@ -196,6 +196,21 @@ Linting options:
     Run a simple shell-based "linter" on our Java code that verifies that we are importing the right
     methods for assertions and using the right test runners. We exit the script after this step.
 
+Static analysis options:
+
+  --iwyu
+    Enable Include What You Use (IWYU) during C++ compilation. IWYU analyzes header includes
+    and outputs suggestions for additions/removals. Uses CMake's native integration, no prior
+    build needed. Forces a CMake re-run to enable IWYU.
+  --iwyu-path <path>
+    Path to the include-what-you-use executable. Can also be set via YB_IWYU_PATH env var.
+  --iwyu-filter <path>
+    Only run IWYU on files within this path (e.g., src/yb/util). The path is matched as a
+    substring against the source file path.
+  --iwyu-fix
+    Run IWYU separately and apply the suggested fixes automatically. Requires a prior build
+    to generate compile_commands.json.
+
 Test options:
 
   --ctest
@@ -393,6 +408,9 @@ set_default_yb_build_args() {
   run_cmake_unit_tests=false
 
   run_shellcheck=false
+
+  # For --iwyu-fix mode which uses separate analysis
+  run_iwyu_fix=false
 
   should_build_clangd_index=false
   clangd_index_format=binary
@@ -745,6 +763,30 @@ parse_yb_build_cmd_line() {
       ;;
       --shellcheck)
         run_shellcheck=true
+      ;;
+      --iwyu)
+        # Enable IWYU via CMake's native integration (runs during compilation)
+        export YB_ENABLE_IWYU=1
+        # IWYU itself always runs locally, so keep the compiler local as well.
+        export YB_REMOTE_COMPILATION=0
+        # Force CMake re-run to pick up the new setting
+        force_run_cmake=true
+      ;;
+      --iwyu-path)
+        ensure_option_has_arg "$@"
+        export YB_IWYU_PATH=$2
+        shift
+      ;;
+      --iwyu-filter)
+        ensure_option_has_arg "$@"
+        export YB_IWYU_FILTER_PATH=$2
+        shift
+      ;;
+      --iwyu-fix)
+        # For applying fixes, we need to use the separate analysis mode
+        # which requires compile_commands.json
+        run_iwyu_fix=true
+        export YB_EXPORT_COMPILE_COMMANDS=1
       ;;
       --cmake-args)
         ensure_option_has_arg "$@"

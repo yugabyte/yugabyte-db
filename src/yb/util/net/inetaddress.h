@@ -14,20 +14,15 @@
 #pragma once
 
 #include <string.h>
-
-#include <functional>
-#include <string>
-#include <vector>
-
 #include <boost/asio/ip/address.hpp>
 #include <boost/asio/ip/address_v4.hpp>
 #include <boost/asio/ip/address_v6.hpp>
-#include <boost/system/error_code.hpp>
+#include <string>
+#include <vector>
 
 #include "yb/gutil/stl_util.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

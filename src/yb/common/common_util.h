@@ -13,14 +13,25 @@
 
 #pragma once
 
-#include "yb/common/common_types.pb.h"
+#include <stddef.h>
+#include <string>
+#include <vector>
+
 #include "yb/common/entity_ids_types.h"
-
-#include "yb/master/master_replication.pb.h"
-
-#include "yb/tablet/operations.messages.h"
+#include "yb/util/slice.h"
 
 namespace yb {
+enum YQLDatabase : int;
+enum TableType : int;
+
+namespace master {
+class ProducerSplitTabletInfoPB;  // IWYU pragma: keep
+}  // namespace master
+
+namespace tablet {
+class LWSplitTabletRequestPB;
+class SplitTabletRequestPB;
+}  // namespace tablet
 
 // These functions calculate the initial number of tablets per tablet on base of the specified
 // number of tservers specified, flags (ysql_num_shards_per_tserver, yb_num_shards_per_tserver

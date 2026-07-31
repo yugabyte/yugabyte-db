@@ -13,12 +13,13 @@
 
 #include "yb/common/llvm_profile_dumper.h"
 
+#include <glog/logging.h>
 #include <chrono>
-#include <functional>
 
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
+#include "yb/util/logging.h"
 
 #if defined(YB_PROFGEN) && defined(__clang__)
 #define LLVM_PROFILE_DUMPER_ENABLED

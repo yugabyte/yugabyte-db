@@ -14,8 +14,6 @@
 #include "yb/docdb/docdb-internal.h"
 
 #include "yb/common/transaction.h"
-
-#include "yb/docdb/docdb_fwd.h"
 #include "yb/dockv/value_type.h"
 
 namespace yb::docdb {

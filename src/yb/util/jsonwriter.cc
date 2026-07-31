@@ -31,12 +31,19 @@
 //
 #include "yb/util/jsonwriter.h"
 
-#include <string>
-
-#include "yb/util/logging.h"
 #include <google/protobuf/message.h>
 #include <rapidjson/prettywriter.h>
+#include <glog/logging.h>
+#include <google/protobuf/descriptor.h>
+#include <rapidjson/encodings.h>
+#include <rapidjson/rapidjson.h>
+#include <rapidjson/stream.h>
+#include <rapidjson/writer.h>
+#include <string>
+#include <new>
+#include <vector>
 
+#include "yb/util/logging.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
 

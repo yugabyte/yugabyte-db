@@ -11,22 +11,37 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
 #include <atomic>
-#include <mutex>
-#include <stack>
 #include <thread>
+#include <chrono>
+#include <functional>
+#include <ostream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/docdb/lock_batch.h"
 #include "yb/docdb/lock_util.h"
 #include "yb/docdb/shared_lock_manager.h"
-
 #include "yb/rpc/thread_pool.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/intent.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/thread_pool.h"
 
 using namespace std::literals;
 

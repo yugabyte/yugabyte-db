@@ -13,13 +13,16 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stdint.h>
 #include <string>
-
-#include "yb/util/logging.h"
+#include <cstddef>
+#include <utility>
 
 #include "yb/util/cast.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
+#include "yb/util/result.h"
 
 namespace yb {
 

@@ -19,9 +19,11 @@
 
 #include "yb/util/coding.h"
 
-#include "yb/gutil/casts.h"
+#include <boost/intrusive/list.hpp>
 
+#include "yb/gutil/casts.h"
 #include "yb/util/coding-inl.h"
+#include "yb/util/faststring.h"
 
 namespace yb {
 

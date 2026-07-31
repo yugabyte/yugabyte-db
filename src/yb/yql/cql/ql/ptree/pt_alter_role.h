@@ -17,13 +17,21 @@
 
 #pragma once
 
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+
 #include "yb/yql/cql/ql/ptree/tree_node.h"
-#include "yb/yql/cql/ql/ptree/pt_name.h"
 #include "yb/yql/cql/ql/ptree/pt_create_role.h"
 #include "yb/util/crypt.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 
 namespace yb {
 namespace ql {
+class SemContext;
+
 using yb::util::kBcryptHashSize;
 
 //--------------------------------------------------------------------------------------------------

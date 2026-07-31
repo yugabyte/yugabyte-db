@@ -14,6 +14,8 @@
 #pragma once
 
 #include <condition_variable>
+#include <chrono>
+#include <mutex>
 
 namespace yb {
 

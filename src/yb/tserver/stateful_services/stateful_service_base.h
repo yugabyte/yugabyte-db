@@ -13,20 +13,52 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stdint.h>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/preprocessor/variadic/to_seq.hpp>
 #include <atomic>
 #include <string>
-#include "yb/client/client_fwd.h"
+#include <chrono>
+#include <condition_variable>
+#include <functional>
+#include <future>
+#include <memory>
+#include <mutex>
+#include <ostream>
+#include <shared_mutex>
+#include <utility>
+
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/rpc/rpc_context.h"
-#include "yb/tablet/metadata.pb.h"
-#include "yb/tablet/tablet_peer.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/result.h"
 #include "yb/util/sync_point.h"
+#include "yb/client/session.h"
+#include "yb/common/opid.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/flags/flags_callback.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+
+template <class T> class scoped_refptr;
 
 namespace yb {
+class MetricEntity;
+class ThreadPool;
+class ThreadPoolToken;
+enum StatefulServiceKind : int;
+namespace client {
+class YBClient;
+}  // namespace client
 
 namespace tserver {
 class TSTabletManager;

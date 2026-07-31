@@ -33,14 +33,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <errno.h>
+#include <glog/logging.h>
+#include <stdint.h>
 #include <array>
 #include <string>
 #include <string_view>
 #include <vector>
+#include <chrono>
+#include <map>
+#include <memory>
+#include <ostream>
+#include <utility>
 
 #include "yb/util/logging.h"
-#include <gtest/gtest.h>
-
 #include "yb/util/errno.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
@@ -48,6 +54,10 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/tostring.h"
 
 using std::string;
 using namespace std::literals;

@@ -13,18 +13,35 @@
 
 #include "yb/master/xcluster/xcluster_target_manager.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <algorithm>
+#include <functional>
+#include <future>
+#include <map>
+#include <mutex>
+#include <sstream>
+#include <utility>
 
 #include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
-
 #include "yb/common/colocated_util.h"
 #include "yb/common/constants.h"
 #include "yb/common/xcluster_util.h"
-
 #include "yb/gutil/algorithm.h"
 #include "yb/gutil/strings/util.h"
-
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_entity_info.pb.h"
@@ -46,7 +63,6 @@
 #include "yb/master/xcluster/xcluster_status.h"
 #include "yb/master/xcluster/xcluster_universe_replication_alter_helper.h"
 #include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
-
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
@@ -54,6 +70,39 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/cdc/cdc_consumer.pb.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/join.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/multi_step_monitored_task.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/master/sys_catalog.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
+#include "yb/server/clock.h"
+#include "yb/server/monitored_task.h"
+#include "yb/util/flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/pb_util.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/timestamp.h"
+#include "yb/util/tostring.h"
+#include "yb/util/strongly_typed_string.h"
+
+namespace yb {
+class ThreadPool;
+}  // namespace yb
 
 using namespace std::placeholders;
 

@@ -15,13 +15,21 @@
 
 #include <unordered_map>
 #include <string>
+#include <compare>
+#include <optional>
 
-#include "yb/common/hybrid_time.h"
-#include "yb/dockv/key_bytes.h"
 #include "yb/dockv/value_type.h"
 #include "yb/dockv/value.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/typedefs.h"
+#include "yb/util/byte_buffer.h"
+#include "yb/util/kv_util.h"
 
 namespace yb {
+namespace dockv {
+class KeyBytes;
+}  // namespace dockv
+
 namespace docdb {
 
 // A utility used by DocWriteBatch. Caches generation hybrid_times (hybrid_times of full overwrite

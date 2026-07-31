@@ -13,35 +13,57 @@
 
 #include "yb/docdb/docdb_util.h"
 
-#include <boost/algorithm/string.hpp>
+#include <glog/logging.h>
+#include <array>
+#include <functional>
+#include <iostream>
 
 #include "yb/common/entity_ids.h"
-
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_read_context.h"
-#include "yb/docdb/doc_vector_index.h"
-#include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_format.h"
 #include "yb/docdb/rocksdb_writer.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/key_entry_value.h"
-
-#include "yb/rocksutil/write_batch_formatter.h"
 #include "yb/rocksutil/yb_rocksdb.h"
-
 #include "yb/tablet/tablet_options.h"
-
 #include "yb/util/env.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/std_util.h"
-#include "yb/util/string_trim.h"
 #include "yb/docdb/docdb_pgapi.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/docdb/docdb_types.h"
+#include "yb/docdb/read_operation_data.h"
+#include "yb/dockv/schema_packing.h"
+#include "yb/dockv/value_type.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/util/byte_buffer.h"
+#include "yb/util/bytes_formatter.h"
+#include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/slice.h"
+
+namespace rocksdb {
+enum class FlushReason;
+struct FileMetaData;
+}  // namespace rocksdb
+namespace yb {
+class QLValuePB;
+}  // namespace yb
 
 using std::string;
 using strings::Substitute;

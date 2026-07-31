@@ -17,19 +17,25 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stddef.h>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
+#include <optional>
+#include <sstream>
+#include <string_view>
 
 #include "yb/util/logging.h"
-
-#include "yb/common/common_fwd.h"
 #include "yb/common/value.messages.h"
 #include "yb/gutil/macros.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/result.h"
 
 namespace yb {
+class LWQLTypePB;
+class QLTypePB;
+class TypeInfo;
 
 // Class for storing the additional fields of user-defined types (compared to primitive QL Types)
 // Used internally in QLType and only set for user-defined types.

@@ -14,28 +14,37 @@
 #pragma once
 
 #include <boost/function.hpp>
+#include <stdint.h>
+#include <memory>
+#include <string>
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/entity_ids_types.h"
-
-#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/doc_operation.h"
-#include "yb/dockv/intent.h"
-#include "yb/docdb/wait_queue.h"
 #include "yb/tablet/tablet_fwd.h"
-
-namespace rocksdb {
-
-class DB;
-class Iterator;
-
-}
+#include "yb/common/hybrid_time.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb {
-
-class Counter;
+class LockInfoPB;
+class RequestScope;
+class TransactionStatusManager;
+namespace dockv {
+struct DecodedIntentValue;
+struct ParsedIntent;
+}  // namespace dockv
+namespace tablet {
+class TabletMetricsHolder;
+}  // namespace tablet
 
 namespace docdb {
+class LWKeyValueWriteBatchPB;
+class LockBatch;
+class WaitQueue;
+struct DocDB;
 
 // Note -- we use boost::function here instead of std::function as it's implementation is better
 // suited for small callback instances.

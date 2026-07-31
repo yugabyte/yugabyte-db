@@ -31,23 +31,59 @@
 //
 #pragma once
 
-#include <algorithm>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <string>
 #include <string_view>
 #include <vector>
+#include <compare>
+#include <limits>
+#include <optional>
+#include <utility>
 
-#include <google/protobuf/repeated_field.h>
-
-#include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
-#include "yb/dockv/partial_row.h"
-
 #include "yb/util/enums.h"
 #include "yb/util/result.h"
 #include "yb/util/memory/arena_fwd.h"
-#include "yb/util/memory/arena_list.h"
 #include "yb/util/status_format.h"
 #include "yb/util/yb_partition.h"
+#include "yb/gutil/strings/stringpiece.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+
+namespace google {
+namespace protobuf {
+template <typename Element> class RepeatedPtrField;
+}  // namespace protobuf
+}  // namespace google
+namespace yb {
+class ConstContiguousRow;
+class LWPgsqlExpressionPB;
+class LWQLExpressionPB;
+class LWQLValuePB;
+class PartitionPB;
+class PartitionSchemaPB;
+class PgsqlExpressionPB;
+class QLExpressionPB;
+class Schema;
+namespace dockv {
+class YBPartialRow;
+}  // namespace dockv
+template <class Entry> class ArenaList;
+}  // namespace yb
 
 namespace yb::dockv {
 

@@ -24,19 +24,18 @@
 #include "yb/rocksdb/table/block_based_table_builder.h"
 
 #include <assert.h>
-#include <inttypes.h>
-#include <stdio.h>
-
-#include <map>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <string.h>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <ostream>
+#include <vector>
+#include <functional>
 
 #include "yb/util/logging.h"
-
-#include "yb/gutil/macros.h"
-
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/db/dbformat.h"
@@ -55,17 +54,29 @@
 #include "yb/rocksdb/table/full_filter_block.h"
 #include "yb/rocksdb/table/index_builder.h"
 #include "yb/rocksdb/table/meta_blocks.h"
-#include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/crc32c.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/xxhash.h"
-
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/memory_usage.h"
 #include "yb/util/status_log.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/table_properties.h"
+#include "yb/rocksdb/util/statistics.h"
+#include "yb/util/file_system.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/mem_tracker_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace rocksdb {
+enum class KeyValueEncodingFormat;
+}  // namespace rocksdb
 
 DEFINE_test_flag(bool, allow_table_option_compressed_block_cache, false, "If true, the table option"
                  "compressed_block_cache can be enabled. Can only be enabled in unit test for now");

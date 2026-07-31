@@ -13,31 +13,46 @@
 
 #include "yb/tserver/pg_client_service.h"
 
-#include <sys/wait.h>
-
+#include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/mem_fun.hpp>
+#include <boost/multi_index_container.hpp>
+#include <errno.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <boost/container/small_vector.hpp>
+#include <boost/multi_index/indexed_by.hpp>
+#include <boost/operators.hpp>
+#include <boost/preprocessor/stringize.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <algorithm>
 #include <atomic>
 #include <mutex>
 #include <optional>
 #include <queue>
-#include <ranges>
 #include <span>
 #include <unordered_set>
 #include <vector>
-
-#include <boost/multi_index/hashed_index.hpp>
-#include <boost/multi_index/mem_fun.hpp>
-#include <boost/multi_index_container.hpp>
+#include <array>
+#include <chrono>
+#include <compare>
+#include <condition_variable>
+#include <initializer_list>
+#include <limits>
+#include <map>
+#include <ostream>
+#include <ratio>
+#include <set>
+#include <thread>
+#include <variant>
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_state_table.h"
-
 #include "yb/client/client.h"
 #include "yb/client/client_error.h"
-#include "yb/client/error.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/namespace_info.h"
-#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/stateful_services/pg_cron_leader_service_client.h"
 #include "yb/client/table.h"
@@ -47,29 +62,21 @@
 #include "yb/client/transaction_pool.h"
 #include "yb/client/transaction_status_tablets.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/pg_types.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/docdb/object_lock_shared_state_manager.h"
-
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_defaults.h"
-#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog_constants.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/scheduler.h"
-
-#include "yb/server/server_base.h"
-
 #include "yb/tserver/pg_create_table.h"
 #include "yb/tserver/pg_client_session.h"
 #include "yb/tserver/pg_db_cache.h"
@@ -86,12 +93,9 @@
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
-#include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
-
 #include "yb/util/debug-util.h"
 #include "yb/util/flags/flag_tags.h"
-#include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
@@ -102,8 +106,68 @@
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/yb_pg_errcodes.h"
-
 #include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/ash/ash_fwd.h"
+#include "yb/ash/wait_state.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/table_handle.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/clock.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/constants.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/object_lock_tracker.h"
+#include "yb/common/ql_value.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/schema.h"
+#include "yb/common/transaction.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/value.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/gutil/walltime.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/tablet/tablet.pb.h"
+#include "yb/tserver/pg_client.messages.h"
+#include "yb/tserver/stateful_services/pg_cron_leader_service.pb.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/tserver/ysql_lease.h"
+#include "yb/util/async_util.h"
+#include "yb/util/atomic.h"
+#include "yb/util/cast.h"
+#include "yb/util/format.h"
+#include "yb/util/lw_function.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/std_util.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/thread_pool.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
+
+namespace yb {
+class MetricEntity;
+
+namespace server {
+class ServerBaseOptions;
+}  // namespace server
+}  // namespace yb
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -230,6 +294,7 @@ class TxnAssignment {
 };
 
 class LockablePgClientSession;
+
 using LockablePgClientSessionPtr = std::shared_ptr<LockablePgClientSession>;
 
 class RequestSequencer {

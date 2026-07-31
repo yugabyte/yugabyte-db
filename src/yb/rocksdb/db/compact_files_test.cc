@@ -19,19 +19,23 @@
 //
 
 
-#include <mutex>
+#include <assert.h>
 #include <string>
 #include <thread>
 #include <vector>
+#include <memory>
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
-#include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
 
 namespace rocksdb {
 

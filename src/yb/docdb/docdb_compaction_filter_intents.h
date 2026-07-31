@@ -13,20 +13,15 @@
 
 #pragma once
 
-#include <atomic>
-#include <memory>
-#include <vector>
-
-#include "yb/common/hybrid_time.h"
-
-#include "yb/docdb/docdb_fwd.h"
-
-#include "yb/tablet/tablet_fwd.h"
-
 #include "yb/rocksdb/compaction_filter.h"
 
 namespace yb {
+namespace tablet {
+class Tablet;
+}  // namespace tablet
+
 namespace docdb {
+struct KeyBounds;
 
 class DocDBIntentsCompactionFilterFactory : public rocksdb::CompactionFilterFactory {
  public:

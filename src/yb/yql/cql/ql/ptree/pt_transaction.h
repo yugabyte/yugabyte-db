@@ -17,13 +17,12 @@
 
 #pragma once
 
-#include "yb/common/transaction.pb.h"
+#include <utility>
 
-#include "yb/yql/cql/ql/ptree/list_node.h"
+#include "yb/common/transaction.pb.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
-#include "yb/yql/cql/ql/ptree/pt_select.h"
-#include "yb/yql/cql/ql/ptree/column_desc.h"
-#include "yb/yql/cql/ql/ptree/pt_dml.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 
 namespace yb {
 namespace ql {

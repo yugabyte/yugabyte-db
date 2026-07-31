@@ -33,23 +33,41 @@
 
 #include <string>
 #include <unordered_map>
-
-#include <gtest/gtest.h>
+#include <atomic>
+#include <memory>
+#include <mutex>
+#include <ostream>
+#include <functional>
 
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/tserver/remote_bootstrap.service.h"
 #include "yb/tserver/remote_bootstrap_session.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/countdown_latch.h"
-#include "yb/util/locks.h"
 #include "yb/util/monotime.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/tserver/remote_bootstrap.pb.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class FsManager;
 class Thread;
+class ServerRegistrationPB;
+
+namespace log {
+struct LogAnchor;
+}  // namespace log
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+namespace tablet {
+class TabletPeer;
+}  // namespace tablet
+template <typename T> class AtomicGauge;
 
 namespace tserver {
 

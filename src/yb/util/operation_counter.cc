@@ -13,17 +13,23 @@
 
 #include "yb/util/operation_counter.h"
 
+#include <glog/logging.h>
 #include <thread>
+#include <algorithm>
+#include <chrono>
+#include <compare>
+#include <ostream>
+#include <ratio>
 
-#include "yb/gutil/strings/substitute.h"
-
-#include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/format.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
 
 using namespace std::literals;
 

@@ -13,10 +13,17 @@
 
 #pragma once
 
-#include "yb/util/flags.h"
 
-#include "yb/util/status_fwd.h"
-#include "yb/util/threadpool.h"
+
+#include <gflags/gflags.h>
+#include <memory>
+#include <ostream>
+
+#include "yb/util/status.h"
+
+namespace yb {
+class ThreadPoolToken;
+}  // namespace yb
 
 DECLARE_int32(prepare_queue_max_size);
 
@@ -31,7 +38,6 @@ class Consensus;
 namespace tablet {
 
 class OperationDriver;
-
 class PreparerImpl;
 
 // This is a thread that invokes the "prepare" step on single-shard transactions and, for

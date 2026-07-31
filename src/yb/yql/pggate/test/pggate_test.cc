@@ -13,33 +13,28 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/yql/pggate/test/pggate_test.h"
-
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <string.h>
+#include <unistd.h>
 #include <memory>
 #include <string>
-#include <unordered_set>
+#include <string_view>
 
-#include "yb/util/flags.h"
-
-#include "yb/common/entity_ids.h"
-#include "yb/common/pg_types.h"
-
-#include "yb/gutil/ref_counted.h"
-
-#include "yb/rpc/rpc_controller.h"
-
-#include "yb/tserver/tserver_util_fwd.h"
-#include "yb/tserver/tserver_service.proxy.h"
-#include "yb/tserver/tserver_shared_mem.h"
-
+#include "yb/yql/pggate/test/pggate_test.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/memory/mc_types.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
-
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/common/value.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/logging.h"
+#include "yb/util/strongly_typed_bool.h"
 
 using std::string;
 

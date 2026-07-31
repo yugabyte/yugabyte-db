@@ -12,20 +12,28 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#include <numeric> // NOLINT - needed because header name mismatch source name
-
-#include <boost/algorithm/string.hpp>
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
+#include <glog/logging.h>
+#include <rapidjson/allocators.h>
+#include <rapidjson/encodings.h>
+#include <rapidjson/rapidjson.h>
+#include <rapidjson/reader.h>
+#include <boost/algorithm/string/case_conv.hpp>
+#include <boost/algorithm/string/predicate.hpp>
+#include <boost/iterator/iterator_facade.hpp>
+#include <functional>
+#include <map>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <string_view>
+#include <utility>
 
 #include "yb/client/schema.h"
-
-#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_value.h"
-
 #include "yb/util/result.h"
 #include "yb/util/string_util.h"
-
 #include "yb/yql/cql/ql/exec/exec_context.h"
 #include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/yql/cql/ql/ptree/column_desc.h"
@@ -33,6 +41,24 @@
 #include "yb/yql/cql/ql/ptree/pt_insert.h"
 #include "yb/yql/cql/ql/ptree/pt_insert_json_clause.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/ql_protocol.messages.h"  // IWYU pragma: keep
+#include "yb/common/ql_type.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/yql/cql/ql/ptree/pt_expr_types.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 namespace yb {
 namespace ql {

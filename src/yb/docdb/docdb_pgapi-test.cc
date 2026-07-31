@@ -10,14 +10,16 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/util/logging.h"
-#include <gtest/gtest.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <string>
+#include <utility>
 
-#include "ybgate/ybgate_api.h"
 #include "ybgate/ybgate_status.h"
 #include "ybgate/ybgate_api-test.h"
-#include "yb/util/test_util.h"
 #include "yb/util/yb_pg_errcodes.h"
+#include "gtest/gtest.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 class YbGateTest : public testing::Test {
  protected:

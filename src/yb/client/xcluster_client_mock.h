@@ -13,10 +13,27 @@
 
 #pragma once
 
-#include <gmock/gmock.h>
+#include <memory>
+#include <vector>
 
 #include "yb/client/xcluster_client.h"
 #include "yb/util/is_operation_done_result.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "yb/cdc/xcluster_types.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_string.h"
+#include "yb/util/strongly_typed_uuid.h"
+
+namespace yb {
+namespace client {
+class YBClient;
+}  // namespace client
+}  // namespace yb
 
 namespace yb::client {
 

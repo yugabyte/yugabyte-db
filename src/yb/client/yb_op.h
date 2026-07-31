@@ -31,41 +31,81 @@
 //
 #pragma once
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <memory>
 #include <optional>
 #include <string>
+#include <ostream>
+#include <string_view>
+#include <vector>
 
 #include "yb/client/client_fwd.h"
-
-#include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
-#include "yb/common/pgsql_protocol.pb.h"
-#include "yb/common/pgsql_protocol.messages.h"
-
-#include "yb/dockv/partial_row.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/retryable_request.h"
 #include "yb/common/transaction.pb.h"
-
-#include "yb/docdb/docdb_fwd.h"
-#include "yb/dockv/partition.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
-#include "yb/util/object_provider.h"
 #include "yb/util/ref_cnt_buffer.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/schema.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/util/enums.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+class LWPgsqlLockRequestPB;
+class LWPgsqlReadRequestPB;
+class LWPgsqlResponsePB;
+class LWPgsqlWriteRequestPB;
+class LWQLRSColDescPB;
+class LWQLReadRequestPB;
+class LWQLResponsePB;
+class LWQLWriteRequestPB;
+class LWRedisReadRequestPB;
+class LWRedisResponsePB;
+class LWRedisWriteRequestPB;
+class PgsqlReadRequestPB;
+class QLRSColDescPB;
+namespace client {
+class YBClient;
+}  // namespace client
+namespace dockv {
+class PartitionSchema;
+class YBPartialRow;
+}  // namespace dockv
+namespace rpc {
+class Sidecars;
+}  // namespace rpc
+template <class Entry> class ArenaList;
+}  // namespace yb
 
 namespace yb::client {
 
 namespace internal {
-class Batcher;
-class AsyncRpc;
 class RemoteTablet;
 }  // namespace internal
-
-class YBSession;
-class YBStatusCallback;
-class YBTable;
 
 YB_DEFINE_ENUM(OpGroup, (kWrite)(kLock)(kUnlock)(kLeaderRead)(kConsistentPrefixRead));
 

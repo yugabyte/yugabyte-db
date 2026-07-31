@@ -13,7 +13,9 @@
 
 #pragma once
 
-#include "yb/util/flags/flag_tags.h"
+
+
+#include <gflags/gflags.h>
 
 DECLARE_bool(enable_ysql_operation_lease);
 

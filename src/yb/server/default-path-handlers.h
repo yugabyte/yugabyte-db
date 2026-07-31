@@ -44,14 +44,14 @@
 #pragma once
 
 #include "yb/server/webserver.h"
-#include "yb/util/metric_entity.h"
 #include "yb/util/jsonwriter.h"
 
 namespace yb {
 
 class MetricRegistry;
-class Webserver;
 class FsManager;
+struct MetricJsonOptions;
+struct MetricPrometheusOptions;
 
 namespace server {
 class RpcServerBase;

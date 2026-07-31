@@ -35,17 +35,19 @@
 // Use the POSIX version of dirname(3).
 #include <libgen.h>
 #include <fcntl.h>
-
+#include <errno.h>
+#include <glog/logging.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 #include <string>
+#include <compare>
+#include <memory>
+#include <ostream>
 #if defined(__APPLE__)
 #include <sys/param.h>
 #endif // defined(__APPLE__)
-
-#if defined(__linux__)
-#include <linux/falloc.h>
-#include <sys/sysinfo.h>
-#endif
-
 #include <algorithm>
 
 #include "yb/util/env_util.h"
@@ -55,6 +57,9 @@
 #include "yb/util/malloc.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread_restrictions.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/env.h"
+#include "yb/util/slice.h"
 
 using std::string;
 

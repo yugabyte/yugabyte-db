@@ -13,10 +13,15 @@
 
 #pragma once
 
+#include <gflags/gflags.h>
+#include <memory>
+
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/txn-test-base.h"
-
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/client/client.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/client/ql-dml-test-base.h"  // IWYU pragma: keep
 
 DECLARE_bool(enable_history_cutoff_propagation);
 DECLARE_int32(history_cutoff_propagation_interval_ms);

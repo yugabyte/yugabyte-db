@@ -31,16 +31,27 @@
 //
 #include "yb/common/schema_pbutil.h"
 
+#include <stddef.h>
 #include <string>
 #include <vector>
+#include <memory>
+#include <utility>
 
 #include "yb/common/common.messages.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-#include "yb/common/wire_protocol.messages.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/value.pb.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/uuid.h"
 
 namespace yb {
+enum class SortingType;
 
 namespace {
 

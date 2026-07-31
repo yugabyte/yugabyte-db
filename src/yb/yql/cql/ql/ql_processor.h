@@ -18,27 +18,49 @@
 //--------------------------------------------------------------------------------------------------
 #pragma once
 
+#include <atomic>
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "yb/ash/wait_state.h"
-
-#include "yb/client/client_fwd.h"
-
 #include "yb/server/server_fwd.h"
-
 #include "yb/util/mem_tracker.h"
-#include "yb/util/metrics_fwd.h"
-#include "yb/util/object_pool.h"
-
 #include "yb/yql/cql/ql/ql_fwd.h"
 #include "yb/yql/cql/ql/audit/audit_logger.h"
 #include "yb/yql/cql/ql/sem/analyzer.h"
 #include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/yql/cql/ql/exec/rescheduler.h"
-#include "yb/yql/cql/ql/parser/parser_fwd.h"
 #include "yb/yql/cql/ql/util/ql_env.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/ash/ash_fwd.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/thread_pool.h"
+#include "yb/yql/cql/ql/exec/exec_fwd.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
+#include "yb/yql/cql/ql/ptree/tree_node.h"
+#include "yb/yql/cql/ql/util/util_fwd.h"
+#include "yb/gutil/callback.h"
 
 namespace yb {
+class Counter;
+class Histogram;
+
+namespace client {
+class YBClient;
+class YBMetaDataCache;
+}  // namespace client
+template <class T> class ThreadSafeObjectPool;
+
 namespace ql {
+class ParseTree;
+class Parser;
+class StatementParameters;
 
 class QLMetrics {
  public:

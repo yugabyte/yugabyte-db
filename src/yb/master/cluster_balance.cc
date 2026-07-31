@@ -13,31 +13,54 @@
 
 #include "yb/master/cluster_balance.h"
 
+#include <boost/algorithm/string/join.hpp>
+#include <glog/logging.h>
+#include <sys/types.h>
+#include <boost/range/begin.hpp>
+#include <boost/range/end.hpp>
 #include <algorithm>
 #include <memory>
 #include <utility>
-
-#include <boost/algorithm/string/join.hpp>
-
-#include "yb/common/common.pb.h"
+#include <iterator>
+#include <map>
+#include <mutex>
+#include <set>
+#include <sstream>
+#include <unordered_set>
 
 #include "yb/consensus/quorum_util.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master.h"
 #include "yb/master/master_error.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/ysql_tablespace_manager.h"
-
 #include "yb/util/flags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/replica_type.h"
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/port.h"
+#include "yb/master/async_rpc_tasks.h"
+#include "yb/master/async_rpc_tasks_base.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/cluster_balance_util.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/ts_descriptor.h"
+#include "yb/server/monitored_task.h"
+#include "yb/util/atomic.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/random_util.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
 
 DEFINE_RUNTIME_bool(enable_load_balancing, true,
     "Choose whether to enable cluster load balancing.");

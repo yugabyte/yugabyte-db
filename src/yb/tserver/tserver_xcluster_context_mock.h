@@ -13,19 +13,28 @@
 
 #pragma once
 
-#include <gmock/gmock.h>
+#include <optional>
+#include <ostream>
+#include <unordered_set>
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pg_types.h"
-
 #include "yb/tserver/tserver_xcluster_context_if.h"
-
 #include "yb/util/result.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/util/status.h"
 
 namespace yb {
+enum XClusterNamespaceInfoPB_XClusterRole : int;
 
-// This is needed for the mock of GetSafeTime.
-class HybridTime;
+namespace tserver {
+class PgCreateTable;
+class PgCreateTableRequestPB;
+}  // namespace tserver
+
 std::ostream& operator<<(std::ostream& os, const Result<std::optional<HybridTime>>& res);
 
 namespace tserver {

@@ -27,6 +27,7 @@
 #pragma once
 
 #include <stdio.h>
+#include <sys/time.h>
 #include <time.h>
 #include <fcntl.h>
 #include <unistd.h>

@@ -13,9 +13,21 @@
 
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
+#include <glog/logging.h>
+#include <ostream>
+
 #include "yb/common/hybrid_time.h"
 #include "yb/dockv/doc_key.h"
 #include "yb/util/result.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+
+namespace yb {
+namespace qlexpr {
+class QLTableRow;
+}  // namespace qlexpr
+}  // namespace yb
 
 namespace yb::docdb {
 

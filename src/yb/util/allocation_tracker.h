@@ -15,11 +15,12 @@
 
 #pragma once
 
-#include <atomic>
+#include <stddef.h>
 #include <mutex>
 #include <string>
 #include <typeinfo>
 #include <unordered_map>
+#include <utility>
 
 namespace yb {
 

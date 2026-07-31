@@ -32,24 +32,32 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <optional>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "yb/common/common_fwd.h"
 #include "yb/common/schema.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/tablet/tablet_fwd.h"
-
-#include "yb/tserver/backup.proxy.h"
-
 #include "yb/util/metrics.h"
 #include "yb/util/test_util.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class QLWriteRequestPB;
 class TimeSeries;
+class MetricEntity;
+
+namespace rpc {
+class Messenger;
+class ProxyCache;
+}  // namespace rpc
 
 namespace client {
 class YBTableName;
@@ -72,6 +80,7 @@ namespace tserver {
 class MiniTabletServer;
 class TabletServerAdminServiceProxy;
 class TabletServerServiceProxy;
+class TabletServerBackupServiceProxy;
 
 class TabletServerTestBase : public YBTest {
  public:

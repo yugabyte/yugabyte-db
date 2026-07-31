@@ -22,32 +22,52 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #pragma once
+
+#include <assert.h>
+#include <glog/logging.h>
+
+#include <boost/container/small_vector.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+
 #include <cstddef>
 #include <cstdint>
-#include <list>
-#ifdef ROCKSDB_MALLOC_USABLE_SIZE
-#include <malloc.h>
-#endif
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "yb/rocksdb/comparator.h"
-#include "yb/rocksdb/iterator.h"
-#include "yb/rocksdb/options.h"
 #include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/table/block_prefix_index.h"
+#include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/table/block_hash_index.h"
+#include "yb/rocksdb/table/block_prefix_index.h"
 #include "yb/rocksdb/table/format.h"
 #include "yb/rocksdb/table/internal_iterator.h"
-
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/util/coding.h"
 #include "yb/util/enums.h"
-#include "yb/util/malloc.h"
+#include "yb/util/logging.h"
+#include "yb/util/malloc.h"  // IWYU pragma: keep
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 
-struct BlockContents;
-class Comparator;
 class BlockIter;
-class BlockHashIndex;
-class BlockPrefixIndex;
+class Arena;
+enum CompressionType : char;
+enum class KeyValueEncodingFormat;
 
 // Determines which middle point should be taken in case of even number of total points.
 // NOTE! This enum must not be changed unless all the usages are verified!
@@ -139,6 +159,8 @@ class Block {
  private:
   // Returns a key of a middle entry for the specificed restart point.
   yb::Result<std::string> GetRestartBlockMiddleEntryKey(
+
+
       uint32_t restart_idx, const Comparator* comparator,
       KeyValueEncodingFormat key_value_encoding_format,
       MiddlePointPolicy middle_restart_policy) const;

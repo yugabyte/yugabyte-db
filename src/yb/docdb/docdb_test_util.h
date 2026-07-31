@@ -13,24 +13,38 @@
 
 #pragma once
 
-#include <random>
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/types.h>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_util.h"
 #include "yb/docdb/in_mem_docdb.h"
-
-#include "yb/dockv/subdocument.h"
 #include "yb/dockv/dockv_test_util.h"
-
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/transaction.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/util/status.h"
+#include "yb/util/string_util.h"
+
+namespace rocksdb {
+class DB;
+}  // namespace rocksdb
 
 namespace yb {
 namespace docdb {
 
 YB_STRONGLY_TYPED_BOOL(ResolveIntentsDuringRead);
+class DocWriteBatch;
+struct HistoryCutoff;
 
 // Intended only for testing, when we want to enable transaction aware code path for cases when we
 // really have no transactions. This way we will test that transaction aware code path works

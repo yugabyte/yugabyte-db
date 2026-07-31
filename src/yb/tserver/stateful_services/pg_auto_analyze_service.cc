@@ -13,43 +13,68 @@
 
 #include "yb/tserver/stateful_services/pg_auto_analyze_service.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <rapidjson/allocators.h>
+#include <rapidjson/encodings.h>
 #include <chrono>
 #include <ranges>
+#include <algorithm>
+#include <atomic>
+#include <compare>
+#include <exception>
+#include <initializer_list>
+#include <memory>
+#include <ostream>
+#include <ratio>
+#include <span>
+#include <tuple>
+#include <type_traits>
 
 #include "yb/bfql/gen_opcodes.h"
-
 #include "yb/client/client.h"
-#include "yb/client/error.h"
 #include "yb/client/session.h"
 #include "yb/client/schema.h"
-#include "yb/client/table_info.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids.h"
-#include "yb/common/pgsql_error.h"
 #include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ysql_utils.h"
-
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_defaults.h"
-
 #include "yb/server/server_common_flags.h"
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/stateful_services/pg_auto_analyze_table.h"
-#include "yb/tserver/tablet_server.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/logging.h"
-#include "yb/util/pg_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status.h"
-
 #include "yb/yql/cql/ql/util/statement_result.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
-
-#include "yb/common/json_util.h"
 #include "yb/common/jsonb.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/table_handle.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/gutil/port.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/tserver/stateful_services/pg_auto_analyze_service.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace rpc {
+class RpcContext;
+}  // namespace rpc
+}  // namespace yb
 
 
 DEFINE_RUNTIME_uint32(ysql_cluster_level_mutation_persist_interval_ms, 10000,

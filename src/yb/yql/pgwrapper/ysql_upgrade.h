@@ -14,11 +14,15 @@
 
 #pragma once
 
-#include "libpq-fe.h" // NOLINT
+#include <stdint.h>
+#include <map>
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "yb/util/net/net_util.h"
-
-#include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace pgwrapper {

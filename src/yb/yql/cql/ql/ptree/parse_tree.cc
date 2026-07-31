@@ -17,6 +17,9 @@
 
 #include "yb/yql/cql/ql/ptree/parse_tree.h"
 
+#include <glog/logging.h>
+#include <ostream>
+
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
@@ -27,10 +30,13 @@
 #include "yb/yql/cql/ql/ptree/pt_insert.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/ptree/pt_update.h"
-
 #include "yb/client/table.h"
-
 #include "yb/util/logging.h"
+#include "yb/util/status_format.h"
+#include "yb/client/schema.h"
+#include "yb/util/memory/memory.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
+#include "yb/yql/cql/ql/util/ql_env.h"
 
 namespace yb {
 namespace ql {

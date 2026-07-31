@@ -13,9 +13,11 @@
 
 #include "yb/yql/pggate/pg_table.h"
 
-#include "yb/util/result.h"
+#include <glog/logging.h>
 
+#include "yb/util/result.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/util/status.h"
 
 namespace yb::pggate {
 namespace {

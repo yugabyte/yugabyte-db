@@ -21,16 +21,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <assert.h>
 #include <string>
-
-#include <gtest/gtest.h>
 
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/file_indexer.h"
 #include "yb/rocksdb/db/version_edit.h"
 #include "yb/rocksdb/port/stack_trace.h"
-
 #include "yb/rocksdb/util/testutil.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/util/arena.h"
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 

@@ -10,24 +10,47 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include <boost/algorithm/string.hpp>
-#include <boost/lexical_cast.hpp>
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <algorithm>
+#include <functional>
+#include <map>
+#include <memory>
+#include <optional>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/cdc_state_table.h"
-
 #include "yb/common/constants.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/master/master-test_base.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_replication.proxy.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/result.h"
+#include "gtest/gtest.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_macros.h"
 
 DECLARE_int32(cdc_state_table_num_tablets);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);

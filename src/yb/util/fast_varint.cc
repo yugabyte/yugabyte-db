@@ -12,13 +12,14 @@
 //
 #include "yb/util/fast_varint.h"
 
+#include <string.h>
 #include <array>
 
 #include "yb/gutil/endian.h"
-
 #include "yb/util/cast.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/gutil/port.h"
 
 using std::string;
 

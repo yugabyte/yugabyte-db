@@ -15,21 +15,66 @@
 
 #pragma once
 
-#include "yb/common/schema.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <atomic>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
+#include "yb/common/schema.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb_compaction_context.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/dockv/doc_path.h"
-
 #include "yb/master/master_replication.pb.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/transaction.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/typedefs.h"
+#include "yb/common/value.messages.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/value.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/types.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/monotime.h"
+#include "yb/util/operation_counter.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/uuid.h"
 
-#include "yb/rocksdb/compaction_filter.h"
-#include "yb/rocksdb/listener.h"
+namespace rocksdb {
+class CompactionFileFilterFactory;
+class WriteBatch;
+enum class FlushReason;
+}  // namespace rocksdb
 
 namespace yb {
 
 class Env;
+class DatumMessagePB;
+class PgVectorIdxOptionsPB;
+class QLValuePB;
+
+namespace docdb {
+struct DocReadContext;
+}  // namespace docdb
 
 }
 

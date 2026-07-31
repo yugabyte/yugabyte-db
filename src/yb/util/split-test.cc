@@ -11,11 +11,15 @@
 // under the License.
 //
 
-#include <gmock/gmock.h>
+#include <string>
+#include <vector>
 
 #include "yb/util/split.h"
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "yb/util/slice.h"
 
 
 namespace yb {

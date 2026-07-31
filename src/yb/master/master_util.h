@@ -13,19 +13,35 @@
 
 #pragma once
 
-#include <memory>
+#include <string>
+#include <vector>
 
-#include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
-
-#include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
-#include "yb/rpc/rpc_fwd.h"
-
-#include "yb/util/status_fwd.h"
-#include "yb/util/monotime.h"
+namespace yb {
+class CloudInfoPB;
+class HostPort;
+class HostPortPB;
+class MonoDelta;
+class ServerEntryPB;
+class ServerRegistrationPB;
+namespace master {
+class BlacklistPB;
+class MasterErrorPB;
+class NamespaceIdentifierPB;
+class SysTablesEntryPB;
+class TSInfoPB;
+class TableIdentifierPB;
+enum MasterErrorPB_Code : int;
+}  // namespace master
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+}  // namespace yb
 
 static constexpr const char* kDBTypePrefixUnknown = "unknown";
 static constexpr const char* kDBTypePrefixCql = "ycql";

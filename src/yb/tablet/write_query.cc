@@ -13,10 +13,22 @@
 
 #include "yb/tablet/write_query.h"
 
-#include "yb/ash/wait_state.h"
-
 #include <boost/logic/tribool.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/container/small_vector.hpp>
+#include <boost/preprocessor/stringize.hpp>
+#include <algorithm>
+#include <chrono>
+#include <iterator>
+#include <mutex>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <string_view>
+#include <thread>
 
+#include "yb/ash/wait_state.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/meta_data_cache.h"
@@ -24,10 +36,8 @@
 #include "yb/client/table.h"
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
-
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/cql_operation.h"
@@ -36,28 +46,65 @@
 #include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/redis_operation.h"
-
 #include "yb/dockv/doc_key.h"
-
 #include "yb/qlexpr/index.h"
-
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/write_query_context.h"
-
-#include "yb/tserver/tserver.messages.h"
-
-#include "yb/util/debug-util.h"
+#include "yb/tserver/tserver.messages.h"  // IWYU pragma: keep
 #include "yb/util/logging.h"
-#include "yb/util/metrics.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
-#include "yb/util/flags.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/constants.h"
+#include "yb/common/opid.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/docdb/docdb.messages.h"
+#include "yb/docdb/read_operation_data.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/schema_packing.h"
+#include "yb/dockv/value_type.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rpc/rpc_context.h"
+#include "yb/server/clock.h"
+#include "yb/tablet/operations.messages.h"
+#include "yb/tablet/operations/operation.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
+#include "yb/tablet/metadata.messages.h"
+#include "yb/tablet/mvcc.h"
+#include "yb/tablet/tablet.messages.h"
+#include "yb/tablet/tablet_options.h"
+#include "yb/tablet/transaction_intent_applier.h"
+
+namespace yb {
+namespace docdb {
+class WaitQueue;
+}  // namespace docdb
+}  // namespace yb
 
 using namespace std::placeholders;
 using namespace std::literals;

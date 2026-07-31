@@ -31,30 +31,35 @@
 //
 #pragma once
 
+#include <stdint.h>
 #include <string>
 #include <vector>
+#include <memory>
 
 #include "yb/common/hybrid_time.h"
-
-#include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
-
-#include "yb/master/master_fwd.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/tablet/tablet_fwd.h"
-
-#include "yb/util/status_fwd.h"
-#include "yb/util/env.h"
 #include "yb/util/net/net_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class FsManager;
 class HostPort;
+class Env;
+class Tunnel;
+namespace rpc {
+class Messenger;
+}  // namespace rpc
 
 namespace master {
+class CatalogManager;
+class CatalogManagerIf;
+class FlushManager;
+class Master;
+class MasterOptions;
+class SysCatalogTable;
+class TSManager;
 
 // An in-process Master meant for use in test cases.
 //

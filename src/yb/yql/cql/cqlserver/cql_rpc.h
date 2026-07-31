@@ -15,31 +15,37 @@
 #pragma once
 
 #include <stdint.h>
-
+#include <stddef.h>
 #include <atomic>
-#include <mutex>
-#include <set>
-#include <type_traits>
-#include <utility>
-
-#include <boost/version.hpp>
-
-#include "yb/master/master_defaults.h"
+#include <memory>
+#include <string>
 
 #include "yb/rpc/binary_call_parser.h"
 #include "yb/rpc/circular_read_buffer.h"
 #include "yb/rpc/rpc_with_call_id.h"
-#include "yb/rpc/server_event.h"
-
-#include "yb/util/net/net_fwd.h"
-
 #include "yb/yql/cql/ql/ql_session.h"
 #include "yb/yql/cql/ql/util/cql_message.h"
+#include "yb/rpc/inbound_call.h"
+#include "yb/rpc/reactor_thread_role.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/rpc_header.pb.h"
+#include "yb/rpc/rpc_introspection.pb.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/memory/memory_usage.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/socket.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb {
+namespace rpc {
+class CallStateListenerFactory;
+struct CallData;
+}  // namespace rpc
+
 namespace cqlserver {
 
-class CQLStatement;
 class CQLServiceImpl;
 
 class CQLConnectionContext : public rpc::ConnectionContextWithCallId,

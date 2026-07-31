@@ -14,8 +14,10 @@
 #include "yb/hnsw/vector_index_test_base.h"
 
 #include "yb/rocksdb/cache.h"
-
 #include "yb/util/size_literals.h"
+#include "yb/hnsw/hnsw_block_cache.h"
+#include "yb/util/env.h"
+#include "yb/util/mem_tracker.h"
 
 namespace yb::hnsw {
 

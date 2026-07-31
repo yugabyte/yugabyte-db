@@ -20,16 +20,20 @@
 
 #pragma once
 
-#include "yb/util/logging.h"
-#include "yb/common/common_fwd.h"
-#include "yb/common/ql_datatype.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <memory>
+#include <string>
 
+#include "yb/common/common_fwd.h"
 #include "yb/util/memory/mc_types.h"
 #include "yb/util/strongly_typed_bool.h"
-
 #include "yb/yql/cql/ql/ptree/ptree_fwd.h"
+#include "yb/client/schema.h"
 
 namespace yb {
+class QLType;
+
 namespace ql {
 
 class SelectScanInfo;
@@ -38,6 +42,8 @@ class IfExprState;
 class IdxPredicateState;
 class PTColumnDefinition;
 class PTDmlStmt;
+class ColumnDesc;
+class SemContext;
 
 //--------------------------------------------------------------------------------------------------
 // This class represents the state variables for the analyzing process of one tree node. This

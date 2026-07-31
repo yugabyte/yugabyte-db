@@ -13,12 +13,15 @@
 
 #pragma once
 
-#include "yb/common/common_fwd.h"
-#include "yb/common/common_types.pb.h"
+#include <memory>
 
 namespace yb {
 
 class WriteBuffer;
+class LWQLValuePB;
+class QLType;
+class QLValuePB;
+enum QLClient : int;
 
 }
 

@@ -13,21 +13,24 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <functional>
 #include <memory>
+#include <vector>
 #include <utility>
-
-#include "yb/ash/wait_state.h"
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/pg_types.h"
-
 #include "yb/util/result.h"
-#include "yb/util/status_fwd.h"
-
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_flush_future.h"
-#include "yb/yql/pggate/pg_tools.h"
+#include "yb/util/status.h"
+
+namespace yb {
+namespace pggate {
+struct BufferingSettings;
+}  // namespace pggate
+}  // namespace yb
 
 namespace yb::pggate {
 
@@ -70,6 +73,7 @@ class PgOperationBuffer {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

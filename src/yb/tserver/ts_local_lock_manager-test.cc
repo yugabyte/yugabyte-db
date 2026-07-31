@@ -11,24 +11,39 @@
 // under the License.
 //
 
-#include "yb/tserver/ts_local_lock_manager.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <boost/regex.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <functional>
+#include <future>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <span>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
+#include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/docdb/docdb-test.h"
 #include "yb/docdb/lock_util.h"
 #include "yb/docdb/object_lock_data.h"
 #include "yb/docdb/object_lock_shared_state.h"
 #include "yb/docdb/object_lock_shared_state_manager.h"
-
-#include "yb/rpc/thread_pool.h"
-
-#include "yb/server/hybrid_clock.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
-#include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server-test-base.h"
 #include "yb/tserver/tserver_shared_mem.h"
-
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
@@ -38,6 +53,25 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/transaction.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/object_lock_shared_fwd.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/macros.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/util/concurrent_value.h"
+#include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_concurrent_ddl);

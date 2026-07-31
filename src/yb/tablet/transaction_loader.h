@@ -13,23 +13,48 @@
 
 #pragma once
 
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <condition_variable>
 #include <optional>
-#include <thread>
+#include <atomic>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <unordered_map>
 
 #include "yb/common/transaction.h"
-
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/docdb/docdb.h"
-
 #include "yb/util/status_format.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/enums.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 namespace yb {
 
 class OneWayBitmap;
 class RWOperationCounter;
 class Thread;
+namespace docdb {
+struct DocDB;
+}  // namespace docdb
 
 namespace tablet {
 
@@ -105,6 +130,7 @@ class TransactionLoader {
 
  private:
   class Executor;
+
   friend class Executor;
 
   void FinishLoad(Status status);

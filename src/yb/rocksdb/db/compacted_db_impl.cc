@@ -19,11 +19,23 @@
 //
 
 #include "yb/rocksdb/db/compacted_db_impl.h"
+
+#include <memory>
+#include <vector>
+
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/version_set.h"
-
 #include "yb/rocksdb/table/get_context.h"
 #include "yb/rocksdb/table/table_reader.h"
+#include "yb/gutil/casts.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/db/column_family.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/db/version_edit.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/util/autovector.h"
+#include "yb/rocksdb/util/instrumented_mutex.h"
 
 namespace rocksdb {
 

@@ -31,15 +31,15 @@
 //
 #pragma once
 
+#include <sys/types.h>
 #include <string>
 #include <vector>
 
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/util/condition_variable.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

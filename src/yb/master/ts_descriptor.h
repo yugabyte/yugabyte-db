@@ -31,39 +31,43 @@
 //
 #pragma once
 
-#include <shared_mutex>
-
+#include <gtest/gtest_prod.h>
+#include <glog/logging.h>
+#include <stdint.h>
 #include <atomic>
 #include <memory>
 #include <mutex>
 #include <string>
-
-#include <gtest/gtest_prod.h>
+#include <cstddef>
+#include <functional>
+#include <optional>
+#include <set>
+#include <unordered_map>
+#include <utility>
 
 #include "yb/common/common_net.pb.h"
 #include "yb/common/hybrid_time.h"
-
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/master/catalog_entity_base.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/master_heartbeat.fwd.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/result.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/shared_ptr_tuple.h"
 #include "yb/util/shared_lock.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
-
-class NodeInstancePB;
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
 
 namespace consensus {
 class ConsensusServiceProxy;
@@ -85,6 +89,8 @@ class TSRegistrationPB;
 class TSInformationPB;
 class TServerMetricsPB;
 class RefreshYsqlLeaseInfoPB;
+class TSHeartbeatRequestPB;
+class TabletReportPB;
 
 struct YsqlLeaseUpdate {
 
@@ -94,7 +100,7 @@ struct YsqlLeaseUpdate {
   RefreshYsqlLeaseInfoPB ToPB();
 };
 
-using ProxyTuple = util::SharedPtrTuple<
+using ProxyTuple = ::yb::util::SharedPtrTuple<
   tserver::TabletServerAdminServiceProxy,
   tserver::TabletServerServiceProxy,
   tserver::TabletServerBackupServiceProxy,

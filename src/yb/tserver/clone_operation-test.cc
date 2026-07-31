@@ -10,22 +10,28 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <vector>
+
 #include "yb/common/hybrid_time.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/snapshot.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
-
 #include "yb/gutil/dynamic_annotations.h"
-#include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
-
-#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/tablet_snapshots.h"
-
 #include "yb/tserver/backup.pb.h"
 #include "yb/tserver/backup.proxy.h"
 #include "yb/tserver/mini_tablet_server.h"
@@ -34,13 +40,25 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_admin.pb.h"
-#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/tablet/operations.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/env.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/path_util.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_util.h"
 
 DECLARE_bool(TEST_expect_clone_apply_failure);
 DECLARE_bool(TEST_fail_apply_clone_op);

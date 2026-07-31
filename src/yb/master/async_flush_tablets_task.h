@@ -12,12 +12,24 @@
 //
 #pragma once
 
-#include "yb/master/async_rpc_tasks_base.h"
+#include <string>
+#include <vector>
 
+#include "yb/master/async_rpc_tasks_base.h"
 #include "yb/tserver/tserver_admin.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/server/monitored_task.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
+class ThreadPool;
+
 namespace master {
+class Master;
+struct LeaderEpoch;
 
 // Send the "Flush Tablets" request to the specified Tablet Server.
 // Keeps retrying until we get an "ok" response.

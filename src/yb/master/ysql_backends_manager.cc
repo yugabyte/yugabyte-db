@@ -12,33 +12,47 @@
 
 #include "yb/master/ysql_backends_manager.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <algorithm>
 #include <string>
 #include <utility>
+#include <chrono>
+#include <functional>
+#include <iterator>
+#include <ostream>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ysql_operation_lease.h"
 #include "yb/common/common_flags.h"
-
-#include "yb/consensus/consensus.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_util.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/ts_manager.h"
-
-#include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_types.pb.h"
-
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/object_lock_info_manager.h"
+#include "yb/master/tasks_tracker.h"
+#include "yb/master/ts_descriptor.h"
+#include "yb/rpc/rpc_context.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/threadpool.h"
 
 using namespace std::chrono_literals;
 

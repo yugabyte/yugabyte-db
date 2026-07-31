@@ -15,18 +15,30 @@
 
 #include "yb/qlexpr/ql_scanspec.h"
 
+#include <glog/logging.h>
+#include <boost/intrusive/list.hpp>
+#include <boost/iterator/iterator_facade.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <algorithm>
+#include <ostream>
+#include <type_traits>
+
 #include "yb/common/pgsql_protocol.messages.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/key_bytes.h"
 #include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/qlexpr/ql_expr.h"
-
 #include "yb/util/logging.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/gutil/port.h"
+#include "yb/util/algorithm_util.h"
+#include "yb/util/result.h"
+#include "yb/util/tostring.h"
 
 namespace yb::qlexpr {
 

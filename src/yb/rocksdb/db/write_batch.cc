@@ -41,9 +41,20 @@
 // YugaByte-specific extensions stored out-of-band:
 //   user_sequence_numbers_
 
+#include <assert.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/container/small_vector.hpp>
 #include <stack>
-#include <stdexcept>
-#include <vector>
+#include <algorithm>
+#include <atomic>
+#include <deque>
+#include <memory>
+#include <new>
+#include <ostream>
+#include <string>
+#include <utility>
 
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/db_impl.h"
@@ -56,12 +67,36 @@
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/statistics.h"
-
 #include "yb/util/stats/perf_step_timer.h"
-#include "yb/util/faststring.h"
 #include "yb/util/status_log.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/macros.h"
+#include "yb/rocksdb/db/write_thread.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/memtablerep.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/perf_context.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/rocksdb/types.h"
+#include "yb/rocksdb/util/autovector.h"
+#include "yb/rocksdb/util/stop_watch.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/slice_parts.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+namespace storage {
+class UserFrontiers;
+}  // namespace storage
+}  // namespace yb
 
 namespace rocksdb {
+class DB;
 
 // anon namespace for file-local types
 namespace {

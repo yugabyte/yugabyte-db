@@ -20,18 +20,19 @@
 
 #pragma once
 
+#include <assert.h>
+#include <stdint.h>
+#include <stddef.h>
 #include <atomic>
-#include <memory>
-#include <string>
 
 #include "yb/util/slice.h"
-
-#include "yb/rocksdb/port/port.h"
+#include "yb/rocksdb/port/port_posix.h"
 
 namespace rocksdb {
 
 class Allocator;
 class Logger;
+
 
 class DynamicBloom {
  public:

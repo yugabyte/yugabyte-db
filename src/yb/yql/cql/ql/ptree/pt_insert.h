@@ -17,14 +17,22 @@
 
 #pragma once
 
-#include "yb/yql/cql/ql/ptree/list_node.h"
+#include <utility>
+
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
-#include "yb/yql/cql/ql/ptree/pt_insert_values_clause.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 
 namespace yb {
 namespace ql {
+class ColumnDesc;
+class PTInsertJsonClause;
+class PTInsertValuesClause;
+class SemContext;
 
 //--------------------------------------------------------------------------------------------------
 

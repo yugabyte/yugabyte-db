@@ -11,15 +11,22 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <initializer_list>
+#include <optional>
 
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/restore_sys_catalog_state.h"
-
 #include "yb/util/oid_generator.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/snapshot.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/format.h"
 
 namespace yb {
 namespace master {

@@ -32,35 +32,43 @@
 #pragma once
 
 #include <stdint.h>
-
+#include <stddef.h>
 #include <atomic>
-#include <list>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-
-#include <gtest/gtest_prod.h>
+#include <chrono>
+#include <functional>
+#include <mutex>
+#include <utility>
 
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/io_thread_pool.h"
 #include "yb/rpc/local_call.h"
 #include "yb/rpc/proxy_context.h"
 #include "yb/rpc/scheduler.h"
-
 #include "yb/util/async_util.h"
-#include "yb/util/atomic.h"
 #include "yb/util/locks.h"
-#include "yb/util/metrics_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/one_time_bool.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/stack_trace.h"
-#include "yb/util/status_fwd.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rpc/reactor.h"
+#include "yb/rpc/rpc_service.h"
+#include "yb/rpc/stream.h"
+#include "yb/rpc/thread_pool.h"
+#include "yb/rpc/wait_state_if.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/net/net_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/thread_pool.h"
 
 namespace yb {
 
@@ -68,11 +76,20 @@ class Cgroup;
 class MemTracker;
 class Socket;
 struct SourceLocation;
+class DnsResolver;
+class Histogram;
 
 namespace rpc {
 
 template <class ContextType>
 class ConnectionContextFactoryImpl;
+class Acceptor;
+class DelayedTask;
+class DumpRunningRpcsRequestPB;
+class DumpRunningRpcsResponsePB;
+class Messenger;
+class ReactorMonitor;
+struct RpcMetrics;
 
 typedef std::unordered_map<const Protocol*, StreamFactoryPtr> StreamFactories;
 

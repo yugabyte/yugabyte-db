@@ -15,15 +15,24 @@
 
 #include "yb/rpc/io_thread_pool.h"
 
+#include <glog/logging.h>
+#include <boost/asio/io_context.hpp>
+#include <boost/system/error_code.hpp>
 #include <thread>
-
-#include <boost/asio/io_service.hpp>
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <optional>
+#include <ostream>
+#include <vector>
 
 #include "yb/util/cgroups.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/result.h"
 
 using namespace std::literals;
 

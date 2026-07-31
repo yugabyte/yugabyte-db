@@ -17,7 +17,6 @@
 //
 //
 
-#include <iostream>
 #include "yb/gutil/int128.h"
 #include "yb/gutil/integral_types.h"
 

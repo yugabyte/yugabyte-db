@@ -16,15 +16,15 @@
 #pragma once
 
 #include <stdint.h>
-
-#include <functional>
-#include <type_traits>
 #include <unordered_map>
+#include <atomic>
+#include <string>
+#include <utility>
 
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/inbound_call.h"
-
-#include "yb/util/size_literals.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace rpc {

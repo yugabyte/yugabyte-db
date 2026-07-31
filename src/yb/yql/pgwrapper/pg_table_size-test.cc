@@ -10,34 +10,32 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include <chrono>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <unistd.h>
 #include <string>
+#include <memory>
+#include <ostream>
+#include <utility>
+#include <vector>
 
-#include "yb/client/client.h"
-#include "yb/client/table_info.h"
-#include "yb/client/yb_table_name.h"
-
-#include "yb/consensus/consensus.h"
 #include "yb/consensus/log.h"
-
 #include "yb/integration-tests/mini_cluster.h"
-
-#include "yb/master/catalog_manager_if.h"
-#include "yb/master/mini_master.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-
-#include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
-#include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gtest/gtest.h"
+#include "libpq-fe.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
 
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 

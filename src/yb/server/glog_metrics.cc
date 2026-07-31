@@ -31,7 +31,8 @@
 //
 #include "yb/server/glog_metrics.h"
 
-#include "yb/util/logging.h"
+#include <glog/logging.h>
+#include <stddef.h>
 
 #include "yb/util/metrics.h"
 

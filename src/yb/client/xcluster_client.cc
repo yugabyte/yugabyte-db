@@ -13,6 +13,16 @@
 
 #include "yb/client/xcluster_client.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/stringize.hpp>
+#include <future>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+
 #include "yb/ash/rpc_wait_state.h"
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/common/xcluster_util.h"
@@ -22,13 +32,21 @@
 #include "yb/master/master_replication.proxy.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/rpc/messenger.h"
-#include "yb/rpc/proxy.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/rpc/secure.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status_format.h"
-
-#include "yb/server/clock.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/casts.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/rpc/wait_state_if.h"
+#include "yb/util/net/net_util.h"
 
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_for_cdc_dir);

@@ -19,16 +19,19 @@
 //
 #pragma once
 
+#include <stdint.h>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "yb/rocksdb/db/version_edit.h"
-#include "yb/rocksdb/listener.h"
-#include "yb/rocksdb/table_properties.h"
-#include "yb/rocksdb/util/event_logger.h"
+#include "yb/rocksdb/status.h"
 
 namespace rocksdb {
+class EventListener;
+class EventLogger;
+class JSONWriter;
+struct FileDescriptor;
+struct TableFileCreationInfo;
 
 class EventHelpers {
  public:

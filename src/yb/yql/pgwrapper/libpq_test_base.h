@@ -13,13 +13,25 @@
 
 #pragma once
 
-#include "yb/util/monotime.h"
-#include "yb/util/tostring.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+#include <functional>
 
+#include "yb/util/monotime.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
+#include "yb/common/pg_types.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class ExternalTabletServer;
+struct ExternalMiniClusterOptions;
+
 namespace pgwrapper {
 
 struct YsqlMetric {

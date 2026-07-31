@@ -31,26 +31,52 @@
 //
 #pragma once
 
+#include <boost/container/stable_vector.hpp>
+#include <boost/intrusive/list.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <atomic>
 #include <future>
 #include <memory>
 #include <string>
-
-#include <boost/container/stable_vector.hpp>
+#include <condition_variable>
+#include <initializer_list>
+#include <mutex>
+#include <optional>
+#include <utility>
+#include <vector>
 
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
 class Trace;
+template <class TValue> class Result;
 
 namespace rpc {
 
 class Messenger;
-class Rpc;
+class ProxyCache;
 
 // The command that could be retried by RpcRetrier.
 class RpcCommand : public std::enable_shared_from_this<RpcCommand> {

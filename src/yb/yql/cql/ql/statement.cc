@@ -15,15 +15,23 @@
 
 #include "yb/yql/cql/ql/statement.h"
 
-#include "yb/util/result.h"
+#include <glog/logging.h>
+#include <ostream>
+#include <utility>
 
+#include "yb/util/result.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
 #include "yb/yql/cql/ql/ql_processor.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/logging.h"
+#include "yb/yql/cql/ql/ptree/tree_node.h"
+#include "yb/gutil/callback.h"
 
 namespace yb {
 namespace ql {
+class StatementParameters;
 
 using std::string;
 

@@ -31,14 +31,6 @@
 //
 
 #include "yb/tools/yb-admin_client.h"
-#include "yb/tools/yb-admin_util.h"
-
-#include <iomanip>
-#include <sstream>
-#include <string>
-#include <type_traits>
-#include <unordered_map>
-#include <unordered_set>
 
 #include <boost/multi_index/composite_key.hpp>
 #include <boost/multi_index/global_fun.hpp>
@@ -46,16 +38,43 @@
 #include <boost/multi_index_container.hpp>
 #include <boost/tti/has_member_function.hpp>
 #include <google/protobuf/util/json_util.h>
-#include <gtest/gtest.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <google/protobuf/message.h>
+#include <rapidjson/allocators.h>
+#include <rapidjson/rapidjson.h>
+#include <stddef.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <boost/multi_index/indexed_by.hpp>
+#include <boost/multi_index/tag.hpp>
+#include <boost/multi_index_container_fwd.hpp>
+#include <boost/operators.hpp>
+#include <boost/tuple/tuple.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <iomanip>
+#include <sstream>
+#include <string>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
+#include <algorithm>
+#include <array>
+#include <future>
+#include <iostream>
+#include <iterator>
+#include <map>
+#include <set>
+#include <thread>
+#include <utility>
 
-#include "yb/cdc/cdc_service.h"
+#include "yb/tools/yb-admin_util.h"
 #include "yb/common/xcluster_util.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_info.h"
 #include "yb/client/xcluster_client.h"
-
 #include "yb/common/colocated_util.h"
 #include "yb/common/json_util.h"
 #include "yb/common/ql_type_util.h"
@@ -63,13 +82,10 @@
 #include "yb/common/tablespace_parser.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/consensus.proxy.h"
-
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
-
 #include "yb/master/catalog_entity_parser.h"
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_backup.proxy.h"
@@ -78,24 +94,17 @@
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_encryption.proxy.h"
-#include "yb/master/master_error.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/master_test.proxy.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_constants.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
-#include "yb/rpc/secure.h"
 #include "yb/rpc/secure_stream.h"
-
 #include "yb/tools/tools_utils.h"
-
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/encryption/encryption_util.h"
-
 #include "yb/util/date_time.h"
 #include "yb/util/format.h"
 #include "yb/util/is_operation_done_result.h"
@@ -110,8 +119,40 @@
 #include "yb/util/string_util.h"
 #include "yb/util/tostring.h"
 #include "yb/dockv/partition.h"
-#include "yb/dockv/doc_key.h"
-#include "yb/common/schema_pbutil.h"
+#include "yb/cdc/cdc_consumer.pb.h"
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/cdc_service.proxy.h"
+#include "yb/cdc/xcluster_producer.pb.h"
+#include "yb/client/schema.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/schema.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/encryption/encryption.pb.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/strings/strip.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_encryption.pb.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/math_util.h"
+#include "yb/util/path_util.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/timestamp.h"
+#include "yb/cdc/xcluster_types.h"
 
 DEFINE_NON_RUNTIME_bool(wait_if_no_leader_master, false,
             "When yb-admin connects to the cluster and no leader master is present, "

@@ -13,17 +13,17 @@
 
 #pragma once
 
+#include <boost/preprocessor/cat.hpp>
 #include <functional>
 #include <memory>
 #include <string>
-
-#include <gflags/gflags.h>
 
 namespace yb {
 
 using FlagCallback = std::function<void(void)>;
 
 struct FlagCallbackInfo;
+
 using FlagCallbackInfoPtr = std::shared_ptr<FlagCallbackInfo>;
 
 template<class T>

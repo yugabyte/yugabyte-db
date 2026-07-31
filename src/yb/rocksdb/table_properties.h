@@ -22,9 +22,11 @@
 #include <stdint.h>
 #include <string>
 #include <map>
+
 #include "yb/rocksdb/status.h"
 #include "yb/util/slice.h"
 #include "yb/rocksdb/types.h"
+#include "yb/util/status.h"
 
 namespace rocksdb {
 

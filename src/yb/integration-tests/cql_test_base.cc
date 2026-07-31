@@ -13,19 +13,29 @@
 
 #include "yb/integration-tests/cql_test_base.h"
 
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <boost/asio/ip/address.hpp>
 #include <memory>
 
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 #include "yb/rpc/messenger.h"
-
 #include "yb/tserver/heartbeater.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
-
-#include "yb/util/status_log.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/server/rpc_server.h"
+#include "yb/tserver/tablet_server_options.h"
+#include "yb/util/format.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/yql/cql/cqlserver/cql_server_options.h"
 
 using std::string;
 using std::vector;

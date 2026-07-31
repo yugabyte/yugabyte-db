@@ -11,24 +11,34 @@
 // under the License.
 //
 
+#include <cassandra.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <atomic>
+#include <chrono>
+#include <deque>
+#include <functional>
+#include <initializer_list>
+#include <memory>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <thread>
+#include <vector>
+
 #include "yb/integration-tests/cql_test_base.h"
-
 #include "yb/client/table_info.h"
-
 #include "yb/docdb/deadline_info.h"
-
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster_validator.h"
 #include "yb/integration-tests/mini_cluster_utils.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
-#include "yb/tablet/write_query.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
@@ -37,6 +47,26 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/client/schema.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/schema.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/integration-tests/cql_test_util.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
 
 using namespace std::literals;
 

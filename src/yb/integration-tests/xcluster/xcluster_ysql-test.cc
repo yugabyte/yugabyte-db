@@ -11,59 +11,56 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/uuid/uuid.hpp>
 #include <algorithm>
 #include <chrono>
 #include <string>
 #include <vector>
 #include <unordered_set>
 #include <utility>
-
-#include <boost/assign.hpp>
-
-#include <gtest/gtest.h>
+#include <cmath>
+#include <compare>
+#include <functional>
+#include <initializer_list>
+#include <iterator>
+#include <memory>
+#include <optional>
+#include <ratio>
+#include <sstream>
+#include <unordered_map>
 
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
-
-#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_state_table.h"
 #include "yb/client/client.h"
-#include "yb/client/meta_cache.h"
-#include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/client/table_handle.h"
-#include "yb/client/yb_op.h"
-
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
-
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
-
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
-#include "yb/tserver/ts_tablet_manager.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
@@ -73,6 +70,51 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "libpq-fe.h"
+#include "yb/cdc/cdc_consumer.pb.h"
+#include "yb/cdc/xcluster_types.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/transaction_manager.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.pb.h"
+#include "yb/common/transaction.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/log_fwd.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/map-util.h"
+#include "yb/integration-tests/cdc_test_util.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/master/tablet_split_fwd.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/async_util.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_callback.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_util.h"
+#include "yb/util/thread.h"
+#include "yb/util/tsan_util.h"
+
+namespace yb {
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+}  // namespace yb
 
 using std::string;
 

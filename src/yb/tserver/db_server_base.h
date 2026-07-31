@@ -14,21 +14,33 @@
 #pragma once
 
 #include <future>
+#include <atomic>
+#include <memory>
+#include <mutex>
+#include <string>
 
 #include "yb/client/client_fwd.h"
-
 #include "yb/server/server_base.h"
-
-#include "yb/tserver/tserver_util_fwd.h"
-
 #include "yb/util/concurrent_value.h"
 #include "yb/util/one_time_bool.h"
-
 #include "yb/yql/pgwrapper/pg_wrapper_context.h"
+#include "yb/tserver/tserver_shared_mem.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class JsonWriter;
+class MemTracker;
+namespace client {
+class AsyncClientInitializer;
+class TransactionManager;
+class TransactionPool;
+class YBClient;
+}  // namespace client
+namespace server {
+class ServerBaseOptions;
+}  // namespace server
 
 namespace tserver {
 

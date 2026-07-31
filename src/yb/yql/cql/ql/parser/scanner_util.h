@@ -30,6 +30,7 @@
 #pragma once
 
 #include <stdlib.h>
+#include <sys/types.h>
 
 #include "yb/yql/cql/ql/parser/scanner.h"
 

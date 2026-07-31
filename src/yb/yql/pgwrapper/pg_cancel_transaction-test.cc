@@ -11,20 +11,39 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <chrono>
+#include <future>
+#include <memory>
+#include <ratio>
+#include <string>
+#include <vector>
+
 #include "yb/client/meta_cache.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/rpc/rpc_controller.h"
-
-#include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/async_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_format.h"
 #include "yb/yql/pgwrapper/geo_transactions_test_base.h"
 #include "yb/yql/pgwrapper/pg_locks_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/master_fwd.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_bool(auto_create_local_transaction_tables);
 DECLARE_bool(force_global_transactions);

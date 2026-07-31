@@ -32,14 +32,34 @@
 
 #include "yb/master/sys_catalog.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdlib.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <algorithm>
 #include <cmath>
 #include <memory>
-
-#include <rapidjson/document.h>
+#include <chrono>
+#include <compare>
+#include <future>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <unordered_set>
+#include <utility>
 
 #include "yb/client/client.h"
-
 #include "yb/common/colocated_util.h"
 #include "yb/common/pg_catversions.h"
 #include "yb/common/ql_protocol_util.h"
@@ -49,7 +69,6 @@
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/tablespace_parser.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_peers.h"
@@ -60,33 +79,24 @@
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/retryable_requests.h"
 #include "yb/consensus/state_change_context.h"
-
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/docdb_pgapi.h"
-
 #include "yb/dockv/partial_row.h"
 #include "yb/dockv/partition.h"
 #include "yb/dockv/reader_projection.h"
-
 #include "yb/fs/fs_manager.h"
-
 #include "yb/gutil/bind.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_snapshot_coordinator.h"
-#include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_writer.h"
 #include "yb/master/ysql/ysql_manager_if.h"
-
 #include "yb/qlexpr/index.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/thread_pool.h"
-
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
@@ -94,11 +104,9 @@
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/write_query.h"
-
 #include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver.messages.h"
-
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -109,6 +117,72 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_consensus_util.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/opid.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_util.h"
+#include "yb/docdb/doc_pgsql_scanspec.h"
+#include "yb/docdb/doc_ql_scanspec.h"
+#include "yb/docdb/doc_read_context.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/schema_packing.h"
+#include "yb/gutil/bind_helpers.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_options.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/qlexpr/ql_expr.h"
+#include "yb/server/clock.h"
+#include "yb/server/server_base.h"
+#include "yb/server/server_fwd.h"
+#include "yb/tablet/operations.pb.h"
+#include "yb/tablet/operations/operation.h"
+#include "yb/tablet/tablet_bootstrap_state_manager.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_types.messages.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/debug/long_operation_tracker.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/pb_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/std_util.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/thread_pool.h"
+#include "yb/util/tostring.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/client/schema.h"
+
+namespace yb {
+namespace tserver {
+class WriteResponsePB;
+}  // namespace tserver
+}  // namespace yb
+
+namespace google {
+namespace protobuf {
+class Message;
+}  // namespace protobuf
+}  // namespace google
 
 using namespace std::literals; // NOLINT
 using namespace yb::size_literals;

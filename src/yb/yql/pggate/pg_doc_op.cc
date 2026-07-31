@@ -14,33 +14,54 @@
 
 #include "yb/yql/pggate/pg_doc_op.h"
 
+#include <gflags/gflags.h>
+#include <boost/container/small_vector.hpp>
 #include <algorithm>
+#include <iterator>
+#include <list>
+#include <ranges>
+#include <string_view>
 
 #include "yb/ash/wait_state.h"
-
 #include "yb/client/yb_op.h"
-
 #include "yb/common/row_mark.h"
-
 #include "yb/dockv/doc_key.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
-
 #include "yb/rpc/outbound_call.h"
-
 #include "yb/util/lw_function.h"
-#include "yb/util/random_util.h"
 #include "yb/util/status_format.h"
-#include "yb/util/status_log.h"
-
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pggate_flags.h"
-#include "yb/yql/pggate/util/pg_doc_data.h"
-#include "yb/yql/pggate/util/ybc-internal.h"
-#include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/client/table.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/schema.h"
+#include "yb/common/types.h"
+#include "yb/common/value.pb.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/port.h"
+#include "yb/util/atomic.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/slice.h"
+#include "yb/yql/pggate/pg_client.h"
+#include "yb/yql/pggate/pg_column.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
+
+namespace yb {
+enum WaitPolicy : int;
+}  // namespace yb
 
 DECLARE_uint64(rpc_max_message_size);
 DECLARE_double(max_buffer_size_to_rpc_limit_ratio);

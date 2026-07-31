@@ -13,13 +13,24 @@
 
 #pragma once
 
+#include <boost/preprocessor/cat.hpp>
 #include <string>
 
 #include "yb/cdc/xcluster_types.h"
-
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_entity_base.h"
-#include "yb/master/sys_catalog.h"
+#include "yb/gutil/macros.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/util/status.h"
+
+namespace yb {
+namespace master {
+struct PersistentXClusterConfigInfo;
+struct PersistentXClusterSafeTimeInfo;
+template <typename CatalogEntityWrapper> class XClusterConfigLoader;
+template <typename CatalogEntityWrapper> class XClusterSafeTimeLoader;
+}  // namespace master
+}  // namespace yb
 
 #define DECLARE_SINGLETON_LOADER_CLASS(name, key_type, entry_pb_name) \
   template <typename CatalogEntityWrapper> \

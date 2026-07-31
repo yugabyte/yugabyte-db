@@ -13,23 +13,58 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <unordered_map>
-
-#include <boost/functional/hash.hpp>
+#include <functional>
+#include <iterator>
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 #include "yb/client/client_fwd.h"
-
 #include "yb/common/column_id.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/read_hybrid_time.h"
-
 #include "yb/qlexpr/ql_rowblock.h"
-
 #include "yb/util/async_util.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/ql_type.h"
+#include "yb/gutil/stl_util.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class IndexInfoPB;
+class LWQLColumnValuePB;
+class LWQLMapValuePB;
+class LWQLPagingStatePB;
+class LWQLReadRequestPB;
+class LWQLValuePB;
+class LWQLWriteRequestPB;
+class QLConditionPB;
+class QLMapValuePB;
+class QLValuePB;
+enum QLOperator : int;
+
 namespace client {
 
 class YBTableName;
@@ -38,9 +73,8 @@ class YBqlReadOp;
 class YBqlWriteOp;
 class YBSchema;
 class YBSchemaBuilder;
-
-class TableIterator;
-class TableRange;
+class YBTable;
+struct FlushStatus;
 
 #define TABLE_HANDLE_TYPE_DECLARATIONS_IMPL(name, lname, type, pb_set, lw_set) \
   void PP_CAT3(Add, name, ColumnValue)( \

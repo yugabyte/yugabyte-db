@@ -11,26 +11,73 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <chrono>
+#include <limits>
+#include <memory>
+#include <optional>
+#include <sstream>
+#include <string>
+#include <thread>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+#include <functional>
+
 #include "yb/gutil/casts.h"
-
-#include "yb/common/ysql_operation_lease.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_cluster.service.h"
 #include "yb/master/master_cluster_handler.h"
 #include "yb/master/tablet_health_manager.h"
 #include "yb/master/master_auto_flags_manager.h"
-#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_service_base-internal.h"
 #include "yb/master/master_service_base.h"
 #include "yb/master/object_lock_info_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/xcluster_manager.h"
-
 #include "yb/util/service_util.h"
-#include "yb/util/flags.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/scoped_leader_shared_lock-internal.h"
+#include "yb/master/scoped_leader_shared_lock.h"
+#include "yb/rpc/rpc_context.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace yb {
+namespace rpc {
+class ServiceIf;
+}  // namespace rpc
+}  // namespace yb
 
 using std::string;
 using std::vector;

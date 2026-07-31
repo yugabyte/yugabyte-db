@@ -126,10 +126,13 @@
 #pragma once
 
 #include <assert.h>
-
-#include <iosfwd>
+#include <stddef.h>
 #include <limits>
 #include <string>
+#include <cstring>
+#include <iterator>
+#include <ostream>
+#include <functional>
 
 #include "yb/gutil/strings/fastmem.h"
 
@@ -335,7 +338,6 @@ inline bool operator<=(GStringPiece x, GStringPiece y) {
 inline bool operator>=(GStringPiece x, GStringPiece y) {
   return !(x < y);
 }
-class GStringPiece;
 template <class X> struct GoodFastHash;
 
 // ------------------------------------------------------------------

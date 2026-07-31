@@ -13,31 +13,32 @@
 
 #include "yb/docdb/local_waiting_txn_registry.h"
 
-#include <algorithm>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <boost/container/stable_vector.hpp>
+#include <boost/range/iterator_range_core.hpp>
 #include <memory>
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <set>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
-#include <glog/vlog_is_on.h>
-
-#include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
-#include "yb/common/wire_protocol.h"
-
-#include "yb/client/client.h"
 #include "yb/client/transaction_rpc.h"
-
-#include "yb/gutil/macros.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/rpc/rpc.h"
-
 #include "yb/server/clock.h"
-
-#include "yb/tserver/tserver_service.fwd.h"
 #include "yb/tserver/tserver_service.pb.h"
-
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
@@ -45,6 +46,21 @@
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_log.h"
 #include "yb/util/unique_lock.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/docdb/conflict_data.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/threadpool.h"
+
+namespace yb {
+namespace client {
+class YBClient;
+}  // namespace client
+}  // namespace yb
 
 using namespace std::placeholders;
 using namespace std::literals;
@@ -60,6 +76,7 @@ namespace yb {
 namespace docdb {
 
 class StatusTabletData;
+
 using StatusTabletDataPtr = std::shared_ptr<StatusTabletData>;
 
 // Container for metadata describing a waiting transaction that is being tracked and reported to the

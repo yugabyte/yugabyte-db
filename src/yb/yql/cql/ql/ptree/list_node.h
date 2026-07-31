@@ -22,15 +22,20 @@
 
 #pragma once
 
-#include "yb/util/math_util.h"
-#include "yb/util/memory/arena.h"
-#include "yb/util/status.h"
+#include <stddef.h>
+#include <functional>
+#include <iterator>
+#include <utility>
 
+#include "yb/util/status.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 
 namespace yb {
 namespace ql {
+class SemContext;
 
 // Operations that apply to each treenode of this list.
 template<typename ContextType, typename NodeType = TreeNode>

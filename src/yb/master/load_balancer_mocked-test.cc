@@ -11,14 +11,40 @@
 // under the License.
 //
 
-#include <gflags/gflags_declare.h>
-#include <gtest/gtest.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <memory>
+#include <ostream>
+#include <set>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+#include <functional>
+
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
-#include "yb/consensus/metadata.pb.h"
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/master/load_balancer_mocked-test_base.h"
 #include "yb/tablet/tablet_types.pb.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_manager-test_base.h"
+#include "yb/master/cluster_balance_mocked.h"
+#include "yb/master/cluster_balance_util.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/ts_descriptor.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 
 namespace yb {
 namespace master {

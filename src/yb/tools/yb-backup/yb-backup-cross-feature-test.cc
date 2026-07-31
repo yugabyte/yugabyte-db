@@ -11,22 +11,63 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include <gmock/gmock.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <functional>
+#include <initializer_list>
+#include <map>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <string_view>
+#include <tuple>
+#include <vector>
+#include <compare>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/table_info.h"
 #include "yb/client/ql-dml-test-base.h"
-
 #include "yb/master/master_client.pb.h"
-
 #include "yb/tools/yb-backup/yb-backup-test_base.h"
-
 #include "yb/gutil/callback.h"
 #include "yb/util/backoff_waiter.h"
-
-#include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_ddl_atomicity_test_base.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "postgres_ext.h"
+#include "yb/client/client.h"
+#include "yb/client/schema.h"
+#include "yb/client/snapshot_test_util.h"
+#include "yb/client/table_handle.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/schema.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/tools/test_admin_client.h"
+#include "yb/util/async_util.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::chrono_literals;
 using namespace std::literals;

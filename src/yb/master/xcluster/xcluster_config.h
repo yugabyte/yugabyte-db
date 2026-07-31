@@ -13,17 +13,24 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <shared_mutex>
+#include <memory>
+#include <ostream>
+#include <vector>
 
-#include "yb/cdc/cdc_types.h"
 #include "yb/gutil/thread_annotations.h"
-#include "yb/master/leader_epoch.h"
-#include "yb/util/status_fwd.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/master/xcluster/xcluster_catalog_entity.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 template<class State>
 class CowWriteLock;
+enum XClusterNamespaceInfoPB_XClusterRole : int;
 
 namespace master {
 
@@ -32,8 +39,7 @@ class SysCatalogTable;
 class SysXClusterConfigEntryPB;
 class TSHeartbeatRequestPB;
 class TSHeartbeatResponsePB;
-class XClusterConfigInfo;
-struct PersistentXClusterConfigInfo;
+struct LeaderEpoch;
 
 // Wrapper over XClusterConfigInfo that provides safe utils to access and modify XClusterConfigInfo.
 class XClusterConfig {

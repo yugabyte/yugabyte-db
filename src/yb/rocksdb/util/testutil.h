@@ -23,32 +23,54 @@
 
 
 #pragma once
+#include <gtest/gtest.h>
+#include <assert.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdarg.h>
+#include <stdint.h>
+#include <string.h>
 #include <algorithm>
-#include <deque>
 #include <mutex>
 #include <string>
 #include <vector>
-
-#include <gtest/gtest.h>
-
-#include "yb/gutil/casts.h"
+#include <memory>
+#include <unordered_map>
+#include <functional>
 
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/merge_operator.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/db/version_edit.pb.h"
-#include "yb/rocksdb/table.h"
-#include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/internal_iterator.h"
-#include "yb/rocksdb/table/plain_table_factory.h"
 #include "yb/rocksdb/util/mutexlock.h"
-#include "yb/rocksdb/util/random.h"
-
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/mem_tracker_fwd.h"
 #include "yb/util/slice.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/types.h"
+#include "yb/rocksdb/util/coding.h"
+#include "yb/storage/storage_types.h"
+#include "yb/util/file_system.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+
+namespace rocksdb {
+class Random;
+class RandomAccessFileReader;
+class SliceTransform;
+class TableFactory;
+class WritableFileWriter;
+}  // namespace rocksdb
 
 DECLARE_bool(never_fsync);
 DECLARE_bool(TEST_enable_sync_points);

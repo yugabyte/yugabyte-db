@@ -32,61 +32,77 @@
 #pragma once
 
 #include <stdint.h>
-
-#include <cstdint>
+#include <glog/logging.h>
+#include <opentelemetry/trace/span.h>
+#include <boost/asio/ip/basic_endpoint.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <cstdlib>
-#include <deque>
 #include <memory>
 #include <string>
 #include <string_view>
-#include <thread>
-#include <type_traits>
-#include <vector>
+#include <atomic>
+#include <chrono>
+#include <mutex>
+#include <optional>
+#include <utility>
 
-#include <boost/functional/hash.hpp>
 #include "opentelemetry/nostd/shared_ptr.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
-
-#include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
-
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/call_data.h"
-#include "yb/rpc/constants.h"
 #include "yb/rpc/lightweight_message.h"
-#include "yb/rpc/remote_method.h"
 #include "yb/rpc/rpc_call.h"
 #include "yb/rpc/rpc_header.pb.h"
-#include "yb/rpc/serialization.h"
 #include "yb/rpc/rpc_introspection.pb.h"
-#include "yb/rpc/service_if.h"
-#include "yb/rpc/thread_pool.h"
 #include "yb/rpc/reactor_thread_role.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/locks.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/memory_usage.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
-#include "yb/util/dist_trace_fwd.h"
-#include "yb/util/object_pool.h"
 #include "yb/util/ref_cnt_buffer.h"
-#include "yb/util/shared_lock.h"
 #include "yb/util/slice.h"
-#include "yb/util/status_fwd.h"
-#include "yb/util/trace.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rpc/rpc_metrics.h"
+#include "yb/util/enums.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/thread_pool.h"
+#include "yb/util/trace.h"  // IWYU pragma: keep
+
+namespace yb {
+namespace rpc {
+class Connection;
+class MetadataSerializer;
+class MetadataSerializerFactory;
+class Protocol;
+class RemoteMethod;
+class RpcController;
+class Sidecars;
+struct OutboundMethodMetrics;
+}  // namespace rpc
+}  // namespace yb
 
 using namespace std::literals;
-
-namespace google {
-namespace protobuf {
-class Message;
-}  // namespace protobuf
-}  // namespace google
 
 namespace yb::rpc {
 

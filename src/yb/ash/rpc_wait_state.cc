@@ -12,10 +12,31 @@
 //
 #include "yb/ash/rpc_wait_state.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <google/protobuf/io/coded_stream.h>
+#include <mutex>
+#include <ostream>
+#include <utility>
+
 #include "yb/rpc/inbound_call.h"
 #include "yb/rpc/lightweight_message.h"
-
 #include "yb/util/trace.h"
+#include "yb/ash/wait_state.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/strings/stringpiece.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/locks.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/memory.h"
+
+namespace google {
+namespace protobuf {
+namespace internal {
+class WireFormatLite;
+}  // namespace internal
+}  // namespace protobuf
+}  // namespace google
 
 DECLARE_bool(ysql_yb_enable_ash);
 

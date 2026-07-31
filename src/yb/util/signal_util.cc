@@ -12,8 +12,12 @@
 
 #include "yb/util/signal_util.h"
 
+#include <errno.h>
+#include <string.h>
+
 #include "yb/util/errno.h"
 #include "yb/util/format.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 

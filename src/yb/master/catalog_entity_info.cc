@@ -32,10 +32,11 @@
 
 #include "yb/master/catalog_entity_info.h"
 
+#include <boost/uuid/uuid.hpp>
 #include <string>
+#include <compare>
 
 #include "yb/cdc/xcluster_types.h"
-
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_consensus_util.h"
 #include "yb/common/doc_hybrid_time.h"
@@ -43,11 +44,8 @@
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/opid_util.h"
-
 #include "yb/dockv/partition.h"
-
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
@@ -56,12 +54,20 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster_rpc_tasks.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/flags/auto_flags.h"
 #include "yb/util/format.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/status_format.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/slice.h"
 
 using std::string;
 

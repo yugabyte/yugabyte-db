@@ -13,8 +13,12 @@
 
 #pragma once
 
+#include <string>
+
 #include "yb/util/kv_util.h"
 #include "yb/util/slice.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb::dockv {
 

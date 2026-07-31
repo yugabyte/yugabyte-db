@@ -13,11 +13,20 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <optional>
+#include <string>
+
 #include "yb/common/entity_ids_types.h"
-
 #include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
-#include "yb/util/monotime.h"
+namespace yb {
+class MonoDelta;
+enum YQLDatabase : int;
+}  // namespace yb
 
 namespace yb::master {
 class MasterDDLClient {

@@ -17,14 +17,26 @@
 
 #include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <ostream>
+
 #include "yb/common/redis_constants_common.h"
-
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/sem_state.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
+
+namespace yb {
+namespace client {
+enum class GrantRevokeStatementType;
+}  // namespace client
+}  // namespace yb
 
 DECLARE_bool(use_cassandra_authentication);
 

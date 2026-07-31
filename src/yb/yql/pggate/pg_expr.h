@@ -14,17 +14,29 @@
 
 #pragma once
 
-#include "yb/common/common_fwd.h"
-#include "yb/common/ql_datatype.h"
-#include "yb/common/value.messages.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <functional>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "yb/yql/pggate/util/pg_doc_data.h"
+#include "yb/common/value.messages.h"
 #include "yb/yql/pggate/util/pg_tuple.h"
-#include "yb/yql/pggate/pg_table.h"
 #include "yb/bfpg/tserver_opcodes.h"
+#include "yb/client/schema.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
+class LWPgsqlExpressionPB;
+
 namespace pggate {
+class PgTable;
 
 // decode collation encoded string
 Slice DecodeCollationEncodedString(Slice input);

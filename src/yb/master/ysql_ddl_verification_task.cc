@@ -10,34 +10,70 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <boost/container/stable_vector.hpp>
 #include <sstream>
+#include <algorithm>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 #include "yb/master/ysql_ddl_verification_task.h"
-
 #include "yb/client/transaction_rpc.h"
-
 #include "yb/dockv/reader_projection.h"
-
 #include "yb/qlexpr/ql_expr.h"
-
 #include "yb/common/colocated_util.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/sys_catalog.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tserver/tserver_service.pb.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-
 #include "yb/util/flags/flag_tags.h"
+#include "yb/common/column_id.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/pg_types.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/schema.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/value.pb.h"
+#include "yb/docdb/doc_pgsql_scanspec.h"
+#include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/cast.h"
+#include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace client {
+class YBClient;
+}  // namespace client
+namespace master {
+struct LeaderEpoch;
+}  // namespace master
+namespace rpc {
+class Messenger;
+}  // namespace rpc
+}  // namespace yb
 
 DEFINE_UNKNOWN_int32(ysql_transaction_bg_task_wait_ms, 200,
   "Amount of time the catalog manager background task thread waits "

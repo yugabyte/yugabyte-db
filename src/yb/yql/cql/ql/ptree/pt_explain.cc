@@ -16,8 +16,14 @@
 //--------------------------------------------------------------------------------------------------
 #include "yb/yql/cql/ql/ptree/pt_explain.h"
 
+#include <glog/logging.h>
+#include <ostream>
+
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 namespace yb {
 namespace ql {

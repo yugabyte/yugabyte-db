@@ -11,12 +11,31 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <rapidjson/allocators.h>
+#include <rapidjson/document.h>
+#include <rapidjson/encodings.h>
+#include <rapidjson/rapidjson.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/types.h>
+#include <boost/asio/ip/basic_endpoint.hpp>
 #include <chrono>
 #include <memory>
-#include <ranges>
 #include <regex>
 #include <string>
 #include <unordered_set>
+#include <algorithm>
+#include <functional>
+#include <initializer_list>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string_view>
+#include <thread>
+#include <unordered_map>
+#include <vector>
 
 #include "yb/client/client.h"
 #include "yb/client/client_fwd.h"
@@ -28,23 +47,16 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/common_types.pb.h"
-
 #include "yb/consensus/consensus.h"
-
 #include "yb/dockv/partition.h"
-
 #include "yb/gutil/dynamic_annotations.h"
-
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/path_handlers_util.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager_bg_tasks.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/cluster_balance.h"
 #include "yb/master/master-path-handlers.h"
@@ -54,19 +66,12 @@
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_util.h"
 #include "yb/master/mini_master.h"
-
-#include "yb/rpc/messenger.h"
-
 #include "yb/server/webui_util.h"
-
 #include "yb/tablet/tablet_types.pb.h"
-
 #include "yb/tools/yb-admin_client.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/stateful_services/stateful_service_base.h"
 #include "yb/tserver/tablet_server.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/json_document.h"
@@ -76,10 +81,35 @@
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/cluster_balance_activity_info.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/rpc/proxy.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tserver/tablet_server_options.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/ysql_lease.h"
+#include "yb/util/faststring.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_int32(heartbeat_interval_ms);

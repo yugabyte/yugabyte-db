@@ -30,46 +30,47 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <inttypes.h>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
+#include <algorithm>
+#include <optional>
+#include <ostream>
+#include <string_view>
 
-#include <gtest/gtest.h>
-
-#include "yb/client/client_fwd.h"
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/common_fwd.h"
-#include "yb/common/entity_ids.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/schema.h"
-
-#include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/consensus.proxy.h"
-
-#include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/type_traits.h"
-
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
-#include "yb/server/server_base.pb.h"
-#include "yb/server/server_base.proxy.h"
-
-#include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
-#include "yb/util/flags.h"
+#include "gtest/gtest.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/ql_protocol.messages.h"  // IWYU pragma: keep
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/types.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/mathlimits.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 DEFINE_NON_RUNTIME_int32(num_rows_per_tablet, 100,
     "The number of rows to be inserted into each tablet");

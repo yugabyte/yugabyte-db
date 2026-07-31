@@ -13,18 +13,28 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <future>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "yb/client/client_fwd.h"
+#include "yb/rpc/messenger.h"
+#include "yb/util/result.h"
 
-#include "yb/rpc/rpc_fwd.h"
+template <class T> class scoped_refptr;
 
 namespace yb {
 
 class MemTracker;
 class MetricEntity;
+namespace rpc {
+class SecureContext;
+}  // namespace rpc
 
 namespace client {
+class YBClient;
 
 // Lookup first tablet of specified table.
 std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(

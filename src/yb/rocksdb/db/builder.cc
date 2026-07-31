@@ -24,16 +24,14 @@
 #include "yb/rocksdb/db/builder.h"
 
 #include <stdint.h>
-
-#include <algorithm>
-#include <deque>
-#include <limits>
+#include <assert.h>
+#include <gflags/gflags.h>
+#include <boost/container/small_vector.hpp>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "yb/ash/wait_state.h"
-
 #include "yb/rocksdb/db/compaction_iterator.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/filename.h"
@@ -42,18 +40,20 @@
 #include "yb/rocksdb/db/table_cache.h"
 #include "yb/rocksdb/db/version_edit.h"
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/status.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
-#include "yb/rocksdb/util/stop_watch.h"
-
 #include "yb/util/flags/flag_tags.h"
-#include "yb/util/result.h"
 #include "yb/util/sync_point.h"
+#include "yb/gutil/port.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/table_properties.h"
+#include "yb/util/file_system.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 DECLARE_uint64(rocksdb_check_sst_file_tail_for_zeros);
 
@@ -63,8 +63,6 @@ DEFINE_RUNTIME_uint64(rocksdb_max_sst_write_retries, 0,
 TAG_FLAG(rocksdb_max_sst_write_retries, advanced);
 
 namespace rocksdb {
-
-class TableFactory;
 
 std::unique_ptr<TableBuilder> NewTableBuilder(
     const ImmutableCFOptions& ioptions,

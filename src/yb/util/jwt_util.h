@@ -12,12 +12,19 @@
 
 #pragma once
 
-#include <jwt-cpp/jwt.h>
-
 #include <string>
+#include <vector>
 
-#include "yb/util/status_fwd.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace jwt {
+namespace traits {
+struct kazuho_picojson;
+}  // namespace traits
+template <typename json_traits> class jwk;
+}  // namespace jwt
 
 namespace yb::util {
 

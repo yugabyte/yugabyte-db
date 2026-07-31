@@ -15,6 +15,8 @@
 
 #include <atomic>
 #include <chrono>
+#include <memory>
+#include <string>
 
 #include "yb/util/physical_time.h"
 

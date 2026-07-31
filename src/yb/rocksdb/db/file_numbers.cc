@@ -13,7 +13,10 @@
 
 #include "yb/rocksdb/db/file_numbers.h"
 
+#include <mutex>
+
 #include "yb/rocksdb/db/version_set.h"
+#include "yb/util/tostring.h"
 
 namespace rocksdb {
 

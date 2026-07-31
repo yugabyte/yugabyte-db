@@ -13,13 +13,22 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <glog/logging.h>
+#include <gtest/gtest.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <ostream>
+#include <string>
+
 #include "yb/common/constants.h"
-
 #include "yb/util/status_log.h"
-
 #include "yb/yql/pggate/test/pggate_test.h"
 #include "yb/yql/pggate/util/ybc-internal.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/logging.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 using std::string;
 

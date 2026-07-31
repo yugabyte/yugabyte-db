@@ -31,17 +31,17 @@
 //
 #pragma once
 
+#include <stddef.h>
 #include <memory>
-#include <vector>
 
 #include "yb/client/client_fwd.h"
-
-#include "yb/gutil/ref_counted.h"
+#include "yb/client/error.h"
+#include "yb/gutil/macros.h"
 
 namespace yb {
-namespace client {
+class Status;
 
-class YBError;
+namespace client {
 
 namespace internal {
 

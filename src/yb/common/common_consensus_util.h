@@ -32,12 +32,20 @@
 
 #pragma once
 
-#include <string>
+#include <string_view>
 
 #include "yb/common/common_types.pb.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/util/physical_time.h"
 
-#include "yb/consensus/metadata.fwd.h"
+namespace yb {
+namespace consensus {
+class ConsensusStatePB;
+class LWConsensusStatePB;
+class LWRaftConfigPB;
+class RaftConfigPB;
+}  // namespace consensus
+}  // namespace yb
 
 namespace yb::consensus {
 

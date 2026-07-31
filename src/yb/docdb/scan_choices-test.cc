@@ -11,24 +11,63 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <memory>
 #include <string>
+#include <functional>
+#include <optional>
+#include <ostream>
+#include <utility>
+#include <vector>
 
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/schema.h"
-
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/hybrid_scan_choices.h"
 #include "yb/docdb/scan_choices.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/value_type.h"
-
-#include "yb/gutil/casts.h"
-
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/constants.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/lock_util.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/qlexpr/ql_scanspec.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/util/algorithm_util.h"
+#include "yb/util/cast.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+class Status;
+}  // namespace yb
 
 using std::string;
 

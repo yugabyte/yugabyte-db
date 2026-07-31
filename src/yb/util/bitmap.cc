@@ -31,14 +31,18 @@
 //
 #include "yb/util/bitmap.h"
 
+#include <string.h>
+#include <boost/container/vector.hpp>
 #include <string>
-
-#include "yb/util/logging.h"
+#include <algorithm>
+#include <vector>
 
 #include "yb/gutil/stringprintf.h"
 #include "yb/util/coding.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 

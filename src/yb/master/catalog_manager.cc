@@ -54,8 +54,17 @@
 
 #include "yb/master/catalog_manager.h"
 
-#include <stdlib.h>
-
+#include <boost/algorithm/string/predicate.hpp>
+#include <gflags/gflags.h>
+#include <google/protobuf/message.h>
+#include <sys/types.h>
+#include <boost/asio/ip/address.hpp>
+#include <boost/asio/ip/basic_endpoint.hpp>
+#include <boost/multi_index_container.hpp>
+#include <boost/operators.hpp>
+#include <boost/preprocessor/arithmetic/inc.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -68,15 +77,18 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-#include <boost/algorithm/string/predicate.hpp>
+#include <compare>
+#include <future>
+#include <initializer_list>
+#include <iterator>
+#include <limits>
+#include <ratio>
+#include <string_view>
 
 #include "yb/cdc/cdc_state_table.h"
-
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/universe_key_client.h"
-
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/common_net.h"
@@ -95,17 +107,13 @@
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/consensus/quorum_util.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
-
 #include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
@@ -114,7 +122,6 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
-
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/backfill_index.h"
 #include "yb/master/catalog_entity_info.h"
@@ -135,7 +142,6 @@
 #include "yb/master/master_dcl.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_defaults.h"
-#include "yb/master/master_encryption.pb.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
@@ -157,7 +163,6 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster/xcluster_manager.h"
-
 #include "yb/master/yql_aggregates_vtable.h"
 #include "yb/master/yql_auth_resource_role_permissions_index.h"
 #include "yb/master/yql_auth_role_permissions_vtable.h"
@@ -174,30 +179,21 @@
 #include "yb/master/yql_triggers_vtable.h"
 #include "yb/master/yql_types_vtable.h"
 #include "yb/master/yql_views_vtable.h"
-
 #include "yb/master/ysql_ddl_verification_task.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 #include "yb/master/ysql_tablespace_manager.h"
-#include "yb/master/ysql/ysql_initdb_major_upgrade_handler.h"
 #include "yb/master/ysql/ysql_manager.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/scheduler.h"
-
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/transaction_participant.h"
-
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_error.h"
-#include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/countdown_latch.h"
@@ -228,8 +224,72 @@
 #include "yb/util/tsan_util.h"
 #include "yb/util/uuid.h"
 #include "yb/util/yb_pg_errcodes.h"
-
 #include "yb/yql/redis/redisserver/redis_constants.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common_consensus_util.h"
+#include "yb/common/opid.h"
+#include "yb/common/pg_types.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/value.messages.h"
+#include "yb/consensus/consensus_meta.h"
+#include "yb/consensus/consensus_types.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/bind_helpers.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/gutil/strings/strcat.h"
+#include "yb/master/async_rpc_tasks_base.h"
+#include "yb/master/catalog_entity_base.h"
+#include "yb/master/catalog_loading_state.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_options.h"
+#include "yb/master/master_types.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/master/sys_catalog_types.h"
+#include "yb/master/yql_virtual_table.h"
+#include "yb/qlexpr/index.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rpc/rpc_context.h"
+#include "yb/server/clock.h"
+#include "yb/server/monitored_task.h"
+#include "yb/server/server_base.h"
+#include "yb/server/server_base_options.h"
+#include "yb/tablet/operations.pb.h"
+#include "yb/tablet/operations/operation.h"
+#include "yb/tablet/operations/operation_tracker.h"
+#include "yb/tablet/tablet.pb.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/ts_local_lock_manager.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/cow_object.h"
+#include "yb/util/env.h"
+#include "yb/util/fault_injection.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/pb_util.h"
+#include "yb/util/rwc_lock.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/tostring.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
+namespace yb {
+namespace encryption {
+class UniverseKeysPB;
+}  // namespace encryption
+namespace tablet {
+class TableInfoPB;
+}  // namespace tablet
+}  // namespace yb
 
 using namespace std::literals;
 using namespace yb::size_literals;

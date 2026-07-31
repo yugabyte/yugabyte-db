@@ -10,14 +10,48 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <glog/logging.h>
+#include <stddef.h>
 #include <algorithm>
 #include <set>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/tserver/remote_bootstrap_client-test.h"
-
 #include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tserver/remote_snapshot_transfer_client.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus.h"
+#include "yb/consensus/log.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/quorum_util.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/server/clock.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tserver/backup.messages.h"
+#include "yb/tserver/remote_bootstrap_client.h"
+#include "yb/util/env.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/path_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 namespace tserver {

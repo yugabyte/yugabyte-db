@@ -13,7 +13,13 @@
 
 #include "yb/common/object_lock_tracker.h"
 
+#include <glog/logging.h>
+#include <mutex>
+#include <utility>
+
 #include "yb/util/shared_lock.h"
+#include "yb/util/logging.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 namespace yb {
 

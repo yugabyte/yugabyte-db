@@ -17,13 +17,11 @@
 
 #include "yb/gutil/stringprintf.h"
 
-#include <errno.h>
 #include <stdarg.h> // For va_list and related operations
 #include <stdio.h> // MSVC requires this for _vsnprintf
-
+#include <glog/logging.h>
 #include <vector>
-
-#include "yb/util/logging.h"
+#include <ostream>
 
 #include "yb/gutil/macros.h"
 

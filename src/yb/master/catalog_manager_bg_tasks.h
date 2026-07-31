@@ -31,25 +31,31 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <atomic>
 #include <unordered_set>
+#include <vector>
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
 #include "yb/util/condition_variable.h"
-#include "yb/util/metrics_fwd.h"
 #include "yb/util/mutex.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class Thread;
+class EventStats;
+class ReplicationInfoPB;
 
 namespace master {
 
 class CatalogManager;
+class Master;
+struct LeaderEpoch;
 
 int32_t TEST_catalog_manager_bg_task_run_count();
 

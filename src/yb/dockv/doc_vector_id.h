@@ -13,16 +13,30 @@
 
 #pragma once
 
-#include "yb/common/column_id.h"
-#include "yb/common/value.messages.h"
+#include <stddef.h>
+#include <array>
+#include <functional>
+#include <string>
 
-#include "yb/dockv/dockv_fwd.h"
+#include "yb/common/column_id.h"
 #include "yb/dockv/key_bytes.h"
 #include "yb/dockv/packed_row.h"
-
 #include "yb/util/uuid.h"
-
 #include "yb/vector_index/vector_index_fwd.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/value.pb.h"
+#include "yb/dockv/value_type.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class DocHybridTime;
+namespace dockv {
+enum class VectorValueFormat;
+}  // namespace dockv
+}  // namespace yb
 
 
 namespace yb::dockv {

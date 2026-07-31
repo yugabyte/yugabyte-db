@@ -13,19 +13,34 @@
 
 #pragma once
 
-#include "yb/cdc/cdc_service.pb.h"
-#include "yb/cdc/cdc_service.proxy.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <memory>
+#include <string>
 
 #include "yb/cdc/cdc_service.h"
-
-#include "yb/integration-tests/mini_cluster.h"
+#include "yb/cdc/cdc_state_table.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/value.pb.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+class MiniCluster;
+class MonoDelta;
+class Schema;
+namespace client {
+class YBClient;
+}  // namespace client
+
 namespace xrepl {
 class CDCSDKTabletMetrics;
 class XClusterTabletMetrics;
 }  // namespace xrepl
 namespace cdc {
+class KeyValuePairPB;
 
 Result<QLValuePB> ExtractKey(
     const Schema& schema, const cdc::KeyValuePairPB& key, std::string expected_col_name,

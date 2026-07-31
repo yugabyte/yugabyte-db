@@ -13,31 +13,42 @@
 
 #pragma once
 
-#include <dirent.h>
 #include <signal.h>
-#include <spawn.h>
-
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <atomic>
 #include <iostream>
-#include <map>
 #include <memory>
 #include <random>
 #include <set>
 #include <string>
-#include <thread>
-#include <unordered_set>
 #include <vector>
 
-#include <gtest/gtest.h>
-
-#include "yb/client/client_fwd.h"
-
 #include "yb/util/countdown_latch.h"
-#include "yb/util/status.h"
-#include "yb/util/threadpool.h"
-#include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/util/enums.h"
+#include "yb/util/mutex.h"
 
 namespace yb {
+class ThreadPool;
+
+namespace client {
+class TableHandle;
+class YBClient;
+class YBSession;
+}  // namespace client
 
 namespace redisserver {
 class RedisClient;

@@ -15,6 +15,7 @@
 
 namespace yb {
 namespace rpc {
+class Messenger;
 
 AutoShutdownMessengerHolder CreateAutoShutdownMessengerHolder(
     std::unique_ptr<Messenger>&& messenger) {

@@ -32,9 +32,11 @@
 
 #include "yb/util/string_case.h"
 
+#include <ctype.h>
+#include <glog/logging.h>
+#include <stddef.h>
 #include <algorithm>
-
-#include "yb/util/logging.h"
+#include <ostream>
 
 namespace yb {
 

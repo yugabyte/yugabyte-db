@@ -13,36 +13,21 @@
 
 #pragma once
 
-#include <stdint.h>
+#include <vector>
 
-#include <functional>
-#include <memory>
-#include <set>
-#include <string>
-#include <type_traits>
-#include <unordered_set>
-#include <utility>
-
-#include <boost/container/stable_vector.hpp>
-#include <boost/range/iterator_range.hpp>
-#include "yb/util/flags.h"
-
-#include "yb/client/client_fwd.h"
-
-#include "yb/common/common_fwd.h"
-#include "yb/common/entity_ids.h"
 #include "yb/common/transaction.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/util/strongly_typed_bool.h"
 
-#include "yb/gutil/integral_types.h"
-
-#include "yb/rpc/rpc_controller.h"
-
-#include "yb/util/shared_lock.h"
+template <class T> class scoped_refptr;
 
 namespace yb {
+class ClockBase;
+
 namespace client {
 
 YB_STRONGLY_TYPED_BOOL(Sealed);
+class YBClient;
 
 // Sends cleanup intents request to provided tablets.
 // sealed - whether transaction was previously sealed.

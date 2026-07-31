@@ -10,9 +10,21 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "yb/util/scope_exit.h"
-#include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_int32(heartbeat_interval_ms);
 

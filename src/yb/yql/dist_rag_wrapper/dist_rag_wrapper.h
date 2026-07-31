@@ -14,11 +14,9 @@
 
 #pragma once
 
-#include <memory>
 #include <string>
 
 #include "yb/yql/process_wrapper/process_wrapper.h"
-#include "yb/util/status_fwd.h"
 
 namespace yb {
 

@@ -13,9 +13,37 @@
 
 #pragma once
 
-#include <boost/range/iterator_range.hpp>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/range/iterator_range_core.hpp>
+#include <algorithm>
+#include <initializer_list>
+#include <limits>
+#include <ostream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/dockv/key_entry_value.h"
+#include "yb/common/column_id.h"
+#include "yb/util/compare_util.h"
+#include "yb/util/logging.h"
+
+namespace yb {
+class Schema;
+enum class DataType;
+}  // namespace yb
 
 namespace yb::dockv {
 

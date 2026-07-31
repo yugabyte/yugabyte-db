@@ -23,6 +23,8 @@
 
 #include "yb/rocksdb/util/logging.h"
 
+#include <glog/logging.h>
+
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
 #endif
@@ -30,7 +32,6 @@
 #include <cinttypes>
 #include <cstdio>
 
-#include "yb/util/logging.h"
 #include "yb/util/slice.h"
 
 namespace rocksdb {

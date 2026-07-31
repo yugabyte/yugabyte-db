@@ -13,8 +13,22 @@
 
 #include "yb/master/catalog_entity_tasks.h"
 
+#include <functional>
+#include <utility>
+
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class ThreadPool;
+namespace master {
+struct LeaderEpoch;
+}  // namespace master
+namespace rpc {
+class Messenger;
+}  // namespace rpc
+}  // namespace yb
 
 namespace yb::master {
 

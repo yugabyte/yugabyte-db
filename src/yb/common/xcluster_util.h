@@ -13,7 +13,15 @@
 
 #pragma once
 
+#include <string>
+
 #include "yb/cdc/xcluster_types.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/util/result.h"
+
+namespace yb {
+enum XClusterReplicationType : int;
+}  // namespace yb
 
 namespace yb::xcluster {
 

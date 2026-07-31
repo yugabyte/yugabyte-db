@@ -13,22 +13,26 @@
 
 #include "yb/tablet/tablet_bootstrap_state_manager.h"
 
+#include <glog/logging.h>
+#include <memory>
+#include <ostream>
+
 #include "yb/ash/wait_state.h"
-
 #include "yb/common/opid.h"
-
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/retryable_requests.h"
 #include "yb/consensus/opid_util.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_participant.h"
-
-#include "yb/util/debug-util.h"
 #include "yb/util/env_util.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/util/env.h"
+#include "yb/util/format.h"
+#include "yb/util/pb_util.h"
+#include "yb/util/slice.h"
 
 namespace yb::tablet {
 

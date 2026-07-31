@@ -12,7 +12,37 @@
 
 #pragma once
 
-#include "yb/cdc/cdc_service.h"
+#include <boost/container_hash/hash.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+#include <functional>
+
+#include "yb/cdc/cdc_service.proxy.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_uuid.h"
+
+namespace yb {
+namespace cdc {
+class BootstrapProducerRequestPB;
+class BootstrapProducerResponsePB;
+class CDCServiceContext;
+class CDCServiceImpl;
+class CDCStateTable;
+struct CDCCreationState;
+}  // namespace cdc
+}  // namespace yb
 
 namespace yb::cdc {
 

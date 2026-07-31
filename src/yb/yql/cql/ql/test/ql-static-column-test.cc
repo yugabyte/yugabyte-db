@@ -13,16 +13,25 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <glog/logging.h>
+#include <memory>
+#include <ostream>
+#include <string>
+
 #include "yb/common/ql_value.h"
-
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_ddl.pb.h"
-
 #include "yb/util/status_log.h"
-
 #include "yb/yql/cql/ql/test/ql-test-base.h"
+#include "gtest/gtest.h"
+#include "yb/common/common.pb.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/mini_master.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 using std::string;
 using std::shared_ptr;

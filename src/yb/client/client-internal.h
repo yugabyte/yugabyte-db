@@ -31,45 +31,89 @@
 //
 #pragma once
 
+#include <stdint.h>
 #include <functional>
 #include <mutex>
 #include <set>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <memory>
+#include <optional>
+#include <string_view>
+#include <utility>
 
 #include "yb/client/client.h"
-
 #include "yb/common/common_net.pb.h"
-#include "yb/common/entity_ids.h"
-#include "yb/qlexpr/index.h"
 #include "yb/common/transaction.h"
-
 #include "yb/master/master_fwd.h"
-#include "yb/master/master_admin.fwd.h"
-
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc.h"
-
-#include "yb/server/server_base_options.h"
-
 #include "yb/tserver/tserver_fwd.h"
-
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/threadpool.h"
+#include "yb/cdc/cdc_types.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/table_info.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/retryable_request.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_backup.proxy.h"
+#include "yb/master/master_client.proxy.h"
+#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_dcl.proxy.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_ddl.proxy.h"
+#include "yb/master/master_encryption.proxy.h"
+#include "yb/master/master_replication.proxy.h"
+#include "yb/master/master_test.proxy.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/server/server_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_callback.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+class Cgroup;
+class MetricEntity;
+class ThreadPool;
+class ThreadPoolToken;
 
-class HostPort;
+namespace master {
+class CDCStreamOptionsPB;
+class FlushTablesRequestPB;
+class GetXClusterStreamsResponsePB;
+class TabletLocationsPB;
+enum SysCDCStreamEntryPB_State : int;
+}  // namespace master
+namespace rpc {
+class Messenger;
+class ProxyCache;
+}  // namespace rpc
 
 namespace client {
 
 YB_STRONGLY_TYPED_BOOL(Retry);
+class YBSchema;
+class YBTableName;
+
+namespace internal {
+class MetaCache;
+class RemoteTablet;
+class RemoteTabletServer;
+}  // namespace internal
 
 // Checks if the Tablet locations are valid - Partition keys are sorted with no overlaps.
 Status CheckTabletLocations(

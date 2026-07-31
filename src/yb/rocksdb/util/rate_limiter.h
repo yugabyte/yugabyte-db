@@ -23,18 +23,20 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <atomic>
 #include <deque>
-#include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/util/mutexlock.h"
-#include "yb/rocksdb/util/random.h"
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/rate_limiter.h"
+#include <string>
 
+#include "yb/rocksdb/util/random.h"  // IWYU pragma: keep
+#include "yb/rocksdb/rate_limiter.h"
 #include "yb/util/monotime.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/util/io.h"
 
 
 namespace rocksdb {
+class Env;
 
 class GenericRateLimiter : public RateLimiter {
  public:
@@ -103,6 +105,7 @@ class GenericRateLimiter : public RateLimiter {
   Random rnd_;
 
   struct Req;
+
   Req* leader_;
   std::deque<Req*> queue_[yb::kElementsInIOPriority];
 

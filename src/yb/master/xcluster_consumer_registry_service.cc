@@ -13,22 +13,26 @@
 
 #include "yb/master/xcluster_consumer_registry_service.h"
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <algorithm>
+#include <ostream>
+#include <unordered_map>
+#include <utility>
+#include <functional>
+
 #include "yb/cdc/cdc_consumer.pb.h"
-
-#include "yb/common/constants.h"
-#include "yb/common/wire_protocol.h"
 #include "yb/common/xcluster_util.h"
-
 #include "yb/docdb/key_bounds.h"
 #include "yb/dockv/partition.h"
-
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_client.pb.h"
-#include "yb/master/master_ddl.pb.h"
-#include "yb/master/xcluster_rpc_tasks.h"
-
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/common/common.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 using std::string;
 using std::vector;

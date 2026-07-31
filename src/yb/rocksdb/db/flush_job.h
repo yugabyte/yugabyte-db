@@ -25,44 +25,34 @@
 #pragma once
 
 #include <atomic>
-#include <deque>
-#include <limits>
-#include <set>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "yb/ash/ash_fwd.h"
-
-#include "yb/rocksdb/db.h"
-#include "yb/rocksdb/db/column_family.h"
-#include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/db/job_context.h"
-#include "yb/rocksdb/db/log_writer.h"
-#include "yb/rocksdb/db/memtable_list.h"
-#include "yb/rocksdb/db/version_edit.h"
-#include "yb/rocksdb/db/write_controller.h"
-#include "yb/rocksdb/db/write_thread.h"
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/memtablerep.h"
-#include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/transaction_log.h"
 #include "yb/rocksdb/util/autovector.h"
-#include "yb/rocksdb/util/event_logger.h"
-#include "yb/rocksdb/util/instrumented_mutex.h"
-#include "yb/rocksdb/util/stop_watch.h"
-#include "yb/rocksdb/util/thread_local.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/table_properties.h"
+#include "yb/rocksdb/types.h"
+#include "yb/util/result.h"
 
 namespace rocksdb {
+class ColumnFamilyData;
+class Directory;
+class EventLogger;
+class InstrumentedMutex;
+class LogBuffer;
+class Statistics;
+enum class FlushReason;
+struct EnvOptions;
+struct FileMetaData;
+struct JobContext;
+struct MutableCFOptions;
 
 using yb::Result;
 
-class Arena;
 class FileNumbersHolder;
 class FileNumbersProvider;
 class MemTable;
-class TableCache;
-class Version;
 class VersionEdit;
 class VersionSet;
 

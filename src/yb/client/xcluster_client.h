@@ -13,34 +13,43 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <string>
-#include <google/protobuf/repeated_field.h>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <unordered_map>
+#include <vector>
 
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/xrepl_types.h"
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/client_fwd.h"
 #include "yb/common/entity_ids_types.h"
-#include "yb/common/schema.h"
-#include "yb/util/net/net_util.h"
 #include "yb/util/strongly_typed_uuid.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/walltime.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 YB_STRONGLY_TYPED_UUID_DECL(UniverseUuid);
-
 class IsOperationDoneResult;
+class HostPort;
+class SchemaPB;
 
 namespace master {
 class CDCStreamOptionsPB;
 class InsertHistoricalColocatedSchemaPackingResponsePB;
-class MasterReplicationProxy;
 class GetXClusterStreamsResponsePB;
 }  // namespace master
 
 namespace rpc {
 class Messenger;
-class ProxyCache;
 class SecureContext;
 }  // namespace rpc
 

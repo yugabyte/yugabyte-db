@@ -14,15 +14,23 @@
 #pragma once
 
 #include <boost/container/small_vector.hpp>
+#include <glog/logging.h>
+#include <string.h>
+#include <algorithm>
+#include <cstddef>
+#include <string>
+#include <utility>
 
 #include "yb/gutil/casts.h"
-
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/status.h"
+#include "yb/gutil/port.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 
 class ScopedTrackedConsumption;
+class faststring;
 
 constexpr size_t kMinWriteBufferBlocks = 16;
 

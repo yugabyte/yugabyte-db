@@ -13,12 +13,27 @@
 
 #include "yb/master/cdcsdk_manager.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <list>
+#include <ostream>
+#include <string>
+#include <unordered_map>
+#include <functional>
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
-
 #include "yb/util/flags/flag_tags.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+
+namespace yb {
+namespace master {
+class Master;
+class SysCatalogTable;
+}  // namespace master
+}  // namespace yb
 
 DEFINE_test_flag(bool, cdcsdk_skip_processing_dynamic_table_addition, false,
     "Skip finding unprocessed tables for cdcsdk streams");

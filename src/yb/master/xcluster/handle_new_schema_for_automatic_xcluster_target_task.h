@@ -13,14 +13,33 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <functional>
+#include <mutex>
+#include <string>
+#include <vector>
+
 #include "yb/cdc/xcluster_types.h"
 #include "yb/cdc/xrepl_types.h"
-
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids_types.h"
-
 #include "yb/master/catalog_entity_tasks.h"
 #include "yb/master/master_fwd.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/server/monitored_task.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class ThreadPool;
+namespace master {
+class CatalogManager;
+struct LeaderEpoch;
+}  // namespace master
+namespace rpc {
+class Messenger;
+}  // namespace rpc
+}  // namespace yb
 
 namespace yb::master {
 

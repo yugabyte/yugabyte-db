@@ -13,23 +13,38 @@
 
 #include "yb/master/ysql_sequence_util.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/intrusive/list.hpp>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <utility>
+
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/entity_ids.h"
 #include "yb/common/pgsql_protocol.pb.h"
-
 #include "yb/rpc/sidecars.h"
-
-#include "yb/tserver/service_util.h"
-
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
-
 #include "yb/yql/pggate/util/pg_doc_data.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/pg_types.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/std_util.h"
 
 DECLARE_int32(master_yb_client_default_timeout_ms);
 

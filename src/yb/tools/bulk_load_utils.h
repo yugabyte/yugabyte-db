@@ -13,12 +13,13 @@
 
 #pragma once
 
-#include <set>
-
 #include <boost/tokenizer.hpp>
+#include <boost/token_functions.hpp>
+#include <set>
+#include <string>
 
-#include "yb/util/status_fwd.h"
 #include "yb/util/timestamp.h"
+#include "yb/util/result.h"
 
 namespace yb {
 namespace tools {

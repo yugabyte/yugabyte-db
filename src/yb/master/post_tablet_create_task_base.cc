@@ -13,7 +13,26 @@
 
 #include "yb/master/post_tablet_create_task_base.h"
 
+#include <glog/logging.h>
+#include <functional>
+#include <ostream>
+#include <utility>
+
 #include "yb/master/catalog_manager.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/status_format.h"
+
+namespace yb {
+class ThreadPool;
+namespace rpc {
+class Messenger;
+}  // namespace rpc
+}  // namespace yb
 
 using namespace std::placeholders;
 

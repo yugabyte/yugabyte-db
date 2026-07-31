@@ -32,6 +32,11 @@
 
 #include "yb/util/spinlock_profiling.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <string>
+#include <utility>
+
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/macros.h"
@@ -39,11 +44,16 @@
 #include "yb/gutil/spinlock.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/sysinfo.h"
-
 #include "yb/util/metrics.h"
 #include "yb/util/stack_trace.h"
 #include "yb/util/striped64.h"
 #include "yb/util/trace.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/util/atomic.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/metric_entity.h"
 
 DEFINE_UNKNOWN_int32(lock_contention_trace_threshold_cycles,
              2000000, // 2M cycles should be about 1ms

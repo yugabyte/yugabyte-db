@@ -41,20 +41,23 @@
 //--------------------------------------------------------------------------------------------------
 #pragma once
 
-#include <atomic>
+#include <boost/tti/has_type.hpp>
+#include <stddef.h>
 #include <deque>
 #include <list>
 #include <map>
 #include <memory>
-#include <new>
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-
-#include <boost/tti/has_type.hpp>
+#include <functional>
+#include <string>
+#include <type_traits>
+#include <utility>
 
 #include "yb/util/memory/arena_fwd.h"
+#include "yb/util/memory/arena.h"
 
 namespace yb {
 

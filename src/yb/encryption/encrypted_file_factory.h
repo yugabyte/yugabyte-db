@@ -15,13 +15,12 @@
 
 #include <memory>
 
-#include "yb/encryption/encryption_fwd.h"
-
 namespace yb {
 
 class Env;
 
 namespace encryption {
+class HeaderManager;
 
 std::unique_ptr<yb::Env> NewEncryptedEnv(std::unique_ptr<HeaderManager> header_manager);
 

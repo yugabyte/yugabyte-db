@@ -13,39 +13,57 @@
 
 #include "yb/dockv/primitive_value.h"
 
+#include <math.h>
+#include <string.h>
+#include <boost/container/small_vector.hpp>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/range/iterator_range_core.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <memory>
 #include <string>
+#include <algorithm>
+#include <sstream>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 #include "yb/dockv/doc_bson.h"
 #include "yb/util/logging.h"
-
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
-
 #include "yb/common/value.messages.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/intent.h"
 #include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/value_type.h"
 #include "yb/dockv/doc_vector_id.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/compare_util.h"
 #include "yb/util/decimal.h"
 #include "yb/util/endian_util.h"
-#include "yb/util/fast_varint.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
-#include "yb/util/status_log.h"
+#include "yb/common/column_id.h"
+#include "yb/common/constants.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/value.pb.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/gutil/endian.h"
+#include "yb/gutil/port.h"
+#include "yb/util/cast.h"
+#include "yb/util/format.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/varint.h"
 
 using std::string;
 using strings::Substitute;

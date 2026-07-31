@@ -13,41 +13,70 @@
 
 #include "yb/docdb/object_lock_manager.h"
 
+#include <boost/container/small_vector.hpp>
+#include <boost/multi_index/mem_fun.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <boost/multi_index/identity.hpp>
+#include <boost/multi_index/indexed_by.hpp>
+#include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index/tag.hpp>
+#include <boost/multi_index_container.hpp>
+#include <boost/multi_index_container_fwd.hpp>
+#include <boost/operators.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/range/iterator_range_core.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <atomic>
-#include <iostream>
 #include <memory>
 #include <mutex>
 #include <span>
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-#include <boost/container/small_vector.hpp>
-#include <boost/multi_index/mem_fun.hpp>
+#include <algorithm>
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <optional>
+#include <string_view>
+#include <type_traits>
+#include <unordered_set>
+#include <utility>
 
 #include "yb/ash/wait_state.h"
 #include "yb/docdb/local_waiting_txn_registry.h"
-#include "yb/docdb/lock_batch.h"
 #include "yb/docdb/lock_util.h"
 #include "yb/docdb/object_lock_shared_state_manager.h"
-
 #include "yb/rpc/messenger.h"
-#include "yb/rpc/thread_pool.h"
-
 #include "yb/server/server_base.h"
-
-#include "yb/util/callsite_profiling.h"
-#include "yb/util/debug/long_operation_tracker.h"
-
 #include "yb/util/enums.h"
 #include "yb/util/logging.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/metrics.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
+#include "yb/util/unique_lock.h"
+#include "yb/docdb/conflict_data.h"
+#include "yb/docdb/wait_queue.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/operation_counter.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/thread_pool.h"
+#include "yb/util/threadpool.h"
 
 DEFINE_test_flag(bool, assert_olm_empty_locks_map, false,
     "When set, asserts that the local locks map is empty at shutdown. Used in tests "
@@ -253,6 +282,7 @@ using WaiterEntryPtr = std::shared_ptr<WaiterEntry>;
 
 struct StartUsTag;
 struct DeadlineTag;
+
 using Waiters = boost::multi_index_container<
   WaiterEntryPtr,
   boost::multi_index::indexed_by<

@@ -31,15 +31,19 @@
 //
 // Tool to list local files and directories
 
-#include "yb/tools/fs_tool.h"
-
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <iostream>
 #include <vector>
+#include <sstream>
+#include <string>
+#include <utility>
 
+#include "yb/tools/fs_tool.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
-#include "yb/util/status.h"
 #include "yb/util/status_log.h"
+#include "yb/util/flags/flag_tags.h"
 
 DEFINE_NON_RUNTIME_bool(verbose, false, "Print additional information (e.g., log segment headers)");
 

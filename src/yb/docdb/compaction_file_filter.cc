@@ -13,21 +13,39 @@
 
 #include "yb/docdb/compaction_file_filter.h"
 
-#include <algorithm>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <ostream>
+#include <vector>
 
 #include "yb/common/hybrid_time.h"
-
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/dockv/doc_ttl_util.h"
 #include "yb/docdb/docdb_compaction_context.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/db/version_edit.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/status_format.h"
+#include "yb/storage/frontier.h"
+#include "yb/storage/storage_types.h"
+#include "yb/util/compare_util.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
 
 DEFINE_RUNTIME_bool(file_expiration_ignore_value_ttl, false,
     "When deciding whether a file has expired, assume that it is safe to ignore "

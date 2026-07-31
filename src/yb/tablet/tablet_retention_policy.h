@@ -13,11 +13,18 @@
 
 #pragma once
 
+#include <functional>
+#include <mutex>
+#include <set>
+#include <string>
+
 #include "yb/docdb/docdb_compaction_context.h"
-
 #include "yb/server/clock.h"
-
-#include "yb/tablet/tablet_fwd.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace tablet {

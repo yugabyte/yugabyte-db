@@ -15,21 +15,27 @@
 
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#include <glog/logging.h>
+#include <chrono>
+#include <mutex>
+#include <ostream>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/encryption/encryption.pb.h"
-
 #include "yb/master/master_encryption.pb.h"
-#include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
-#include "yb/master/master_replication.pb.h"
 #include "yb/master/universe_key_registry_service.h"
-
 #include "yb/util/env.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/faststring.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 using namespace std::chrono_literals;
 

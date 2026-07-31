@@ -31,26 +31,46 @@
 //
 #pragma once
 
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <string>
 #include <sstream>
 #include <vector>
+#include <functional>
+#include <map>
+#include <memory>
+#include <optional>
+#include <unordered_map>
+#include <utility>
 
-#include "yb/common/wire_protocol.pb.h"
 #include "yb/gutil/macros.h"
-
 #include "yb/master/master_fwd.h"
-
 #include "yb/server/webserver.h"
-#include "yb/server/monitored_task.h"
-
 #include "yb/util/enums.h"
-#include "yb/util/jsonwriter.h"
 #include "yb/util/ref_wrap.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/web_callback_registry.h"
 
 namespace yb {
 
 class HtmlPrintHelper;
-class Schema;
+enum PeerRole : int;
 
 namespace master {
 
@@ -58,9 +78,7 @@ static constexpr char kTserverAlive[] = "ALIVE";
 static constexpr char kTserverDead[] = "DEAD";
 
 class Master;
-struct TabletReplica;
 class TSDescriptor;
-class TSRegistrationPB;
 
 using TsUuidAndTabletReplica = std::pair<ConstRefWrap<std::string>, TabletReplica>;
 

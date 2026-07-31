@@ -13,14 +13,28 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <functional>
+
 #include "yb/rocksdb/flush_block_policy.h"
-#include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table/block_builder.h"
 #include "yb/rocksdb/table/format.h"
-
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/rocksdb/status.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace rocksdb {
+class Comparator;
+class SliceTransform;
+enum class IndexType;
+struct BlockBasedTableOptions;
 
 using yb::Result;
 

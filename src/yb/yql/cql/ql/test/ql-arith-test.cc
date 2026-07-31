@@ -13,11 +13,18 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <glog/logging.h>
+#include <memory>
+#include <ostream>
+#include <string>
+
 #include "yb/common/ql_value.h"
-
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/yql/cql/ql/test/ql-test-base.h"
+#include "gtest/gtest.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/util/logging.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/varint.h"
 
 using std::string;
 using std::shared_ptr;

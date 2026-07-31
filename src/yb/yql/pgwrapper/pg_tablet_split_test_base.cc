@@ -13,44 +13,31 @@
 
 #include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
 
-#include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
-
-#include "yb/docdb/bounded_rocksdb_iterator.h"
-#include "yb/dockv/doc_key.h"
-
-#include "yb/gutil/dynamic_annotations.h"
+#include <chrono>
+#include <iterator>
+#include <limits>
+#include <ratio>
+#include <utility>
 
 #include "yb/integration-tests/cluster_itest_util.h"
-
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
-#include "yb/master/master_admin.pb.h"
-#include "yb/master/master_admin.proxy.h"
-#include "yb/master/mini_master.h"
-
 #include "yb/rocksdb/db.h"
-
-#include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
-
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
-
-#include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
-#include "yb/tserver/tablet_service.h"
-#include "yb/tserver/tserver_error.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
-#include "yb/util/string_case.h"
-#include "yb/util/test_macros.h"
-#include "yb/util/test_thread_holder.h"
-
 #include "yb/util/tsan_util.h"
+#include "yb/client/client.h"
+#include "yb/common/common.pb.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/tablet_split_fwd.h"
+#include "yb/util/format.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
 
 using namespace std::literals;
 

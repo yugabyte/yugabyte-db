@@ -25,8 +25,13 @@
 
 #include <pthread.h>
 #include <unistd.h>
-
+#include <glog/logging.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <atomic>
+#include <algorithm>
+#include <string>
+#include <utility>
 #ifdef __linux__
 #include <sys/syscall.h>
 #endif
@@ -35,6 +40,7 @@
 #include "yb/util/format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
+#include "yb/util/logging.h"
 
 namespace rocksdb {
 

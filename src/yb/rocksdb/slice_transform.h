@@ -28,7 +28,7 @@
 
 #pragma once
 
-#include <string>
+#include <stddef.h>
 
 #include "yb/util/slice.h"
 

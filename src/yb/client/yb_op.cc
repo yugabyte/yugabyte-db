@@ -32,42 +32,71 @@
 
 #include "yb/client/yb_op.h"
 
+#include <gflags/gflags.h>
+#include <boost/container_hash/hash.hpp>
+#include <boost/intrusive/list.hpp>
+#include <boost/iterator/iterator_facade.hpp>
+#include <algorithm>
+#include <chrono>
+#include <compare>
+#include <concepts>
+#include <functional>
+#include <future>
+#include <set>
+#include <utility>
+
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
-
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/pgsql_protocol.messages.h"
-#include "yb/common/redis_protocol.pb.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/common/wire_protocol.pb.h"
-
-#include "yb/dockv/primitive_value_util.h"
-
 #include "yb/dockv/doc_key.h"
-#include "yb/dockv/primitive_value.h"
-
 #include "yb/dockv/value_type.h"
 #include "yb/qlexpr/doc_scanspec_util.h"
 #include "yb/qlexpr/ql_expr_util.h"
 #include "yb/qlexpr/ql_rowblock.h"
 #include "yb/qlexpr/ql_scanspec.h"
-
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/async_util.h"
-#include "yb/util/flags.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/redis_protocol.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+
+namespace yb {
+namespace dockv {
+class YBPartialRow;
+}  // namespace dockv
+namespace rpc {
+class Sidecars;
+}  // namespace rpc
+}  // namespace yb
 
 using namespace std::literals;
 

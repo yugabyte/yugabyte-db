@@ -32,18 +32,23 @@
 
 #include "yb/util/failure_detector.h"
 
+#include <glog/logging.h>
+#include <stddef.h>
 #include <mutex>
 #include <unordered_map>
+#include <memory>
+#include <ostream>
+#include <utility>
 
 #include "yb/util/logging.h"
-
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
-
-#include "yb/util/locks.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 

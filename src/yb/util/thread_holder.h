@@ -16,13 +16,19 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <concepts>
 #include <thread>
+#include <atomic>
+#include <chrono>
+#include <mutex>
+#include <utility>
+#include <vector>
 
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
-#include "yb/util/thread.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 

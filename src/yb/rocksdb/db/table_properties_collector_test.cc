@@ -22,9 +22,7 @@
 #include <memory>
 #include <string>
 #include <utility>
-#include <vector>
-
-#include <gtest/gtest.h>
+#include <initializer_list>
 
 #include "yb/rocksdb/db/builder.h"
 #include "yb/rocksdb/db/db_impl.h"
@@ -40,8 +38,14 @@
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/testutil.h"
-
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/db/column_family.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/rocksdb/types.h"
+#include "yb/util/file_system.h"
 
 using std::unique_ptr;
 

@@ -13,6 +13,10 @@
 
 #include "yb/integration-tests/load_balancer_test_util.h"
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <ostream>
+
 #include "yb/util/logging.h"
 
 namespace yb {

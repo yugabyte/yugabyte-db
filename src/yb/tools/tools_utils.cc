@@ -13,11 +13,20 @@
 
 #include "yb/tools/tools_utils.h"
 
+#include <gflags/gflags.h>
+#include <string>
+
 #include "yb/rpc/secure.h"
 #include "yb/rpc/secure_stream.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/result.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/status.h"
+
+namespace yb {
+namespace rpc {
+class MessengerBuilder;
+}  // namespace rpc
+}  // namespace yb
 
 DEFINE_NON_RUNTIME_string(certs_dir_name, "",
     "Directory with certificates to use for secure server connection.");

@@ -13,9 +13,19 @@
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 
-#include "yb/docdb/key_bounds.h"
+#include <glog/logging.h>
+#include <ostream>
 
+#include "yb/docdb/key_bounds.h"
 #include "yb/rocksdb/db.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
+
+namespace rocksdb {
+struct ReadOptions;
+}  // namespace rocksdb
 
 namespace yb::docdb {
 

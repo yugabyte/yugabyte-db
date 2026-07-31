@@ -14,9 +14,7 @@
 #include "yb/common/ysql_operation_lease.h"
 
 #include "yb/common/common_flags.h"
-
-#include "yb/util/atomic.h"
-#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
 
 DEFINE_RUNTIME_bool(enable_ysql_operation_lease, true, "Enables the ysql client operation lease. "
                     "The client operation lease must " "be held by a tserver to host pg sessions. "

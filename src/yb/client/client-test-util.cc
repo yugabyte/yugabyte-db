@@ -33,16 +33,16 @@
 #include "yb/client/client-test-util.h"
 
 #include <stdint.h>
-
+#include <glog/logging.h>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
+#include <algorithm>
+#include <functional>
+#include <optional>
+#include <ostream>
 
-#include <boost/function.hpp>
-
-#include "yb/client/client_fwd.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/namespace_info.h"
@@ -51,24 +51,26 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
-
-#include "yb/common/common.pb.h"
 #include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
-
 #include "yb/master/master_types.pb.h"
-
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
-#include "yb/util/status_callback.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/gutil/port.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 
 using std::string;
 

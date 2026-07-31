@@ -13,20 +13,35 @@
 
 #include "yb/master/xcluster/add_index_to_bidirectional_xcluster_target_task.h"
 
+#include <glog/logging.h>
+#include <algorithm>
+#include <functional>
+#include <optional>
+#include <ostream>
+#include <utility>
+#include <vector>
+
 #include "yb/client/client.h"
-#include "yb/client/table_info.h"
 #include "yb/client/xcluster_client.h"
-#include "yb/client/yb_table_name.h"
-
 #include "yb/common/xcluster_util.h"
-
-#include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
-
 #include "yb/util/is_operation_done_result.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_uuid.h"
+
+namespace yb {
+namespace master {
+struct LeaderEpoch;
+}  // namespace master
+}  // namespace yb
 
 namespace yb::master {
 

@@ -13,27 +13,49 @@
 
 #include "yb/master/sys_catalog_writer.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <google/protobuf/message.h>
+#include <stddef.h>
+#include <sys/types.h>
+#include <optional>
+#include <ostream>
+
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_protocol_util.h"
-
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
-
 #include "yb/dockv/reader_projection.h"
-
-#include "yb/gutil/casts.h"
-
-#include "yb/master/master_types.pb.h"
 #include "yb/master/sys_catalog_constants.h"
-
 #include "yb/qlexpr/ql_expr.h"
-
 #include "yb/tablet/tablet.h"
-
 #include "yb/tserver/tserver.messages.h"
-
 #include "yb/util/pb_util.h"
 #include "yb/util/status_format.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/ql_datatype.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_value.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/schema.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/util/faststring.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+namespace master {
+enum SysRowEntryType : int;
+}  // namespace master
+}  // namespace yb
 
 DEFINE_RUNTIME_bool(ignore_null_sys_catalog_entries, false,
                     "Whether we should ignore system catalog entries with NULL value during "

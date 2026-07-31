@@ -19,15 +19,13 @@
 //
 #include "yb/util/string_util.h"
 
-#include <regex>
-
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>
-
-#include <boost/preprocessor/cat.hpp>
-
-#include "yb/util/logging.h"
+#include <glog/logging.h>
+#include <boost/iterator/iterator_facade.hpp>
+#include <regex>
+#include <cctype>
 
 using std::vector;
 using std::regex;

@@ -13,18 +13,22 @@
 
 #include "yb/dockv/value.h"
 
+#include <glog/logging.h>
 #include <string>
+#include <cstddef>
+#include <optional>
+#include <ostream>
 
 #include "yb/common/table_properties_constants.h"
-
 #include "yb/dockv/value_type.h"
-
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/fast_varint.h"
 #include "yb/util/kv_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/gutil/endian.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 
 namespace yb::dockv {
 

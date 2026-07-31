@@ -11,36 +11,63 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <string.h>
+#include <boost/algorithm/string/predicate.hpp>
+#include <boost/asio/ip/address.hpp>
+#include <boost/asio/ip/basic_endpoint.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <chrono>
 #include <memory>
 #include <random>
 #include <string>
 #include <thread>
 #include <vector>
-
-#include <boost/algorithm/string.hpp>
+#include <algorithm>
+#include <atomic>
+#include <compare>
+#include <cstdio>
+#include <cstdlib>
+#include <ctime>
+#include <functional>
+#include <limits>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string_view>
+#include <tuple>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
 
 #include "yb/client/yb_table_name.h"
-
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/redis_table_test_base.h"
-
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/flush_manager.h"
 #include "yb/master/master_admin.pb.h"
-
 #include "yb/rpc/io_thread_pool.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
-
 #include "yb/util/cast.h"
 #include "yb/util/enums.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/socket.h"
-#include "yb/util/protobuf.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
@@ -48,12 +75,36 @@
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/value_changer.h"
-
 #include "yb/yql/redis/redisserver/redis_client.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/redis/redisserver/redis_encoding.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
-#include "yb/util/flags.h"
+#include "gtest/gtest.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/walltime.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/mini_master.h"
+#include "yb/server/rpc_server.h"
+#include "yb/server/webserver_options.h"
+#include "yb/util/file_system.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/random_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
+#include "yb/yql/redis/redisserver/redis_server_options.h"
 
 DECLARE_uint64(redis_max_concurrent_commands);
 DECLARE_uint64(redis_max_batch);

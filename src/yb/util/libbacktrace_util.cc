@@ -13,18 +13,23 @@
 
 #include "yb/util/libbacktrace_util.h"
 
-#include <pthread.h>
+#include <assert.h>
+#include <backtrace.h>
+#include <cxxabi.h>
+#include <inttypes.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <csignal>
 #include <regex>
 #include <string>
 #include <thread>
 
 #include "yb/gutil/singleton.h"
-
-#include "yb/util/flags.h"
-#include "yb/util/format.h"
 #include "yb/util/source_location.h"
 #include "yb/util/symbolize.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/util/cast.h"
+#include "yb/util/flags/flag_tags.h"
 
 using std::string;
 

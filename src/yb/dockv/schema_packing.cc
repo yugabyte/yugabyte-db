@@ -13,11 +13,29 @@
 
 #include "yb/dockv/schema_packing.h"
 
+#include <gflags/gflags.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <algorithm>
+#include <compare>
+#include <ostream>
+#include <tuple>
+#include <utility>
+
 #include "yb/common/column_id.h"
 #include "yb/common/ql_protocol.messages.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
-
 #include "yb/dockv/dockv.pb.h"
 #include "yb/dockv/packed_row.h"
 #include "yb/dockv/packed_value.h"
@@ -25,15 +43,29 @@
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/reader_projection.h"
 #include "yb/dockv/value_packing.h"
-#include "yb/dockv/value_packing_v2.h"
-
 #include "yb/gutil/casts.h"
-
-#include "yb/util/coding_consts.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/types.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/endian.h"
+#include "yb/gutil/port.h"
+#include "yb/util/compare_util.h"
+#include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/tostring.h"
+#include "yb/dockv/dockv_fwd.h"
+
+namespace yb {
+class SchemaPB;
+}  // namespace yb
 
 DEFINE_test_flag(bool, dcheck_for_missing_schema_packing, true,
                  "Whether we use check failure for missing schema packing in debug builds");

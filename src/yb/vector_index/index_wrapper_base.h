@@ -13,19 +13,28 @@
 
 #pragma once
 
+#include <gflags/gflags.h>
 #include <atomic>
 #include <optional>
 #include <shared_mutex>
-#include <utility>
+#include <cstddef>
+#include <cstring>
+#include <iterator>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <vector>
 
 #include "yb/rocksdb/util/heap.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/status_format.h"
 #include "yb/util/two_group_mutex.h"
-
 #include "yb/vector_index/coordinate_types.h"
 #include "yb/vector_index/vector_index_if.h"
+#include "yb/gutil/port.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/vector_index/distance.h"
+#include "yb/vector_index/vector_index_fwd.h"
 
 namespace rocksdb {
 class Cache;

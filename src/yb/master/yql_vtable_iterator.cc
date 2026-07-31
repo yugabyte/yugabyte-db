@@ -12,19 +12,20 @@
 //
 
 #include "yb/master/yql_vtable_iterator.h"
-#include <iterator>
 
-#include "yb/common/ql_protocol.messages.h"
+#include <utility>
+
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/qlexpr/ql_expr.h"
 #include "yb/qlexpr/ql_rowblock.h"
-
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
 
 namespace yb {
 namespace master {

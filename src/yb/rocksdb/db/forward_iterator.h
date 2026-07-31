@@ -21,26 +21,30 @@
 #pragma once
 
 
+#include <stdint.h>
 #include <string>
 #include <vector>
 #include <queue>
 
-#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/util/arena.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace rocksdb {
 
 class DBImpl;
-class Env;
 struct SuperVersion;
 class ColumnFamilyData;
 class LevelIterator;
 class VersionStorageInfo;
 struct FileMetaData;
+class SliceTransform;
 
 class MinIterComparator {
  public:

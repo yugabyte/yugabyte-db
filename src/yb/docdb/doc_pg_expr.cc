@@ -13,28 +13,42 @@
 
 #include "yb/docdb/doc_pg_expr.h"
 
+#include <boost/container/small_vector.hpp>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/iterator/iterator_facade.hpp>
 #include <map>
 #include <optional>
 #include <utility>
-
-#include <boost/container/small_vector.hpp>
+#include <algorithm>
+#include <iterator>
+#include <ostream>
 
 #include "yb/common/schema.h"
 #include "yb/common/pgsql_protocol.messages.h"
-
 #include "yb/docdb/doc_pgsql_scanspec.h"
-#include "yb/docdb/docdb_pgapi.h"
 #include "yb/docdb/docdb_pgapi_private.h"
-
 #include "yb/dockv/reader_projection.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/status_log.h"
-
 #include "yb/yql/pggate/pg_value.h"
-
 #include "ybgate/ybgate_api.h"
 #include "ybgate/ybgate_cpp_util.h"
+#include "yb/bfpg/tserver_opcodes.h"
+#include "yb/common/column_id.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/gutil/macros.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/util/format.h"
+#include "yb/util/status_format.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace dockv {
+class PgTableRow;
+}  // namespace dockv
+}  // namespace yb
 
 namespace yb::docdb {
 namespace {

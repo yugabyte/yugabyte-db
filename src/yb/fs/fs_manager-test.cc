@@ -30,16 +30,21 @@
 // under the License.
 //
 
-#include <boost/algorithm/string/predicate.hpp>
+#include <glog/stl_logging.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <initializer_list>
+#include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <unordered_map>
+#include <vector>
+#include <functional>
 
 #include "yb/util/logging.h"
-#include <glog/stl_logging.h>
-#include <gtest/gtest.h>
-
 #include "yb/fs/fs_manager.h"
-
 #include "yb/gutil/strings/util.h"
-
 #include "yb/util/metrics.h"
 #include "yb/util/multi_drive_test_env.h"
 #include "yb/util/status.h"
@@ -47,6 +52,14 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/fs/fs.pb.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/env.h"
+#include "yb/util/file_system.h"
+#include "yb/util/path_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
 
 using std::string;
 using std::vector;

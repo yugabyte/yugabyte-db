@@ -14,20 +14,20 @@
 #pragma once
 
 #include <string>
-
-#include "yb/client/client_fwd.h"
-
-#include "yb/common/common_fwd.h"
-#include "yb/common/common_types.pb.h"
-
-#include "yb/master/master_ddl.fwd.h"
-#include "yb/master/master_fwd.h"
+#include <optional>
 
 #include "yb/util/monotime.h"
-#include "yb/util/status_fwd.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/status.h"
 
 namespace yb {
+enum YQLDatabase : int;
+namespace master {
+class AlterNamespaceRequestPB;
+}  // namespace master
+
 namespace client {
+class YBClient;
 
 class YBNamespaceAlterer {
  public:

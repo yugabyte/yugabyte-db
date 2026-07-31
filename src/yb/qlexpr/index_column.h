@@ -16,6 +16,10 @@
 #include "yb/common/column_id.h"
 #include "yb/common/common.pb.h"
 
+namespace yb {
+class LWQLExpressionPB;  // IWYU pragma: keep
+}  // namespace yb
+
 namespace yb::qlexpr {
 
 // Index column mapping.

@@ -13,19 +13,39 @@
 
 #include "yb/master/yql_local_vtable.h"
 
-#include "yb/common/ql_protocol.messages.h"
+#include <glog/logging.h>
+#include <stddef.h>
+#include <future>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+#include "yb/common/ql_protocol.messages.h" // IWYU pragma: keep
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
-
 #include "yb/master/master.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/ts_descriptor.h"
-
 #include "yb/rpc/messenger.h"
-
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/status_log.h"
+#include "yb/common/common_net.messages.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/master/master_defaults.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/util/yql_vtable_helpers.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/uuid.h"
 
 using std::vector;
 

@@ -12,15 +12,22 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <unordered_map>
+
 #include "yb/master/async_rpc_tasks_base.h"
-#include "yb/master/async_task_result_collector.h"
-
 #include "yb/tserver/tserver_admin.pb.h"
-
-#include "yb/util/countdown_latch.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/server/monitored_task.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
+class ThreadPool;
+
 namespace master {
+class Master;
+template <typename TaskRespType> class TaskResultCollector;
 
 class AsyncGetActiveRbsInfoTask : public RetrySpecificTSRpcTask {
  public:

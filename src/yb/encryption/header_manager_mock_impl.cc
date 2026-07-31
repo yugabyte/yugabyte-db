@@ -12,7 +12,11 @@
 //
 
 #include "yb/encryption/header_manager_mock_impl.h"
+
+#include <string.h>
+
 #include "yb/encryption/encryption_util.h"
+#include "yb/util/result.h"
 
 using std::string;
 

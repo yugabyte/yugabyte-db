@@ -11,27 +11,43 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <sys/types.h>
+#include <functional>
+#include <limits>
+#include <ostream>
+#include <string>
+#include <vector>
 
-#include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-#include "yb/common/ql_type.h"
-
 #include "yb/dockv/doc_key.h"
-#include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/dockv_test_util.h"
 #include "yb/dockv/packed_row.h"
-#include "yb/dockv/packed_value.h"
 #include "yb/dockv/pg_key_decoder.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
-#include "yb/dockv/value_packing.h"
-
-#include "yb/util/decimal.h"
-#include "yb/util/fast_varint.h"
 #include "yb/util/format.h"
-#include "yb/util/random_util.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/constants.h"
+#include "yb/common/value.messages.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/schema_packing.h"
+#include "yb/util/byte_buffer.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+
+namespace yb {
+namespace dockv {
+enum class PackedRowVersion;
+}  // namespace dockv
+}  // namespace yb
 
 namespace yb::dockv {
 

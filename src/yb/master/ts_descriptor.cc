@@ -32,23 +32,32 @@
 
 #include "yb/master/ts_descriptor.h"
 
-#include <vector>
+#include <gflags/gflags.h>
+#include <math.h>
+#include <algorithm>
+#include <limits>
+#include <ostream>
 
-#include "yb/common/common.pb.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
-#include "yb/common/ysql_operation_lease.h"
-
 #include "yb/master/catalog_manager_util.h"
-#include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_util.h"
-
-#include "yb/util/atomic.h"
-#include "yb/util/flags.h"
 #include "yb/util/status_format.h"
+#include "yb/common/version_info.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+}  // namespace yb
 
 DECLARE_uint64(master_ysql_operation_lease_ttl_ms);
 DECLARE_uint32(master_ts_ysql_catalog_lease_ms);

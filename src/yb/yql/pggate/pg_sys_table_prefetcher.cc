@@ -15,30 +15,33 @@
 
 #include "yb/yql/pggate/pg_sys_table_prefetcher.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <google/protobuf/io/coded_stream.h>
+#include <stddef.h>
+#include <boost/preprocessor/tuple/to_seq.hpp>
 #include <algorithm>
 #include <functional>
 #include <limits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <compare>
+#include <ostream>
+#include <set>
+#include <type_traits>
 
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/pg_types.h"
-#include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/schema.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/rpc/outbound_call.h"
-
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/tostring.h"
-
 #include "yb/yql/pggate/pg_column.h"
 #include "yb/yql/pggate/pg_doc_op.h"
 #include "yb/yql/pggate/pg_op.h"
@@ -46,7 +49,30 @@
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pggate_flags.h"
-#include "yb/yql/pggate/util/ybc_util.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/constants.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/cast.h"
+#include "yb/util/lw_function.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/yql/pggate/pg_doc_metrics.h"
+#include "yb/yql/pggate/pg_gate_fwd.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
+namespace yb {
+enum PgsqlMetricsCaptureType : int;
+}  // namespace yb
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_read_request_caching, true, "Enable read request caching");
 DEFINE_NON_RUNTIME_uint32(pg_cache_response_renew_soft_lifetime_limit_ms, 3 * 60 * 1000,

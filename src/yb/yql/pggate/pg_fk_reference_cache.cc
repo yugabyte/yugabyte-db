@@ -13,23 +13,31 @@
 
 #include "yb/yql/pggate/pg_fk_reference_cache.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
 #include <algorithm>
-#include <string>
 #include <utility>
+#include <optional>
+#include <ostream>
+#include <span>
+#include <unordered_set>
 
 #include "nodes/lockoptions.h"
-
 #include "yb/common/common.pb.h"
-
 #include "yb/gutil/port.h"
-
-#include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
-
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_ybctid_reader.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
+#include "yb/common/transaction.pb.h"
+
+namespace yb {
+namespace pggate {
+class PgSession;
+}  // namespace pggate
+}  // namespace yb
 
 DECLARE_bool(enable_wait_queues);
 

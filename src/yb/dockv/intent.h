@@ -13,26 +13,30 @@
 
 #pragma once
 
+#include <boost/function.hpp>
+#include <boost/logic/tribool.hpp>
+#include <stdint.h>
 #include <ostream>
 #include <string>
 
-#include <boost/function.hpp>
-#include <boost/logic/tribool.hpp>
-
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/transaction.h"
-
-#include "yb/dockv/dockv.pb.h"
 #include "yb/dockv/dockv_fwd.h"
-
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/util/format.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
 class RefCntPrefix;
+enum IsolationLevel : int;
+enum RowMarkType : int;
 
 namespace dockv {
+enum DocdbLockMode : int;
 
 // We may write intents with empty groups to intents_db, but when interacting with WaitQueue or
 // SharedLockManager, we expect no kGroupEnd markers in keys. This method normalizes the passed
@@ -133,15 +137,12 @@ YB_STRONGLY_TYPED_BOOL(LastKey);
 
 // Indicates that doc key is an ancestor of provided key or key it self.
 YB_STRONGLY_TYPED_BOOL(AncestorDocKey);
-
 // Indicates that the intent contains a full document key, i.e. it does not omit any final range
 // components of the document key. This flag is also true for intents that include subdocument keys.
 YB_STRONGLY_TYPED_BOOL(FullDocKey);
-
 // Indicates that a doc key is the top level key which has no hash component, range component
 // and sub keys.
 YB_STRONGLY_TYPED_BOOL(IsTopLevelKey);
-
 // Indicates whether we should skip prefix.
 YB_STRONGLY_TYPED_BOOL(SkipPrefix);
 

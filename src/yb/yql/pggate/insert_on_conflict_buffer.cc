@@ -14,6 +14,8 @@
 #include "yb/yql/pggate/insert_on_conflict_buffer.h"
 
 #include <utility>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "yb/util/status_format.h"
 

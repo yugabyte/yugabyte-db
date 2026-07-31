@@ -13,8 +13,15 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <stdint.h>
+#include <string.h>
+
 #include "yb/yql/pggate/test/pggate_test.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "pg_type_d.h"
+#include "yb/common/value.messages.h"
+#include "yb/yql/pggate/util/ybc_util.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
 namespace pggate {

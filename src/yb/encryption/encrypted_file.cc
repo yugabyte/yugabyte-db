@@ -13,14 +13,18 @@
 
 #include "yb/encryption/encrypted_file.h"
 
+#include <gflags/gflags.h>
+#include <initializer_list>
+#include <utility>
+
 #include "yb/encryption/cipher_stream.h"
 #include "yb/encryption/cipher_stream_fwd.h"
-#include "yb/encryption/header_manager.h"
 #include "yb/encryption/encryption_util.h"
-
-#include "yb/util/env.h"
 #include "yb/util/cast.h"
-#include "yb/util/flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
 
 DEFINE_UNKNOWN_bool(encryption_counter_overflow_read_path_workaround, true,
             "Enable a read-path workaround for the encryption counter overflow bug #3707. "

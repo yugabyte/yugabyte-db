@@ -88,6 +88,8 @@
 #include "yb/yql/cql/ql/ptree/pt_truncate.h"
 #include "yb/yql/cql/ql/ptree/pt_dml_using_clause.h"
 #include "yb/yql/cql/ql/ptree/pt_drop.h"
+#include "yb/yql/cql/ql/ptree/pt_option.h"
+#include "yb/yql/cql/ql/ptree/pt_table_property.h"
 #include "yb/yql/cql/ql/ptree/pt_type.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
@@ -183,6 +185,7 @@ typedef FunctionParameterMode          fun_param_mode;
 #include <gflags/gflags.h>
 
 #include "yb/yql/cql/ql/parser/parser.h"
+#include "yb/yql/cql/ql/parser/location.h"
 #include "yb/yql/cql/ql/parser/scanner_util.h"
 #include "yb/util/stol_utils.h"
 

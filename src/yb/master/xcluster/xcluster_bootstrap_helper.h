@@ -13,19 +13,26 @@
 
 #pragma once
 
+#include <string>
+#include <unordered_map>
+#include <vector>
+#include <functional>
+
 #include "yb/cdc/xcluster_types.h"
 #include "yb/master/leader_epoch.h"
-#include "yb/master/master_fwd.h"
-#include "yb/util/status_fwd.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/master_backup.pb.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 template<class State>
 class CowWriteLock;
-
-namespace rpc {
-class RpcContext;
-}  // namespace rpc
+class HostPortPB;
 
 namespace client {
 class YBTableName;
@@ -37,6 +44,11 @@ class SetupNamespaceReplicationWithBootstrapRequestPB;
 class SetupNamespaceReplicationWithBootstrapResponsePB;
 class UniverseReplicationBootstrapInfo;
 struct PersistentUniverseReplicationBootstrapInfo;
+class CatalogManager;
+class Master;
+class SysCatalogTable;
+class XClusterManager;
+enum SysUniverseReplicationBootstrapEntryPB_State : int;
 
 // NOTE:
 // SetupUniverseReplicationWithBootstrap is currently not in use. There are no tests that cover

@@ -14,11 +14,20 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
-#include "yb/gen_yrpc/printer.h"
+#include "yb/gen_yrpc/gen_yrpc_fwd.h"
+
+namespace google {
+namespace protobuf {
+class FileDescriptor;
+class ServiceDescriptor;
+}  // namespace protobuf
+}  // namespace google
 
 namespace yb {
 namespace gen_yrpc {
+class YBPrinter;
 
 struct MetricDescriptor {
   std::string name;

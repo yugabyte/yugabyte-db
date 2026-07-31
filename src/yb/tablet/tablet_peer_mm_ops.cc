@@ -32,14 +32,17 @@
 
 #include "yb/tablet/tablet_peer_mm_ops.h"
 
+#include <glog/logging.h>
 #include <string>
+#include <ostream>
 
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/util/metrics.h"
 #include "yb/util/logging.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/util/status.h"
 
 METRIC_DEFINE_gauge_uint32(table, log_gc_running,
                            "Log GCs Running",

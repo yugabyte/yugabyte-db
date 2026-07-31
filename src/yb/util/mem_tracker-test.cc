@@ -30,18 +30,24 @@
 // under the License.
 //
 
-#include "yb/util/mem_tracker.h"
-
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <chrono>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <cmath>
+#include <functional>
+#include <initializer_list>
+#include <memory>
+#include <ostream>
 
+#include "yb/util/mem_tracker.h"
 #include "yb/gutil/strings/human_readable.h"
-
 #include "yb/tserver/server_main_util.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
@@ -50,6 +56,11 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tcmalloc_util.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 DECLARE_bool(mem_tracker_include_pageheap_free_in_root_consumption);
 DECLARE_double(mem_tracker_external_consumption_accuracy_percentage);

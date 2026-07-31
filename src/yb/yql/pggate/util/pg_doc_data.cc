@@ -15,14 +15,17 @@
 
 #include "yb/yql/pggate/util/pg_doc_data.h"
 
+#include <type_traits>
+
 #include "yb/common/ql_value.h"
 #include "yb/common/value.messages.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
-
-#include "yb/util/format.h"
 #include "yb/util/status_format.h"
+#include "yb/common/ql_datatype.h"
+#include "yb/common/value.pb.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/write_buffer.h"
 
 namespace yb {
 namespace pggate {

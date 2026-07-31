@@ -14,23 +14,37 @@
 #pragma once
 
 #include <stdint.h>
+#include <functional>
+#include <future>
+#include <map>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
 
-#include "yb/client/client_fwd.h"
-
-#include "yb/common/common_fwd.h"
 #include "yb/common/transaction.h"
-
 #include "yb/docdb/conflict_data.h"
-#include "yb/docdb/lock_batch.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/server/server_fwd.h"
-
-#include "yb/util/threadpool.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/util/metrics_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class ThreadPoolToken;
+namespace client {
+class YBClient;
+}  // namespace client
+namespace rpc {
+class Messenger;
+}  // namespace rpc
+
 namespace docdb {
+class LockBatch;
+class TableInfoProvider;
 
 class ScopedWaitingTxnRegistration {
  public:
@@ -143,6 +157,7 @@ class WaitQueue {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

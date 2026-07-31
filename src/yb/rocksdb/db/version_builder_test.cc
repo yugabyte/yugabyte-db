@@ -18,16 +18,28 @@
 // under the License.
 //
 
+#include <assert.h>
+#include <stdint.h>
+#include <boost/move/iterator.hpp>
 #include <string>
-
-#include <gtest/gtest.h>
+#include <memory>
+#include <vector>
 
 #include "yb/rocksdb/db/version_edit.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/env.h"
-
 #include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testutil.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/db/version_builder.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/types.h"
+#include "yb/rocksdb/util/mutable_cf_options.h"
+#include "yb/util/tostring.h"
 
 namespace rocksdb {
 

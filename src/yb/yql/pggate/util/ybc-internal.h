@@ -22,9 +22,11 @@
 #include <cstddef>
 #include <string_view>
 
-#include "yb/util/status_fwd.h"
-
 #include "yb/yql/pggate/util/ybc_util.h"
+
+namespace yb {
+class Status;
+}  // namespace yb
 
 namespace yb::pggate {
 

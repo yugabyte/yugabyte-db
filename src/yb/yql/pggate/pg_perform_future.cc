@@ -13,13 +13,19 @@
 
 #include "yb/yql/pggate/pg_perform_future.h"
 
-#include <chrono>
 #include <utility>
+#include <memory>
+#include <optional>
 
 #include "yb/common/pgsql_error.h"
-
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_session.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/util/status.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/yb_pg_errcodes.h"
+#include "yb/yql/pggate/pg_doc_metrics.h"
 
 namespace yb::pggate {
 namespace {

@@ -29,12 +29,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include <math.h>
-
-#include "yb/util/logging.h"
+#include <glog/logging.h>
+#include <string.h>
+#include <cmath>
+#include <ostream>
 
 #include "yb/util/bloom_filter.h"
-#include "yb/util/bitmap.h"
 
 namespace yb {
 

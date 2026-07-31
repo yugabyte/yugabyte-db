@@ -31,51 +31,89 @@
 //
 #pragma once
 
+#include <rapidjson/document.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <functional>
 #include <string>
 #include <vector>
-
-#include "yb/cdc/cdc_service.pb.h"
-#include "yb/cdc/xcluster_types.h"
+#include <chrono>
+#include <memory>
+#include <optional>
+#include <ratio>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "yb/common/transaction.h"
-
 #include "yb/client/client.h"
 #include "yb/client/namespace_info.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/master/master_admin.pb.h"
 #include "yb/rpc/rpc_controller.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/slice.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 #include "yb/util/type_traits.h"
-#include "yb/common/entity_ids.h"
-#include "yb/consensus/consensus_types.pb.h"
 #include "yb/common/snapshot.h"
-
-#include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
-#include "yb/master/master_fwd.h"
-
-#include "yb/tools/yb-admin_cli.h"
-#include "yb/rpc/rpc_fwd.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/master/master_backup.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/enums.h"
+#include "yb/util/result.h"
 
 namespace yb {
 
 class HybridTime;
 class IsOperationDoneResult;
+class PlacementInfoPB;
+class QLTypePB;
+class ReplicationInfoPB;
+namespace cdc {
+enum CDCRecordType : int;
+}  // namespace cdc
+namespace master {
+class MasterAdminProxy;
+class MasterBackupProxy;
+class MasterClientProxy;
+class MasterClusterProxy;
+class MasterDdlProxy;
+class MasterEncryptionProxy;
+class MasterReplicationProxy;
+class MasterTestProxy;
+class SysNamespaceEntryPB;
+class TSInfoPB;
+class TabletLocationsPB;
+}  // namespace master
+namespace rpc {
+class Messenger;
+class ProxyCache;
+class SecureContext;
+}  // namespace rpc
 
 namespace consensus {
 class ConsensusServiceProxy;
+enum ChangeConfigType : int;
 }
 
 namespace client {
-class YBClient;
 class XClusterClient;
 }
 
@@ -109,6 +147,7 @@ class TableNameResolver {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

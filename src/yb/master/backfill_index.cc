@@ -13,10 +13,8 @@
 
 #include "yb/master/backfill_index.h"
 
-#include <pthread.h>
-#include <stdlib.h>
-#include <sys/types.h>
-
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <algorithm>
 #include <functional>
 #include <memory>
@@ -24,24 +22,20 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-#include <boost/preprocessor/cat.hpp>
+#include <chrono>
+#include <compare>
+#include <future>
+#include <iterator>
+#include <ratio>
+#include <sstream>
 
 #include "yb/ash/wait_state.h"
-
 #include "yb/tserver/tserver_admin.proxy.h"
-
 #include "yb/common/wire_protocol.h"
-
-#include "yb/docdb/doc_rowwise_iterator.h"
-
-#include "yb/dockv/reader_projection.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
@@ -52,18 +46,29 @@
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/ysql/ysql_manager_if.h"
-
-#include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_metadata.h"
-#include "yb/tablet/tablet_peer.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
-#include "yb/util/uuid.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/walltime.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/master/tasks_tracker.h"
+#include "yb/master/ysql_ddl_verification_task.h"
+#include "yb/server/clock.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/cow_object.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
 
 using std::vector;
 using std::string;

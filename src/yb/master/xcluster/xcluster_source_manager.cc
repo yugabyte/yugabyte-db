@@ -13,18 +13,35 @@
 
 #include "yb/master/xcluster/xcluster_source_manager.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <algorithm>
+#include <future>
+#include <initializer_list>
+#include <mutex>
+#include <set>
+#include <type_traits>
 
-#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_state_table.h"
-#include "yb/cdc/xcluster_types.h"
-
 #include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
-
 #include "yb/common/xcluster_util.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_types.h"
 #include "yb/master/master.h"
@@ -37,12 +54,50 @@
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
 #include "yb/master/xcluster/xcluster_status.h"
 #include "yb/master/ysql_sequence_util.h"
-
 #include "yb/tserver/pg_create_table.h"
-
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/xcluster_producer.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/stl_util.h"
+#include "yb/gutil/walltime.h"
+#include "yb/master/catalog_entity_base.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/master/sys_catalog.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/server/clock.h"
+#include "yb/util/async_util.h"
+#include "yb/util/cow_object.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/jsonwriter.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_string.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+class HostPort;
+namespace master {
+class NamespaceIdentifierPB;
+}  // namespace master
+}  // namespace yb
 
 DEFINE_RUNTIME_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
     "When set, it enables automatic tablet splitting for tables that are part of an "

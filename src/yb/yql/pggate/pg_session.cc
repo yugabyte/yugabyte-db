@@ -15,26 +15,26 @@
 
 #include "yb/yql/pggate/pg_session.h"
 
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
 #include <algorithm>
 #include <optional>
-#include <ranges>
 #include <set>
 #include <unordered_map>
 #include <utility>
 #include <vector>
-
-#include "yb/client/table_info.h"
+#include <ostream>
+#include <string_view>
 
 #include "yb/common/pg_types.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/tablespace_parser.h"
-
 #include "yb/docdb/object_lock_shared_state.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/util/debug-util.h"
 #include "yb/util/dist_trace.h"
 #include "yb/util/enums.h"
@@ -45,13 +45,27 @@
 #include "yb/util/oid_generator.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
-
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_flush_debug_context.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/ash/wait_state.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/gutil/endian.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/tserver/pg_client.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/slice.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 
 using namespace std::literals;
 

@@ -13,6 +13,7 @@
 
 #include "yb/master/tablet_health_manager.h"
 
+#include <gflags/gflags.h>
 #include <algorithm>
 #include <condition_variable>
 #include <future>
@@ -23,41 +24,43 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <optional>
+#include <ostream>
+#include <ratio>
 
-#include "yb/common/common_net.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/common/wire_protocol.pb.h"
-
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/raft_consensus.h"
-
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/master.h"
 #include "yb/master/master_admin.pb.h"
-#include "yb/master/master_fwd.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_constants.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/master/ts_manager.h"
-
 #include "yb/rpc/rpc_context.h"
-
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/tserver.pb.h"
-
 #include "yb/util/callsite_profiling.h"
-#include "yb/util/flags.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_format.h"
 #include "yb/util/unique_lock.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/consensus/consensus_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
 
 using std::future;
 using std::optional;

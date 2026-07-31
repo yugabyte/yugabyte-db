@@ -32,14 +32,21 @@
 
 #include "yb/consensus/peer_manager.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <mutex>
+#include <utility>
 
 #include "yb/consensus/consensus_peers.h"
-
 #include "yb/gutil/map-util.h"
-
 #include "yb/util/logging.h"
-#include "yb/util/threadpool.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_util.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/multi_raft_batcher.h"
+#include "yb/gutil/port.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 DECLARE_bool(enable_multi_raft_heartbeat_batcher);
 

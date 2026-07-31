@@ -17,15 +17,39 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
-
-#include "yb/qlexpr/qlexpr_fwd.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/ptree/column_arg.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 
 namespace yb {
+namespace client {
+class YBTable;
+}  // namespace client
+namespace qlexpr {
+class IndexInfo;
+}  // namespace qlexpr
+
 namespace ql {
+class SemContext;
 
 //--------------------------------------------------------------------------------------------------
 // ORDER BY.

@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <memory>
+
 #include "yb/encryption/universe_key_manager.h"
 
 namespace yb {

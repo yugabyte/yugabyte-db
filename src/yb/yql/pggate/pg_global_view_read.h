@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <optional>
 #include <span>
 #include <string>

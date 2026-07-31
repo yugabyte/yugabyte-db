@@ -46,9 +46,13 @@
 
 #pragma once
 
+#include <string>
+
 #include "yb/gutil/atomicops.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/monotime.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/mutex.h"
 
 // Apply a named delay in the current scope.
 #define TRACE_EVENT_SYNTHETIC_DELAY(name)                                     \

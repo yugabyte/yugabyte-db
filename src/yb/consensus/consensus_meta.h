@@ -32,27 +32,30 @@
 #pragma once
 
 #include <stdint.h>
-
 #include <atomic>
 #include <optional>
 #include <string>
+#include <memory>
+#include <mutex>
+#include <utility>
 
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/opid.h"
-
 #include "yb/consensus/metadata.pb.h"
-
 #include "yb/gutil/macros.h"
-
 #include "yb/util/locks.h"
 #include "yb/util/shared_lock.h"
-#include "yb/util/status_fwd.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class FsManager;
 class ServerRegistrationPB;
+class CloudInfoPB;
+class HostPortPB;
 
 struct CloneSourceInfo {
   uint32_t seq_no;

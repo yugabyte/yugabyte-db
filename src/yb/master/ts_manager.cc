@@ -32,26 +32,52 @@
 
 #include "yb/master/ts_manager.h"
 
+#include <glog/logging.h>
 #include <mutex>
 #include <vector>
+#include <algorithm>
+#include <compare>
+#include <initializer_list>
+#include <memory>
+#include <ostream>
+#include <tuple>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "yb/common/version_info.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/gutil/map-util.h"
-
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/leader_epoch.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
-
-#include "yb/server/clock.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/version_info.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_loading_state.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/util/cow_object.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+}  // namespace yb
 
 DEFINE_NON_RUNTIME_bool(master_register_ts_check_desired_host_port, true,
     "When set to true, master will only do duplicate address checks on the used host/port instead "

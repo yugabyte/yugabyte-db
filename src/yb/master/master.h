@@ -31,45 +31,59 @@
 //
 #pragma once
 
+#include <glog/logging.h>
+#include <stdint.h>
 #include <atomic>
 #include <memory>
 #include <string>
 #include <vector>
+#include <functional>
+#include <future>
+#include <map>
+#include <mutex>
+#include <optional>
+#include <sstream>
+#include <utility>
 
 #include "yb/common/wire_protocol.pb.h"
-
-#include "yb/consensus/consensus.fwd.h"
-#include "yb/consensus/metadata.fwd.h"
-
 #include "yb/gutil/thread_annotations.h"
 #include "yb/gutil/macros.h"
-
-#include "yb/master/master_defaults.h"
-#include "yb/master/master_fwd.h"
 #include "yb/master/master_options.h"
-#include "yb/master/master_tserver.h"
-#include "yb/master/tablet_health_manager.h"
-
-#include "yb/server/server_base.h"
-
 #include "yb/tserver/db_server_base.h"
-
-#include "yb/util/status_fwd.h"
+#include "yb/client/client_fwd.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/server/server_fwd.h"
+#include "yb/tserver/tserver_util_fwd.h"
+#include "yb/util/atomic.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/status_callback.h"
+#include "yb/yql/pgwrapper/pg_wrapper_context.h"
 
 namespace yb {
 
 class MaintenanceManager;
-class RpcServer;
-class ServerEntryPB;
 class ThreadPool;
-class AutoFlagsManagerBase;
-class AutoFlagsConfigPB;
-
-namespace server {
-
-struct RpcServerOptions;
-
-}
+class HostPort;
+class HostPortPB;
+namespace client {
+class AsyncClientInitializer;
+class YBClient;
+}  // namespace client
+namespace consensus {
+class RaftConfigPB;
+class RaftPeerPB;
+}  // namespace consensus
+namespace tserver {
+class GetTserverCatalogMessageListsRequestPB;
+class GetTserverCatalogMessageListsResponsePB;
+class GetTserverCatalogVersionInfoRequestPB;
+class GetTserverCatalogVersionInfoResponsePB;
+class TriggerRelcacheInitConnectionRequestPB;
+}  // namespace tserver
 
 namespace rpc {
 
@@ -80,6 +94,26 @@ class SecureContext;
 namespace master {
 
 class MasterAutoFlagsManager;
+class CatalogManager;
+class CatalogManagerIf;
+class CloneStateManager;
+class EncryptionManager;
+class FlushManager;
+class MasterClusterHandler;
+class MasterPathHandlers;
+class MasterSnapshotCoordinator;
+class MasterTabletServer;
+class PermissionsManager;
+class SysCatalogTable;
+class TSManager;
+class TabletHealthManager;
+class TabletSplitManager;
+class TestAsyncRpcManager;
+class XClusterManager;
+class XClusterManagerIf;
+class YsqlBackendsManager;
+class YsqlManager;
+class YsqlManagerIf;
 
 class Master : public tserver::DbServerBase {
  public:

@@ -20,19 +20,14 @@
 #pragma once
 
 #include <stdint.h>
-#include <memory>
 #include <string>
 
-#include "yb/rocksdb/options.h"
-#include "yb/rocksdb/status.h"
 #include "yb/rocksdb/table.h"
+#include "yb/rocksdb/status.h"
 
 namespace rocksdb {
 
-struct EnvOptions;
 
-class Table;
-class TableBuilder;
 
 // IndexedTable requires fixed length key, configured as a constructor
 // parameter of the factory class. Output file format:

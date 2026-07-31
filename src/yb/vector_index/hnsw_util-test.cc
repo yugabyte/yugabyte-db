@@ -11,14 +11,17 @@
 // under the License.
 //
 
-#include <cstdint>
-#include <random>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <cmath>
+#include <ostream>
+#include <string>
+#include <vector>
 
 #include "yb/vector_index/hnsw_util.h"
-
 #include "yb/util/logging.h"
-#include "yb/util/random_util.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
 
 namespace yb::vector_index {
 

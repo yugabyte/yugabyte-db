@@ -32,20 +32,15 @@
 // Shared fields and methods for querying local files and directories
 #pragma once
 
+#include <stddef.h>
 #include <memory>
 #include <string>
 
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class FsManager;
-class Schema;
-class RandomAccessFile;
-
-namespace tablet {
-class RaftGroupMetadata;
-}
 
 namespace tools {
 

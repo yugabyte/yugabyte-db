@@ -16,7 +16,20 @@
 #include "yb/yql/cql/cqlserver/cql_statement.h"
 
 #include <openssl/md5.h>
-#include "yb/gutil/strings/escaping.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <math.h>
+#include <stddef.h>
+
+#include "yb/util/cast.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/jsonwriter.h"
+
+namespace yb {
+namespace ql {
+class QLEnv;
+}  // namespace ql
+}  // namespace yb
 
 DEFINE_RUNTIME_bool(cql_use_metadata_cache_for_schema_version_check, true,
                     "Use the internal Table Metadata Cache in TS to check the Table "

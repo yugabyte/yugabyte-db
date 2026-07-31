@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <string>
 
 #include "yb/integration-tests/yb_table_test_base.h"

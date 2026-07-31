@@ -10,24 +10,29 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <glog/logging.h>
+#include <stddef.h>
 #include <atomic>
-
-#include <gtest/gtest.h>
+#include <ostream>
+#include <string>
+#include <vector>
 
 #include "yb/util/env.h"
-#include "yb/util/env_util.h"
 #include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
-#include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_macros.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/split.h"
-
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/faststring.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 namespace yb::pgwrapper {
 

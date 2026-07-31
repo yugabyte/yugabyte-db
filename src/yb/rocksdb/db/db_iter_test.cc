@@ -18,8 +18,13 @@
 // under the License.
 //
 
+#include <assert.h>
+#include <stddef.h>
 #include <algorithm>
 #include <utility>
+#include <functional>
+#include <memory>
+#include <vector>
 
 #include "yb/rocksdb/db/db_iter.h"
 #include "yb/rocksdb/db/db_test_util.h"
@@ -29,10 +34,22 @@
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/table/iterator_wrapper.h"
 #include "yb/rocksdb/table/merger.h"
-
 #include "yb/rocksdb/util/testutil.h"
-
 #include "yb/util/sync_point.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/rocksdb/table/internal_iterator.h"
+#include "yb/rocksdb/utilities/merge_operators.h"
+#include "yb/util/result.h"
+#include "yb/util/stats/perf_level.h"
+#include "yb/util/string_util.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
+#include "yb/rocksdb/status_fwd.h"
 
 namespace rocksdb {
 

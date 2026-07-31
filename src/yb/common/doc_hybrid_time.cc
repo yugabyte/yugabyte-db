@@ -13,6 +13,9 @@
 
 #include "yb/common/doc_hybrid_time.h"
 
+#include <glog/logging.h>
+#include <string.h>
+
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/cast.h"
 #include "yb/util/checked_narrow_cast.h"
@@ -20,6 +23,9 @@
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 
 using std::string;
 

@@ -34,17 +34,19 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <functional>
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/walltime.h"
 #include "yb/util/countdown_latch.h"
-#include "yb/util/faststring.h"
 #include "yb/util/locks.h"
+#include "yb/util/mutex.h"
 
 namespace yb {
 
 class Thread;
+class faststring;
 
 class TimeSeries {
  public:

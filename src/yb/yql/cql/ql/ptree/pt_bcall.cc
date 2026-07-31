@@ -17,18 +17,35 @@
 
 #include "yb/yql/cql/ql/ptree/pt_bcall.h"
 
-#include "yb/bfql/bfql.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <string.h>
+#include <list>
+#include <memory>
+#include <ostream>
+#include <vector>
 
+#include "yb/bfql/bfql.h"
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
-
 #include "yb/common/types.h"
-
 #include "yb/util/metrics.h"
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ql_processor.h"
+#include "yb/bfql/bfdecl.h"
+#include "yb/bfql/bfunc_names.h"
+#include "yb/bfql/gen_opcodes.h"
+#include "yb/bfql/tserver_opcodes.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/logging.h"
+#include "yb/yql/cql/ql/ptree/sem_state.h"
+#include "yb/yql/cql/ql/ptree/tree_node.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 DECLARE_bool(cql_revert_to_partial_microsecond_support);
 

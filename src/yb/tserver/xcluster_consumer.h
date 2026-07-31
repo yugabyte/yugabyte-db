@@ -13,57 +13,74 @@
 
 #pragma once
 
-#include <condition_variable>
-#include <unordered_map>
-#include <unordered_set>
-
-#include "yb/common/common_types.pb.h"
-#include "yb/common/constants.h"
-
-#include <boost/functional/hash.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index_container.hpp>
+#include <gtest/gtest_prod.h>
+#include <stdint.h>
+#include <boost/container_hash/hash.hpp>
+#include <boost/multi_index/indexed_by.hpp>
+#include <boost/multi_index/tag.hpp>
+#include <boost/multi_index_container_fwd.hpp>
+#include <condition_variable>
+#include <unordered_map>
+#include <unordered_set>
+#include <atomic>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "yb/cdc/cdc_consumer.pb.h"
+#include "yb/common/constants.h"
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/xcluster_types.h"
-#include "yb/client/client_fwd.h"
-
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/xcluster_consumer_replication_error.h"
-#include "yb/tserver/xcluster_poller_stats.h"
-
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/locks.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/status.h"
 
 namespace rocksdb {
 class RateLimiter;
 }  // namespace rocksdb
 
 namespace yb {
-class HostPort;
 class Thread;
 class ThreadPool;
 class XClusterTest_LeaderFailoverTest_Test;
+class MetricEntity;
+enum ReplicationErrorPb : int;
+
+namespace cdc {
+class ProducerEntryPB;
+class SchemaVersionsPB;
+}  // namespace cdc
+struct XClusterPollerId;
 
 namespace rpc {
-class Messenger;
 class Rpcs;
 }  // namespace rpc
 
 namespace client {
 class XClusterRemoteClientHolder;
+class TableHandle;
+class YBClient;
 }  // namespace client
 
 namespace tserver {
 class AutoFlagsVersionHandler;
 class XClusterPoller;
-class TabletServer;
 class TserverXClusterContextIf;
 
 class XClusterConsumer : public XClusterConsumerIf {
@@ -192,6 +209,7 @@ class XClusterConsumer : public XClusterConsumerIf {
   std::function<int64_t(const TabletId&)> get_leader_term_func_;
 
   class TabletTag;
+
   using ProducerConsumerTabletMap = boost::multi_index_container<
       xcluster::XClusterTabletInfo,
       boost::multi_index::indexed_by<

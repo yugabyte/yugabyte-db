@@ -13,11 +13,14 @@
 
 #pragma once
 
-#include "yb/encryption/encryption_fwd.h"
+#include <memory>
 
 #include "yb/rocksdb/env.h"
 
 namespace yb {
+namespace encryption {
+class HeaderManager;
+}  // namespace encryption
 
 std::unique_ptr<rocksdb::Env> NewRocksDBEncryptedEnv(
     std::unique_ptr<encryption::HeaderManager> header_manager);

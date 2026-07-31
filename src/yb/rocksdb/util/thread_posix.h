@@ -25,22 +25,13 @@
 
 #include <pthread.h>
 #include <string.h>
-
-#include <cstdarg>
 #include <deque>
+#include <atomic>
+#include <vector>
 
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/file.h"
-
-#include "yb/util/faststring.h"
-
-namespace yb {
-
-class Thread;
-
-}
+#include "yb/util/thread.h"
 
 namespace rocksdb {
 

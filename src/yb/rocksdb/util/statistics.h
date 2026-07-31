@@ -19,31 +19,19 @@
 //
 #pragma once
 
-#include <atomic>
-#include <mutex>
-#include <string>
+#include <stdint.h>
 #include <vector>
 
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/rocksdb/statistics.h"
-
 #include "yb/util/aggregate_stats.h"
+#include "yb/util/metrics.h"
 
 namespace yb {
 class MetricEntity;
-class EventStats;
-class EventStatsPrototype;
-
-template <class T>
-class AtomicGauge;
-template <class T>
-class GaugePrototype;
 }  // namespace yb
 
 namespace rocksdb {
-
-class StatisticsMetricPrototypes;
 
 class StatisticsMetricImpl : public Statistics {
  public:

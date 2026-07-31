@@ -16,16 +16,36 @@
 #include "yb/rpc/growable_buffer.h"
 
 #include <stdint.h>
-
-#include <functional>
-#include <thread>
-
 #include <boost/lockfree/stack.hpp>
-#include "yb/util/logging.h"
+#include <glog/logging.h>
+#include <stdlib.h>
+#include <boost/intrusive/list.hpp>
+#include <boost/move/iterator.hpp>
+#include <boost/move/utility_core.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <functional>
+#include <limits>
+#include <utility>
 
+#include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
 
 using namespace std::placeholders;
 

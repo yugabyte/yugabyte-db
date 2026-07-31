@@ -13,21 +13,26 @@
 #pragma once
 
 
-#include "yb/master/async_rpc_tasks.h"
-#include "yb/master/catalog_manager_if.h"
-#include "yb/master/master.h"
-#include "yb/master/sys_catalog.h"
-#include "yb/master/master_util.h"
-#include "yb/rpc/rpc_context.h"
-#include "yb/tablet/tablet_peer.h"
-#include "yb/util/service_util.h"
+#include <glog/logging.h>
+#include <stdint.h>
+#include <atomic>
+
 #include "yb/util/status_callback.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/status.h"
 
 namespace yb {
+namespace consensus {
+class RaftPeerPB;
+}  // namespace consensus
+
 namespace master {
 
 class Master;
-class CatalogManager;
+class CatalogManagerIf;
+class TestRetryRequestPB;
+class TestRetryResponsePB;
 
 class TestAsyncRpcManager {
  public:

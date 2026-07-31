@@ -11,30 +11,46 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
 #include "yb/util/logging.h"
-#include <gtest/gtest.h>
-
 #include "yb/gutil/stringprintf.h"
-
 #include "yb/encryption/encrypted_file.h"
-#include "yb/encryption/encryption_util.h"
 #include "yb/encryption/header_manager.h"
 #include "yb/encryption/header_manager_impl.h"
-#include "yb/encryption/universe_key_manager.h"
-
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
-
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
-
 #include "yb/tserver/universe_key_test_util.h"
-
 #include "yb/util/path_util.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/rocksdb/db/table_properties_collector.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/rocksdb/table/block_based_table_reader.h"
+#include "yb/rocksdb/table/table_reader.h"
+#include "yb/util/env.h"
+#include "yb/util/file_system.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
 
 using std::string;
 

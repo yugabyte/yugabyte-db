@@ -82,12 +82,10 @@
 #include <pthread.h>
 
 #include "yb/util/monotime.h"
-#include "yb/util/mutex.h"
+#include "yb/gutil/macros.h"
 
 namespace yb {
-
-class ConditionVarImpl;
-class TimeDelta;
+class Mutex;
 
 class ConditionVariable {
  public:

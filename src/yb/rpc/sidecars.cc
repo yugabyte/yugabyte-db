@@ -13,10 +13,18 @@
 
 #include "yb/rpc/sidecars.h"
 
-#include "yb/gutil/casts.h"
+#include <gflags/gflags.h>
+#include <boost/container/vector.hpp>
+#include <mutex>
+#include <utility>
 
+#include "yb/gutil/casts.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/size_literals.h"
+
+namespace yb {
+class ScopedTrackedConsumption;
+}  // namespace yb
 
 using namespace yb::size_literals;
 

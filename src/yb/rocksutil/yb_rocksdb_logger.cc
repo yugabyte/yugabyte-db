@@ -14,6 +14,11 @@
 #include "yb/rocksutil/yb_rocksdb_logger.h"
 
 #include <stdarg.h>
+#include <glog/logging.h>
+#include <stdio.h>
+#include <algorithm>
+#include <memory>
+#include <ostream>
 
 #include "yb/util/logging.h"
 

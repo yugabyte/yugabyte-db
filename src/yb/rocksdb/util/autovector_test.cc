@@ -17,15 +17,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <stdint.h>
 #include <string>
 #include <utility>
-
-#include <gtest/gtest.h>
+#include <initializer_list>
+#include <iostream>
 
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testutil.h"
+#include "gtest/gtest.h"
+#include "yb/util/tostring.h"
 
 namespace rocksdb {
 

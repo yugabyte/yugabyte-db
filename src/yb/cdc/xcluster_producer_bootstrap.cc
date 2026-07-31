@@ -12,6 +12,12 @@
 
 #include "yb/cdc/xcluster_producer_bootstrap.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <optional>
+#include <ostream>
+#include <tuple>
+
 #include "yb/cdc/cdc_error.h"
 #include "yb/cdc/cdc_service_context.h"
 #include "yb/cdc/cdc_state_table.h"
@@ -26,6 +32,24 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
+#include "yb/cdc/cdc_service.h"
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/cdc_types.h"
+#include "yb/cdc/cdc_util.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
 
 DEFINE_test_flag(bool, cdc_inject_replication_index_update_failure, false,
     "Injects an error after updating a tablet's replication index entry");

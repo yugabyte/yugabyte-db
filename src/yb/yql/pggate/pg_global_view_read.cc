@@ -12,7 +12,15 @@
 
 #include "yb/yql/pggate/pg_global_view_read.h"
 
+#include <glog/logging.h>
+#include <ostream>
+#include <utility>
+
 #include "yb/yql/pggate/pg_client.h"
+#include "yb/common/common.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb::pggate {
 

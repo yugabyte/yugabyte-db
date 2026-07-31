@@ -13,28 +13,35 @@
 
 #include "yb/docdb/intent_format.h"
 
-#include "yb/docdb/conflict_resolution.h"
-#include "yb/docdb/doc_ql_filefilter.h"
-#include "yb/docdb/docdb-internal.h"
+#include <glog/logging.h>
+#include <boost/intrusive/list.hpp>
+#include <boost/iterator/iterator_facade.hpp>
+#include <boost/iterator/transform_iterator.hpp>
+#include <boost/logic/tribool.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <compare>
+#include <string_view>
+
 #include "yb/docdb/docdb.messages.h"
-#include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
-#include "yb/docdb/iter_util.h"
-#include "yb/docdb/key_bounds.h"
-#include "yb/docdb/transaction_dump.h"
-
-#include "yb/dockv/doc_key.h"
-#include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
-
-#include "yb/rocksdb/options.h"
-
-#include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/arena_list.h"
 #include "yb/util/result.h"
-#include "yb/util/status_format.h"
-#include "yb/util/trace.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/docdb/lock_util.h"
+#include "yb/docdb/transaction_status_cache.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/util/format.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/uuid.h"
+
+namespace yb {
+namespace dockv {
+class SubDocKey;
+}  // namespace dockv
+}  // namespace yb
 
 using namespace std::literals;
 

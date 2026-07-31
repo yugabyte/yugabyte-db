@@ -13,13 +13,24 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <chrono>
+#include <memory>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <thread>
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
-
-#include "yb/yql/pggate/ybc_pggate.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "libpq-fe.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
 
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(ysql_yb_enable_invalidation_messages);

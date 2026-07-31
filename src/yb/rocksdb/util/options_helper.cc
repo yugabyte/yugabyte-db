@@ -20,8 +20,13 @@
 
 #include "yb/rocksdb/util/options_helper.h"
 
+#include <ctype.h>
+#include <stdint.h>
 #include <cassert>
 #include <vector>
+#include <exception>
+#include <sstream>
+#include <stdexcept>
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/compaction_filter.h"
@@ -37,8 +42,12 @@
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/plain_table_factory.h"
-
 #include "yb/util/string_util.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/util/mutable_cf_options.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 namespace rocksdb {
 

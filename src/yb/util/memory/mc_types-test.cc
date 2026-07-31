@@ -13,9 +13,14 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <glog/logging.h>
+#include <gtest/gtest.h>
+#include <string>
+
 #include "yb/util/memory/arena.h"
 #include "yb/util/memory/mc_types.h"
 #include "yb/util/test_util.h"
+#include "yb/util/memory/arena_fwd.h"
 
 namespace yb {
 

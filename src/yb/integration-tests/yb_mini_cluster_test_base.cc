@@ -13,21 +13,28 @@
 
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <chrono>
+#include <ostream>
+
 #include "yb/client/client.h"
-#include "yb/client/session.h"
-
 #include "yb/common/wire_protocol.h"
-
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
-
 #include "yb/rpc/rpc_controller.h"
-
-#include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/tserver_service.proxy.h"  // IWYU pragma: keep
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 

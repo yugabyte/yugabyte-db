@@ -32,13 +32,30 @@
 
 #include "yb/util/net/dns_resolver.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <boost/asio.hpp>
+#include <boost/asio/io_context.hpp>
+#include <boost/asio/ip/address.hpp>
+#include <boost/asio/ip/basic_resolver.hpp>
+#include <boost/asio/ip/basic_resolver_entry.hpp>
+#include <boost/asio/ip/basic_resolver_results.hpp>
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/system/error_code.hpp>
 #include <mutex>
 #include <shared_mutex>
 #include <unordered_map>
 #include <vector>
+#include <algorithm>
+#include <chrono>
+#include <compare>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
 
 #include "yb/util/logging.h"
-
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/net/inetaddress.h"
@@ -46,8 +63,14 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
-#include "yb/util/flags.h"
 #include "yb/util/shared_lock.h"
+#include "yb/gutil/stl_util.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 using namespace std::literals;
 

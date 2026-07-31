@@ -13,13 +13,35 @@
 
 #include "yb/ann_methods/yb_hnsw_wrapper.h"
 
-#include "yb/hnsw/hnsw.h"
+#include <glog/logging.h>
+#include <string.h>
+#include <cstddef>
+#include <memory>
+#include <utility>
+#include <vector>
 
+#include "yb/hnsw/hnsw.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
-
 #include "yb/vector_index/index_wrapper_base.h"
+#include "usearch/index_dense.hpp"
+#include "yb/gutil/casts.h"
+#include "yb/util/cast.h"
+#include "yb/util/logging.h"
+#include "yb/util/polymorphic_iterator.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
+#include "yb/vector_index/coordinate_types.h"
+#include "yb/vector_index/distance.h"
+#include "yb/vector_index/hnswlib_include.h"  // IWYU pragma: keep
+#include "yb/vector_index/vector_index_fwd.h"
+
+namespace yb {
+namespace vector_index {
+struct HNSWOptions;
+}  // namespace vector_index
+}  // namespace yb
 
 namespace yb::ann_methods {
 

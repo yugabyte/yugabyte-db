@@ -13,6 +13,11 @@
 
 #pragma once
 
+#include <opentelemetry/nostd/shared_ptr.h>
+#include <opentelemetry/nostd/string_view.h>
+#include <opentelemetry/trace/span.h>
+#include <opentelemetry/trace/span_context.h>
+#include <opentelemetry/trace/tracer.h>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -20,9 +25,7 @@
 #include <vector>
 
 #include "opentelemetry/common/attribute_value.h"
-#include "opentelemetry/trace/span_metadata.h"
 #include "opentelemetry/trace/span_startoptions.h"
-
 #include "yb/util/dist_trace_fwd.h"
 
 namespace yb::dist_trace {

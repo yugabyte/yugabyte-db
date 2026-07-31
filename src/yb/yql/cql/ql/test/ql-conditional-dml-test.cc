@@ -13,7 +13,13 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <glog/logging.h>
+#include <string>
+
 #include "yb/yql/cql/ql/test/ql-test-base.h"
+#include "gtest/gtest.h"
+#include "yb/util/logging.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 namespace ql {

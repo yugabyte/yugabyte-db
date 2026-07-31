@@ -13,12 +13,41 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "yb/client/table_handle.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/tools/test_admin_client.h"
 #include "yb/tools/tools_test_utils.h"
-
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/util/enums.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class MiniClusterBase;
+namespace master {
+class TabletLocationsPB;
+}  // namespace master
+}  // namespace yb
 
 using std::string;
 using std::unique_ptr;

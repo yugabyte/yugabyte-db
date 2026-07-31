@@ -22,10 +22,14 @@
 
 #include <algorithm>
 #include <string>
+
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/table/plain_table_reader.h"
 #include "yb/rocksdb/table/plain_table_factory.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
+#include "yb/rocksdb/slice_transform.h"
+#include "yb/rocksdb/util/coding.h"
+#include "yb/util/status.h"
 
 namespace rocksdb {
 

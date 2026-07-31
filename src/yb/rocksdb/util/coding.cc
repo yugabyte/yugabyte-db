@@ -23,9 +23,6 @@
 
 #include "yb/rocksdb/util/coding.h"
 
-#include <algorithm>
-#include "yb/util/slice.h"
-
 namespace rocksdb {
 
 char* EncodeVarint32(char* dst, uint32_t v) {

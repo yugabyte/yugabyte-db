@@ -21,20 +21,27 @@
 
 #include "yb/rocksdb/utilities/write_batch_with_index/write_batch_with_index_internal.h"
 
+#include <memory>
+
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/merge_context.h"
 #include "yb/rocksdb/db/merge_helper.h"
 #include "yb/rocksdb/comparator.h"
-#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/utilities/write_batch_with_index.h"
-#include "yb/rocksdb/util/coding.h"
 #include "yb/util/string_util.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/options.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 namespace rocksdb {
 
 class Env;
 class Logger;
 class Statistics;
+class ColumnFamilyHandle;
+class MergeOperator;
 
 Status ReadableWriteBatch::GetEntryFromDataOffset(size_t data_offset,
                                                   WriteType* type, Slice* Key,

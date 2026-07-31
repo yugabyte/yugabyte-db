@@ -17,13 +17,23 @@
 
 #pragma once
 
-#include "yb/yql/cql/ql/parser/location.h"
-#include "yb/yql/cql/ql/ptree/process_context.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <istream>
+#include <memory>
+#include <string>
 
+#include "yb/yql/cql/ql/ptree/process_context.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace ql {
+class PTBindVar;
+class location;
+enum class ErrorCode : int64_t;
 
 // Parsing context.
 class ParseContext : public ProcessContext {

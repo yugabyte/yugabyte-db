@@ -15,22 +15,19 @@
 
 #include <stddef.h>
 #include <stdint.h>
-
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "yb/rocksdb/filter_policy.h"
-#include "yb/rocksdb/options.h"
-#include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/table/filter_block.h"
 #include "yb/rocksdb/table/format.h"
-#include "yb/rocksdb/util/hash.h"
-
 #include "yb/util/mem_tracker_fwd.h"
 #include "yb/util/slice.h"
 
 namespace rocksdb {
+class SliceTransform;
+struct BlockBasedTableOptions;
 
 // A fixed size Bloom filter divides the Bloom Filter into blocks of fixed size
 // in which each block holds the information of a range of keys.

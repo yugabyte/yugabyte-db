@@ -32,35 +32,36 @@
 
 #include "yb/tserver/tserver-path-handlers.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <algorithm>
 #include <functional>
 #include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
+#include <array>
+#include <compare>
+#include <initializer_list>
+#include <map>
+#include <tuple>
+#include <utility>
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/xrepl_stream_stats.h"
-
 #include "yb/common/version_info.h"
-
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
-#include "yb/consensus/quorum_util.h"
-
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/util/options_parser.h"
-
 #include "yb/server/webui_util.h"
-
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet.pb.h"
@@ -68,7 +69,6 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
-
 #include "yb/tserver/service_util.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_local_lock_manager.h"
@@ -76,12 +76,49 @@
 #include "yb/tserver/tserver_cgroup_manager.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/xcluster_poller_stats.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/html_print_helper.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/url-coding.h"
+#include "yb/common/common_consensus_util.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.pb.h"
+#include "yb/common/version_info.pb.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/docdb/shared_lock_manager.h"
+#include "yb/docdb/wait_queue.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/table_properties.h"
+#include "yb/tablet/operations/operation.h"
+#include "yb/tablet/preparer.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tablet/transaction_coordinator.h"
+#include "yb/tserver/remote_bootstrap_service.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
+#include "yb/common/schema.h"
 
 using yb::consensus::GetConsensusRole;
 using yb::consensus::CONSENSUS_CONFIG_COMMITTED;

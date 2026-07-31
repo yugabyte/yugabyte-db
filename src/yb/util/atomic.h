@@ -32,18 +32,24 @@
 
 #pragma once
 
+#include <glog/logging.h>
 #include <algorithm>
 #include <atomic>
 #include <thread>
+#include <chrono>
+#include <utility>
 
-#include <boost/atomic.hpp>
 #include "yb/util/logging.h"
-
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
-
 #include "yb/util/cast.h"
 #include "yb/util/random_util.h"
+
+namespace boost {
+namespace atomics {
+template <typename T> class atomic;
+}  // namespace atomics
+}  // namespace boost
 
 namespace yb {
 

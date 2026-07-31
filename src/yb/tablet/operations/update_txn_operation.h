@@ -15,9 +15,13 @@
 
 #pragma once
 
-#include "yb/tablet/operations/operation.h"
+#include <stdint.h>
+#include <utility>
 
+#include "yb/tablet/operations/operation.h"
 #include "yb/tablet/operations.messages.h"
+#include "yb/util/result.h"
+#include "yb/tablet/transaction_coordinator.h"
 
 namespace yb {
 namespace tablet {

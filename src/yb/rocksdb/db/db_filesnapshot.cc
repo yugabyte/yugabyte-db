@@ -27,20 +27,23 @@
 #endif
 
 #include <stdint.h>
-#include <inttypes.h>
-#include <algorithm>
 #include <string>
+#include <memory>
+#include <vector>
+
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/job_context.h"
 #include "yb/rocksdb/db/version_set.h"
-#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/util/mutexlock.h"
-#include "yb/rocksdb/util/file_util.h"
-
 #include "yb/util/sync_point.h"
+#include "yb/rocksdb/db/column_family.h"
+#include "yb/rocksdb/db/version_edit.h"
+#include "yb/rocksdb/db/wal_manager.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/rocksdb/transaction_log.h"
+#include "yb/rocksdb/util/instrumented_mutex.h"
 
 namespace rocksdb {
 

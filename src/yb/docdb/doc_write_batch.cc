@@ -13,10 +13,19 @@
 #include "yb/docdb/doc_write_batch.h"
 
 #include <boost/logic/tribool.hpp>
+#include <glog/logging.h>
+#include <boost/iterator/iterator_categories.hpp>
+#include <boost/iterator/iterator_facade.hpp>
+#include <boost/iterator/transform_iterator.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <compare>
+#include <iterator>
+#include <limits>
+#include <ostream>
+#include <ranges>
+#include <utility>
 
 #include "yb/common/doc_hybrid_time.h"
-#include "yb/common/ql_value.h"
-
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.messages.h"
@@ -24,29 +33,43 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/kv_debug.h"
 #include "yb/docdb/read_operation_data.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_path.h"
 #include "yb/dockv/doc_ttl_util.h"
 #include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/schema_packing.h"
-#include "yb/dockv/subdocument.h"
 #include "yb/dockv/value_type.h"
-
-#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/write_batch.h"
-
 #include "yb/rocksutil/write_batch_formatter.h"
-
-#include "yb/server/hybrid_clock.h"
-
-#include "yb/util/bytes_formatter.h"
 #include "yb/util/checked_narrow_cast.h"
 #include "yb/util/enums.h"
-#include "yb/util/fast_varint.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/common/column_id.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/transaction.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/dockv/dockv.pb.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/gutil/casts.h"
+#include "yb/util/format.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+class ScopedRWOperation;
+enum class BinaryOutputFormat;
+
+namespace docdb {
+class SchemaPackingProvider;
+enum class StorageDbType;
+}  // namespace docdb
+}  // namespace yb
 
 using std::numeric_limits;
 using std::string;

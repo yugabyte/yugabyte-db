@@ -31,11 +31,15 @@
 //
 #include "yb/tablet/tablet_metrics.h"
 
+#include <atomic>
+#include <span>
+#include <utility>
+
 #include "yb/common/pgsql_protocol.messages.h"
-
 #include "yb/util/metrics.h"
-
 #include "yb/yql/pggate/pg_metrics_list.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/util/strongly_typed_bool.h"
 
 // Tablet-specific metrics.
 METRIC_DEFINE_counter(tablet, rows_inserted, "Rows Inserted",

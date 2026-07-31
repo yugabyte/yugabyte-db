@@ -33,6 +33,7 @@
 #include "yb/util/slice.h"
 
 namespace rocksdb {
+class Logger;
 
 class StringAppendTESTOperator : public MergeOperator {
  public:

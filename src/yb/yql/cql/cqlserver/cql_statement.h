@@ -22,12 +22,25 @@
 
 #include <list>
 #include <vector>
+#include <memory>
+#include <string>
+#include <unordered_map>
 
-#include "yb/util/jsonwriter.h"
 #include "yb/yql/cql/ql/statement.h"
 #include "yb/yql/cql/ql/util/cql_message.h"
+#include "yb/common/common_fwd.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/ptree/parse_tree.h"
 
 namespace yb {
+class JsonWriter;
+namespace ql {
+class QLEnv;
+}  // namespace ql
+
 namespace cqlserver {
 
 class CQLStatement;

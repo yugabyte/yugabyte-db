@@ -15,22 +15,34 @@
 
 #pragma once
 
+#include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <functional>
 
-#include <boost/preprocessor/empty.hpp>
-#include <boost/preprocessor/seq/for_each.hpp>
-
-#include "yb/client/client_fwd.h"
 #include "yb/rpc/rpc_fwd.h"
-
-#include "yb/tserver/tserver_fwd.h"
-
 #include "yb/util/monotime.h"
-#include "yb/util/status_fwd.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/gutil/port.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/util/status.h"
 
 namespace yb {
-
-class HybridTime;
+namespace client {
+class YBClient;
+namespace internal {
+class RemoteTablet;
+}  // namespace internal
+}  // namespace client
 
 #define TRANSACTION_RPCS \
     ((UpdateTransaction, WITH_REQUEST)) \

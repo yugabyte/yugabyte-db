@@ -15,31 +15,30 @@
 
 #pragma once
 
-#include <dirent.h>
 #include <stdint.h>
+#include <stddef.h>
+#include <memory>
+#include <string>
 
-#include "pg_type_d.h" // NOLINT
-
-#include "yb/common/common_fwd.h"
-#include "yb/common/value.messages.h"
-
-#include "yb/integration-tests/external_mini_cluster.h"
-
-#include "yb/tserver/tserver_util_fwd.h"
-
-#include "yb/util/shared_mem.h"
 #include "yb/util/test_util.h"
-
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "postgres_ext.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 // This file comes from this directory:
 // postgres_build/src/include/catalog
 // We add a special include path to CMakeLists.txt.
 
 namespace yb {
+class ExternalMiniCluster;
+enum class DataType;
+struct ExternalMiniClusterOptions;
+
 namespace pggate {
+class PggateTest;
 
 //--------------------------------------------------------------------------------------------------
 // Test base class.

@@ -31,11 +31,12 @@
 //
 #pragma once
 
-#include <boost/smart_ptr/detail/yield_k.hpp>
-#include "yb/util/logging.h"
+#include <glog/logging.h>
+#include <stdint.h>
+#include <ostream>
 
 #include "yb/gutil/atomicops.h"
-#include "yb/gutil/port.h"
+#include "yb/util/boost_yield_k.h"
 
 namespace yb {
 

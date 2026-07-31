@@ -18,10 +18,20 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "yb/common/common_fwd.h"
 #include "yb/common/ql_type.h"
-
 #include "yb/util/write_buffer.h"
+
+namespace yb {
+class LWQLValuePB;
+class QLValue;
+class QLValuePB;
+}  // namespace yb
 
 namespace yb::qlexpr {
 

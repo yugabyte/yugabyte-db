@@ -15,23 +15,28 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <functional>
 #include <memory>
-#include <optional>
+#include <string>
 
 #include "yb/client/client_fwd.h"
-
 #include "yb/common/clock.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pg_types.h"
-#include "yb/common/transaction.pb.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
-#include "yb/util/metrics_fwd.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+namespace rpc {
+class Rpcs;
+}  // namespace rpc
+struct TransactionFullLocality;
+
 namespace client {
+class YBClient;
 
 using PickStatusTabletCallback = std::function<void(const Result<std::string>&)>;
 using UpdateTransactionTablesVersionCallback = std::function<void(const Status&)>;
@@ -92,6 +97,7 @@ class TransactionManager {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

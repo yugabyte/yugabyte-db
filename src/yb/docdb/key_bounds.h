@@ -13,13 +13,20 @@
 
 #pragma once
 
-#include "yb/common/hybrid_time.h"
+#include <string>
 
 #include "yb/dockv/key_bytes.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/slice.h"
 
-#include "yb/rocksdb/rocksdb_fwd.h"
-
-#include "yb/tablet/tablet_fwd.h"
+namespace rocksdb {
+class DB;
+}  // namespace rocksdb
+namespace yb {
+namespace tablet {
+class TabletMetrics;
+}  // namespace tablet
+}  // namespace yb
 
 namespace yb::docdb {
 

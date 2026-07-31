@@ -11,33 +11,62 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <thread>
+#include <utility>
+#include <vector>
+
 #include "yb/client/client.h"
 #include "yb/client/session.h"
-
-#include "yb/client/yb_table_name.h"
 #include "yb/consensus/log.h"
-#include "yb/consensus/log_reader.h"
 #include "yb/consensus/raft_consensus.h"
-#include "yb/consensus/retryable_requests.h"
-
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
-
 #include "yb/master/catalog_manager_if.h"
-#include "yb/master/sys_catalog.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/client/table_handle.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/mini_master.h"
+#include "yb/tablet/tablet_bootstrap_state_flusher.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+namespace client {
+class YBTableName;
+}  // namespace client
+}  // namespace yb
 
 using namespace std::literals;
 

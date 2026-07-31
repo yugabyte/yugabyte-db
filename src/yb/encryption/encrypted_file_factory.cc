@@ -13,10 +13,24 @@
 
 #include "yb/encryption/encrypted_file_factory.h"
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <utility>
+
 #include "yb/encryption/cipher_stream.h"
 #include "yb/encryption/encrypted_file.h"
 #include "yb/encryption/encryption_util.h"
 #include "yb/encryption/header_manager.h"
+#include "yb/util/env.h"
+#include "yb/util/file_system.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace encryption {

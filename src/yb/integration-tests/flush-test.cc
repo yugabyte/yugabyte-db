@@ -11,35 +11,58 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <chrono>
 #include <regex>
-
-#include "yb/client/table.h"
-
-#include "yb/common/common.pb.h"
+#include <algorithm>
+#include <atomic>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <ostream>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
-
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/memory_monitor.h"
 #include "yb/rocksdb/util/testutil.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/rocksdb/db/column_family.h"
+#include "yb/rocksdb/db/memtable.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/tablet/tablet_options.h"
+#include "yb/tserver/tablet_server_options.h"
+#include "yb/util/cast.h"
+#include "yb/util/format.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
 
 using namespace std::literals;
 
@@ -51,9 +74,6 @@ DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);
 DECLARE_int32(rocksdb_max_background_flushes);
 
 namespace yb {
-namespace client {
-class YBTableName;
-}
 
 namespace tserver {
 

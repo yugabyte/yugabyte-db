@@ -32,11 +32,16 @@
 
 #include "yb/server/logical_clock.h"
 
+#include <utility>
+
 #include "yb/gutil/bind.h"
 #include "yb/util/metrics.h"
-#include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/atomic.h"
+#include "yb/gutil/atomicops.h"
+#include "yb/gutil/bind_helpers.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/gutil/ref_counted.h"
 
 namespace yb {
 namespace server {

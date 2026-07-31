@@ -13,16 +13,29 @@
 
 #include "yb/client/permissions.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <atomic>
+#include <bitset>
+#include <chrono>
+#include <ostream>
+#include <utility>
 
 #include "yb/client/client.h"
-
 #include "yb/master/master_dcl.pb.h"
-
 #include "yb/rpc/scheduler.h"
-
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/result.h"
+#include "yb/rpc/io_thread_pool.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/ptree/pt_option.h"
+
+namespace yb {
+enum PermissionType : int;
+}  // namespace yb
 
 DECLARE_int32(update_permissions_cache_msecs);
 

@@ -25,10 +25,28 @@
 // in Release build.
 // which is a pity, it is a good test
 
+#include <stdint.h>
+#include <unistd.h>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/port/stack_trace.h"
-
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/transaction_log.h"
+#include "yb/rocksdb/types.h"
+#include "yb/rocksdb/util/mock_env.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/util/slice.h"
+#include "yb/util/slice_parts.h"
+#include "yb/util/string_util.h"
+#include "yb/util/sync_point.h"
+#include "yb/util/tostring.h"
 
 using std::unique_ptr;
 

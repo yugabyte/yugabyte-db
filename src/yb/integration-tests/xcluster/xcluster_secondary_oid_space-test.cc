@@ -11,14 +11,32 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <chrono>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
 
 #include "yb/client/client.h"
-
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_ddl.pb.h"
-
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 namespace yb {
 

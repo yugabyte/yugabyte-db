@@ -22,9 +22,14 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/db/file_indexer.h"
-#include <algorithm>
+
+#include <assert.h>
+#include <new>
+
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/db/version_edit.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/util/arena.h"
 
 namespace rocksdb {
 

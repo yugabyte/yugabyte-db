@@ -46,26 +46,52 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <sys/mman.h>
-
+#include <boost/algorithm/string/predicate.hpp>
+#include <errno.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <inttypes.h>
+#include <string.h>
+#include <unistd.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <mutex>
 #include <string>
 #include <vector>
-
-#include <boost/algorithm/string/predicate.hpp>
+#include <algorithm>
+#include <memory>
+#include <ostream>
+#include <utility>
 
 #include "yb/consensus/log.messages.h"
 #include "yb/consensus/log_util.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
-
 #include "yb/util/atomic.h"
-#include "yb/util/env.h"
-#include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
+#include "yb/consensus/consensus.messages.h"
+#include "yb/consensus/log.pb.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/util/errno.h"
+#include "yb/util/faststring.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/tostring.h"
 
 DEFINE_UNKNOWN_int32(entries_per_index_block, 10000,
     "Number of entries per index block stored in WAL segment file");

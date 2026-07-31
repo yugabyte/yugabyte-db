@@ -17,21 +17,27 @@
 // commonly-used absl features (flat_hash_map, flat_hash_set, str_cat) that
 // transitively bring in absl's annotation machinery.
 
+#include <__bit/bit_width.h>
+#include <absl/base/dynamic_annotations.h>
+#include <absl/container/hash_container_defaults.h>
+#include <absl/hash/hash.h>
+#include <stddef.h>
 #include <atomic>
 #include <thread>
+#include <initializer_list>
+#include <memory>
+#include <string>
 
 // Mix the include order on purpose: include some absl headers before gutil's
 // dynamic_annotations.h, and one after. With -Werror, any macro redefinition
 // triggered here would have failed the build.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-
 #include "yb/gutil/dynamic_annotations.h"
-
 #include "absl/strings/str_cat.h"     // NOLINT(build/include_alpha)
 #include "absl/strings/string_view.h"  // NOLINT(build/include_alpha)
-
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
 
 namespace yb {
 namespace gutil {

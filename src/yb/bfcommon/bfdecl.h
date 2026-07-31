@@ -13,15 +13,17 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <functional>
 #include <initializer_list>
 #include <vector>
 
-#include "yb/common/common_fwd.h"
-#include "yb/common/value.fwd.h"
 #include "yb/common/value.pb.h"
-
 #include "yb/util/result.h"
+
+namespace yb {
+enum class DataType;
+}  // namespace yb
 
 namespace yb::bfcommon {
 

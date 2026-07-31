@@ -12,32 +12,35 @@
 //
 #pragma once
 
-#include <set>
-#include <shared_mutex>
-#include <type_traits>
+#include <glog/logging.h>
 #include <unordered_set>
-#include <utility>
+#include <string>
+#include <unordered_map>
+#include <functional>
 
-#include "yb/util/flags.h"
-
-#include "yb/gutil/integral_types.h"
-#include "yb/gutil/ref_counted.h"
-
-#include "yb/master/leader_epoch.h"
-#include "yb/master/master_admin.fwd.h"
-#include "yb/master/master_fwd.h"
-
-#include "yb/rpc/rpc_context.h"
-
-#include "yb/util/status_fwd.h"
-#include "yb/util/enums.h"
 #include "yb/util/locks.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/status.h"
+
+namespace yb {
+namespace master {
+class CatalogManagerIf;
+class FlushTablesRequestPB;
+class FlushTablesResponsePB;
+class IsFlushTablesDoneRequestPB;
+class IsFlushTablesDoneResponsePB;
+struct LeaderEpoch;
+}  // namespace master
+namespace rpc {
+class RpcContext;
+}  // namespace rpc
+}  // namespace yb
 
 namespace yb::master {
 
 class Master;
-class CatalogManager;
-class TableInfo;
 
 // Handle Flush-related operations.
 class FlushManager {

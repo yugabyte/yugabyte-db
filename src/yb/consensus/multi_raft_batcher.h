@@ -13,23 +13,29 @@
 #pragma once
 
 #include <memory>
+#include <atomic>
+#include <functional>
+#include <mutex>
+#include <unordered_map>
 
 #include "yb/common/common_net.pb.h"
-
 #include "yb/consensus/consensus_fwd.h"
-
-#include "yb/rpc/rpc_controller.h"
-
 #include "yb/util/net/net_util.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 namespace rpc {
 class Messenger;
 class PeriodicTimer;
+class ProxyCache;
 }
 
 namespace consensus {
+class ConsensusRequestPB;
+class ConsensusResponsePB;
+class RaftPeerPB;
 
 using HeartbeatResponseCallback = std::function<void(const Status&)>;
 

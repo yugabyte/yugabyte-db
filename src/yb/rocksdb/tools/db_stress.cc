@@ -41,15 +41,37 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/types.h>
+#include <assert.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <string.h>
+#include <strings.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <chrono>
 #include <exception>
 #include <thread>
+#include <algorithm>
+#include <atomic>
+#include <limits>
+#include <memory>
+#include <set>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+#include <functional>
 
-#include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/filename.h"
-#include "yb/rocksdb/db/version_set.h"
-#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/filter_policy.h"
@@ -58,18 +80,32 @@
 #include "yb/rocksdb/write_batch.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/compression.h"
-#include "yb/rocksdb/util/crc32c.h"
 #include "yb/rocksdb/util/histogram.h"
-#include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/util/random.h"
-#include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
-
 #include "yb/util/flags.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/memtablerep.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/rocksdb/table.h"
+#include "yb/rocksdb/table_properties.h"
+#include "yb/rocksdb/universal_compaction.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
+#include "yb/rocksdb/status.h"
+
+namespace rocksdb {
+class Snapshot;
+}  // namespace rocksdb
 
 using std::unique_ptr;
 
@@ -465,6 +501,7 @@ static std::string StringToHex(const std::string& str) {
 
 
 class StressTest;
+
 namespace {
 
 class Stats {

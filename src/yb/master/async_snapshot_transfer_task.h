@@ -12,13 +12,24 @@
 //
 #pragma once
 
-#include "yb/master/async_rpc_tasks.h"
+#include <string>
+
 #include "yb/master/master_client.pb.h"
-#include "yb/master/snapshot_transfer_manager.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/snapshot.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/async_rpc_tasks_base.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/server/monitored_task.h"
+#include "yb/tserver/tserver_service.pb.h"
 
 namespace yb {
+class ThreadPool;
 
 namespace master {
+class Master;
+class SnapshotTransferManager;
+struct LeaderEpoch;
 
 // Send the request to the specified Tablet Server.
 // Keeps retrying until we get an "ok" response.

@@ -13,19 +13,33 @@
 
 #pragma once
 
+#include <optional>
+#include <ostream>
+#include <string>
+#include <utility>
+
 #include "yb/common/doc_hybrid_time.h"
-#include "yb/common/read_hybrid_time.h"
-
-#include "yb/docdb/bounded_rocksdb_iterator.h"
-#include "yb/docdb/intent_aware_iterator.h"
-#include "yb/docdb/transaction_status_cache.h"
-
 #include "yb/dockv/intent.h"
-#include "yb/dockv/key_bytes.h"
+#include "yb/common/transaction.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
-#include "yb/rocksdb/db.h"
+namespace rocksdb {
+class Iterator;
+}  // namespace rocksdb
+namespace yb {
+class Uuid;
 
-#include "yb/util/status_fwd.h"
+namespace docdb {
+class LWKeyValuePairPB;
+class TransactionStatusCache;
+struct EncodedReadHybridTime;
+}  // namespace docdb
+template <class Entry> class ArenaList;
+}  // namespace yb
 
 namespace yb::docdb {
 

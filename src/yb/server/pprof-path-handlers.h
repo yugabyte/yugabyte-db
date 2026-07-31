@@ -46,7 +46,6 @@
 #include "yb/server/webserver.h"
 
 namespace yb {
-class Webserver;
 
 // Adds set of path handlers to support pprof profiling of a remote server.
 void AddPprofPathHandlers(Webserver* webserver);

@@ -44,12 +44,26 @@
 // To verify, the table is scanned, and we ensure that every key is linked to
 // either zero or one times, and no link_to refers to a missing key.
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <functional>
 #include <set>
+#include <algorithm>
+#include <chrono>
+#include <compare>
+#include <iostream>
+#include <list>
+#include <memory>
+#include <optional>
+#include <ratio>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 #include "yb/util/logging.h"
-#include <gtest/gtest.h>
-
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
@@ -58,20 +72,14 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/tablet_server.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/ql_value.h"
-
-#include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
-
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/ts_itest-base.h"
-
 #include "yb/server/hybrid_clock.h"
-
 #include "yb/util/blocking_queue.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/hdr_histogram.h"
@@ -80,7 +88,36 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
-#include "yb/util/flags.h"
+#include "gtest/gtest.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/table_handle.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/integration-tests/cluster_itest_util.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/server/clock.h"
+#include "yb/util/atomic.h"
+#include "yb/util/faststring.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
 
 using namespace std::literals;
 

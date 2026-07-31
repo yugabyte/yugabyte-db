@@ -13,18 +13,26 @@
 
 #pragma once
 
-#include <boost/multi_index/global_fun.hpp>
-#include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/hashed_index.hpp> // IWYU pragma: keep
 #include <boost/multi_index/mem_fun.hpp>
-#include <boost/multi_index/member.hpp>
 #include <boost/multi_index_container.hpp>
+#include <boost/multi_index/indexed_by.hpp>
+#include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index/tag.hpp>
+#include <boost/multi_index_container_fwd.hpp>
+#include <boost/range/end.hpp>
+#include <boost/range/iterator_range_core.hpp>
+#include <stddef.h>
+#include <boost/range/begin.hpp>
+#include <memory>
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_fwd.h"
-#include "yb/util/version_tracker.h"
+#include "yb/common/entity_ids_types.h"
 
 namespace yb {
 namespace master {
+
 
 class TableIndex {
  public:
@@ -33,6 +41,7 @@ class TableIndex {
   //     * transaction tables (done through an additional set functioning as an index)
   //     * non system tables
   class SecondaryTableTag;
+
   // Use a boost::multi_index_container to speed up common operations on tables by adding additional
   // indices. Indices:
   //     Primary index on TableId for point lookups.
@@ -66,6 +75,7 @@ class TableIndex {
 
   void AddOrReplace(const TableInfoPtr& table);
 
+
   void Clear();
 
   size_t Erase(const TableId& id);
@@ -74,6 +84,7 @@ class TableIndex {
 
  private:
   class Impl;
+
   Tables tables_;
 };
 

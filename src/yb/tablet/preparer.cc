@@ -13,31 +13,43 @@
 
 #include "yb/tablet/preparer.h"
 
+#include <boost/range/iterator_range_core.hpp>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <atomic>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <thread>
 #include <vector>
-
-#include <boost/range/iterator_range_core.hpp>
+#include <chrono>
+#include <functional>
+#include <future>
+#include <iterator>
+#include <string>
+#include <utility>
 
 #include "yb/consensus/consensus.h"
-#include "yb/consensus/consensus.pb.h"
-
 #include "yb/gutil/macros.h"
-
 #include "yb/tablet/operations/operation_driver.h"
-
 #include "yb/util/async_util.h"
 #include "yb/util/callsite_profiling.h"
-#include "yb/util/debug-util.h"
-#include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/threadpool.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_round.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/tablet/operations/operation.h"
+#include "yb/util/atomic.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
 
 DEFINE_UNKNOWN_uint64(max_group_replicate_batch_size, 16,
               "Maximum number of operations to submit to consensus for replication in a batch.");
@@ -65,8 +77,6 @@ using namespace std::literals;
 using std::vector;
 
 namespace yb {
-class ThreadPool;
-class ThreadPoolToken;
 
 namespace tablet {
 

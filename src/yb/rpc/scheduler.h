@@ -15,11 +15,16 @@
 
 #pragma once
 
-#include "yb/rpc/rpc_fwd.h"
+#include <glog/logging.h>
+#include <stdint.h>
+#include <atomic>
+#include <chrono>
+#include <memory>
+#include <string>
 
+#include "yb/rpc/rpc_fwd.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/status.h"
-#include "yb/util/logging.h"
 
 namespace yb {
 
@@ -109,6 +114,7 @@ class Scheduler {
   void DoSchedule(std::shared_ptr<ScheduledTaskBase> task);
 
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

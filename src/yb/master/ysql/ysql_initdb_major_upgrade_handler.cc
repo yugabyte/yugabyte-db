@@ -13,8 +13,20 @@
 
 #include "yb/master/ysql/ysql_initdb_major_upgrade_handler.h"
 
-#include "yb/common/version_info.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <initializer_list>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string_view>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
 
+#include "yb/common/version_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master.h"
@@ -22,23 +34,46 @@
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/ysql/ysql_catalog_config.h"
-
 #include "yb/tserver/tserver_admin.proxy.h"
-
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/outbound_call.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/util/async_util.h"
-#include "yb/util/env_util.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/pg_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
-
 #include "yb/yql/pgwrapper/pg_wrapper.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/version_info.pb.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/map-util.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/master_options.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/master/ts_descriptor.h"
+#include "yb/rpc/rpc_header.pb.h"
+#include "yb/tserver/tserver_admin.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/cow_object.h"
+#include "yb/util/env.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/path_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_callback.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/status_log.h"
+#include "yb/util/threadpool.h"
 
 DECLARE_bool(enable_ysql);
 DECLARE_bool(enable_ysql_conn_mgr);

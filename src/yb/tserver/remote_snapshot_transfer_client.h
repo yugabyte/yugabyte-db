@@ -31,12 +31,23 @@
 //
 #pragma once
 
-#include "yb/tserver/remote_bootstrap_snapshots.h"
+#include <functional>
+#include <memory>
+#include <string>
+
 #include "yb/tserver/remote_client_base.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class FsManager;
+class HostPort;
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
 
 namespace tserver {
+class RemoteBootstrapSnapshotsComponent;
 
 // Client class for using remote snapshot transfer.
 class RemoteSnapshotTransferClient : public RemoteClientBase {

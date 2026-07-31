@@ -13,6 +13,8 @@
 
 #include "yb/tserver/tserver_xcluster_context_mock.h"
 
+#include <string>
+
 namespace yb {
 
 std::ostream& operator<<(std::ostream& os, const Result<std::optional<HybridTime>>& res) {

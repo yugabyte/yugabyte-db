@@ -20,8 +20,8 @@
 
 #pragma once
 
-#include "yb/util/stats/iostats_context.h"
-#include "yb/util/stats/perf_step_timer.h"
+#include "yb/util/stats/iostats_context.h"  // IWYU pragma: keep
+#include "yb/util/stats/perf_step_timer.h"  // IWYU pragma: keep
 
 #ifndef IOS_CROSS_COMPILE
 

@@ -24,11 +24,11 @@
 #include <ctype.h>
 #include <errno.h>
 #include <float.h>          // for DBL_DIG and FLT_DIG
-#include <math.h>           // for HUGE_VAL
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include <glog/logging.h>
+#include <sys/types.h>
 #include <cmath>
 #include <iomanip>
 #include <limits>
@@ -36,7 +36,6 @@
 #include <memory>
 
 #include "yb/util/logging.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/int128.h"
 #include "yb/gutil/integral_types.h"

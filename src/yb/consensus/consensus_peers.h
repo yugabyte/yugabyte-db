@@ -33,45 +33,40 @@
 #pragma once
 
 #include <stdint.h>
-
+#include <glog/logging.h>
 #include <atomic>
-#include <cstdint>
-#include <cstdlib>
 #include <memory>
 #include <string>
-#include <type_traits>
 #include <vector>
-
-#include <boost/version.hpp>
-#include "yb/util/flags.h"
+#include <chrono>
+#include <mutex>
+#include <ostream>
+#include <utility>
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/metadata.pb.h"
-
-#include "yb/gutil/integral_types.h"
-
 #include "yb/rpc/rpc_controller.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/atomic.h"
-#include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
-#include "yb/util/semaphore.h"
-#include "yb/util/shared_lock.h"
 #include "yb/util/trace.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
-class HostPort;
 class ThreadPoolToken;
 
 namespace rpc {
 class Messenger;
 class PeriodicTimer;
+class ProxyCache;
 }
 
 namespace consensus {
@@ -127,6 +122,13 @@ namespace consensus {
 //  SignalRequest()                    return
 //
 class Peer;
+class Consensus;
+class LWConsensusRequestPB;
+class LWConsensusResponsePB;
+class PeerMessageQueue;
+class PeerProxy;
+enum class RequestTriggerMode;
+
 typedef std::shared_ptr<Peer> PeerPtr;
 
 class Peer : public std::enable_shared_from_this<Peer> {

@@ -11,7 +11,29 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <chrono>
+#include <memory>
+#include <ostream>
+#include <ratio>
+#include <string>
+
 #include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
 
 namespace yb {
 

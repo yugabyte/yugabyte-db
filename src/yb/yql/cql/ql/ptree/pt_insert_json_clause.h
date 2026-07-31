@@ -18,14 +18,24 @@
 #pragma once
 
 #include <rapidjson/document.h>
+#include <glog/logging.h>
+#include <rapidjson/rapidjson.h>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <string_view>
+#include <utility>
 
 #include "yb/util/status.h"
-
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 
 namespace yb {
 namespace ql {
+class SemContext;
 
 class PTInsertJsonClause: public PTCollection {
  public:

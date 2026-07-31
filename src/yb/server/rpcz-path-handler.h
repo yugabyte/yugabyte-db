@@ -31,13 +31,14 @@
 //
 #pragma once
 
-#include <memory>
 
-#include "yb/rpc/rpc_fwd.h"
 
 namespace yb {
 
 class Webserver;
+namespace rpc {
+class Messenger;
+}  // namespace rpc
 
 void AddRpczPathHandlers(rpc::Messenger* messenger, bool show_local_calls, Webserver* webserver);
 

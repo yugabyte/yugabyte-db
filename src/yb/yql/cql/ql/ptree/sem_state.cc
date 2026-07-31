@@ -13,6 +13,8 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <vector>
+
 #include "yb/client/table.h"
 #include "yb/qlexpr/index.h"
 #include "yb/yql/cql/ql/ptree/column_desc.h"
@@ -21,6 +23,10 @@
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/ptree/sem_state.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/value.messages.h"
+#include "yb/util/memory/arena.h"
+#include "yb/yql/cql/ql/ptree/tree_node.h"
 
 namespace yb {
 namespace ql {

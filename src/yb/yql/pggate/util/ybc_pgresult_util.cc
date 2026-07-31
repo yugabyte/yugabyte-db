@@ -13,17 +13,18 @@
 
 #include "yb/yql/pggate/util/ybc_pgresult_util.h"
 
-#include <vector>
 #include <google/protobuf/io/coded_stream.h>
+#include <glog/logging.h>
+#include <vector>
+#include <ostream>
+#include <string>
 
 #include "libpq-fe.h" // NOLINT
-
 #include "yb/common/common.pb.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
+#include "postgres_ext.h"
 
 namespace yb::pggate {
 

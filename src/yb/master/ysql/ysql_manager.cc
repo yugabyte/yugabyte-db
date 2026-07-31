@@ -13,29 +13,67 @@
 
 #include "yb/master/ysql/ysql_manager.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <functional>
+#include <ostream>
+#include <ratio>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "yb/client/schema.h"
-#include "yb/client/yb_table_name.h"
-
-#include "yb/common/common_flags.h"
 #include "yb/common/schema_pbutil.h"
-
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
-#include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ysql/ysql_initdb_major_upgrade_handler.h"
-
 #include "yb/rpc/messenger.h"
-
 #include "yb/tserver/ysql_advisory_lock_table.h"
-
 #include "yb/util/flag_validators.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/status_log.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/schema.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/port.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_error.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/sys_catalog_constants.h"
+#include "yb/util/flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+
+namespace yb {
+namespace master {
+class CatalogManagerIf;
+}  // namespace master
+}  // namespace yb
 
 // TODO (mbautin, 2019-12): switch the default to true after updating all external callers
 // (yb-ctl, YugaWare) and unit tests.

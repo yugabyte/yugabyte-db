@@ -13,26 +13,29 @@
 
 #pragma once
 
-#include "yb/common/entity_ids_types.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <memory>
+#include <string>
+
 #include "yb/common/retryable_request.h"
 #include "yb/consensus/consensus_fwd.h"
-
-#include "yb/fs/fs_manager.h"
-
 #include "yb/server/server_fwd.h"
 #include "yb/tablet/operations/operation.h"
-
 #include "yb/util/mem_tracker.h"
-#include "yb/util/pb_util.h"
 #include "yb/util/restart_safe_clock.h"
-#include "yb/util/status_fwd.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/result.h"
 
 namespace yb {
 
 class MetricEntity;
 struct OpId;
+class Status;
 
 namespace consensus {
+class LWReplicateMsg;
+class TabletBootstrapStatePB;
 
 struct RetryableRequestsCounts {
   size_t running = 0;
@@ -96,6 +99,7 @@ class RetryableRequests {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

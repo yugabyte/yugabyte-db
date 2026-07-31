@@ -18,7 +18,8 @@
 
 #pragma once
 
-#include <iosfwd>
+#include <ostream>
+
 #include "yb/gutil/integral_types.h"
 
 struct uint128_pod;

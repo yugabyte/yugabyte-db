@@ -15,28 +15,48 @@
 
 #pragma once
 
-#include <concepts>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <memory>
 #include <string>
-
-#include "yb/gutil/port.h"
+#include <atomic>
+#include <functional>
+#include <limits>
+#include <optional>
+#include <shared_mutex>
+#include <type_traits>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "yb/util/debug/leakcheck_disabler.h"
 #include "yb/util/metrics.h"
-#include "yb/util/lockfree.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/tostring.h"
 #include "yb/util/type_traits.h"
-#include "yb/util/unique_lock.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 
 class Cgroup;
-class Status;
 class Thread;
-
-class ThreadSubPoolBase;
 
 class ThreadPoolTask {
  public:

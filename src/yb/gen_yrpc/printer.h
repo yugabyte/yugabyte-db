@@ -14,12 +14,19 @@
 #pragma once
 
 #include <map>
-#include <memory>
 #include <string>
-#include <vector>
+#include <utility>
 
 #include "yb/gen_yrpc/gen_yrpc_fwd.h"
 #include "yb/gen_yrpc/substitutions.h"
+
+namespace google {
+namespace protobuf {
+namespace io {
+class Printer;
+}  // namespace io
+}  // namespace protobuf
+}  // namespace google
 
 namespace yb {
 namespace gen_yrpc {

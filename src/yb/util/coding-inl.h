@@ -40,6 +40,7 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <endian.h>
 
 namespace yb {
 

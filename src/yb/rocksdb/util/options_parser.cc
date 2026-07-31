@@ -21,20 +21,32 @@
 #include "yb/rocksdb/util/options_parser.h"
 
 #include <math.h>
-
-#include <map>
+#include <ctype.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 #include <string>
-#include <utility>
 #include <vector>
+#include <memory>
+#include <sstream>
 
 #include "yb/rocksdb/convenience.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/util/options_helper.h"
-
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/common/version_info.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/rocksdb/table.h"
+#include "yb/rocksdb/table/block_based_table_factory.h"
+#include "yb/util/file_system.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 namespace rocksdb {
 

@@ -13,12 +13,16 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <functional> // For std::function
 #include <memory>
-#include <mutex>
+#include <atomic>
+#include <string>
 
 #include "yb/util/locks.h"
-#include "yb/util/status_fwd.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

@@ -30,10 +30,18 @@
 // under the License.
 //
 
+#include <mutex>
+#include <string_view>
+#include <utility>
+
 #include "yb/gutil/map-util.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/result.h"
+#include "yb/util/format.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 XClusterSafeTimeMap::XClusterSafeTimeMap() : map_initialized_(false) {}

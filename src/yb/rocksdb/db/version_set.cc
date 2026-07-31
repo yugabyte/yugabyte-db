@@ -22,7 +22,13 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/db/version_set.h"
+
 #include <memory>
+#include <new>
+#include <optional>
+#include <ostream>
+#include <unordered_set>
+#include <functional>
 
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
@@ -30,25 +36,23 @@
 
 #include <inttypes.h>
 #include <stdio.h>
+#include <boost/container/small_vector.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/intrusive/list.hpp>
+#include <boost/move/iterator.hpp>
 #include <algorithm>
 #include <map>
-#include <set>
-#include <climits>
 #include <unordered_map>
 #include <vector>
 #include <string>
 
 #include "yb/util/logging.h"
-#include <boost/container/small_vector.hpp>
-
-#include "yb/gutil/casts.h"
-
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/file_numbers.h"
 #include "yb/rocksdb/db/internal_stats.h"
 #include "yb/rocksdb/db/log_reader.h"
 #include "yb/rocksdb/db/log_writer.h"
-#include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/db/merge_context.h"
 #include "yb/rocksdb/db/table_cache.h"
 #include "yb/rocksdb/db/compaction.h"
@@ -64,21 +68,40 @@
 #include "yb/rocksdb/table/format.h"
 #include "yb/rocksdb/table/meta_blocks.h"
 #include "yb/rocksdb/table/get_context.h"
-
-#include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/statistics.h"
-#include "yb/rocksdb/util/stop_watch.h"
-
 #include "yb/util/callsite_profiling.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_kill.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/db/version_edit.h"
+#include "yb/rocksdb/db/write_controller.h"
+#include "yb/rocksdb/filter_policy.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/table_properties.h"
+#include "yb/rocksdb/util/instrumented_mutex.h"
+#include "yb/rocksdb/util/mutable_cf_options.h"
+#include "yb/storage/frontier.h"
+#include "yb/util/file_system.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
+#include "yb/rocksdb/options.h"
+
+namespace rocksdb {
+class HistogramImpl;
+}  // namespace rocksdb
 
 DEFINE_RUNTIME_bool(log_version_edits, false,
     "Log RocksDB version edits as they are being written");

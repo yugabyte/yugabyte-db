@@ -13,11 +13,11 @@
 
 #include "yb/util/bytes_formatter.h"
 
+#include <stdint.h>
+
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/ascii_ctype.h"
 #include "yb/gutil/strings/substitute.h"
-
-#include "yb/util/cast.h"
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
 

@@ -13,6 +13,8 @@
 
 #include "yb/util/file_system_mem.h"
 
+#include <string.h>
+
 #include "yb/util/malloc.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"

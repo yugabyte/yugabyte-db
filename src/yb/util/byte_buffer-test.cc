@@ -10,10 +10,15 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/container/container_fwd.hpp>  // IWYU pragma: keep
 #include <string>
 #include <unordered_map>
-
-#include <gtest/gtest.h>
+#include <map>
+#include <memory>
+#include <utility>
+#include <vector>
 
 #include "yb/util/byte_buffer.h"
 #include "yb/util/mem_tracked_byte_buffer.h"
@@ -21,6 +26,8 @@
 #include "yb/util/random_util.h"
 #include "yb/util/tcmalloc_util.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/util/slice.h"
 
 using namespace std::literals;
 

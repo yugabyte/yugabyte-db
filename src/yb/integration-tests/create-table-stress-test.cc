@@ -30,30 +30,31 @@
 // under the License.
 //
 
+#include <glog/stl_logging.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
 #include <memory>
 #include <thread>
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <iostream>
+#include <optional>
+#include <sstream>
+#include <string>
+#include <vector>
+#include <functional>
 
 #include "yb/util/logging.h"
-#include <glog/stl_logging.h>
-#include <gtest/gtest.h>
-
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
-
 #include "yb/dockv/partition.h"
-#include "yb/common/wire_protocol.h"
-
-#include "yb/consensus/consensus.proxy.h"
-
-#include "yb/fs/fs_manager.h"
-
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_loaders.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master-test-util.h"
 #include "yb/master/master.h"
@@ -61,17 +62,14 @@
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/mini_master.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_test_util.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
@@ -80,7 +78,33 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
-#include "yb/util/flags.h"
+#include "gtest/gtest.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_loading_state.h"
+#include "yb/master/catalog_manager.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_heartbeat.pb.h"
+#include "yb/tablet/tablet.pb.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/util/atomic.h"
+#include "yb/util/cow_object.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 using yb::client::YBClient;
 using yb::client::YBClientBuilder;

@@ -21,12 +21,13 @@
 
 #pragma once
 
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/statistics.h"
+#include <stdint.h>
+
+#include "yb/rocksdb/port/port_posix.h"
 
 namespace rocksdb {
-class InstrumentedCondVar;
+class Env;
+class Statistics;
 
 // A wrapper class for port::Mutex that provides additional layer
 // for collecting stats and instrumentation.

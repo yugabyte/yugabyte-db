@@ -29,6 +29,7 @@
 #include <string>
 #include <algorithm>
 #include <vector>
+#include <memory>
 
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/options.h"

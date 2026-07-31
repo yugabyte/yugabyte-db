@@ -14,9 +14,12 @@
 #pragma once
 
 #include "yb/master/yql_empty_vtable.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/schema.h"
 
 namespace yb {
 namespace master {
+class Master;
 
 // VTable implementation of system_schema.triggers.
 class YQLTriggersVTable : public YQLEmptyVTable {

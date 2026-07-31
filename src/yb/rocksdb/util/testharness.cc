@@ -23,11 +23,10 @@
 
 #include "yb/rocksdb/util/testharness.h"
 
+#include <stdlib.h>
 #include <string>
 
-#include <gtest/gtest.h>
-
-#include "yb/util/status.h"
+#include "gtest/gtest.h"
 
 namespace rocksdb {
 namespace test {

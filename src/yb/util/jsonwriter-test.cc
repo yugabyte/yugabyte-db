@@ -30,11 +30,12 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <string>
 
 #include "yb/util/jsonwriter.h"
 #include "yb/util/jsonwriter_test.pb.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
 
 using jsonwriter_test::TestAllTypes;
 

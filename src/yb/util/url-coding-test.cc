@@ -41,8 +41,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <gtest/gtest.h>
+#include <stdint.h>
+#include <string.h>
+#include <sstream>
+#include <string>
+#include <vector>
+
 #include "yb/util/url-coding.h"
+#include "gtest/gtest.h"
 
 using namespace std; // NOLINT(*)
 

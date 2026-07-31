@@ -16,10 +16,10 @@
 // under the License.
 #pragma once
 
-#include <iosfwd>
+#include <ostream>
 
 #include "yb/util/slice.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace zlib {

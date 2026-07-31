@@ -15,17 +15,20 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stdint.h>
+#include <string.h>
 #include <string>
+#include <array>
 
 #include "yb/common/doc_hybrid_time.h"
-#include "yb/common/hybrid_time.h"
-
 #include "yb/gutil/endian.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/kv_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/slice.h"
+#include "yb/util/cast.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb::dockv {
 

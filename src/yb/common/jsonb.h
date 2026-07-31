@@ -13,16 +13,23 @@
 
 #pragma once
 
-#include <string>
-
 #include <rapidjson/document.h>
-
-#include "yb/common/common_fwd.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <string>
+#include <string_view>
+#include <utility>
 
 #include "yb/util/slice.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class LWQLJsonColumnOperationsPB;
+class LWQLValuePB;
+class QLJsonColumnOperationsPB;
+class QLValue;
+class QLValuePB;
+
 namespace common {
 
 using JsonbMetadata = uint32_t;

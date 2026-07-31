@@ -14,13 +14,21 @@
 #pragma once
 
 #include <cassandra.h>
-
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <string>
+#include <memory>
+#include <ostream>
+#include <utility>
+#include <vector>
 
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
-#include "yb/util/status_log.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 

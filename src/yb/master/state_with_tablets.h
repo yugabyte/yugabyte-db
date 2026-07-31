@@ -19,16 +19,44 @@
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index_container.hpp>
 #include <boost/range/iterator_range_core.hpp>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/multi_index/indexed_by.hpp>
+#include <boost/multi_index/tag.hpp>
+#include <boost/multi_index_container_fwd.hpp>
+#include <boost/operators.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <optional>
+#include <string>
+#include <vector>
+
 #include "yb/util/logging.h"
-
 #include "yb/gutil/casts.h"
-
-#include "yb/master/master_fwd.h"
 #include "yb/master/catalog_entity_info.pb.h"
-
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/tostring.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+namespace master {
+class SnapshotCoordinatorContext;
+}  // namespace master
+}  // namespace yb
 
 namespace yb::master {
 

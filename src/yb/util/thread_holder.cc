@@ -13,6 +13,13 @@
 
 #include "yb/util/thread_holder.h"
 
+#include <glog/logging.h>
+#include <compare>
+#include <ostream>
+#include <ratio>
+
+#include "yb/util/logging.h"
+
 namespace yb {
 
 void ThreadHolder::JoinAll() {

@@ -14,13 +14,30 @@
 #pragma once
 
 #include <boost/atomic/atomic_ref.hpp>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <array>
+#include <optional>
+#include <string>
 
 #include "yb/common/common.pb.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
-#include "yb/common/wire_protocol.h"
-
 #include "yb/dockv/schema_packing.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+class Uuid;
+enum TableType : int;
+}  // namespace yb
 
 namespace yb::docdb {
 

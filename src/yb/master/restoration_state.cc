@@ -11,22 +11,32 @@
 // under the License.
 //
 
-#include "yb/docdb/docdb.pb.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/multi_index_container.hpp>
+#include <boost/operators.hpp>
+#include <ostream>
 
+#include "yb/docdb/docdb.pb.h"
 #include "yb/dockv/key_bytes.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/master/restoration_state.h"
-
-#include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_error.h"
 #include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/snapshot_state.h"
-
 #include "yb/tserver/tserver_error.h"
-#include "yb/util/flags.h"
 #include "yb/util/pb_util.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/faststring.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 DEFINE_test_flag(bool, update_aggregated_restore_state, false,
     "Test only flag that updates the aggregated restore state as opposed to the initial state"

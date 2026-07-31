@@ -32,6 +32,15 @@
 
 #include "yb/client/client-internal.h"
 
+#include <boost/algorithm/string/predicate.hpp>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/seq/for_each.hpp>
+#include <errno.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdlib.h>
+#include <string.h>
+#include <boost/container/stable_vector.hpp>
 #include <algorithm>
 #include <fstream>
 #include <functional>
@@ -41,26 +50,22 @@
 #include <sstream>
 #include <string>
 #include <vector>
-
-#include <boost/algorithm/string/predicate.hpp>
-#include <boost/preprocessor/cat.hpp>
-#include <boost/preprocessor/seq/for_each.hpp>
-#include <boost/preprocessor/stringize.hpp>
+#include <compare>
+#include <thread>
+#include <tuple>
+#include <utility>
 
 #include "yb/client/client_master_rpc.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/table_info.h"
-
 #include "yb/common/common_util.h"
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/tablespace_parser.h"
-
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
-
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_client.proxy.h"
@@ -73,15 +78,11 @@
 #include "yb/master/master_rpc.h"
 #include "yb/master/master_test.proxy.h"
 #include "yb/master/master_util.h"
-
 #include "yb/qlexpr/index.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/server/clock.h"
-
 #include "yb/util/atomic.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -92,6 +93,58 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
+#include "yb/ash/wait_state.h"
+#include "yb/client/schema.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/snapshot.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/bind_helpers.h"
+#include "yb/gutil/callback.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_backup.pb.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/rpc/proxy.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/util/async_util.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/threadpool.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace master {
+class AlterRoleRequestPB;
+class AlterRoleResponsePB;
+class CreateRoleRequestPB;
+class CreateRoleResponsePB;
+class DeleteRoleRequestPB;
+class DeleteRoleResponsePB;
+class GetFullUniverseKeyRegistryRequestPB;
+class GetFullUniverseKeyRegistryResponsePB;
+class GetPermissionsRequestPB;
+class GetPermissionsResponsePB;
+class GrantRevokePermissionRequestPB;
+class GrantRevokePermissionResponsePB;
+class GrantRevokeRoleRequestPB;
+class GrantRevokeRoleResponsePB;
+}  // namespace master
+}  // namespace yb
 
 using namespace std::literals;
 

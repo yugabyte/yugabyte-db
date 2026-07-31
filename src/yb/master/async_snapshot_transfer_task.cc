@@ -13,13 +13,27 @@
 
 #include "yb/master/async_snapshot_transfer_task.h"
 
-#include "yb/common/wire_protocol.h"
+#include <glog/logging.h>
+#include <memory>
+#include <ostream>
+#include <utility>
+#include <vector>
 
-#include "yb/consensus/consensus.proxy.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/tserver/tserver_service.proxy.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/snapshot_transfer_manager.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class ThreadPool;
+
 namespace master {
+class Master;
 
 using std::string;
 using std::vector;

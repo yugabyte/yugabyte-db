@@ -18,9 +18,18 @@
 // under the License.
 //
 #include "yb/rocksdb/ldb_tool.h"
-#include "yb/rocksdb/tools/ldb_cmd.h"
 
-#include "yb/util/flags.h"
+#include <gflags/gflags.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+#include "yb/rocksdb/tools/ldb_cmd.h"
+#include "yb/rocksdb/tools/ldb_cmd_execute_result.h"
+#include "yb/util/flags/flag_tags.h"
+
+namespace rocksdb {
+struct ColumnFamilyDescriptor;
+}  // namespace rocksdb
 
 using std::string;
 

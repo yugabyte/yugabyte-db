@@ -12,16 +12,25 @@
 
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 
-#include <cstddef>
+#include <gtest/gtest.h>
+#include <glog/logging.h>
+#include <limits.h>
+#include <stdlib.h>
+#include <boost/asio/ip/basic_endpoint.hpp>
+#include <boost/function.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <map>
 #include <vector>
-
-#include <gtest/gtest.h>
+#include <chrono>
+#include <compare>
+#include <concepts>
+#include <functional>
+#include <sstream>
+#include <type_traits>
 
 #include "yb/cdc/xrepl_types.h"
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_state_table.h"
-
 #include "yb/client/yb_table_name.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/master/catalog_manager.h"
@@ -36,6 +45,47 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_thread_holder.h"
+#include "yb/cdc/cdc_service.proxy.h"
+#include "yb/cdc/cdc_types.h"
+#include "yb/client/client.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/constants.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/opid.pb.h"
+#include "yb/common/value.pb.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/opid_util.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/integration-tests/cdc_test_util.h"
+#include "yb/integration-tests/postgres-minicluster.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/tablet_split_fwd.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/options.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/transaction_participant.h"
+#include "yb/tserver/tserver_admin.pb.h"
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/flags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/subprocess.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_bool(cdc_write_post_apply_metadata);
 

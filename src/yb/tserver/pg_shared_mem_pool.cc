@@ -13,18 +13,40 @@
 
 #include "yb/tserver/pg_shared_mem_pool.h"
 
-#include <boost/interprocess/mapped_region.hpp>
 #include <boost/intrusive/list.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/core/addressof.hpp>
+#include <boost/intrusive/list_hook.hpp>
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <mutex>
+#include <ostream>
+#include <ratio>
+#include <unordered_map>
+#include <vector>
 
 #include "yb/gutil/bits.h"
-
 #include "yb/rpc/poller.h"
-
 #include "yb/tserver/tserver_shared_mem.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/shared_mem.h"
 #include "yb/util/size_literals.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+namespace rpc {
+class Scheduler;
+}  // namespace rpc
+}  // namespace yb
 
 using namespace std::literals;
 using namespace yb::size_literals;

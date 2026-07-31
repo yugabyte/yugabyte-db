@@ -11,37 +11,64 @@
 // under the License.
 //
 
+#include <absl/base/dynamic_annotations.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <future>
 #include <optional>
+#include <atomic>
+#include <chrono>
+#include <memory>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <vector>
 
 #include "yb/client/meta_cache.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
-#include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/transaction_error.h"
-
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_defaults.h"
-
-#include "yb/rpc/sidecars.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
-
 #include "yb/util/std_util.h"
 #include "yb/util/test_thread_holder.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/transaction.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/docdb/docdb_types.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/server/clock.h"
+#include "yb/tserver/pg_client.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_uint32(num_advisory_locks_tablets);

@@ -15,11 +15,15 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <ostream>
+
 #include "yb/util/logging.h"
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/once.h"
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/spinlock_internal.h"
+#include "yb/gutil/integral_types.h"
 
 // All modifications to a GoogleOnceType occur inside GoogleOnceInternalInit.
 // The fast path reads the variable with an acquire-load..

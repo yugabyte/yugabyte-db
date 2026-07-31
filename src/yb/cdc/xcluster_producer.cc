@@ -10,31 +10,71 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <chrono>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <utility>
+
 #include "yb/cdc/cdc_producer.h"
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/xrepl_stream_metadata.h"
-
 #include "yb/common/transaction.h"
-#include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/log_cache.h"
-#include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/replicate_msgs_holder.h"
-
 #include "yb/dockv/doc_key.h"
-#include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/gutil/stl_util.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
-
 #include "yb/util/flags.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/transaction.messages.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/value.pb.h"
+#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/docdb/docdb.messages.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/tablet/operations.messages.h"
+#include "yb/tablet/operations.pb.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/uint_set.h"
+
+namespace yb {
+namespace dockv {
+class PrimitiveValue;
+}  // namespace dockv
+}  // namespace yb
 
 DEPRECATE_FLAG(int32, cdc_transaction_timeout_ms, "05_2021");
 DEPRECATE_FLAG(bool, cdc_enable_replicate_intents, "05_2021");

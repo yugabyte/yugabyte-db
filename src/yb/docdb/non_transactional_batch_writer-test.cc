@@ -11,21 +11,58 @@
 // under the License.
 //
 
-#include "yb/common/ql_type.h"
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/common/transaction.h"
-#include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb-test.h"
-
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/doc_vector_index.h"
 #include "yb/docdb/rocksdb_writer.h"
 #include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/dockv_fwd.h"
 #include "yb/dockv/key_entry_value.h"
-#include "yb/dockv/partition.h"
-
 #include "yb/vector_index/vector_index_fwd.h"
+#include "gtest/gtest.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
+#include "yb/common/value.messages.h"
+#include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/docdb_test_base.h"
+#include "yb/docdb/docdb_util.h"
+#include "yb/docdb/storage_set.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/doc_path.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/storage/storage_types.h"
+#include "yb/util/byte_buffer.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/uuid.h"
 
 namespace yb::docdb {
 

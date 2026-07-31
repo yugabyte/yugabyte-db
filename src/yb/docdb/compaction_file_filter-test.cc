@@ -11,30 +11,36 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
 #include <cstddef>
 #include <memory>
-#include <random>
 #include <string>
-#include <thread>
-#include <utility>
 #include <vector>
 
-#include "yb/common/common_fwd.h"
 #include "yb/common/schema.h"
-
 #include "yb/docdb/compaction_file_filter.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/dockv/doc_ttl_util.h"
 #include "yb/docdb/docdb_compaction_context.h"
-#include "yb/dockv/primitive_value.h"
-
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/db/version_edit.h"
-
 #include "yb/util/monotime.h"
-#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/value.messages.h"
+#include "yb/dockv/value.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/server/clock.h"
+#include "yb/server/hybrid_clock.h"
+#include "yb/storage/frontier.h"
+#include "yb/storage/storage_fwd.h"
+#include "yb/storage/storage_types.h"
+#include "yb/util/status.h"
 
 DECLARE_bool(file_expiration_ignore_value_ttl);
 DECLARE_bool(file_expiration_value_ttl_overrides_table_ttl);

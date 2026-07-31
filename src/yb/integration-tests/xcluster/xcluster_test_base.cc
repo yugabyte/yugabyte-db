@@ -14,44 +14,56 @@
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
 
 #include <string>
+#include <chrono>
 
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
-#include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/colocated_util.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/xcluster_util.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
-
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/xcluster_poller.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/file_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/thread.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/cdc_service.proxy.h"
+#include "yb/cdc/xcluster_types.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/env.h"
+#include "yb/util/format.h"
+#include "yb/util/path_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_uuid.h"
+
+namespace yb {
+namespace client {
+class YBSchema;
+}  // namespace client
+}  // namespace yb
 
 using std::string;
 

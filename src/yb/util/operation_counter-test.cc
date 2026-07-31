@@ -30,10 +30,13 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <string>
 
 #include "yb/util/operation_counter.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/util/monotime.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 

@@ -30,29 +30,43 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <stddef.h>
 #include <functional>
 #include <memory>
 #include <string>
 #include <vector>
+#include <optional>
+#include <ostream>
+#include <set>
+#include <unordered_map>
+#include <utility>
 
 #include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/leader_election.h"
 #include "yb/consensus/metadata.pb.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/threadpool.h"
 
 namespace yb {
-
-namespace rpc {
-class Messenger;
-} // namespace rpc
 
 namespace consensus {
 

@@ -13,21 +13,28 @@
 
 #include "yb/tablet/transaction_loader.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <string.h>
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <compare>
+#include <ostream>
+#include <ratio>
+#include <thread>
+#include <utility>
+
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/intent.h"
-
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/iter_util.h"
-
 #include "yb/rocksdb/options.h"
-
 #include "yb/tablet/transaction_status_resolver.h"
-
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/bitmap.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/operation_counter.h"
@@ -36,6 +43,25 @@
 #include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/value_type.h"
+#include "yb/gutil/casts.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/tablet/transaction_participant.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace rocksdb {
+class DB;
+}  // namespace rocksdb
 
 using namespace std::literals;
 

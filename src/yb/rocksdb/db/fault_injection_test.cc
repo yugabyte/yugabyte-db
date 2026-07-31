@@ -25,10 +25,21 @@
 // the last "sync". It then checks for data loss errors by purposely dropping
 // file data (or entire files) not protected by a "sync".
 
+#include <assert.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/types.h>
 #include <map>
 #include <set>
-
-#include <gtest/gtest.h>
+#include <atomic>
+#include <functional>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
@@ -39,10 +50,21 @@
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/util/random.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/util/file_system.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 using std::unique_ptr;
 using std::shared_ptr;
@@ -53,7 +75,6 @@ static const int kValueSize = 1000;
 static const int kMaxNumValues = 2000;
 static const size_t kNumIterations = 3;
 
-class TestWritableFile;
 class FaultInjectionTestEnv;
 
 namespace {

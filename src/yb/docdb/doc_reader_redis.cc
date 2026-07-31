@@ -13,28 +13,40 @@
 
 #include "yb/docdb/doc_reader_redis.h"
 
+#include <glog/logging.h>
 #include <string>
 #include <vector>
+#include <functional>
+#include <utility>
 
 #include "yb/common/hybrid_time.h"
-#include "yb/common/transaction.h"
-
 #include "yb/docdb/deadline_info.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/docdb_types.h"
 #include "yb/docdb/intent_aware_iterator.h"
-#include "yb/docdb/read_operation_data.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_ttl_util.h"
 #include "yb/dockv/subdocument.h"
 #include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/util/format.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/logging.h"
+
+namespace yb {
+namespace docdb {
+struct DocDB;
+}  // namespace docdb
+struct TransactionOperationContext;
+}  // namespace yb
 
 using std::vector;
 

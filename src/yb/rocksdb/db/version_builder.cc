@@ -22,28 +22,38 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/db/version_builder.h"
+
+#include <assert.h>
+#include <glog/logging.h>
+#include <stdio.h>
+#include <stdlib.h>
+
 #include "yb/util/thread.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/db/version_edit.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/options.h"
+#include "yb/util/tostring.h"
 
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
 #endif
 
-#include <inttypes.h>
 #include <algorithm>
 #include <atomic>
-#include <set>
-#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <functional>
+#include <ostream>
+#include <string>
 
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/internal_stats.h"
 #include "yb/rocksdb/db/table_cache.h"
 #include "yb/rocksdb/db/version_set.h"
-#include "yb/rocksdb/table/table_reader.h"
-
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_log.h"

@@ -23,11 +23,16 @@
 
 #include "yb/rocksdb/table/two_level_iterator.h"
 
+#include <assert.h>
+#include <new>
+#include <string>
+
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/iterator_wrapper.h"
 #include "yb/rocksdb/util/arena.h"
-
-#include "yb/rocksdb/db/dbformat.h"
+#include "yb/gutil/port.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/status_fwd.h"
 
 namespace rocksdb {
 

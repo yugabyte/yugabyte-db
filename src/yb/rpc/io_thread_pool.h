@@ -15,10 +15,10 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <memory>
-#include <functional>
+#include <string>
 
-#include "yb/rpc/rpc_fwd.h"
 #include "yb/util/net/net_fwd.h"
 
 namespace yb {
@@ -40,6 +40,7 @@ class IoThreadPool {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

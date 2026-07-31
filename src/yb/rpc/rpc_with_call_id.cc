@@ -15,12 +15,16 @@
 
 #include "yb/rpc/rpc_with_call_id.h"
 
-#include "yb/rpc/connection.h"
-#include "yb/rpc/reactor.h"
-#include "yb/rpc/rpc_introspection.pb.h"
+#include <glog/logging.h>
+#include <memory>
+#include <ostream>
 
+#include "yb/rpc/connection.h"
+#include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 
 namespace yb {
 namespace rpc {

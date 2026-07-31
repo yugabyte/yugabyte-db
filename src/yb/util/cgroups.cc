@@ -11,14 +11,42 @@
 // under the License.
 #include "yb/util/cgroups.h"
 
+#include <errno.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <sys/statfs.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <cmath>
 #include <ranges>
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <memory>
+#include <ostream>
+#include <ratio>
+#include <unordered_map>
+#include <utility>
 
 #include "yb/gutil/sysinfo.h"
-
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/flags.h"
 #include "yb/util/os-util.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/string_util.h"
 
 DEFINE_NON_RUNTIME_bool(use_cgroups_cpu, false,
     "Use the cgroup CPU quota to determine the effective number of CPUs instead of the host CPU "
@@ -36,16 +64,11 @@ DECLARE_int32(num_cpus);
 #include <linux/magic.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/vfs.h>
-#include <syscall.h>
 #include <unistd.h>
-
 #include <atomic>
-#include <cstdlib>
 
 #include "yb/util/enums.h"
 #include "yb/util/errno.h"
-#include "yb/util/flag_validators.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"

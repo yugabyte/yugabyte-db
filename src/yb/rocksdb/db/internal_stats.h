@@ -24,17 +24,23 @@
 
 
 #pragma once
+#include <stddef.h>
+#include <stdint.h>
 #include <vector>
 #include <string>
+#include <atomic>
+#include <unordered_map>
 
-#include "yb/rocksdb/db/version_set.h"
-
-class ColumnFamilyData;
+#include "yb/rocksdb/util/histogram.h"
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 
-class MemTableList;
 class DBImpl;
+class ColumnFamilyData;
+class Env;
+class InternalStats;
+class Version;
 
 // Config for retrieving a property's value.
 struct DBPropertyInfo {

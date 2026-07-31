@@ -13,6 +13,10 @@
 
 #include "yb/encryption/encryption_test_util.h"
 
+#include <stdint.h>
+#include <algorithm>
+#include <vector>
+
 #include "yb/util/random_util.h"
 #include "yb/util/test_macros.h"
 

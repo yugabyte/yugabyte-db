@@ -16,21 +16,40 @@
 #include "yb/client/transaction_rpc.h"
 
 #include <boost/preprocessor/cat.hpp>
-
-#include "yb/ash/wait_state.h"
+#include <glog/logging.h>
+#include <stdint.h>
+#include <boost/preprocessor/stringize.hpp>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <utility>
+#include <chrono>
 
 #include "yb/client/client.h"
 #include "yb/client/tablet_rpc.h"
-
 #include "yb/common/transaction.h"
-
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/trace.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/tablet/operations.pb.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace client {
+namespace internal {
+class RemoteTablet;
+}  // namespace internal
+}  // namespace client
+}  // namespace yb
 
 using namespace std::literals;
 

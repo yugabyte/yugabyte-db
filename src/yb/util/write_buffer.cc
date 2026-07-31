@@ -13,10 +13,14 @@
 
 #include "yb/util/write_buffer.h"
 
-#include "yb/gutil/strings/fastmem.h"
+#include <boost/container/vector.hpp>
+#include <boost/intrusive/list.hpp>
 
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/faststring.h"
+#include "yb/util/format.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 

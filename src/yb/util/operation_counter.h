@@ -13,9 +13,14 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/monotime.h"
@@ -89,7 +94,6 @@ class RWOperationCounterLock {
   bool is_locked_ = false;
 };
 
-class ScopedOperation;
 
 // Class that counts acquired tokens and don't shutdown until this count drops to zero.
 class OperationCounter {

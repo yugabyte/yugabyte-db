@@ -11,10 +11,27 @@
 // under the License.
 //
 
+#include <ctype.h>
+#include <glog/logging.h>
 #include <regex>
+#include <algorithm>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <string_view>
 
 #include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 

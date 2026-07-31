@@ -32,23 +32,28 @@
 
 #include "yb/consensus/log_cache.h"
 
+#include <absl/base/dynamic_annotations.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <google/protobuf/wire_format_lite.h>
+#include <boost/preprocessor/cat.hpp>
 #include <algorithm>
 #include <map>
 #include <mutex>
 #include <vector>
+#include <chrono>
+#include <compare>
+#include <utility>
 
 #include "yb/common/hybrid_time.h"
-
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/opid_util.h"
-
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
-
 #include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
@@ -59,6 +64,20 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
+#include "yb/common/opid.messages.h"
+#include "yb/common/opid.pb.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/log.pb.h"
+#include "yb/consensus/log_util.h"
+#include "yb/gutil/bind_helpers.h"
+#include "yb/gutil/callback.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/restart_safe_clock.h"
+#include "yb/util/slice.h"
 
 using std::string;
 using std::vector;

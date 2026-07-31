@@ -29,18 +29,23 @@
 #include <memory>
 #include <vector>
 #include <limits>
-#include <unordered_map>
+#include <functional>
 
 #include "yb/common/entity_ids_types.h"
-
 #include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/listener.h"
-#include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/universal_compaction.h"
-
 #include "yb/util/slice.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/types.h"
+#include "yb/util/result.h"
+
+namespace rocksdb {
+class BoundaryValuesExtractor;
+struct FilterKeyCache;
+}  // namespace rocksdb
 
 #ifdef max
 #undef max
@@ -52,6 +57,7 @@ namespace yb {
 class MemTracker;
 class PriorityThreadPool;
 class PriorityThreadPoolToken;
+
 using PriorityThreadPoolTokenPtr = std::shared_ptr<PriorityThreadPoolToken>;
 
 }
@@ -59,7 +65,6 @@ using PriorityThreadPoolTokenPtr = std::shared_ptr<PriorityThreadPoolToken>;
 namespace rocksdb {
 
 class Arena;
-class Cache;
 class CompactionFilter;
 class CompactionFilterFactory;
 class Comparator;
@@ -67,7 +72,6 @@ class Env;
 class CompactionFileFilterFactory;
 enum InfoLogLevel : unsigned char;
 class SstFileManager;
-class FilterPolicy;
 class Logger;
 class MemTable;
 class MergeOperator;
@@ -82,7 +86,6 @@ class InternalIterator;
 class InternalKeyComparator;
 class WalFilter;
 class MemoryMonitor;
-
 struct RocksDBPriorityThreadPoolMetrics;
 struct FileMetaData;
 
@@ -1438,6 +1441,7 @@ enum ReadTier {
 };
 
 struct FdWithBoundaries;
+
 class ReadFileFilter {
  public:
   virtual bool Filter(const FdWithBoundaries&) const = 0;
@@ -1447,7 +1451,6 @@ class ReadFileFilter {
 };
 
 struct QueryOptions;
-
 // Opaque per-iterator cache of the last-resolved fixed-size bloom filter block.
 // Defined in table/block_based_table_reader.cc; only ever passed by pointer here.
 struct FilterBlockCache;

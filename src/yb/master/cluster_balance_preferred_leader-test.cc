@@ -10,8 +10,45 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <algorithm>
+#include <functional>
+#include <initializer_list>
+#include <limits>
+#include <map>
+#include <memory>
+#include <ostream>
+#include <set>
+#include <string>
+#include <tuple>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
 #include "yb/master/load_balancer_mocked-test_base.h"
-#include "yb/util/status_log.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/replica_type.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/map-util.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager-test_base.h"
+#include "yb/master/cluster_balance_mocked.h"
+#include "yb/master/cluster_balance_util.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/ts_descriptor.h"
+#include "yb/master/ts_descriptor_test_util.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 namespace master {

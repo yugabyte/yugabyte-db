@@ -22,12 +22,13 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/util/concurrent_arena.h"
-#include <thread>
-#include "yb/rocksdb/port/likely.h"
-#include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/util/random.h"
 
+#include <utility>
+
+#include "yb/rocksdb/port/likely.h"
+#include "yb/rocksdb/util/random.h"
 #include "yb/util/cgroups.h"
+#include "yb/rocksdb/port/port_posix.h"
 
 namespace rocksdb {
 

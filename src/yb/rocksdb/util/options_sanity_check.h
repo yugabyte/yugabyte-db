@@ -22,6 +22,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <functional>
 
 namespace rocksdb {
 // This enum defines the RocksDB options sanity level.

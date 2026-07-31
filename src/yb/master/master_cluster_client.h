@@ -13,8 +13,18 @@
 
 #pragma once
 
+#include <optional>
+#include <string>
+
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_cluster.proxy.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class HostPortPB;
+}  // namespace yb
 
 namespace yb::master {
 

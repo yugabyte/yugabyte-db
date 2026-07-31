@@ -25,14 +25,20 @@
 #endif
 
 #include <inttypes.h>
+#include <assert.h>
+#include <limits.h>
+#include <stdio.h>
 #include <limits>
 #include <string>
-#include "yb/rocksdb/port/port.h"
+#include <functional>
+
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/port/port_posix.h"
 
 namespace rocksdb {
+struct FileMetaData;
 
 // Multiple two operands. If they overflow, return op1.
 uint64_t MultiplyCheckOverflow(uint64_t op1, int op2) {

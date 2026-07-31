@@ -11,23 +11,34 @@
 // under the License.
 //
 
+#include <stddef.h>
+#include <boost/uuid/uuid.hpp>
+#include <atomic>
+#include <chrono>
+#include <new>
+#include <optional>
+#include <string>
+#include <type_traits>
+#include <vector>
+
 #include "yb/hnsw/hnsw.h"
-#include "yb/hnsw/hnsw_block_cache.h"
 #include "yb/hnsw/vector_index_test_base.h"
-
-#include "yb/rocksdb/cache.h"
-
 #include "yb/util/metrics.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
-#include "yb/util/test_util.h"
 #include "yb/util/thread_holder.h"
-#include "yb/util/tsan_util.h"
-
 #include "yb/vector_index/vector_index_fwd.h"
 #include "yb/vector_index/distance.h"
-#include "yb/vector_index/usearch_include_wrapper_internal.h"
 #include "yb/vector_index/vector_index_if.h"
+#include "gtest/gtest.h"
+#include "usearch/index.hpp"
+#include "usearch/index_dense.hpp"
+#include "usearch/index_plugins.hpp"
+#include "yb/util/metric_entity.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
 
 using namespace std::chrono_literals;
 using namespace yb::size_literals;

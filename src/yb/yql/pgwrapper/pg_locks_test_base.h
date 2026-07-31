@@ -13,17 +13,31 @@
 
 #pragma once
 
-#include "yb/client/tablet_server.h"
-#include "yb/common/transaction.h"
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <future>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <vector>
 
-#include "yb/tserver/mini_tablet_server.h"
+#include "yb/common/transaction.h"
 #include "yb/tserver/pg_client.proxy.h"
-#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/yql/pgwrapper/geo_transactions_test_base.h"
-#include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/tserver/pg_client.pb.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace yb {
+namespace pgwrapper {
+class PGConn;
+}  // namespace pgwrapper
+}  // namespace yb
 
 DECLARE_int32(transaction_table_num_tablets);
 

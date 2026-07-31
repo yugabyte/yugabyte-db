@@ -30,22 +30,43 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
 #include <memory>
 #include <vector>
-
-#include <gtest/gtest.h>
+#include <ostream>
+#include <string>
 
 #include "yb/consensus/consensus.messages.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/tablet/operations/operation_driver.h"
 #include "yb/tablet/operations/operation_tracker.h"
 #include "yb/tablet/operations/operation.h"
-#include "yb/tablet/operations/write_operation.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/tablet/operations.messages.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 DECLARE_int64(tablet_operation_memory_limit_mb);
 

@@ -31,16 +31,15 @@
 //
 #include "yb/util/net/sockaddr.h"
 
-#include <stdio.h>
-#include <string.h>
-
+#include <boost/lexical_cast.hpp>
+#include <stdlib.h>
+#include <boost/asio/ip/address_v4.hpp>
+#include <boost/asio/ip/address_v6.hpp>
+#include <boost/asio/ip/basic_endpoint.hpp>
+#include <boost/container_hash/hash.hpp>
+#include <boost/system/error_code.hpp>
 #include <string>
 
-#include <boost/functional/hash.hpp>
-#include <boost/lexical_cast.hpp>
-
-#include "yb/gutil/macros.h"
-#include "yb/gutil/stringprintf.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 

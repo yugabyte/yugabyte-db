@@ -32,22 +32,39 @@
 #pragma once
 
 #include <ev++.h> // NOLINT
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <atomic>
+#include <string>
 
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/rpc/reactor_task.h"
 #include "yb/rpc/reactor_thread_role.h"
-
 #include "yb/util/async_util.h"
 #include "yb/util/monotime.h"
-#include "yb/util/source_location.h"
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
 
 namespace yb {
+class Status;
+struct SourceLocation;
+
 namespace rpc {
 
 class Messenger;
+class Reactor;
 
 YB_DEFINE_ENUM(MarkAsDoneResult,
                // Successfully marked as done with this call to MarkAsDone.

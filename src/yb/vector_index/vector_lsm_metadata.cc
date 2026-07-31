@@ -14,17 +14,40 @@
 #include "yb/vector_index/vector_lsm_metadata.h"
 
 #include <boost/algorithm/string/predicate.hpp>
-
-#include <google/protobuf/io/zero_copy_stream_impl_lite.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <algorithm>
+#include <compare>
+#include <ostream>
+#include <unordered_map>
+#include <utility>
 
 #include "yb/gutil/endian.h"
-
 #include "yb/util/crc.h"
+#include "yb/util/file_system.h"
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
+#include "yb/gutil/casts.h"
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
+#include "yb/util/format.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
 
 namespace yb::vector_index {
 

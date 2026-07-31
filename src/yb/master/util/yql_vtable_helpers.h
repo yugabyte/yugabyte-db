@@ -13,26 +13,25 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <future>
 #include <string>
-
-// This include is needed because we use std::shared_future<Result<IpAddress>>, and IpAddress
-// is an alias for boost::asio::ip::address. If we just include net_fwd.h, we get this compilation
-// error with GCC 11:
-// https://gist.githubusercontent.com/mbautin/ed9e5d17f39fc0066eba77ce15cbbef9/raw
-#include <boost/asio/ip/address.hpp>
-
-#include "yb/common/common_fwd.h"
-#include "yb/common/value.messages.h"
-
-#include "yb/master/master_heartbeat.fwd.h"
-#include "yb/master/master_fwd.h"
+#include <cstddef>
+#include <type_traits>
 
 #include "yb/util/net/net_fwd.h"
-#include "yb/util/uuid.h"
+#include "yb/common/value.pb.h"
 
 namespace yb {
+class DnsResolver;
+class InetAddress;
+class Uuid;
+enum class DataType;
+template <class TValue> class Result;
+
 namespace master {
+class TSInformationPB;
+
 namespace util {
 
 template<class T> struct GetValueHelper;

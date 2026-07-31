@@ -12,10 +12,13 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <cstddef>
+#include <iterator>
 
 // Do not include rapidjson headers here!
 //
@@ -27,13 +30,8 @@
 
 namespace yb {
 
-// Forward-declare Status/Result to avoid including their headers here.
-// The .cc will include the actual headers.
-class Status;
 template<class TValue> class Result;
-
 class JsonValue; // forward
-
 // Opaque JsonValueImpl type (defined in .cc). Declared here as incomplete to avoid pulling in
 // rapidjson headers into the public header.
 struct JsonValueImpl;
@@ -128,6 +126,7 @@ class JsonArray {
 
    private:
     struct IteratorImpl;
+
     const JsonValueImpl* value_impl_;
     std::shared_ptr<IteratorImpl> impl_;
     const std::string path_;

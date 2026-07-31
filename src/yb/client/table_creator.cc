@@ -13,23 +13,37 @@
 
 #include "yb/client/table_creator.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <ostream>
+
 #include "yb/client/client-internal.h"
 #include "yb/client/client.h"
 #include "yb/client/table_info.h"
-
 #include "yb/common/common_util.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
-
 #include "yb/dockv/partition.h"
-
 #include "yb/master/master_ddl.pb.h"
-
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
-
 #include "yb/yql/redis/redisserver/redis_constants.h"
+#include "yb/client/schema.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+
+namespace yb {
+namespace client {
+enum class YBTableType;
+}  // namespace client
+}  // namespace yb
 
 using std::string;
 

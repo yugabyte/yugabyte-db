@@ -13,9 +13,14 @@
 
 #pragma once
 
-#include <unordered_set>
-
 #include <boost/container/small_vector.hpp>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/intrusive/list.hpp>
+#include <boost/move/iterator.hpp>
+#include <unordered_set>
+#include <string>
+#include <utility>
 
 #include "yb/rocksdb/util/mutexlock.h"
 

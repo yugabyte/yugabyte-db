@@ -22,24 +22,21 @@
 #pragma once
 
 
+#include <stdint.h>
 #include <mutex>
-#include <queue>
-#include <string>
-#include <vector>
+#include <memory>
 
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/rocksdb/db/column_family.h"
-#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/util/arena.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 
 class DBImpl;
-struct SuperVersion;
-class ColumnFamilyData;
 
 /**
  * ManagedIterator is a special type of iterator that supports freeing the

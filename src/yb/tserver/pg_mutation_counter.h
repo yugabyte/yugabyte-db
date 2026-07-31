@@ -13,15 +13,16 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <atomic>
 #include <mutex>
 #include <shared_mutex>
 #include <unordered_map>
+#include <string>
+#include <functional>
 
 #include "yb/common/entity_ids_types.h"
-
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/util/shared_lock.h"
 
 namespace yb::tserver {

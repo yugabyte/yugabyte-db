@@ -13,29 +13,36 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <string>
-#include <vector>
+#include <algorithm>
+#include <ostream>
 
-#include "yb/common/doc_hybrid_time.h"
-#include "yb/common/read_hybrid_time.h"
-
-#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_types.h"
-#include "yb/docdb/read_operation_data.h"
-
+#include "yb/docdb/read_operation_data.h" // IWYU pragma: keep
 #include "yb/dockv/expiration.h"
 #include "yb/dockv/value.h"
-
 #include "yb/rocksdb/cache.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb {
+namespace dockv {
+class SubDocument;
+}  // namespace dockv
+struct TransactionOperationContext;
+
 namespace docdb {
 
 // Indicates if we can get away by only seeking forward, or if we must do a regular seek.
 YB_STRONGLY_TYPED_BOOL(SeekFwdSuffices);
+class DeadlineInfo;
+class IntentAwareIterator;
+struct DocDB;
 
 class SliceKeyBound {
  public:

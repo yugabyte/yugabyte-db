@@ -33,10 +33,11 @@
 
 #include <memory>
 
-#include "yb/rpc/rpc_fwd.h"
-#include "yb/util/net/net_fwd.h"
-
 namespace yb {
+class HostPort;
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
 
 namespace consensus {
 class ConsensusServiceProxy;

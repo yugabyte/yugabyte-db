@@ -11,19 +11,41 @@
 // under the License.
 //
 
-#include <gmock/gmock.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <initializer_list>
+#include <optional>
+#include <ostream>
+#include <set>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/common_types.pb.h"
-
 #include "yb/tserver/xcluster_ddl_queue_handler.h"
-
-#include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/tserver_xcluster_context_mock.h"
-#include "yb/tserver/xcluster_output_client.h"
 #include "yb/util/result.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+
+namespace yb {
+namespace tserver {
+class TserverXClusterContextIf;
+}  // namespace tserver
+}  // namespace yb
 
 DECLARE_bool(xcluster_ddl_queue_enable_transactional_ddl);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);

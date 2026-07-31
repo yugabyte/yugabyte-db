@@ -15,10 +15,13 @@
 
 #include "yb/util/metrics_aggregator.h"
 
-#include "yb/util/debug.h"
+#include <glog/logging.h>
+#include <string.h>
+
 #include "yb/util/metrics.h"
 #include "yb/util/status_format.h"
 #include "yb/util/unique_lock.h"
+#include "yb/util/logging.h"
 
 namespace yb {
 

@@ -16,31 +16,50 @@
 #pragma once
 
 #include <stdint.h>
-
-#include <cstdint>
 #include <cstdlib>
 #include <string>
-#include <type_traits>
-
-#include <boost/version.hpp>
+#include <atomic>
+#include <memory>
+#include <vector>
 
 #include "yb/rpc/binary_call_parser.h"
 #include "yb/rpc/circular_read_buffer.h"
-#include "yb/rpc/connection_context.h"
-#include "yb/rpc/connection.h"
 #include "yb/rpc/reactor_thread_role.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc_with_call_id.h"
 #include "yb/rpc/serialization.h"
 #include "yb/rpc/sidecars.h"
-
 #include "yb/util/ev_util.h"
-#include "yb/util/net/net_fwd.h"
-#include "yb/util/size_literals.h"
-#include "yb/util/write_buffer.h"
+#include "yb/rpc/call_data.h"
+#include "yb/rpc/inbound_call.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/rpc/rpc_header.pb.h"
+#include "yb/rpc/rpc_introspection.pb.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/socket.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+
+namespace ev {
+struct loop_ref;
+struct timer;
+}  // namespace ev
+namespace google {
+namespace protobuf {
+class MessageLite;
+}  // namespace protobuf
+}  // namespace google
 
 namespace yb {
 namespace rpc {
+class CallStateListenerFactory;
+class Connection;
+class RemoteMethod;
+class RpcCallParams;
+struct RpcMetrics;
 
 const char* const kUnknownRemoteMethod = "UNKNOWN_METHOD";
 

@@ -13,7 +13,10 @@
 
 #include "yb/storage/frontier.h"
 
+#include <utility>
+
 #include "yb/util/format.h"
+#include "yb/util/clone_ptr.h"
 
 namespace yb::storage {
 

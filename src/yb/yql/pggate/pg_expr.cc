@@ -13,24 +13,37 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <string.h>
 #include <tuple>
 #include <type_traits>
 #include <utility>
 #include <unordered_map>
+#include <ostream>
 
 #include "yb/client/schema.h"
-
 #include "yb/common/pg_system_attr.h"
-#include "yb/common/ql_type.h"
-
 #include "yb/util/decimal.h"
-#include "yb/util/flags.h"
 #include "yb/util/status_format.h"
-
 #include "yb/yql/pggate/pg_dml.h"
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/util/ybc-internal.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/gutil/endian.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/yql/pggate/pg_table.h"
+#include "yb/yql/pggate/util/pg_doc_data.h"
+#include "yb/common/ql_datatype.h"
 
 DEFINE_test_flag(bool, do_not_add_enum_sort_order, false,
                  "Do not add enum type sort order when buidling a constant "

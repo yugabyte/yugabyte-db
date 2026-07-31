@@ -32,38 +32,31 @@
 // This module is internal to the client and not a public API.
 #pragma once
 
+#include <gtest/gtest_prod.h>
+#include <stdint.h>
+#include <boost/move/utility_core.hpp>
+#include <boost/variant/static_visitor.hpp>
+#include <boost/variant/variant.hpp>
 #include <shared_mutex>
 #include <map>
 #include <string>
 #include <memory>
 #include <unordered_map>
 #include <vector>
-
-#include <boost/variant.hpp>
-
-#include <gtest/gtest_prod.h>
+#include <atomic>
+#include <future>
+#include <optional>
+#include <unordered_set>
+#include <functional>
 
 #include "yb/client/client_fwd.h"
-
 #include "yb/dockv/partition.h"
 #include "yb/common/tablespace_parser.h"
-
-#include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/metadata.pb.h"
-
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/thread_annotations.h"
-
-#include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
-
-#include "yb/master/master_heartbeat.pb.h"
-#include "yb/rpc/rpc_fwd.h"
-#include "yb/rpc/rpc.h"
-
 #include "yb/tserver/tserver_fwd.h"
-
 #include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/lockfree.h"
@@ -71,14 +64,41 @@
 #include "yb/util/semaphore.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_callback.h"
-#include "yb/util/status_fwd.h"
-#include "yb/util/memory/arena.h"
 #include "yb/util/net/net_util.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/stl_util.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tserver_service.proxy.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
 class EventStats;
 class JsonWriter;
+enum PeerRole : int;
+
+namespace consensus {
+class LWRaftPeerPB;
+class RaftPeerPB;
+}  // namespace consensus
+namespace master {
+class TSInfoPB;
+class TSInformationPB;
+class TabletLocationsPB;
+class TabletLocationsPB_ReplicaPB;
+}  // namespace master
+namespace tserver {
+class LWTabletConsensusInfoPB;
+class LocalTabletServer;
+class TabletConsensusInfoPB;
+}  // namespace tserver
 
 namespace client {
 
@@ -90,8 +110,7 @@ class YBTable;
 namespace internal {
 
 class LookupRpc;
-class LookupByKeyRpc;
-class LookupByIdRpc;
+class RemoteTablet;
 
 using ProcessedTablesMap =
     std::unordered_map<TableId, std::unordered_map<PartitionKey, RemoteTabletPtr>>;

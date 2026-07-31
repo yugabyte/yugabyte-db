@@ -15,31 +15,43 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <boost/function.hpp>
 #include <future>
 #include <memory>
-#include <unordered_map>
-#include <unordered_set>
+#include <functional>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/ash/ash_fwd.h"
-
 #include "yb/common/consistent_read_point.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
-
 #include "yb/client/client_fwd.h"
-#include "yb/client/in_flight_op.h"
-#include "yb/common/pg_types.h"
-
 #include "yb/util/status_callback.h"
-#include "yb/util/status_fwd.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
-class HybridTime;
-
 class Trace;
+class LWChildTransactionDataPB;
+class LWChildTransactionResultPB;
 
 namespace client {
+class TransactionManager;
+
+namespace internal {
+class TxnBatcherIf;
+}  // namespace internal
 
 using Waiter = boost::function<void(const Status&)>;
 using PrepareChildCallback = std::function<void(const Result<ChildTransactionDataPB>&)>;
@@ -238,6 +250,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

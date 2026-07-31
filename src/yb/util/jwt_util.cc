@@ -13,17 +13,32 @@
 #include "yb/util/jwt_util.h"
 
 #include <jwt-cpp/jwt.h>
-
+#include <glog/logging.h>
+#include <jwt-cpp/base.h>
+#include <jwt-cpp/traits/kazuho-picojson/traits.h>
+#include <openssl/bio.h>
+#include <openssl/bn.h>
+#include <openssl/ec.h>
+#include <openssl/evp.h>
+#include <openssl/obj_mac.h>
+#include <openssl/pem.h>
+#include <openssl/rsa.h>
+#include <openssl/types.h>
+#include <stddef.h>
 #include <string>
+#include <ostream>
+#include <set>
 
 #include "yb/util/logging.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/util/format.h"
 #include "yb/util/jwtcpp_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/util/cast.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
 
 using jwt::decoded_jwt;
 using jwt::json::type;

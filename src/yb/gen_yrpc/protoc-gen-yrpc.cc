@@ -35,13 +35,19 @@
 // protoc --plugin=protoc-gen-yrpc --yrpc_out . --proto_path . <file>.proto
 ////////////////////////////////////////////////////////////////////////////////
 
-#include <functional>
-
 #include <google/protobuf/compiler/code_generator.h>
 #include <google/protobuf/compiler/plugin.h>
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/io/printer.h>
 #include <google/protobuf/io/zero_copy_stream.h>
+#include <stdint.h>
+#include <functional>
+#include <map>
+#include <memory>
+#include <string>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 #include "yb/gen_yrpc/printer.h"
 #include "yb/gen_yrpc/forward_generator.h"

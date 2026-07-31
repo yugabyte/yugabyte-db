@@ -13,13 +13,25 @@
 
 #include "yb/master/test_async_rpc_manager.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "yb/util/status_format.h"
+#include "yb/master/async_rpc_tasks.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
+#include "yb/master/master_test.pb.h"
+#include "yb/master/master_util.h"
+#include "yb/master/sys_catalog.h"
+#include "yb/tablet/tablet_peer.h"
 
 namespace yb {
-namespace master {
+namespace consensus {
+class RaftPeerPB;
+}  // namespace consensus
 
-class Master;
-class CatalogManager;
+namespace master {
 
 Status TestAsyncRpcManager::SendMasterTestRetryRequest(
     consensus::RaftPeerPB&& peer, const int32_t num_retries, StdStatusCallback callback) {

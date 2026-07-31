@@ -10,52 +10,82 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <rapidjson/document.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <rapidjson/allocators.h>
+#include <rapidjson/encodings.h>
+#include <rapidjson/rapidjson.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <chrono>
 #include <memory>
 #include <span>
 #include <string>
 #include <tuple>
 #include <vector>
-
-#include <gtest/gtest.h>
-#include <rapidjson/document.h>
+#include <atomic>
+#include <cmath>
+#include <compare>
+#include <functional>
+#include <initializer_list>
+#include <optional>
+#include <ratio>
+#include <sstream>
+#include <string_view>
+#include <thread>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
 
 #include "yb/common/ql_value.h"
 #include "yb/gutil/integral_types.h"
-
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/entity_ids.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/jsonb.h"
 #include "yb/common/schema.h"
-
-#include "yb/master/catalog_manager.h"
 #include "yb/master/master_defaults.h"
-
-#include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/stateful_services/stateful_service_base.h"
 #include "yb/tserver/stateful_services/pg_auto_analyze_service.h"
 #include "yb/tserver/stateful_services/pg_auto_analyze_table.h"
-#include "yb/tserver/tablet_server.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging_test_util.h"
-#include "yb/util/pg_util.h"
 #include "yb/util/string_case.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tostring.h"
-
 #include "yb/yql/cql/ql/util/statement_result.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
-
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/value.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/walltime.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_auto_analyze_infra);

@@ -13,22 +13,28 @@
 
 #pragma once
 
-#include "yb/client/client_fwd.h"
+#include <stdint.h>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
 #include "yb/client/yb_table_name.h"
-
-#include "yb/common/common_fwd.h"
 #include "yb/common/transaction.h"
-
-#include "yb/master/master_ddl.fwd.h"
-#include "yb/master/master_fwd.h"
-
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
+#include "yb/gutil/macros.h"
 
 namespace yb {
-struct TransactionMetadata;
+class ReplicationInfoPB;
+class TableProperties;
+namespace master {
+class AlterTableRequestPB;
+}  // namespace master
 
 namespace client {
+class YBClient;
+class YBColumnSpec;
 
 // Alters an existing table based on the provided steps.
 //
@@ -113,6 +119,7 @@ class YBTableAlterer {
   Status status_;
 
   struct Step;
+
   std::vector<Step> steps_;
 
   MonoDelta timeout_;

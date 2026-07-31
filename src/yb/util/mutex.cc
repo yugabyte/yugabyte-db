@@ -33,8 +33,12 @@
 
 #include "yb/util/mutex.h"
 
-#include "yb/util/logging.h"
+#include <errno.h>
+#include <string.h>
+#include <ostream>
+#include <string>
 
+#include "yb/util/logging.h"
 #include "yb/util/stack_trace.h"
 #include "yb/util/env.h"
 

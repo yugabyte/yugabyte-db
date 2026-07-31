@@ -13,7 +13,13 @@
 
 #include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
 
+#include <glog/logging.h>
+#include <stdint.h>
 #include <chrono>
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <string_view>
 
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_admin.proxy.h"
@@ -22,6 +28,23 @@
 #include "yb/util/logging_test_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/util/env_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/path_util.h"
+#include "yb/util/random_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/subprocess.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
 
 using namespace std::chrono_literals;
 

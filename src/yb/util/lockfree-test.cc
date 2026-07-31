@@ -13,16 +13,26 @@
 //
 //
 
+#include <boost/lockfree/queue.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <atomic>
 #include <regex>
 #include <string>
 #include <thread>
-
-#include <boost/lockfree/queue.hpp>
-#include <gtest/gtest.h>
+#include <algorithm>
+#include <chrono>
+#include <limits>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <random>
+#include <utility>
+#include <vector>
 
 #include "yb/util/concurrent_queue.h"
-#include "yb/util/flags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
@@ -30,6 +40,17 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/port.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/tostring.h"
+
+namespace boost {
+namespace lockfree {
+template <bool IsFixedSized> struct fixed_sized;
+}  // namespace lockfree
+}  // namespace boost
 
 DEFINE_test_flag(string, queue_name_regex, "",
     "Regex to filter queue by name in LockfreeTest.QueuePerformance test");

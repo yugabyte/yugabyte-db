@@ -13,16 +13,45 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <shared_mutex>
+#include <memory>
+#include <optional>
+#include <string>
+#include <tuple>
+#include <unordered_map>
+#include <vector>
+#include <functional>
 
 #include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/cdc/xcluster_types.h"
-
 #include "yb/common/common_fwd.h"
-
-#include "yb/master/master_fwd.h"
 #include "yb/master/multi_step_monitored_task.h"
 #include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/server/monitored_task.h"
+#include "yb/util/is_operation_done_result.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 
@@ -38,6 +67,11 @@ namespace master {
 class GetTableLocationsResponsePB;
 class GetTableSchemaResponsePB;
 class UniverseReplicationInfo;
+class CatalogManager;
+class Master;
+class SysCatalogTable;
+class SysUniverseReplicationEntryPB;
+class XClusterManager;
 
 // Table specific setup information.
 struct XClusterTableSetupInfo {

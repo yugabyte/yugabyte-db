@@ -14,7 +14,14 @@
 #pragma once
 
 #include "yb/master/cdcsdk_manager_if.h"
-#include "yb/master/master_fwd.h"
+
+namespace yb {
+namespace master {
+class CatalogManager;
+class Master;
+class SysCatalogTable;
+}  // namespace master
+}  // namespace yb
 
 namespace yb::master {
 

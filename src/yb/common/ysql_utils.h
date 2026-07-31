@@ -14,8 +14,7 @@
 #pragma once
 
 #include "yb/common/entity_ids_types.h"
-
-#include "yb/util/status_fwd.h"
+#include "yb/util/result.h"
 
 namespace yb {
 

@@ -12,12 +12,19 @@
 //
 
 #include "yb/master/master_service_base.h"
+
+#include <functional>
+
 #include "yb/master/master.h"
-#include "yb/master/catalog_manager_if.h"
-#include "yb/master/scoped_leader_shared_lock-internal.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/scoped_leader_shared_lock.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace master {
+class CloneStateManager;
+class TabletSplitManager;
+class TestAsyncRpcManager;
 
 // Available overloaded handlers of different types:
 

@@ -31,15 +31,19 @@
 //
 #include "yb/util/hdr_histogram.h"
 
-#include <math.h>
-
+#include <glog/logging.h>
 #include <limits>
+#include <algorithm>
+#include <cmath>
+#include <string>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bits.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/status.h"
+#include "yb/gutil/port.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 using base::subtle::Atomic64;
 using base::subtle::NoBarrier_AtomicIncrement;

@@ -11,14 +11,24 @@
 // under the License.
 //
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master-test_base.h"
-#include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/tablet_split_manager.h"
-
 #include "yb/util/string_case.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 using std::string;

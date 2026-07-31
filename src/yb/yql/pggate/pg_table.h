@@ -13,15 +13,15 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <memory>
 #include <vector>
 
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/util/result.h"
-
 #include "yb/yql/pggate/pg_column.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
+#include "yb/yql/pggate/pg_tabledesc.h"
 
 namespace yb {
 namespace pggate {

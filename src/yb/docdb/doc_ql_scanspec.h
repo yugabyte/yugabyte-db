@@ -13,16 +13,29 @@
 
 #pragma once
 
-#include <functional>
-
-#include "yb/rocksdb/options.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <memory>
+#include <optional>
+#include <vector>
 
 #include "yb/qlexpr/ql_scanspec.h"
-
-#include "yb/docdb/docdb_fwd.h"
 #include "yb/dockv/key_bytes.h"
-
 #include "yb/util/col_group.h"
+#include "yb/common/column_id.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/gutil/macros.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/util/memory/arena_fwd.h"
+
+namespace yb {
+class QLConditionPB;
+class Schema;
+class Slice;
+namespace dockv {
+class DocKey;
+}  // namespace dockv
+}  // namespace yb
 
 namespace yb::docdb {
 

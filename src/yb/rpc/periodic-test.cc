@@ -20,8 +20,7 @@
 #include <memory>
 #include <string>
 #include <utility>
-
-#include <gtest/gtest.h>
+#include <functional>
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/periodic.h"
@@ -29,6 +28,7 @@
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
 
 using std::atomic;
 using std::shared_ptr;

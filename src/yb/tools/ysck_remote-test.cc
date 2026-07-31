@@ -30,7 +30,16 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <vector>
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
@@ -38,20 +47,30 @@
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/mini_cluster.h"
-
 #include "yb/tools/data_gen_util.h"
 #include "yb/tools/ysck_remote.h"
-
 #include "yb/util/monotime.h"
 #include "yb/util/promise.h"
 #include "yb/util/random.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "gtest/gtest.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/tools/ysck.h"
+#include "yb/util/atomic.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 using namespace std::literals;
 

@@ -32,14 +32,15 @@
 
 #pragma once
 
-#include <mutex>
-#include <string>
-#include <vector>
-
 #include <boost/function.hpp>
+#include <stdint.h>
+#include <utility>
 
 #include "yb/tablet/operations/operation.h"
 #include "yb/tablet/operations.messages.h"
+#include "yb/common/opid.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb::tablet {
 

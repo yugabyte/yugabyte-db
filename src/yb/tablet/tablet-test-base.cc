@@ -13,7 +13,21 @@
 
 #include "yb/tablet/tablet-test-base.h"
 
+#include <inttypes.h>
+#include <limits.h>
+#include <stdio.h>
+#include <gtest/gtest.h>
+#include <memory>
+
 #include "yb/dockv/reader_projection.h"
+#include "yb/common/ql_value.h"
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
+#include "yb/qlexpr/ql_expr.h"
+#include "yb/tablet/local_tablet_writer.h"
+#include "yb/tablet/tablet.h"
+#include "yb/util/result.h"
+#include "yb/util/test_graph.h"
+#include "yb/util/test_macros.h"
 
 using std::string;
 using std::vector;

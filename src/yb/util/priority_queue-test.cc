@@ -12,11 +12,15 @@
 //
 
 #include <queue>
-
-#include <gtest/gtest.h>
+#include <algorithm>
+#include <functional>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/util/priority_queue.h"
 #include "yb/util/random_util.h"
+#include "gtest/gtest.h"
 
 namespace yb {
 

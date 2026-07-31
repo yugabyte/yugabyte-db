@@ -11,20 +11,38 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <mutex>
+#include <optional>
+#include <ostream>
+#include <string>
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/scheduler.h"
-
-#include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/ysql_lease_manager.h"
 #include "yb/tserver/ysql_lease_poller.h"
-
 #include "yb/util/locks.h"
 #include "yb/util/mutex.h"
 #include "yb/util/status_log.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/tserver/tablet_server_options.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/slice.h"
 
 using namespace std::literals;
 using namespace std::placeholders;

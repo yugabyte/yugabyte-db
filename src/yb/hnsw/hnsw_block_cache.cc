@@ -13,15 +13,34 @@
 
 #include "yb/hnsw/hnsw_block_cache.h"
 
-#include <boost/intrusive/list.hpp>
+#include <stdint.h>
+#include <string.h>
+#include <algorithm>
+#include <future>
+#include <mutex>
+#include <ostream>
+#include <string>
+#include <type_traits>
 
 #include "yb/hnsw/block_writer.h"
 #include "yb/rocksdb/cache.h"
-
 #include "yb/util/crc.h"
+#include "yb/util/file_system.h"
 #include "yb/util/metrics.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/unique_lock.h"
+#include "yb/gutil/endian.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+#include "yb/util/uuid.h"
+
+namespace yb {
+class Env;
+}  // namespace yb
 
 using namespace yb::size_literals;
 

@@ -14,19 +14,38 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stdint.h>
 #include <functional>
-#include <list>
 #include <memory>
 #include <optional>
 #include <unordered_map>
-#include <vector>
-
-#include "yb/util/memory/arena_list.h"
+#include <span>
 
 #include "yb/yql/pggate/pg_doc_op.h"
-#include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_statement.h"
 #include "yb/yql/pggate/pg_table.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/pg_types.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/yql/pggate/pg_column.h"
+#include "yb/yql/pggate/pg_doc_op_fetch_stream.h"
+#include "yb/yql/pggate/pg_session_fwd.h"
+#include "yb/yql/pggate/pg_tools.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
+namespace yb {
+class LWQLExpressionPB;
+class Slice;
+namespace pggate {
+class PgColumnRef;
+class PgExpr;
+}  // namespace pggate
+template <class Entry> class ArenaList;
+}  // namespace yb
 
 namespace yb::pggate {
 

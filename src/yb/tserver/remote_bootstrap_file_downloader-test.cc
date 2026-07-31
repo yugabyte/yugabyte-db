@@ -11,17 +11,37 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+
 #include "yb/fs/fs_manager.h"
-
-#include "yb/rpc/rpc_controller.h"
-
 #include "yb/tserver/remote_bootstrap_file_downloader.h"
 #include "yb/tserver/remote_bootstrap.pb.h"
-
 #include "yb/util/crc.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
+#include "yb/util/monotime.h"
+#include "yb/util/path_util.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+
+namespace yb {
+namespace rpc {
+class RpcController;
+}  // namespace rpc
+}  // namespace yb
 
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 DECLARE_int32(remote_bootstrap_max_chunk_size);

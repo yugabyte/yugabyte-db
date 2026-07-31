@@ -13,29 +13,29 @@
 
 #pragma once
 
-#include <bitset>
-#include <cstddef>
-#include <cstdint>
-#include <istream>
-#include <ostream>
-#include <string>
-#include <type_traits>
-#include <typeinfo>
-#include <unordered_map>
-#include <utility>
-
 #include <boost/core/demangle.hpp>
 #include <boost/preprocessor/cat.hpp>
-#include <boost/preprocessor/expr_if.hpp>
 #include <boost/preprocessor/facilities/apply.hpp>
-#include <boost/preprocessor/if.hpp>
 #include <boost/preprocessor/punctuation/is_begin_parens.hpp>
 #include <boost/preprocessor/seq/enum.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/preprocessor/seq/transform.hpp>
 #include <boost/preprocessor/stringize.hpp>
+#include <boost/preprocessor/control/expr_if.hpp>
+#include <boost/preprocessor/control/if.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <bitset>
+#include <cstddef>
+#include <cstdint>
+#include <istream>
+#include <string>
+#include <typeinfo>
+#include <utility>
+#include <initializer_list>
+#include <iterator>
 
-#include "yb/util/math_util.h" // For constexpr_max
+#include "yb/util/math_util.h"  // IWYU pragma: keep
 
 namespace yb {
 

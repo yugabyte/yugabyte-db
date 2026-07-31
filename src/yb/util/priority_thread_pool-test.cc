@@ -10,18 +10,45 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/types.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <algorithm>
 #include <thread>
+#include <atomic>
+#include <chrono>
+#include <iterator>
+#include <limits>
+#include <memory>
+#include <ostream>
+#include <ratio>
+#include <set>
+#include <string>
+#include <vector>
 
-#include <gtest/gtest.h>
-
-#include "yb/util/metrics.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tostring.h"
+#include "gtest/gtest.h"
+#include "yb/util/enums.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
 
 using namespace std::literals;
 

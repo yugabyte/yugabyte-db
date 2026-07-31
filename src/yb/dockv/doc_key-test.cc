@@ -11,17 +11,38 @@
 // under the License.
 //
 
-#include <memory>
-
-#include "yb/common/schema.h"
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/asio/ip/address.hpp>
+#include <boost/container/small_vector.hpp>
+#include <boost/container/vector.hpp>
+#include <boost/intrusive/list.hpp>
+#include <boost/logic/tribool.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <algorithm>
+#include <functional>
+#include <initializer_list>
+#include <ostream>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/dockv_test_util.h"
 #include "yb/dockv/intent.h"
-
-#include "yb/rocksdb/table.h"
-
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/decimal.h"
 #include "yb/util/net/net_util.h"
@@ -30,6 +51,24 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tostring.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/constants.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/util/algorithm_util.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/inetaddress.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/timestamp.h"
+#include "yb/util/uuid.h"
 
 using std::vector;
 using std::string;

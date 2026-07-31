@@ -13,22 +13,25 @@
 
 #pragma once
 
-#include <condition_variable>
-#include <mutex>
-#include <unordered_set>
-
-#include "yb/encryption/encryption.fwd.h"
-
-#include "yb/master/master_encryption.fwd.h"
-#include "yb/master/master_fwd.h"
-
-#include "yb/rpc/rpc_fwd.h"
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/net/net_util.h"
+#include "yb/encryption/encryption.pb.h"
+#include "yb/util/result.h"
 
 namespace yb {
+namespace master {
+class GetUniverseKeyRegistryResponsePB;
+}  // namespace master
+namespace rpc {
+class ProxyCache;
+class RpcController;
+}  // namespace rpc
 
 namespace client {
 

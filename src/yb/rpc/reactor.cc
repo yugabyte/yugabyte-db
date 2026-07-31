@@ -32,44 +32,41 @@
 
 #include "yb/rpc/reactor.h"
 
-#include <netinet/in.h>
-#include <stdlib.h>
-#include <sys/types.h>
-
+#include <ev++.h>
+#include <errno.h>
+#include <ev.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/asio/ip/address.hpp>
+#include <boost/asio/ip/address_v4.hpp>
+#include <boost/asio/ip/basic_endpoint.hpp>
 #include <functional>
-#include <map>
 #include <mutex>
 #include <set>
 #include <string>
-
-#include <boost/preprocessor/cat.hpp>
-#include <boost/preprocessor/stringize.hpp>
-#include <ev++.h>
+#include <algorithm>
+#include <compare>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <type_traits>
 
 #include "yb/ash/wait_state.h"
-
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"
-
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/connection.h"
 #include "yb/rpc/delayed_task.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/reactor_task.h"
-#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rpc_metrics.h"
-#include "yb/rpc/server_event.h"
-
-#include "yb/util/atomic.h"
+#include "yb/rpc/server_event.h"  // IWYU pragma: keep
 #include "yb/util/cgroups.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/errno.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
-#include "yb/util/memory/memory.h"
-#include "yb/util/metric_entity.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/socket.h"
@@ -81,7 +78,14 @@
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/thread.h"
 #include "yb/util/trace.h"
-#include "yb/util/unique_lock.h"
+#include "yb/gutil/port.h"
+#include "yb/rpc/stream.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/net/net_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/source_location.h"
+#include "yb/util/tostring.h"
 
 using namespace std::literals;
 

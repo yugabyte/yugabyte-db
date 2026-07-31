@@ -15,7 +15,11 @@
 
 #include <string>
 
-#include "yb/tserver/tserver_admin.fwd.h"
+namespace yb {
+namespace tserver {
+class GetActiveRbsInfoResponsePB_RbsInfo;
+}  // namespace tserver
+}  // namespace yb
 
 namespace yb::tserver {
 

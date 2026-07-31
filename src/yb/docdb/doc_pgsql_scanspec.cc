@@ -13,20 +13,29 @@
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
 
+#include <glog/logging.h>
 #include <algorithm>
 #include <limits>
+#include <iterator>
+#include <ostream>
+#include <string>
+#include <utility>
 
-#include "yb/common/pgsql_protocol.messages.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/qlexpr/doc_scanspec_util.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/value.pb.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 namespace yb::docdb {
 

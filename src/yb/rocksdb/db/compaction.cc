@@ -28,22 +28,31 @@
 #endif
 
 #include <inttypes.h>
-
+#include <glog/logging.h>
+#include <stdio.h>
+#include <string.h>
+#include <boost/container/small_vector.hpp>
 #include <algorithm>
 #include <vector>
+#include <new>
 
 #include "yb/gutil/stl_util.h"
-
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/compaction_picker.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/util/logging.h"
-
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/sync_point.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/rocksdb/universal_compaction.h"
+#include "yb/storage/frontier.h"
 
 using namespace yb::size_literals;
 

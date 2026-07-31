@@ -11,9 +11,22 @@
 // under the License.
 //
 
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <string>
+
 #include "yb/tserver/xcluster_consumer_auto_flags_info.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/test_util.h"
+#include "yb/util/thread.h"
+#include "gtest/gtest.h"
+#include "yb/cdc/xcluster_types.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 using namespace std::chrono_literals;
 

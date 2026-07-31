@@ -15,24 +15,55 @@
 
 #include "yb/yql/pggate/pg_sample.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <limits.h>
+#include <stdint.h>
 #include <string>
 #include <vector>
 #include <utility>
+#include <algorithm>
+#include <functional>
+#include <optional>
+#include <ostream>
 
 #include "yb/common/common.pb.h"
 #include "yb/common/read_hybrid_time.h"
-
 #include "yb/gutil/casts.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
-
 #include "yb/util/flags/flag_tags.h"
-
-#include "yb/yql/pggate/pg_select_index.h"
-
 #include "yb/yql/pggate/util/ybc_guc.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/util/byte_buffer.h"
+#include "yb/util/format.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/lw_function.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
+#include "yb/yql/pggate/pg_doc_metrics.h"
+#include "yb/yql/pggate/pg_doc_op.h"
+#include "yb/yql/pggate/pg_doc_op_fetch_stream.h"
+#include "yb/yql/pggate/pg_gate_fwd.h"
+#include "yb/yql/pggate/pg_op.h"
+#include "yb/yql/pggate/pg_select.h"
+#include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pg_table.h"
+#include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/yql/pggate/util/pg_doc_data.h"
+
+namespace yb {
+struct PgObjectId;
+}  // namespace yb
 
 DEFINE_test_flag(bool, refresh_partitions_after_fetched_sample_blocks, false,
     "Force table partitions refresh after sample blocks are fetched.");

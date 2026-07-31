@@ -12,46 +12,41 @@
 
 #include "yb/integration-tests/cdcsdk_test_base.h"
 
+#include <glog/logging.h>
+#include <inttypes.h>
+#include <time.h>
 #include <string>
-#include <boost/assign.hpp>
-#include <gtest/gtest.h>
+#include <sstream>
 
 #include "yb/cdc/cdc_service.proxy.h"
-
 #include "yb/client/client.h"
-#include "yb/client/meta_cache.h"
-#include "yb/client/schema.h"
-#include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/common.pb.h"
-
 #include "yb/gutil/strings/util.h"
 #include "yb/integration-tests/mini_cluster.h"
-
-#include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_replication.proxy.h"
-#include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/sys_catalog_constants.h"
-
 #include "yb/rpc/rpc_controller.h"
-
-#include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
-#include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/server/server_base.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/random_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/uuid.h"
 
 using std::string;
 

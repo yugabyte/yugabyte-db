@@ -31,13 +31,16 @@
 //
 #pragma once
 
+#include <stdint.h>
 #include <string>
 #include <vector>
+#include <memory>
 
 #include "yb/client/client_fwd.h"
-
 #include "yb/util/memory/arena_fwd.h"
-#include "yb/util/status_fwd.h"
+#include "yb/client/yb_op.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/util/result.h"
 
 namespace yb {
 class Schema;
@@ -46,6 +49,10 @@ namespace client {
 
 class TableRange;
 class YBSchema;
+class TableHandle;
+class YBClient;
+class YBTableName;
+struct FlushStatus;
 
 
 // Log any pending errors in the given session flush status, and then crash the current

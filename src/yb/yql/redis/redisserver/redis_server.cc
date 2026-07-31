@@ -13,13 +13,22 @@
 
 #include "yb/yql/redis/redisserver/redis_server.h"
 
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <string>
+#include <utility>
+
 #include "yb/tserver/tablet_server_interface.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/size_literals.h"
-
 #include "yb/yql/redis/redisserver/redis_rpc.h"
 #include "yb/yql/redis/redisserver/redis_service.h"
+#include "yb/rpc/connection_context.h"
+#include "yb/rpc/growable_buffer.h"
+#include "yb/rpc/service_if.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 using yb::rpc::ServiceIf;
 using namespace yb::size_literals;

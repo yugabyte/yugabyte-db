@@ -25,15 +25,14 @@
 
 #include <stdint.h>
 #include <string.h>
-
-#include <string>
-
 #include <boost/container/small_vector.hpp>
+#include <endian.h>
 
-#include "yb/util/faststring.h"
 #include "yb/util/slice.h"
+#include "yb/gutil/port.h"
 
 namespace yb {
+class faststring;
 
 extern void PutFixed32(faststring* dst, uint32_t value);
 extern void PutFixed64(faststring* dst, uint64_t value);

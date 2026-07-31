@@ -30,27 +30,26 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <atomic>
 #include <memory>
 #include <string>
 #include <thread>
 #include <vector>
-
-#include <gtest/gtest.h>
+#include <chrono>
+#include <ostream>
+#include <utility>
 
 #include "yb/common/wire_protocol-test-util.h"
-
 #include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_cache.h"
-#include "yb/consensus/log_reader.h"
-
 #include "yb/fs/fs_manager.h"
-
 #include "yb/gutil/bind.h"
-
 #include "yb/server/hybrid_clock.h"
-
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
@@ -58,6 +57,28 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.pb.h"
+#include "yb/common/schema.h"
+#include "yb/consensus/consensus.messages.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/log_fwd.h"
+#include "yb/consensus/log_util.h"
+#include "yb/consensus/opid_util.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/server/clock.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/restart_safe_clock.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/threadpool.h"
 
 using std::atomic;
 using std::shared_ptr;

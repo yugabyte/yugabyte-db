@@ -23,7 +23,7 @@
 #pragma once
 
 #include <stdint.h>
-
+#include <stddef.h>
 #include <memory>
 
 #include "yb/rocksdb/db/log_format.h"

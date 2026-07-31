@@ -11,15 +11,26 @@
 // under the License.
 //
 
-#include "yb/client/client.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/asio/ip/basic_endpoint.hpp>
+#include <functional>
+#include <ostream>
+#include <utility>
+#include <vector>
 
 #include "yb/integration-tests/postgres-minicluster.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/tserver/tablet_server_options.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/random_util.h"
+#include "yb/util/tostring.h"
 
 DECLARE_int32(pgsql_proxy_webserver_port);
 

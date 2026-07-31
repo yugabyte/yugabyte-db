@@ -13,12 +13,15 @@
 #pragma once
 
 #include "yb/server/call_home.h"
+#include "yb/gutil/casts.h"
+#include "yb/master/master.h"
 
 namespace yb {
+namespace server {
+class RpcAndWebServerBase;
+}  // namespace server
 
 namespace master {
-class Master;
-class MasterTest_TestCallHome_Test;
 
 class MasterCallHome : public CallHome {
  public:

@@ -31,15 +31,13 @@
 //
 #pragma once
 
+#include <stdint.h>
+
 #include "yb/gutil/ref_counted.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/metrics.h"
 
 namespace yb {
-
-class Counter;
-template <class T>
-class AtomicGauge;
-class Histogram;
-class MetricEntity;
 
 namespace xcluster {
 

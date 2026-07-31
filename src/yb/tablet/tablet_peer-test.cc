@@ -30,41 +30,45 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <absl/base/dynamic_annotations.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <atomic>
+#include <chrono>
+#include <functional>
+#include <future>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol-test-util.h"
-
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
-#include "yb/consensus/log_index.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/multi_raft_batcher.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/state_change_context.h"
-
 #include "yb/gutil/bind.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
-
 #include "yb/server/clock.h"
-#include "yb/server/logical_clock.h"
-
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/write_query.h"
-
 #include "yb/tserver/tserver.messages.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
@@ -72,6 +76,51 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/threadpool.h"
+#include "gtest/gtest.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/opid.h"
+#include "yb/common/schema.h"
+#include "yb/common/value.messages.h"
+#include "yb/consensus/log.pb.h"
+#include "yb/consensus/log_fwd.h"
+#include "yb/consensus/retryable_requests.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/bind_helpers.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/thread_pool.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/operations/operation.h"
+#include "yb/tablet/tablet_bootstrap_state_flusher.h"
+#include "yb/tablet/tablet_bootstrap_state_manager.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/util/async_util.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_util.h"
+#include "yb/util/thread_pool.h"
+
+namespace yb {
+namespace client {
+class YBClient;
+}  // namespace client
+}  // namespace yb
 
 METRIC_DECLARE_entity(table);
 METRIC_DECLARE_entity(tablet);

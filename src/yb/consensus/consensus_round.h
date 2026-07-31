@@ -14,17 +14,19 @@
 #pragma once
 
 #include <stdint.h>
-
-#include <cstdint>
+#include <atomic>
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "yb/common/opid.h"
-
 #include "yb/consensus/consensus_fwd.h"
-
 #include "yb/gutil/ref_counted.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace consensus {
+class Consensus;
 
 class ConsensusRoundCallback {
  public:

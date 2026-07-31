@@ -14,56 +14,93 @@
 #include "yb/integration-tests/tablet-split-itest-base.h"
 
 #include <signal.h>
-
 #include <boost/range/adaptor/transformed.hpp>
+#include <absl/base/dynamic_annotations.h>
+#include <gflags/gflags.h>
+#include <boost/iterator/iterator_facade.hpp>
+#include <boost/range/adaptor/argument_fwd.hpp>
+#include <boost/range/begin.hpp>
+#include <boost/range/end.hpp>
+#include <algorithm>
+#include <initializer_list>
+#include <limits>
+#include <optional>
+#include <ostream>
+#include <thread>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/session.h"
 #include "yb/client/snapshot_test_util.h"
-#include "yb/client/table_info.h"
-#include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/schema.h"
 #include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_util.h"
-
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/reader_projection.h"
-
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
-
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_fwd.h"
-
 #include "yb/rocksdb/db.h"
-
-#include "yb/rpc/messenger.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/transaction_participant.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/tserver/tserver_types.pb.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status_format.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/client/table.h"
+#include "yb/client/table_handle.h"
+#include "yb/client/transaction.h"  // IWYU pragma: keep
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/opid.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/value.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/strings/join.h"
+#include "yb/integration-tests/cluster_itest_util.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/tablet_split_fwd.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/tablet/tablet.pb.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
 
-#include "yb/yql/cql/ql/util/statement_result.h"
+namespace yb {
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+}  // namespace yb
 
 using std::vector;
 using std::string;

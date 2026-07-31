@@ -15,15 +15,24 @@
 
 #include "yb/tablet/operations/update_txn_operation.h"
 
-#include "yb/consensus/consensus.messages.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <memory>
+#include <ostream>
+#include <string_view>
 
-#include "yb/common/transaction.h"
+#include "yb/consensus/consensus.messages.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/docdb/storage_set.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/port.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 DEFINE_test_flag(bool, drop_commit_response, false,
     "When set, after a COMMITTED UpdateTransaction is successfully Raft-replicated, "

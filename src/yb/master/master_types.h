@@ -11,6 +11,9 @@
 // under the License.
 //
 
+#include <string>
+#include <vector>
+
 #include "yb/util/pb_util.h"
 #include "yb/util/strongly_typed_uuid.h"
 

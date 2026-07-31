@@ -32,23 +32,25 @@
 
 #include "yb/server/tracing-path-handlers.h"
 
+#include <rapidjson/document.h>
+#include <rapidjson/rapidjson.h> // NOLINT
+#include <glog/logging.h>
+#include <rapidjson/allocators.h>
 #include <functional>
 #include <map>
 #include <string>
 #include <utility>
 #include <vector>
-
-#include <rapidjson/document.h>
-#include <rapidjson/prettywriter.h> // NOLINT
-#include <rapidjson/rapidjson.h> // NOLINT
-#include <rapidjson/stringbuffer.h> // NOLINT
+#include <sstream>
 
 #include "yb/gutil/strings/escaping.h"
-
 #include "yb/util/debug/trace_event_impl.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
+#include "yb/server/webserver.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 namespace server {

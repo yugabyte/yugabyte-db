@@ -13,29 +13,47 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <ostream>
 #include <string>
-#include <vector>
+#include <limits>
+#include <memory>
+#include <new>
 
 #include "yb/util/logging.h"
-
-#include "yb/common/common_fwd.h"
-#include "yb/common/column_id.h"
-#include "yb/common/doc_hybrid_time.h"
-#include "yb/common/hybrid_time.h"
-#include "yb/common/ql_datatype.h"
-
-#include "yb/common/vector_types.h"
-
 #include "yb/dockv/dockv_fwd.h"
-
 #include "yb/util/algorithm_util.h"
 #include "yb/util/kv_util.h"
-#include "yb/util/net/inetaddress.h"
 #include "yb/util/slice.h"
-#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/uuid.h"
+#include "yb/dockv/value_type.h"
+#include "yb/util/enums.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class InetAddress;
+class LWQLValuePB;
+class QLType;
+class QLValuePB;
+enum class DataType;
+enum class SortingType;
+}  // namespace yb
 
 namespace yb::dockv {
 
@@ -44,8 +62,6 @@ namespace yb::dockv {
 // while PREPEND_BLOCK prepends the arguments together, so it will prepend [a b c] to the list.
 YB_DEFINE_ENUM(ListExtendOrder, (APPEND)(PREPEND_BLOCK)(PREPEND))
 
-// A necessary use of a forward declaration to avoid circular inclusion.
-class SubDocument;
 
 class PrimitiveValue {
  public:

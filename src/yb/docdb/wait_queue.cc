@@ -13,6 +13,28 @@
 
 #include "yb/docdb/wait_queue.h"
 
+#include <boost/algorithm/string/join.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/container/stable_vector.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/range/begin.hpp>
+#include <boost/range/end.hpp>
+#include <boost/range/iterator_range_core.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -20,39 +42,32 @@
 #include <list>
 #include <memory>
 #include <queue>
-
-#include <boost/algorithm/string/join.hpp>
+#include <compare>
+#include <ratio>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "yb/ash/wait_state.h"
-
-#include "yb/client/client.h"
 #include "yb/client/transaction_rpc.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction.pb.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/lock_util.h"
-#include "yb/dockv/doc_key.h"
 #include "yb/dockv/intent.h"
-
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_fwd.h"
-
 #include "yb/server/clock.h"
-
-#include "yb/tablet/transaction_participant.h"
 #include "yb/tserver/tserver_service.pb.h"
-
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
-#include "yb/util/logging.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
@@ -64,6 +79,36 @@
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
 #include "yb/util/unique_lock.h"
+#include "yb/ash/ash_fwd.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/docdb/lock_batch.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/walltime.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/byte_buffer.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/thread_pool.h"
+#include "yb/util/threadpool.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace client {
+class YBClient;
+}  // namespace client
+namespace dockv {
+class DocKey;
+enum class DocKeyPart;
+struct KeyEntryTypeAsChar;
+}  // namespace dockv
+}  // namespace yb
 
 DEFINE_RUNTIME_uint64(wait_for_relock_unblocked_txn_keys_ms, 100,
     "If greater than zero, indicates the maximum amount of time to wait to lock keys "
@@ -175,6 +220,7 @@ auto GetMaxSingleShardWaitDuration() {
 YB_DEFINE_ENUM(ResolutionStatus, (kPending)(kCommitted)(kAborted)(kPromoted)(kDeadlocked));
 
 class BlockerData;
+
 using BlockerDataPtr = std::shared_ptr<BlockerData>;
 using BlockerDataAndConflictInfo = std::pair<BlockerDataPtr, TransactionConflictInfoPtr>;
 

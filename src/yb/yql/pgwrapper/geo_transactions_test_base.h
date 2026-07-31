@@ -12,15 +12,39 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <optional>
-
-#include "yb/client/client_fwd.h"
-
-#include "yb/tserver/mini_tablet_server.h"
+#include <string>
+#include <string_view>
+#include <vector>
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/pg_types.h"
+#include "yb/util/enums.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+namespace pgwrapper {
+class PGConn;
+}  // namespace pgwrapper
 
 namespace client {
 
@@ -29,7 +53,6 @@ YB_STRONGLY_TYPED_BOOL(SetGlobalTransactionsGFlag);
 YB_STRONGLY_TYPED_BOOL(SetGlobalTransactionSessionVar);
 YB_STRONGLY_TYPED_BOOL(WaitForHashChange);
 YB_STRONGLY_TYPED_BOOL(InsertToLocalFirst);
-
 class TransactionManager;
 class TransactionPool;
 

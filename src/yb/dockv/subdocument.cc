@@ -13,18 +13,27 @@
 
 #include "yb/dockv/subdocument.h"
 
+#include <string.h>
 #include <map>
 #include <vector>
+#include <functional>
+#include <sstream>
+#include <tuple>
 
-#include "yb/common/constants.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
-
 #include "yb/dockv/value_type.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/util/status.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+enum class SortingType;
+}  // namespace yb
 
 using std::make_pair;
 using std::ostringstream;

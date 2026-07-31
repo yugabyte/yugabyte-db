@@ -21,29 +21,33 @@
 #pragma once
 
 
-#include <stdlib.h>
 #include <stdio.h>
-
+#include <assert.h>
+#include <ctype.h>
+#include <glog/logging.h>
 #include <string>
-#include <iostream>
 #include <sstream>
 #include <algorithm>
 #include <vector>
 #include <map>
+#include <cstddef>
+#include <memory>
+#include <utility>
 
 #include "yb/encryption/header_manager_impl.h"
 #include "yb/encryption/universe_key_manager.h"
-
-#include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/ldb_tool.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/tools/ldb_cmd_execute_result.h"
-#include "yb/rocksdb/util/logging.h"
+#include "yb/util/format.h"
 #include "yb/util/slice.h"
 #include "yb/util/string_util.h"
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
+#include "yb/rocksdb/db.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 
 namespace rocksdb {

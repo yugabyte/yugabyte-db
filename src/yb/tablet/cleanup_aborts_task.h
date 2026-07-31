@@ -15,15 +15,18 @@
 
 #include <condition_variable>
 #include <mutex>
-
-#include "yb/rpc/strand.h"
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "yb/common/transaction.h"
-
-#include "yb/tablet/tablet_fwd.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/strand.h"
 
 namespace yb {
 namespace tablet {
+class TransactionIntentApplier;
+class TransactionParticipantContext;
 
 // Removes intents for specified transaction ids.
 // Transaction should be previously aborted, if transaction was committed, then it is ignored.

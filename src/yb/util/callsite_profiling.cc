@@ -13,15 +13,21 @@
 
 #include "yb/util/callsite_profiling.h"
 
+#include <glog/logging.h>
 #include <atomic>
 #include <vector>
+#include <mutex>
+#include <ostream>
 
 #include "yb/util/debug-util.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/source_location.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/flags/flag_tags.h"
 
 DEFINE_RUNTIME_bool(enable_callsite_profile, false,
     "Enable counting and timing of function calls enclosed in the YB_PROFILE macro. The results "

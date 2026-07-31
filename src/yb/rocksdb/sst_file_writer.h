@@ -20,14 +20,17 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <string>
+
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/immutable_options.h"
 #include "yb/rocksdb/types.h"
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 
 class Comparator;
+struct ImmutableCFOptions;
 
 // Table Properties that are specific to tables created by SstFileWriter.
 struct ExternalSstFilePropertyNames {
@@ -93,6 +96,7 @@ class SstFileWriter {
   class SstFileWriterPropertiesCollectorFactory;
   class SstFileWriterPropertiesCollector;
   struct Rep;
+
   Rep* rep_;
 };
 }  // namespace rocksdb

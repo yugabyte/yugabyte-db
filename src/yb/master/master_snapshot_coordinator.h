@@ -13,29 +13,46 @@
 
 #pragma once
 
-#include "yb/common/entity_ids.h"
+#include <stdint.h>
+#include <memory>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+#include <functional>
+
 #include "yb/common/hybrid_time.h"
 #include "yb/common/opid.h"
 #include "yb/common/snapshot.h"
-
 #include "yb/docdb/docdb.pb.h"
-#include "yb/gutil/ref_counted.h"
-
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/master_heartbeat.fwd.h"
 #include "yb/master/master_types.h"
-#include "yb/master/master_types.pb.h"
 #include "yb/master/snapshot_coordinator_context.h"
-
 #include "yb/tablet/snapshot_coordinator.h"
-#include "yb/tablet/tablet_retention_policy.h"
-
-#include "yb/util/status_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/docdb/docdb_compaction_context.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/uuid.h"
 
 namespace yb {
+namespace tablet {
+class RaftGroupMetadata;
+}  // namespace tablet
+
 namespace master {
+class CatalogManager;
+class TSHeartbeatResponsePB;
+class TableInfo;
+class TabletInfo;
+class TabletSplitManager;
+enum SysRowEntryType : int;
 
 struct SnapshotScheduleRestoration {
   TxnSnapshotId snapshot_id;
@@ -258,6 +275,7 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

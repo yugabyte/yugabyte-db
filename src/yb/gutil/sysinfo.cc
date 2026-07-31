@@ -46,12 +46,17 @@
 # define PLATFORM_WINDOWS 1
 #endif
 
-#include <ctype.h>    // for isspace()
 #include <stdlib.h>   // for getenv()
 #include <stdio.h>    // for snprintf(), sscanf()
 #include <string.h>   // for memmove(), memchr(), etc.
 #include <fcntl.h>    // for open()
 #include <errno.h>    // for errno
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <strings.h>
+#include <sys/types.h>
+#include <time.h>
+#include <unistd.h>
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>   // for read()
 #endif
@@ -70,15 +75,17 @@
 
 #include <mutex>
 #include <thread>
-#include "yb/util/flags.h"
+#include <ostream>
 
 #include "yb/util/logging.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/dynamic_annotations.h"   // for RunningOnValgrind
 #include "yb/gutil/macros.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/util/flags/flag_tags.h"
 
 DEFINE_NON_RUNTIME_int32(num_cpus, 0, "Number of CPU cores used in calculations");
 

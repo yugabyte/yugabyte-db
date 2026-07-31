@@ -13,9 +13,12 @@
 
 #pragma once
 
+#include <boost/circular_buffer.hpp>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/core/pointer_traits.hpp>
 #include <shared_mutex>
 #include <string>
-#include <boost/circular_buffer.hpp>
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/gutil/thread_annotations.h"

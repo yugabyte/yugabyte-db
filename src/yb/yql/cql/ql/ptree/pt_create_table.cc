@@ -17,11 +17,15 @@
 
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
 
-#include "yb/client/schema.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <algorithm>
+#include <list>
+#include <ostream>
+#include <string>
+
 #include "yb/common/schema.h"
-
-#include "yb/util/flags.h"
-
 #include "yb/yql/cql/ql/ptree/pt_column_definition.h"
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/ptree/pt_table_property.h"
@@ -29,6 +33,14 @@
 #include "yb/yql/cql/ql/ptree/sem_state.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/constants.h"
+#include "yb/common/ql_type.h"
+#include "yb/gutil/port.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/yql/cql/ql/ptree/list_node.h"
+#include "yb/yql/cql/ql/ptree/pt_name.h"
 
 DECLARE_bool(use_cassandra_authentication);
 

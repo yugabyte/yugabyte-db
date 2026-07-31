@@ -6,9 +6,20 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <memory>
+#include <vector>
+
 #include "yb/qlexpr/ql_expr.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class Schema;
+namespace dockv {
+class PgTableRow;
+}  // namespace dockv
+
 namespace docdb {
 
 class DocExprExecutor : public qlexpr::QLExprExecutor {

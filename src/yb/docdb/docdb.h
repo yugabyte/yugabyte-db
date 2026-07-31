@@ -13,35 +13,42 @@
 
 #pragma once
 
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <cstdint>
-#include <ostream>
 #include <string>
 #include <vector>
-
-#include <boost/function.hpp>
+#include <atomic>
+#include <functional>
+#include <memory>
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
-
-#include "yb/docdb/docdb_fwd.h"
-#include "yb/dockv/doc_path.h"
-#include "yb/docdb/doc_write_batch.h"
-#include "yb/docdb/docdb.messages.h"
-#include "yb/docdb/docdb.pb.h"
-#include "yb/docdb/docdb_types.h"
 #include "yb/docdb/lock_batch.h"
-#include "yb/docdb/lock_util.h"
-#include "yb/dockv/subdocument.h"
-#include "yb/dockv/value.h"
-
-#include "yb/rocksdb/rocksdb_fwd.h"
-
-#include "yb/util/memory/arena_list.h"
-#include "yb/util/operation_counter.h"
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/common/opid.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
+
+namespace rocksdb {
+class DB;
+class WriteBatch;
+}  // namespace rocksdb
 
 // DocDB mapping on top of the key-value map in RocksDB:
 // <document_key> <hybrid_time> -> <doc_type>
@@ -77,11 +84,29 @@
 // https://docs.google.com/document/d/1uEOHUqGBVkijw_CGD568FMt8UOJdHtiE3JROUOppYBU/edit
 
 namespace yb {
+class ScopedRWOperation;
+enum IsolationLevel : int;
 
-class EventStats;
-class Counter;
+namespace dockv {
+class KeyBytes;
+}  // namespace dockv
+namespace tablet {
+class TabletMetricsHolder;
+}  // namespace tablet
+template <class Entry> class ArenaList;
+enum RowMarkType : int;
 
 namespace docdb {
+class DocOperation;
+class KeyValueWriteBatchPB;
+class LWKeyValuePairPB;
+class LWKeyValueWriteBatchPB;
+class SchemaPackingProvider;
+class SharedLockManager;
+enum class InitMarkerBehavior;
+struct DocDB;
+struct KeyBounds;
+struct ReadOperationData;
 
 // This function prepares the transaction by taking locks. The set of keys locked are returned to
 // the caller via the keys_locked argument (because they need to be saved and unlocked when the

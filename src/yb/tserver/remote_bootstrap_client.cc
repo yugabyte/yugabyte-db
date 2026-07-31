@@ -32,45 +32,38 @@
 
 #include "yb/tserver/remote_bootstrap_client.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <algorithm>
+#include <optional>
+#include <ostream>
+#include <unordered_set>
+#include <utility>
+
 #include "yb/qlexpr/index.h"
 #include "yb/common/schema_pbutil.h"
-
 #include "yb/ash/wait_state.h"
-
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/metadata.pb.h"
-#include "yb/consensus/retryable_requests.h"
-
-#include "yb/docdb/doc_vector_index.h"
 #include "yb/docdb/docdb_util.h"
-
 #include "yb/fs/fs_manager.h"
-
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
-
-#include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
-#include "yb/rpc/tcp_stream.h"
-
-#include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_bootstrap_state_manager.h"
 #include "yb/tablet/tablet_metadata.h"
-
 #include "yb/tserver/remote_bootstrap.pb.h"
 #include "yb/tserver/remote_bootstrap.proxy.h"
 #include "yb/tserver/remote_bootstrap_snapshots.h"
-#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/debug-util.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
@@ -78,6 +71,31 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/schema.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/proxy_context.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/remote_bootstrap_file_downloader.h"
+#include "yb/util/file_system.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/path_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+class DeletedColumnPB;
+}  // namespace yb
 
 using namespace yb::size_literals;
 

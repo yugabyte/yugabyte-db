@@ -10,42 +10,92 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <glog/logging.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <atomic>
 #include <cmath>
-#include <map>
 #include <string>
 #include <vector>
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <functional>
+#include <future>
+#include <initializer_list>
+#include <iterator>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <set>
+#include <string_view>
+#include <tuple>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/table_info.h"
-
-#include "yb/common/schema.h"
-
 #include "yb/integration-tests/backfill-test-util.h"
 #include "yb/integration-tests/external_mini_cluster_validator.h"
-
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_client.pb.h"
-#include "yb/master/master_error.h"
-
 #include "yb/tserver/tserver_admin.proxy.h"
-#include "yb/tserver/tserver_service.pb.h"
-
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
+#include "gtest/gtest.h"
+#include "libpq-fe.h"
+#include "yb/client/client.h"
+#include "yb/client/schema.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/gutil/callback.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/master/master_ddl.proxy.h"
+#include "yb/qlexpr/index.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/tserver/tserver_admin.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/enums.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+class ExternalDaemon;
+}  // namespace yb
 
 METRIC_DECLARE_entity(cluster);
 METRIC_DECLARE_counter(backfill_aborted);

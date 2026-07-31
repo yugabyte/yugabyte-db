@@ -31,22 +31,26 @@
 //
 #pragma once
 
-#include <string>
-
 #include <boost/type_traits/is_detected.hpp>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/type_traits/declval.hpp>
+#include <string>
+#include <functional>
+#include <memory>
+#include <utility>
 
 #include "yb/rpc/lightweight_message.h"
-#include "yb/rpc/rpc_header.pb.h"
-#include "yb/rpc/serialization.h"
-#include "yb/rpc/service_if.h"
-
-#include "yb/ash/wait_state.h"
-
 #include "yb/util/memory/arena.h"
 #include "yb/util/ref_cnt_buffer.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/ash/ash_fwd.h"
+#include "yb/gutil/casts.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace google {
 namespace protobuf {
@@ -57,11 +61,14 @@ class Message;
 namespace yb {
 
 class Trace;
-class WriteBuffer;
 
 namespace rpc {
 
 class YBInboundCall;
+class InboundCall;
+class LocalYBInboundCall;
+class Sidecars;
+enum ErrorStatusPB_RpcErrorCodePB : int;
 
 class RpcCallParams {
  public:

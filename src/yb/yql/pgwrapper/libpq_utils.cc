@@ -13,20 +13,26 @@
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
+#include <signal.h>
+#include <boost/algorithm/string/replace.hpp>
+#include <boost/preprocessor/seq/for_each.hpp>
+#include <glog/logging.h>
+#include <string.h>
+#include <boost/algorithm/string.hpp>
+#include <boost/preprocessor/stringize.hpp>
+#include <boost/range/as_literal.hpp>
 #include <chrono>
 #include <concepts>
 #include <span>
-
-#include <boost/algorithm/string/replace.hpp>
-#include <boost/preprocessor/seq/for_each.hpp>
+#include <algorithm>
+#include <cstdint>
+#include <ostream>
+#include <ratio>
 
 #include "yb/ash/wait_state.h"
-
 #include "yb/common/pgsql_error.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/endian_util.h"
 #include "yb/util/enums.h"
@@ -38,7 +44,12 @@
 #include "yb/util/pg_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/string_util.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/util/cast.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
+#include "yb/util/yb_pg_errcodes.h"
 
 using namespace std::literals;
 

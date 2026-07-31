@@ -13,26 +13,55 @@
 
 #pragma once
 
-#include <string>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <vector>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <utility>
 
-#include "yb/docdb/docdb_fwd.h"
 #include "yb/rocksdb/cache.h"
-
-#include "yb/common/common_types.pb.h"
 #include "yb/common/doc_hybrid_time.h"
-#include "yb/common/read_hybrid_time.h"
-#include "yb/common/transaction.h"
-
-#include "yb/docdb/deadline_info.h"
-#include "yb/docdb/docdb_types.h"
 #include "yb/dockv/expiration.h"
 #include "yb/dockv/subdocument.h"
-#include "yb/dockv/value.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/util/enums.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
-#include "yb/util/monotime.h"
-#include "yb/util/status_fwd.h"
-#include "yb/util/strongly_typed_bool.h"
+namespace yb {
+class Schema;
+enum TableType : int;
+namespace docdb {
+class DeadlineInfo;
+struct DocDB;
+struct FetchedEntry;
+struct ReadOperationData;
+}  // namespace docdb
+namespace dockv {
+class PgTableRow;
+class SchemaPackingStorage;
+struct ReaderProjection;
+}  // namespace dockv
+namespace qlexpr {
+class QLTableRow;
+}  // namespace qlexpr
+struct TransactionOperationContext;
+}  // namespace yb
 
 namespace yb::docdb {
 

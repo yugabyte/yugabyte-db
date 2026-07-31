@@ -46,24 +46,26 @@
 #pragma once
 
 #include <stddef.h>
-
+#include <boost/mpl/if.hpp>
+#include <boost/type_traits/is_const.hpp>
+#include <glog/logging.h>
+#include <stdint.h>
 #include <algorithm>
 #include <limits>
 #include <memory>
 #include <vector>
+#include <ostream>
+#include <string>
+#include <utility>
 
-#include <boost/mpl/if.hpp>
-#include <boost/type_traits/is_const.hpp>
 #include "yb/util/logging.h"
-
 #include "yb/gutil/casts.h"
-#include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/singleton.h"
 #include "yb/gutil/strings/stringpiece.h"
-
 #include "yb/util/boost_mutex_utils.h"
 #include "yb/util/mutex.h"
+#include "yb/gutil/integral_types.h"
 
 
 namespace yb {

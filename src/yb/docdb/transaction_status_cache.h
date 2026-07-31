@@ -13,8 +13,15 @@
 
 #pragma once
 
+#include <boost/uuid/uuid.hpp>
+#include <optional>
+#include <unordered_map>
+
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 namespace yb {
 namespace docdb {

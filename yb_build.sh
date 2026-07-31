@@ -360,6 +360,21 @@ run_cxx_build() {
     exit "$exit_code"
   fi
 
+  if [[ ${YB_ENABLE_IWYU:-0} == "1" ]]; then
+    local iwyu_output_dir="$BUILD_ROOT/iwyu_output"
+    local first_iwyu_error
+    first_iwyu_error=$(
+      find "$iwyu_output_dir" -maxdepth 1 -type f -name '*.error' -print -quit
+    )
+    if [[ -n $first_iwyu_error ]]; then
+      echo "IWYU analysis failed for one or more translation units:" >&2
+      find "$iwyu_output_dir" -maxdepth 1 -type f -name '*.error' -print >&2
+      echo "First IWYU error:" >&2
+      cat "$first_iwyu_error" >&2
+      exit 1
+    fi
+  fi
+
   # Don't check for test binary existence in case targets are explicitly specified.
   if [[ $test_existence_check == "true" && ${#make_targets[@]} -eq 0 ]]; then
     (
@@ -1075,6 +1090,21 @@ if [[ ${build_cxx} == "true" ||
       ( "${YB_EXPORT_COMPILE_COMMANDS:-}" == "1" &&
         ! -f "${BUILD_ROOT}/compile_commands.json" ) ]]; then
   run_cxx_build
+fi
+
+# IWYU modes:
+# - --iwyu: Uses CMake's native CMAKE_CXX_INCLUDE_WHAT_YOU_USE (runs during compilation)
+# - --iwyu-fix: Uses separate analysis with compile_commands.json to apply fixes
+# - ninja iwyu: On-demand analysis target (requires compile_commands.json from prior build)
+
+if [[ ${run_iwyu_fix} == "true" ]]; then
+  log "Running IWYU analysis with fix application..."
+  iwyu_args=( --build_root "$BUILD_ROOT" --apply-fixes )
+  if [[ ${verbose} == "true" ]]; then
+    iwyu_args+=( --verbose )
+  fi
+  "$YB_BUILD_SUPPORT_DIR/run_iwyu" "${iwyu_args[@]}"
+  log "IWYU analysis with fixes complete."
 fi
 
 if [[ ${build_yugabyted_ui} == "true" && ${cmake_only} != "true" ]]; then

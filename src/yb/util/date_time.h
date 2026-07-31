@@ -21,10 +21,17 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <regex>
+#include <locale>
+#include <string>
+#include <string_view>
+#include <vector>
 
 #include "yb/util/monotime.h"
 #include "yb/util/timestamp.h"
+#include "yb/util/result.h"
 
 namespace yb {
 

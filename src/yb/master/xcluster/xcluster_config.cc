@@ -13,14 +13,27 @@
 
 #include "yb/master/xcluster/xcluster_config.h"
 
+#include <glog/logging.h>
+#include <mutex>
+#include <string>
+#include <utility>
+
 // TODO: Remove once CDCStreamInfo has moved to xcluster_catalog_entity.h.
 #include "yb/master/catalog_entity_info.h"
-
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/xcluster/xcluster_catalog_entity.h"
+#include "yb/cdc/xcluster_producer.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/util/cow_object.h"
+#include "yb/util/logging.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 namespace yb::master {
 

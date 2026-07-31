@@ -15,10 +15,17 @@
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/multi_step_monitored_task.h"
+#include "yb/master/catalog_entity_info.h"
 
 namespace yb {
+class ThreadPool;
+namespace rpc {
+class Messenger;
+}  // namespace rpc
 
 namespace master {
+class CatalogManager;
+struct LeaderEpoch;
 
 class MultiStepTableTaskBase : public MultiStepCatalogEntityTask {
  protected:

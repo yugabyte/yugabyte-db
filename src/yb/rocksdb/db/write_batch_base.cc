@@ -24,6 +24,10 @@
 
 #include "yb/util/slice.h"
 
+namespace yb {
+struct SliceParts;
+}  // namespace yb
+
 namespace rocksdb {
 
 // Simple implementation of SlicePart variants of Put().  Child classes

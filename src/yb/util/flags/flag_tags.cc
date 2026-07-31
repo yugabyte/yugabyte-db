@@ -32,13 +32,17 @@
 
 #include "yb/util/flags/flag_tags.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <map>
 #include <string>
 #include <unordered_set>
 #include <utility>
+#include <ostream>
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/singleton.h"
+#include "yb/util/logging.h"
 
 using std::multimap;
 using std::pair;

@@ -13,24 +13,33 @@
 
 #include "yb/docdb/doc_reader.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <sys/types.h>
+#include <boost/container/small_vector.hpp>
+#include <boost/intrusive/list.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/range/iterator_range_core.hpp>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
+#include <array>
+#include <compare>
+#include <cstddef>
+#include <ostream>
+#include <type_traits>
 
 #include "yb/common/column_id.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
-
 #include "yb/docdb/docdb-internal.h"
-#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/read_operation_data.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_ttl_util.h"
 #include "yb/dockv/packed_value.h"
@@ -42,14 +51,33 @@
 #include "yb/dockv/value_packing.h"
 #include "yb/dockv/value_packing_v2.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/qlexpr/ql_expr.h"
-
 #include "yb/util/fast_varint.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/ql_value.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/typedefs.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/docdb/deadline_info.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/port.h"
+#include "yb/util/byte_buffer.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace docdb {
+struct DocDB;
+}  // namespace docdb
+}  // namespace yb
 
 DECLARE_int32(max_prevs_to_avoid_seek);
 
@@ -166,10 +194,8 @@ class PackedRowContext : public dockv::PackedRowDecoderFactory {
 
 template <class ResultType>
 class GetHelper;
-
 template <class ResultType, bool kFastBackward>
 class FlatGetHelper;
-
 template <class T>
 struct GetId;
 

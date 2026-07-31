@@ -17,12 +17,17 @@
 
 #pragma once
 
-#include "yb/yql/cql/ql/ptree/column_arg.h"
 
-#include "yb/common/common_fwd.h"
+
+#include "yb/gutil/integral_types.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/result.h"
 
 namespace yb {
+class QLExpressionPB;
+
 namespace ql {
+class ColumnOp;
 
 Result<bool> WhereClauseImpliesPred(const MCList<ColumnOp> &col_ops,
                                     const QLExpressionPB& predicate, int *predicate_len,

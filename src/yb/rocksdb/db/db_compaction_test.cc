@@ -21,6 +21,31 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <assert.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <limits.h>
+#include <stdint.h>
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <compare>
+#include <cstddef>
+#include <functional>
+#include <initializer_list>
+#include <iterator>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <ostream>
+#include <ratio>
+#include <set>
+#include <string>
+#include <thread>
+#include <tuple>
+#include <utility>
+#include <vector>
+
 #include "yb/rocksdb/db/compaction_picker.h"
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/experimental.h"
@@ -29,18 +54,61 @@
 #include "yb/rocksdb/util/file_util.h"
 #include "yb/rocksdb/util/task_metrics.h"
 #include "yb/rocksdb/util/testutil.h"
-
 #include "yb/rocksutil/yb_rocksdb_logger.h"
-
 #include "yb/storage/storage_test_util.h"
-
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/metrics.h"
 #include "yb/util/priority_thread_pool.h"
 #include "yb/util/random_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rocksdb/compaction_filter.h"
+#include "yb/rocksdb/convenience.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/column_family.h"
+#include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/table.h"
+#include "yb/rocksdb/universal_compaction.h"
+#include "yb/rocksdb/util/compression.h"
+#include "yb/rocksdb/util/random.h"
+#include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/utilities/checkpoint.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/storage/frontier.h"
+#include "yb/storage/storage_types.h"
+#include "yb/util/cast.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/string_util.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/thread_holder.h"
+#include "yb/util/tostring.h"
+
+namespace rocksdb {
+class Comparator;
+class Snapshot;
+}  // namespace rocksdb
 
 DECLARE_bool(flush_rocksdb_on_shutdown);
 DECLARE_bool(use_priority_thread_pool_for_compactions);

@@ -10,14 +10,32 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/integration-tests/external_mini_cluster.h"
+#include <glog/logging.h>
+#include <stdint.h>
+#include <atomic>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <thread>
+#include <tuple>
+#include <vector>
 
+#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
-
-#include "yb/util/range.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/test_thread_holder.h"
+#include "gtest/gtest.h"
+#include "libpq-fe.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
 
 using std::string;
 

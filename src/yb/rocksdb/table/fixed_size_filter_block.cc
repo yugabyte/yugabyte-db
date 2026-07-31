@@ -17,8 +17,16 @@
 
 #include "yb/rocksdb/table/fixed_size_filter_block.h"
 
+#include <assert.h>
+#include <algorithm>
+#include <utility>
+
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
+#include "yb/rocksdb/perf_context.h"
+#include "yb/rocksdb/slice_transform.h"
+#include "yb/rocksdb/table.h"
+#include "yb/rocksdb/types.h"
 
 namespace rocksdb {
 

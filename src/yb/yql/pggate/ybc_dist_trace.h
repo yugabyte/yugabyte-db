@@ -17,6 +17,8 @@
 #ifndef YB_YQL_PGGATE_YBC_DIST_TRACE_H
 #define YB_YQL_PGGATE_YBC_DIST_TRACE_H
 
+#include <stdint.h>
+
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 /*

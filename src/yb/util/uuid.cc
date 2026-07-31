@@ -14,19 +14,25 @@
 #include "yb/util/uuid.h"
 
 #include <boost/lexical_cast.hpp>
-#include <boost/uuid/detail/sha1.hpp>
 #include <boost/uuid/nil_generator.hpp>
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/string_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#include <glog/logging.h>
+#include <inttypes.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <exception>
 
 #include "yb/gutil/endian.h"
-
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/boost_uuid_sha1.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 

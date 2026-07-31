@@ -13,18 +13,24 @@
 
 #pragma once
 
-#include <map>
-
-#include "yb/rocksdb/db.h"
+#include <string>
 
 #include "yb/dockv/subdocument.h"
-#include "yb/dockv/doc_path.h"
-#include "yb/docdb/key_bounds.h"
-#include "yb/dockv/value.h"
-#include "yb/util/status_fwd.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/util/status.h"
 
 namespace yb {
+namespace dockv {
+class DocKey;
+class DocPath;
+class KeyBytes;
+class PrimitiveValue;
+class SubDocKey;
+}  // namespace dockv
+
 namespace docdb {
+struct DocDB;
 
 // An in-memory single-versioned single-threaded DocDB representation for testing.
 class InMemDocDbState {

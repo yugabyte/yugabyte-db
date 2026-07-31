@@ -11,16 +11,63 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <algorithm>
+#include <atomic>
+#include <initializer_list>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+#include <functional>
+
 #include "yb/rocksdb/db/db_test_util.h"
-
 #include "yb/rocksdb/env.h"
-
 #include "yb/rocksutil/yb_rocksdb_logger.h"
-
 #include "yb/util/compare_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/table.h"
+#include "yb/rocksdb/table/block_based_table_factory.h"
+#include "yb/rocksdb/table_properties.h"
+#include "yb/rocksdb/util/random.h"
+#include "yb/util/file_system.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
 
 DECLARE_uint64(rocksdb_iterator_sequential_disk_reads_factor);
 DECLARE_uint64(rocksdb_iterator_sequential_disk_reads_for_auto_readahead);
@@ -31,6 +78,8 @@ DECLARE_bool(TEST_rocksdb_record_readahead_stats_only_for_data_blocks);
 using namespace std::literals;
 
 namespace rocksdb {
+
+using yb::Result;
 
 struct ReadaheadStats {
   void AddReadaheadCall(size_t bytes_read) {

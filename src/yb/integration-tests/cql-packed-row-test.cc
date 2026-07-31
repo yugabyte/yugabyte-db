@@ -11,7 +11,19 @@
 // under the License.
 //
 
-#include <boost/algorithm/string.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/algorithm/string/predicate.hpp>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <thread>
+#include <vector>
 
 #include "yb/integration-tests/cql_test_base.h"
 #include "yb/integration-tests/packed_row_test_base.h"
@@ -19,6 +31,23 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status_log.h"
+#include "gtest/gtest.h"
+#include "yb/common/column_id.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/cql_test_util.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 

@@ -13,11 +13,19 @@
 
 #pragma once
 
-#include <memory>
-
-#include "yb/common/pgsql_protocol.fwd.h"
+#include <stddef.h>
+#include <sstream>
 
 #include "yb/rocksdb/util/statistics.h"
+
+namespace rocksdb {
+class Statistics;
+}  // namespace rocksdb
+namespace yb {
+class LWPgsqlResponsePB;
+class PgsqlResponsePB;
+enum PgsqlMetricsCaptureType : int;
+}  // namespace yb
 
 namespace yb::docdb {
 

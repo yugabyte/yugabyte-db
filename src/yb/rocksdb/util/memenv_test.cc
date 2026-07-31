@@ -18,16 +18,20 @@
 //
 
 
+#include <stddef.h>
+#include <stdint.h>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-
-#include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/util/file_system.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
 
 using std::unique_ptr;
 

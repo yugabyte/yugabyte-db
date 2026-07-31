@@ -32,42 +32,70 @@
 
 #pragma once
 
-#include <pthread.h>
-#include <sys/types.h>
-
+#include <gtest/gtest_prod.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/atomic/atomic.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <atomic>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <string>
-
-#include <boost/atomic.hpp>
+#include <chrono>
+#include <functional>
+#include <limits>
+#include <optional>
+#include <shared_mutex>
+#include <utility>
 
 #include "yb/ash/ash_fwd.h"
-
-#include "yb/common/common_fwd.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/opid.h"
-
 #include "yb/consensus/log_util.h"
-
-#include "yb/fs/fs_manager.h"
-
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/promise.h"
 #include "yb/util/status_callback.h"
-#include "yb/util/status_fwd.h"
-#include "yb/util/threadpool.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/log.pb.h"
+#include "yb/consensus/log_fwd.h"
+#include "yb/consensus/log_reader.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/enums.h"
+#include "yb/util/env.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 
 class Cgroup;
 class MetricEntity;
 class ThreadPool;
+class FsManager;
+class MemTracker;
+class RestartSafeCoarseTimePoint;
+class Schema;
+class ThreadPoolToken;
+class WritableFile;
 
 namespace cdc {
 class CDCServiceTestMaxRentionTime_TestLogRetentionByOpId_MaxRentionTime_Test;
@@ -75,6 +103,10 @@ class CDCServiceTestMinSpace_TestLogRetentionByOpId_MinSpace_Test;
 }
 
 namespace log {
+class LWLogEntryBatchPB;
+class LWLogEntryPB;
+class LogIndex;
+struct LogMetrics;
 
 YB_DEFINE_ENUM(SyncType,
     (kNoSync)
@@ -83,6 +115,7 @@ YB_DEFINE_ENUM(SyncType,
 );
 
 YB_STRONGLY_TYPED_BOOL(CreateNewSegment);
+
 YB_DEFINE_ENUM(SegmentAllocationState,
     (kAllocationNotStarted)  // No segment allocation requested
     (kAllocationInProgress)  // Next segment allocation started

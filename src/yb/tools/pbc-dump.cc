@@ -30,16 +30,27 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
 #include <iostream>
 #include <string>
+#include <memory>
+#include <utility>
 
 #include "yb/tools/pbc_tools_lib.h"
-
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status.h"
+#include "yb/util/file_system.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/result.h"
+
+namespace yb {
+namespace encryption {
+class UniverseKeyManager;
+}  // namespace encryption
+}  // namespace yb
 
 
 using yb::encryption::UniverseKeyManager;

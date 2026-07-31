@@ -32,19 +32,20 @@
 
 #include "yb/rpc/acceptor.h"
 
-#include <pthread.h>
-
+#include <ev.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/asio/ip/address.hpp>
+#include <boost/asio/ip/basic_endpoint.hpp>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-#include <gtest/gtest_prod.h>
+#include <ostream>
+#include <utility>
 
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/rpc/reactor.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/sockaddr.h"
@@ -53,6 +54,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
+#include "yb/util/flags/flag_tags.h"
 
 METRIC_DEFINE_counter(server, rpc_connections_accepted,
                       "RPC Connections Accepted",

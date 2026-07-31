@@ -15,19 +15,24 @@
 
 #pragma once
 
-#include <condition_variable>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <utility>
+#include <vector>
 
 #include "yb/common/entity_ids_types.h"
-
-#include "yb/consensus/consensus_round.h"
-
 #include "yb/tablet/operation_filter.h"
 #include "yb/tablet/operations.messages.h"
 #include "yb/tablet/operations/operation.h"
-
-#include "yb/tserver/tserver_admin.pb.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
+namespace consensus {
+enum OperationType : int;
+}  // namespace consensus
+struct OpId;
+
 namespace tablet {
 
 class TabletSplitter;

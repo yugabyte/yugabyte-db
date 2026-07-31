@@ -32,37 +32,21 @@
 
 #pragma once
 
-#include <map>
-#include <memory>
-#include <set>
 #include <string>
+#include <unordered_map>
 
-#include <glog/stl_logging.h>
-#include <gtest/gtest.h>
-
-#include "yb/client/client_fwd.h"
-#include "yb/client/client-test-util.h"
 #include "yb/client/table.h"
-#include "yb/client/table_creator.h"
-#include "yb/client/table_info.h"
-
-#include "yb/common/common.pb.h"
-#include "yb/common/transaction.h"
-#include "yb/common/wire_protocol-test-util.h"
-
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
-#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
-#include "yb/master/master_client.pb.h"
-#include "yb/master/master_defaults.h"
-#include "yb/master/master_util.h"
-
-#include "yb/tserver/tserver_service.pb.h"
-
-#include "yb/util/metrics.h"
-#include "yb/util/path_util.h"
-#include "yb/util/string_util.h"
-#include "yb/util/tsan_util.h"
+namespace yb {
+class PlacementInfoPB;
+class ReplicationInfoPB;
+}  // namespace yb
 
 using strings::Substitute;
 using yb::client::YBTableName;

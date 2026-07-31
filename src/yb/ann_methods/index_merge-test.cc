@@ -11,16 +11,31 @@
 // under the License.
 //
 
-#include <thread>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/uuid/uuid.hpp>
+#include <memory>
+#include <set>
+#include <string>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 #include "yb/ann_methods/hnswlib_wrapper.h"
 #include "yb/ann_methods/usearch_wrapper.h"
-
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
-
 #include "yb/vector_index/vector_index_if.h"
 #include "yb/vector_index/vectorann_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/vector_types.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_macros.h"
+#include "yb/vector_index/distance.h"
+#include "yb/vector_index/hnsw_options.h"
+#include "yb/vector_index/vector_index_fwd.h"
 
 namespace yb::ann_methods {
 

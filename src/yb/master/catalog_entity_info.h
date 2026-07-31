@@ -32,10 +32,42 @@
 
 #pragma once
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <boost/container_hash/hash.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <mutex>
 #include <vector>
-
-#include <boost/bimap.hpp>
+#include <algorithm>
+#include <atomic>
+#include <cstddef>
+#include <iterator>
+#include <limits>
+#include <map>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <set>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <variant>
+#include <functional>
 
 #include "yb/cdc/cdc_types.h"
 #include "yb/cdc/xcluster_types.h"
@@ -43,30 +75,61 @@
 #include "yb/common/transaction.h"
 #include "yb/consensus/consensus_types.pb.h"
 #include "yb/dockv/partition.h"
-
 #include "yb/master/catalog_entity_base.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_backup.pb.h"
-#include "yb/master/master_client.fwd.h"
-#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/sys_catalog_types.h"
 #include "yb/master/tasks_tracker.h"
-
 #include "yb/qlexpr/index.h"
-#include "yb/tablet/metadata.pb.h"
-
 #include "yb/util/cow_object.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/shared_lock.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/schema.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/xcluster_rpc_tasks.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/util/enums.h"
+#include "yb/util/locks.h"
+#include "yb/util/logging.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+class HostPortPB;
+class ReplicationInfoPB;
+
+namespace consensus {
+enum PeerMemberType : int;
+}  // namespace consensus
+namespace master {
+class GetTableLocationsRequestPB;
+class NamespaceInfo;
+class RefreshYsqlLeaseRequestPB;
+class TSDescriptor;
+class TableInfo;
+}  // namespace master
+}  // namespace yb
 
 DECLARE_bool(use_parent_table_id_field);
 
 namespace yb::master {
-
-class RetryingRpcTask;
 
 YB_STRONGLY_TYPED_BOOL(DeactivateOnly);
 
@@ -398,6 +461,7 @@ class TabletInfo : public MetadataCowWrapper<PersistentTabletInfo> {
   friend class RefCountedThreadSafe<TabletInfo>;
 
   class LeaderChangeReporter;
+
   friend class LeaderChangeReporter;
 
   Result<TSDescriptorPtr> GetLeaderUnlocked() const REQUIRES_SHARED(lock_);

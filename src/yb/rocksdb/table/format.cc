@@ -23,26 +23,38 @@
 
 #include "yb/rocksdb/table/format.h"
 
-#include <inttypes.h>
-
+#include <glog/logging.h>
+#include <stdio.h>
+#include <string.h>
 #include <string>
+#include <algorithm>
+#include <limits>
+#include <ostream>
+#include <utility>
 
-#include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/crc32c.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/xxhash.h"
-
-#include "yb/util/debug-util.h"
-#include "yb/util/env.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/result.h"
 #include "yb/util/stats/perf_step_timer.h"
 #include "yb/util/status_format.h"
-#include "yb/util/std_util.h"
 #include "yb/util/string_util.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/rocksdb/perf_context.h"
+#include "yb/rocksdb/table.h"
+#include "yb/util/file_system.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
+
+namespace rocksdb {
+class Env;
+}  // namespace rocksdb
 
 using yb::Format;
 using yb::Result;

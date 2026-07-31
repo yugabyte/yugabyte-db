@@ -11,11 +11,20 @@
 // under the License.
 //
 
+#include <stddef.h>
+#include <stdint.h>
+#include <limits>
+#include <string>
+#include <vector>
+
 #include "yb/util/decimal.h"
 #include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/util/status.h"
+#include "yb/util/varint.h"
 
 namespace yb {
 namespace util {

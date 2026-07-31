@@ -14,20 +14,21 @@
 #pragma once
 
 #include <string.h>
-
+#include <stdint.h>
 #include <atomic>
-#include <cstdarg>
 #include <memory>
 
 #include "yb/encryption/cipher_stream_fwd.h"
-
-#include "yb/util/env.h"
-#include "yb/util/faststring.h"
+#include "yb/util/file_system.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class Slice;
+
 namespace encryption {
 
 class HeaderManager;
+class BlockAccessCipherStream;
 
 // An encrypted fie implementation for random access of a file.
 class EncryptedRandomAccessFile : public RandomAccessFileWrapper {

@@ -14,9 +14,12 @@
 #pragma once
 
 #include <mutex>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/master/leader_epoch.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/server/monitored_task.h"
@@ -26,10 +29,13 @@
 namespace yb {
 
 class ThreadPool;
+class MonoDelta;
+namespace rpc {
+class Messenger;
+}  // namespace rpc
 
 namespace master {
 
-class CatalogManager;
 class CatalogEntityWithTasks;
 
 // Tasks that contain multiple asynchronous steps.

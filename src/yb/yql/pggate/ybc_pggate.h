@@ -20,7 +20,7 @@
 
 #include <stdint.h>
 #include <sys/types.h>
-#include <unistd.h>
+#include <stddef.h>
 
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"

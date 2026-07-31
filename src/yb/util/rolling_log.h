@@ -31,12 +31,13 @@
 //
 #pragma once
 
+#include <stddef.h>
 #include <memory>
 #include <string>
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/stringpiece.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

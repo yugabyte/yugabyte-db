@@ -16,21 +16,45 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <vector>
-
-#include <boost/compute/detail/lru_cache.hpp>
-
-#include "yb/client/client_fwd.h"
+#include <atomic>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <functional>
 
 #include "yb/util/object_pool.h"
-
 #include "yb/yql/cql/cqlserver/cql_processor.h"
-#include "yb/yql/cql/cqlserver/cql_server_options.h"
 #include "yb/yql/cql/cqlserver/cql_service.service.h"
 #include "yb/yql/cql/cqlserver/cql_statement.h"
-#include "yb/yql/cql/cqlserver/system_query_cache.h"
-#include "yb/yql/cql/ql/parser/parser_fwd.h"
 #include "yb/yql/cql/ql/util/cql_message.h"
+#include "yb/common/common_fwd.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/service_if.h"
+#include "yb/util/enums.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/cqlserver/boost_compute_lru_cache.h"
+#include "yb/yql/cql/cqlserver/cqlserver_fwd.h"
 
 namespace yb {
 
@@ -41,14 +65,31 @@ class PgYCQLStatementStatsResponsePB;
 
 class JsonWriter;
 
+namespace client {
+class TransactionPool;
+class YBClient;
+class YBMetaDataCache;
+}  // namespace client
+namespace ql {
+class Parser;
+class QLEnv;
+class Statement;
+}  // namespace ql
+namespace rpc {
+class Messenger;
+}  // namespace rpc
+namespace server {
+class Clock;
+}  // namespace server
+
 namespace cqlserver {
+class CQLServerOptions;
+class SystemQueryCache;
 
 extern const char* const kRoleColumnNameSaltedHash;
 extern const char* const kRoleColumnNameCanLogin;
 extern const char* const kJwtIdentMapName;
 
-class CQLMetrics;
-class CQLProcessor;
 class CQLServer;
 
 using StmtCountersMap = std::unordered_map<ql::CQLMessage::QueryId, StmtCounters>;

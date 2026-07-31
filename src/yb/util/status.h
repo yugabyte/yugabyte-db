@@ -26,23 +26,21 @@
 
 #pragma once
 
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/stringize.hpp>
+#include <boost/smart_ptr/intrusive_ptr.hpp>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <iosfwd>
 #include <mutex>
 #include <string>
 #include <string_view>
 #include <utility>
-
-#include <boost/intrusive_ptr.hpp>
-#include <boost/preprocessor/cat.hpp>
-#include <boost/preprocessor/stringize.hpp>
+#include <ostream>
 
 #include "yb/gutil/port.h"
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/util/slice.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -89,12 +87,8 @@ struct YbcStatusStruct;
 
 namespace yb {
 
-class Slice;
-
 YB_STRONGLY_TYPED_BOOL(AddRef);
-
 class StatusErrorCode;
-
 class NODISCARD_CLASS Status;
 
 // This class is unsafe version of Status that could be used in low level performance critical
@@ -144,7 +138,8 @@ class Status {
       bool BOOST_PP_CAT(Is, name)() const { \
         return code() == BOOST_PP_CAT(k, name); \
       }
-  #include "yb/util/status_codes.h"
+  #include "yb/util/status_codes.h"  // IWYU pragma: keep
+
   #undef YB_STATUS_CODE
 
   // Returns a text message of this status to be reported to users.
@@ -200,7 +195,7 @@ class Status {
   enum Code : int32_t {
   #define YB_STATUS_CODE(name, pb_name, value, message) \
       BOOST_PP_CAT(k, name) = value,
-  #include "yb/util/status_codes.h" // NOLINT
+  #include "yb/util/status_codes.h"  // NOLINT
   #undef YB_STATUS_CODE
   };
 
@@ -319,4 +314,3 @@ class StatusHolder {
         return STATUS(IllegalState, BOOST_PP_STRINGIZE(expr) " must not be null"); \
       } \
     } while (0)
-

@@ -17,8 +17,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include <sys/types.h>
 
-#include "crypt_blowfish/cpp-ow-crypt.h"
+#include "crypt_blowfish/cpp-ow-crypt.h"  // IWYU pragma: keep
 
 namespace yb {
 namespace util {

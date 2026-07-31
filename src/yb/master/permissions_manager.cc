@@ -13,24 +13,40 @@
 
 #include "yb/master/permissions_manager.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <bitset>
+#include <iterator>
+#include <limits>
+#include <optional>
+#include <ostream>
+#include <utility>
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_dcl.pb.h"
-#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
-
 #include "yb/rpc/rpc_context.h"
-
 #include "yb/util/crypt.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/trace.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/port.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/util/cow_object.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 using std::shared_ptr;
 using std::string;

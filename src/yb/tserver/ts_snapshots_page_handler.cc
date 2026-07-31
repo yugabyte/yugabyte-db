@@ -11,41 +11,50 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
 #include <map>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <future>
+#include <iterator>
+#include <limits>
+#include <memory>
+#include <sstream>
+#include <utility>
+#include <functional>
 
 #include "yb/client/client.h"
-
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
-
 #include "yb/fs/fs_manager.h"
-
 #include "yb/gutil/strings/human_readable.h"
-
-#include "yb/master/master_backup.proxy.h"
-
-#include "yb/rpc/rpc_controller.h"
-
-#include "yb/server/webui_util.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
-
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver-path-handlers.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/env.h"
 #include "yb/util/html_print_helper.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/url-coding.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_backup.pb.h"
+#include "yb/server/webserver.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/timestamp.h"
 
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 

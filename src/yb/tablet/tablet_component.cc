@@ -13,11 +13,23 @@
 
 #include "yb/tablet/tablet_component.h"
 
-#include "yb/qlexpr/index.h"
+#include <memory>
 
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_vector_indexes.h"
+#include "yb/rocksdb/options.h"
+
+namespace rocksdb {
+class DB;
+class Env;
+enum class FlushReason;
+}  // namespace rocksdb
+namespace yb {
+namespace tablet {
+class RaftGroupMetadata;
+class TabletMetrics;
+}  // namespace tablet
+}  // namespace yb
 
 namespace yb::tablet {
 

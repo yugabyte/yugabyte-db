@@ -13,41 +13,42 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stdint.h>
+#include <string.h>
+#include <sys/types.h>
+#include <boost/asio/ip/basic_endpoint.hpp>
 #include <atomic>
 #include <memory>
 #include <string_view>
-
-#include <boost/asio/ip/tcp.hpp>
-#include <boost/interprocess/ipc/message_queue.hpp>
+#include <cstddef>
+#include <functional>
+#include <future>
+#include <mutex>
+#include <string>
 
 #include "yb/docdb/object_lock_shared_fwd.h"
-
 #include "yb/gutil/strings/escaping.h"
-
-#include "yb/tserver/tserver_util_fwd.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/concurrent_value.h"
-#include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/shmem/annotations.h"
 #include "yb/util/shmem/reserved_address_segment.h"
 #include "yb/util/shmem/shared_mem_allocator.h"
 #include "yb/util/slice.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/thread.h"
-#include "yb/util/threadpool.h"
-#include "yb/util/uuid.h"
-
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/thread_pool.h"
 
 namespace yb {
-
-class ThreadPool;
-
-}
+namespace docdb {
+class ObjectLockSharedState;
+}  // namespace docdb
+}  // namespace yb
 
 namespace yb::tserver {
 
@@ -211,7 +212,6 @@ class SharedMemoryManager {
 using PgSessionLockOwnerTagShared = ChildProcessRO<docdb::SessionLockOwnerTag>;
 
 YB_STRONGLY_TYPED_BOOL(Create);
-
 class SharedExchangeHeader;
 
 class SharedExchange {

@@ -13,12 +13,20 @@
 #include "yb/yql/cql/ql/ptree/pt_dml_write_property.h"
 
 #include <set>
+#include <unordered_map>
+#include <vector>
+#include <functional>
 
-#include "yb/client/schema.h"
 #include "yb/util/string_case.h"
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/yql/cql/ql/ptree/pt_expr_types.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 using std::ostream;
 using std::string;

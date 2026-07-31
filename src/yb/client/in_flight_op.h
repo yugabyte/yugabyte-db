@@ -13,19 +13,20 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <string>
-
-#include "yb/util/flags.h"
+#include <memory>
 
 #include "yb/client/client_fwd.h"
-
 #include "yb/gutil/ref_counted.h"
-
-#include "yb/util/enums.h"
-#include "yb/util/status_fwd.h"
+#include "yb/client/meta_cache.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace client {
+class YBOperation;
+
 namespace internal {
 
 // An operation which has been submitted to the batcher and not yet completed.

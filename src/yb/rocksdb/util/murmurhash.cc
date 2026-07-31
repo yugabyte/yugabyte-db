@@ -26,6 +26,8 @@
 
 #include "murmurhash.h"
 
+#include "yb/gutil/macros.h"
+
 #if defined(__x86_64__)
 
 // -------------------------------------------------------------------

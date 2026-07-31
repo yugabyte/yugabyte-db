@@ -14,9 +14,13 @@
 #pragma once
 
 #include "yb/master/yql_virtual_table.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/schema.h"
 
 namespace yb {
 namespace master {
+class Master;
 
 // VTable implementation of system_auth.roles.
 class YQLAuthRolesVTable : public YQLVirtualTable {

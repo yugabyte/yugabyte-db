@@ -10,21 +10,36 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <glog/logging.h>
+#include <stdint.h>
 #include <chrono>
 #include <latch>
 #include <optional>
 #include <thread>
-
-#include <gtest/gtest.h>
+#include <atomic>
+#include <condition_variable>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <ostream>
+#include <string>
+#include <string_view>
+#include <vector>
 
 #include "yb/util/backoff_waiter.h"
+#include "gtest/gtest.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/subprocess.h"
 #ifdef __linux__
 #include "yb/util/cgroups.h"
 #endif
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/test_util.h"
-
 #include "yb/yql/process_wrapper/process_wrapper.h"
 
 using namespace std::literals;

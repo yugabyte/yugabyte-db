@@ -12,16 +12,14 @@
 //
 
 #include <string>
-
-#include <gtest/gtest.h>
+#include <utility>
 
 #include "yb/rocksdb/table/fixed_size_filter_block.h"
-
 #include "yb/rocksdb/filter_policy.h"
-#include "yb/rocksdb/util/hash.h"
-#include "yb/rocksdb/env.h"
-
 #include "yb/rocksdb/util/testutil.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/table.h"
 
 namespace rocksdb {
 

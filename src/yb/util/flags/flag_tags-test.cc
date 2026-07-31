@@ -30,13 +30,14 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
 #include <unordered_set>
-
-#include <gtest/gtest.h>
+#include <string>
 
 #include "yb/gutil/map-util.h"
-#include "yb/util/flags.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/util/flags/flag_tags.h"
 
 DEFINE_NON_RUNTIME_int32(flag_with_no_tags, 0, "test flag that has no tags");
 

@@ -19,12 +19,11 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include <glog/logging.h>
 #include <atomic>
 #include <regex>
 
 #include "yb/util/logging.h"
-
-#include "yb/gutil/threading/thread_collision_warner.h"
 
 namespace yb {
 

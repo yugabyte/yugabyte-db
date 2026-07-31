@@ -15,16 +15,27 @@
 
 #include <string>
 #include <unordered_map>
-#include <boost/functional/hash.hpp>
+#include <memory>
+#include <optional>
 
 #include "yb/common/transaction.h"
-
 #include "yb/master/leader_epoch.h"
-#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
-
 #include "yb/util/monotime.h"
-#include "yb/util/status_callback.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/util/status.h"
+
+namespace yb {
+namespace master {
+class CatalogManager;
+class Master;
+class RefreshYsqlLeaseRequestPB;
+class RefreshYsqlLeaseResponsePB;
+class RelinquishYsqlLeaseRequestPB;
+class RelinquishYsqlLeaseResponsePB;
+}  // namespace master
+}  // namespace yb
 
 namespace yb::rpc {
 class RpcContext;
@@ -32,15 +43,10 @@ class RpcContext;
 
 namespace yb::tserver {
 class TSLocalLockManager;
+
 using TSLocalLockManagerPtr = std::shared_ptr<TSLocalLockManager>;
 }
 namespace yb::tserver {
-class AcquireObjectLockRequestPB;
-class AcquireObjectLockResponsePB;
-class ReleaseObjectLockRequestPB;
-class ReleaseObjectLockResponsePB;
-class WaitForLockersMultipleRequestPB;
-class WaitForLockersMultipleResponsePB;
 class DdlLockEntriesPB;
 }  // namespace yb::tserver
 
@@ -55,7 +61,6 @@ class ReleaseObjectLocksGlobalRequestPB;
 class ReleaseObjectLocksGlobalResponsePB;
 class WaitForLockersMultipleGlobalRequestPB;
 class WaitForLockersMultipleGlobalResponsePB;
-
 class ObjectLockInfo;
 
 struct TServerLeaseInfo {
@@ -119,6 +124,7 @@ class ObjectLockInfoManager {
   template <class Req>
   friend class UpdateAllTServers;
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

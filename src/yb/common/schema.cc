@@ -32,27 +32,29 @@
 
 #include "yb/common/schema.h"
 
+#include <gflags/gflags.h>
+#include <boost/preprocessor/facilities/identity.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
 #include <algorithm>
-#include <set>
 
 #include "yb/common/common.pb.h"
-#include "yb/common/key_encoder.h"
+#include "yb/common/ql_value.h"  // IWYU pragma: keep
 #include "yb/common/ql_type.h"
-#include "yb/common/row.h"
-
-#include "yb/dockv/doc_key.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/join.h"
-
 #include "yb/util/compare_util.h"
-#include "yb/util/flags.h"
 #include "yb/util/malloc.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/types.h"
+#include "yb/gutil/strings/strcat.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/tostring.h"
 
 DEFINE_test_flag(int32, partitioning_version, -1,
     "When greater than -1, set partitioning_version during table creation.");

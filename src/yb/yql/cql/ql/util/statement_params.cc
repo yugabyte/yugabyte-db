@@ -17,8 +17,13 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/util/slice.h"
 
 namespace yb {
+class QLType;
+class QLValue;
+
 namespace ql {
 
 using std::string;

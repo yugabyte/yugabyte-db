@@ -13,8 +13,15 @@
 
 #include "yb/master/table_index.h"
 
-#include "yb/gutil/map-util.h"
+#include <glog/logging.h>
+#include <ostream>
+#include <string>
+#include <utility>
+
 #include "yb/master/catalog_entity_info.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 
 namespace yb {
 namespace master {

@@ -13,12 +13,21 @@
 
 #pragma once
 
-#include "yb/hnsw/hnsw_block_cache.h"
+#include <stddef.h>
+#include <memory>
+#include <random>
+#include <string>
+#include <vector>
 
 #include "yb/util/metrics.h"
-#include "yb/util/random_util.h"
 #include "yb/util/test_util.h"
-#include "yb/util/tsan_util.h"
+#include "yb/hnsw/hnsw_fwd.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/metrics_fwd.h"
+
+namespace rocksdb {
+class Cache;
+}  // namespace rocksdb
 
 namespace yb::hnsw {
 

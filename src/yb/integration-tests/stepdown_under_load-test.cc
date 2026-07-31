@@ -11,24 +11,28 @@
 // under the License.
 //
 
+#include <glog/logging.h>
 #include <atomic>
 #include <memory>
 #include <vector>
+#include <ostream>
+#include <string>
+#include <functional>
 
-#include "yb/client/client.h"
 #include "yb/client/table.h"
-
-#include "yb/common/entity_ids.h"
-
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/load_generator.h"
 #include "yb/integration-tests/yb_table_test_base.h"
-
-#include "yb/master/master_cluster.proxy.h"
-
-#include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/client/table_handle.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 namespace itest {

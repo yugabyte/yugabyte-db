@@ -13,32 +13,32 @@
 
 #include "yb/client/client_utils.h"
 
-#include <functional>
-#include <set>
+#include <gflags/gflags.h>
 #include <string>
-#include <unordered_set>
 #include <vector>
+#include <chrono>
 
 #include "yb/ash/rpc_wait_state.h"
-
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
-
-#include "yb/common/entity_ids.h"
-#include "yb/common/wire_protocol.h"
-
 #include "yb/rpc/messenger.h"
-#include "yb/rpc/rpc.h"
-
 #include "yb/rpc/secure.h"
-
-#include "yb/util/atomic.h"
-#include "yb/util/locks.h"
 #include "yb/util/monotime.h"
-#include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
-#include "yb/util/strongly_typed_uuid.h"
-#include "yb/util/threadpool.h"
+#include "yb/ash/wait_state.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rpc/wait_state_if.h"
+#include "yb/util/status.h"
+
+namespace yb {
+namespace client {
+class YBTable;
+}  // namespace client
+namespace rpc {
+class SecureContext;
+}  // namespace rpc
+}  // namespace yb
 
 using std::string;
 

@@ -4,9 +4,15 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <atomic>
 #include <mutex>
 #include <thread>
+#include <chrono>
+#include <memory>
+#include <utility>
 
 #include "yb/util/logging.h"
 

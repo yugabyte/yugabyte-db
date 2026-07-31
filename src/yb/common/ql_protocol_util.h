@@ -15,18 +15,46 @@
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/types.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <string>
+#include <string_view>
+#include <vector>
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/common_types.pb.h"
-#include "yb/common/ql_protocol.messages.h"
-#include "yb/common/value.pb.h"
-
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/write_buffer.h"
 #include "yb/util/yb_partition.h"
+#include "yb/gutil/endian.h"
+#include "yb/util/cast.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
 
 namespace yb {
+class ColumnId;
+class LWQLConditionPB;
+class LWQLExpressionPB;
+class LWQLValuePB;
+class LWQLWriteRequestPB;
+class QLConditionPB;
+class QLExpressionPB;
+class QLReadRequestPB;
+class QLValuePB;
+class QLWriteRequestPB;
+class Schema;
+enum QLOperator : int;
 
 #define QL_PROTOCOL_TYPES \
     ((Int8, int8, int8_t, set_, set_)) \

@@ -15,15 +15,13 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <utility>
 #include <string_view>
 
 #define BOOST_METAPARSE_LIMIT_STRING_SIZE 64
-#include <boost/metaparse/string.hpp>
+#include <boost/metaparse/string.hpp>  // IWYU pragma: export
+#include <boost/metaparse/v1/cpp11/string.hpp>  // IWYU pragma: export
 
-#include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
-
 #include "yb/util/hash_util.h"
 
 // Helper to cause abrupt exit in process at certain points of code, in order to test robustness of

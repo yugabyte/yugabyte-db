@@ -30,14 +30,33 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <boost/asio/ip/basic_endpoint.hpp>
+#include <boost/range/size.hpp>
 #include <algorithm>
 #include <functional>
 #include <regex>
 #include <set>
 #include <thread>
 #include <vector>
-
-#include <gtest/gtest.h>
+#include <atomic>
+#include <chrono>
+#include <compare>
+#include <future>
+#include <iterator>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
 
 #include "yb/client/client-internal.h"
 #include "yb/client/client-test-util.h"
@@ -55,27 +74,19 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
-#include "yb/client/value.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_op.h"
-
-#include "yb/dockv/partial_row.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/consensus.proxy.h"
-
 #include "yb/gutil/algorithm.h"
 #include "yb/gutil/atomicops.h"
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/master_client.pb.h"
@@ -84,23 +95,18 @@
 #include "yb/master/master_error.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_initialization.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_test_util.h"
 #include "yb/rpc/sidecars.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/sockaddr.h"
@@ -110,13 +116,71 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/thread.h"
 #include "yb/util/tostring.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/cql/ql/util/statement_result.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "yb/cdc/cdc_types.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/dockv/partition.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/callback.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/master/master_defaults.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/rpc/service_pool.h"
+#include "yb/server/rpc_server.h"
+#include "yb/server/server_base.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tablet_server_options.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/util/async_util.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/semaphore.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_callback.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/thread_holder.h"
 
 DECLARE_bool(enable_data_block_fsync);
 DECLARE_bool(log_inject_latency);

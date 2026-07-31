@@ -13,35 +13,39 @@
 
 #include "yb/tablet/tablet_snapshots.h"
 
-#include <boost/algorithm/string/predicate.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <thread>
+#include <utility>
+#include <vector>
 
 #include "yb/ash/wait_state.h"
-
 #include "yb/qlexpr/index.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/snapshot.h"
-
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_vector_index.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_util.h"
-
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/util/file_util.h"
 #include "yb/rocksdb/utilities/checkpoint.h"
-
 #include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/restore_util.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_vector_indexes.h"
-
 #include "yb/util/atomic.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/file_util.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/operation_counter.h"
@@ -50,6 +54,38 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stol_utils.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/constants.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/value.messages.h"
+#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/dockv/doc_path.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/schema_packing.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tserver/backup.messages.h"
+#include "yb/tserver/backup.pb.h"
+#include "yb/util/debug/long_operation_tracker.h"
+#include "yb/util/env.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/monotime.h"
+#include "yb/util/path_util.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 using std::string;
 

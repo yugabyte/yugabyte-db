@@ -30,14 +30,25 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/asio/ip/basic_endpoint.hpp>
 #include <algorithm>
 #include <memory>
 #include <sstream>
 #include <string>
 #include <tuple>
 #include <vector>
-
-#include <gtest/gtest.h>
+#include <functional>
+#include <map>
+#include <mutex>
+#include <optional>
+#include <set>
+#include <thread>
+#include <unordered_set>
+#include <utility>
 
 #include "yb/common/common_net.h"
 #include "yb/common/entity_ids.h"
@@ -45,50 +56,88 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ysql_operation_lease.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master-test_base.h"
 #include "yb/master/master.h"
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_call_home.h"
 #include "yb/master/master_client.proxy.h"
-#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_ddl_client.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_heartbeat.proxy.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/sys_catalog.h"
-
 #include "yb/master/ts_manager.h"
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/service_pool.h"
 #include "yb/rpc/yb_rpc.h"
-
 #include "yb/server/call_home-test-util.h"
-#include "yb/server/call_home.h"
 #include "yb/server/server_base.proxy.h"
-
 #include "yb/tserver/tserver_admin.service.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
-#include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
-#include "yb/util/tsan_util.h"
-#include "yb/util/user.h"
+#include "gtest/gtest.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/schema_pbutil.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_defaults.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/ts_descriptor.h"
+#include "yb/rpc/rpc_context.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/rpc_service.h"
+#include "yb/rpc/thread_pool.h"
+#include "yb/server/server_base.pb.h"
+#include "yb/tserver/tserver_admin.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/atomic.h"
+#include "yb/util/curl_util.h"
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/thread_pool.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
 
 using std::shared_ptr;
 using std::make_shared;

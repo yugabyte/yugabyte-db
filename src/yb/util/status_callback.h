@@ -33,12 +33,10 @@
 
 #include <functional>
 
-#include "yb/gutil/callback_forward.h"
-#include "yb/util/status_fwd.h"
-
 namespace yb {
 
 class Status;
+template <typename Sig> class Callback;
 
 // A callback which takes a Status. This is typically used for functions which
 // produce asynchronous results and may fail.

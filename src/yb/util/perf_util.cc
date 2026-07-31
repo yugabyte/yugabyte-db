@@ -16,16 +16,20 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <signal.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <ostream>
+#include <vector>
 
 #include "yb/util/env.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
-#include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/tostring.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/slice.h"
 
 DEFINE_RUNTIME_int32(perf_record_timeout_sec, 120,
                      "Timeout for perf record in seconds to prevent runaway recordings.");

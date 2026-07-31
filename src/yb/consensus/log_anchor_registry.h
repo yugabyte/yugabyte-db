@@ -31,25 +31,21 @@
 //
 #pragma once
 
+#include <gtest/gtest_prod.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <map>
-#include <shared_mutex>
 #include <string>
 
-#include "yb/util/flags.h"
-#include <gtest/gtest_prod.h>
-
-#include "yb/consensus/log_fwd.h"
-
-#include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace log {
+struct LogAnchor;
 
 // This class allows callers to register their interest in (anchor) a particular
 // log index. The primary use case for this is to prevent the deletion of segments of

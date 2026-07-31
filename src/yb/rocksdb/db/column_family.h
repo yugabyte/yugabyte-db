@@ -24,40 +24,65 @@
 
 #pragma once
 
+#include <assert.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <atomic>
+#include <array>
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
-#include <vector>
+#include <utility>
+#include <functional>
 
-#include "yb/rocksdb/compaction_job_stats.h"
+#include "yb/gutil/port.h"
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/memtable_list.h"
 #include "yb/rocksdb/db/table_properties_collector.h"
 #include "yb/rocksdb/db/write_batch_internal.h"
-#include "yb/rocksdb/db/write_controller.h"
 #include "yb/rocksdb/env.h"
+#include "yb/rocksdb/immutable_options.h"  // IWYU pragma: keep
 #include "yb/rocksdb/options.h"
+#include "yb/rocksdb/types.h"
+#include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/mutable_cf_options.h"
-#include "yb/rocksdb/util/thread_local.h"
-
 #include "yb/util/enums.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/status_fwd.h"
 
 namespace rocksdb {
 
 class Version;
-class VersionSet;
 class MemTable;
-class MemTableListVersion;
 class CompactionPicker;
 class Compaction;
-class InternalKey;
 class InternalStats;
 class ColumnFamilyData;
 class DBImpl;
 class LogBuffer;
 class InstrumentedMutex;
-class InstrumentedMutexLock;
+class TableCache;
+class WriteBuffer;
+class Cache;
+class Comparator;
+class ThreadLocalPtr;
+class WriteController;
+class WriteControllerToken;
 
 YB_DEFINE_ENUM(CompactionSizeKind, (kSmall)(kLarge));
 
@@ -142,6 +167,7 @@ struct SuperVersion {
   static void* const kSVInUse;
   static void* const kSVObsolete;
 
+
  private:
   std::atomic<uint32_t> refs;
   // We need to_delete because during Cleanup(), imm->Unref() returns
@@ -153,6 +179,7 @@ struct SuperVersion {
 extern Status CheckCompressionSupported(const ColumnFamilyOptions& cf_options);
 
 extern Status CheckConcurrentWritesSupported(
+
     const ColumnFamilyOptions& cf_options);
 
 extern ColumnFamilyOptions SanitizeOptions(const DBOptions& db_options,
