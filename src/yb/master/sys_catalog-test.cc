@@ -30,29 +30,56 @@
 // under the License.
 //
 
-#include <algorithm>
+#include <gflags/gflags.h>
+#include <unistd.h>
 #include <memory>
 #include <vector>
-
-#include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
-
-#include "yb/gutil/stl_util.h"
+#include <chrono>
+#include <functional>
+#include <map>
+#include <ratio>
+#include <string>
+#include <unordered_map>
+#include <utility>
 
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/master/async_rpc_tasks.h"
-#include "yb/master/catalog_manager.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/sys_catalog-test_base.h"
 #include "yb/master/sys_catalog.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 #include "yb/common/version_info.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/version_info.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master.h"
+#include "yb/master/master_defaults.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/mini_master.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/master/sys_catalog_constants.h"
+#include "yb/master/tasks_tracker.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/util/cow_object.h"
+#include "yb/util/env.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
+#include "yb/util/uuid.h"
 
 using namespace std::literals;
 

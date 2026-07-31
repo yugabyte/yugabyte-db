@@ -10,17 +10,45 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <string.h>
+#include <boost/algorithm/string/predicate.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/program_options/options_description.hpp>
+#include <boost/program_options/value_semantic.hpp>
 #include <iostream>
 #include <regex>
+#include <algorithm>
+#include <functional>
+#include <initializer_list>
+#include <limits>
+#include <memory>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/transaction.h"
-
 #include "yb/consensus/log.messages.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
-
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -28,22 +56,16 @@
 #include "yb/docdb/kv_debug.h"
 #include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/fs/fs_manager.h"
-
 #include "yb/gutil/stl_util.h"
-
 #include "yb/rocksdb/db/builder.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/filename.h"
-#include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/table/block_based_table_reader.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
-
 #include "yb/tools/tool_arguments.h"
-
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/date_time.h"
 #include "yb/util/enums.h"
@@ -60,6 +82,37 @@
 #include "yb/util/string_util.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/tostring.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.messages.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/consensus/consensus.messages.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/log.pb.h"
+#include "yb/consensus/log_fwd.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/rocksdb/db/table_properties_collector.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/rocksdb/table.h"
+#include "yb/rocksdb/table/table_reader.h"
+#include "yb/tablet/operations.messages.h"
+#include "yb/tablet/tablet_options.h"
+#include "yb/util/faststring.h"
+#include "yb/util/file_system.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/restart_safe_clock.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/uuid.h"
 
 using namespace std::placeholders;
 namespace po = boost::program_options;

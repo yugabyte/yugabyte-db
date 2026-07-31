@@ -34,23 +34,43 @@
 
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/message.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <google/protobuf/message_lite.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <ostream>
 
 #include "yb/gutil/endian.h"
 #include "yb/gutil/stringprintf.h"
-
 #include "yb/rpc/constants.h"
 #include "yb/rpc/lightweight_message.h"
-
 #include "yb/rpc/call_data.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/sidecars.h"
-
 #include "yb/util/crc.h"
-#include "yb/util/faststring.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_format.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/util/cast.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
+#include "yb/util/write_buffer.h"
 
 DECLARE_uint64(rpc_max_message_size);
 

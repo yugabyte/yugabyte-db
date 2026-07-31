@@ -14,7 +14,7 @@
 
 #include <string>
 
-#include "yb/util/bytes_formatter.h"
+#include "yb/rocksdb/options.h"
 
 using std::string;
 

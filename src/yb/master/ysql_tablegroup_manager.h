@@ -13,16 +13,25 @@
 //--------------------------------------------------------------------------------------------------
 #pragma once
 
-#include <set>
+#include <boost/bimap.hpp>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
-
-#include <boost/bimap.hpp>
-
-#include "yb/client/client_fwd.h"
+#include <memory>
+#include <functional>
 
 #include "yb/master/master_fwd.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace yb {
+namespace master {
+class YsqlTablegroupManager;
+}  // namespace master
+}  // namespace yb
 
 namespace yb::master {
 

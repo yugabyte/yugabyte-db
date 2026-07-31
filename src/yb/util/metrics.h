@@ -238,33 +238,53 @@
 /////////////////////////////////////////////////////
 
 #include <stdint.h>
-
-#include <cstdint>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/stringize.hpp>
+#include <gtest/gtest_prod.h>
 #include <cstdlib>
 #include <set>
 #include <string>
-
-#include <boost/preprocessor/cat.hpp>
-#include <boost/preprocessor/stringize.hpp>
-#include "yb/util/flags.h"
-
-#include <gtest/gtest_prod.h>
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <memory>
+#include <mutex>
+#include <shared_mutex>
+#include <unordered_map>
+#include <utility>
+#include <functional>
 
 #include "yb/gutil/bind.h"
-#include "yb/gutil/casts.h"
-#include "yb/gutil/integral_types.h"
-
 #include "yb/util/metrics_fwd.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/aggregate_stats.h"
 #include "yb/util/atomic.h"
 #include "yb/util/hdr_histogram.h"
-#include "yb/util/jsonwriter.h"
+#include "yb/util/jsonwriter.h"  // IWYU pragma: keep
 #include "yb/util/metrics_aggregator.h"
-#include "yb/util/metrics_writer.h"
 #include "yb/util/monotime.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/striped64.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/locks.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+class Counter;
+class EventStats;
+class Histogram;
+class HistogramSnapshotPB;
+class MemTracker;
+class MetricPrototype;
+class MillisLag;
+class PrometheusWriter;
+template <typename Sig> class Callback;
+template <typename T> class AtomicGauge;
+template <typename T> class FunctionGauge;
+}  // namespace yb
 
 // Define a new entity type.
 //
@@ -399,7 +419,6 @@ METRIC_DECLARE_entity(server);
 
 namespace yb {
 
-class JsonWriter;
 class ThreadPool;
 
 // Unit types to be used with metrics.

@@ -17,13 +17,20 @@
 
 #pragma once
 
-#include "yb/yql/cql/ql/ptree/list_node.h"
+#include <utility>
+
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
 
 namespace yb {
 namespace ql {
+class SemContext;
 
 //--------------------------------------------------------------------------------------------------
 

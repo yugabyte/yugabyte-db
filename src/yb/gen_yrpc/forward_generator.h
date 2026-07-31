@@ -13,10 +13,15 @@
 
 #pragma once
 
-#include "yb/gen_yrpc/printer.h"
+namespace google {
+namespace protobuf {
+class FileDescriptor;
+}  // namespace protobuf
+}  // namespace google
 
 namespace yb {
 namespace gen_yrpc {
+class YBPrinter;
 
 class ForwardGenerator {
  public:

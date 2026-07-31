@@ -31,25 +31,27 @@
 //
 #pragma once
 
-#include <gtest/gtest_prod.h>
-
-#include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/opid_util.h"
+#include <stdint.h>
+#include <memory>
+#include <mutex>
+#include <string>
 
 #include "yb/gutil/macros.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/tserver/remote_bootstrap.pb.h"
-#include "yb/tserver/remote_bootstrap.proxy.h"
-
-#include "yb/util/status_fwd.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class HostPort;
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
 
 namespace tserver {
+class RemoteBootstrapServiceProxy;
 
 using SetLogAnchorRefreshStatusFunc = void(std::shared_ptr<rpc::RpcController> controller,
     const std::shared_ptr<UpdateLogAnchorResponsePB>&,

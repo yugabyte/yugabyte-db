@@ -15,20 +15,33 @@
 
 #include "yb/rpc/scheduler.h"
 
-#include <thread>
-
 #include <boost/asio/steady_timer.hpp>
-#include <boost/asio/strand.hpp>
-
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/ordered_index.hpp>
+#include <errno.h>
+#include <boost/asio.hpp>
+#include <boost/asio/error.hpp>
+#include <boost/asio/io_context.hpp>
+#include <boost/asio/io_context_strand.hpp>
+#include <boost/multi_index/indexed_by.hpp>
+#include <boost/multi_index/tag.hpp>
+#include <boost/multi_index_container_fwd.hpp>
+#include <boost/operators.hpp>
+#include <boost/system/error_code.hpp>
+#include <boost/asio/io_service.hpp>
+#include <thread>
+#include <compare>
+#include <functional>
+#include <ostream>
+#include <utility>
 
 #include "yb/util/errno.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/status.h"
+#include "yb/util/slice.h"
 
 using namespace std::literals;
 using namespace std::placeholders;

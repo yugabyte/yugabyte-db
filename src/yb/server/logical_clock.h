@@ -32,14 +32,15 @@
 
 #pragma once
 
-#include <string>
+#include <stdint.h>
+#include <atomic>
+#include <memory>
 
 #include "yb/server/clock.h"
-#include "yb/util/status_fwd.h"
+#include "yb/common/clock.h"
+#include "yb/common/hybrid_time.h"
 
 namespace yb {
-class MonoDelta;
-class MonoTime;
 namespace server {
 
 // An implementation of Clock that behaves as a plain Lamport Clock.  In a single node, single

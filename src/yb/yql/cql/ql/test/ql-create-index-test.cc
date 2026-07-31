@@ -13,16 +13,21 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <glog/logging.h>
+#include <memory>
+#include <string>
+
 #include "yb/yql/cql/ql/ptree/pt_create_index.h"
 #include "yb/yql/cql/ql/test/ql-test-base.h"
+#include "gtest/gtest.h"
+#include "yb/util/logging.h"
+#include "yb/util/test_macros.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
+#include "yb/yql/cql/ql/ptree/tree_node.h"
 
 using std::string;
 
 namespace yb {
-namespace master {
-class CatalogManager;
-class Master;
-}
 namespace ql {
 
 #define EXEC_DUPLICATE_OBJECT_CREATE_STMT(stmt)                                \

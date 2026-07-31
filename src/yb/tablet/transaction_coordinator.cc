@@ -14,67 +14,97 @@
 //
 
 #include "yb/tablet/transaction_coordinator.h"
-#include <time.h>
-
-#include <atomic>
-#include <iterator>
 
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index_container.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/container/stable_vector.hpp>
+#include <boost/multi_index/indexed_by.hpp>
+#include <boost/multi_index/tag.hpp>
+#include <boost/multi_index_container_fwd.hpp>
+#include <boost/operators.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <atomic>
+#include <algorithm>
+#include <compare>
+#include <condition_variable>
+#include <deque>
+#include <limits>
+#include <mutex>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string_view>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "yb/client/client.h"
 #include "yb/client/transaction_rpc.h"
-
 #include "yb/common/advisory_locks_error.h"
-#include "yb/common/common.pb.h"
-#include "yb/common/common_fwd.h"
-#include "yb/common/entity_ids.h"
-#include "yb/common/pgsql_error.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction.pb.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/consensus_util.h"
-
 #include "yb/docdb/transaction_dump.h"
-
 #include "yb/gutil/stl_util.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/poller.h"
 #include "yb/rpc/rpc.h"
-
 #include "yb/server/clock.h"
-
 #include "yb/tablet/operations/update_txn_operation.h"
 #include "yb/tablet/tablet_metrics.h"
-
 #include "yb/tserver/tserver_service.pb.h"
-
 #include "yb/util/atomic.h"
-#include "yb/util/backoff_waiter.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/countdown_latch.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
-#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
-#include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/tsan_util.h"
-#include "yb/util/yb_pg_errcodes.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.h"
+#include "yb/common/transaction.messages.h"
+#include "yb/common/wire_protocol.messages.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/tablet/operations.messages.h"
+#include "yb/tablet/operations.pb.h"
+#include "yb/util/cast.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
 
 DECLARE_uint64(transaction_heartbeat_usec);
 DEFINE_RUNTIME_double(transaction_max_missed_heartbeat_periods, 30.0,
@@ -2124,6 +2154,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     CoarseTimePoint expiry;
   };
   class RecentlyCommittedExpiryTag;
+
   typedef boost::multi_index_container<RecentlyCommittedEntry,
       boost::multi_index::indexed_by<
           boost::multi_index::hashed_unique<

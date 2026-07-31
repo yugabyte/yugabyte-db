@@ -13,8 +13,9 @@
 
 #include "yb/tserver/remote_bootstrap_info.h"
 
-#include "yb/tserver/tserver_admin.pb.h"
+#include <stddef.h>
 
+#include "yb/tserver/tserver_admin.pb.h"
 #include "yb/util/format.h"
 #include "yb/util/size_literals.h"
 

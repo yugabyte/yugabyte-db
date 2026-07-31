@@ -30,30 +30,35 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <boost/asio/ip/basic_endpoint.hpp>
+#include <cstddef>
+#include <initializer_list>
+#include <memory>
+#include <set>
+#include <sstream>
+#include <string>
+#include <vector>
+
 #include "yb/common/ql_value.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/consensus/log-test-base.h"
-
 #include "yb/dockv/partition.h"
-
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_test_util.h"
 #include "yb/rpc/yb_rpc.h"
-
 #include "yb/server/call_home-test-util.h"
-#include "yb/server/hybrid_clock.h"
 #include "yb/server/server_base.pb.h"
 #include "yb/server/server_base.proxy.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_types.pb.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server-test-base.h"
 #include "yb/tserver/tablet_server.h"
@@ -62,13 +67,64 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_call_home.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/crc.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/metrics.h"
+#include "yb/util/metrics_writer.h"
 #include "yb/util/monotime.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
+#include "gtest/gtest.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/schema.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/common/wire_protocol-test-util.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/log.h"
+#include "yb/consensus/log_util.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rpc/connection_context.h"
+#include "yb/server/rpc_server.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tserver/tablet_server_options.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_admin.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/cast.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/jsonwriter.h"
+#include "yb/util/logging.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace server {
+class HybridClock;
+}  // namespace server
+}  // namespace yb
 
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;

@@ -13,7 +13,11 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <string>
+
 #include "yb/docdb/docdb_util.h"
+#include "yb/common/schema.h"
 
 namespace yb {
 namespace tools {

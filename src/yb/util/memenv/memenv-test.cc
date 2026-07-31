@@ -19,20 +19,27 @@
 // Modified for yb:
 // - use gtest
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <memory>
 #include <unordered_set>
 #include <vector>
+#include <ostream>
+#include <string>
+#include <functional>
 
 #include "yb/util/logging.h"
-#include <gtest/gtest.h>
-
 #include "yb/gutil/map-util.h"
-
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/memenv/memenv.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/util/file_system.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 using std::shared_ptr;
 using std::string;

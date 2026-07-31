@@ -35,15 +35,15 @@
 #include "yb/util/memory/memory.h"
 
 #include <string.h>
-
+#include <assert.h>
+#include <gflags/gflags.h>
+#include <tcmalloc/malloc_extension.h>
 #include <algorithm>
 #include <cstdlib>
 
 #include "yb/util/alignment.h"
-#include "yb/util/flags.h"
 #include "yb/util/mem_tracker.h"
-#include "yb/util/size_literals.h"
-#include "yb/util/tcmalloc_impl_util.h"
+#include "yb/util/flags/flag_tags.h"
 
 using std::min;
 

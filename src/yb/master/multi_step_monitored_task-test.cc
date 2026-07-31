@@ -11,7 +11,13 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "yb/master/catalog_entity_base.h"
 #include "yb/master/multi_step_monitored_task.h"
@@ -21,6 +27,17 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/threadpool.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/server/monitored_task.h"
+#include "yb/util/async_util.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 using namespace std::placeholders;
 

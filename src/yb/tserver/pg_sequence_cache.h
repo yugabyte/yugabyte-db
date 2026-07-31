@@ -13,15 +13,18 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <memory>
 #include <optional>
 #include <unordered_map>
-#include <unordered_set>
 
 #include "yb/common/pg_types.h"
 #include "yb/util/condition_variable.h"
 #include "yb/util/locks.h"
 #include "yb/util/mutex.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
 
 namespace yb::tserver {
 

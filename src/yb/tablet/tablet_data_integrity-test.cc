@@ -11,21 +11,27 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
-
-#include "yb/qlexpr/ql_expr.h"
-
-#include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/join.h"
+#include <algorithm>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/tablet-test-base.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
-
 #include "yb/util/path_util.h"
 #include "yb/util/slice.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/common/value.messages.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace tablet {

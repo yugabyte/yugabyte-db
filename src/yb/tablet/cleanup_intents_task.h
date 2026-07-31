@@ -13,15 +13,17 @@
 
 #pragma once
 
+#include <memory>
+
 #include "yb/common/transaction.h"
-
-#include "yb/rpc/strand.h"
-
-#include "yb/tablet/tablet_fwd.h"
-#include "yb/tablet/transaction_intent_applier.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/strand.h"
 
 namespace yb {
 namespace tablet {
+class TransactionIntentApplier;
+class TransactionParticipantContext;
+enum class RemoveReason;
 
 // Used by TransactionParticipant to remove intents of specified transaction.
 class CleanupIntentsTask : public rpc::StrandTask {

@@ -3,16 +3,25 @@
 //--------------------------------------------------------------------------------------------------
 #include "yb/qlexpr/ql_resultset.h"
 
-#include "yb/common/ql_protocol.messages.h"
+#include <glog/logging.h>
+#include <stdint.h>
+
+#include "yb/common/ql_protocol.messages.h"  // IWYU pragma: keep
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_value.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/qlexpr/ql_serialization.h"
-
 #include "yb/util/status_log.h"
 #include "yb/util/write_buffer.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/gutil/endian.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena_list.h"
+
+namespace yb {
+class LWQLValuePB;
+class QLValuePB;
+}  // namespace yb
 
 namespace yb::qlexpr {
 // TODO(neil) All QL classes in "yb/common" needs to be group under a namespace. Doing that would

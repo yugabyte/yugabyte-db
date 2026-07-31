@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <string>
+
 #include "yb/util/physical_time.h"
 
 namespace yb {

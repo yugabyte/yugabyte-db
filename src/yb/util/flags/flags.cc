@@ -30,13 +30,35 @@
 // under the License.
 //
 
+#include <boost/algorithm/string/replace.hpp>
+#include <boost/algorithm/string/trim.hpp>
+#include <errno.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <limits.h>
+#include <stdlib.h>
+#include <string.h>
+#include <boost/algorithm/string.hpp>
+#include <boost/range/as_literal.hpp>
+#include <boost/range/iterator_range_core.hpp>
 #include <fstream>
 #include <regex>
 #include <string>
 #include <unordered_set>
 #include <vector>
-#include <boost/algorithm/string/replace.hpp>
-#include <boost/algorithm/string/trim.hpp>
+#include <algorithm>
+#include <cctype>
+#include <compare>
+#include <functional>
+#include <iostream>
+#include <iterator>
+#include <map>
+#include <mutex>
+#include <optional>
+#include <set>
+#include <sstream>
+#include <unordered_map>
+#include <utility>
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/once.h"
@@ -44,20 +66,31 @@
 #include "yb/util/env_util.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/string_case.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/strings/stringpiece.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flags_callback.h"
+#include "yb/util/format.h"
+#include "yb/util/jsonwriter.h"
+#include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
 
 #if YB_GPERFTOOLS_TCMALLOC
 #include <gperftools/heap-profiler.h>
 #endif
-#if YB_GOOGLE_TCMALLOC
-#include <tcmalloc/malloc_extension.h>
-#endif
-
 #include <boost/algorithm/string/case_conv.hpp>
+
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/flags.h"
-#include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"

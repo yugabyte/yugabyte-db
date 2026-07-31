@@ -21,8 +21,8 @@
 
 #include <string>
 
-#include "yb/rocksdb/options.h"
-
 namespace rocksdb {
+struct DBOptions;
+
 void DumpDBFileSummary(const DBOptions& options, const std::string& dbname);
 }  // namespace rocksdb

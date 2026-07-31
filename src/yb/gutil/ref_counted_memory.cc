@@ -19,6 +19,11 @@
 
 #include "yb/gutil/ref_counted_memory.h"
 
+#include <glog/logging.h>
+#include <stdlib.h>
+#include <string.h>
+#include <utility>
+
 #include "yb/util/logging.h"
 
 namespace yb {

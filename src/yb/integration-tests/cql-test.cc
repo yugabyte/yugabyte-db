@@ -11,32 +11,45 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <sys/types.h>
+#include <boost/container/small_vector.hpp>
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <compare>
+#include <cstring>
+#include <deque>
+#include <functional>
+#include <initializer_list>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <string_view>
+#include <thread>
+#include <utility>
+#include <vector>
+
 #include "yb/client/client_master_rpc.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table_info.h"
-
 #include "yb/consensus/raft_consensus.h"
-
 #include "yb/dockv/key_entry_value.h"
-#include "yb/dockv/primitive_value.h"
-
 #include "yb/integration-tests/cql_test_base.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_types.pb.h"
-
 #include "yb/rocksdb/db.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
-
-#include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/json_document.h"
@@ -48,6 +61,44 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/client/schema.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/integration-tests/cql_test_util.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_error.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/server/monitored_task.h"
+#include "yb/server/server_base.h"
+#include "yb/server/webserver.h"
+#include "yb/util/faststring.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_util.h"
+#include "yb/yql/cql/cqlserver/cql_server.h"
 
 using std::string;
 

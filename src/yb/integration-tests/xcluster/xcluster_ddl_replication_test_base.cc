@@ -13,23 +13,49 @@
 
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
 
-#include <rapidjson/error/en.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <algorithm>
+#include <chrono>
+#include <functional>
+#include <ratio>
+#include <sstream>
+#include <tuple>
+#include <utility>
 
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
-
 #include "yb/master/mini_master.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/xcluster_ddl_queue_handler.h"
 #include "yb/util/backoff_waiter.h"
+#include "gtest/gtest.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
+
+namespace yb {
+class MiniClusterBase;
+}  // namespace yb
 
 DECLARE_bool(enable_xcluster_api_v2);
 

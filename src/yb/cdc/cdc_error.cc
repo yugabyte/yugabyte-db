@@ -31,7 +31,13 @@
 //
 #include "yb/cdc/cdc_error.h"
 
+#include <optional>
+
 #include "yb/common/wire_protocol.h"
+
+namespace yb {
+class Status;
+}  // namespace yb
 
 namespace yb::cdc {
 

@@ -13,20 +13,30 @@
 
 #include "yb/tserver/pg_table_mutation_count_sender.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <chrono>
+#include <atomic>
+#include <future>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <utility>
+#include <functional>
 
 #include "yb/client/stateful_services/pg_auto_analyze_service_client.h"
-
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/tablet_server.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/unique_lock.h"
+#include "yb/tserver/stateful_services/pg_auto_analyze_service.pb.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/thread.h"
 
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 

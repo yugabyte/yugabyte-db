@@ -14,12 +14,22 @@
 
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <rapidjson/encodings.h>
+#include <rapidjson/rapidjson.h>
+#include <chrono>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <utility>
 
 #include "yb/tserver/tablet_server_interface.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
 
 // =============================================================================
 // YSQL Statistics Query Definitions

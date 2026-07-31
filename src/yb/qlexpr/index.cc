@@ -16,18 +16,36 @@
 
 #include "yb/qlexpr/index.h"
 
+#include <google/protobuf/stubs/port.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <string_view>
+#include <unordered_map>
+
 #include "yb/common/common.messages.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/schema.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/qlexpr/index_column.h"
-
 #include "yb/util/compare_util.h"
 #include "yb/util/format.h"
 #include "yb/util/memory/memory_usage.h"
 #include "yb/util/result.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 using std::vector;
 using std::unordered_map;

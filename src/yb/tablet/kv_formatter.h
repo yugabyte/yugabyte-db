@@ -13,9 +13,20 @@
 
 #pragma once
 
-#include "yb/rocksdb/sst_dump_tool.h"
+#include <stdint.h>
+#include <memory>
+#include <string>
 
+#include "yb/rocksdb/sst_dump_tool.h"
 #include "yb/tablet/tablet_metadata.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/docdb/docdb_compaction_context.h"
+#include "yb/docdb/docdb_types.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb::tablet {
 

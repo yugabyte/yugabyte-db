@@ -13,15 +13,23 @@
 
 #include "yb/util/debug/long_operation_tracker.h"
 
+#include <glog/logging.h>
 #include <condition_variable>
 #include <mutex>
 #include <queue>
-#include <thread>
+#include <compare>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <vector>
 
 #include "yb/util/debug-util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/logging.h"
+#include "yb/util/stack_trace.h"
 
 namespace yb {
 

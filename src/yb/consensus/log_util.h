@@ -32,33 +32,59 @@
 
 #pragma once
 
-#include <sys/stat.h>
-
+#include <gtest/gtest_prod.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <memory>
 #include <string>
 #include <vector>
-
-#include <gtest/gtest_prod.h>
+#include <atomic>
+#include <limits>
+#include <optional>
 
 #include "yb/common/opid.h"
-
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_fwd.h"
-#include "yb/consensus/log.fwd.h"
 #include "yb/consensus/log.pb.h"
-
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-
-#include <gflags/gflags_declare.h>
-
 #include "yb/util/compare_util.h"
-#include "yb/util/env.h"
+#include "yb/util/file_system.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/restart_safe_clock.h"
 #include "yb/util/status.h"
 #include "yb/util/tostring.h"
+#include "yb/consensus/log.messages.h"
+#include "yb/consensus/log_index.h"
+#include "yb/util/enums.h"
+#include "yb/util/faststring.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+
+namespace yb {
+class Env;
+namespace consensus {
+class LWReplicateMsg;
+}  // namespace consensus
+struct WritableFileOptions;
+}  // namespace yb
 
 // Used by other classes, now part of the API.
 DECLARE_bool(durable_wal_write);

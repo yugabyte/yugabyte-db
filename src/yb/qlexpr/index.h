@@ -16,28 +16,28 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/container_hash/hash.hpp>
 #include <memory>
-#include <set>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
-#include <utility>
 #include <vector>
+#include <optional>
 
-#include <boost/functional/hash.hpp>
-
-#include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
-
 #include "yb/gutil/stl_util.h"
+#include "yb/qlexpr/index_column.h"
+#include "yb/util/result.h"
 
-#include "yb/qlexpr/qlexpr_fwd.h"
-
-#include "yb/util/memory/arena_list.h"
-#include "yb/util/status_fwd.h"
+namespace yb {
+class LWIndexInfoPB;
+class Schema;
+template <class Entry> class ArenaList;
+}  // namespace yb
 
 namespace yb::qlexpr {
 

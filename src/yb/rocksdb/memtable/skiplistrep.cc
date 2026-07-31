@@ -18,14 +18,24 @@
 // under the License.
 //
 
+#include <assert.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <new>
+#include <string>
+
 #include "yb/rocksdb/db/inlineskiplist.h"
 #include "yb/rocksdb/db/skiplist.h"
-
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/memtablerep.h"
 #include "yb/rocksdb/util/arena.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/slice_transform.h"
+#include "yb/util/slice.h"
 
 namespace rocksdb {
+class MemTableAllocator;
+
 namespace {
 
 template <class SkipListImpl>

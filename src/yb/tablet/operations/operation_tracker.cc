@@ -32,24 +32,33 @@
 
 #include "yb/tablet/operations/operation_tracker.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/preprocessor/cat.hpp>
 #include <algorithm>
 #include <limits>
 #include <vector>
+#include <chrono>
+#include <ostream>
+#include <ratio>
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/tablet/operations/operation_driver.h"
 #include "yb/tablet/tablet.h"
-
 #include "yb/util/callsite_profiling.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_log.h"
 #include "yb/util/tsan_util.h"
+#include "yb/gutil/port.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
 
 DEFINE_UNKNOWN_int64(tablet_operation_memory_limit_mb, 1024,
              "Maximum amount of memory that may be consumed by all in-flight "

@@ -31,20 +31,15 @@
 //
 #pragma once
 
-#include "yb/gutil/macros.h"
+#include <stdint.h>
+#include <string>
+
 #include "yb/gutil/ref_counted.h"
-
-#include "yb/util/monotime.h"
-
-#include "yb/tablet/tablet.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
 
 namespace yb {
-
-class Counter;
-template <class T>
-class AtomicGauge;
-class EventStats;
-class MetricEntity;
 
 namespace xrepl {
 

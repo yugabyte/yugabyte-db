@@ -11,20 +11,26 @@
 // under the License.
 //
 
+#include <boost/uuid/nil_generator.hpp>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/uuid/uuid.hpp>
+#include <ostream>
+
 #include "yb/common/colocated_util.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_types.h"
-
-#include <boost/uuid/nil_generator.hpp>
-
-#include "yb/cdc/cdc_types.h"
-
 #include "yb/gutil/strings/escaping.h"
 #include "yb/util/cast.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
-#include "yb/util/strongly_typed_bool.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 using std::string;
 

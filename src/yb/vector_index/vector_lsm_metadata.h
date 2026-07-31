@@ -13,10 +13,19 @@
 
 #pragma once
 
-#include "yb/util/env.h"
-#include "yb/util/result.h"
+#include <stddef.h>
+#include <memory>
+#include <string>
+#include <vector>
 
+#include "yb/util/result.h"
 #include "yb/vector_index/vector_lsm.pb.h"
+#include "yb/util/file_system.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class Env;
+}  // namespace yb
 
 namespace yb::vector_index {
 

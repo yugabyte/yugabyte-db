@@ -10,11 +10,14 @@
 
 #include "yb/tablet/operations/change_auto_flags_config_operation.h"
 
+#include <glog/logging.h>
+#include <memory>
+#include <ostream>
+
 #include "yb/consensus/consensus.messages.h"
-
 #include "yb/tablet/tablet.h"
-
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
 
 namespace yb {
 namespace tablet {

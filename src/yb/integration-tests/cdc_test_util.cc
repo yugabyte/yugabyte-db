@@ -13,32 +13,44 @@
 
 #include "yb/integration-tests/cdc_test_util.h"
 
-#include <gtest/gtest.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <functional>
+#include <future>
+#include <ostream>
+#include <vector>
 
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_state_table.h"
-
 #include "yb/client/xcluster_client.h"
-
 #include "yb/consensus/log.h"
-
 #include "yb/dockv/doc_key.h"
-
-#include "yb/rpc/rpc_controller.h"
-
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/result.h"
 #include "yb/util/std_util.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/cdc/cdc_types.h"
+#include "yb/common/schema.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+
+namespace yb {
+namespace client {
+class YBClient;
+}  // namespace client
+}  // namespace yb
 
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 

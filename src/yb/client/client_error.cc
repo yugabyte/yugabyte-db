@@ -13,6 +13,8 @@
 
 #include "yb/client/client_error.h"
 
+#include "yb/util/status.h"
+
 namespace yb::client {
 
 bool IsRetryableClientError(const Status& s) {

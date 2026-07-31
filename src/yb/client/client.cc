@@ -32,6 +32,10 @@
 
 #include "yb/client/client.h"
 
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/stringize.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <algorithm>
 #include <limits>
 #include <memory>
@@ -40,13 +44,14 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-#include <boost/container/small_vector.hpp>
-#include <boost/preprocessor/cat.hpp>
-#include <boost/preprocessor/stringize.hpp>
+#include <array>
+#include <atomic>
+#include <compare>
+#include <ostream>
+#include <ratio>
+#include <thread>
 
 #include "yb/cdc/cdc_types.h"
-
 #include "yb/client/client-internal.h"
 #include "yb/client/client_builder-internal.h"
 #include "yb/client/client_fwd.h"
@@ -63,7 +68,6 @@
 #include "yb/client/tablet_server.h"
 #include "yb/client/transaction_status_tablets.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/common_util.h"
@@ -75,12 +79,8 @@
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/dockv/partition.h"
-
 #include "yb/gutil/bind.h"
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_backup.proxy.h"
@@ -93,14 +93,11 @@
 #include "yb/master/master_error.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/master_util.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc.h"
-
 #include "yb/tserver/pg_client.pb.h"
-
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
@@ -116,8 +113,40 @@
 #include "yb/util/status_log.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/client/schema.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/gutil/bind_helpers.h"
+#include "yb/gutil/callback.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/stl_util.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_dcl.pb.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/qlexpr/index.h"
+#include "yb/rpc/rpc_header.pb.h"
+#include "yb/tablet/operations.pb.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/util/async_util.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/stack_trace.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/threadpool.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+enum class AutoFlagClass;
+namespace tserver {
+class LWTabletConsensusInfoPB;
+}  // namespace tserver
+}  // namespace yb
 
 using namespace std::literals;
 

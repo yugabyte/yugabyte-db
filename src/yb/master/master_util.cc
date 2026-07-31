@@ -13,30 +13,42 @@
 
 #include "yb/master/master_util.h"
 
+#include <glog/logging.h>
+#include <stddef.h>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <vector>
+#include <algorithm>
+#include <functional>
+#include <optional>
+#include <ostream>
+#include <utility>
 
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/metadata.pb.h"
-
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
-
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/logging.h"
 
 namespace yb {
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
 
 const char* DatabasePrefix(YQLDatabase db) {
   switch(db) {

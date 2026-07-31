@@ -14,13 +14,22 @@
 #include "yb/tablet/kv_formatter.h"
 
 #include <boost/algorithm/string/predicate.hpp>
+#include <glog/logging.h>
+#include <ostream>
+#include <unordered_map>
+#include <utility>
 
-#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_debug.h"
-
-#include "yb/rocksdb/db/dbformat.h"
-
 #include "yb/util/status_format.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/constants.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/schema.h"
+#include "yb/util/env.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
 
 using namespace std::literals;
 

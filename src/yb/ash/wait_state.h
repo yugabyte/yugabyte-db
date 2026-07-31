@@ -13,22 +13,47 @@
 #pragma once
 
 #include <sys/socket.h>
-
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <sys/types.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <atomic>
 #include <string>
+#include <memory>
+#include <mutex>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+#include <functional>
 
 #include "yb/ash/ash_fwd.h"
-
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/wire_protocol.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/uuid.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/strings/stringpiece.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/tostring.h"
 
 DECLARE_bool(ysql_yb_enable_ash);
 
@@ -68,7 +93,6 @@ DECLARE_bool(ysql_yb_enable_ash);
 
 namespace yb {
 class Trace;
-
 // Avoid pulling in the (very heavy) common.messages.h / common.pb.h chains.
 class AshMetadataPB;
 class LWAshMetadataPB;

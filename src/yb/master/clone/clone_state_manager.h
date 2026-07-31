@@ -13,26 +13,49 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <memory>
 #include <unordered_map>
+#include <mutex>
+#include <set>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+#include <functional>
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/clone/clone_state_entity.h"
 #include "yb/master/clone/clone_tasks.h"
 #include "yb/master/clone/external_functions.h"
-#include "yb/master/leader_epoch.h"
-#include "yb/master/master_backup.pb.h"
-#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/master_types.pb.h"
-#include "yb/master/ts_descriptor.h"
-
-#include "yb/rpc/rpc_context.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/snapshot.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class HybridTime;
+class ReplicationInfoPB;
+enum YQLDatabase : int;
+
+namespace rpc {
+class RpcContext;
+}  // namespace rpc
+
 namespace master {
+class CloneNamespaceRequestPB;
+class CloneNamespaceResponsePB;
+class ListClonesRequestPB;
+class ListClonesResponsePB;
+class Master;
+class NamespaceIdentifierPB;
+class SysCatalogTable;
+class SysCloneStatePB;
+struct LeaderEpoch;
 
 class CloneStateManager {
   friend class CloneStateManagerTest;

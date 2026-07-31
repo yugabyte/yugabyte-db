@@ -31,15 +31,13 @@
 #include <sys/mman.h>
 #endif
 #include <assert.h>
-#include <stdint.h>
-
-#include <cerrno>
 #include <cstddef>
 #include <memory>
 #include <vector>
+#include <new>
+#include <utility>
 
 #include "yb/rocksdb/util/allocator.h"
-#include "yb/rocksdb/util/mutexlock.h"
 
 namespace yb {
 

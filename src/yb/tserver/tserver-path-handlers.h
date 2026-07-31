@@ -33,14 +33,12 @@
 
 #include <string>
 #include <sstream>
-#include <vector>
 
 #include "yb/gutil/macros.h"
 #include "yb/server/webserver.h"
+#include "yb/util/status.h"
 
 namespace yb {
-
-class Schema;
 
 namespace consensus {
 class ConsensusStatePB;

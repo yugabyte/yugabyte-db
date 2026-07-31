@@ -14,11 +14,13 @@
 #pragma once
 
 #include <sys/mman.h>
-
 #include <boost/interprocess/mapped_region.hpp>
 #include <boost/interprocess/shared_memory_object.hpp>
-
-#include "yb/util/logging.h"
+#include <glog/logging.h>
+#include <stddef.h>
+#include <new>
+#include <string>
+#include <utility>
 
 #include "yb/util/result.h"
 
@@ -149,7 +151,6 @@ class SharedMemoryObject {
   bool owned_ = false;
 };
 
-class InterprocessSharedMemoryObject;
 
 class InterprocessMappedRegion {
  public:

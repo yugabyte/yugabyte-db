@@ -17,12 +17,15 @@
 //--------------------------------------------------------------------------------------------------
 #include "yb/yql/cql/ql/util/errcodes.h"
 
+#include <glog/logging.h>
 #include <unordered_map>
 #include <utility>
+#include <ostream>
 
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/util/enums.h"
 #include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 namespace yb::ql {
 

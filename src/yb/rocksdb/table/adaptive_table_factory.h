@@ -20,17 +20,16 @@
 #pragma once
 
 
+#include <stdint.h>
 #include <string>
-#include "yb/rocksdb/options.h"
-#include "yb/rocksdb/status.h"
+#include <memory>
+
 #include "yb/rocksdb/table.h"
+#include "yb/rocksdb/status.h"
 
 namespace rocksdb {
 
-struct EnvOptions;
 
-class Table;
-class TableBuilder;
 
 class AdaptiveTableFactory : public TableFactory {
  public:

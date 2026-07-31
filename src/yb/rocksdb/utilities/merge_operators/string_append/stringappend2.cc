@@ -21,15 +21,15 @@
 #include "yb/rocksdb/utilities/merge_operators/string_append/stringappend2.h"
 
 #include <assert.h>
-
+#include <stddef.h>
 #include <memory>
 #include <string>
 
 #include "yb/util/slice.h"
-#include "yb/rocksdb/merge_operator.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 
 namespace rocksdb {
+class Logger;
 
 // Constructor: also specify the delimiter character.
 StringAppendTESTOperator::StringAppendTESTOperator(char delim_char)

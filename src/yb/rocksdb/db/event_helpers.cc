@@ -20,6 +20,15 @@
 
 #include "yb/rocksdb/db/event_helpers.h"
 
+#include <assert.h>
+#include <chrono>
+
+#include "yb/rocksdb/db/version_edit.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/table_properties.h"
+#include "yb/rocksdb/util/event_logger.h"
+#include "yb/rocksdb/status_fwd.h"
+
 namespace rocksdb {
 
 namespace {

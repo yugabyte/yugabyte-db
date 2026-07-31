@@ -17,10 +17,11 @@
 
 #include "yb/gutil/strings/join.h"
 
+#include <string.h>
 #include <memory>
+#include <ostream>
 
 #include "yb/util/logging.h"
-
 #include "yb/gutil/strings/ascii_ctype.h"
 #include "yb/gutil/strings/escaping.h"
 

@@ -15,18 +15,26 @@
 
 #include "yb/tserver/ysql_advisory_lock_table.h"
 
+#include <gflags/gflags.h>
+#include <chrono>
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/pgsql_protocol.pb.h"
-
 #include "yb/master/master_defaults.h"
-
-#include "yb/util/status_format.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/value.messages.h"
+#include "yb/tserver/pg_client.pb.h"
+#include "yb/util/status.h"
 
 DECLARE_bool(ysql_yb_enable_advisory_locks);
 

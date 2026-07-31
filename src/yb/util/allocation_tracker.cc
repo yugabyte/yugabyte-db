@@ -15,9 +15,12 @@
 
 #include "yb/util/allocation_tracker.h"
 
-#include "yb/util/logging.h"
+#include <glog/logging.h>
+#include <ostream>
 
+#include "yb/util/logging.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/stack_trace.h"
 
 namespace yb {
 

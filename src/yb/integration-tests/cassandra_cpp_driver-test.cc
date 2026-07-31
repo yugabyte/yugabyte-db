@@ -11,25 +11,42 @@
 // under the License.
 //
 
+#include <cassandra.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <math.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/array.hpp>
 #include <tuple>
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <initializer_list>
+#include <map>
+#include <memory>
+#include <ratio>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <thread>
+#include <type_traits>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "yb/client/client.h"
 #include "yb/client/table_info.h"
-
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/backfill-test-util.h"
 #include "yb/integration-tests/cql_test_util.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
-
 #include "yb/master/master_admin.proxy.h"
-
 #include "yb/tools/yb-admin_client.h"
-
-#include "yb/tserver/tserver_service.pb.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/json_document.h"
 #include "yb/util/metrics.h"
@@ -38,6 +55,32 @@
 #include "yb/util/status_log.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_ddl.proxy.h"
+#include "yb/qlexpr/index.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/thread_holder.h"
+#include "yb/util/tostring.h"
 
 using namespace std::literals;
 

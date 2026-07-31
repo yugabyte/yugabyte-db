@@ -16,7 +16,6 @@
 // and Google tcmalloc implementations, as well as the case when tcmalloc is not used.
 
 #include <cstdint>
-#include <optional>
 
 namespace yb {
 

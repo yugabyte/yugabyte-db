@@ -16,7 +16,8 @@
 //
 
 #include <string.h>
-
+#include <stddef.h>
+#include <stdint.h>
 #include <string>
 
 #include "yb/gutil/strings/numbers.h"

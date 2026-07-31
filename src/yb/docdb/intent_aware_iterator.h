@@ -13,21 +13,56 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <ostream>
+#include <string>
+
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/read_hybrid_time.h"
-
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/iter_util.h"
 #include "yb/docdb/transaction_status_cache.h"
-
 #include "yb/dockv/key_bytes.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/transaction.h"
+#include "yb/gutil/port.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/util/enums.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
 
-#include "yb/rocksdb/db.h"
-#include "yb/rocksdb/options.h"
-
-#include "yb/util/status_fwd.h"
-#include "yb/util/stack_trace.h"
+namespace rocksdb {
+struct ReadOptions;
+}  // namespace rocksdb
+namespace yb {
+namespace docdb {
+struct DocDB;
+struct ReadOperationData;
+}  // namespace docdb
+namespace dockv {
+class DocKey;
+}  // namespace dockv
+}  // namespace yb
 
 namespace yb::docdb {
 

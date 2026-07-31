@@ -13,11 +13,25 @@
 
 #include "yb/tserver/ts_data_size_metrics.h"
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <chrono>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <unordered_map>
+#include <utility>
+
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet.h"
-
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb::tserver {
 

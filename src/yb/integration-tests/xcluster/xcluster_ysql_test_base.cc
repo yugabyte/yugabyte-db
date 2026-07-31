@@ -13,12 +13,26 @@
 
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <rapidjson/document.h>
+#include <rapidjson/encodings.h>
+#include <rapidjson/rapidjson.h>
+#include <boost/asio/ip/address.hpp>
+#include <boost/regex.hpp>
+#include <algorithm>
+#include <chrono>
+#include <functional>
+#include <future>
+#include <initializer_list>
+#include <ostream>
+#include <ratio>
+
 #include "yb/client/client.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_cluster.proxy.h"
@@ -28,21 +42,42 @@
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_initialization.h"
-
 #include "yb/server/server_base.h"
 #include "yb/tools/yb-admin_client.h"
-
 #include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
-
+#include "yb/tserver/tablet_server.h"  // IWYU pragma: keep
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/thread.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
-
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
+#include "gtest/gtest.h"
+#include "libpq-fe.h"
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/cdc_service.proxy.h"
+#include "yb/cdc/xcluster_types.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/snapshot.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/tserver/tablet_server_options.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/random_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/yql/pgwrapper/pg_wrapper.h"
 
 DECLARE_bool(enable_ysql);
 DECLARE_bool(hide_pg_catalog_table_creation_logs);

@@ -11,33 +11,57 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <glog/logging.h>
+#include <stdint.h>
+#include <boost/intrusive/list.hpp>
+#include <chrono>
+#include <functional>
+#include <optional>
+#include <ostream>
+#include <ratio>
+
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/redis_protocol.messages.h"
-
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/gutil/strings/escaping.h"
-
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_client.pb.h"
-#include "yb/master/master_admin.proxy.h"
-#include "yb/tserver/tserver_service.pb.h"
 #include "yb/tools/yb-backup/yb-backup-test_base.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
-
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 #include "yb/yql/redis/redisserver/redis_parser.h"
-#include "yb/integration-tests/mini_cluster.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/redis_protocol.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/casts.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/mini_cluster.h"  // IWYU pragma: keep
+#include "yb/integration-tests/mini_cluster_base.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/tablet/tablet.pb.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/env.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
+#include "yb/yql/redis/redisserver/redis_fwd.h"
 
 using namespace std::chrono_literals;
 

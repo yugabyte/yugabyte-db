@@ -26,25 +26,31 @@
 #pragma once
 
 #include <stdint.h>
-
+#include <stddef.h>
 #include <string>
-#include <vector>
+#include <memory>
 
 #include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/immutable_options.h"
-#include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/options.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/rocksdb/status.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace rocksdb {
 
-class Env;
 class Arena;
 struct FileDescriptor;
 class GetContext;
 class HistogramImpl;
 class InternalIterator;
 class DataBlockAwareIndexInternalIterator;
+class Statistics;
+class TableReader;
+struct EnvOptions;
+struct ImmutableCFOptions;
+struct TableProperties;
 
 class TableCache {
  public:

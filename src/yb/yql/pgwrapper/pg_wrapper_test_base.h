@@ -13,8 +13,15 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <string>
+
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 namespace pgwrapper {

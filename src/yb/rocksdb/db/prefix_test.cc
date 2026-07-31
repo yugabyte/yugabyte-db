@@ -21,17 +21,21 @@
 
 #ifndef GFLAGS
 #include <cstdio>
+
 int main() {
   fprintf(stderr, "Please install gflags to run this test... Skipping...\n");
   return 0;
 }
 #else
 
+#include <gflags/gflags.h>
+#include <stdint.h>
 #include <algorithm>
 #include <iostream>
+#include <memory>
+#include <string>
 #include <vector>
 
-#include "yb/util/flags.h"
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/filter_policy.h"
@@ -43,10 +47,18 @@ int main() {
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-
 #include "yb/util/random_util.h"
 #include "yb/util/string_util.h"
-#include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
 
 using GFLAGS::ParseCommandLineFlags;
 

@@ -23,13 +23,19 @@
 
 #include "yb/rocksdb/table/block_based_filter_block.h"
 
+#include <assert.h>
 #include <algorithm>
+#include <utility>
 
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
-
 #include "yb/util/string_util.h"
+#include "yb/rocksdb/perf_context.h"
+#include "yb/rocksdb/slice_transform.h"
+#include "yb/rocksdb/table.h"
+#include "yb/util/monotime.h"
+#include "yb/util/tostring.h"
 
 namespace rocksdb {
 

@@ -22,14 +22,19 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/options.h"
+
 #include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/util/size_literals.h"
 
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
 #endif
 
 #include <inttypes.h>
+#include <assert.h>
 #include <limits>
+#include <atomic>
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/compaction_filter.h"
@@ -39,14 +44,12 @@
 #include "yb/rocksdb/sst_file_manager.h"
 #include "yb/rocksdb/memtablerep.h"
 #include "yb/rocksdb/merge_operator.h"
-#include "yb/util/slice.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table_properties.h"
 #include "yb/rocksdb/wal_filter.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/util/compression.h"
-#include "yb/rocksdb/util/statistics.h"
 
 namespace rocksdb {
 

@@ -11,36 +11,50 @@
 // under the License.
 //
 
-#include "yb/fs/fs_manager.h"
+#include <gflags/gflags.h>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ratio>
+#include <string>
+#include <string_view>
+#include <vector>
 
+#include "yb/fs/fs_manager.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/client/client.h"
-#include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/dockv/partition.h"
-
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/mini_master.h"
-
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_metrics_heartbeat_data_provider.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
 
 DECLARE_int32(scheduled_full_compaction_frequency_hours);
 DECLARE_int32(rocksdb_level0_file_num_compaction_trigger);

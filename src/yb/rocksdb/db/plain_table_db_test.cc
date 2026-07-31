@@ -24,18 +24,22 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 
+#include <assert.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <algorithm>
-#include <set>
+#include <initializer_list>
+#include <map>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+#include <functional>
 
 #include "yb/rocksdb/db/db_impl.h"
-#include "yb/rocksdb/db/filename.h"
-#include "yb/rocksdb/db/version_set.h"
-#include "yb/rocksdb/db/write_batch_internal.h"
-#include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table/meta_blocks.h"
@@ -44,15 +48,33 @@
 #include "yb/rocksdb/table/plain_table_factory.h"
 #include "yb/rocksdb/table/plain_table_key_coding.h"
 #include "yb/rocksdb/table/plain_table_reader.h"
-#include "yb/rocksdb/util/hash.h"
 #include "yb/rocksdb/util/logging.h"
-#include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-#include "yb/rocksdb/utilities/merge_operators.h"
-
 #include "yb/util/string_util.h"
-#include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/memtablerep.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/rocksdb/table/format.h"
+#include "yb/rocksdb/table/plain_table_index.h"
+#include "yb/rocksdb/table/table_reader.h"
+#include "yb/rocksdb/table_properties.h"
+#include "yb/rocksdb/util/coding.h"
+#include "yb/rocksdb/util/file_reader_writer.h"
+#include "yb/rocksdb/util/random.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
+
+namespace rocksdb {
+class Snapshot;
+}  // namespace rocksdb
 
 using std::unique_ptr;
 

@@ -6,10 +6,30 @@
 
 #pragma once
 
+#include <memory>
+#include <set>
+#include <string>
+#include <utility>
+
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
+#include "yb/yql/cql/ql/ptree/tree_node.h"
 
 namespace yb {
+namespace client {
+class YBTable;
+}  // namespace client
+
 namespace ql {
+class PTColumnDefinition;
+class PTRelationExpr;
+class SemContext;
 
 //--------------------------------------------------------------------------------------------------
 // CREATE INDEX statement.

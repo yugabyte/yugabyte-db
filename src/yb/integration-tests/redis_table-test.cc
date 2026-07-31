@@ -13,15 +13,11 @@
 
 #include <chrono>
 #include <thread>
-
-#include "yb/util/logging.h"
-
-#include "yb/client/schema.h"
-
-#include "yb/common/redis_protocol.pb.h"
+#include <string>
 
 #include "yb/integration-tests/redis_table_test_base.h"
-#include "yb/integration-tests/yb_table_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/util/test_macros.h"
 
 using std::string;
 

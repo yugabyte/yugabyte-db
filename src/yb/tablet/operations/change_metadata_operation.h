@@ -32,31 +32,36 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <atomic>
-#include <mutex>
 #include <string>
+#include <memory>
 
 #include "yb/qlexpr/index.h"
-
-#include "yb/consensus/log_fwd.h"
-
-#include "yb/gutil/macros.h"
-
 #include "yb/tablet/operations.messages.h"
 #include "yb/tablet/operations/operation.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
-#include "yb/tserver/tserver_fwd.h"
-#include "yb/tserver/tserver_admin.pb.h"
-
-#include "yb/util/locks.h"
+namespace google {
+namespace protobuf {
+template <typename T> class RepeatedPtrField;
+}  // namespace protobuf
+}  // namespace google
 
 namespace yb {
 
 class Schema;
+class IndexInfoPB;
+namespace log {
+class Log;
+}  // namespace log
 
 namespace tablet {
 
 class TabletPeer;
+class ChangeMetadataRequestPB;
 
 // Operation Context for the AlterSchema operation.
 // Keeps track of the Operation states (request, result, ...)

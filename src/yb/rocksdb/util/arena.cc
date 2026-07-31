@@ -23,6 +23,9 @@
 
 #include "yb/rocksdb/util/arena.h"
 
+#include <errno.h>
+#include <stdint.h>
+#include <string.h>
 #include <algorithm>
 
 #ifdef ROCKSDB_MALLOC_USABLE_SIZE
@@ -32,9 +35,7 @@
 #include <sys/mman.h>
 #endif
 
-#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/env.h"
-
 #include "yb/util/mem_tracker.h"
 
 namespace rocksdb {

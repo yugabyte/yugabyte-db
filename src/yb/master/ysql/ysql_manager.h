@@ -13,16 +13,27 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <chrono>
 #include <optional>
+#include <atomic>
+#include <memory>
+#include <string>
 
 #include "yb/common/read_hybrid_time.h"
-
-#include "yb/master/master_admin.pb.h"
 #include "yb/master/ysql/ysql_catalog_config.h"
 #include "yb/master/ysql/ysql_manager_if.h"
-
 #include "yb/rpc/scheduler.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/pg_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/sys_catalog_types.h"
+#include "yb/master/ysql/ysql_initdb_major_upgrade_handler.h"
+#include "yb/util/is_operation_done_result.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
@@ -31,8 +42,20 @@ class RpcContext;
 }  // namespace rpc
 
 namespace master {
-
-class YsqlInitDBAndMajorUpgradeHandler;
+class CatalogManager;
+class FinalizeYsqlMajorCatalogUpgradeRequestPB;
+class FinalizeYsqlMajorCatalogUpgradeResponsePB;
+class GetYsqlMajorCatalogUpgradeStateRequestPB;
+class GetYsqlMajorCatalogUpgradeStateResponsePB;
+class IsYsqlMajorCatalogUpgradeDoneRequestPB;
+class IsYsqlMajorCatalogUpgradeDoneResponsePB;
+class Master;
+class RollbackYsqlMajorCatalogVersionRequestPB;
+class RollbackYsqlMajorCatalogVersionResponsePB;
+class StartYsqlMajorCatalogUpgradeRequestPB;
+class StartYsqlMajorCatalogUpgradeResponsePB;
+class SysCatalogTable;
+struct LeaderEpoch;
 
 class YsqlManager : public YsqlManagerIf {
  public:

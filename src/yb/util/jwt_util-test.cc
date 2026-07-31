@@ -10,14 +10,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include <jwt-cpp/jwt.h>
-
-#include <gtest/gtest.h>
+#include <jwt-cpp/traits/kazuho-picojson/defaults.h>
+#include <string>
 
 #include "yb/util/jwt_test_keys.h"
 #include "yb/util/jwt_util.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
 
 namespace yb::util {
 

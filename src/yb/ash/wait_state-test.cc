@@ -11,13 +11,19 @@
 // under the License.
 //
 
+#include <stdint.h>
+#include <sys/types.h>
+#include <string>
+
 #include "yb/ash/wait_state.h"
-
 #include "yb/common/common.pb.h"
-
 #include "yb/util/format.h"
 #include "yb/util/random_util.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/uuid.h"
 
 namespace yb {
 

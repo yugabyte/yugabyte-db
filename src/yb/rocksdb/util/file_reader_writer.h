@@ -23,28 +23,34 @@
 
 #pragma once
 
+#include <gflags/gflags.h>
+#include <stdint.h>
 #include <string.h>
 
+#include <memory>
 #include <string>
-
-#include "yb/util/flags.h"
+#include <utility>
 
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/port/port.h"
+#include "yb/rocksdb/port/port_posix.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/util/aligned_buffer.h"
+#include "yb/util/file_system.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace rocksdb {
+class RateLimiter;
+}  // namespace rocksdb
 
 DECLARE_int32(rocksdb_file_starting_buffer_size);
 
 namespace yb {
-
 class PriorityThreadPoolSuspender;
-
-}
+}  // namespace yb
 
 namespace rocksdb {
 
-class Statistics;
 class HistogramImpl;
 
 YB_STRONGLY_TYPED_BOOL(AllocateBuffer);

@@ -13,15 +13,30 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <boost/preprocessor/cat.hpp>
 #include <shared_mutex>
+#include <cstddef>
+#include <string>
+#include <unordered_set>
+#include <functional>
 
 #include "yb/master/catalog_entity_types.h"
-#include "yb/master/master_types.pb.h"
 #include "yb/server/monitored_task.h"
 #include "yb/util/cow_object.h"
 #include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/logging.h"
+
+namespace yb {
+namespace master {
+enum SysRowEntryType : int;
+}  // namespace master
+}  // namespace yb
 
 namespace yb::master {
 

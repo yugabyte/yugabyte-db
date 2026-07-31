@@ -11,41 +11,71 @@
 // under the License.
 //
 
+#include <cassandra.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <signal.h>
+#include <stdint.h>
+#include <boost/iterator/iterator_facade.hpp>
+#include <boost/range/adaptor/argument_fwd.hpp>
+#include <boost/range/adaptor/transformed.hpp>
+#include <boost/range/begin.hpp>
+#include <boost/range/end.hpp>
 #include <atomic>
 #include <thread>
+#include <algorithm>
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <limits>
+#include <memory>
+#include <mutex>
+#include <ostream>
+#include <random>
+#include <ratio>
+#include <string>
+#include <vector>
 
-#include <boost/range/adaptors.hpp>
-#include <gtest/gtest.h>
-
+#include "yb/client/client_fwd.h"  // IWYU pragma: keep
 #include "yb/client/table_info.h"
-
 #include "yb/consensus/consensus.h"
-
 #include "yb/gutil/strings/join.h"
-
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/cql_test_base.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/load_generator.h"
 #include "yb/integration-tests/mini_cluster.h"
-
 #include "yb/master/master_client.pb.h"
 #include "yb/master/mini_master.h"
-
-#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
-#include "yb/util/random.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/opid.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/integration-tests/cql_test_util.h"
+#include "yb/integration-tests/external_daemon.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
 
 using std::string;
 

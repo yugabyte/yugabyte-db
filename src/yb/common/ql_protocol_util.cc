@@ -13,15 +13,25 @@
 
 #include "yb/common/ql_protocol_util.h"
 
+#include <glog/logging.h>
+#include <memory>
+
 #include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 #include "yb/util/write_buffer.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_list.h"
 
 namespace yb {
 

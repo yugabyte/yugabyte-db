@@ -14,13 +14,15 @@
 
 #include "yb/yql/pggate/pg_doc_op_fetch_stream.h"
 
+#include <glog/logging.h>
+#include <string.h>
 #include <algorithm>
+#include <ostream>
+#include <string>
 
 #include "yb/common/pgsql_protocol.messages.h"
-
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
-
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/util/pg_doc_data.h"

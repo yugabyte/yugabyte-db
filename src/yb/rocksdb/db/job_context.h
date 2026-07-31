@@ -29,6 +29,7 @@
 
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/log_writer.h"
+#include "yb/rocksdb/db/memtable.h"  // IWYU pragma: keep
 
 namespace rocksdb {
 

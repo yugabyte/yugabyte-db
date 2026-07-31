@@ -16,6 +16,13 @@
 #include "yb/util/prometheus_metric_filter.h"
 
 #include <boost/regex.hpp>
+#include <glog/logging.h>
+#include <optional>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+#include "yb/util/logging.h"
 
 namespace yb {
 

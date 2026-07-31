@@ -31,33 +31,42 @@
 //
 #pragma once
 
+#include <gflags/gflags.h>
+#include <stdint.h>
 #include <memory>
+#include <string>
 
-#include "yb/util/logging.h"
-#include <gtest/gtest.h>
-
-#include "yb/consensus/consensus_fwd.h"
-#include "yb/dockv/partial_row.h"
 #include "yb/common/wire_protocol-test-util.h"
-
-#include "yb/consensus/consensus_meta.h"
-#include "yb/consensus/metadata.pb.h"
-#include "yb/consensus/opid_util.h"
 #include "yb/consensus/multi_raft_batcher.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/fastmem.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
-
 #include "yb/tablet/tablet-test-util.h"
-
 #include "yb/tserver/remote_bootstrap_session.h"
-
 #include "yb/util/metrics.h"
-#include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
+#include "yb/consensus/log_anchor_registry.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/thread_pool.h"
+
+namespace yb {
+enum TableType : int;
+namespace consensus {
+class ConsensusMetadata;
+class RaftConfigPB;
+class RaftPeerPB;
+struct StateChangeContext;
+}  // namespace consensus
+namespace log {
+class Log;
+struct LogOptions;
+}  // namespace log
+namespace tablet {
+class RaftGroupReplicaSuperBlockPB;
+class TabletPeer;
+}  // namespace tablet
+}  // namespace yb
 
 METRIC_DECLARE_entity(table);
 METRIC_DECLARE_entity(tablet);

@@ -32,11 +32,12 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stddef.h>
 #include <string>
-#include <boost/function.hpp>
+#include <utility>
 
 #include "yb/rocksdb/status.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
@@ -219,6 +220,7 @@ class Iterator : public Cleanable {
 class DataBlockAwareIndexIterator : public Iterator {
  public:
   class Empty;
+
   virtual yb::Result<std::pair<std::string, std::string>> GetCurrentDataBlockBounds() const = 0;
 };
 

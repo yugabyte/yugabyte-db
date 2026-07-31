@@ -33,48 +33,69 @@
 #pragma once
 
 #include <stdint.h>
-
-#include <atomic>
-#include <cstdint>
-#include <limits>
-#include <memory>
-#include <queue>
-#include <string>
-#include <thread>
-#include <type_traits>
-#include <unordered_map>
-#include <vector>
-
 #include <boost/container/small_vector.hpp>
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
-#include <boost/version.hpp>
-
-#include <ev++.h>
-#include "yb/util/flags.h"
-#include "yb/util/logging.h"
+#include <stddef.h>
+#include <boost/multi_index/indexed_by.hpp>
+#include <boost/multi_index/tag.hpp>
+#include <boost/multi_index_container_fwd.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <atomic>
+#include <memory>
+#include <string>
+#include <vector>
+#include <chrono>
+#include <functional>
+#include <optional>
 
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/stream.h"
 #include "yb/rpc/reactor_thread_role.h"
-
-#include "yb/util/metrics_fwd.h"
 #include "yb/util/enums.h"
 #include "yb/util/ev_util.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
-#include "yb/util/net/sockaddr.h"
-#include "yb/util/net/socket.h"
 #include "yb/util/status.h"
-#include "yb/util/strongly_typed_bool.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rpc/connection_context.h"
+#include "yb/util/cast.h"
+#include "yb/util/result.h"
+#include "yb/util/tostring.h"
+
+namespace ev {
+struct loop_ref;
+struct timer;
+}  // namespace ev
 
 namespace yb {
+class Histogram;
+
 namespace rpc {
+class CallStateListenerFactory;
+class DumpRunningRpcsRequestPB;
+class Reactor;
+class ReactorTask;
+class RpcConnectionPB;
+struct CallData;
+struct RpcMetrics;
 
 YB_DEFINE_ENUM(ConnectionDirection, (CLIENT)(SERVER));
 
@@ -308,6 +329,7 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   };
 
   class ExpirationTag;
+
   // Calls which have been sent and are now waiting for a response.
   using ActiveCalls = boost::multi_index_container<
       ActiveCall,

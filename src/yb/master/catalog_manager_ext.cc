@@ -10,19 +10,35 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <absl/base/dynamic_annotations.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/multi_index_container.hpp>
 #include <memory>
 #include <optional>
 #include <queue>
 #include <unordered_set>
-
-#include <google/protobuf/repeated_field.h>
-#include <google/protobuf/util/message_differencer.h>
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <limits>
+#include <map>
+#include <mutex>
+#include <ostream>
+#include <ranges>
+#include <ratio>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "yb/client/meta_cache.h"
-#include "yb/client/session.h"
-#include "yb/client/yb_op.h"
-#include "yb/client/yb_table_name.h"
-
 #include "yb/common/colocated_util.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/common_fwd.h"
@@ -35,17 +51,12 @@
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/snapshot.h"
-
 #include "yb/consensus/consensus.h"
-
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
-
 #include "yb/dockv/reader_projection.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/catalog_entity_info.h"
@@ -70,14 +81,11 @@
 #include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/master/ysql_tablegroup_manager.h"
-
 #include "yb/rpc/messenger.h"
-
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
-
 #include "yb/util/condition_variable.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
@@ -93,6 +101,73 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/pg_types.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/transaction.h"
+#include "yb/common/value.pb.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/docdb/doc_read_context.h"
+#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb_compaction_context.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/docdb/read_operation_data.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/escaping.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/gutil/walltime.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/master_types.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/snapshot_coordinator_context.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/master/sys_catalog_constants.h"
+#include "yb/master/sys_catalog_types.h"
+#include "yb/master/sys_catalog_writer.h"
+#include "yb/master/table_index.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rpc/rpc_context.h"
+#include "yb/server/clock.h"
+#include "yb/tablet/operations/operation.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tserver/backup.pb.h"
+#include "yb/util/cow_object.h"
+#include "yb/util/enums.h"
+#include "yb/util/fault_injection.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/locks.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/operation_counter.h"
+#include "yb/util/pb_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/version_tracker.h"
+
+namespace yb {
+namespace master {
+class ChangeEncryptionInfoRequestPB;
+class ChangeEncryptionInfoResponsePB;
+class GetFullUniverseKeyRegistryRequestPB;
+class GetFullUniverseKeyRegistryResponsePB;
+class IsEncryptionEnabledRequestPB;
+class IsEncryptionEnabledResponsePB;
+}  // namespace master
+}  // namespace yb
 
 using namespace std::literals;
 using namespace std::placeholders;

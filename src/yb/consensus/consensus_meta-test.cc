@@ -29,12 +29,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include "yb/consensus/consensus_meta.h"
-
+#include <glog/logging.h>
+#include <stdint.h>
 #include <vector>
+#include <memory>
+#include <ostream>
+#include <string>
 
-#include <gtest/gtest.h>
-
+#include "yb/consensus/consensus_meta.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
@@ -43,6 +45,19 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/opid.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace yb {
+namespace consensus {
+class ConsensusMetadataTest_TestCreateLoad_Test;
+class ConsensusMetadataTest_TestFlush_Test;
+}  // namespace consensus
+}  // namespace yb
 
 #define ASSERT_VALUES_EQUAL(cmeta, opid_index, uuid, term) \
   ASSERT_NO_FATALS(AssertValuesEqual(cmeta, opid_index, uuid, term))

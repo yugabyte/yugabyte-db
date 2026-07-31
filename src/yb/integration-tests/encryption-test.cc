@@ -11,31 +11,40 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/client/table.h"
 #include "yb/client/table_handle.h"
-#include "yb/client/yb_table_name.h"
-
-#include "yb/encryption/encrypted_file_factory.h"
-#include "yb/encryption/header_manager.h"
-#include "yb/encryption/header_manager_impl.h"
-#include "yb/encryption/universe_key_manager.h"
-
-#include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/yb_table_test_base.h"
-#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/integration-tests/cluster_verifier.h"
-
-#include "yb/master/encryption_manager.h"
-
 #include "yb/tools/yb-admin_client.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_util.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 
 using std::string;
 

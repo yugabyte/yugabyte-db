@@ -31,12 +31,12 @@
 //
 #pragma once
 
-#include <string>
+#include <stddef.h>
 
 #include "yb/gutil/macros.h"
 #include "yb/tools/ysck.h"
-#include "yb/util/monotime.h"
-#include "yb/util/status_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

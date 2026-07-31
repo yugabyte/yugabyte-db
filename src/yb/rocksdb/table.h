@@ -35,6 +35,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "yb/rocksdb/filter_policy.h"  // IWYU pragma: keep
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/types.h"
@@ -261,7 +262,7 @@ struct PlainTablePropertyNames {
   static const char kNumBloomBlocks[];
 };
 
-const uint32_t kPlainTableVariableLength = 0;
+inline constexpr uint32_t kPlainTableVariableLength = 0;
 
 struct PlainTableOptions {
   // @user_key_len: plain table has optimization for fix-sized keys, which can

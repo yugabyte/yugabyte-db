@@ -12,18 +12,40 @@
 
 #include "yb/cdc/xrepl_stream_metadata.h"
 
-#include "yb/cdc/cdc_service.h"
+#include <gflags/gflags.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <ostream>
+#include <utility>
 
 #include "yb/client/client.h"
-#include "yb/client/session.h"
-
-#include "yb/common/common.pb.h"
 #include "yb/common/constants.h"
 #include "yb/common/xcluster_util.h"
-
 #include "yb/gutil/map-util.h"
-
 #include "yb/util/shared_lock.h"
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/util/status_format.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+enum CDCSDKSnapshotOption : int;
+enum PgReplicaIdentity : int;
+enum ReplicationSlotLsnType : int;
+enum ReplicationSlotOrderingMode : int;
+}  // namespace yb
 
 DECLARE_bool(ysql_yb_enable_replica_identity);
 

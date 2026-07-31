@@ -13,16 +13,18 @@
 
 #include "yb/docdb/docdb_statistics.h"
 
+#include <gflags/gflags.h>
+#include <stdint.h>
 #include <span>
-#include <tuple>
+#include <utility>
 
 #include "yb/common/pgsql_protocol.messages.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/util/statistics.h"
-#include "yb/util/atomic.h"
-#include "yb/util/flags.h"
-#include "yb/util/metrics.h"
 #include "yb/yql/pggate/pg_metrics_list.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/util/aggregate_stats.h"
+#include "yb/util/flags/flag_tags.h"
 
 DEFINE_RUNTIME_bool(ysql_analyze_dump_intentsdb_metrics, false,
     "Whether to return changed intentsdb metrics for YSQL queries in RPC response.");

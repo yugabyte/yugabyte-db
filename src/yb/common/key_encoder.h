@@ -32,24 +32,28 @@
 
 #pragma once
 
-#include <arpa/inet.h>
-
-#ifndef __aarch64__
-#include <nmmintrin.h>
-#endif
-
 #include <string.h>
-
+#include <emmintrin.h>
+#include <glog/logging.h>
+#include <smmintrin.h>
+#include <stdint.h>
 #include <climits>
+#include <ostream>
+#include <string>
 
 #include "yb/common/types.h"
 #include "yb/gutil/endian.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/mathlimits.h"
-#include "yb/gutil/strings/memutil.h"
 #include "yb/gutil/type_traits.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/status.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/slice.h"
 
 // The SSE-based encoding is not yet working. Don't define this!
 #undef KEY_ENCODER_USE_SSE
@@ -393,9 +397,6 @@ struct KeyEncoderTraits<DataType::BOOL, Buffer> {
   }
 };
 
-// Forward declaration is necessary for friend declaration in KeyEncoder.
-template<typename Buffer>
-class EncoderResolver;
 
 // The runtime version of the key encoder
 template <typename Buffer>

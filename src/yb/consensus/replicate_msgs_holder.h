@@ -13,15 +13,18 @@
 
 #pragma once
 
-#include <google/protobuf/repeated_field.h>
-
 #include "yb/consensus/consensus_fwd.h"
-
 #include "yb/util/mem_tracker.h"
-#include "yb/util/memory/arena.h"
+
+namespace google {
+namespace protobuf {
+template <typename Element> class RepeatedPtrField;
+}  // namespace protobuf
+}  // namespace google
 
 namespace yb {
 namespace consensus {
+class ReplicateMsg;
 
 class ReplicateMsgsHolder {
  public:

@@ -17,37 +17,51 @@
 
 #pragma once
 
-#include <mutex>
-#include <vector>
-
 #include <rapidjson/document.h>
+#include <stdint.h>
+#include <mutex>
+#include <atomic>
+#include <functional>
+#include <list>
+#include <memory>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "yb/ash/ash_fwd.h"
-
 #include "yb/client/yb_op.h"
-
-#include "yb/common/pgsql_protocol.pb.h"
 #include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_type.h"
-
-#include "yb/gutil/callback.h"
-
-#include "yb/rpc/thread_pool.h"
-
 #include "yb/util/memory/mc_types.h"
-
 #include "yb/yql/cql/ql/exec/exec_fwd.h"
-#include "yb/yql/cql/ql/ptree/column_arg.h"
 #include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 #include "yb/yql/cql/ql/ptree/pt_expr_types.h"
-#include "yb/yql/cql/ql/util/util_fwd.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/common_fwd.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/thread_pool.h"
+#include "yb/yql/cql/ql/exec/exec_context.h"
+#include "yb/gutil/callback.h"
 
 namespace yb {
+class IndexInfoPB;
+class QLValue;
+class Schema;
+enum class DataType;
 
 namespace client {
-class YBColumnSpec;
-} // namespace client
+struct FlushStatus;
+}  // namespace client
+namespace qlexpr {
+class QLRow;
+class QLRowBlock;
+}  // namespace qlexpr
 
 namespace ql {
 
@@ -58,6 +72,48 @@ class AuditLogger;
 }
 
 class QLMetrics;
+class ColumnDesc;
+class ColumnOp;
+class FuncOp;
+class JsonColumnOp;
+class MultiColumnOp;
+class PTAllColumns;
+class PTAlterKeyspace;
+class PTAlterRole;
+class PTAlterTable;
+class PTBcall;
+class PTBindVar;
+class PTCollectionExpr;
+class PTColumnDefinition;
+class PTCommit;
+class PTCreateKeyspace;
+class PTCreateRole;
+class PTCreateTable;
+class PTCreateType;
+class PTDeleteStmt;
+class PTDmlStmt;
+class PTDropStmt;
+class PTExplainStmt;
+class PTGrantRevokePermission;
+class PTGrantRevokeRole;
+class PTInsertJsonClause;
+class PTInsertStmt;
+class PTJsonColumnWithOperators;
+class PTListNode;
+class PTRef;
+class PTSelectStmt;
+class PTStartTransaction;
+class PTSubscriptedColumn;
+class PTTruncateStmt;
+class PTUpdateStmt;
+class PTUseKeyspace;
+class ParseTree;
+class PartitionKeyOp;
+class QLEnv;
+class Rescheduler;
+class StatementParameters;
+class SubscriptedColumnOp;
+class TreeNode;
 
 class Executor : public qlexpr::QLExprExecutor {
  public:

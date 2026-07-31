@@ -13,19 +13,38 @@
 
 #include "yb/hnsw/hnsw.h"
 
-#include "usearch/index.hpp"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <string.h>
+#include <boost/intrusive/list.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <ranges>
+#include <algorithm>
+#include <limits>
+#include <ostream>
+#include <tuple>
 
+#include "usearch/index.hpp"
 #include "yb/hnsw/block_writer.h"
 #include "yb/hnsw/hnsw_block_cache.h"
-
 #include "yb/util/cast.h"
 #include "yb/util/env.h"
-#include "yb/util/flags.h"
+#include "yb/util/file_system.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
-
 #include "yb/vector_index/vector_index_if.h"
+#include "usearch/index_dense.hpp"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/endian.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/math_util.h"
+#include "yb/util/result.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+#include "yb/vector_index/hnswlib_include.h"
 
 using namespace yb::size_literals;
 

@@ -13,35 +13,40 @@
 
 #include "yb/yql/pggate/pg_txn_manager.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <ostream>
+#include <utility>
+
 #include "yb/common/common.pb.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction_priority.h"
-
-#include "yb/docdb/object_lock_shared_state.h"
-
 #include "yb/gutil/casts.h"
-
-#include "yb/rpc/rpc_controller.h"
-
-#include "yb/tserver/pg_client.messages.h"
-#include "yb/tserver/tserver_service.proxy.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-
-#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pggate.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/yql/pggate/pg_callbacks.h"
+#include "yb/yql/pggate/pg_setup_perform_options_accessor_tag.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
+
+namespace yb {
+namespace docdb {
+enum class ObjectLockFastpathLockType;
+}  // namespace docdb
+}  // namespace yb
 
 DEFINE_UNKNOWN_bool(use_node_hostname_for_local_tserver, false,
     "Connect to local t-server by using host name instead of local IP");

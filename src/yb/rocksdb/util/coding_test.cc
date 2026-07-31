@@ -24,7 +24,9 @@
 #include "yb/rocksdb/util/coding.h"
 
 #include <string>
-#include <gtest/gtest.h>
+#include <vector>
+
+#include "gtest/gtest.h"
 
 namespace rocksdb {
 

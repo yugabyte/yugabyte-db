@@ -13,17 +13,32 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <unordered_map>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+#include <utility>
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/entity_ids_types.h"
-
-#include "yb/docdb/docdb.fwd.h"
-
 #include "yb/docdb/docdb_compaction_context.h"
-#include "yb/rocksdb/metadata.h"
-
 #include "yb/util/uuid.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/storage/frontier.h"
+#include "yb/storage/storage_types.h"
+#include "yb/util/byte_buffer.h"
+#include "yb/util/cast.h"
+#include "yb/util/slice.h"
+
+namespace yb {
+namespace docdb {
+class ConsensusFrontierPB;
+}  // namespace docdb
+}  // namespace yb
 
 namespace yb::docdb {
 

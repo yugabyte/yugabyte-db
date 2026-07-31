@@ -21,14 +21,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <stdarg.h>
 #include <string>
-
-#include <gtest/gtest.h>
+#include <new>
 
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/env.h"
-
 #include "yb/rocksdb/util/testutil.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/db/version_edit.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/util/mutable_cf_options.h"
+#include "yb/rocksdb/options.h"
 
 namespace rocksdb {
 

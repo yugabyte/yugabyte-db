@@ -11,60 +11,76 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
 #include <limits>
 #include <string>
 #include <utility>
 #include <vector>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ostream>
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
-#include "yb/client/table.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/hybrid_time.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
-
-#include "yb/consensus/consensus.h"
-
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/intent_format.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/key_bytes.h"
 #include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/packed_row.h"
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/schema_packing.h"
-
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
-#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver.messages.h"
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/format.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/uuid.h"
+#include "gtest/gtest.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/opid.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/docdb_types.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 using namespace std::chrono_literals;
 using std::string;

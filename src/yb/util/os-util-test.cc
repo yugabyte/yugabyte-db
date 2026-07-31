@@ -29,13 +29,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include <gtest/gtest.h>
+#include <unistd.h>
+#include <string>
 
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/os-util.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
 
 using std::string;
 

@@ -28,9 +28,6 @@
 #include "yb/gutil/template_util.h"
 #include "yb/gutil/type_traits.h"
 
-template <typename T>
-class ScopedVector;
-
 namespace yb {
 namespace internal {
 

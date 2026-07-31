@@ -11,11 +11,30 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/types.h>
+#include <boost/uuid/uuid.hpp>
+#include <atomic>
+#include <chrono>
+#include <functional>
+#include <future>
+#include <memory>
+#include <ostream>
+#include <ratio>
+#include <set>
+#include <string>
+#include <thread>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/master/master_heartbeat.pb.h"
-
 #include "yb/master/mini_master.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/debug-util.h"
@@ -25,6 +44,35 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/pg_locks_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/pg_client.pb.h"
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
+
+namespace yb {
+namespace tserver {
+class TabletServerServiceProxy;
+}  // namespace tserver
+}  // namespace yb
 
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_enable_concurrent_ddl);

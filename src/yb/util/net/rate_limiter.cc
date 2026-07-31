@@ -12,9 +12,16 @@
 //
 #include "yb/util/net/rate_limiter.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <algorithm>
+#include <ostream>
+
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
-#include "yb/util/flags.h"
+#include "yb/gutil/port.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
 
 using namespace yb::size_literals;
 

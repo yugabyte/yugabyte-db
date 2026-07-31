@@ -13,6 +13,8 @@
 #pragma once
 
 #include "yb/server/call_home.h"
+#include "yb/server/webserver.h"  // IWYU pragma: keep
+#include "yb/server/webserver_options.h"  // IWYU pragma: keep
 #include "yb/util/flags.h"
 #include "yb/util/json_document.h"
 #include "yb/util/test_macros.h"

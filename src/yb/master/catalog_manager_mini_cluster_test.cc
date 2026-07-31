@@ -11,16 +11,22 @@
 // under the License.
 
 
-#include "yb/integration-tests/mini_cluster_utils.h"
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <string>
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
-
 #include "yb/master/catalog_loading_state.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
-
 #include "yb/util/env.h"
 #include "yb/util/path_util.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 DECLARE_string(initial_sys_catalog_snapshot_path);
 DECLARE_bool(master_join_existing_universe);

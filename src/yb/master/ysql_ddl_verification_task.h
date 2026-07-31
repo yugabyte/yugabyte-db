@@ -15,32 +15,40 @@
 
 #include <functional>
 #include <memory>
+#include <future>
+#include <mutex>
+#include <optional>
+#include <string>
 
-#include "yb/client/client_fwd.h"
-
-#include "yb/common/entity_ids.h"
-#include "yb/common/pg_types.h"
 #include "yb/common/transaction.h"
-
-#include "yb/docdb/doc_rowwise_iterator.h"
-
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_entity_tasks.h"
-#include "yb/master/master_fwd.h"
-#include "yb/master/multi_step_monitored_task.h"
-
 #include "yb/rpc/rpc.h"
-
 #include "yb/util/async_util.h"
-#include "yb/util/status_fwd.h"
-#include "yb/util/threadpool.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/server/monitored_task.h"
+#include "yb/util/format.h"
+#include "yb/util/status.h"
+
+template <class T> class scoped_refptr;
 
 namespace yb {
+namespace client {
+class YBClient;
+}  // namespace client
+namespace rpc {
+class Messenger;
+}  // namespace rpc
+template <class TValue> class Result;
+
 namespace tserver {
 class GetTransactionStatusResponsePB;
 }
 
 namespace master {
+class CatalogManager;
+class SysCatalogTable;
+struct LeaderEpoch;
 /*
  * Currently the metadata for YSQL Tables is stored in both the PG catalog and DocDB schema.
  * This class helps maintain consistency between the two schemas. When a DDL transaction fails,

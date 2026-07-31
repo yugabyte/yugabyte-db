@@ -10,25 +10,28 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
+#include <rapidjson/document.h>
+#include <rapidjson/rapidjson.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <chrono>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
+#include <functional>
+#include <initializer_list>
+#include <vector>
 
 #include "yb/common/json_util.h"
-
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/sys_catalog.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/mini_tablet_server.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/metrics.h"
@@ -36,10 +39,32 @@
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
+#include "gtest/gtest.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/docdb/docdb_compaction_context.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/tablet/tablet_retention_policy.h"
+#include "yb/util/faststring.h"
+#include "yb/util/format.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
+
+namespace yb {
+class MetricEntity;
+}  // namespace yb
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 METRIC_DECLARE_counter(pg_response_cache_disable_calls);

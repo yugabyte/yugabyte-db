@@ -13,12 +13,18 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <atomic>
 #include <shared_mutex>
+#include <memory>
+#include <mutex>
+#include <unordered_map>
+#include <functional>
 
 #include "yb/cdc/xcluster_types.h"
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/thread_annotations.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

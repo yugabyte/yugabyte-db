@@ -32,15 +32,21 @@
 #include "yb/util/ulimit_util.h"
 
 #include <sys/resource.h>
-
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
 #include <map>
 #include <string>
+#include <algorithm>
+#include <sstream>
 
 #include "yb/util/env.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/ulimit.h"
-#include "yb/util/flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
 
 using std::string;
 using std::stringstream;

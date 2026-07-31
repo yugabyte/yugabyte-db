@@ -21,7 +21,6 @@
 #pragma once
 
 #include <deque>
-#include <memory>
 #include <string>
 
 #include "yb/util/slice.h"

@@ -19,7 +19,6 @@
 
 #pragma once
 
-#include <functional>
 #include <string>
 
 #include "yb/gutil/integral_types.h"

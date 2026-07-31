@@ -25,18 +25,21 @@
 #pragma once
 
 #include <stdint.h>
-
 #include <string>
 
-#include "yb/rocksdb/immutable_options.h"
 #include "yb/rocksdb/iterator.h"
-#include "yb/rocksdb/util/arena.h"
+#include "yb/rocksdb/util/arena.h"  // IWYU pragma: keep
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/types.h"
+#include "yb/util/slice.h"
 
 namespace rocksdb {
-
-class Arena;
 class DBIter;
 class InternalIterator;
+class Comparator;
+class Env;
+class Statistics;
+struct ImmutableCFOptions;
 
 // Return a new iterator that converts internal keys (yielded by
 // "*internal_iter") that were live at the specified "sequence" number

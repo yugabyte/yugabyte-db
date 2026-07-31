@@ -13,7 +13,7 @@
 
 #include "yb/util/two_group_mutex.h"
 
-#include "yb/util/logging.h"
+#include <glog/logging.h>
 
 namespace yb {
 

@@ -19,9 +19,11 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <atomic>
 #include <ostream>
 #include <utility>
+#include <cstddef>
 
 #ifndef NDEBUG
 #include <string>
@@ -29,11 +31,12 @@
 
 #include <typeinfo>
 
-#include "yb/gutil/atomicops.h"
-#include "yb/gutil/port.h"
 #include "yb/gutil/threading/thread_collision_warner.h"
+#include "yb/gutil/macros.h"
 
 namespace yb {
+template <class T> class RefCounted;
+
 namespace subtle {
 
 // TODO: switch to std::atomic<int32_t>

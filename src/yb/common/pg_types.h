@@ -13,9 +13,26 @@
 
 #pragma once
 
-#include "yb/common/entity_ids.h"
+#include <stdint.h>
+#include <boost/container_hash/hash.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <compare>
+#include <ostream>
+#include <string>
 
+#include "yb/common/entity_ids.h"
 #include "yb/util/hash_util.h"
+#include "yb/common/entity_ids_types.h"
 
 namespace yb {
 

@@ -17,12 +17,19 @@
 
 #pragma once
 
+#include <utility>
+
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 
 namespace yb {
 namespace ql {
+class SemContext;
+enum class ObjectType : int;
 
 //--------------------------------------------------------------------------------------------------
 // DROP <OBJECT> statement (<OBJECT> can be TABLE, KEYSPACE, etc.).

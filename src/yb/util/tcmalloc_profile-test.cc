@@ -12,17 +12,17 @@
 
 #include "yb/util/tcmalloc_profile-test.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <tcmalloc/malloc_extension.h>
 #include <chrono>
 #include <memory>
 #include <string>
-#include <thread>
+#include <functional>
+#include <optional>
+#include <ostream>
+#include <utility>
 
-#include <gflags/gflags_declare.h>
-#include <gtest/gtest.h>
-
-#include "yb/gutil/dynamic_annotations.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/monotime.h"
@@ -31,6 +31,12 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/port.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 DECLARE_int32(dump_heap_snapshot_min_interval_sec);
 DECLARE_int32(v);

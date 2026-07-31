@@ -13,7 +13,11 @@
 
 #pragma once
 
-#include "yb/util/metrics_fwd.h"
+#include <stdint.h>
+
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/metrics.h"
 
 namespace yb::rpc {
 

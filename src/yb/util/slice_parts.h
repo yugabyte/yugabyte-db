@@ -12,6 +12,11 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <array>
+#include <string>
+
 #include "yb/util/slice.h"
 #include "yb/util/byte_buffer.h"
 

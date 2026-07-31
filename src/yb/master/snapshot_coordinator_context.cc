@@ -14,14 +14,12 @@
 #include "yb/master/snapshot_coordinator_context.h"
 
 #include "yb/common/schema.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/key_bytes.h"
-#include "yb/dockv/primitive_value.h"
-
 #include "yb/master/sys_catalog_constants.h"
-
 #include "yb/util/result.h"
+#include "yb/common/column_id.h"
+#include "yb/dockv/key_entry_value.h"
 
 namespace yb {
 namespace master {

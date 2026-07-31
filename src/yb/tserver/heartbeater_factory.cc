@@ -13,10 +13,15 @@
 
 #include "yb/tserver/heartbeater_factory.h"
 
+#include <utility>
+#include <vector>
+
 #include "yb/tserver/tserver_metrics_heartbeat_data_provider.h"
 
 namespace yb {
 namespace tserver {
+class TabletServer;
+class TabletServerOptions;
 
 std::unique_ptr<Heartbeater> CreateHeartbeater(
     const TabletServerOptions& options, TabletServer* server) {

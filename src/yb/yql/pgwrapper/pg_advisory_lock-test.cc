@@ -11,8 +11,21 @@
 // under the License.
 //
 
-#include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <atomic>
+#include <chrono>
+#include <future>
+#include <memory>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <string_view>
+#include <vector>
 
+#include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
@@ -20,6 +33,21 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
+#include "gtest/gtest.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/docdb/docdb_types.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(ysql_yb_enable_advisory_locks);

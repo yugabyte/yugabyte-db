@@ -16,9 +16,13 @@
 #include <string>
 #include <vector>
 
-#include "yb/util/faststring.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class faststring;
+}  // namespace yb
 
 namespace yb::integration_tests::path_handlers_util {
 

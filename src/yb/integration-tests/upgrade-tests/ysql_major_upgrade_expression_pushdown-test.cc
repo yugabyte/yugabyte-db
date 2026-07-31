@@ -11,12 +11,51 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <string.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <regex>
-#include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
+#include <chrono>
+#include <compare>
+#include <initializer_list>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <thread>
+#include <utility>
+#include <vector>
 
+#include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/util/status_format.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/strings/stringpiece.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 
 DECLARE_string(vmodule);
 namespace yb {

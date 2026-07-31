@@ -43,12 +43,16 @@
 
 #include "yb/util/url-coding.h"
 
-#include <boost/algorithm/string.hpp>
 #include <boost/archive/iterators/base64_from_binary.hpp>
 #include <boost/archive/iterators/binary_from_base64.hpp>
 #include <boost/archive/iterators/transform_width.hpp>
-
-#include "yb/util/logging.h"
+#include <ctype.h>
+#include <stddef.h>
+#include <boost/algorithm/string/classification.hpp>
+#include <boost/iterator/iterator_facade.hpp>
+#include <algorithm>
+#include <exception>
+#include <functional>
 
 using std::string;
 using std::vector;

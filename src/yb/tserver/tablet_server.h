@@ -31,8 +31,10 @@
 //
 #pragma once
 
+#include <glog/logging.h>
+#include <stdint.h>
+#include <sys/types.h>
 #include <atomic>
-#include <future>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -41,48 +43,54 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <array>
+#include <deque>
+#include <functional>
+#include <map>
+#include <sstream>
+#include <string_view>
+#include <tuple>
 
-#include "yb/common/common_util.h"
 #include "yb/common/pg_catversions.h"
-
-#include "yb/consensus/metadata.pb.h"
-
-#include "yb/cdc/cdc_consumer.fwd.h"
-#include "yb/cdc/xrepl_types.h"
-
 #include "yb/client/client_fwd.h"
-
-#include "yb/docdb/object_lock_shared_fwd.h"
-
-#include "yb/encryption/encryption_fwd.h"
-
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/macros.h"
-
 #include "yb/rpc/rpc_fwd.h"
-
-#include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
-
-#include "yb/server/webserver_options.h"
-
 #include "yb/tserver/connectivity_poller.h"
 #include "yb/tserver/db_server_base.h"
 #include "yb/tserver/pg_mutation_counter.h"
-#include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
-#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/ysql_lease_manager.h"
-
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/net/sockaddr.h"
 #include "yb/util/one_time_bool.h"
-#include "yb/util/status_fwd.h"
-
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/server/clock.h"
+#include "yb/server/server_base.h"
+#include "yb/server/server_fwd.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_util_fwd.h"
+#include "yb/util/concurrent_value.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/status.h"
+#include "yb/util/status_callback.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/yql/pgwrapper/pg_wrapper_context.h"
 
 namespace rocksdb {
 class Env;
@@ -94,39 +102,55 @@ class Cgroup;
 class Env;
 class MaintenanceManager;
 class ObjectLockTracker;
+class HybridTime;
+namespace client {
+class UniverseKeyClient;
+}  // namespace client
+namespace consensus {
+class RaftConfigPB;
+}  // namespace consensus
+namespace docdb {
+class ObjectLockSharedStateManager;
+}  // namespace docdb
+namespace encryption {
+class UniverseKeyManager;
+class UniverseKeyRegistryPB;
+}  // namespace encryption
+namespace rpc {
+class SecureContext;
+}  // namespace rpc
+namespace server {
+class YCQLServerExternalInterface;
+}  // namespace server
 
 namespace cdc {
 
 class CDCServiceImpl;
 
 }
-
-namespace cdc {
-
-class CDCServiceImpl;
-
-}
-
-namespace master {
-
-class RefreshYsqlLeaseInfoPB;
-
-}
-
-namespace stateful_service {
-class PgCronLeaderService;
-}  // namespace stateful_service
 
 namespace tserver {
 
-class GetYSQLLeaseInfoResponsePB;
 class PgClientServiceImpl;
 class TServerCgroupManager;
 class TserverAutoFlagsManager;
 class TserverXClusterContext;
 class TserverXClusterContextIf;
 class XClusterConsumerIf;
-class YsqlLeaseClient;
+class DBCatalogInvalMessagesDataPB;
+class DBCatalogVersionDataPB;
+class Heartbeater;
+class ListMasterServersRequestPB;
+class ListMasterServersResponsePB;
+class MetricsSnapshotter;
+class PgClientServiceMockImpl;
+class RemoteBootstrapServiceImpl;
+class TSTabletManager;
+class TableMutationCountSender;
+class TabletServerPathHandlers;
+class TabletServerServiceProxy;
+class TabletServiceImpl;
+enum class TabletServerServiceRpcMethodIndexes;
 
 class TabletServer : public DbServerBase, public TabletServerIf {
  public:

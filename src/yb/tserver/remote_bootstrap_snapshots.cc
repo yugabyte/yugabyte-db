@@ -13,15 +13,26 @@
 
 #include "yb/tserver/remote_bootstrap_snapshots.h"
 
+#include <glog/logging.h>
+#include <stdint.h>
 #include <unordered_set>
+#include <ostream>
+#include <vector>
+#include <functional>
 
 #include "yb/fs/fs_manager.h"
-
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
-
 #include "yb/util/result.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/util/env.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/path_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
 
 using std::string;
 

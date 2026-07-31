@@ -32,15 +32,26 @@
 
 #include "yb/tserver/remote_client_base.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <ostream>
+#include <utility>
+
 #include "yb/fs/fs_manager.h"
-
 #include "yb/rpc/rpc_controller.h"
-
-#include "yb/tablet/tablet_bootstrap_if.h"
-#include "yb/tablet/tablet_metadata.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/status_log.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tserver/remote_bootstrap.pb.h"
+#include "yb/tserver/remote_bootstrap.proxy.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+
+namespace yb {
+class Env;
+}  // namespace yb
 
 DEFINE_UNKNOWN_int32(remote_bootstrap_begin_session_timeout_ms, 5000,
     "Tablet server RPC client timeout for BeginRemoteBootstrapSession calls.");

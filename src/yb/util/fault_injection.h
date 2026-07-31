@@ -32,6 +32,7 @@
 #pragma once
 
 #include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
 
 // With some probability, crash at the current point in the code by issuing LOG(FATAL).
 //

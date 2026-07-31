@@ -13,27 +13,46 @@
 
 #include "yb/master/catalog_manager_util.h"
 
+#include <gflags/gflags.h>
+#include <algorithm>
+#include <compare>
+#include <functional>
+#include <map>
+#include <optional>
+#include <set>
+#include <type_traits>
+#include <unordered_set>
+#include <utility>
+
 #include "yb/common/common_net.h"
 #include "yb/common/schema_pbutil.h"
-#include "yb/common/wire_protocol.h"
-
 #include "yb/dockv/partition.h"
-
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/ysql_tablespace_manager.h"
-
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/math_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/trace.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/master/master_backup.pb.h"
+#include "yb/master/ts_descriptor.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/server/monitored_task.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
 
 using std::string;
 using std::vector;

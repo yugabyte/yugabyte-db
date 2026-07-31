@@ -11,10 +11,12 @@
 // under the License.
 //
 
+#include <string>
+
 #include "yb/common/entity_ids.h"
 #include "yb/common/ysql_utils.h"
-
 #include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

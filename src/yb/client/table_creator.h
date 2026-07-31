@@ -13,25 +13,34 @@
 
 #pragma once
 
-#include "yb/client/client_fwd.h"
-#include "yb/client/yb_table_name.h"
+#include <stdint.h>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
 
+#include "yb/client/yb_table_name.h"
 #include "yb/common/constants.h"
 #include "yb/common/common_fwd.h"
-
 #include "yb/common/transaction.h"
-#include "yb/dockv/dockv_fwd.h"
-
 #include "yb/gutil/macros.h"
-
 #include "yb/master/master_ddl.pb.h"
-
 #include "yb/util/monotime.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/dockv/partition.h"
+#include "yb/util/status.h"
 
 namespace yb {
-struct TransactionMetadata;
+class IndexInfoPB;
+class PartitionSchemaPB;
+class PgVectorIdxOptionsPB;
+class ReplicationInfoPB;
 
 namespace client {
+class YBClient;
+class YBSchema;
+enum class YBTableType;
 
 // Creates a new table with the desired options.
 class YBTableCreator {

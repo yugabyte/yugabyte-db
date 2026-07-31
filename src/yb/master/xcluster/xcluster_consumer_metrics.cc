@@ -32,7 +32,6 @@
 #include "yb/master/xcluster/xcluster_consumer_metrics.h"
 
 #include "yb/util/metrics.h"
-#include "yb/util/trace.h"
 
 // Cluster wide metrics
 METRIC_DEFINE_gauge_uint64(

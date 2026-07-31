@@ -10,10 +10,26 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include <gtest/gtest.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <atomic>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "yb/util/status_log.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_int32(timestamp_history_retention_interval_sec);
 

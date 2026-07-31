@@ -48,15 +48,20 @@
 #include "yb/rocksdb/table/block_builder.h"
 
 #include <assert.h>
-
+#include <glog/logging.h>
 #include <algorithm>
+#include <ostream>
+#include <utility>
 
-#include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/table/block_builder_internal.h"
 #include "yb/rocksdb/util/coding.h"
-
-#include "yb/util/string_util.h"
+#include "yb/gutil/strings/fastmem.h"
+#include "yb/rocksdb/types.h"
+#include "yb/util/byte_buffer.h"
+#include "yb/util/enums.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
 
 namespace rocksdb {
 

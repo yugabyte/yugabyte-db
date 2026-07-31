@@ -24,12 +24,21 @@
 #endif
 
 #include <inttypes.h>
+#include <stdio.h>
+#include <string.h>
 #include <iostream>
+#include <memory>
+#include <string>
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db_dump_tool.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/coding.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/util/file_system.h"
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 

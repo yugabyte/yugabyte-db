@@ -13,9 +13,18 @@
 
 #include "yb/master/ysql_tablespace_manager.h"
 
-#include "yb/master/catalog_entity_info.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <ostream>
+#include <string>
+#include <unordered_map>
+#include <utility>
 
+#include "yb/master/catalog_entity_info.h"
 #include "yb/util/result.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 DECLARE_bool(enable_ysql_tablespaces_for_placement);
 

@@ -11,7 +11,13 @@
 // under the License.
 //
 
+#include <string>
+
 #include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 
 namespace yb {
 

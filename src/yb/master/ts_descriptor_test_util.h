@@ -12,10 +12,22 @@
 //
 #pragma once
 
-#include "yb/common/wire_protocol.pb.h"
 
-#include "yb/master/master_types.pb.h"
-#include "yb/master/ts_descriptor.h"
+
+#include "yb/master/master_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+class CloudInfoPB;
+class NodeInstancePB;
+namespace master {
+class TSRegistrationPB;
+}  // namespace master
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+}  // namespace yb
 
 namespace yb::master {
 

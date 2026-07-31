@@ -15,18 +15,18 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <atomic>
-#include <functional>
 #include <vector>
 
-#include "yb/util/status_fwd.h"
-
 #include "yb/common/vector_types.h"
-
-#include "yb/vector_index/benchmark_data.h"
 #include "yb/vector_index/coordinate_types.h"
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/vector_index_if.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/vector_index/vector_index_fwd.h"
 
 namespace yb::vector_index {
 

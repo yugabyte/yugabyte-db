@@ -19,7 +19,13 @@
 
 #include "yb/util/debug/trace_event_synthetic_delay.h"
 
+#include <absl/base/dynamic_annotations.h>
+#include <glog/logging.h>
+#include <string.h>
+#include <ostream>
+
 #include "yb/gutil/singleton.h"
+#include "yb/util/logging.h"
 
 namespace {
 const int kMaxSyntheticDelays = 32;

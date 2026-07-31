@@ -15,30 +15,68 @@
 
 #include "yb/tserver/ts_local_lock_manager.h"
 
-#include "yb/client/client.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <boost/uuid/uuid.hpp>
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <compare>
+#include <condition_variable>
+#include <deque>
+#include <mutex>
+#include <ratio>
+#include <sstream>
+#include <string>
+#include <type_traits>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
-#include "yb/docdb/docdb.h"
+#include "yb/client/client.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/object_lock_manager.h"
-#include "yb/docdb/object_lock_shared_state_manager.h"
-
 #include "yb/master/master_ddl.pb.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/poller.h"
-
 #include "yb/server/server_base.h"
-
 #include "yb/tserver/service_util.h"
-#include "yb/tserver/tserver_service.pb.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/trace.h"
 #include "yb/util/unique_lock.h"
+#include "yb/common/clock.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/object_lock_tracker.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/lock_util.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rpc/scheduler.h"
+#include "yb/tserver/tablet_server_interface.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/util/async_util.h"
+#include "yb/util/atomic.h"
+#include "yb/util/flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace docdb {
+class LocalWaitingTxnRegistry;
+class ObjectLockSharedStateManager;
+}  // namespace docdb
+}  // namespace yb
 
 using namespace std::literals;
 DECLARE_bool(dump_lock_keys);

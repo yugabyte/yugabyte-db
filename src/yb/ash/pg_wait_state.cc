@@ -12,7 +12,18 @@
 //
 #include "yb/ash/pg_wait_state.h"
 
+#include <glog/logging.h>
+#include <sys/socket.h>
+#include <ostream>
+#include <string>
+
 #include "yb/util/status_format.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/uuid.h"
 
 namespace yb::ash {
 

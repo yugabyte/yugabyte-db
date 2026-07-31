@@ -14,10 +14,24 @@
 #include "yb/vector_index/hnsw_options.h"
 
 #include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 
 #include "yb/util/tostring.h"
-
-#include "yb/vector_index/usearch_include_wrapper_internal.h"
+#include "usearch/index_plugins.hpp"
+#include "yb/util/enums.h"
+#include "yb/vector_index/coordinate_types.h"
 
 namespace yb::vector_index {
 

@@ -13,9 +13,12 @@
 
 #include "yb/common/colocated_util.h"
 
-#include <boost/algorithm/string.hpp>
-#include "yb/util/logging.h"
+#include <glog/logging.h>
+#include <boost/algorithm/string/predicate.hpp>
+#include <ostream>
+#include <string>
 
+#include "yb/util/logging.h"
 #include "yb/util/string_util.h"
 
 namespace yb {

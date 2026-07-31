@@ -33,6 +33,7 @@
 #pragma once
 
 #include <pthread.h>
+#include <stdint.h>
 #include <unordered_set>
 
 #include "yb/gutil/macros.h"

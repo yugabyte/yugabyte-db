@@ -13,49 +13,50 @@
 
 #pragma once
 
-#include <float.h>
-
-#include <chrono>
-#include <set>
-#include <sstream>
+#include <stddef.h>
+#include <stdint.h>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <vector>
+#include <atomic>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <unordered_map>
+#include <unordered_set>
+#include <functional>
 
-#include <boost/mpl/and.hpp>
-
-#include "yb/ash/wait_state.h"
-#include "yb/common/entity_ids.h"
 #include "yb/common/transaction.h"
 #include "yb/dockv/partition.h"
-
-#include "yb/gutil/integral_types.h"
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/master/async_rpc_tasks_base.h"
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/ysql_ddl_verification_task.h"
-
-#include "yb/qlexpr/index.h"
-
 #include "yb/server/monitored_task.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
-#include "yb/util/shared_lock.h"
-#include "yb/util/status_fwd.h"
-#include "yb/util/tostring.h"
-#include "yb/util/type_traits.h"
-
 #include "yb/tserver/tserver_admin.pb.h"
+#include "yb/ash/ash_fwd.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class ThreadPool;
+
 namespace master {
 
 class CatalogManager;
+class DdlRequesterLivenessTask;
+class Master;
+class SysTablesEntryPB;
+enum BackfillJobPB_State : int;
 
 // Implements a multi-stage alter table. As of Dec 30 2019, used for adding an
 // index to an existing table, such that the index can be backfilled with
@@ -107,8 +108,6 @@ class MultiStageAlterTable {
       std::optional<TransactionMetadata> requester_transaction);
 };
 
-class BackfillTablet;
-class BackfillChunk;
 class BackfillTableJob;
 
 // This class is responsible for backfilling the specified indexes on the

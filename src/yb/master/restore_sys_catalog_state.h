@@ -14,21 +14,42 @@
 #pragma once
 
 #include <unordered_map>
-
-#include "yb/common/common_fwd.h"
-#include "yb/common/entity_ids.h"
-#include "yb/common/snapshot.h"
+#include <functional>
+#include <vector>
+#include <string>
+#include <unordered_set>
+#include <utility>
 
 #include "yb/docdb/docdb_fwd.h"
-
-#include "yb/master/catalog_entity_info.pb.h"
-#include "yb/master/master_fwd.h"
-#include "yb/master/sys_catalog.h"
-
-#include "yb/tablet/restore_util.h"
-#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/result.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/master/catalog_entity_info.pb.h" // IWYU pragma: keep
+#include "yb/master/master_types.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+class HybridTime;
+class ScopedRWOperation;
+class faststring;
+
+namespace docdb {
+class DocWriteBatch;
+class KeyValuePairPB;
+class SchemaPackingProvider;
+struct DocDB;
+struct DocReadContext;
+}  // namespace docdb
+namespace master {
+enum SysRowEntryType : int;
+struct SnapshotScheduleRestoration;
+}  // namespace master
+namespace tablet {
+class RaftGroupMetadata;
+class Tablet;
+}  // namespace tablet
+struct OpId;
+
 namespace master {
 
 YB_STRONGLY_TYPED_BOOL(DoTsRestore);
@@ -65,6 +86,7 @@ class RestoreSysCatalogState {
 
   Status ProcessPgCatalogRestores(
       const docdb::DocDB& restoring_db,
+
       const docdb::DocDB& existing_db,
       docdb::DocWriteBatch* write_batch,
       const docdb::DocReadContextPtr& doc_read_context,
@@ -83,6 +105,7 @@ class RestoreSysCatalogState {
 
  private:
   struct Objects;
+
   using RetainedExistingTables = std::unordered_map<TableId, std::vector<SnapshotScheduleId>>;
 
   // Determine entries that should be restored. I.e. apply filter and serialize.

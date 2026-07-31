@@ -12,15 +12,15 @@
 //
 
 #include <string>
-
-#include <gtest/gtest.h>
+#include <utility>
 
 #include "yb/dockv/subdocument.h"
 #include "yb/dockv/value_type.h"
-
-#include "yb/util/monotime.h"
-#include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/util/slice.h"
 
 using std::string;
 

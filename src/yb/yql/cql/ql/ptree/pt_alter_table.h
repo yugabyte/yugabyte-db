@@ -17,14 +17,31 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"
-#include "yb/yql/cql/ql/ptree/pt_table_property.h"
 #include "yb/yql/cql/ql/ptree/pt_type.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 
 namespace yb {
+class QLType;
+class TableProperties;
+namespace client {
+class YBTable;
+}  // namespace client
+
 namespace ql {
+class PTTableProperty;
+class SemContext;
 
 //--------------------------------------------------------------------------------------------------
 

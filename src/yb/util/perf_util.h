@@ -17,7 +17,8 @@
 #include <memory>
 
 #include "yb/util/result.h"
-#include "yb/util/subprocess.h"
+#include "yb/util/status.h"
+#include "yb/util/subprocess.h"  // IWYU pragma: keep
 
 namespace yb {
 

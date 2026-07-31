@@ -10,21 +10,70 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <absl/base/dynamic_annotations.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <chrono>
+#include <functional>
+#include <future>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <string_view>
+#include <thread>
+#include <tuple>
+#include <unordered_set>
+#include <vector>
+
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
-
-#include "yb/master/catalog_manager.h"
-
 #include "yb/tablet/tablet_peer.h"
-
-#include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/test_thread_holder.h"
-
 #include "yb/yql/pgwrapper/geo_transactions_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tserver/tablet_server_options.h"
+#include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
+#include "yb/util/uuid.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_bool(TEST_consider_all_local_transaction_tables_local);
 DECLARE_bool(TEST_pause_sending_txn_status_requests);

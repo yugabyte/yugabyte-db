@@ -31,34 +31,30 @@
 //
 #pragma once
 
+#include <stddef.h>
+#include <boost/preprocessor/cat.hpp>
 #include <condition_variable>
-#include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
-#include <unordered_set>
+#include <atomic>
+#include <utility>
 
-#include <gtest/gtest_prod.h>
-
-#include "yb/gutil/callback_forward.h"
 #include "yb/gutil/macros.h"
-#include "yb/gutil/port.h"
-#include "yb/gutil/ref_counted.h"
-
-#include "yb/util/metrics_fwd.h"
-#include "yb/util/condition_variable.h"
-#include "yb/util/enums.h"
-#include "yb/util/math_util.h"
 #include "yb/util/monotime.h"
-#include "yb/util/mutex.h"
 #include "yb/util/status.h"
 #include "yb/util/thread_pool.h"
-#include "yb/util/unique_lock.h"
+#include "yb/gutil/callback.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
 YB_STRONGLY_TYPED_BOOL(StopWaitIfFailed);
+class Cgroup;
 
 class Runnable {
  public:

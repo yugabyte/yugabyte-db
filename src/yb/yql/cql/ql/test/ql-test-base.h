@@ -15,26 +15,36 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <gtest/gtest.h>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "yb/qlexpr/ql_rowblock.h"
-
-#include "yb/gutil/bind.h"
-
-#include "yb/integration-tests/mini_cluster.h"
-#include "yb/master/mini_master.h"
-
 #include "yb/server/server_fwd.h"
-
-#include "yb/util/async_util.h"
 #include "yb/util/test_util.h"
-
-#include "yb/yql/cql/ql/ql_fwd.h"
 #include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 #include "yb/yql/cql/ql/util/statement_params.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 #include "yb/yql/cql/ql/util/util_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/callback.h"
+#include "yb/server/clock.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class MiniCluster;
+namespace client {
+class YBClient;
+class YBMetaDataCache;
+class YBTableName;
+}  // namespace client
+
 namespace ql {
+class QLProcessor;
+class Statement;
 
 #define ANALYZE_VALID_STMT(stmt, parse_tree)   \
   do {                                         \

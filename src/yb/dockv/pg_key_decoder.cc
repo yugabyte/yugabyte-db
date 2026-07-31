@@ -13,18 +13,33 @@
 
 #include "yb/dockv/pg_key_decoder.h"
 
+#include <glog/logging.h>
+#include <stdint.h>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
-
 #include "yb/dockv/doc_bson.h"
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
-
 #include "yb/util/algorithm_util.h"
 #include "yb/util/decimal.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
+#include "yb/common/column_id.h"
+#include "yb/common/constants.h"
+#include "yb/common/value.messages.h"
+#include "yb/dockv/value_type.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/endian.h"
+#include "yb/gutil/port.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/result.h"
 
 namespace yb::dockv {
 

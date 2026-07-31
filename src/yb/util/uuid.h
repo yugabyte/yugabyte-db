@@ -14,17 +14,20 @@
 #pragma once
 
 #include <uuid/uuid.h>
-
+#include <boost/uuid/uuid.hpp>
+#include <stdint.h>
+#include <string.h>
+#include <boost/container_hash/hash.hpp>
 #include <array>
 #include <random>
-
-#include <boost/functional/hash.hpp>
-#include <boost/uuid/uuid.hpp>
+#include <compare>
+#include <string>
+#include <functional>
 
 #include "yb/gutil/stl_util.h"
-
 #include "yb/util/cast.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

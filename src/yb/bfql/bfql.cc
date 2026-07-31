@@ -15,9 +15,21 @@
 
 #include "yb/bfql/bfql.h"
 
+#include <gflags/gflags.h>
+#include <stddef.h>
 #include <functional>
 #include <unordered_map>
 #include <string>
+
+#include "yb/bfql/base_operator.h"
+#include "yb/bfql/bfunc_standard.h"
+#include "yb/bfql/gen_operator.h"
+#include "yb/bfql/tserver_opcodes.h"
+#include "yb/common/ql_type.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/slice.h"
 
 using std::function;
 using std::vector;

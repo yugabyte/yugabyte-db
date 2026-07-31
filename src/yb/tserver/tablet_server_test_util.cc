@@ -38,6 +38,11 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 namespace yb {
+class HostPort;
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+
 namespace tserver {
 
 using consensus::ConsensusServiceProxy;

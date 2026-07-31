@@ -30,30 +30,91 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/container/small_vector.hpp>
+#include <boost/intrusive/list.hpp>
+#include <boost/move/iterator.hpp>
 #include <vector>
+#include <algorithm>
+#include <chrono>
+#include <future>
+#include <limits>
+#include <map>
+#include <memory>
+#include <optional>
+#include <random>
+#include <set>
+#include <sstream>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log-test-base.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
-
-#include "yb/docdb/ql_rowwise_iterator_interface.h"
-
 #include "yb/dockv/reader_projection.h"
-
 #include "yb/server/logical_clock.h"
-
 #include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/tostring.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.messages.h"
+#include "yb/common/opid.pb.h"
+#include "yb/common/schema.h"
+#include "yb/common/transaction.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/consensus/consensus.messages.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/log_anchor_registry.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/docdb/storage_set.h"
+#include "yb/dockv/partition.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/server/clock.h"
+#include "yb/tablet/tablet-test-harness.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_options.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/uuid.h"
+
+namespace yb {
+class MemTracker;
+
+namespace client {
+class YBClient;
+}  // namespace client
+}  // namespace yb
 
 DECLARE_bool(save_index_into_wal_segments);
 DECLARE_bool(skip_flushed_entries);

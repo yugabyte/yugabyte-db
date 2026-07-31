@@ -13,36 +13,80 @@
 
 #include "yb/master/restore_sys_catalog_state.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <algorithm>
+#include <array>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <compare>
+
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/pg_types.h"
 #include "yb/common/ql_protocol.messages.h"
-
 #include "yb/qlexpr/index.h"
-
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_write_batch.h"
-
 #include "yb/dockv/reader_projection.h"
-
 #include "yb/master/catalog_loaders.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_writer.h"
-#include "yb/master/sys_catalog.h"
-
 #include "yb/tablet/restore_util.h"
 #include "yb/tablet/tablet_metadata.h"
-#include "yb/tablet/tablet.h"
-
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status_format.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/constants.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/schema.h"
+#include "yb/common/transaction.h"
+#include "yb/common/value.messages.h"
+#include "yb/docdb/doc_operation.h"
+#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/read_operation_data.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/doc_path.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/schema_packing.h"
+#include "yb/dockv/value_type.h"
+#include "yb/master/catalog_entity_types.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/sys_catalog_constants.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/faststring.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
+#include "yb/common/snapshot.h"
+
+namespace yb {
+class ScopedRWOperation;
+
+namespace docdb {
+class SchemaPackingProvider;
+struct DocDB;
+}  // namespace docdb
+namespace tablet {
+class Tablet;
+}  // namespace tablet
+struct OpId;
+}  // namespace yb
 
 using namespace std::placeholders;
 

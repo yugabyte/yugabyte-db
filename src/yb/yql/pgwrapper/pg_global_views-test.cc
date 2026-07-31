@@ -12,12 +12,29 @@
 //
 
 #include <signal.h>
-#include <gmock/gmock.h>
+#include <stdint.h>
+#include <string.h>
+#include <boost/container/small_vector.hpp>
+#include <boost/intrusive/list.hpp>
+#include <boost/move/iterator.hpp>
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <functional>
+#include <initializer_list>
+#include <memory>
+#include <optional>
+#include <ratio>
+#include <set>
+#include <string>
+#include <string_view>
+#include <tuple>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "yb/integration-tests/external_mini_cluster.h"
-
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/subprocess.h"
@@ -25,9 +42,24 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "libpq-fe.h"
+#include "yb/common/common.pb.h"
+#include "yb/gutil/strings/stringpiece.h"
+#include "yb/integration-tests/external_daemon.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
 
 namespace yb::pgwrapper {
 

@@ -18,8 +18,6 @@
 #include <stdatomic.h>
 #endif
 
-#include "yb/yql/pggate/util/ybc_util.h"
-
 #ifdef __cplusplus
 namespace yb::pggate {
 extern "C" {

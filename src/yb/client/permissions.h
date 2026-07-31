@@ -13,23 +13,37 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <condition_variable>
-#include <shared_mutex>
+#include <atomic>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <functional>
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/roles_permissions.h"
-
-#include "yb/master/master_dcl.fwd.h"
-
-#include "yb/rpc/io_thread_pool.h"
-
 #include "yb/util/locks.h"
-#include "yb/util/monotime.h"
 #include "yb/util/one_time_bool.h"
-
-#include "yb/yql/cql/ql/ptree/pt_option.h"
+#include "yb/util/result.h"
 
 namespace yb {
+class MonoDelta;
+enum PermissionType : int;
+
+namespace master {
+class GetPermissionsResponsePB;
+class RolePermissionInfoPB;
+}  // namespace master
+namespace ql {
+enum class ObjectType : int;
+}  // namespace ql
+namespace rpc {
+class IoThreadPool;
+class Scheduler;
+}  // namespace rpc
 
 namespace client {
 

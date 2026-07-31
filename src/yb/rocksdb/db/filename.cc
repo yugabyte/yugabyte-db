@@ -27,15 +27,17 @@
 #include "yb/rocksdb/db/filename.h"
 
 #include <inttypes.h>
-
 #include <stdio.h>
+#include <assert.h>
+#include <string.h>
 #include <vector>
+
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/logging.h"
-
-#include "yb/util/sync_point.h"
 #include "yb/util/test_kill.h"
+#include "yb/rocksdb/options.h"
+#include "yb/util/status.h"
 
 namespace rocksdb {
 

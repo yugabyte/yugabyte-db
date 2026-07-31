@@ -14,18 +14,19 @@
 #pragma once
 
 #include <unordered_map>
-#include "yb/util/flags/auto_flags.h"
-#include "yb/util/status_fwd.h"
-#include "yb/util/strongly_typed_string.h"
+#include <string>
+#include <unordered_set>
+#include <vector>
+#include <functional>
+
+#include "yb/gutil/integral_types.h"
+#include "yb/util/result.h"
 
 namespace yb {
+enum class AutoFlagClass;
 
 constexpr uint32 kInvalidAutoFlagsConfigVersion = 0;
 constexpr uint32 kMinAutoFlagsConfigVersion = 1;
-
-namespace server {
-class ServerBaseOptions;
-}
 
 using ProcessName = std::string;
 

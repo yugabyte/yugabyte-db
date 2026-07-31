@@ -13,16 +13,21 @@
 
 #pragma once
 
-#include "yb/common/common_fwd.h"
-
-#include "yb/rpc/rpc_fwd.h"
+#include <stdint.h>
+#include <cstddef>
 
 #include "yb/yql/pggate/util/pg_wire.h"
-
 #include "yb/util/kv_util.h"
 #include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
+class LWQLValuePB;
+class QLValuePB;
+class WriteBuffer;
+
 namespace pggate {
 
 Status WriteColumn(const QLValuePB& col_value, WriteBuffer* buffer);

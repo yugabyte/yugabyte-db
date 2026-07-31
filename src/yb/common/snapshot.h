@@ -14,11 +14,10 @@
 #pragma once
 
 #include <unordered_map>
-
-#include <boost/functional/hash/hash.hpp>
+#include <string>
+#include <vector>
 
 #include "yb/common/hybrid_time.h"
-
 #include "yb/util/strongly_typed_uuid.h"
 
 namespace yb {

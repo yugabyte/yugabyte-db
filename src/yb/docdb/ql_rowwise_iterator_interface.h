@@ -13,17 +13,39 @@
 
 #pragma once
 
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <memory>
-
-#include "yb/common/common_fwd.h"
+#include <string>
 
 #include "yb/docdb/docdb_fwd.h"
-
 #include "yb/util/result.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/util/enums.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
 class Slice;
+namespace dockv {
+class PgTableRow;
+struct ReaderProjection;
+}  // namespace dockv
+namespace qlexpr {
+class QLTableRow;
+}  // namespace qlexpr
 
 namespace docdb {
 

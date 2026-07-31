@@ -13,9 +13,17 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/yql/pggate/test/pggate_test.h"
-
+#include <glog/logging.h>
+#include <stdint.h>
+#include <string.h>
 #include <initializer_list>
+#include <ostream>
+
+#include "yb/yql/pggate/test/pggate_test.h"
+#include "pg_type_d.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/util/logging.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb::pggate {
 

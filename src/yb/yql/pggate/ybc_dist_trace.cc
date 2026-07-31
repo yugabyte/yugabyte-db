@@ -13,18 +13,26 @@
 
 #include "yb/yql/pggate/ybc_dist_trace.h"
 
+#include <glog/logging.h>
+#include <opentelemetry/nostd/shared_ptr.h>
+#include <opentelemetry/nostd/string_view.h>
+#include <opentelemetry/nostd/variant.h>
+#include <opentelemetry/trace/span.h>
+#include <opentelemetry/trace/span_context.h>
+#include <opentelemetry/trace/span_startoptions.h>
+#include <string.h>
 #include <memory>
 #include <optional>
 #include <stack>
+#include <ostream>
+#include <string_view>
+#include <utility>
 
-#include "opentelemetry/common/attribute_value.h"
 #include "opentelemetry/trace/scope.h"
 #include "opentelemetry/trace/span_metadata.h"
 #include "opentelemetry/trace/tracer.h"
-
 #include "yb/util/dist_trace.h"
 #include "yb/util/logging.h"
-
 #include "yb/yql/pggate/pg_memctx.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 

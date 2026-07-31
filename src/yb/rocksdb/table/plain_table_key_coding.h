@@ -20,16 +20,23 @@
 
 #pragma once
 
+#include <assert.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <array>
+#include <memory>
+
 #include "yb/util/slice.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/table/plain_table_reader.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/table.h"
 
 namespace rocksdb {
 
-struct ParsedInternalKey;
-struct PlainTableReaderFileInfo;
 enum PlainTableEntryType : unsigned char;
+class SliceTransform;
+class WritableFileWriter;
 
 // Helper class to write out a key to an output file
 // Actual data format of the key is documented in plain_table_factory.h

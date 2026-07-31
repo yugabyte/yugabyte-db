@@ -14,16 +14,30 @@
 
 #pragma once
 
-#include "yb/common/pgsql_protocol.messages.h"
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <utility>
+#include <vector>
+
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/key_bytes.h"
-
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/value_type.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/yql/pggate/pg_column.h"
+
+namespace yb {
+class LWPgsqlReadRequestPB;
+class LWQLValuePB;
+}  // namespace yb
 
 namespace yb::pggate {
 

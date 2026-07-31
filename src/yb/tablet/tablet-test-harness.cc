@@ -13,18 +13,35 @@
 
 #include "yb/tablet/tablet-test-harness.h"
 
+#include <glog/logging.h>
+#include <future>
+#include <unordered_set>
+#include <vector>
+
 #include "yb/consensus/log_anchor_registry.h"
-
 #include "yb/dockv/partition.h"
-
-#include "yb/qlexpr/index.h"
-
 #include "yb/server/logical_clock.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
-
 #include "yb/util/result.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/dockv/partial_row.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/server/clock.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+class MemTracker;
+namespace client {
+class YBClient;
+}  // namespace client
+}  // namespace yb
 
 using std::vector;
 

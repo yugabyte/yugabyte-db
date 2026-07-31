@@ -31,11 +31,16 @@
 //
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <condition_variable>
+#include <atomic>
+#include <mutex>
+#include <string>
 
 #include "yb/gutil/macros.h"
-
-#include "yb/util/mutex.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/monotime.h"
 
 // Enable mechanism to detect deadlocks with mutex that does not belong to RWCLock.
 // For instance it could detect the following scenario:

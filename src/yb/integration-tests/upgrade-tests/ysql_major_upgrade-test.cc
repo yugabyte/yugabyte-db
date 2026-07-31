@@ -11,16 +11,58 @@
 // under the License.
 //
 
-#include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
-
 #include <sys/stat.h>
+#include <errno.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <functional>
+#include <initializer_list>
+#include <iterator>
+#include <map>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <string_view>
+#include <tuple>
+#include <utility>
+#include <vector>
 
+#include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/table_info.h"
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/pg_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/client/schema.h"
+#include "yb/common/schema.h"
+#include "yb/common/version_info.pb.h"
+#include "yb/gutil/callback.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
+#include "yb/util/env.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/path_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::chrono_literals;
 

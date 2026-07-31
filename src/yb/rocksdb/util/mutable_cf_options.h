@@ -21,11 +21,18 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <vector>
+#include <limits>
+#include <memory>
+
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/immutable_options.h"
 
 namespace rocksdb {
+class Logger;
+struct FileMetaData;
+struct ImmutableCFOptions;
 
 struct MutableCFOptions {
   MutableCFOptions(const Options& options, const ImmutableCFOptions& ioptions)

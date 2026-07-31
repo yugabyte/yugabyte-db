@@ -12,7 +12,6 @@
 //
 
 #include "yb/util/result.h"
-
 #include "yb/dockv/doc_bson.h"
 #include "yb/dockv/doc_kv_util.h"
 

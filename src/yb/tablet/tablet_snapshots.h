@@ -13,34 +13,62 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <map>
+#include <mutex>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <unordered_map>
+#include <functional>
+
 #include "yb/common/hybrid_time.h"
 #include "yb/common/opid.h"
 #include "yb/common/snapshot.h"
-
 #include "yb/tablet/restore_util.h"
-#include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_component.h"
-
-#include "yb/docdb/docdb_fwd.h"
-
-#include "yb/util/status_fwd.h"
-
-namespace rocksdb {
-
-class DB;
-
-}
+#include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/enums.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
 class Env;
 class FsManager;
-class RWOperationCounter;
-class rw_semaphore;
+
+namespace docdb {
+class ConsensusFrontier;
+class DocWriteBatch;
+}  // namespace docdb
+namespace tserver {
+class TabletSnapshotOpRequestPB;
+}  // namespace tserver
 
 namespace tablet {
 
 class TabletRestorePatch;
+class SnapshotOperation;
+class Tablet;
+struct TableInfo;
 
 YB_DEFINE_ENUM(CreateCheckpointIn, (kSubDir)(kUseSuffix));
 
@@ -88,6 +116,7 @@ class TabletSnapshots : public TabletComponent {
   // than RPC timeouts.
   // In case of failure, the caller is responsible for cleanup.
   YB_STRONGLY_TYPED_BOOL(UseTryLock);
+
   Status CreateCheckpoint(
       const std::string& dir,
       CreateCheckpointIn create_checkpoint_in = CreateCheckpointIn::kSubDir,

@@ -19,10 +19,9 @@
 
 #include <stdarg.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <string.h>
+#include <glog/logging.h>
 
-#include "yb/util/logging.h"
 #include "yb/gutil/stl_util.h"
 
 using std::string;

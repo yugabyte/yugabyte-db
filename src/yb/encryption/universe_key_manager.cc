@@ -14,8 +14,7 @@
 #include "yb/encryption/universe_key_manager.h"
 
 #include "yb/util/status_format.h"
-
-#include "yb/util/debug-util.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace encryption {

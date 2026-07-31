@@ -15,29 +15,55 @@
 
 #include "yb/client/transaction_manager.h"
 
-#include "yb/ash/wait_state.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <algorithm>
+#include <atomic>
+#include <mutex>
+#include <new>
+#include <ostream>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
+#include "yb/ash/wait_state.h"
 #include "yb/common/common_net.h"
 #include "yb/common/transaction.h"
-
 #include "yb/client/client.h"
-#include "yb/client/meta_cache.h"
-#include "yb/client/table.h"
 #include "yb/client/transaction_status_tablets.h"
-#include "yb/client/yb_table_name.h"
-
 #include "yb/rpc/tasks_pool.h"
-
-#include "yb/server/server_base_options.h"
-
-#include "yb/util/flags.h"
-#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/rw_mutex.h"
 #include "yb/util/status_format.h"
-#include "yb/util/status_log.h"
-#include "yb/util/string_util.h"
 #include "yb/util/thread_restrictions.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/gutil/once.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rpc/rpc.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/thread_pool.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/hash_util.h"
+#include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/random_util.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/thread_pool.h"
 
 DEFINE_UNKNOWN_uint64(transaction_manager_workers_limit, 50,
               "Max number of workers used by transaction manager");

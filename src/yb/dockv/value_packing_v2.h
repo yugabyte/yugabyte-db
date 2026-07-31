@@ -13,11 +13,19 @@
 
 #pragma once
 
-#include "yb/common/value.messages.h"
-
-#include "yb/dockv/dockv_fwd.h"
+#include <sys/types.h>
 
 #include "yb/util/kv_util.h"
+#include "yb/common/value.pb.h"
+#include "yb/util/result.h"
+
+namespace yb {
+class LWQLValuePB;
+enum class DataType;
+namespace dockv {
+class PackedValueV2;
+}  // namespace dockv
+}  // namespace yb
 
 namespace yb::dockv {
 

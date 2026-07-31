@@ -11,17 +11,45 @@
 // under the License.
 //
 
-#include "yb/rocksdb/db/db_test_util.h"
-#include "yb/rocksdb/util/testutil.h"
+#include <glog/logging.h>
+#include <stddef.h>
+#include <atomic>
+#include <chrono>
+#include <functional>
+#include <limits>
+#include <memory>
+#include <mutex>
+#include <ostream>
+#include <string>
+#include <thread>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
+#include "yb/rocksdb/db/db_test_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/util/random.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/status.h"
 
 using namespace std::literals;
 
 namespace rocksdb {
+
+using namespace yb::size_literals;
 
 namespace {
   constexpr auto kNumCompactionTrigger = 4;

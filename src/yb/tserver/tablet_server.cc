@@ -32,60 +32,63 @@
 
 #include "yb/tserver/tablet_server.h"
 
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <boost/asio/ip/basic_endpoint.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <algorithm>
 #include <utility>
+#include <chrono>
+#include <compare>
+#include <future>
+#include <limits>
+#include <ratio>
+#include <set>
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service_context.h"
-
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/universe_key_client.h"
-
 #include "yb/common/common_flags.h"
 #include "yb/common/entity_ids.h"
-#include "yb/common/common_util.h"
 #include "yb/common/pg_catversions.h"
-#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ysql_operation_lease.h"
-
 #include "yb/docdb/object_lock_shared_state_manager.h"
-
 #include "yb/encryption/encrypted_file_factory.h"
 #include "yb/encryption/header_manager_impl.h"
 #include "yb/encryption/universe_key_manager.h"
-
 #include "yb/fs/fs_manager.h"
-
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_heartbeat.pb.h"
-
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/yb_rpc.h"
-
 #include "yb/server/async_client_initializer.h"
 #include "yb/server/hybrid_clock.h"
-#include "yb/server/rpc_server.h"
 #include "yb/server/ycql_server_external_if.h"
-
 #include "yb/tablet/maintenance_manager.h"
-#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/backup_service.h"
 #include "yb/tserver/heartbeater.h"
 #include "yb/tserver/heartbeater_factory.h"
 #include "yb/tserver/metrics_snapshotter.h"
-#include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/pg_table_mutation_count_sender.h"
 #include "yb/tserver/remote_bootstrap_service.h"
@@ -101,14 +104,12 @@
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tserver_xcluster_context.h"
 #include "yb/tserver/xcluster_consumer_if.h"
-
 #include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/ntp_clock.h"
-#include "yb/util/pg_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/env.h"
 #include "yb/util/path_util.h"
@@ -118,10 +119,55 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
-
-#include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
+#include "yb/ash/wait_state.h"
+#include "yb/cdc/cdc_types.h"
+#include "yb/cdc/xcluster_producer.pb.h"
+#include "yb/common/clock.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/object_lock_tracker.h"
+#include "yb/common/opid.h"
+#include "yb/common/pg_types.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/encryption/encryption.pb.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/strings/join.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rpc/connection_context.h"
+#include "yb/rpc/scheduler.h"
+#include "yb/server/server_base_options.h"
+#include "yb/tablet/tablet.pb.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tserver/pg_txn_snapshot_manager.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/ysql_lease.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/jsonwriter.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
+
+namespace yb {
+namespace cdc {
+class ConsumerRegistryPB;
+}  // namespace cdc
+namespace tserver {
+class PgClientServiceIf;
+enum class TabletServerServiceRpcMethodIndexes;
+}  // namespace tserver
+}  // namespace yb
 
 using std::make_shared;
 using std::shared_ptr;

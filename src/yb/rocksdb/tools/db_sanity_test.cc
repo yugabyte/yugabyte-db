@@ -18,20 +18,28 @@
 // under the License.
 //
 
+#include <assert.h>
+#include <glog/logging.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <vector>
 #include <memory>
+#include <string>
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/env.h"
 #include "yb/util/slice.h"
-#include "yb/rocksdb/status.h"
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 namespace rocksdb {
 

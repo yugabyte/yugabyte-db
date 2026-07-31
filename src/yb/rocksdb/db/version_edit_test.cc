@@ -23,15 +23,14 @@
 
 #include "yb/rocksdb/db/version_edit.h"
 
+#include <boost/container/small_vector.hpp>
 #include <string>
-#include <gtest/gtest.h>
+#include <memory>
 
-#include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/testutil.h"
-
 #include "yb/storage/storage_test_util.h"
-
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
 
 namespace rocksdb {
 

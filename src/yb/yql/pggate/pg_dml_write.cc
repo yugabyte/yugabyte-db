@@ -15,18 +15,48 @@
 
 #include "yb/yql/pggate/pg_dml_write.h"
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <sys/types.h>
+#include <boost/intrusive/list.hpp>
+#include <boost/iterator/iterator_categories.hpp>
+#include <boost/iterator/iterator_facade.hpp>
 #include <limits>
 #include <string>
 #include <utility>
+#include <functional>
+#include <ostream>
+#include <vector>
 
 #include "yb/dockv/packed_row.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/util/decimal.h"
-#include "yb/util/debug-util.h"
-
 #include "catalog/pg_type_d.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/dockv/value_type.h"
+#include "yb/gutil/endian.h"
+#include "yb/util/format.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+#include "yb/yql/pggate/pg_column.h"
+#include "yb/yql/pggate/pg_doc_metrics.h"
+#include "yb/yql/pggate/pg_doc_op.h"
+#include "yb/yql/pggate/pg_expr.h"
+#include "yb/yql/pggate/pg_op.h"
+#include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pg_table.h"
+#include "yb/yql/pggate/pg_tabledesc.h"
+
+namespace yb {
+class HybridTime;
+}  // namespace yb
 
 namespace yb::pggate {
 

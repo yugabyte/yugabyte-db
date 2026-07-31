@@ -20,19 +20,29 @@
 // Portions Copyright (c) YugabyteDB, Inc.
 #include "yb/util/status.h"
 
+#include <alloca.h>
+#include <assert.h>
+#include <glog/logging.h>
+#include <stdlib.h>
+#include <string.h>
 #include <array>
 #include <atomic>
 #include <regex>
 #include <string_view>
+#include <iterator>
+#include <optional>
+#include <sstream>
 
 #include "yb/gutil/endian.h"
-
 #include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 #include "yb/util/malloc.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_ec.h"
 #include "yb/util/tostring.h"
+#include "yb/util/cast.h"
+#include "yb/util/stack_trace.h"
+#include "yb/util/result.h"
 
 using namespace std::literals;
 
@@ -445,6 +455,7 @@ const char* Status::CodeAsCString() const {
     case Status::BOOST_PP_CAT(k, name): \
       return message;
   #include "yb/util/status_codes.h"
+
   #undef YB_STATUS_CODE
   }
   return nullptr;

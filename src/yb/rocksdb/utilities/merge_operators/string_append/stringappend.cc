@@ -22,11 +22,9 @@
 #include "yb/rocksdb/utilities/merge_operators/string_append/stringappend.h"
 
 #include <assert.h>
-
 #include <memory>
 
 #include "yb/util/slice.h"
-#include "yb/rocksdb/merge_operator.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 
 namespace rocksdb {

@@ -31,57 +31,64 @@
 //
 #pragma once
 
-#include <pthread.h>
 #include <stdint.h>
-#include <sys/types.h>
-
-#include <atomic>
-#include <condition_variable>
-#include <functional>
-#include <list>
-#include <map>
-#include <memory>
-#include <mutex>
-#include <set>
-#include <string>
-
-#include <boost/intrusive/list.hpp>
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
-#include <boost/utility.hpp>
 #include <ev++.h> // NOLINT
-#include "yb/util/flags.h"
-#include "yb/util/logging.h"
+#include <stddef.h>
+#include <boost/multi_index/indexed_by.hpp>
+#include <boost/multi_index/tag.hpp>
+#include <boost/multi_index_container_fwd.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <atomic>
+#include <list>
+#include <memory>
+#include <set>
+#include <string>
+#include <chrono>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+#include <functional>
 
-#include "yb/gutil/bind.h"
-#include "yb/gutil/integral_types.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/macros.h"
-
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/reactor_task.h"
 #include "yb/rpc/reactor_thread_role.h"
-
-#include "yb/util/async_util.h"
-#include "yb/util/condition_variable.h"
-#include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
-#include "yb/util/mem_tracker.h"
 #include "yb/util/monotime.h"
-#include "yb/util/mutex.h"
-#include "yb/util/net/socket.h"
-#include "yb/util/shared_lock.h"
-#include "yb/util/source_location.h"
 #include "yb/util/stack_trace.h"
-#include "yb/util/status_fwd.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/enums.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class Cgroup;
+class Socket;
+class Thread;
+struct SourceLocation;
 
 namespace rpc {
+class Connection;
 
 using ReactorTaskPtr = std::shared_ptr<ReactorTask>;
 using ReactorTasks = std::vector<ReactorTaskPtr>;
@@ -101,7 +108,6 @@ class DumpRunningRpcsRequestPB;
 class DumpRunningRpcsResponsePB;
 class Messenger;
 class MessengerBuilder;
-class Reactor;
 
 // Simple metrics information from within a reactor.
 struct ReactorMetrics {
@@ -425,6 +431,7 @@ class Reactor {
 
   class CallIdTag;
   class NextCheckTimeTag;
+
   using TrackedOutboundCalls = boost::multi_index_container<
       TrackedOutboundCall,
       boost::multi_index::indexed_by<

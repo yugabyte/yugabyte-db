@@ -33,13 +33,19 @@
 #include "yb/util/user.h"
 
 #include <pwd.h>
-
 #include <boost/algorithm/string/trim.hpp>
+#include <errno.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <memory>
+#include <vector>
 
 #include "yb/util/errno.h"
 #include "yb/util/malloc.h"
 #include "yb/util/result.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 using std::string;
 

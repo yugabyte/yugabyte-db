@@ -15,15 +15,16 @@
 
 #include "yb/util/memory/memory_usage_test_util.h"
 
-#include <map>
+#include <glog/logging.h>
+#include <sstream>
 
-#include "yb/util/memory/arena.h"
-#include "yb/util/size_literals.h"
+#include "yb/util/logging.h"
 
 // Malloc hooks are not suppported in Google's TCMalloc as of Dec 12 2022.
 // See issue: https://github.com/google/tcmalloc/issues/44.
 #if YB_GPERFTOOLS_TCMALLOC
 #include <gperftools/malloc_hook.h>
+
 #define MEMORY_USAGE_SUPPORTED
 #endif // YB_GPERFTOOLS_TCMALLOC
 

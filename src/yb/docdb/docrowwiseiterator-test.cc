@@ -11,36 +11,100 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <memory>
 #include <string>
+#include <functional>
+#include <initializer_list>
+#include <limits>
+#include <optional>
+#include <sstream>
+#include <utility>
+#include <vector>
 
 #include "yb/common/common.pb.h"
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction-test-util.h"
-
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
-#include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/packed_row.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
 #include "yb/dockv/schema_packing.h"
-
 #include "yb/qlexpr/ql_expr.h"
-
-#include "yb/server/hybrid_clock.h"
-
-#include "yb/util/random_util.h"
-#include "yb/util/size_literals.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/schema.h"
+#include "yb/common/transaction.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/docdb/doc_pgsql_scanspec.h"
+#include "yb/docdb/doc_ql_scanspec.h"
+#include "yb/docdb/doc_write_batch.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/intent_aware_iterator.h"
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
+#include "yb/docdb/read_operation_data.h"
+#include "yb/dockv/doc_path.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/value.h"
+#include "yb/dockv/value_type.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/strings/stringpiece.h"
+#include "yb/qlexpr/ql_scanspec.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/monotime.h"
+#include "yb/util/operation_counter.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+namespace docdb {
+struct DocDB;
+}  // namespace docdb
+}  // namespace yb
 
 using std::string;
 

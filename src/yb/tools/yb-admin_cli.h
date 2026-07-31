@@ -31,16 +31,16 @@
 //
 #pragma once
 
+#include <stddef.h>
 #include <functional>
 #include <map>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include <rapidjson/document.h>
-
-#include "yb/util/status_fwd.h"
-#include "yb/tools/tools_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/tools/yb-admin_client.h"
 
 namespace yb {
 namespace client {

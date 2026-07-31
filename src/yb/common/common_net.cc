@@ -13,7 +13,8 @@
 
 #include "yb/common/common_net.h"
 
-#include <algorithm>
+#include <glog/logging.h>
+#include <stddef.h>
 #include <compare>
 #include <map>
 #include <string>

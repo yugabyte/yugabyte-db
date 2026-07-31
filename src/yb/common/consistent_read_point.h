@@ -13,23 +13,27 @@
 
 #pragma once
 
-#include <unordered_map>
+#include <string>
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/read_hybrid_time.h"
-
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/util/locks.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/common/clock.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 YB_STRONGLY_TYPED_BOOL(HadReadTime);
+class ChildTransactionDataPB;
+class ChildTransactionResultPB;
+class LWChildTransactionResultPB;
 
 // ConsistentReadPoint tracks a consistent read point to read across tablets.
 class ConsistentReadPoint {

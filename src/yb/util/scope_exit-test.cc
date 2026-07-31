@@ -11,8 +11,13 @@
 // under the License.
 //
 
+#include <stdint.h>
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "yb/util/scope_exit.h"
-#include "yb/util/test_util.h"
+#include "gtest/gtest.h"
 
 namespace yb::util {
 

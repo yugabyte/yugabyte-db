@@ -13,35 +13,56 @@
 
 #include "yb/tserver/pg_response_cache.h"
 
-#include <atomic>
-#include <future>
-#include <mutex>
-
-#include <boost/functional/hash.hpp>
 #include <boost/multi_index/member.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/container_hash/hash.hpp>
+#include <boost/multi_index_container.hpp>
+#include <boost/operators.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <atomic>
+#include <mutex>
+#include <chrono>
+#include <compare>
+#include <iterator>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <ratio>
 
-#include "yb/client/yb_op.h"
-
-#include "yb/common/wire_protocol.h"
-
-#include "yb/gutil/casts.h"
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/rpc/lightweight_message.h"
-#include "yb/rpc/sidecars.h"
-
 #include "yb/tserver/pg_client.messages.h"
-
-#include "yb/util/async_util.h"
 #include "yb/util/enums.h"
-#include "yb/util/flags.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/lru_cache.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/write_buffer.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/format.h"
+#include "yb/util/memory/arena_list.h"
 
 METRIC_DEFINE_counter(server, pg_response_cache_hits,
                       "PgClientService Response Cache Hits",

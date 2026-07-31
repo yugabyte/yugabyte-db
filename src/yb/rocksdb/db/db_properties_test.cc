@@ -21,12 +21,47 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <ctype.h>
+#include <inttypes.h>
+#include <math.h>
+#include <stdio.h>
 #include <string>
+#include <algorithm>
+#include <atomic>
+#include <map>
+#include <memory>
+#include <unordered_map>
+#include <vector>
+#include <functional>
 
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/perf_context.h"
 #include "yb/rocksdb/perf_level.h"
 #include "yb/rocksdb/port/stack_trace.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/db/internal_stats.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/filter_policy.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/table.h"
+#include "yb/rocksdb/table/block_based_table_factory.h"
+#include "yb/rocksdb/table_properties.h"
+#include "yb/rocksdb/types.h"
+#include "yb/rocksdb/universal_compaction.h"
+#include "yb/rocksdb/util/coding.h"
+#include "yb/rocksdb/util/random.h"
+#include "yb/rocksdb/util/testutil.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/stats/perf_level.h"
+#include "yb/util/string_util.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
 
 using std::unique_ptr;
 

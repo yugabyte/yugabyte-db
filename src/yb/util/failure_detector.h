@@ -32,32 +32,20 @@
 
 #pragma once
 
-#include <stddef.h>
-
-#include <functional>
+#include <stdint.h>
 #include <string>
-#include <tuple>
 #include <unordered_map>
-#include <utility>
-
-#include "yb/util/flags.h"
-#include "yb/util/logging.h"
+#include <functional>
 
 #include "yb/gutil/callback.h"
-#include "yb/gutil/integral_types.h"
-#include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random.h"
 
 namespace yb {
-class MonoDelta;
-class MonoTime;
 class Status;
 class Thread;
 

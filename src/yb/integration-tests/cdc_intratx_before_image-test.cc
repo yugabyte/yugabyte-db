@@ -10,7 +10,27 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <glog/logging.h>
+#include <stdint.h>
+#include <map>
+#include <ostream>
+#include <string>
+
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/client/client.h"
+#include "yb/common/common.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/cdcsdk_test_base.h"
+#include "yb/integration-tests/postgres-minicluster.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/client/yb_table_name.h"
 
 namespace yb {
 namespace cdc {

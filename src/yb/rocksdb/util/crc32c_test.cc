@@ -22,7 +22,11 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/util/crc32c.h"
-#include <gtest/gtest.h>
+
+#include <string.h>
+#include <string>
+
+#include "gtest/gtest.h"
 
 namespace rocksdb {
 namespace crc32c {

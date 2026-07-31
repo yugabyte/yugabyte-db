@@ -15,21 +15,20 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <string>
 #include <string_view>
 
 #include "yb/tserver/tserver_types.pb.h"
-
-#include "yb/common/wire_protocol.h"
-#include "yb/consensus/consensus_error.h"
-
-#include "yb/tablet/tablet_error.h"
-
-#include "yb/tserver/tserver_fwd.h"
-
 #include "yb/util/monotime.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/status_ec.h"
+
+namespace yb {
+class Status;
+namespace tserver {
+class LWTabletServerErrorPB;
+}  // namespace tserver
+}  // namespace yb
 
 using namespace std::literals;
 

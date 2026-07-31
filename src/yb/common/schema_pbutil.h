@@ -32,16 +32,25 @@
 // Helpers for dealing with the QL-specific protobufs defined in wire_protocol.proto.
 #pragma once
 
-#include <vector>
 
-#include <google/protobuf/repeated_field.h>
 
-#include "yb/common/common_fwd.h"
 
-#include "yb/util/status_fwd.h"
-#include "yb/util/memory/arena_list.h"
+
+#include "yb/common/schema.h"
+#include "yb/util/status.h"
+
+namespace google {
+namespace protobuf {
+template <typename Element> class RepeatedPtrField;
+}  // namespace protobuf
+}  // namespace google
 
 namespace yb {
+class ColocatedTableIdentifierPB;
+class ColumnSchemaPB;
+class LWColumnSchemaPB;
+class SchemaPB;
+template <class Entry> class ArenaList;
 
 enum SchemaPBConversionFlags {
   SCHEMA_PB_WITHOUT_IDS = 1 << 0,

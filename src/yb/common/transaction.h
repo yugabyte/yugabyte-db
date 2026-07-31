@@ -16,33 +16,55 @@
 #pragma once
 
 #include <stdint.h>
-
+#include <boost/container/small_vector.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <functional>
-#include <iterator>
 #include <string>
-#include <type_traits>
 #include <unordered_set>
 #include <utility>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <unordered_map>
 
-#include <boost/container/small_vector.hpp>
-#include <boost/functional/hash/hash.hpp>
-#include <boost/optional/optional.hpp>
-
-#include "yb/common/common_fwd.h"
 #include "yb/common/transaction.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/opid.h"
 #include "yb/common/pg_types.h"
-
 #include "yb/util/enums.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/uint_set.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 
 YB_STRONGLY_TYPED_UUID_DECL(TransactionId);
+class LWPostApplyTransactionMetadataPB;
+class LWSubTransactionMetadataPB;
+class LWTransactionMetadataPB;
+class TransactionMetadataPB;
+
 using TransactionIdSet = std::unordered_set<TransactionId, TransactionIdHash>;
 using TransactionIdApplyOpIdMap = std::unordered_map<TransactionId, OpId, TransactionIdHash>;
 using SubTransactionId = uint32_t;
@@ -182,7 +204,7 @@ inline std::ostream& operator<<(std::ostream& out, const TransactionStatusResult
 }
 
 typedef std::function<void(Result<TransactionStatusResult>)> TransactionStatusCallback;
-struct TransactionMetadata;
+struct TransactionMetadata;  // IWYU pragma: keep
 
 YB_DEFINE_ENUM(TransactionLoadFlag, (kMustExist)(kCleanup));
 typedef EnumBitSet<TransactionLoadFlag> TransactionLoadFlags;
@@ -206,7 +228,6 @@ struct StatusRequest {
   }
 };
 
-class RequestScope;
 
 struct TransactionLocalState {
   HybridTime commit_ht;

@@ -16,6 +16,15 @@
 #include "yb/bfpg/bfpg.h"
 #include "yb/bfql/bfql.h"
 
+namespace yb {
+namespace bfpg {
+enum class BFOpcode : int32_t;
+}  // namespace bfpg
+namespace bfql {
+enum class BFOpcode : int32_t;
+}  // namespace bfql
+}  // namespace yb
+
 namespace yb::qlexpr {
 
 //--------------------------------------------------------------------------------------------------

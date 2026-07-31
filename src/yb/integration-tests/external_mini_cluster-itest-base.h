@@ -33,23 +33,18 @@
 #pragma once
 
 #include <string>
-#include <unordered_map>
 #include <vector>
-#include <gtest/gtest.h>
+#include <memory>
+#include <functional>
 
 #include "yb/client/client.h"
-#include "yb/gutil/stl_util.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
-
-#include "yb/master/master_cluster.proxy.h"
-
-#include "yb/tserver/tserver_service.pb.h"
-
-#include "yb/util/pstack_watcher.h"
-#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

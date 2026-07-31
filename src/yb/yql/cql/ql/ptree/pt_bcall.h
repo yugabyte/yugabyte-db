@@ -17,11 +17,26 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <string>
+#include <utility>
+
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
-#include "yb/bfql/gen_opcodes.h"
+#include "yb/common/common_fwd.h"
+#include "yb/qlexpr/ql_name.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/ptree/list_node.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 
 namespace yb {
+namespace bfql {
+enum class BFOpcode : int32_t;
+}  // namespace bfql
+
 namespace ql {
+class SemContext;
 
 // Expression node that represents builtin function calls.
 class PTBcall : public PTExpr {

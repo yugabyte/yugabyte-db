@@ -30,44 +30,43 @@
 // under the License.
 //
 
-#include <cmath>
-#include <cstdlib>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <signal.h>
+#include <stdint.h>
+#include <unistd.h>
+#include <boost/range/size.hpp>
 #include <memory>
 #include <string>
 #include <vector>
+#include <chrono>
+#include <future>
+#include <iterator>
+#include <optional>
+#include <ostream>
+#include <utility>
 
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
-#include "yb/client/error.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 #include "yb/master/mini_master.h"
-
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
-#include "yb/util/async_util.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/errno.h"
 #include "yb/util/random.h"
@@ -79,6 +78,20 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol.messages.h"  // IWYU pragma: keep
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/strings/strcat.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
 
 using namespace std::literals;
 

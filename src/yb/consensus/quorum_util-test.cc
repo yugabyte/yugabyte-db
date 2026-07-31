@@ -32,12 +32,11 @@
 
 #include <string>
 
-#include <gtest/gtest.h>
-
 #include "yb/consensus/quorum_util.h"
-
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/consensus/metadata.pb.h"
 
 namespace yb {
 namespace consensus {

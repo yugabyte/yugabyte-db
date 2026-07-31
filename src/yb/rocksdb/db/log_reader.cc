@@ -24,12 +24,14 @@
 #include "yb/rocksdb/db/log_reader.h"
 
 #include <stdio.h>
-#include "yb/rocksdb/env.h"
+#include <string.h>
+#include <utility>
+
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/crc32c.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
-
 #include "yb/gutil/macros.h"
+#include "yb/util/status.h"
 
 using std::unique_ptr;
 

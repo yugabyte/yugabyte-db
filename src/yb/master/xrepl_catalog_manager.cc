@@ -10,26 +10,56 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/cdc/cdc_service.h"
-#include "yb/cdc/cdc_state_table.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/multi_index_container.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <deque>
+#include <functional>
+#include <future>
+#include <initializer_list>
+#include <limits>
+#include <list>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <ratio>
+#include <set>
+#include <sstream>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+#include <compare>
 
+#include "yb/cdc/cdc_state_table.h"
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
-#include "yb/client/schema.h"
-#include "yb/client/table_handle.h"
-#include "yb/client/table_info.h"
-#include "yb/client/xcluster_client.h"
-
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_util.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/constants.h"
-#include "yb/common/pg_system_attr.h"
 #include "yb/common/xcluster_util.h"
-
 #include "yb/docdb/docdb_pgapi.h"
-
 #include "yb/master/alter_table_batch_tracker.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager-internal.h"
@@ -40,7 +70,6 @@
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/master_util.h"
 #include "yb/master/master.h"
-#include "yb/master/snapshot_transfer_manager.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/xcluster_consumer_registry_service.h"
@@ -49,14 +78,10 @@
 #include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
 #include "yb/master/ysql/ysql_manager_if.h"
-
 #include "yb/rpc/scheduler.h"
-
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_participant.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/scope_exit.h"
@@ -66,8 +91,71 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 #include "yb/util/trace.h"
-
-#include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/cdc/cdc_consumer.pb.h"
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/cdc_service.proxy.h"
+#include "yb/cdc/cdc_types.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.pb.h"
+#include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/join.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/gutil/walltime.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master_backup.pb.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_defaults.h"
+#include "yb/master/master_error.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/master_types.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/master/sys_catalog.h"
+#include "yb/master/sys_catalog_constants.h"
+#include "yb/master/sys_catalog_types.h"
+#include "yb/master/table_index.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
+#include "yb/rpc/rpc_context.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/server/clock.h"
+#include "yb/tablet/operations.messages.h"
+#include "yb/tablet/operations.pb.h"
+#include "yb/tablet/operations/operation.h"
+#include "yb/tserver/tserver_admin.pb.h"
+#include "yb/util/async_task_util.h"
+#include "yb/util/async_util.h"
+#include "yb/util/cow_object.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/pb_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_string.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/threadpool.h"
+#include "yb/util/tostring.h"
+#include "yb/util/version_tracker.h"
 
 using std::string;
 using namespace std::literals;

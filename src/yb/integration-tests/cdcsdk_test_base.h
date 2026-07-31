@@ -12,20 +12,40 @@
 
 #pragma once
 
+#include <gflags/gflags.h>
+#include <gtest/gtest.h>
+#include <stdint.h>
 #include <string>
+#include <memory>
+#include <optional>
+#include <vector>
 
 #include "yb/client/transaction_manager.h"
-
-#include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/postgres-minicluster.h"
-
-#include "yb/util/backoff_waiter.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/cdc_service.proxy.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/client/client.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+
+namespace yb {
+namespace client {
+class YBTableName;
+}  // namespace client
+}  // namespace yb
 
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(cdc_write_rpc_timeout_ms);

@@ -11,46 +11,82 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <rapidjson/document.h>
+#include <rapidjson/encodings.h>
+#include <rapidjson/rapidjson.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/uuid/uuid.hpp>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <thread>
+#include <unordered_map>
+#include <vector>
+
 #include "yb/common/snapshot.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/tools/yb-admin-test-base.h"
 #include "yb/tserver/tserver_service.proxy.h"
-#include "yb/util/flags.h"
-
 #include "yb/client/client.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/schema.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 #include "yb/client/table_info.h"
-
-#include "yb/integration-tests/cql_test_util.h"
-
 #include "yb/master/master_backup.proxy.h"
-#include "yb/master/master_replication.proxy.h"
-
-#include "yb/rpc/secure_stream.h"
-
 #include "yb/tools/admin-test-base.h"
 #include "yb/tools/test_admin_client.h"
-#include "yb/tools/yb-admin_util.h"
-
 #include "yb/tserver/mini_tablet_server.h"
-#include "yb/client/table_alterer.h"
 #include "yb/tserver/tablet_server.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/date_time.h"
-#include "yb/util/env_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status_format.h"
-#include "yb/util/subprocess.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "yb/client/table_handle.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/schema.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_backup.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/qlexpr/index.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/server/clock.h"
+#include "yb/tablet/tablet.pb.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/util/env.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/pb_util.h"
+#include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
 
 DECLARE_bool(check_bootstrap_required);
 DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);

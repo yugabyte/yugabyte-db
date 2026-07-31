@@ -11,13 +11,43 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <boost/asio/ip/basic_endpoint.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <algorithm>
-#include <map>
 #include <string>
 #include <utility>
 #include <chrono>
-#include <boost/assign.hpp>
-#include <gtest/gtest.h>
+#include <cstddef>
+#include <functional>
+#include <future>
+#include <initializer_list>
+#include <iterator>
+#include <limits>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string_view>
+#include <thread>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
@@ -25,71 +55,98 @@
 #include "yb/cdc/cdc_state_table.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/common/xcluster_util.h"
-#include "yb/cdc/xrepl_stream_metadata.h"
-
 #include "yb/client/client-test-util.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_alterer.h"
-#include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/table.h"
-#include "yb/client/transaction_rpc.h"
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
-
-#include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
-
-#include "yb/consensus/log.h"
-
-#include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/xcluster/xcluster_ycql_test_base.h"
-#include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 #include "yb/master/catalog_manager_if.h"
-#include "yb/master/master_backup.pb.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/xcluster_consumer_registry_service.h"
-
 #include "yb/rpc/rpc_controller.h"
-
-#include "yb/server/hybrid_clock.h"
-
 #include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/tablet.h"
-
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/xcluster_poller.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-#include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/xcluster_consumer.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/faststring.h"
 #include "yb/util/flags.h"
 #include "yb/util/json_document.h"
 #include "yb/util/metrics.h"
-#include "yb/util/random.h"
-#include "yb/util/status_log.h"
 #include "yb/util/status.h"
-#include "yb/util/stopwatch.h"
+#include "gtest/gtest.h"
+#include "yb/cdc/cdc_types.h"
+#include "yb/cdc/xcluster_types.h"
+#include "yb/cdc/xrepl_metrics.h"
+#include "yb/cdc/xrepl_stream_stats.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/walltime.h"
+#include "yb/integration-tests/xcluster/xcluster_test_base.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tserver/xcluster_consumer_replication_error.h"
+#include "yb/tserver/xcluster_poller_stats.h"
+#include "yb/util/format.h"
+#include "yb/util/is_operation_done_result.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/path_util.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
+#include "yb/util/tsan_util.h"
+
+namespace yb {
+namespace client {
+class TransactionManager;
+}  // namespace client
+}  // namespace yb
 
 using std::string;
 
@@ -271,6 +328,7 @@ class XClusterTestNoParam : public XClusterYcqlTestBase {
   }
 
   YB_STRONGLY_TYPED_BOOL(EnableTLSEncryption);
+
   Status TestSetupUniverseReplication(
       EnableTLSEncryption enable_tls_encryption,
       Transactional transactional = Transactional::kFalse) {

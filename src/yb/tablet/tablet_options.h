@@ -19,11 +19,14 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_fwd.h"
 
 #include "yb/docdb/local_waiting_txn_registry.h"
 
 #include "yb/hnsw/hnsw_fwd.h"
+
+#include "yb/rpc/rpc_fwd.h" // IWYU pragma: keep
 
 #include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/env.h"

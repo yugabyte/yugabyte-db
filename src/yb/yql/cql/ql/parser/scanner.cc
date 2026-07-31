@@ -20,15 +20,23 @@
 // convention because they are PostgreQL code.
 //--------------------------------------------------------------------------------------------------
 
+#include <ctype.h>
+#include <glog/logging.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 // #include <algorithm>
 #include <unordered_map>
+#include <algorithm>
+#include <ostream>
+#include <functional>
 
 #include "yb/gutil/casts.h"
-
-#include "yb/yql/cql/ql/parser/parser.h"
 #include "yb/yql/cql/ql/parser/scanner.h"
 #include "yb/yql/cql/ql/parser/scanner_util.h"
 #include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 namespace yb {
 namespace ql {

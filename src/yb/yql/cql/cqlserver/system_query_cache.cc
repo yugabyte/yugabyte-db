@@ -19,30 +19,44 @@
 
 #include "yb/yql/cql/cqlserver/system_query_cache.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <algorithm>
-#include <condition_variable>
 #include <mutex>
 #include <unordered_map>
+#include <ostream>
+#include <utility>
 
 #include "yb/qlexpr/ql_rowblock.h"
-
 #include "yb/gutil/bind.h"
-
 #include "yb/rpc/io_thread_pool.h"
 #include "yb/rpc/scheduler.h"
-
-#include "yb/util/async_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/string_util.h"
 #include "yb/util/unique_lock.h"
-
 #include "yb/yql/cql/cqlserver/cql_processor.h"
 #include "yb/yql/cql/cqlserver/cql_service.h"
-#include "yb/yql/cql/ql/util/statement_params.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/ash/wait_state.h"
+#include "yb/gutil/bind_helpers.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 typedef struct QualifiedTable {
   std::string keyspace;

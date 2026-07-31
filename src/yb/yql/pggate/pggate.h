@@ -13,6 +13,9 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/types.h>
 #include <concepts>
 #include <memory>
 #include <optional>
@@ -21,32 +24,19 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <unordered_map>
 
 #include "yb/client/tablet_server.h"
-
 #include "yb/common/pg_types.h"
 #include "yb/common/transaction.h"
-
 #include "yb/dockv/key_bytes.h"
 #include "yb/dockv/doc_key.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/ref_counted.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
-#include "yb/server/hybrid_clock.h"
-
-#include "yb/tserver/tserver_util_fwd.h"
-
-#include "yb/util/cgroups.h"
 #include "yb/util/mem_tracker.h"
-#include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/uuid.h"
-
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_fk_reference_cache.h"
@@ -61,10 +51,42 @@
 #include "yb/yql/pggate/pg_txn_manager.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/ash/ash_fwd.h"
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/client/table_info.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/tserver/pg_client.pb.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/slice.h"
+#include "yb/yql/pggate/pg_memctx.h"
+
+namespace yb {
+class HybridTime;
+class MetricEntity;
+class MetricRegistry;
+
+namespace pggate {
+class PgSession;
+class PgTableDesc;
+}  // namespace pggate
+namespace rpc {
+class Messenger;
+class ProxyCache;
+class SecureContext;
+}  // namespace rpc
+namespace server {
+class HybridClock;
+}  // namespace server
+namespace tserver {
+class TServerSharedData;
+}  // namespace tserver
+}  // namespace yb
 
 namespace yb::pggate {
 
-class PgDmlRead;
 class PgFlushDebugContext;
 class PgGlobalViewRead;
 class ExplicitRowLockBuffer;

@@ -13,25 +13,48 @@
 
 #pragma once
 
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <atomic>
-#include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
-
-#include <boost/circular_buffer.hpp>
+#include <functional>
+#include <optional>
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/cluster_balance_util.h"
 #include "yb/master/cluster_balance_activity_info.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/master/ysql_tablespace_manager.h"
-
 #include "yb/util/random.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/util/locks.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+namespace master {
+class BlacklistPB;
+class GlobalLoadState;
+class PerRunState;
+class PerTableLoadState;
+class RetryingRpcTask;
+class TSDescriptor;
+class YsqlTablespaceManager;
+struct Options;
+}  // namespace master
+template <class T> class AtomicGauge;
+}  // namespace yb
 
 DECLARE_int32(load_balancer_max_concurrent_tablet_remote_bootstraps);
 DECLARE_int32(load_balancer_max_over_replicated_tablets);

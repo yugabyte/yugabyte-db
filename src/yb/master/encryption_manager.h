@@ -14,20 +14,33 @@
 #pragma once
 
 #include <unordered_set>
+#include <memory>
+#include <string>
 
-#include "yb/encryption/encryption_fwd.h"
-
-#include "yb/master/master_encryption.fwd.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/master_heartbeat.fwd.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
+#include "yb/encryption/encryption.pb.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+
 namespace master {
+class AddUniverseKeysRequestPB;
+class AddUniverseKeysResponsePB;
+class ChangeEncryptionInfoRequestPB;
+class EncryptionInfoPB;
+class GetFullUniverseKeyRegistryResponsePB;
+class GetUniverseKeyRegistryRequestPB;
+class GetUniverseKeyRegistryResponsePB;
+class HasUniverseKeyInMemoryRequestPB;
+class HasUniverseKeyInMemoryResponsePB;
+class IsEncryptionEnabledResponsePB;
+class TSHeartbeatResponsePB;
 
 using HostPortSet = std::unordered_set<HostPort, HostPortHash>;
 

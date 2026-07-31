@@ -32,25 +32,24 @@
 
 #include "yb/master/master.h"
 
+#include <gflags/gflags.h>
+#include <boost/asio/ip/basic_endpoint.hpp>
 #include <algorithm>
-#include <list>
 #include <memory>
 #include <vector>
+#include <chrono>
+#include <unordered_set>
+#include <string_view>
 
 #include "yb/client/client.h"
-
 #include "yb/common/pg_catversions.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/consensus_meta.h"
-
 #include "yb/gutil/bind.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/clone/clone_state_manager.h"
 #include "yb/master/flush_manager.h"
 #include "yb/master/master_auto_flags_manager.h"
-#include "yb/master/master_backup.service.h"
 #include "yb/master/master_cluster_handler.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_fwd.h"
@@ -66,38 +65,69 @@
 #include "yb/master/ts_manager.h"
 #include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/master/ysql_backends_manager.h"
-
-#include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/rpc/secure.h"
-#include "yb/rpc/service_if.h"
-#include "yb/rpc/service_pool.h"
 #include "yb/rpc/yb_rpc.h"
-
 #include "yb/server/async_client_initializer.h"
 #include "yb/server/hybrid_clock.h"
-#include "yb/server/rpc_server.h"
-
 #include "yb/tablet/maintenance_manager.h"
-
 #include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/tablet_service.h"
-#include "yb/tserver/tserver_shared_mem.h"
-
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/ntp_clock.h"
-#include "yb/util/shared_lock.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/bind_helpers.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_tserver.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/sys_catalog.h"
+#include "yb/master/tablet_health_manager.h"
+#include "yb/rpc/connection_context.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/server/server_base.h"
+#include "yb/server/server_base_options.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/jsonwriter.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+namespace master {
+class CatalogManagerIf;
+class EncryptionManager;
+class PermissionsManager;
+class XClusterManager;
+class XClusterManagerIf;
+class YsqlManager;
+}  // namespace master
+namespace rpc {
+class ServiceIf;
+}  // namespace rpc
+}  // namespace yb
 
 DEFINE_NON_RUNTIME_int32(master_rpc_timeout_ms, 1500,
              "Timeout for retrieving master registration over RPC.");

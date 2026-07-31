@@ -13,18 +13,37 @@
 
 #include "yb/dockv/doc_vector_id.h"
 
+#include <glog/logging.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <ostream>
+#include <utility>
+
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/value.messages.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_packing_v2.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/util/logging.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
 
 namespace yb::dockv {
 

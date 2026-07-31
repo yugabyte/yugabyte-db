@@ -13,11 +13,15 @@
 
 #pragma once
 
+#include <memory>
+#include <utility>
+
 #include "yb/util/lockfree.h"
 #include "yb/util/status.h"
 #include "yb/util/thread_pool.h"
 
 namespace yb {
+class Cgroup;
 
 class StrandTask : public MPSCQueueEntry<StrandTask> {
  public:
@@ -103,6 +107,7 @@ class Strand : public ThreadSubPoolBase,
   void AbortTasks() override;
 
   class Task;
+
   friend class Task;
 
   std::unique_ptr<Task> task_;

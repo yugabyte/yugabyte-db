@@ -17,8 +17,11 @@
 #define YB_YQL_PGGATE_WEBSERVER_YBC_PG_WEBSERVER_WRAPPER_H
 
 #include <sys/types.h>
+#include <stddef.h>
+#include <stdint.h>
 #ifdef __cplusplus
 #include <atomic>
+
 using int64 = int64_t;
 using uint8 = uint8_t;
 using uint64 = uint64_t;

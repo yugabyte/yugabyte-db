@@ -17,12 +17,26 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <utility>
+
 #include "yb/client/yb_table_name.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 
 namespace yb {
 namespace ql {
+class SemContext;
+enum class ObjectType : int;
 
 // This class represents a name node.
 class PTName : public TreeNode {

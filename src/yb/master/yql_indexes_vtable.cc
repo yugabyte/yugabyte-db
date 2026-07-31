@@ -13,16 +13,41 @@
 
 #include "yb/master/yql_indexes_vtable.h"
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <vector>
+
 #include "yb/qlexpr/index_column.h"
 #include "yb/qlexpr/ql_name.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
-
 #include "yb/util/status_log.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/qlexpr/index.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/util/bytes_formatter.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/uuid.h"
+
+namespace yb {
+namespace master {
+class Master;
+}  // namespace master
+}  // namespace yb
 
 using std::string;
 

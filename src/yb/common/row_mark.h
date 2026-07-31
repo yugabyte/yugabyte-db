@@ -13,8 +13,11 @@
 //
 #pragma once
 
-#include "yb/util/logging.h"
+#include <glog/logging.h>
+#include <initializer_list>
+#include <ostream>
 
+#include "yb/util/logging.h"
 #include "yb/common/transaction.pb.h"
 
 namespace yb {

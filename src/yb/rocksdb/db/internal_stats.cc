@@ -27,10 +27,15 @@
 #endif
 
 #include <inttypes.h>
+#include <assert.h>
+#include <ctype.h>
+#include <stdio.h>
 #include <string>
 #include <algorithm>
 #include <utility>
 #include <vector>
+#include <memory>
+#include <functional>
 
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/compaction_picker.h"
@@ -38,8 +43,18 @@
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/util/histogram.h"
 #include "yb/rocksdb/util/logging.h"
-
 #include "yb/util/string_util.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/memtable.h"
+#include "yb/rocksdb/db/memtable_list.h"
+#include "yb/rocksdb/db/snapshot_impl.h"
+#include "yb/rocksdb/db/version_edit.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/table_properties.h"
+#include "yb/rocksdb/util/instrumented_mutex.h"
+#include "yb/util/tostring.h"
 
 namespace rocksdb {
 

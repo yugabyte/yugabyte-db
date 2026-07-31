@@ -34,27 +34,29 @@
 
 #include <pthread.h>
 #include <sys/syscall.h>
-#include <sys/types.h>
-
+#include <stddef.h>
+#include <stdint.h>
+#include <unistd.h>
 #include <functional>
 #include <string>
 #include <vector>
+#include <ostream>
+#include <utility>
 
-#include "yb/gutil/atomicops.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/util/countdown_latch.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/stack_trace.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class MetricEntity;
 class Thread;
 class WebCallbackRegistry;
-
 struct ThreadDescriptor;
 
 const char* TEST_GetThreadLogPrefix();

@@ -31,40 +31,38 @@
 //
 #pragma once
 
-#include <algorithm>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <limits>
 #include <string>
-#include <unordered_set>
 #include <vector>
+#include <ostream>
 
-#include <boost/thread/thread.hpp>
 #include "yb/util/logging.h"
-#include <gtest/gtest.h>
-
 #include "yb/dockv/partial_row.h"
-#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/common/ql_value.h"
-
-#include "yb/docdb/ql_rowwise_iterator_interface.h"
-
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/strings/util.h"
-#include "yb/gutil/walltime.h"
-#include "yb/util/env.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/status_log.h"
-#include "yb/util/stopwatch.h"
-#include "yb/util/test_graph.h"
-#include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
-#include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/tablet-test-util.h"
-#include "yb/tablet/tablet.h"
-#include "yb/gutil/strings/numbers.h"
+#include "gtest/gtest.h"
+#include "yb/common/column_id.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/schema.h"
+#include "yb/common/types.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/casts.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+class TimeSeries;
+
 namespace tablet {
+class LocalTabletWriter;
 
 // The base class takes as a template argument a "setup" class
 // which can customize the schema for the tests. This way we can

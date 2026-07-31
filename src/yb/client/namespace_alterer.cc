@@ -13,11 +13,17 @@
 
 #include "yb/client/namespace_alterer.h"
 
-#include "yb/client/client-internal.h"
+#include <memory>
 
+#include "yb/client/client-internal.h"
 #include "yb/master/master_ddl.pb.h"
+#include "yb/client/client.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/slice.h"
 
 namespace yb {
+enum YQLDatabase : int;
+
 namespace client {
 
 YBNamespaceAlterer::YBNamespaceAlterer(

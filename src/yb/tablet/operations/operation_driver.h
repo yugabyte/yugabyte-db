@@ -32,35 +32,37 @@
 
 #pragma once
 
-#include <condition_variable>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/atomic/atomic.hpp>
 #include <string>
+#include <memory>
+#include <mutex>
 
-#include <boost/atomic.hpp>
-
-#include "yb/ash/wait_state.h"
-
-#include "yb/common/common_types.pb.h"
 #include "yb/common/opid.h"
-
-#include "yb/consensus/log_fwd.h"
-#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_round.h"
-
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/walltime.h"
-
 #include "yb/tablet/operations/operation.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/lockfree.h"
-#include "yb/util/trace.h"
+#include "yb/ash/ash_fwd.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/locks.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
-class ThreadPool;
+class Trace;
+enum TableType : int;
+namespace consensus {
+class Consensus;
+}  // namespace consensus
+
 namespace tablet {
 class MvccManager;
 class OperationTracker;
-class OperationDriver;
 class Preparer;
 
 // Base class for operation drivers.

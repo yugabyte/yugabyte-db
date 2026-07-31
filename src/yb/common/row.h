@@ -31,19 +31,22 @@
 //
 #pragma once
 
+#include <glog/logging.h>
+#include <stdint.h>
+#include <string.h>
 #include <string>
 #include <utility>
 #include <vector>
+#include <ostream>
 
-#include "yb/common/common_fwd.h"
 #include "yb/common/schema.h"
 #include "yb/common/types.h"
-
 #include "yb/gutil/macros.h"
-
 #include "yb/util/bitmap.h"
-#include "yb/util/memory/arena.h"
 #include "yb/util/status.h"
+#include "yb/gutil/port.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 

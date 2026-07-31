@@ -13,8 +13,21 @@
 
 #include "yb/client/async_rpc.h"
 
-#include "yb/ash/wait_state.h"
+#include <absl/base/dynamic_annotations.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/iterator/iterator_categories.hpp>
+#include <boost/iterator/iterator_facade.hpp>
+#include <boost/iterator/transform_iterator.hpp>
+#include <chrono>
+#include <functional>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <type_traits>
+#include <utility>
 
+#include "yb/ash/wait_state.h"
 #include "yb/client/batcher.h"
 #include "yb/client/client.h"
 #include "yb/client/client_error.h"
@@ -23,23 +36,15 @@
 #include "yb/client/table.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/entity_ids.h"
 #include "yb/common/pgsql_error.h"
-#include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/human_readable.h"
-
-#include "yb/rpc/outbound_call.h"
 #include "yb/rpc/rpc_controller.h"
-
-#include "yb/tserver/tserver_service.messages.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
@@ -48,6 +53,34 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 #include "yb/util/yb_pg_errcodes.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/consistent_read_point.h"
+#include "yb/common/opid.pb.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/redis_protocol.messages.h"
+#include "yb/common/redis_protocol.pb.h"
+#include "yb/common/retryable_request.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/docdb/docdb.messages.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+class MetricEntity;
+}  // namespace yb
 
 // TODO: do we need word Redis in following two metrics? ReadRpc and WriteRpc objects emitting
 // these metrics are used not only in Redis service.

@@ -32,6 +32,13 @@
 
 #include "yb/master/master-path-handlers.h"
 
+#include <ctype.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <boost/date_time/posix_time/posix_time_config.hpp>
+#include <boost/date_time/posix_time/posix_time_duration.hpp>
 #include <algorithm>
 #include <functional>
 #include <iomanip>
@@ -41,14 +48,14 @@
 #include <sstream>
 #include <unordered_set>
 #include <vector>
-
-#include <boost/date_time/posix_time/time_formatters.hpp>
+#include <chrono>
+#include <compare>
+#include <iterator>
+#include <limits>
 
 #include "yb/gutil/strings/join.h"
-
 #include "yb/common/common_consensus_util.h"
 #include "yb/common/xcluster_util.h"
-
 #include "yb/common/common_types_util.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/schema.h"
@@ -56,16 +63,13 @@
 #include "yb/common/tablet_limits.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/dockv/partition.h"
-
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/async_rbs_info_task.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_entity_info.pb.h"
@@ -84,20 +88,14 @@
 #include "yb/master/tablet_creation_limits.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
-
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/xcluster/xcluster_status.h"
-
 #include "yb/server/webserver.h"
 #include "yb/server/webui_util.h"
-
 #include "yb/tablet/tablet_types.pb.h"
-
 #include "yb/tserver/remote_bootstrap_info.h"
-
 #include "yb/util/curl_util.h"
 #include "yb/util/flags.h"
-#include "yb/util/hash_util.h"
 #include "yb/util/html_print_helper.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
@@ -107,6 +105,35 @@
 #include "yb/util/timestamp.h"
 #include "yb/util/url-coding.h"
 #include "yb/common/version_info.h"
+#include "yb/cdc/cdc_consumer.pb.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/version_info.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/master/cluster_balance_activity_info.h"
+#include "yb/master/master_defaults.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/master/tasks_tracker.h"
+#include "yb/server/clock.h"
+#include "yb/server/monitored_task.h"
+#include "yb/tserver/ts_local_lock_manager.h"
+#include "yb/tserver/tserver_admin.pb.h"
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 DEFINE_RUNTIME_int32(hide_dead_node_threshold_mins, 60 * 24,
     "After this many minutes of no heartbeat from a node, hide it from the UI "

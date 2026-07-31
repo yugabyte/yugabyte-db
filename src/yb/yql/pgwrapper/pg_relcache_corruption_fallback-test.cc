@@ -10,14 +10,23 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
 #include <string>
+#include <ostream>
+#include <utility>
 
 #include "yb/util/monotime.h"
 #include "yb/util/test_macros.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
-#include "yb/yql/pgwrapper/pg_test_utils.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 DECLARE_bool(ysql_catalog_preload_additional_tables);
 DECLARE_string(ysql_catalog_preload_additional_table_list);

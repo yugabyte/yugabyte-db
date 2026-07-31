@@ -22,37 +22,32 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/util/io_posix.h"
+
 #include <errno.h>
 #include <fcntl.h>
-#if defined(__linux__)
-#include <linux/fs.h>
-#endif
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#ifdef __linux__
-#include <sys/statfs.h>
-#include <sys/syscall.h>
-#endif
-#include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/util/coding.h"
-#include "yb/rocksdb/util/posix_logger.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <linux/falloc.h>
+#include <unistd.h>
+#include <limits>
+#include <utility>
 
-#include "yb/util/errno.h"
-#include "yb/util/file_system_posix.h"
 #include "yb/util/malloc.h"
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
 #include "yb/util/stats/iostats_context_imp.h"
 #include "yb/util/status_log.h"
-#include "yb/util/std_util.h"
-#include "yb/util/string_util.h"
-#include "yb/util/sync_point.h"
 #include "yb/util/test_kill.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/util/logging.h"
+#include "yb/util/stats/iostats_context.h"
+#include "yb/util/stats/perf_step_timer.h"
+#include "yb/util/status.h"
 
 DECLARE_bool(never_fsync);
 

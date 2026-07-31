@@ -13,22 +13,30 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <memory>
 #include <future>
 #include <span>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 #include "yb/client/client_fwd.h"
-
 #include "yb/master/master_fwd.h"
-#include "yb/master/master_ddl.fwd.h"
-
-#include "yb/tserver/pg_client.fwd.h"
-#include "yb/tserver/tserver_fwd.h"
-
 #include "yb/util/monotime.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+namespace client {
+class YBClient;
+}  // namespace client
+namespace master {
+class GetTableSchemaResponsePB;
+}  // namespace master
+}  // namespace yb
 
 namespace yb::tserver {
 

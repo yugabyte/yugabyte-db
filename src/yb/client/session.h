@@ -13,34 +13,52 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <future>
 #include <unordered_set>
+#include <compare>
+#include <condition_variable>
+#include <memory>
+#include <mutex>
+#include <set>
+#include <string>
+#include <tuple>
+#include <unordered_map>
+#include <vector>
+#include <functional>
 
-#include "yb/client/batcher.h"
 #include "yb/client/client_fwd.h"
-
-#include "yb/common/common_fwd.h"
 #include "yb/common/opid.h"
-
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
+#include "yb/client/error.h"
+#include "yb/common/clock.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
 class ConsistentReadPoint;
-
 struct ReadHybridTime;
+class HybridTime;
+enum TableType : int;
+struct TransactionMetadata;
 
 namespace client {
 
 namespace internal {
 class Batcher;
-class ErrorCollector;
 } // internal
 
 YB_STRONGLY_TYPED_BOOL(Restart);
+class YBClient;
 
 struct NODISCARD_CLASS FlushStatus {
   Status status = Status::OK();

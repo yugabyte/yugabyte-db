@@ -13,10 +13,14 @@
 
 #pragma once
 
-#include "yb/encryption/encryption_util.h"
+#include <stddef.h>
+#include <functional>
+#include <string>
 
+#include "yb/encryption/encryption_util.h"
 #include "yb/util/slice.h"
-#include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 namespace encryption {

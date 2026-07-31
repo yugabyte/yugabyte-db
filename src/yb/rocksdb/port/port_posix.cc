@@ -22,23 +22,22 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/port/port_posix.h"
-
-#include <assert.h>
 #if defined(__i386__) || defined(__x86_64__)
 #include <cpuid.h>
 #endif
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
+#include <glog/logging.h>
+#include <stdlib.h>
+#include <sys/resource.h>
+#include <sys/types.h>
+#include <time.h>
+#include <unistd.h>
+#include <utility>
 
 #include "yb/util/logging.h"
-
-#include "yb/rocksdb/util/logging.h"
-#include "yb/util/status_log.h"
-
-#if defined(RLIMIT_NOFILE)
-#include "yb/util/std_util.h"
-#endif
 
 namespace rocksdb {
 namespace port {

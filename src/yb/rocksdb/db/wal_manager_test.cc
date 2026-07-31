@@ -18,13 +18,17 @@
 // under the License.
 //
 
-#include <map>
+#include <assert.h>
+#include <glog/logging.h>
+#include <stddef.h>
 #include <string>
+#include <cstdint>
+#include <limits>
+#include <utility>
+#include <vector>
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/write_batch.h"
-
-#include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/log_writer.h"
 #include "yb/rocksdb/db/version_set.h"
@@ -34,12 +38,17 @@
 #include "yb/rocksdb/util/mock_env.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-#include "yb/rocksdb/table/mock_table.h"
-#include "yb/rocksdb/db/db_impl.h"
-
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
-#include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/write_batch_internal.h"
+#include "yb/rocksdb/db/write_controller.h"
+#include "yb/rocksdb/env.h"
+#include "yb/util/file_system.h"
+#include "yb/util/logging.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
 
 using std::unique_ptr;
 

@@ -13,10 +13,24 @@
 
 #include "yb/docdb/redis_operation.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <sys/types.h>
+#include <algorithm>
+#include <cmath>
+#include <iterator>
+#include <limits>
+#include <map>
+#include <ostream>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "yb/common/ql_value.h"
 #include "yb/common/redis_protocol.messages.h"
 #include "yb/common/value.messages.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_path.h"
 #include "yb/docdb/doc_reader_redis.h"
@@ -25,14 +39,34 @@
 #include "yb/docdb/doc_write_batch_cache.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/dockv/subdocument.h"
-
-#include "yb/server/hybrid_clock.h"
-
 #include "yb/util/redis_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
-#include "yb/util/flags.h"
+#include "yb/bfql/tserver_opcodes.h"
+#include "yb/common/constants.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/transaction.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/value.pb.h"
+#include "yb/docdb/docdb_types.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/dockv/value.h"
+#include "yb/dockv/value_type.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/algorithm_util.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
 
 using std::string;
 using std::numeric_limits;

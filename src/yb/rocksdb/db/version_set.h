@@ -34,30 +34,50 @@
 
 #pragma once
 
+#include <assert.h>
+#include <stdint.h>
+#include <boost/smart_ptr/intrusive_ptr.hpp>
 #include <atomic>
 #include <deque>
 #include <limits>
-#include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
+#include <cstddef>
+#include <tuple>
 
 #include "yb/rocksdb/rocksdb_fwd.h"
-
-#include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/db/version_builder.h"
-#include "yb/rocksdb/db/version_edit.h"
-#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/db/table_cache.h"
-#include "yb/rocksdb/db/compaction_picker.h"
 #include "yb/rocksdb/db/column_family.h"
-#include "yb/rocksdb/db/log_reader.h"
 #include "yb/rocksdb/db/file_indexer.h"
-#include "yb/rocksdb/db/write_controller.h"
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/util/instrumented_mutex.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/compaction.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/types.h"
+#include "yb/rocksdb/util/arena.h"
+#include "yb/rocksdb/util/autovector.h"
+#include "yb/storage/storage_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/table/table_reader.h"
+
+namespace rocksdb {
+enum CompactionStyle : char;
+struct ColumnFamilyOptions;
+struct CompactionOptionsFIFO;
+struct DBOptions;
+struct Options;
+struct ReadOptions;
+}  // namespace rocksdb
+
+namespace yb {
+namespace storage {
+class UserFrontier;
+}  // namespace storage
+}  // namespace yb
 
 namespace rocksdb {
 
@@ -65,19 +85,26 @@ namespace log {
 class Writer;
 }
 
-class ColumnFamilyData;
-class ColumnFamilySet;
-class Compaction;
 class FileNumbersProvider;
 class InternalIterator;
-class LogBuffer;
-class LookupKey;
-class MemTable;
 class MergeContext;
-class TableCache;
-class Version;
-class VersionSet;
 class WriteBuffer;
+class Cache;
+class Comparator;
+class MergeOperator;
+class Statistics;
+class VersionBuilder;
+struct ColumnFamilyMetaData;
+struct FileDescriptor;
+struct FileMetaData;
+struct ImmutableCFOptions;
+struct LiveFileMetaData;
+struct MutableCFOptions;
+struct TableProperties;
+class InstrumentedMutex;
+class VersionEdit;
+class VersionSet;
+class WriteController;
 
 // Return the smallest index i such that file_level.files[i]->largest >= key.
 // Return file_level.num_files if there is no such file.
@@ -787,6 +814,7 @@ class VersionSet {
   }
 
  private:
+
   struct ManifestWriter;
 
   friend class Version;

@@ -13,8 +13,11 @@
 
 #include "yb/common/pg_types.h"
 
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 

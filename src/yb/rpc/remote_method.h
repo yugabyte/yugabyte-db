@@ -31,6 +31,7 @@
 //
 #pragma once
 
+#include <stddef.h>
 #include <string>
 
 #include "yb/util/slice.h"

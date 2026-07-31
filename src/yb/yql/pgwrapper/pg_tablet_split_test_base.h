@@ -13,12 +13,26 @@
 
 #pragma once
 
-#include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include <stddef.h>
+#include <functional>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
 
+#include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/master/master_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 
 namespace yb {
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+
 namespace pgwrapper {
 
 using PartitionKeyTabletMap = std::map<std::string, master::TabletInfoPtr>;

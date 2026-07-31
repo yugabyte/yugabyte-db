@@ -20,9 +20,8 @@
 
 #include "yb/rocksdb/db/merge_helper.h"
 
-#include <stdio.h>
-
 #include <string>
+#include <utility>
 
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/comparator.h"
@@ -30,10 +29,16 @@
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/statistics.h"
-
 #include "yb/util/stats/perf_step_timer.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/perf_context.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/util/stop_watch.h"
+#include "yb/util/status.h"
+#include "yb/rocksdb/status_fwd.h"
 
 namespace rocksdb {
+class Env;
 
 // TODO(agiardullo): Clean up merge callsites to use this func
 Status MergeHelper::TimedFullMerge(const Slice& key, const Slice* value,

@@ -10,33 +10,57 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <google/protobuf/descriptor.h>
+#include <google/protobuf/message.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/program_options/options_description.hpp>
+#include <boost/program_options/value_semantic.hpp>
 #include <iostream>
 #include <string_view>
+#include <array>
+#include <exception>
+#include <future>
+#include <memory>
+#include <sstream>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+#include <functional>
 
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/catalog_entity_parser.h"
-#include "yb/master/master_backup.pb.h"
 #include "yb/master/master_types.pb.h"
-
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
-
 #include "yb/gutil/bind.h"
 #include "yb/gutil/strings/util.h"
-
 #include "yb/master/master_options.h"
 #include "yb/master/sys_catalog.h"
-
 #include "yb/server/logical_clock.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tools/tool_arguments.h"
-
 #include "yb/util/date_time.h"
 #include "yb/util/json_document.h"
 #include "yb/util/logging.h"
@@ -44,6 +68,50 @@
 #include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/common/version_info.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/schema.h"
+#include "yb/common/version_info.pb.h"
+#include "yb/consensus/consensus_meta.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/dockv/partition.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/escaping.h"
+#include "yb/master/sys_catalog_constants.h"
+#include "yb/master/sys_catalog_writer.h"
+#include "yb/server/clock.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_options.h"
+#include "yb/util/enums.h"
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/jsonwriter.h"
+#include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/threadpool.h"
+#include "yb/util/timestamp.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
+
+namespace yb {
+namespace client {
+class YBClient;
+}  // namespace client
+namespace consensus {
+struct StateChangeContext;
+}  // namespace consensus
+}  // namespace yb
 
 DEFINE_RUNTIME_bool(show_raw_id, false, "Print binary id in raw format also");
 
@@ -85,6 +153,7 @@ auto& sjson = std::cout;
 // Single peer mini SysCatalogTable for SysCatalog handling in tools.
 // ------------------------------------------------------------------------------------------------
 class MiniSysCatalogTable;
+
 using MiniSysCatalogTablePtr = unique_ptr<MiniSysCatalogTable>;
 
 class MiniSysCatalogTable {

@@ -13,24 +13,51 @@
 
 #pragma once
 
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <memory>
 #include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
-
-#include <rapidjson/document.h>
+#include <functional>
+#include <map>
+#include <set>
+#include <unordered_set>
 
 #include "yb/cdc/xcluster_types.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pg_types.h"
 #include "yb/tserver/xcluster_consumer_if.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
-struct YsqlFullTableName;
+namespace client {
+class YBClient;
+}  // namespace client
+namespace pgwrapper {
+class PGConn;
+}  // namespace pgwrapper
+
 namespace tserver {
 
 struct XClusterOutputClientResponse;
+class TserverXClusterContextIf;
 
 using UpdateSafeTimeFunc = std::function<void (HybridTime)>;
 

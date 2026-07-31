@@ -13,19 +13,33 @@
 
 #pragma once
 
-#include "yb/ash/ash_fwd.h"
+#include <memory>
+#include <string>
+#include <utility>
 
+#include "yb/ash/ash_fwd.h"
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
-
 #include "yb/common/wire_protocol.h"
-
-#include "yb/master/master_fwd.h"
 #include "yb/master/master_error.h"
-
 #include "yb/rpc/rpc.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
+namespace master {
+class MasterAdminProxy;
+class MasterBackupProxy;
+class MasterClientProxy;
+class MasterClusterProxy;
+class MasterDclProxy;
+class MasterDdlProxy;
+class MasterEncryptionProxy;
+class MasterReplicationProxy;
+class MasterTestProxy;
+}  // namespace master
+
 namespace client {
 namespace internal {
 

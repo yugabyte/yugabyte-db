@@ -11,25 +11,57 @@
 // under the License.
 //
 
-#include <gmock/gmock.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "yb/client/xcluster_client.h"
-#include "yb/client/yb_table_name.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/xcluster_util.h"
-
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_status.h"
-
 #include "yb/tserver/mini_tablet_server.h"
-
 #include "yb/util/curl_util.h"
 #include "yb/util/logging_test_util.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/xcluster/xcluster_test_base.h"
+#include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
+#include "yb/tablet/tablet.h"
+#include "yb/util/faststring.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
+
+namespace yb {
+namespace client {
+class YBTable;
+}  // namespace client
+}  // namespace yb
 
 DECLARE_bool(TEST_simulate_EnsureSequenceUpdatesAreInWal_failure);
 DECLARE_bool(TEST_xcluster_ddl_queue_handler_fail_at_end);

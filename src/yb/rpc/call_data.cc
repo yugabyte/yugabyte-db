@@ -13,8 +13,9 @@
 
 #include "yb/rpc/call_data.h"
 
-#include "yb/rpc/sidecars.h"
+#include <boost/range/iterator_range_core.hpp>
 
+#include "yb/rpc/sidecars.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 

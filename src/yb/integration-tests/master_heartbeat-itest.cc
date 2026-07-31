@@ -10,29 +10,38 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
-
-#include <gtest/gtest.h>
+#include <algorithm>
+#include <chrono>
+#include <functional>
+#include <map>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <set>
+#include <string_view>
+#include <thread>
+#include <vector>
 
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/common_net.h"
 #include "yb/common/common_types.pb.h"
-
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/integration-tests/yb_table_test_base.h"
-
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
-#include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_cluster_client.h"
@@ -41,22 +50,48 @@
 #include "yb/master/master_types.pb.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
-
-#include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/tostring.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_backup.pb.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/mini_master.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/util/env.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
+#include "yb/util/uuid.h"
 
 using namespace std::literals;
 

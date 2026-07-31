@@ -18,12 +18,7 @@
 // under the License.
 //
 
-#include "yb/docdb/docdb_debug.h"
-#include "yb/dockv/schema_packing.h"
-
 #include "yb/tablet/kv_formatter.h"
-
-#include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/sst_dump_tool.h"
 
 int main(int argc, char** argv) {

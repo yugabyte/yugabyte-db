@@ -30,9 +30,10 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <string>
 
 #include "yb/util/string_case.h"
+#include "gtest/gtest.h"
 
 using std::string;
 

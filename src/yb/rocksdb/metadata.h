@@ -21,30 +21,19 @@
 #pragma once
 
 #include <stdint.h>
-
-#include <limits>
+#include <boost/container/small_vector.hpp>
+#include <stddef.h>
+#include <boost/intrusive/list.hpp>
 #include <string>
 #include <vector>
 
-#include <boost/container/small_vector.hpp>
-
-#include "yb/common/hybrid_time.h"
-
-#include "yb/gutil/casts.h"
-
 #include "yb/storage/frontier.h"
-
 #include "yb/util/byte_buffer.h"
-#include "yb/util/clone_ptr.h"
 #include "yb/util/slice.h"
-
-#include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/types.h"
+#include "yb/storage/storage_fwd.h"
 
 namespace rocksdb {
-struct ColumnFamilyMetaData;
-struct LevelMetaData;
-struct SstFileMetaData;
 
 typedef uint32_t UserBoundaryTag;
 

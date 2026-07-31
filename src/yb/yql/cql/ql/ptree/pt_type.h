@@ -17,12 +17,19 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <sys/types.h>
+#include <memory>
+#include <utility>
+
 #include "yb/client/schema.h"
-
 #include "yb/common/ql_type.h"
-
 #include "yb/yql/cql/ql/ptree/pt_name.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
+#include "yb/common/value.messages.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 
 namespace yb {
 namespace ql {

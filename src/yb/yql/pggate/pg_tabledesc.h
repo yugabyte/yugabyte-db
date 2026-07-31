@@ -17,20 +17,26 @@
 
 #pragma once
 
-#include "yb/common/pg_types.h"
-#include "yb/common/pgsql_protocol.messages.h"
-#include "yb/common/schema.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "yb/common/pg_types.h"
+#include "yb/common/schema.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/dockv/partition.h"
 #include "yb/dockv/schema_packing.h"
-
 #include "yb/master/master_ddl.pb.h"
-
-#include "yb/yql/pggate/pg_column.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/client/client_fwd.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace pggate {

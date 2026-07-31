@@ -20,13 +20,10 @@
 #pragma once
 
 #include <stddef.h>
-#include <stdlib.h>
-#include <string.h>
 #include <time.h>
-
+#include <inttypes.h>
 #include <limits>
 #include <string>
-#include <vector>
 
 #include "yb/gutil/int128.h"
 #include "yb/gutil/integral_types.h"

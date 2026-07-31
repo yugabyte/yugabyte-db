@@ -15,7 +15,14 @@
 
 #include <memory>
 
-#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/result.h"
+#include "yb/rpc/secure_stream.h"
+
+namespace yb {
+namespace rpc {
+class MessengerBuilder;
+}  // namespace rpc
+}  // namespace yb
 
 namespace yb::tools {
 

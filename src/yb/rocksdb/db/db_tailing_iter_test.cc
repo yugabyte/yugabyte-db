@@ -25,11 +25,29 @@
 // in Release build.
 // which is a pity, it is a good test
 
+#include <stdint.h>
+#include <stdio.h>
+#include <cstdlib>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/db/forward_iterator.h"
 #include "yb/rocksdb/port/stack_trace.h"
-
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/memtablerep.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/slice_transform.h"
+#include "yb/rocksdb/table.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/sync_point.h"
 
 namespace rocksdb {
 

@@ -15,11 +15,19 @@
 
 #include "yb/yql/cql/ql/ptree/process_context.h"
 
-#include "yb/util/logging.h"
+#include <ctype.h>
+#include <glog/logging.h>
+#include <string.h>
+#include <algorithm>
+#include <istream>
+#include <utility>
 
+#include "yb/util/logging.h"
 #include "yb/yql/cql/ql/ptree/parse_tree.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
+#include "yb/util/slice.h"
+#include "yb/yql/cql/ql/ptree/tree_node.h"
 
 namespace yb {
 namespace ql {

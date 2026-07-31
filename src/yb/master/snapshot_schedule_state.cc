@@ -13,19 +13,25 @@
 
 #include "yb/master/snapshot_schedule_state.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/uuid/uuid.hpp>
+#include <chrono>
+#include <ostream>
+
 #include "yb/docdb/docdb.pb.h"
 #include "yb/dockv/key_bytes.h"
 #include "yb/dockv/value_type.h"
-
-#include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_error.h"
 #include "yb/master/snapshot_coordinator_context.h"
-
-#include "yb/server/clock.h"
-
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
 

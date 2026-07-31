@@ -32,48 +32,112 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <atomic>
 #include <future>
 #include <map>
 #include <memory>
 #include <string>
 #include <vector>
+#include <deque>
+#include <mutex>
+#include <optional>
+#include <utility>
 
 #include "yb/consensus/consensus_context.h"
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/consensus_meta.h"
-#include "yb/consensus/log_fwd.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/thread_annotations.h"
 #include "yb/rpc/rpc_fwd.h"
-
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/operations/operation_tracker.h"
-#include "yb/tablet/preparer.h"
 #include "yb/tablet/tablet_bootstrap_state_flusher.h"
-#include "yb/tablet/tablet_bootstrap_state_manager.h"
 #include "yb/tablet/tablet_fwd.h"
-#include "yb/tablet/tablet_options.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant_context.h"
 #include "yb/tablet/write_query_context.h"
-
 #include "yb/util/atomic.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/transaction.h"
+#include "yb/consensus/consensus.h"
+#include "yb/consensus/log.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/raft_consensus.h"
+#include "yb/consensus/retryable_requests.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+#include "yb/server/clock.h"
+#include "yb/tablet/maintenance_manager.h"
+#include "yb/tablet/operations/operation.h"
+#include "yb/tablet/operations/operation_driver.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/util/enums.h"
+#include "yb/util/locks.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/operation_counter.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_callback.h"
+
+namespace yb {
+class MemTracker;
+class MetricRegistry;
+
+namespace client {
+class YBClient;
+}  // namespace client
+namespace consensus {
+class ConsensusMetadata;
+class LWReplicateMsg;
+class MultiRaftManager;
+class OperationStatusPB;
+struct StateChangeContext;
+}  // namespace consensus
+namespace log {
+class LogAnchorRegistry;
+}  // namespace log
+namespace rpc {
+class Messenger;
+class PeriodicTimer;
+class ProxyCache;
+}  // namespace rpc
+namespace tablet {
+class Preparer;
+class RaftGroupMetadata;
+class TabletBootstrapStateManager;
+class TabletSplitter;
+class TabletStatusListener;
+class TabletStatusPB;
+class WriteQuery;
+}  // namespace tablet
+}  // namespace yb
 
 using yb::consensus::StateChangeContext;
 
 namespace yb {
 
 class Cgroup;
-
-namespace tserver {
-class CatchUpServiceTest;
-class UpdateTransactionResponsePB;
-}
-
-class MaintenanceManager;
-class MaintenanceOp;
 class ThreadPool;
 
 namespace tablet {

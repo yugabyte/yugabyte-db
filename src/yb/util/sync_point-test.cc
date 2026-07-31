@@ -30,18 +30,16 @@
 // under the License.
 //
 
-#include <atomic>
+#include <gflags/gflags.h>
 #include <string>
-
-#include <gtest/gtest.h>
+#include <vector>
 
 #include "yb/gutil/ref_counted.h"
-
-#include "yb/util/monotime.h"
-#include "yb/util/result.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/thread.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
 
 DECLARE_bool(TEST_enable_sync_points);
 

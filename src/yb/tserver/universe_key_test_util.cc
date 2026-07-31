@@ -13,10 +13,12 @@
 
 #include "yb/tserver/universe_key_test_util.h"
 
+#include <string>
+
 #include "yb/encryption/encryption_util.h"
 #include "yb/encryption/universe_key_manager.h"
-
 #include "yb/util/random_util.h"
+#include "yb/encryption/encryption.pb.h"
 
 namespace yb {
 namespace tserver {

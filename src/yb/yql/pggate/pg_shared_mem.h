@@ -13,12 +13,14 @@
 
 #pragma once
 
-#include <string_view>
 
-#include "yb/tserver/tserver_fwd.h"
 
-#include "yb/util/shmem/shared_mem_allocator.h"
-#include "yb/util/status_fwd.h"
+
+namespace yb {
+namespace tserver {
+class SharedMemoryManager;
+}  // namespace tserver
+}  // namespace yb
 
 namespace yb::pggate {
 

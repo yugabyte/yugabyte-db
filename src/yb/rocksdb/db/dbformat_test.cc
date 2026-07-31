@@ -23,10 +23,9 @@
 
 #include <string>
 
-#include <gtest/gtest.h>
-
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/util/testutil.h"
+#include "gtest/gtest.h"
 
 namespace rocksdb {
 

@@ -26,12 +26,13 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <atomic>
+
 #include "yb/rocksdb/util/allocator.h"
 
 namespace rocksdb {
 
-class Logger;
 class WriteBuffer;
 
 class MemTableAllocator : public Allocator {

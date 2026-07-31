@@ -15,27 +15,45 @@
 
 #include "yb/client/tablet_rpc.h"
 
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <set>
+#include <string_view>
+#include <vector>
+
 #include "yb/client/client-internal.h"
 #include "yb/client/client.h"
 #include "yb/client/client_error.h"
 #include "yb/client/meta_cache.h"
-
 #include "yb/common/wire_protocol.h"
-
 #include "yb/rpc/network_error.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_header.pb.h"
-
 #include "yb/tserver/tserver_error.h"
-#include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_types.messages.h"
-
-#include "yb/util/debug-util.h"
-#include "yb/util/flags.h"
+#include "yb/util/debug.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
+#include "yb/ash/wait_state.h"
+#include "yb/gutil/port.h"
+#include "yb/rpc/rpc.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace client {
+class YBTable;
+}  // namespace client
+namespace tserver {
+class LWTabletConsensusInfoPB;
+}  // namespace tserver
+}  // namespace yb
 
 using std::vector;
 

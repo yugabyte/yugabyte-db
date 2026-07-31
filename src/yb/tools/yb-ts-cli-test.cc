@@ -31,35 +31,58 @@
 //
 // Tests for the yb-admin command-line tool.
 
-#include <boost/assign/list_of.hpp>
-#include <gtest/gtest.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <string.h>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #include "yb/util/logging.h"
-
-#include "yb/consensus/consensus.pb.h"
-
 #include "yb/fs/fs_manager.h"
-
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/cluster_itest_util.h"
-#include "yb/integration-tests/cql_test_util.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/ts_itest-base.h"
-
 #include "yb/master/master_client.pb.h"
-
 #include "yb/tserver/tserver.pb.h"
-
 #include "yb/tools/admin-test-base.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/subprocess.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/opid.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/tablet.pb.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
+#include "yb/util/file_system.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
 
 using std::string;
 using std::vector;

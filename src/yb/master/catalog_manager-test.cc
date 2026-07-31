@@ -30,10 +30,40 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <array>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <vector>
+#include <functional>
+
 #include "yb/common/constants.h"
 #include "yb/master/catalog_manager-test_base.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_cluster.pb.h"
+#include "gtest/gtest.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_manager_util.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/ts_descriptor.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 namespace master {

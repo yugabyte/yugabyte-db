@@ -29,19 +29,23 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
 #include <vector>
-
-#include <gtest/gtest.h>
+#include <string>
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/hdr_histogram.h"
-#include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
-#include "yb/util/flags.h"
+#include "gtest/gtest.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
 
 DEFINE_NON_RUNTIME_int32(histogram_test_num_threads, 16,
     "Number of threads to spawn for mt-hdr_histogram test");

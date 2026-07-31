@@ -14,19 +14,26 @@
 #pragma once
 
 #include <shared_mutex>
+#include <optional>
+#include <utility>
 
 #include "yb/master/leader_epoch.h"
-#include "yb/master/master_fwd.h"
 #include "yb/util/cow_object.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class IsOperationDoneResult;
 
 namespace master {
-
-class IsInitDbDoneResponsePB;
-struct PersistentSysConfigInfo;
+class SysCatalogTable;
 
 class YsqlCatalogConfig {
  public:

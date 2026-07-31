@@ -13,16 +13,14 @@
 
 #pragma once
 
+#include <boost/preprocessor/stringize.hpp>
+#include <gflags/gflags.h>
 #include <cstdint>
 #include <atomic>
 #include <vector>
-
-#include <boost/preprocessor/cat.hpp>
-#include <boost/preprocessor/stringize.hpp>
+#include <string>
 
 #include "yb/gutil/walltime.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/monotime.h"
 
 DECLARE_bool(enable_callsite_profile);

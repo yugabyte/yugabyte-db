@@ -10,8 +10,46 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <limits.h>
+#include <stdint.h>
+#include <functional>
+#include <map>
+#include <memory>
+#include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include "yb/master/sys_catalog_initialization.h"
+#include "gtest/gtest.h"
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/cdc_service.proxy.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/client/client.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/value.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/integration-tests/cdcsdk_test_base.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/postgres-minicluster.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_bool(cdc_enable_implicit_checkpointing;)
 

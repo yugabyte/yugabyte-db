@@ -12,27 +12,43 @@
 //
 #include "yb/integration-tests/external_mini_cluster_validator.h"
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <atomic>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <ratio>
+#include <thread>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/table_info.h"
-
 #include "yb/common/entity_ids_types.h"
-
 #include "yb/gutil/callback.h"
-
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
-
 #include "yb/master/master_client.pb.h"
-
 #include "yb/tablet/metadata.pb.h"
-
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
+#include "gtest/gtest.h"
+#include "yb/client/schema.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/schema.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/status_format.h"
+#include "yb/util/tostring.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::chrono_literals;
 

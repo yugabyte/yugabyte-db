@@ -31,30 +31,39 @@
 //
 #pragma once
 
-#include <limits>
-#include <memory>
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <string>
-#include <unordered_map>
 #include <vector>
+#include <functional>
+#include <map>
+#include <optional>
+#include <utility>
 
-#include "yb/common/common_fwd.h"
-
-#include "yb/common/version_info.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/thread_annotations.h"
-
-#include "yb/master/catalog_loading_state.h"
-#include "yb/master/master_cluster.fwd.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/ts_descriptor.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
-#include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class CloudInfoPB;
+enum class ValidateVersionInfoOp;
+
+namespace master {
+class TSHeartbeatRequestPB;
+class TSRegistrationPB;
+struct SysCatalogLoadingState;
+}  // namespace master
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+}  // namespace yb
 
 DECLARE_int32(tserver_unresponsive_timeout_ms);
 DECLARE_bool(persist_tserver_registry);
@@ -67,7 +76,6 @@ namespace master {
 
 struct LeaderEpoch;
 class SysCatalogTable;
-class TSInformationPB;
 
 // A callback that is called when the number of tablet servers reaches a certain number.
 using TSCountCallback = std::function<void()>;

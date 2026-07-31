@@ -32,24 +32,57 @@
 
 #include "yb/master/catalog_loaders.h"
 
-#include "yb/cdc/cdc_util.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <atomic>
+#include <functional>
+#include <map>
+#include <memory>
+#include <ostream>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
+#include "yb/cdc/cdc_util.h"
 #include "yb/common/colocated_util.h"
 #include "yb/common/constants.h"
-
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/backfill_index.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
 #include "yb/master/object_lock_info_manager.h"
-#include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/ysql/ysql_manager.h"
-#include "yb/master/ysql_ddl_verification_task.h"
 #include "yb/master/ysql_tablegroup_manager.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/cdc/cdc_consumer.pb.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/transaction.h"
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/walltime.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_loading_state.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/sys_catalog_constants.h"
+#include "yb/master/table_index.h"
+#include "yb/server/monitored_task.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/version_tracker.h"
 
 DEFINE_UNKNOWN_bool(master_ignore_deleted_on_load, true,
   "Whether the Master should ignore deleted tables & tablets on restart.  "

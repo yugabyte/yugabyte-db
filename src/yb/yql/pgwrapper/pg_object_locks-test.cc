@@ -11,20 +11,35 @@
 // under the License.
 //
 
-#include "yb/docdb/object_lock_shared_state_manager.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/regex.hpp>
+#include <chrono>
+#include <functional>
+#include <future>
+#include <map>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
+#include "yb/docdb/object_lock_shared_state_manager.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_shared_mem.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/object_lock_info_manager.h"
-
-#include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/monotime.h"
@@ -32,11 +47,24 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
-#include "yb/yql/pgwrapper/pg_test_utils.h"
+#include "gtest/gtest.h"
+#include "yb/common/transaction.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/util/concurrent_value.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_util.h"
 
 DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_object_locking_for_table_locks);
@@ -1347,6 +1375,7 @@ TEST_F(PgObjectLocksTest, TestSyncReleaseForGlobalLocksAndDdls) {
 
 YB_STRONGLY_TYPED_BOOL(DoMasterFailover);
 YB_STRONGLY_TYPED_BOOL(UseExplicitLocksInsteadOfDdl);
+
 class PgObjecLocksTestOutOfOrderMessageHandling
     : public PgObjectLocksTest,
       public ::testing::WithParamInterface<

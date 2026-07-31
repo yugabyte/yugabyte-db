@@ -13,14 +13,12 @@
 
 #pragma once
 
-#include <boost/version.hpp>
-
 #include "yb/rpc/rpc_fwd.h"
-
 #include "yb/util/mem_tracker.h"
 
 namespace yb {
 namespace rpc {
+class Protocol;
 
 const Protocol* CompressedStreamProtocol();
 StreamFactoryPtr CompressedStreamFactory(

@@ -11,10 +11,18 @@
 // under the License.
 //
 
+#include <functional>
+#include <string>
+#include <string_view>
+
+// IWYU pragma: no_include <boost/metaparse/v1/cpp11/string.hpp>
+
 #include "yb/util/crash_point.h"
 #include "yb/util/shared_mem.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/util/result.h"
 
 namespace yb {
 

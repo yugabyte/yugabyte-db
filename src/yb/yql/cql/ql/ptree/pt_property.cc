@@ -13,14 +13,19 @@
 
 #include "yb/yql/cql/ql/ptree/pt_property.h"
 
-#include "yb/common/ql_type.h"
+#include <glog/logging.h>
 
+#include "yb/common/ql_type.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
-
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/yql/cql/ql/ptree/pt_expr_types.h"
 
 using std::string;
 

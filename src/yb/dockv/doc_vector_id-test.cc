@@ -10,23 +10,30 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <glog/logging.h>
 #include <cstdint>
 #include <string>
+#include <functional>
 
 #include "yb/common/column_id.h"
 #include "yb/common/value.messages.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/vector_index/vector_index_fwd.h"
-
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/value.pb.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb::dockv {
 

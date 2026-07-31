@@ -13,28 +13,46 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <boost/config.hpp>
+#include <boost/function.hpp>
+#include <boost/preprocessor/cat.hpp>
 #include <functional>
 #include <string>
 #include <vector>
 #include <unordered_set>
+#include <memory>
 
-#include "yb/client/client_fwd.h"
-
-#include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/service_if.h"
-
 #include "yb/yql/redis/redisserver/redis_fwd.h"
-#include "yb/yql/redis/redisserver/redis_server.h"
-
 #include "yb/util/memory/arena_fwd.h"
+#include "yb/client/table.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/redis_protocol.messages.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+class MetricEntity;
+namespace client {
+class YBClient;
+class YBRedisReadOp;
+class YBRedisWriteOp;
+class YBSession;
+}  // namespace client
+namespace rpc {
+class Connection;
+}  // namespace rpc
+
 namespace redisserver {
+class RedisInboundCall;
+class RedisServer;
 
 typedef boost::function<void(const Status&)> StatusFunctor;
 typedef boost::function<void(int i)> IntFunctor;
-
-class RedisConnectionContext;
 
 YB_STRONGLY_TYPED_BOOL(AsPattern);
 

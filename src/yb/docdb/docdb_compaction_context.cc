@@ -13,9 +13,20 @@
 
 #include "yb/docdb/docdb_compaction_context.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <string.h>
+#include <sys/types.h>
+#include <boost/container/small_vector.hpp>
+#include <boost/intrusive/list.hpp>
 #include <memory>
+#include <algorithm>
+#include <compare>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
+#include <variant>
 
-#include "yb/common/schema.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_ttl_util.h"
@@ -27,16 +38,41 @@
 #include "yb/dockv/schema_packing.h"
 #include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/rocksdb/compaction_filter.h"
-
 #include "yb/util/memory/arena.h"
 #include "yb/util/fast_varint.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
-#include "yb/util/string_util.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/value.pb.h"
+#include "yb/docdb/intent_aware_iterator.h"
+#include "yb/dockv/expiration.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/endian.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/strings/fastmem.h"
+#include "yb/rocksdb/db/compaction_context.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/storage/frontier.h"
+#include "yb/storage/storage_fwd.h"
+#include "yb/storage/storage_types.h"
+#include "yb/util/byte_buffer.h"
+#include "yb/util/cast.h"
+#include "yb/util/compare_util.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/docdb/doc_operation.h"
+#include "yb/docdb/object_lock_shared_fwd.h"
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 using namespace std::literals;
 using std::shared_ptr;

@@ -30,14 +30,23 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <stdint.h>
+#include <map>
+#include <string>
+
 #include "yb/common/opid.h"
 #include "yb/common/opid.pb.h"
-
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/opid_util.h"
-
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 namespace log {

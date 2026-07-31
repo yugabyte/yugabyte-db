@@ -11,7 +11,21 @@
 // under the License.
 //
 
-#include <gmock/gmock.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <chrono>
+#include <functional>
+#include <future>
+#include <initializer_list>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
@@ -21,6 +35,31 @@
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/xcluster/xcluster_test_base.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/thread.h"
+#include "yb/util/tsan_util.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_string(certs_for_cdc_dir);

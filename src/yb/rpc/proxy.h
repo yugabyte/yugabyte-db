@@ -32,27 +32,43 @@
 
 #pragma once
 
+#include <boost/lockfree/queue.hpp>
+#include <stddef.h>
+#include <boost/container_hash/hash.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <atomic>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_map>
+#include <utility>
+#include <functional>
 
-#include <boost/asio/ip/tcp.hpp>
-#include <boost/lockfree/queue.hpp>
-
-#include "yb/gutil/atomicops.h"
 #include "yb/rpc/rpc_fwd.h"
-#include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/proxy_base.h"
-#include "yb/rpc/rpc_controller.h"
-#include "yb/rpc/rpc_header.pb.h"
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/util/concurrent_pod.h"
-#include "yb/util/net/net_fwd.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/metrics_fwd.h"
 #include "yb/util/monotime.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/rpc/stream.h"
+#include "yb/util/enums.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/status.h"
+#include "yb/util/net/sockaddr.h"
 
 namespace google {
 namespace protobuf {
@@ -63,8 +79,14 @@ class Message;
 namespace yb {
 
 class MemTracker;
+class EventStats;
+template <class TValue> class Result;
 
 namespace rpc {
+class ProxyContext;
+class RemoteMethod;
+class RpcController;
+struct OutboundCallMetrics;
 
 YB_DEFINE_ENUM(ResolveState, (kIdle)(kResolving)(kNotifying)(kFinished));
 

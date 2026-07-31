@@ -23,27 +23,34 @@
 
 #include "yb/rocksdb/table/merger.h"
 
-#include <vector>
-
-#include <boost/range/iterator_range.hpp>
+#include <assert.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <boost/container/vector.hpp>
+#include <boost/range/iterator_range_core.hpp>
+#include <new>
+#include <ostream>
+#include <utility>
 
 #include "yb/gutil/stl_util.h"
-
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/iter_heap.h"
 #include "yb/rocksdb/table/iterator_wrapper.h"
 #include "yb/rocksdb/util/arena.h"
-#include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/heap.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
-
-#include "yb/rocksdb/db/dbformat.h"
-
 #include "yb/util/stats/perf_step_timer.h"
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
+#include "yb/gutil/port.h"
+#include "yb/rocksdb/filter_policy.h"
+#include "yb/rocksdb/perf_context.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/rocksdb/status.h"
+#include "yb/util/cast.h"
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 

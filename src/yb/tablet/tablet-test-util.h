@@ -31,29 +31,31 @@
 //
 #pragma once
 
+#include <limits.h>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "yb/docdb/docdb_fwd.h"
-
 #include "yb/tablet/tablet-test-harness.h"
-
 #include "yb/util/test_util.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/schema.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class FsManager;
-
 namespace docdb {
-class DocRowwiseIterator;
-}
+class YQLRowwiseIteratorIf;
+}  // namespace docdb
 
 namespace server {
 class Clock;
 }
 
 namespace tablet {
+class Tablet;
 
 class YBTabletTest : public YBTest {
  public:

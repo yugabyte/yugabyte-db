@@ -30,17 +30,26 @@
 // under the License.
 //
 
-#include <memory>
+#include <stddef.h>
 #include <string>
 #include <unordered_map>
+#include <optional>
+#include <sstream>
+#include <utility>
+#include <vector>
+#include <functional>
 
-#include <gtest/gtest.h>
-
-#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/metrics_writer.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 METRIC_DEFINE_entity(tablet);
 

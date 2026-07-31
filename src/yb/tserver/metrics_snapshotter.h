@@ -13,12 +13,13 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <memory>
 #include <vector>
 
 #include "yb/gutil/macros.h"
-
-#include "yb/util/status_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace tserver {
@@ -38,6 +39,7 @@ class MetricsSnapshotter {
 
  private:
   class Thread;
+
   std::unique_ptr<Thread> thread_;
   static Result<std::vector<uint64_t>> GetCpuUsage();
   DISALLOW_COPY_AND_ASSIGN(MetricsSnapshotter);

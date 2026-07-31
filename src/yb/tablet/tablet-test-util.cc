@@ -13,21 +13,29 @@
 
 #include "yb/tablet/tablet-test-util.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <algorithm>
+#include <utility>
 
 #include "yb/common/ql_value.h"
-
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
-
 #include "yb/dockv/reader_projection.h"
-
 #include "yb/qlexpr/ql_expr.h"
-
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
-
 #include "yb/util/status_log.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/tablet/operations.messages.h"
+#include "yb/tablet/operations/operation.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
 
 using std::string;
 

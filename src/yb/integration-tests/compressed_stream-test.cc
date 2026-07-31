@@ -11,21 +11,32 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <stdint.h>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <vector>
+
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/ql_value.h"
-
-#include "yb/rpc/compressed_stream.h"
-#include "yb/rpc/messenger.h"
-#include "yb/rpc/tcp_stream.h"
-
 #include "yb/util/size_literals.h"
-
 #include "yb/yql/cql/ql/util/statement_result.h"
+#include "gtest/gtest.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
 
 using namespace std::literals;
 

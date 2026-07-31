@@ -12,24 +12,35 @@
 //
 
 #include "yb/server/auto_flags_manager_base.h"
+
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <algorithm>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <ostream>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "yb/client/client.h"
-
 #include "yb/fs/fs_manager.h"
-
 #include "yb/gutil/strings/join.h"
-
 #include "yb/rpc/messenger.h"
-
 #include "yb/util/flags/auto_flags.h"
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/source_location.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/common/version_info.h"
-
-#include "yb/server/clock.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 DEFINE_NON_RUNTIME_bool(disable_auto_flags_management, false,
     "Disables AutoFlags management. A safety switch to turn off automatic promotion of AutoFlags. "

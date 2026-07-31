@@ -23,7 +23,9 @@
 #include <stdint.h>
 #include <string.h>
 #include <thread>
-#include <utility>
+#include <new>
+#include <type_traits>
+#include <functional>
 
 #include "yb/rocksdb/port/likely.h"
 #include "yb/rocksdb/util/thread_local.h" // For ROCKSDB_SUPPORT_THREAD_LOCAL

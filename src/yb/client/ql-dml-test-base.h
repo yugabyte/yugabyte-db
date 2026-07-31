@@ -13,28 +13,45 @@
 
 #pragma once
 
-#include <algorithm>
-#include <functional>
-#include <vector>
-
-#include <gtest/gtest.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <map>
+#include <string>
 
 #include "yb/client/table_handle.h"
-#include "yb/common/ql_protocol.pb.h"
-#include "yb/qlexpr/ql_rowblock.h"
-
 #include "yb/server/server_fwd.h"
-
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-#include "yb/master/mini_master.h"
-#include "yb/tablet/tablet_fwd.h"
 #include "yb/util/result.h"
 #include "yb/util/test_util.h"
+#include "yb/client/client_fwd.h"
+#include "yb/util/enums.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tsan_util.h"
 
 namespace yb {
+class Schema;
+
 namespace client {
+class YBClient;
+class YBTableName;
+class YBqlOp;
 
 extern const client::YBTableName kTableName;
 
@@ -56,6 +73,7 @@ class QLDmlTestBase : public MiniClusterTestWithClient<MiniClusterType> {
 };
 
 YB_STRONGLY_TYPED_BOOL(Transactional);
+
 YB_DEFINE_ENUM(WriteOpType, (INSERT)(UPDATE)(DELETE));
 YB_STRONGLY_TYPED_BOOL(Flush);
 

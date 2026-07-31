@@ -17,15 +17,17 @@
 
 #pragma once
 
-#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
-#include "yb/yql/cql/ql/util/util_fwd.h"
+#include <memory>
 
-#include "yb/util/status_fwd.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace ql {
 
 class QLMetrics;
+class QLEnv;
+class SemContext;
 
 //--------------------------------------------------------------------------------------------------
 

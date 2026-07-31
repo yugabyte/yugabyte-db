@@ -13,11 +13,19 @@
 
 #include "yb/dockv/value_packing_v2.h"
 
-#include "yb/dockv/packed_value.h"
-#include "yb/dockv/primitive_value.h"
-#include "yb/dockv/value_packing.h"
+#include <glog/logging.h>
+#include <stdint.h>
+#include <string.h>
+#include <boost/preprocessor/cat.hpp>
+#include <string_view>
 
+#include "yb/dockv/packed_value.h"
+#include "yb/dockv/value_packing.h"
 #include "yb/util/status_format.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/port.h"
+#include "yb/util/cast.h"
+#include "yb/util/slice.h"
 
 namespace yb::dockv {
 

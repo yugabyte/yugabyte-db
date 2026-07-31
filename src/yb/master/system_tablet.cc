@@ -13,16 +13,25 @@
 
 #include "yb/master/system_tablet.h"
 
-#include "yb/common/common.messages.h"
-#include "yb/common/schema.h"
+#include <glog/logging.h>
+#include <functional>
+#include <utility>
+
+#include "yb/common/common.messages.h" // IWYU pragma: keep
 #include "yb/common/transaction.h"
-
 #include "yb/docdb/doc_read_context.h"
-
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/yql_virtual_table.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/dockv/schema_packing.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/operation_counter.h"
 
 namespace yb {
+class Schema;
+
 namespace master {
 
 SystemTablet::SystemTablet(const Schema& schema, std::unique_ptr<YQLVirtualTable> yql_virtual_table,

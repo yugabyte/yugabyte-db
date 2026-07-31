@@ -13,9 +13,12 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <string>
-#include "yb/util/status_fwd.h"
+#include <ostream>
+
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

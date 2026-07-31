@@ -32,35 +32,52 @@
 
 #pragma once
 
-#include <span>
-
 #include <boost/intrusive/list.hpp>
+#include <gflags/gflags.h>
+#include <gtest/gtest_prod.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <array>
+#include <atomic>
+#include <functional>
+#include <future>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <shared_mutex>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/snapshot.h"
 #include "yb/common/transaction.h"
-
-#include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/consensus_types.pb.h"
-
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/docdb_types.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/shared_lock_manager.h"
-#include "yb/docdb/storage_set.h"
-
 #include "yb/gutil/ref_counted.h"
-
-#include "yb/qlexpr/qlexpr_fwd.h"
-
 #include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/table.h"
-#include "yb/rocksdb/types.h"
-
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/abstract_tablet.h"
 #include "yb/tablet/mvcc.h"
@@ -70,19 +87,109 @@
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/transaction_intent_applier.h"
 #include "yb/tablet/tablet_retention_policy.h"
-
-#include "yb/tserver/tserver_fwd.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
-#include "yb/util/memory/arena_list.h"
 #include "yb/util/mem_tracker.h"
-#include "yb/util/net/net_fwd.h"
 #include "yb/util/operation_counter.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/strongly_typed_bool.h"
-#include "yb/util/threadpool.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/session.h"
+#include "yb/common/column_id.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/schema.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/docdb/docdb_compaction_context.h"
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_vector_indexes.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/metrics_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+
+namespace rocksdb {
+class DB;
+class Env;
+class MemTable;
+class Statistics;
+class WriteBatch;
+enum class FrontierModificationMode;
+struct FileMetaData;
+}  // namespace rocksdb
+namespace yb {
+class AutoFlagsConfigPB;
+class AutoFlagsManagerBase;
+class Env;
+class HostPort;
+class LWPgsqlReadRequestPB;
+class LWSubTransactionMetadataPB;
+class LWTransactionMetadataPB;
+class ThreadPool;
+class ThreadPoolToken;
+class TransactionMetadataPB;
+class WritableFile;
+class WriteBuffer;
+enum TableType : int;
+
+namespace client {
+class TransactionManager;
+class YBClient;
+class YBMetaDataCache;
+}  // namespace client
+namespace consensus {
+enum OperationType : int;
+}  // namespace consensus
+namespace docdb {
+class LWKeyValueWriteBatchPB;
+class StorageSet;
+enum class StorageDbType;
+struct ApplyTransactionState;
+struct IntentKeyValueForCDC;
+struct ReadOperationData;
+}  // namespace docdb
+namespace dockv {
+class Partition;
+struct ReaderProjection;
+}  // namespace dockv
+namespace log {
+class Log;
+class LogAnchorRegistry;
+struct LogAnchor;
+}  // namespace log
+namespace qlexpr {
+class IndexInfo;
+class QLTableRow;
+}  // namespace qlexpr
+namespace storage {
+class UserFrontiers;
+}  // namespace storage
+namespace tablet {
+class ChangeMetadataOperation;
+class LWTableInfoPB;
+class SnapshotCoordinator;
+class TabletMetrics;
+class TabletSnapshots;
+class TransactionCoordinator;
+class TransactionParticipant;
+class TruncateOperation;
+class WriteQuery;
+struct PgsqlReadRequestResult;
+struct RemoveIntentsData;
+}  // namespace tablet
+struct OpId;
+template <class Entry> class ArenaList;
+template <typename T> class AtomicGauge;
+}  // namespace yb
 
 DECLARE_bool(TEST_docdb_log_write_batches);
 
@@ -101,6 +208,7 @@ namespace tablet {
 YB_STRONGLY_TYPED_BOOL(BlockingRocksDbShutdownStart);
 YB_STRONGLY_TYPED_BOOL(FlushOnShutdown);
 YB_STRONGLY_TYPED_BOOL(CheckRegularDB)
+
 YB_DEFINE_ENUM(Direction, (kForward)(kBackward));
 
 constexpr inline FlushFlags operator|(FlushFlags lhs, FlushFlags rhs) {
@@ -1366,6 +1474,7 @@ class Tablet : public AbstractTablet,
       RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const override;
 
   struct IntentsDbFlushFilterState;
+
   Result<bool> IntentsDbFlushFilter(
       const rocksdb::MemTable& memtable, bool write_blocked,
       std::shared_ptr<IntentsDbFlushFilterState> state);

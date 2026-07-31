@@ -32,38 +32,63 @@
 
 #include "yb/tserver/remote_bootstrap_service.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
 #include <algorithm>
 #include <iomanip>
 #include <string>
 #include <vector>
+#include <chrono>
+#include <compare>
+#include <ratio>
+#include <utility>
 
 #include "yb/ash/wait_state.h"
-
 #include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/raft_consensus.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/rpc/rpc_context.h"
-
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/tablet_peer_lookup.h"
-
 #include "yb/util/crc.h"
 #include "yb/util/fault_injection.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/log.pb.h"
+#include "yb/consensus/log_anchor_registry.h"
+#include "yb/consensus/log_fwd.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/tserver/remote_bootstrap_anchor_client.h"
+#include "yb/util/atomic.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/metrics.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/net/rate_limiter.h"
+#include "yb/util/random_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/stopwatch.h"
+
+namespace yb {
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+}  // namespace yb
 
 using std::string;
 

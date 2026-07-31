@@ -32,18 +32,16 @@
 
 #pragma once
 
-#include <atomic>
+#include <stdint.h>
+#include <boost/atomic/atomic.hpp>
 #include <string>
-#if !defined(__APPLE__)
-#include <sys/timex.h>
-#endif // !defined(__APPLE__)
+#include <memory>
+#include <ostream>
 
-#include <boost/atomic.hpp>
-
-#include "yb/gutil/ref_counted.h"
 #include "yb/server/clock.h"
-#include "yb/util/locks.h"
 #include "yb/util/physical_time.h"
+#include "yb/common/clock.h"
+#include "yb/common/hybrid_time.h"
 
 namespace yb {
 namespace server {

@@ -30,10 +30,14 @@
 // under the License.
 //
 
+#include <gtest/gtest.h>
+#include <glog/logging.h>
+#include <stdint.h>
 #include <functional>
 #include <thread>
-
-#include <gtest/gtest.h>
+#include <mutex>
+#include <string>
+#include <vector>
 
 #include "yb/util/monotime.h"
 #include "yb/util/rw_semaphore.h"

@@ -13,27 +13,47 @@
 
 #include "yb/integration-tests/yb_table_test_base.h"
 
+#include <gflags/gflags.h>
+#include <algorithm>
+#include <functional>
+#include <optional>
+#include <ostream>
+#include <string_view>
+
 #include "yb/client/client.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/ql_value.h"
-
 #include "yb/master/master_client.proxy.h"
-
 #include "yb/tools/yb-admin_client.h"
-
 #include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/ql_protocol.messages.h"  // IWYU pragma: keep
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
+#include "yb/util/format.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/test_macros.h"
 
 DECLARE_bool(enable_ysql);
 

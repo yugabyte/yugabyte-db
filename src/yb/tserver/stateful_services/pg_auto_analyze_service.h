@@ -13,23 +13,58 @@
 
 #pragma once
 
-#include <map>
-#include <optional>
-
 #include <rapidjson/document.h>
+#include <rapidjson/rapidjson.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <optional>
+#include <chrono>
+#include <functional>
+#include <future>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "yb/common/pg_types.h"
 #include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/stateful_services/pg_auto_analyze_service.service.h"
 #include "yb/tserver/stateful_services/stateful_service_base.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class QLValuePB;
+
+namespace client {
+class YBClient;
+}  // namespace client
 
 namespace pgwrapper {
 class PGConn;
 }
 
 namespace stateful_service {
+class IncreaseMutationCountersRequestPB;
+class IncreaseMutationCountersResponsePB;
 
 typedef std::function<Result<pgwrapper::PGConn>(
     const std::string&, const CoarseTimePoint&)>

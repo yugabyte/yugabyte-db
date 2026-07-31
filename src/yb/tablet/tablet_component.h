@@ -14,17 +14,19 @@
 #pragma once
 
 #include <mutex>
+#include <string>
+#include <vector>
 
 #include "yb/common/entity_ids_types.h"
-
-#include "yb/docdb/docdb_fwd.h"
-
-#include "yb/rocksdb/listener.h"
-#include "yb/rocksdb/rocksdb_fwd.h"
-
 #include "yb/tablet/tablet_fwd.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/util/status.h"
 
-#include "yb/util/status_fwd.h"
+namespace rocksdb {
+class DB;
+class Env;
+enum class FlushReason;
+}  // namespace rocksdb
 
 namespace yb {
 
@@ -34,6 +36,9 @@ class RWOperationCounter;
 namespace tablet {
 
 struct TabletScopedRWOperationPauses;
+class RaftGroupMetadata;
+class Tablet;
+class TabletMetrics;
 
 // Base class for Tablet components, has access to private Tablet fields.
 // For methods descriptions see comments for appropriate field or method in Tablet class.

@@ -11,28 +11,48 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <map>
+#include <memory>
+#include <optional>
+#include <set>
+#include <string>
+#include <vector>
+
 #include "yb/client/client-internal.h"
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
-
 #include "yb/integration-tests/mini_cluster.h"
-
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/mini_master.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
-
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/dockv/partition.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/tserver/tablet_server_options.h"
+#include "yb/util/logging.h"
+#include "yb/util/test_macros.h"
 
 using std::vector;
 using std::string;

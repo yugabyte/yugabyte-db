@@ -21,14 +21,13 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 
 #include "yb/util/slice.h"
 #include "yb/rocksdb/status_fwd.h"
 
 namespace rocksdb {
 
-class Comparator;
-class Iterator;
 class SliceTransform;
 
 // Build a hash-based index to speed up the lookup for "index block".
@@ -62,6 +61,7 @@ class BlockPrefixIndex {
 
  private:
   class Builder;
+
   friend Builder;
 
   BlockPrefixIndex(const SliceTransform* internal_prefix_extractor,

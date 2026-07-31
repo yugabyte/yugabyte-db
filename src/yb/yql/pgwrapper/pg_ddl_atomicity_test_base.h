@@ -14,11 +14,26 @@
 #pragma once
 
 #include <string>
-#include "yb/client/client.h"
-#include "yb/util/backoff_waiter.h"
+#include <set>
+#include <string_view>
+#include <vector>
+
 #include "yb/yql/pgwrapper/libpq_test_base.h"
-#include "yb/yql/pgwrapper/libpq_utils.h"
-#include "yb/util/status_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+enum PgReplicaIdentity : int;
+namespace client {
+class YBClient;
+}  // namespace client
+namespace pgwrapper {
+class PGConn;
+}  // namespace pgwrapper
+}  // namespace yb
 
 using namespace std::literals;
 

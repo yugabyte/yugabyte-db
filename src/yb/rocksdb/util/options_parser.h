@@ -21,16 +21,21 @@
 
 #pragma once
 
-#include <map>
+#include <assert.h>
+#include <stddef.h>
 #include <string>
 #include <vector>
+#include <unordered_map>
+#include <functional>
 
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/util/options_sanity_check.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace rocksdb {
+class BlockBasedTableFactory;
+class TableFactory;
 
 #define ROCKSDB_OPTION_FILE_MAJOR 1
 #define ROCKSDB_OPTION_FILE_MINOR 1

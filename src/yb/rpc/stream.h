@@ -13,11 +13,19 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <limits>
+#include <memory>
+#include <string>
+
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/reactor_thread_role.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/net/socket.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace ev {
 
@@ -31,6 +39,9 @@ class MemTracker;
 class MetricEntity;
 
 namespace rpc {
+class DumpRunningRpcsRequestPB;
+class Protocol;
+class RpcConnectionPB;
 
 using CallHandle = size_t;
 

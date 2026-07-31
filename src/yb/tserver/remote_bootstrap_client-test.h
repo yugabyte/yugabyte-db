@@ -37,6 +37,8 @@
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/quorum_util.h"
 
+#include "yb/fs/fs_manager.h" // IWYU pragma: keep
+
 #include "yb/gutil/strings/fastmem.h"
 
 #include "yb/rpc/messenger.h"

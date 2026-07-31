@@ -13,14 +13,24 @@
 
 #include "yb/qlexpr/ql_expr_util.h"
 
+#include <glog/logging.h>
+#include <ostream>
+#include <string>
+#include <utility>
+
 #include "yb/common/pgsql_protocol.messages.h"
 #include "yb/common/schema.h"
-
 #include "yb/dockv/key_entry_value.h"
-
 #include "yb/qlexpr/ql_expr.h"
-
 #include "yb/util/status_format.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/status.h"
+
+namespace yb {
+enum class SortingType;
+}  // namespace yb
 
 namespace yb::qlexpr {
 

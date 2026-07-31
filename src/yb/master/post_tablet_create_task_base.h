@@ -13,7 +13,26 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "yb/master/catalog_entity_tasks.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/multi_step_monitored_task.h"
+#include "yb/server/monitored_task.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class ThreadPool;
+namespace master {
+class CatalogManager;
+struct LeaderEpoch;
+}  // namespace master
+namespace rpc {
+class Messenger;
+}  // namespace rpc
+}  // namespace yb
 
 namespace yb::master {
 

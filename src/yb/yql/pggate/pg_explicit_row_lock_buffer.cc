@@ -13,17 +13,31 @@
 
 #include "yb/yql/pggate/pg_explicit_row_lock_buffer.h"
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <algorithm>
 #include <unordered_set>
 #include <utility>
+#include <iterator>
+#include <ostream>
+#include <span>
+#include <vector>
 
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
-
-
 #include "yb/util/status_format.h"
+#include "yb/gutil/casts.h"
+#include "yb/util/logging.h"
+#include "yb/yql/pggate/pg_session_fwd.h"
+#include "yb/yql/pggate/pg_ybctid_reader.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 
-#include "yb/yql/pggate/util/ybc_util.h"
+namespace yb {
+namespace pggate {
+class PgSession;
+}  // namespace pggate
+}  // namespace yb
 
 namespace yb::pggate {
 namespace {

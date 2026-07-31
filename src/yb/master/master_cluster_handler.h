@@ -12,13 +12,31 @@
 //
 #pragma once
 
-#include "yb/master/leader_epoch.h"
-#include "yb/master/master_cluster.pb.h"
-#include "yb/master/master_fwd.h"
 
-#include "yb/rpc/rpc_fwd.h"
 
-#include "yb/util/status_fwd.h"
+
+#include "yb/util/status.h"
+
+namespace yb {
+namespace master {
+class AreLeadersOnPreferredOnlyRequestPB;
+class AreLeadersOnPreferredOnlyResponsePB;
+class CatalogManager;
+class ChangeMasterClusterConfigRequestPB;
+class ChangeMasterClusterConfigResponsePB;
+class GetLoadMovePercentResponsePB;
+class GetMasterClusterConfigResponsePB;
+class RemoveTabletServerRequestPB;
+class RemoveTabletServerResponsePB;
+class SetPreferredZonesRequestPB;
+class SetPreferredZonesResponsePB;
+class TSManager;
+struct LeaderEpoch;
+}  // namespace master
+namespace rpc {
+class RpcContext;
+}  // namespace rpc
+}  // namespace yb
 
 namespace yb::master {
 

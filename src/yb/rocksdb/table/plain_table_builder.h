@@ -21,21 +21,28 @@
 #pragma once
 
 #include <stdint.h>
+#include <assert.h>
+#include <stddef.h>
 #include <vector>
-#include "yb/rocksdb/options.h"
-#include "yb/rocksdb/status.h"
+#include <memory>
+#include <string>
+
 #include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/table/plain_table_key_coding.h"
-#include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table_properties.h"
 #include "yb/rocksdb/table/bloom_block.h"
-#include "yb/rocksdb/table/plain_table_index.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/db/table_properties_collector.h"
+#include "yb/rocksdb/slice_transform.h"
+#include "yb/rocksdb/util/arena.h"
+#include "yb/util/slice.h"
+#include "yb/rocksdb/status_fwd.h"
 
 namespace rocksdb {
-
-class BlockBuilder;
-class BlockHandle;
-class TableBuilder;
+class PlainTableIndexBuilder;
+class WritableFileWriter;
+enum EncodingType : char;
+struct ImmutableCFOptions;
 
 class PlainTableBuilder: public TableBuilder {
  public:

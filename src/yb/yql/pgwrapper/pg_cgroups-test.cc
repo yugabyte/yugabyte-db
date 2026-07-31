@@ -12,17 +12,48 @@
 
 #ifdef __linux__
 
+#include <errno.h>
+#include <fcntl.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <string_view>
+#include <thread>
+#include <vector>
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_cgroup_manager.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
-
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/util/errno.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_wrapper.h"
+#include "yb/yql/process_wrapper/process_wrapper.h"
 
 using std::string;
 

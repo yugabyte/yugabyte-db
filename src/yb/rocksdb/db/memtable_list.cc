@@ -24,30 +24,40 @@
 #endif
 
 #include <inttypes.h>
-
+#include <assert.h>
+#include <glog/logging.h>
 #include <string>
+#include <sstream>
 
 #include "yb/gutil/casts.h"
-
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/db/version_set.h"
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/table/merger.h"
-#include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/log_buffer.h"
-
 #include "yb/util/result.h"
+#include "yb/rocksdb/db/column_family.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/db/file_numbers.h"
+#include "yb/rocksdb/db/version_edit.h"
+#include "yb/rocksdb/table/iterator_wrapper.h"
+#include "yb/rocksdb/util/instrumented_mutex.h"
+#include "yb/rocksdb/util/mutable_cf_options.h"
+#include "yb/storage/frontier.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+
+namespace rocksdb {
+class Arena;
+class Directory;
+class InternalIterator;
+class MergeContext;
+}  // namespace rocksdb
 
 using yb::Result;
 using std::ostringstream;
 
 namespace rocksdb {
-
-class InternalKeyComparator;
-class Mutex;
-class VersionSet;
 
 void MemTableListVersion::VerifyNumFlushginBytes() const {
 #ifndef NDEBUG

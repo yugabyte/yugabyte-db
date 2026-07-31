@@ -13,7 +13,17 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <optional>
+#include <string>
+#include <vector>
+
 #include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 namespace yb {
 

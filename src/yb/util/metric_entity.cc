@@ -15,15 +15,24 @@
 #include "yb/util/metric_entity.h"
 
 #include <boost/regex.hpp>
+#include <gflags/gflags.h>
+#include <initializer_list>
+#include <ostream>
 
-#include "yb/gutil/map-util.h"
-
-#include "yb/util/debug.h"
-#include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/metrics_aggregator.h"
+#include "yb/util/monotime.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+class PrometheusWriter;
+}  // namespace yb
 
 using std::string;
 using std::vector;

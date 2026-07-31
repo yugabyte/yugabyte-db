@@ -13,9 +13,11 @@
 
 #include "yb/yql/cql/cqlserver/cql_server_options.h"
 
-#include "yb/util/flags.h"
+#include <gflags/gflags.h>
 
 #include "yb/yql/cql/cqlserver/cql_server.h"
+#include "yb/server/rpc_server.h"
+#include "yb/util/flags/flag_tags.h"
 
 DEFINE_UNKNOWN_int32(cql_rpc_keepalive_time_ms, 120000,
              "If an RPC connection from a client is idle for this amount of time, the server "

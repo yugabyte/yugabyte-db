@@ -30,9 +30,10 @@
 // under the License.
 //
 #include <string>
+#include <functional>
+#include <sstream>
 
 #include "yb/yql/cql/cqlserver/statements-path-handler.h"
-
 #include "yb/server/webserver.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/yql/cql/cqlserver/cql_service.h"

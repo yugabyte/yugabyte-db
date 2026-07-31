@@ -13,23 +13,31 @@
 
 #include "yb/integration-tests/redis_table_test_base.h"
 
-#include "yb/util/logging.h"
+#include <glog/logging.h>
+#include <boost/intrusive/list.hpp>
+#include <boost/move/iterator.hpp>
+#include <memory>
+#include <vector>
 
+#include "yb/util/logging.h"
 #include "yb/client/client.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/dockv/partition.h"
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/redis_protocol.messages.h"
-
-#include "yb/integration-tests/yb_table_test_base.h"
-
-#include "yb/util/monotime.h"
-
 #include "yb/yql/redis/redisserver/redis_parser.h"
+#include "gtest/gtest.h"
+#include "yb/client/schema.h"
+#include "yb/client/table_handle.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/redis_protocol.pb.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_macros.h"
+#include "yb/yql/redis/redisserver/redis_fwd.h"
 
 using std::string;
 using std::vector;

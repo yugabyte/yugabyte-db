@@ -15,38 +15,52 @@
 
 #include "yb/yql/pggate/pg_dml_read.h"
 
+#include <boost/container/small_vector.hpp>
+#include <glog/logging.h>
+#include <boost/container/vector.hpp>
+#include <boost/intrusive/list.hpp>
+#include <boost/iterator/iterator_facade.hpp>
+#include <boost/iterator/reverse_iterator.hpp>
+#include <boost/iterator/transform_iterator.hpp>
+#include <boost/range/iterator_range_core.hpp>
 #include <algorithm>
 #include <functional>
 #include <utility>
-
-#include <boost/container/small_vector.hpp>
+#include <ostream>
+#include <string>
 
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/ql_datatype.h"
-#include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
-
 #include "yb/dockv/partition.h"
-#include "yb/dockv/primitive_value.h"
-#include "yb/dockv/value_type.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/macros.h"
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/checked_narrow_cast.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
-#include "yb/util/range.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_format.h"
-
 #include "yb/yql/pggate/pg_column.h"
 #include "yb/yql/pggate/pg_expr.h"
-#include "yb/yql/pggate/pg_select_index.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/constants.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/util/format.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pg_tools.h"
 
 namespace yb::pggate {
 namespace {

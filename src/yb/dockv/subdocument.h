@@ -13,25 +13,32 @@
 
 #pragma once
 
-#include <assert.h>
-#include <inttypes.h>
 #include <stddef.h>
-#include <stdint.h>
-#include <string.h>
-
-#include <limits>
+#include <glog/logging.h>
 #include <map>
 #include <ostream>
 #include <string>
 #include <vector>
+#include <initializer_list>
+#include <memory>
+#include <new>
+#include <utility>
 
 #include "yb/bfql/tserver_opcodes.h"
-
 #include "yb/dockv/key_entry_value.h"
 #include "yb/dockv/primitive_value.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
 
-#include "yb/gutil/int128.h"
-#include "yb/gutil/integral_types.h"
+namespace yb {
+class QLType;
+class QLValuePB;
+enum class SortingType;
+
+namespace dockv {
+enum class ValueEntryType;
+}  // namespace dockv
+}  // namespace yb
 
 namespace yb::dockv {
 

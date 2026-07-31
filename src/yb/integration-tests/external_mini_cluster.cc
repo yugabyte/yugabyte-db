@@ -32,6 +32,25 @@
 
 #include "yb/integration-tests/external_mini_cluster.h"
 
+#include <errno.h>
+#include <gflags/gflags.h>
+#include <signal.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <boost/algorithm/string/trim.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <string.h>
 #include <atomic>
 #include <chrono>
 #include <functional>
@@ -44,70 +63,80 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
-
-#include <boost/algorithm/string.hpp>
-
-#include <gtest/gtest.h>
+#include <algorithm>
+#include <cmath>
+#include <compare>
+#include <concepts>
+#include <fstream>
+#include <initializer_list>
+#include <iterator>
+#include <ratio>
 
 #include "yb/client/client.h"
-
 #include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/consensus.proxy.h"
-
-#include "yb/fs/fs_manager.h"
-
-#include "yb/gutil/algorithm.h"
 #include "yb/gutil/bind.h"
-#include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/singleton.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/util.h"
-
 #include "yb/integration-tests/cluster_itest_util.h"
-
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_cluster_client.h"
 #include "yb/master/master_rpc.h"
-#include "yb/master/sys_catalog.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/secure_stream.h"
-
 #include "yb/server/server_base.pb.h"
 #include "yb/server/server_base.proxy.h"
 #include "yb/rpc/secure.h"
-
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/env.h"
-#include "yb/util/faststring.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
-#include "yb/util/net/net_fwd.h"
-#include "yb/util/net/sockaddr.h"
 #include "yb/util/path_util.h"
-#include "yb/util/pb_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/stopwatch.h"
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
-#include "yb/util/flags.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/opid.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/gutil/strings/stringpiece.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/sys_catalog_constants.h"
+#include "yb/rpc/rpc.h"
+#include "yb/server/server_fwd.h"
+#include "yb/tablet/tablet.pb.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/util/random_util.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+class MetricEntityPrototype;
+class MetricPrototype;
+}  // namespace yb
 
 
 using namespace std::literals;  // NOLINT

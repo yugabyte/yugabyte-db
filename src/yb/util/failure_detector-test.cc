@@ -30,18 +30,24 @@
 // under the License.
 //
 
+#include <glog/logging.h>
 #include <string>
-
-#include <gtest/gtest.h>
+#include <memory>
+#include <ostream>
+#include <utility>
 
 #include "yb/gutil/bind.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/failure_detector.h"
-#include "yb/util/locks.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/bind_helpers.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

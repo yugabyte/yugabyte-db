@@ -10,7 +10,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include <gmock/gmock.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <unordered_set>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/master/master_backup.pb.h"
@@ -23,6 +34,29 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/snapshot.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 

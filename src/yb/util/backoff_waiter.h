@@ -13,16 +13,24 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <chrono>
 #include <string_view>
 #include <thread>
+#include <algorithm>
+#include <compare>
+#include <functional>
+#include <limits>
+#include <string>
 
 #include "yb/util/lw_function.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
-#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+template <class TValue> class Result;
 
 // Utility class for waiting.
 // It tracks number of attempts and exponentially increase sleep timeout.

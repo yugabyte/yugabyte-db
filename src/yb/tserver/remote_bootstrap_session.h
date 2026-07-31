@@ -31,33 +31,36 @@
 //
 #pragma once
 
+#include <gtest/gtest_prod.h>
+#include <stdint.h>
 #include <array>
 #include <atomic>
 #include <memory>
 #include <string>
-#include <unordered_map>
-#include <vector>
+#include <mutex>
+#include <optional>
 
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/metadata.pb.h"
-
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tserver/remote_bootstrap_anchor_client.h"
 #include "yb/tserver/remote_bootstrap.pb.h"
-#include "yb/tserver/remote_bootstrap.proxy.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/stopwatch.h"
-#include "yb/util/locks.h"
 #include "yb/util/net/rate_limiter.h"
+#include "yb/common/opid.h"
+#include "yb/consensus/log_fwd.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class Env;
-class FsManager;
 class RandomAccessFile;
 
 namespace tablet {
@@ -65,8 +68,6 @@ class TabletPeer;
 } // namespace tablet
 
 namespace tserver {
-
-class TabletPeerLookupIf;
 
 struct GetDataPieceInfo {
   // Input

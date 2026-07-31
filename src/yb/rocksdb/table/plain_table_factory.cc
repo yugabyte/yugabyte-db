@@ -20,12 +20,15 @@
 #include "yb/rocksdb/table/plain_table_factory.h"
 
 #include <stdint.h>
+#include <assert.h>
+#include <stdio.h>
 #include <memory>
+#include <utility>
 
-#include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/table/plain_table_builder.h"
 #include "yb/rocksdb/table/plain_table_reader.h"
-#include "yb/rocksdb/port/port.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/rocksdb/table/table_builder.h"
 
 using std::unique_ptr;
 

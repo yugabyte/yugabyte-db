@@ -22,17 +22,24 @@
 
 #pragma once
 
-#include <algorithm>
-#include <deque>
+#include <stddef.h>
+#include <stdint.h>
 #include <string>
 #include <vector>
+#include <utility>
 
-#include "yb/rocksdb/db/compaction.h"
 #include "yb/rocksdb/db/merge_helper.h"
-#include "yb/rocksdb/compaction_filter.h"
-#include "yb/rocksdb/util/log_buffer.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/types.h"
+#include "yb/util/slice.h"
+#include "yb/rocksdb/status_fwd.h"
 
 namespace rocksdb {
+class Compaction;
+class CompactionFilter;
+class Comparator;
+class InternalIterator;
+class LogBuffer;
 
 struct CompactionIteratorStats {
   // Compaction statistics

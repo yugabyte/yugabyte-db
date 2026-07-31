@@ -13,28 +13,28 @@
 
 #include "yb/dockv/doc_key.h"
 
-#include <memory>
 #include <sstream>
+#include <algorithm>
+#include <limits>
+#include <vector>
 
-#include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
-#include "yb/docdb/docdb_fwd.h"
-
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/doc_path.h"
 #include "yb/dockv/doc_vector_id.h"
-#include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/compare_util.h"
 #include "yb/util/enums.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
-#include "yb/util/string_util.h"
-#include "yb/util/tostring.h"
 #include "yb/util/uuid.h"
+#include "yb/gutil/endian.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/gutil/strings/fastmem.h"
+#include "yb/util/format.h"
 
 using std::ostringstream;
 using std::string;

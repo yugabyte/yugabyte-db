@@ -30,36 +30,37 @@
 // under the License.
 //
 
-#include <iostream>
-
 #include <boost/algorithm/string/predicate.hpp>
-
-#include "yb/common/wire_protocol.h"
-
-#include "yb/consensus/log_util.h"
-#include "yb/consensus/consensus_queue.h"
-
-#include "yb/gutil/sysinfo.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdlib.h>
+#include <iostream>
+#include <functional>
+#include <memory>
+#include <string>
+#include <string_view>
 
 #include "yb/master/master_call_home.h"
 #include "yb/master/master.h"
 #include "yb/master/sys_catalog_initialization.h"
-
 #include "yb/server/total_mem_watcher.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
-#include "yb/util/mem_tracker.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/thread.h"
 #include "yb/util/ulimit_util.h"
-#include "yb/util/debug/trace_event.h"
 #include "yb/util/path_util.h"
 #include "yb/common/termination_monitor.h"
-
 #include "yb/tserver/server_main_util.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/master/master_defaults.h"
+#include "yb/master/master_options.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/status.h"
 
 #if YB_LTO_ENABLED
 #include "yb/tserver/tablet_server_main_impl.h"

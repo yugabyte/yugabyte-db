@@ -43,12 +43,16 @@
 
 #pragma once
 
-#include <mutex>
-#include <string>
-
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 #include <glog/logging.h>
+#include <absl/base/dynamic_annotations.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <mutex>
+#include <string>
+#include <ostream>
+#include <vector>
 
 // Prefix string for DETAIL level logs, shared across YB and RocksDB logging.
 // Example line: I1011 20:44:27.393563 1874145280 cdc_service.cc:410] DETAIL: message...
@@ -67,9 +71,7 @@
 #define YB_LOG_DETAIL COMPACT_GOOGLE_LOG_INFO.stream() << YB_DETAIL_LOG_PREFIX
 
 #include "yb/gutil/atomicops.h"
-#include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/walltime.h"
-
 #include "yb/util/logging_callback.h"
 #include "yb/util/monotime.h"
 

@@ -13,20 +13,62 @@
 
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <algorithm>
+#include <cstddef>
+#include <iterator>
+#include <mutex>
+#include <ostream>
+#include <set>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
+
 #include "yb/common/colocated_util.h"
 #include "yb/common/xcluster_util.h"
-
 #include "yb/client/xcluster_client.h"
-
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
-
 #include "yb/util/hash_util.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/stl_util.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/xcluster/master_xcluster_util.h"
+#include "yb/util/cow_object.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_string.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+class HostPort;
+namespace master {
+struct LeaderEpoch;
+}  // namespace master
+}  // namespace yb
 
 DEFINE_RUNTIME_uint32(max_xcluster_streams_to_checkpoint_in_parallel, 200,
     "Maximum number of xCluster streams to checkpoint in parallel");

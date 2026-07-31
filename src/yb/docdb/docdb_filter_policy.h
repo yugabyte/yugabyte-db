@@ -13,7 +13,15 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <memory>
+#include <string>
+
 #include "yb/rocksdb/filter_policy.h"
+
+namespace rocksdb {
+class Logger;
+}  // namespace rocksdb
 
 namespace yb::docdb {
 

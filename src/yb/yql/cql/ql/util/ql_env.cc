@@ -17,23 +17,33 @@
 
 #include "yb/yql/cql/ql/util/ql_env.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <ostream>
+#include <utility>
+
 #include "yb/client/client.h"
 #include "yb/client/meta_data_cache.h"
-#include "yb/client/permissions.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
-#include "yb/client/table_alterer.h"
-#include "yb/client/table_creator.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
-
-#include "yb/common/ql_type.h"
-
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/flags.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/roles_permissions.h"
+#include "yb/common/transaction.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/yql/cql/ql/ptree/pt_option.h"
+
+namespace yb {
+enum IsolationLevel : int;
+}  // namespace yb
 
 DEFINE_UNKNOWN_bool(use_cassandra_authentication, false,
     "If to require authentication on startup.");

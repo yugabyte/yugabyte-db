@@ -11,13 +11,22 @@
 // under the License.
 //
 #include <google/protobuf/any.pb.h>
+#include <glog/logging.h>
+#include <memory>
+#include <string>
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/gutil/casts.h"
-#include "yb/rocksdb/metadata.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.pb.h"
+#include "yb/docdb/docdb_compaction_context.h"
+#include "yb/storage/frontier.h"
+#include "yb/util/logging.h"
 
 namespace yb::docdb {
 

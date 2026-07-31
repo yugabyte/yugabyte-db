@@ -14,9 +14,11 @@
 #include "yb/vector_index/hnsw_util.h"
 
 #include <cstddef>
+#include <algorithm>
+#include <cmath>
+#include <random>
 
 #include "yb/gutil/casts.h"
-
 #include "yb/util/random_util.h"
 
 namespace yb::vector_index {

@@ -20,10 +20,12 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <string>
 #include <string_view>
 
 #include "yb/util/status_ec.h"
+#include "yb/util/status.h"
 
 using namespace std::literals;
 

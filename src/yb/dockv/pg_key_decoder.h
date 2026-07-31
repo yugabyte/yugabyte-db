@@ -14,10 +14,19 @@
 #pragma once
 
 #include <boost/container/small_vector.hpp>
-
-#include "yb/dockv/dockv_fwd.h"
+#include <stddef.h>
 
 #include "yb/util/status.h"
+#include "yb/dockv/pg_row.h"
+#include "yb/util/slice.h"
+
+namespace yb {
+class ColumnSchema;
+class Schema;
+namespace dockv {
+struct ReaderProjection;
+}  // namespace dockv
+}  // namespace yb
 
 namespace yb::dockv {
 

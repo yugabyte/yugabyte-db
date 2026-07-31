@@ -18,20 +18,19 @@
 // under the License.
 //
 
+#include <stddef.h>
 #include <thread>
-#include <atomic>
 #include <string>
-
-#include <gtest/gtest.h>
+#include <iostream>
+#include <system_error>
 
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/thread_local.h"
 #include "yb/rocksdb/util/testutil.h"
-
 #include "yb/util/sync_point.h"
 #include "yb/util/tostring.h"
+#include "gtest/gtest.h"
 
 using std::vector;
 

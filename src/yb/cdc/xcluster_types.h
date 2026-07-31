@@ -13,11 +13,33 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <set>
+#include <string>
+#include <unordered_map>
+
 #include "yb/cdc/xrepl_types.h"
-#include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/util/hash_util.h"
+#include "yb/util/strongly_typed_string.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+enum ReplicationErrorPb : int;
+}  // namespace yb
 
 namespace yb::xcluster {
 

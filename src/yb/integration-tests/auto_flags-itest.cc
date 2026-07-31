@@ -11,32 +11,68 @@
 // under the License.
 //
 
-#include "yb/common/wire_protocol.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <algorithm>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "yb/common/wire_protocol.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/raft_consensus.h"
-
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/integration-tests/ts_itest-base.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
-#include "yb/master/catalog_manager.h"
 #include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master.h"
-
 #include "yb/server/server_base.proxy.h"
-
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/heartbeater.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/common/version_info.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/stl_util.h"
+#include "yb/integration-tests/external_daemon.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/server/server_base.pb.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/auto_flags_util.h"
+#include "yb/util/flags/flags_callback.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_bool(TEST_auto_flags_initialized);
 DECLARE_bool(disable_auto_flags_management);

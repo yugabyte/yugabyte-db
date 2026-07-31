@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include "yb/util/flags.h"
+#include <gflags/gflags.h>
 
 DECLARE_int32(pggate_ybclient_reactor_threads);
 DECLARE_string(pggate_master_addresses);

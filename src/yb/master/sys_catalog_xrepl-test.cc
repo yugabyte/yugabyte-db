@@ -10,9 +10,24 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog-test_base.h"
+#include "gtest/gtest.h"
+#include "yb/cdc/xcluster_types.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 using std::vector;
 

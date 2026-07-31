@@ -17,14 +17,20 @@
 
 #include "yb/yql/cql/ql/ptree/pt_insert.h"
 
-#include "yb/client/table.h"
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <vector>
 
+#include "yb/client/table.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/yql/cql/ql/ptree/column_arg.h"
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
@@ -32,6 +38,15 @@
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
+#include "yb/client/schema.h"
+#include "yb/common/value.messages.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/slice.h"
+#include "yb/yql/cql/ql/ptree/list_node.h"
+#include "yb/yql/cql/ql/ptree/pt_insert_values_clause.h"
+#include "yb/yql/cql/ql/ptree/sem_state.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 namespace yb {
 namespace ql {

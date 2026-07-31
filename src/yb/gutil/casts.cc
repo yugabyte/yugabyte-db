@@ -11,8 +11,10 @@
 // under the License.
 //
 
-#include "yb/util/logging.h"
+#include <glog/logging.h>
+#include <ostream>
 
+#include "yb/util/logging.h"
 #include "yb/gutil/casts.h"
 
 namespace yb {

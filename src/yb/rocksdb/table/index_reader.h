@@ -14,23 +14,31 @@
 #pragma once
 
 #include <stddef.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <memory>
+#include <string>
+#include <utility>
 
-#include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/table/block.h"
 #include "yb/rocksdb/table/two_level_iterator.h"
-
 #include "yb/util/logging.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/table/format.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+
+namespace yb {
+class MemTracker;
+}  // namespace yb
 
 namespace rocksdb {
+class DataBlockAwareIndexInternalIterator;
+class SliceTransform;
 
 using yb::Result;
 
-class BlockBasedTable;
-class BlockHandle;
-class BlockIter;
-class Comparator;
 class Env;
-class Footer;
 class InternalIterator;
 class RandomAccessFileReader;
 

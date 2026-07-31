@@ -31,7 +31,31 @@
 
 #include "yb/master/catalog_manager_bg_tasks.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/multi_index_container.hpp>
+#include <boost/operators.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <memory>
+#include <chrono>
+#include <compare>
+#include <iterator>
+#include <mutex>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <utility>
+#include <functional>
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_util.h"
@@ -46,7 +70,6 @@
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/ysql/ysql_manager.h"
 #include "yb/master/ysql_backends_manager.h"
-
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug-util.h"
@@ -55,6 +78,28 @@
 #include "yb/util/mutex.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_manager.h"
+#include "yb/master/master_defaults.h"
+#include "yb/master/table_index.h"
+#include "yb/master/tasks_tracker.h"
+#include "yb/master/ts_descriptor.h"
+#include "yb/util/flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+#include "yb/util/version_tracker.h"
+
+namespace yb {
+namespace master {
+struct LeaderEpoch;
+}  // namespace master
+}  // namespace yb
 
 using namespace std::literals;
 

@@ -12,12 +12,32 @@
 
 #pragma once
 
-#include "yb/common/hybrid_time.h"
+#include <gflags/gflags.h>
+#include <stdint.h>
+#include <optional>
+#include <string>
+#include <utility>
 
+#include "yb/common/hybrid_time.h"
 #include "yb/master/async_rpc_tasks_base.h"
 #include "yb/master/snapshot_coordinator_context.h"
-
 #include "yb/tserver/backup.pb.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/snapshot.h"
+#include "yb/master/master_fwd.h"
+#include "yb/server/monitored_task.h"
+#include "yb/tserver/tserver_types.pb.h"
+
+namespace yb {
+class Status;
+class ThreadPool;
+namespace master {
+class Master;
+class SysTablesEntryPB;
+struct LeaderEpoch;
+}  // namespace master
+}  // namespace yb
 
 DECLARE_bool(TEST_pause_issuing_tserver_snapshot_requests);
 

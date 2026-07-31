@@ -13,8 +13,12 @@
 
 #include "yb/util/file_system.h"
 
+#include <glog/logging.h>
+
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
+#include "yb/util/cast.h"
+#include "yb/util/logging.h"
 
 namespace yb {
 

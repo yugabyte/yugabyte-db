@@ -13,6 +13,24 @@
 
 #pragma once
 
+#include <boost/preprocessor/seq/for_each.hpp>
+#include <stdint.h>
+#include <boost/container/small_vector.hpp>
+#include <boost/intrusive/list.hpp>
+#include <boost/move/iterator.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <atomic>
 #include <future>
 #include <memory>
@@ -23,40 +41,55 @@
 #include <utility>
 #include <variant>
 #include <vector>
-
-#include <boost/preprocessor/seq/for_each.hpp>
-#include <boost/version.hpp>
-
-#include "yb/ash/pg_wait_state.h"
+#include <functional>
+#include <unordered_map>
 
 #include "yb/cdc/cdc_service.pb.h"
-#include "yb/client/client_fwd.h"
-
 #include "yb/common/pg_types.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
-
-#include "yb/docdb/object_lock_shared_fwd.h"
-
 #include "yb/master/master_fwd.h"
-
 #include "yb/rpc/rpc_fwd.h"
-
-#include "yb/tserver/tserver_util_fwd.h"
-#include "yb/tserver/pg_client.fwd.h"
 #include "yb/tserver/pg_client.pb.h"
-
 #include "yb/util/async_util.h"
-
 #include "yb/util/lw_function.h"
 #include "yb/util/monotime.h"
 #include "yb/util/ref_cnt_buffer.h"
-
-#include "yb/yql/pggate/pg_doc_metrics.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/ash/wait_state.h"
+#include "yb/client/table.h"
+#include "yb/client/table_info.h"
+#include "yb/client/tablet_server.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace docdb {
+enum class ObjectLockFastpathLockType;
+}  // namespace docdb
+namespace pggate {
+class PgDocMetrics;
+}  // namespace pggate
+namespace rpc {
+class ProxyCache;
+class Scheduler;
+}  // namespace rpc
+}  // namespace yb
 
 namespace yb::pggate {
 
@@ -402,6 +435,7 @@ class PgClient {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

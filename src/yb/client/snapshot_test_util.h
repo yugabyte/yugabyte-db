@@ -13,15 +13,38 @@
 
 #pragma once
 
-#include "yb/client/txn-test-base.h"
-#include "yb/common/snapshot.h"
+#include <stddef.h>
+#include <chrono>
+#include <memory>
+#include <ratio>
+#include <string>
+#include <vector>
 
-#include "yb/integration-tests/mini_cluster.h"
+#include "yb/common/snapshot.h"
 #include "yb/master/master_backup.proxy.h"
-#include "yb/rpc/proxy.h"
-#include "yb/util/net/net_fwd.h"
-#include "yb/util/net/net_util.h"
 #include "yb/util/tsan_util.h"
+#include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/integration-tests/mini_cluster_base.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_backup.pb.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+enum YQLDatabase : int;
+namespace client {
+class TableHandle;
+class YBTableName;
+}  // namespace client
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+}  // namespace yb
 
 using namespace std::literals;
 

@@ -13,15 +13,28 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <sstream>
+#include <string>
 
-#include "yb/rocksdb/status_fwd.h"
-#include "yb/rocksdb/types.h"
 #include "yb/rocksdb/write_batch.h"
-
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/enums.h"
-#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/slice.h"
+#include "yb/util/slice_parts.h"
 
 namespace yb {
 

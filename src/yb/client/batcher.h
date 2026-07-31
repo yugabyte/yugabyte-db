@@ -31,31 +31,80 @@
 //
 #pragma once
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/container/small_vector.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <unordered_map>
 #include <vector>
+#include <atomic>
+#include <map>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <utility>
 
 #include "yb/ash/ash_fwd.h"
-
 #include "yb/client/async_rpc.h"
 #include "yb/client/error_collector.h"
 #include "yb/client/transaction.h"
-
-#include "yb/common/consistent_read_point.h"
 #include "yb/common/retryable_request.h"
 #include "yb/common/transaction.h"
-
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/util/async_util.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/threadpool.h"
-
-#include "yb/server/clock.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/in_flight_op.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/gutil/port.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/enums.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_callback.h"
 
 namespace yb {
+class ConsistentReadPoint;
+class LWOpIdPB;
+
+namespace rpc {
+class Messenger;
+class ProxyCache;
+}  // namespace rpc
+namespace server {
+class Clock;
+}  // namespace server
+struct OpId;
+struct ReadHybridTime;
+
 namespace client {
+class YBClient;
+class YBSession;
+class YBTable;
+
 namespace internal {
+class RemoteTablet;
 
 struct InFlightOpsGroup {
   using Iterator = InFlightOps::const_iterator;

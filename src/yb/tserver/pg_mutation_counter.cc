@@ -32,10 +32,12 @@
 
 #include "yb/tserver/pg_mutation_counter.h"
 
-#include "yb/common/entity_ids.h"
+#include <glog/logging.h>
+#include <ostream>
 
 #include "yb/util/logging.h"
 #include "yb/util/shared_lock.h"
+#include "yb/gutil/integral_types.h"
 
 namespace yb {
 namespace tserver {

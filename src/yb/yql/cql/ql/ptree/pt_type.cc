@@ -19,6 +19,11 @@
 
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/enums.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
+#include "yb/common/ql_datatype.h"
 
 namespace yb {
 namespace ql {

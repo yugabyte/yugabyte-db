@@ -12,11 +12,13 @@
 
 #pragma once
 
-#include "yb/gutil/macros.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <memory>
 
 #include "yb/util/atomic.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

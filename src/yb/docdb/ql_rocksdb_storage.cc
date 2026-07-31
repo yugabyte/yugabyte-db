@@ -13,26 +13,51 @@
 
 #include "yb/docdb/ql_rocksdb_storage.h"
 
+#include <glog/logging.h>
+#include <stdint.h>
 #include <utility>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <sstream>
+#include <vector>
 
 #include "yb/common/ql_protocol.messages.h"
 #include "yb/common/pgsql_protocol.messages.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
 #include "yb/dockv/primitive_value_util.h"
-
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/docdb_statistics.h"
-
-#include "yb/rocksdb/util/statistics.h"
-
 #include "yb/qlexpr/ql_expr_util.h"
-
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/schema.h"
+#include "yb/common/value.pb.h"
+#include "yb/docdb/doc_pgsql_scanspec.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/value_type.h"
+#include "yb/qlexpr/ql_scanspec.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/options.h"
+#include "yb/util/byte_buffer.h"
+#include "yb/util/format.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/random_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
 
 namespace yb::docdb {
 

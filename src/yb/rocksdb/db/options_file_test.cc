@@ -18,15 +18,20 @@
 // under the License.
 //
 
+#include <stdint.h>
 #include <string>
+#include <unordered_set>
+#include <vector>
+#include <functional>
 
-#include "yb/rocksdb/db/db_impl.h"
-#include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/table.h"
 #include "yb/rocksdb/util/testharness.h"
-
 #include "yb/rocksdb/util/testutil.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/filename.h"
+#include "yb/rocksdb/env.h"
+#include "yb/util/test_macros.h"
 
 namespace rocksdb {
 class OptionsFileTest : public RocksDBTest {

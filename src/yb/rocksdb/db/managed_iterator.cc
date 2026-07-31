@@ -21,15 +21,13 @@
 
 #include "yb/rocksdb/db/managed_iterator.h"
 
-#include <limits>
+#include <assert.h>
 #include <string>
-#include <utility>
 
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/slice_transform.h"
+#include "yb/util/status.h"
 
 using std::unique_ptr;
 

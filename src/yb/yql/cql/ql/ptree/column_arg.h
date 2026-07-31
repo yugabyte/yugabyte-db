@@ -17,12 +17,19 @@
 
 #pragma once
 
-#include "yb/common/types.h"
-#include "yb/util/memory/mc_types.h"
+#include <glog/logging.h>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <vector>
+
 #include "yb/yql/cql/ql/ptree/ptree_fwd.h"
+#include "yb/common/value.pb.h"
+#include "yb/util/logging.h"
 
 namespace yb {
 namespace ql {
+class ColumnDesc;
 
 // This class represents an argument in expressions, but it is not part of the parse tree. It is
 // used during semantic and execution phase.

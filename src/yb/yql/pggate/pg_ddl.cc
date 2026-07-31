@@ -15,18 +15,36 @@
 
 #include "yb/yql/pggate/pg_ddl.h"
 
-#include "yb/client/yb_table_name.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <utility>
 
+#include "yb/client/yb_table_name.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/constants.h"
 #include "yb/common/pg_system_attr.h"
-
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/yql/pggate/pg_column.h"
+#include "yb/yql/pggate/pg_expr.h"
+#include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pg_table.h"
 
 DEFINE_RUNTIME_int32(ysql_ddl_rpc_timeout_sec, 180, "Timeout for YSQL DDL operations.");
 

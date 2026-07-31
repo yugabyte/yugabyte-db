@@ -11,14 +11,81 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/container/small_vector.hpp>
+#include <chrono>
+#include <initializer_list>
+#include <map>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <unordered_set>
+#include <vector>
+#include <functional>
+
 #include "yb/common/entity_ids.h"
 #include "yb/common/ql_type.h"
-
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb-test.h"
-
 #include "yb/util/yb_partition.h"
+#include "gtest/gtest.h"
+#include "yb/bfql/tserver_opcodes.h"
+#include "yb/common/column_id.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/ql_value.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/transaction.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/typedefs.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/docdb/doc_write_batch.h"
+#include "yb/docdb/docdb_compaction_context.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/docdb_test_util.h"
+#include "yb/docdb/docdb_types.h"
+#include "yb/docdb/docdb_util.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/doc_path.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/dockv/subdocument.h"
+#include "yb/dockv/value.h"
+#include "yb/dockv/value_type.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/table_properties.h"
+#include "yb/rocksdb/types.h"
+#include "yb/storage/frontier.h"
+#include "yb/storage/storage_fwd.h"
+#include "yb/tablet/tablet_options.h"
+#include "yb/util/byte_buffer.h"
+#include "yb/util/enums.h"
+#include "yb/util/faststring.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
 
 namespace yb {
 namespace docdb {

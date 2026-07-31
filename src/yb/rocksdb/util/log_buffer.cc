@@ -19,11 +19,15 @@
 #include "yb/rocksdb/util/log_buffer.h"
 
 #include <stdarg.h>
+#include <assert.h>
+#include <glog/logging.h>
+#include <stdio.h>
+#include <new>
+#include <ostream>
+#include <string>
 
 #include "yb/util/logging.h"
-
-#include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/port/sys_time.h"
+#include "yb/rocksdb/env.h"
 
 using std::string;
 

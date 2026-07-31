@@ -14,11 +14,17 @@
 #pragma once
 
 #include <google/protobuf/message.h>
-
-#include "yb/master/master_types.pb.h"
+#include <memory>
+#include <string>
 
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
+
+namespace yb {
+namespace master {
+enum SysRowEntryType : int;
+}  // namespace master
+}  // namespace yb
 
 namespace yb::master {
 

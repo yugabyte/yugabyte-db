@@ -11,9 +11,22 @@
 // under the License.
 //
 
-#include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
+#include <gflags/gflags.h>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_bool(enable_object_locking_for_table_locks);
 DECLARE_bool(ysql_yb_enable_advisory_locks);

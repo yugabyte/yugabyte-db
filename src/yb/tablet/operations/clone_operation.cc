@@ -15,16 +15,15 @@
 
 #include "yb/tablet/operations/clone_operation.h"
 
-#include "yb/common/wire_protocol.h"
+#include <optional>
+#include <ostream>
+#include <string_view>
 
 #include "yb/consensus/consensus.messages.h"
-#include "yb/consensus/consensus_error.h"
-#include "yb/consensus/consensus_round.h"
-
-#include "yb/tablet/tablet.h"
-
 #include "yb/util/logging.h"
-#include "yb/util/status_format.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/tablet/tablet_splitter.h"
+#include "yb/util/status.h"
 
 using namespace std::literals;
 

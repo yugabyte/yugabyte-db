@@ -13,6 +13,11 @@
 
 #include "yb/master/xcluster/xcluster_catalog_entity.h"
 
+#include <glog/logging.h>
+#include <ostream>
+
+#include "yb/util/logging.h"
+
 namespace yb::master {
 
 void XClusterSafeTimeInfo::Load(const XClusterSafeTimePB& metadata) {

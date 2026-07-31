@@ -30,13 +30,27 @@
 // under the License.
 //
 
+#include <google/protobuf/descriptor.pb.h>
+#include <glog/logging.h>
+#include <google/protobuf/descriptor.h>
+#include <stdint.h>
+#include <unistd.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
-
-#include <google/protobuf/descriptor.pb.h>
-#include <gtest/gtest.h>
+#include <utility>
 
 #include "yb/util/env_util.h"
 #include "yb/util/memenv/memenv.h"
@@ -48,9 +62,13 @@
 #include "yb/util/protobuf_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
-#include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
+#include "yb/util/file_system.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 namespace pb_util {

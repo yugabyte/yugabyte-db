@@ -20,14 +20,16 @@
 
 #pragma once
 
-#include <memory>
+#include <assert.h>
+
+#include <chrono>
 #include <sstream>
 #include <string>
 
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/util/log_buffer.h"
+#include "yb/rocksdb/env.h"  // IWYU pragma: keep
 
 namespace rocksdb {
+class LogBuffer;
 
 class JSONWriter {
  public:

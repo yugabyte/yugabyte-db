@@ -32,22 +32,40 @@
 
 #include "yb/tools/ysck.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <mutex>
 #include <unordered_set>
+#include <ostream>
 
 #include "yb/util/logging.h"
-
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/blocking_queue.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
-#include "yb/util/flags.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 namespace tools {

@@ -13,10 +13,27 @@
 
 #include "yb/tserver/tserver_auto_flags_manager.h"
 
-#include "yb/common/clock.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <mutex>
+#include <string>
+#include <utility>
 
+#include "yb/common/clock.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+
+namespace yb {
+class FsManager;
+namespace rpc {
+class Messenger;
+}  // namespace rpc
+}  // namespace yb
 
 DECLARE_uint64(max_clock_skew_usec);
 

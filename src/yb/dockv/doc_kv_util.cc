@@ -13,12 +13,14 @@
 
 #include "yb/dockv/doc_kv_util.h"
 
-#include "yb/dockv/dockv_fwd.h"
-#include "yb/dockv/value_type.h"
+#include <string_view>
 
+#include "yb/dockv/value_type.h"
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/stringprintf.h"
 
 using std::string;
 

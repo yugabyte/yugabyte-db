@@ -31,13 +31,24 @@
 //
 
 #include "yb/tablet/tablet_bootstrap_state_flusher.h"
-#include "yb/consensus/raft_consensus.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <functional>
+#include <ostream>
+#include <chrono>
+
+#include "yb/consensus/raft_consensus.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
+#include "yb/tablet/tablet_bootstrap_state_manager.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/slice.h"
 
 DEFINE_RUNTIME_AUTO_bool(enable_flush_retryable_requests, kLocalPersisted, false, true,
     "If enabled, will flush bootstrap state structure to the disk when roll the log segment, "

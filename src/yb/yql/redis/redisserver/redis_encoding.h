@@ -13,13 +13,24 @@
 #pragma once
 
 #include <stdint.h>
-
-#include <string>
-
 #include <boost/preprocessor/seq/for_each.hpp>
+#include <stddef.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <string>
+#include <initializer_list>
+#include <string_view>
 
-#include "yb/util/memory/arena.h"
-#include "yb/util/slice.h"
+#include "yb/util/memory/arena_fwd.h"
 
 namespace google {
 namespace protobuf {
@@ -30,6 +41,7 @@ template <typename Element> class RepeatedPtrField;
 namespace yb {
 
 class RefCntBuffer;
+class Slice;
 
 namespace redisserver {
 

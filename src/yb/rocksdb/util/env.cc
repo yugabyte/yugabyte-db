@@ -22,14 +22,18 @@
 
 #include "yb/rocksdb/env.h"
 
+#include <glog/logging.h>
+#include <stdio.h>
 #include <thread>
+#include <utility>
+#include <functional>
 
 #include "yb/rocksdb/options.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
 
 using std::unique_ptr;
 using std::shared_ptr;

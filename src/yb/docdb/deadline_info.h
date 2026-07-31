@@ -13,8 +13,11 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <string>
+
 #include "yb/util/monotime.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace docdb {

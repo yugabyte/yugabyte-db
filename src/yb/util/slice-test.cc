@@ -30,16 +30,26 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <algorithm>
+#include <map>
+#include <ostream>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
+
 #include "yb/util/logging.h"
-#include <gtest/gtest.h>
-
 #include "yb/gutil/map-util.h"
-
 #include "yb/util/random_util.h"
 #include "yb/util/slice.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tostring.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/util/test_macros.h"
 
 using std::string;
 

@@ -22,17 +22,22 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+
 #include <atomic>
 #include <map>
 #include <string>
-#include <vector>
+#include <vector>  // IWYU pragma: keep
 
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/port/port.h"
+#include "yb/rocksdb/env.h"  // IWYU pragma: keep
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/util/file_system.h"
 
 namespace rocksdb {
 
 class MemFile;
+
 class MockEnv : public EnvWrapper {
  public:
   explicit MockEnv(Env* base_env);

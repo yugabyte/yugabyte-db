@@ -14,14 +14,25 @@
 #include "yb/common/json_util.h"
 
 #include <rapidjson/prettywriter.h>
+#include <rapidjson/encodings.h>
+#include <rapidjson/stringbuffer.h>
+#include <rapidjson/writer.h>
+#include <stddef.h>
+#include <functional>
 
 #include "yb/bfql/bfunc_convert.h"
-
 #include "yb/common/jsonb.h"
-#include "yb/common/ql_value.h"
-
 #include "yb/util/status_format.h"
 #include "yb/util/string_case.h"
+#include "yb/bfcommon/bfdecl.h"
+#include "yb/bfcommon/bfunc_convert.h"
+#include "yb/bfql/bfdecl.h"
+#include "yb/common/value.pb.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/util/decimal.h"
+#include "yb/util/format.h"
+#include "yb/util/varint.h"
 
 namespace yb::common {
 

@@ -27,27 +27,26 @@
 
 #include <algorithm>
 #include <string>
-#include <unordered_map>
-#include <vector>
+#include <ostream>
 
 #include "yb/gutil/port.h"
-
-#include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/table/block_hash_index.h"
 #include "yb/rocksdb/table/block_internal.h"
 #include "yb/rocksdb/table/block_prefix_index.h"
 #include "yb/rocksdb/table/format.h"
-#include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/iterator_helpers_internal.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
-
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/stats/perf_step_timer.h"
+#include "yb/rocksdb/perf_context.h"
+#include "yb/rocksdb/types.h"
+#include "yb/util/status.h"
 
 namespace rocksdb {
+class Arena;
 
 namespace {
 

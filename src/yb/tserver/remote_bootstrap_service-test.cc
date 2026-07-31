@@ -30,37 +30,55 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
 #include <future>
-#include <limits>
-
-#include "yb/util/flags.h"
+#include <memory>
+#include <ostream>
+#include <string>
+#include <vector>
 
 #include "yb/common/wire_protocol.h"
-
-#include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
-#include "yb/consensus/metadata.pb.h"
-#include "yb/consensus/opid_util.h"
-
 #include "yb/gutil/strings/substitute.h"
-
-#include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_header.pb.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/remote_bootstrap-test-base.h"
 #include "yb/tserver/remote_bootstrap.pb.h"
 #include "yb/tserver/remote_bootstrap.proxy.h"
-#include "yb/tserver/remote_bootstrap_session.h"
-
-#include "yb/util/crc.h"
 #include "yb/util/env_util.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/monotime.h"
-#include "yb/util/stopwatch.h"
-#include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/opid.pb.h"
+#include "yb/consensus/log.h"
+#include "yb/consensus/log.pb.h"
+#include "yb/consensus/log_fwd.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/util/faststring.h"
+#include "yb/util/file_system.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+
+namespace yb {
+namespace tserver {
+class RemoteBootstrapServiceTest_TestBeginRBSPrunesStaleRemoteLogAnchor_Test;
+class RemoteBootstrapServiceTest_TestInvalidBlockOrOpId_Test;
+class RemoteBootstrapServiceTest_TestInvalidSessionId_Test;
+class RemoteBootstrapServiceTest_TestInvalidTabletId_Test;
+class RemoteBootstrapServiceTest_TestPruneStaleRemoteBootstrapSessions_Test;
+}  // namespace tserver
+}  // namespace yb
 
 using std::string;
 using std::vector;

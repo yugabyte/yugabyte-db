@@ -10,14 +10,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <stddef.h>
 #include <cstdint>
 #include <optional>
 #include <string_view>
 #include <vector>
-
-#include <gtest/gtest.h>
+#include <string>
+#include <utility>
 
 #include "yb/common/common_net.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_net.pb.h"
 
 using namespace std::literals;
 

@@ -11,19 +11,21 @@
 // under the License.
 //
 
-#include <memory>
+#include <stdint.h>
 #include <sstream>
 #include <string>
-
-#include <gtest/gtest.h>
+#include <utility>
 
 #include "yb/rocksdb/db/write_batch_internal.h"
-#include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/testutil.h"
-
 #include "yb/storage/storage_test_util.h"
-
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/storage/frontier.h"
+#include "yb/util/slice.h"
+#include "yb/util/slice_parts.h"
 
 using std::string;
 

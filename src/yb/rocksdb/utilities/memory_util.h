@@ -21,15 +21,16 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <map>
-#include <string>
 #include <unordered_set>
 #include <vector>
 
 #include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/status.h"
 
 namespace rocksdb {
+class DB;
 
 // Returns the current memory usage of the specified DB instances.
 class MemoryUtil {

@@ -12,13 +12,20 @@
 //
 #include "yb/common/consistent_read_point.h"
 
+#include <glog/logging.h>
 #include <mutex>
 #include <type_traits>
 #include <utility>
+#include <algorithm>
+#include <ostream>
+#include <string_view>
+#include <unordered_map>
 
 #include "yb/common/common.messages.h"
-
 #include "yb/util/status_format.h"
+#include "yb/common/common.pb.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/util/logging.h"
 
 namespace yb {
 

@@ -20,9 +20,15 @@
 
 #include "yb/rocksdb/db/table_properties_collector.h"
 
+#include <assert.h>
+#include <map>
+
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/util/string_util.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 namespace rocksdb {
 

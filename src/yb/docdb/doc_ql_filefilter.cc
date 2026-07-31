@@ -13,16 +13,22 @@
 
 #include "yb/docdb/doc_ql_filefilter.h"
 
-#include "yb/dockv/doc_key.h"
-#include "yb/dockv/primitive_value.h"
-#include "yb/dockv/value_type.h"
-
-#include "yb/util/atomic.h"
-#include "yb/util/flags.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <algorithm>
+#include <utility>
+#include <vector>
 
 #include "yb/qlexpr/ql_scanspec.h"
-
 #include "yb/rocksdb/db/compaction.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/slice.h"
 
 DEFINE_RUNTIME_bool(docdb_ht_filter_intents, true,
                     "Use hybrid time SST filter when scanning intents.");

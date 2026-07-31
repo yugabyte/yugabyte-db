@@ -13,29 +13,46 @@
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/asio/ip/basic_endpoint.hpp>
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <functional>
 
 #include "yb/client/yb_table_name.h"
-
-#include "yb/gutil/casts.h"
-
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog_initialization.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
-
-#include "yb/util/metrics.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/pgwrapper/pg_test_utils.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/server/server_base.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace master {
+class CatalogManager;
+}  // namespace master
+}  // namespace yb
 
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(enable_ysql);

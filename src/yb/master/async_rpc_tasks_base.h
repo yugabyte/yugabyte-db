@@ -12,27 +12,38 @@
 //
 #pragma once
 
-#include "yb/consensus/consensus.pb.h"
+#include <atomic>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <utility>
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
-
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/server/monitored_task.h"
-
-#include "yb/tserver/backup.proxy.h"
-
-#include "yb/util/async_task_util.h"
 #include "yb/util/memory/memory.h"
-#include "yb/util/metrics_fwd.h"
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/locks.h"
+#include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class ThreadPool;
+class AsyncTaskThrottlerBase;
 
 namespace consensus {
 class ConsensusServiceProxy;
@@ -41,18 +52,16 @@ class ConsensusServiceProxy;
 namespace tserver {
 class TabletServerAdminServiceProxy;
 class TabletServerServiceProxy;
+class TabletServerBackupServiceProxy;
 }
 
 namespace master {
 
-class TSDescriptor;
 class Master;
-
-class TableInfo;
-class TabletInfo;
-
 YB_STRONGLY_TYPED_BOOL(AddPendingDelete);
 YB_STRONGLY_TYPED_BOOL(CDCSDKSetRetentionBarriers);
+class MasterClusterProxy;
+class MasterTestProxy;
 
 // Interface used by RetryingTSRpcTask to pick the tablet server to
 // send the next RPC to.

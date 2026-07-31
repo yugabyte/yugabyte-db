@@ -31,24 +31,31 @@
 //
 #pragma once
 
+#include <gflags/gflags.h>
+#include <gtest/gtest_prod.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <atomic>
-#include <functional>
-#include <iosfwd>
 #include <string>
 #include <vector>
-
-#include "yb/util/flags.h"
+#include <chrono>
+#include <mutex>
+#include <ostream>
+#include <utility>
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/stringpiece.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/threading/thread_collision_warner.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/monotime.h"
+#include "yb/gutil/thread_annotations.h"
+
+namespace yb {
+class Trace;
+}  // namespace yb
 
 DECLARE_bool(use_monotime_for_traces);
 DECLARE_int32(tracing_level);

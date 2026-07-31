@@ -13,34 +13,43 @@
 
 #pragma once
 
-#include <atomic>
-#include <cmath>
+#include <assert.h>
+#include <glog/logging.h>
+#include <stdint.h>
 #include <cstdlib>
-#include <future>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
-
 #include "yb/client/schema.h"
 #include "yb/client/table_handle.h"
-
-#include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
-
 #include "yb/master/mini_master.h"
-
-#include "yb/tools/tools_fwd.h"
-
-#include "yb/util/random.h"
-#include "yb/util/random_util.h"
-#include "yb/util/subprocess.h"
-#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/client/client.h"
+#include "yb/client/session.h"
+#include "yb/client/table_creator.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
+
+namespace rocksdb {
+class Env;
+}  // namespace rocksdb
 
 namespace yb {
+class Env;
+
+namespace tools {
+class ClusterAdminClient;
+}  // namespace tools
+
 namespace integration_tests {
 
 // This is a common base class that SQLTableTest and RedisTableTest inherit from.

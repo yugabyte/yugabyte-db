@@ -14,8 +14,12 @@
 #include "yb/master/master_cluster_client.h"
 
 #include <algorithm>
+#include <utility>
 
 #include "yb/common/wire_protocol.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/slice.h"
 
 namespace yb::master {
 

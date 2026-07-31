@@ -14,9 +14,14 @@
 #pragma once
 
 #include "yb/master/yql_virtual_table.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
 
 namespace yb {
+class Schema;
+
 namespace master {
+class Master;
 
 // Generic virtual table which we currently use for system tables that are empty. Although we are
 // not sure when the class will be deleted since currently it does not look like we need to populate

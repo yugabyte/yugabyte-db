@@ -10,14 +10,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include <memory>
 
-#include "yb/util/tcmalloc_util.h"
-#include "yb/util/flags.h"
-#include "yb/util/mem_tracker.h"
-#include "yb/util/random_util.h"
-#include "yb/util/debug-util.h"
-#include "yb/util/tcmalloc_impl_util.h"
+
+#include <gflags/gflags.h>
+
+#include "yb/util/flags/flag_tags.h"
 
 DEFINE_NON_RUNTIME_bool(tcmalloc_trace_enabled, false,
     "Enable tracing of malloc/free calls for tcmalloc.");

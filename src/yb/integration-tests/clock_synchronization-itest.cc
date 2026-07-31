@@ -11,29 +11,41 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <memory>
+#include <string>
+
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/column_id.h"
 #include "yb/common/ql_protocol.messages.h"
-
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 // RepeatedPtrField would NOT call dtor if class is not defined, so need this include below.
 #include "yb/master/master_client.pb.h" // for TabletLocationsPB
-
 #include "yb/rpc/messenger.h"
-
 #include "yb/server/hybrid_clock.h"
-
 #include "yb/util/random.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
+#include "gtest/gtest.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/monotime.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/test_macros.h"
 
 DECLARE_uint64(max_clock_sync_error_usec);
 DECLARE_bool(disable_clock_sync_error);

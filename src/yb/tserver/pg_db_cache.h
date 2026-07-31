@@ -18,9 +18,13 @@
 #include <memory>
 #include <unordered_set>
 
-#include "yb/client/client_fwd.h"
-
 #include "yb/util/result.h"
+
+namespace yb {
+namespace client {
+class YBClient;
+}  // namespace client
+}  // namespace yb
 
 namespace yb::tserver {
 
@@ -57,6 +61,7 @@ class PgDbCache {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

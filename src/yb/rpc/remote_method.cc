@@ -32,8 +32,9 @@
 
 #include "yb/rpc/remote_method.h"
 
-#include "yb/rpc/rpc_header.pb.h"
+#include <utility>
 
+#include "yb/rpc/rpc_header.pb.h"
 #include "yb/util/format.h"
 #include "yb/util/scope_exit.h"
 

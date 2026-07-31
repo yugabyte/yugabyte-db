@@ -11,12 +11,17 @@
 // under the License.
 //
 
-#include <boost/functional/hash.hpp>
-#include <gtest/gtest.h>
+#include <boost/container_hash/hash.hpp>
+#include <string>
+#include <unordered_map>
+#include <utility>
 
 #include "yb/qlexpr/ql_expr.h"
-
 #include "yb/util/random_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/column_id.h"
+#include "yb/common/value.pb.h"
+#include "yb/util/format.h"
 
 namespace yb::qlexpr {
 

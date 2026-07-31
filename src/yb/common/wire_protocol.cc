@@ -31,17 +31,22 @@
 //
 #include "yb/common/wire_protocol.h"
 
-#include "yb/common/common.pb.h"
-#include "yb/common/ql_type.h"
-#include "yb/common/wire_protocol.messages.h"
+#include <alloca.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/asio/ip/address.hpp>
+#include <boost/asio/ip/basic_endpoint.hpp>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/stringize.hpp>
+#include <algorithm>
+#include <ostream>
+#include <utility>
 
-#include "yb/gutil/port.h"
-#include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/fastmem.h"
-#include "yb/gutil/strings/substitute.h"
+#include "yb/common/wire_protocol.messages.h"
 #include "yb/util/enums.h"
 #include "yb/util/errno.h"
-#include "yb/util/faststring.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
@@ -50,6 +55,16 @@
 #include "yb/util/status_format.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/util/flags.h"
+#include "yb/common/common_net.messages.h"
+#include "yb/common/common_types.messages.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/endian.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/strongly_typed_bool.h"
 
 using google::protobuf::RepeatedPtrField;
 
@@ -91,6 +106,7 @@ std::vector<AppStatusPB::ErrorCode> CreateStatusToErrorCode() {
             " wire_protocol.proto does not match the value of Status::k" BOOST_PP_STRINGIZE(name) \
             " defined in status.h.");
   #include "yb/util/status_codes.h"
+
   #undef YB_STATUS_CODE
   return result;
 }

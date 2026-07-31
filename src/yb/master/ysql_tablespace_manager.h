@@ -12,15 +12,15 @@
 //
 #pragma once
 
-#include <unordered_map>
+#include <memory>
+#include <optional>
 
 #include "yb/common/common_net.pb.h"
-
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/master/master_fwd.h"
-
-#include "yb/util/status_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/util/result.h"
 
 namespace yb {
 

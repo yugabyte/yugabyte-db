@@ -23,21 +23,19 @@
 
 #pragma once
 
+#include <boost/container/small_vector.hpp>  // IWYU pragma: keep
+#include <stddef.h>
 #include <memory>
 
-#include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/table/internal_iterator.h"
-#include "yb/rocksdb/table/iterator_wrapper.h"
+#include "yb/rocksdb/table/internal_iterator.h"  // IWYU pragma: keep
 
 namespace rocksdb {
 
 class Comparator;
-class InternalIterator;
-class Env;
 class Arena;
-
 // Return an iterator that provided the union of the data in
+
 // children[0,n-1].  Takes ownership of the child iterators and
 // will delete them when the result iterator is deleted.
 //

@@ -32,30 +32,34 @@
 
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
 
-#include <sys/types.h>
-
+#include <glog/logging.h>
+#include <sys/stat.h>
+#include <time.h>
 #include <filesystem>
 #include <set>
 #include <unordered_map>
+#include <algorithm>
+#include <iterator>
+#include <ostream>
+#include <utility>
 
 #include "yb/consensus/metadata.pb.h"
-
 #include "yb/fs/fs_manager.h"
-
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/external_mini_cluster.h"
-
 #include "yb/rocksdb/db/filename.h"
-
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
-#include "yb/util/net/sockaddr.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
+#include "yb/gutil/port.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 namespace itest {

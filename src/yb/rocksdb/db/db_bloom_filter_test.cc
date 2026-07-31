@@ -11,13 +11,46 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <algorithm>
+#include <atomic>
+#include <functional>
+#include <iterator>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/perf_context.h"
 #include "yb/rocksdb/port/stack_trace.h"
 #include "yb/rocksdb/table/block_based_table_reader.h"
-
 #include "yb/util/format.h"
 #include "yb/util/random_util.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/filter_policy.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/memtablerep.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/slice_transform.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/table.h"
+#include "yb/rocksdb/table_properties.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/sync_point.h"
+#include "yb/util/test_macros.h"
 
 DECLARE_bool(enable_bloom_filter_block_cache);
 

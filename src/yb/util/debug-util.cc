@@ -32,40 +32,35 @@
 
 #include "yb/util/debug-util.h"
 
-#include <execinfo.h>
 #include <dirent.h>
-#include <sys/syscall.h>
-#include "yb/util/scope_exit.h"
+#include <backtrace.h>
+#include <errno.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <inttypes.h>
 
 #ifdef __linux__
 #include <link.h>
-#include <cxxabi.h>
 #endif // __linux__
 
 #include <string>
 #include <iostream>
 #include <mutex>
-#include <regex>
+#include <cstdlib>
+#include <string_view>
+#include <utility>
 
 #include "yb/util/logging.h"
-
-#include "yb/gutil/linux_syscall_support.h"
-#include "yb/gutil/macros.h"
 #include "yb/gutil/singleton.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/numbers.h"
-
-#include "yb/util/enums.h"
 #include "yb/util/errno.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/libbacktrace_util.h"
-#include "yb/util/lockfree.h"
-#include "yb/util/monotime.h"
 #include "yb/util/source_location.h"
 #include "yb/util/status.h"
 #include "yb/util/symbolize.h"
-#include "yb/util/thread.h"
+#include "yb/util/slice.h"
 
 DECLARE_bool(use_libbacktrace);
 

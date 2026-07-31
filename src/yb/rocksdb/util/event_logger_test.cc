@@ -18,13 +18,14 @@
 // under the License.
 //
 
+#include <stdarg.h>
+#include <stdio.h>
 #include <string>
 
 #include "yb/rocksdb/util/event_logger.h"
-#include <gtest/gtest.h>
 #include "yb/rocksdb/env.h"
-
 #include "yb/rocksdb/util/testutil.h"
+#include "gtest/gtest.h"
 
 namespace rocksdb {
 

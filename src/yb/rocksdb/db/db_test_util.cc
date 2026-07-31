@@ -23,16 +23,49 @@
 
 #include "yb/rocksdb/db/db_test_util.h"
 
+#include <assert.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdlib.h>
+#include <gtest/gtest.h>
+#include <algorithm>
+
 #include "yb/encryption/header_manager_impl.h"
 #include "yb/encryption/universe_key_manager.h"
-
 #include "yb/rocksdb/util/logging.h"
-
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 #include "yb/rocksutil/yb_rocksdb_logger.h"
-
+#include "yb/util/env.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/db/filename.h"
+#include "yb/rocksdb/filter_policy.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/slice_transform.h"
+#include "yb/rocksdb/table.h"
+#include "yb/rocksdb/table/internal_iterator.h"
+#include "yb/rocksdb/table/plain_table_factory.h"
+#include "yb/rocksdb/table/scoped_arena_iterator.h"
+#include "yb/rocksdb/types.h"
+#include "yb/rocksdb/util/arena.h"
+#include "yb/rocksdb/util/mock_env.h"
+#include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/utilities/merge_operators.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
+
+namespace rocksdb {
+class Snapshot;
+}  // namespace rocksdb
 
 DECLARE_bool(TEST_allow_table_option_compressed_block_cache);
 

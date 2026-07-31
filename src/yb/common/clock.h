@@ -13,8 +13,12 @@
 
 #pragma once
 
+#include <utility>
+
 #include "yb/gutil/ref_counted.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
 
 namespace yb {
 

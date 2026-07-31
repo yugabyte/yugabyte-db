@@ -70,6 +70,7 @@ $YB_SRC_ROOT/python/yugabyte/process_tree_supervisor.py
   export YB_SCRIPT_PATH_REWRITE_TEST_LOG=$YB_SRC_ROOT/python/yugabyte/rewrite_test_log.py
   export YB_SCRIPT_PATH_RUN_PVS_STUDIO_ANALYZER=\
 $YB_SRC_ROOT/python/yugabyte/run_pvs_studio_analyzer.py
+  export YB_SCRIPT_PATH_RUN_IWYU=$YB_SRC_ROOT/python/yugabyte/run_iwyu.py
   export YB_SCRIPT_PATH_RUN_TESTS_ON_SPARK=$YB_SRC_ROOT/python/yugabyte/run_tests_on_spark.py
   export YB_SCRIPT_PATH_SPLIT_LONG_COMMAND_LINE=\
 $YB_SRC_ROOT/python/yugabyte/split_long_command_line.py

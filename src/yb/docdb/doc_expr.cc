@@ -4,35 +4,50 @@
 
 #include "yb/docdb/doc_expr.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <boost/intrusive/list.hpp>
+#include <boost/iterator/iterator_facade.hpp>
 #include <iostream>
 #include <string>
+#include <iterator>
+#include <type_traits>
+#include <utility>
 
 #include "yb/bfql/bfunc_standard.h"
-
-#include "yb/common/jsonb.h"
-#include "yb/common/pg_system_attr.h"
 #include "yb/common/pgsql_protocol.messages.h"
 #include "yb/common/ql_datatype.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-
-#include "yb/docdb/docdb_pgapi.h"
-
-#include "yb/gutil/endian.h"
-#include "yb/gutil/strings/escaping.h"
-
-#include "yb/util/date_time.h"
 #include "yb/util/decimal.h"
-#include "yb/util/enums.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/arena.h"
-#include "yb/util/net/inetaddress.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
-#include "yb/util/status_format.h"
-#include "yb/util/uuid.h"
+#include "yb/bfcommon/bfdecl.h"
+#include "yb/bfpg/tserver_opcodes.h"
+#include "yb/bfql/bfdecl.h"
+#include "yb/bfql/tserver_opcodes.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/slice.h"
+#include "yb/util/varint.h"
+
+namespace yb {
+namespace dockv {
+class PgTableRow;
+}  // namespace dockv
+}  // namespace yb
 
 using namespace yb::size_literals;
 

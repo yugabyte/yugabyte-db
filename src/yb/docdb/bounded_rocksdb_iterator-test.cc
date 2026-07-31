@@ -14,16 +14,20 @@
 #include <optional>
 #include <string>
 #include <vector>
+#include <memory>
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/key_bounds.h"
-
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
-
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb::docdb {
 

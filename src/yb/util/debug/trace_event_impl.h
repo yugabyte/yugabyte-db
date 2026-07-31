@@ -20,18 +20,17 @@
 #pragma once
 
 #include <stdint.h>
-
-#include <cstdint>
+#include <gtest/gtest_prod.h>
+#include <glog/logging.h>
 #include <cstdlib>
-#include <mutex>
 #include <stack>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
-
-#include "yb/util/flags.h"
-#include <gtest/gtest_prod.h>
+#include <atomic>
+#include <memory>
+#include <sstream>
+#include <functional>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/callback.h"
@@ -40,10 +39,10 @@
 #include "yb/gutil/ref_counted_memory.h"
 #include "yb/gutil/spinlock.h"
 #include "yb/gutil/walltime.h"
-
 #include "yb/util/mutex.h"
-#include "yb/util/shared_lock.h"
-#include "yb/util/threadlocal.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/threading/thread_collision_warner.h"
+#include "yb/util/logging.h"
 
 // Older style trace macros with explicit id and extra data
 // Only these macros result in publishing data to ETW as currently implemented.

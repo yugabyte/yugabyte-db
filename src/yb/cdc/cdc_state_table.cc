@@ -12,6 +12,15 @@
 
 #include "yb/cdc/cdc_state_table.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <functional>
+#include <mutex>
+#include <ostream>
+#include <string_view>
+#include <type_traits>
+
 #include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/schema.h"
@@ -19,22 +28,39 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema_pbutil.h"
-
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_ddl.pb.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/logging.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_util.h"
-
+#include "yb/util/unique_lock.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/schema.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/stl_util.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/util/async_util.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+#include "yb/util/timestamp.h"
+#include "yb/util/tostring.h"
 
 DEFINE_RUNTIME_int32(cdc_state_table_num_tablets, 0,
     "Number of tablets to use when creating the CDC state table. "

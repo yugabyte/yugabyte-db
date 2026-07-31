@@ -30,30 +30,48 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <chrono>
 #include <cmath>
 #include <memory>
 #include <vector>
-
-#include <gmock/gmock.h>
-
-#include <google/protobuf/util/message_differencer.h>
+#include <functional>
+#include <initializer_list>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <string_view>
+#include <tuple>
+#include <utility>
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_info.h"
-#include "yb/client/transaction_manager.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/common_types.pb.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/integration-tests/postgres-minicluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/leader_epoch.h"
@@ -64,27 +82,55 @@
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/tablet_creation_limits.h"
-#include "yb/master/ts_manager.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
-#include "yb/rpc/rpc_context.h"
-
-#include "yb/tools/admin-test-base.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
-#include "yb/tserver/ts_data_size_metrics.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status_format.h"
-
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
-#include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/snapshot.h"
+#include "yb/common/tablet_limits.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_backup.pb.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tablet_peer_lookup.h"
+#include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/pb_util.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_util.h"
+#include "yb/util/timestamp.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(data_size_metric_updater_interval_sec);

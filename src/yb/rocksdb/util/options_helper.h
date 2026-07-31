@@ -21,16 +21,19 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <string>
 #include <vector>
+#include <memory>
+#include <unordered_map>
+#include <functional>
 
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/table.h"
-#include "yb/rocksdb/util/mutable_cf_options.h"
 
 namespace rocksdb {
+struct MutableCFOptions;
 
 // Returns true if the input char "c" is considered as a special character
 // that will be escaped when EscapeOptionString() is called.

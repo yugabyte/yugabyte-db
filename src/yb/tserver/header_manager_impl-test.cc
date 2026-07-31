@@ -12,20 +12,17 @@
 //
 
 #include <string>
-
-#include "yb/util/logging.h"
-#include <gtest/gtest.h>
+#include <memory>
 
 #include "yb/encryption/encryption_util.h"
 #include "yb/encryption/header_manager_impl.h"
-#include "yb/encryption/universe_key_manager.h"
-
-#include "yb/gutil/endian.h"
-
 #include "yb/tserver/universe_key_test_util.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/encryption/header_manager.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/test_macros.h"
 
 using std::string;
 

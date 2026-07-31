@@ -11,8 +11,19 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <string>
+
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 DECLARE_int32(ysql_select_parallelism);
 

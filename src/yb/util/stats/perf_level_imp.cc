@@ -20,6 +20,8 @@
 
 #include "yb/util/stats/perf_level_imp.h"
 
+#include "yb/util/stats/perf_level.h"
+
 
 namespace yb {
 

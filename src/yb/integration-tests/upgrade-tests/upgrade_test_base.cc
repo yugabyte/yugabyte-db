@@ -17,8 +17,17 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
 #include <boost/regex.hpp>
-
-#include <gtest/gtest.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <boost/property_tree/ptree_fwd.hpp>
+#include <exception>
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <ratio>
+#include <set>
+#include <utility>
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug.h"
@@ -27,13 +36,36 @@
 #include "yb/common/version_info.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
-#include "yb/yql/pgwrapper/libpq_utils.h"
-
 #include "yb/server/server_base.pb.h"
 #include "yb/server/server_base.proxy.h"
-
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_admin.proxy.h"
+#include "gtest/gtest.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/tserver/tserver_admin.pb.h"
+#include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/env.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/path_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_log.h"
+#include "yb/util/string_util.h"
+#include "yb/util/subprocess.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
+#include "yb/util/tsan_util.h"
+
+namespace yb {
+class FileLock;
+}  // namespace yb
 
 DECLARE_uint32(auto_flags_apply_delay_ms);
 

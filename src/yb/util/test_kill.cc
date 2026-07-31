@@ -20,8 +20,13 @@
 
 #include "yb/util/test_kill.h"
 
+#include <assert.h>
+#include <glog/logging.h>
+#include <ostream>
+
 #include "yb/util/format.h"
 #include "yb/util/random_util.h"
+#include "yb/util/logging.h"
 
 int test_kill_odds = 0;
 std::vector<std::string> test_kill_prefix_blacklist;

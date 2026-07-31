@@ -15,11 +15,13 @@
 
 #pragma once
 
-#include <atomic>
+#include <stddef.h>
+#include <atomic> // IWYU pragma: keep
 #include <mutex>
 #include <string>
 #include <typeinfo>
 #include <unordered_map>
+#include <utility>
 
 namespace yb {
 

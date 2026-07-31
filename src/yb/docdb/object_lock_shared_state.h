@@ -13,19 +13,42 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <optional>
 #include <span>
+#include <string>
+#include <type_traits>
+#include <unordered_map>
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/lock_util.h"
 #include "yb/docdb/object_lock_data.h"
 #include "yb/docdb/object_lock_shared_fwd.h"
-
 #include "yb/util/lw_function.h"
 #include "yb/util/shmem/annotations.h"
-#include "yb/util/shmem/robust_mutex.h"
 #include "yb/util/shmem/shared_mem_allocator.h"
 #include "yb/util/tostring.h"
+#include "yb/common/transaction.h"
+#include "yb/common/transaction.pb.h"
+
+namespace yb {
+namespace docdb {
+class ObjectLockManager;
+}  // namespace docdb
+}  // namespace yb
 
 namespace yb::docdb {
 

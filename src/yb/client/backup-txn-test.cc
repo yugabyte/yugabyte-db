@@ -11,29 +11,66 @@
 // under the License.
 //
 
-#include "yb/client/error.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <atomic>
+#include <chrono>
+#include <functional>
+#include <future>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <thread>
+#include <vector>
+
 #include "yb/client/session.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 #include "yb/client/transaction.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/transaction_error.h"
-
-#include "yb/master/master_backup.proxy.h"
-
 #include "yb/rocksdb/db.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/tablet_snapshots.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/test_thread_holder.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/client/ql-dml-test-base.h"
+#include "yb/client/table_handle.h"
+#include "yb/client/txn-test-base.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/snapshot.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/docdb/docdb_compaction_context.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_backup.pb.h"
+#include "yb/master/mini_master.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/server/clock.h"
+#include "yb/tablet/mvcc.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/env.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 using yb::master::SysSnapshotEntryPB;

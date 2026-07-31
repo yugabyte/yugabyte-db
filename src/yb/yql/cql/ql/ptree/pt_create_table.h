@@ -17,17 +17,22 @@
 
 #pragma once
 
-#include "yb/client/client_fwd.h"
-
-#include "yb/common/common_fwd.h"
+#include <memory>
+#include <utility>
 
 #include "yb/util/memory/arena.h"
-
 #include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class TableProperties;
+
 namespace ql {
+class PTColumnDefinition;
+class SemContext;
 
 //--------------------------------------------------------------------------------------------------
 // Constraints.

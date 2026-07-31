@@ -17,17 +17,22 @@
 
 #include "yb/rpc/periodic.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <algorithm>
 #include <memory>
 #include <mutex>
-
-#include <boost/function.hpp>
+#include <ostream>
+#include <utility>
 
 #include "yb/rpc/messenger.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status.h"
+#include "yb/rpc/scheduler.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
 
 DEFINE_RUNTIME_int32(slow_periodic_scheduling_threshold_ms, 20,
     "How far past its scheduled run time the PeriodicTimer callback start can be delayed before "

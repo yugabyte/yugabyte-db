@@ -12,20 +12,28 @@
 //
 #pragma once
 
-#include <memory>
-#include <string>
-
 #include <boost/container/small_vector.hpp>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/intrusive/list.hpp>
+#include <limits>
+#include <utility>
+#include <vector>
 
-#include "yb/client/client_fwd.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/net/socket.h"
 #include "yb/util/size_literals.h"
-
 #include "yb/yql/redis/redisserver/redis_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class Slice;
+
+namespace client {
+class YBRedisReadOp;
+class YBRedisWriteOp;
+}  // namespace client
+
 namespace redisserver {
 
 constexpr size_t kMaxRedisValueSize = 512_MB;

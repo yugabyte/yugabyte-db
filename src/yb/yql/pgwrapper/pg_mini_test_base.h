@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -20,12 +21,15 @@
 
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 #include "yb/util/result.h"
-#include "yb/util/status_fwd.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_fwd.h"
+#include "yb/tserver/tablet_server_options.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/status.h"
 
 namespace yb::pgwrapper {
 

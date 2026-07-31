@@ -17,10 +17,20 @@
 
 #include "yb/yql/cql/ql/ptree/pt_alter_keyspace.h"
 
-#include "yb/common/redis_constants_common.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <memory>
+#include <ostream>
 
+#include "yb/common/redis_constants_common.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 DECLARE_bool(use_cassandra_authentication);
 

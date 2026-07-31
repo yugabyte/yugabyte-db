@@ -32,9 +32,19 @@
 
 #include "yb/tserver/tablet_server_options.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <ostream>
+#include <string>
+#include <utility>
+
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_flags.h"
 #include "yb/util/result.h"
+#include "yb/server/webserver_options.h"
+#include "yb/util/env.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
 
 DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_string(rpc_bind_addresses);

@@ -33,9 +33,9 @@
 #pragma once
 
 #include <string_view>
+#include <string>
 
 #include "yb/cdc/cdc_service.pb.h"
-
 #include "yb/util/status_ec.h"
 
 using namespace std::literals;

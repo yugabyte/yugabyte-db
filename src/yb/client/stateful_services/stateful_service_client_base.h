@@ -13,15 +13,30 @@
 
 #pragma once
 
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/preprocessor/variadic/to_seq.hpp>
 #include <memory>
+#include <functional>
+#include <mutex>
+#include <string>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/gutil/thread_annotations.h"
-#include "yb/rpc/rpc_fwd.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/rpc/proxy_base.h"
+#include "yb/util/result.h"
+
+namespace yb {
+enum StatefulServiceKind : int;
+namespace rpc {
+class ProxyCache;
+class RpcController;
+}  // namespace rpc
+}  // namespace yb
 
 using namespace std::placeholders;
 

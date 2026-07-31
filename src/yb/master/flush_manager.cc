@@ -13,18 +13,34 @@
 
 #include "yb/master/flush_manager.h"
 
-#include "yb/util/logging.h"
+#include <map>
+#include <memory>
+#include <mutex>
+#include <ostream>
+#include <utility>
+#include <vector>
 
+#include "yb/util/logging.h"
 #include "yb/master/async_flush_tablets_task.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_util.h"
-#include "yb/master/ts_descriptor.h"
-
 #include "yb/util/status_log.h"
 #include "yb/util/trace.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/rpc/rpc_context.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+
+namespace yb {
+namespace master {
+struct LeaderEpoch;
+}  // namespace master
+}  // namespace yb
 
 namespace yb::master {
 

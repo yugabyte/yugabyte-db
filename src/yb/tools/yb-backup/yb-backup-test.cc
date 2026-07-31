@@ -11,20 +11,46 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/common/wire_protocol-test-util.h"
+#include <glog/logging.h>
+#include <stdint.h>
+#include <chrono>
+#include <initializer_list>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <thread>
+#include <vector>
 
+#include "yb/common/wire_protocol-test-util.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/table_creator.h"
-#include "yb/client/table_info.h"
 #include "yb/client/ql-dml-test-base.h"
-
 #include "yb/master/master_client.pb.h"
-
-#include "yb/tools/tools_test_utils.h"
 #include "yb/tools/yb-backup/yb-backup-test_base.h"
-
-#include "yb/rpc/rpc_controller.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/schema.h"
+#include "yb/client/snapshot_test_util.h"
+#include "yb/client/table_handle.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/dockv/partition.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/tools/test_admin_client.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
 using namespace std::literals;
 

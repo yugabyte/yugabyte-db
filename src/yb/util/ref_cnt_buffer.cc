@@ -13,10 +13,11 @@
 //
 //
 
-#include "yb/util/logging.h"
+#include <stdlib.h>
+#include <string.h>
+#include <new>
 
 #include "yb/util/ref_cnt_buffer.h"
-
 #include "yb/util/faststring.h"
 #include "yb/util/malloc.h"
 

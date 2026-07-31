@@ -19,9 +19,13 @@
 #include "yb/common/ql_type.h"
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
+#include "yb/common/ql_datatype.h"
+#include "yb/common/value.messages.h"
+#include "yb/yql/cql/ql/ptree/sem_state.h"
 
 namespace yb {
 namespace ql {
+class SemContext;
 
 PTInsertJsonClause::PTInsertJsonClause(
     MemoryContext* memctx, const YBLocation::SharedPtr& loc, const PTExpr::SharedPtr& json_expr,

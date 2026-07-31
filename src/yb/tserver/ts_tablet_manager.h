@@ -32,72 +32,132 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <array>
+#include <atomic>
+#include <functional>
+#include <future>
+#include <limits>
+#include <map>
+#include <mutex>
+#include <optional>
+#include <set>
+#include <shared_mutex>
+#include <utility>
 
-#include <gtest/gtest_prod.h>
-
-#include "yb/client/client_fwd.h"
-
-#include "yb/common/constants.h"
 #include "yb/common/snapshot.h"
-
-#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/metadata.pb.h"
-
-#include "yb/docdb/local_waiting_txn_registry.h"
-
 #include "yb/gutil/callback.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stl_util.h"
-
-#include "yb/master/master_fwd.h"
-#include "yb/master/master_heartbeat.fwd.h"
-
-#include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/options.h"
-
 #include "yb/rpc/rpc_fwd.h"
-
 #include "yb/tablet/tablet_fwd.h"
-#include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_splitter.h"
-
 #include "yb/tserver/tserver_fwd.h"
-#include "yb/tserver/tserver_admin.fwd.h"
-#include "yb/tserver/tablet_memory_manager.h"
 #include "yb/tserver/tablet_peer_lookup.h"
-#include "yb/tserver/ts_data_size_metrics.h"
 #include "yb/tserver/tserver_types.pb.h"
-
-#include "yb/util/status_fwd.h"
+#include "yb/util/flags/flags_callback.h"
 #include "yb/util/locks.h"
 #include "yb/util/lru_cache.h"
 #include "yb/util/rw_mutex.h"
 #include "yb/util/shared_lock.h"
-#include "yb/util/threadpool.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/transaction.h"
+#include "yb/consensus/retryable_requests.h"
+#include "yb/docdb/docdb_compaction_context.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/hnsw/hnsw_fwd.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/util/atomic.h"
+#include "yb/util/enums.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace rocksdb {
+class MemoryMonitor;
+}  // namespace rocksdb
 
 namespace yb {
 
-class GarbageCollector;
 class FsManager;
-class HostPort;
-class Schema;
 class BackgroundTask;
 class XClusterSafeTimeTest;
-
+class Env;
+class MemTracker;
+class MetricRegistry;
+class ThreadPool;
+namespace client {
+class YBClient;
+class YBMetaDataCache;
+}  // namespace client
 namespace consensus {
-class RaftConfigPB;
-} // namespace consensus
+class MultiRaftManager;
+struct StateChangeContext;
+}  // namespace consensus
+namespace docdb {
+class LocalWaitingTxnRegistry;
+}  // namespace docdb
+namespace dockv {
+class Partition;
+}  // namespace dockv
+namespace log {
+class Log;
+}  // namespace log
+namespace master {
+class ReportedTabletPB;
+class TSSnapshotsInfoPB;
+class TabletReportPB;
+class TabletReportUpdatesPB;
+}  // namespace master
+namespace rpc {
+class Poller;
+}  // namespace rpc
+namespace tablet {
+class CloneOperation;
+class RaftGroupMetadata;
+enum TabletDataState : int;
+}  // namespace tablet
+struct OpId;
+template <typename T> class AtomicGauge;
 
 namespace tserver {
 class TabletServer;
 class FullCompactionManager;
+class DeleteTabletResponsePB;
+class IsTabletServerReadyResponsePB;
+class StartRemoteSnapshotTransferRequestPB;
+class TabletMemoryManager;
+class TsDataSizeMetrics;
 
 using rocksdb::MemoryMonitor;
 
@@ -106,6 +166,7 @@ typedef std::unordered_map<TabletId, std::string> TransitionInProgressMap;
 
 class TransitionInProgressDeleter;
 struct TabletCreationMetadata;
+
 typedef std::vector<TabletCreationMetadata> SplitTabletsCreationMetadata;
 
 typedef Callback<void(tablet::TabletPeerPtr)> ConsensusChangeCallback;

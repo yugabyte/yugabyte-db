@@ -13,14 +13,39 @@
 
 #pragma once
 
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <string>
 #include <vector>
 
 #include "yb/master/master_fwd.h"
+#include "yb/util/result.h"
 #include "yb/util/status_callback.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/util/enums.h"
+#include "yb/util/status.h"
+
+namespace yb {
+namespace master {
+class CatalogManager;
+class CatalogManagerIf;
+class SysUniverseReplicationEntryPB;
+}  // namespace master
+}  // namespace yb
 
 namespace yb::master {
-class TableInfo;
 
 // Should the table be automatically added to xCluster replication?
 bool IsTableEligibleForXClusterReplication(

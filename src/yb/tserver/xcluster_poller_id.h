@@ -13,7 +13,14 @@
 
 #pragma once
 
+#include <cstddef>
+#include <functional>
+#include <ostream>
+#include <string>
+
 #include "yb/cdc/xcluster_types.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/integral_types.h"
 
 namespace yb {
 

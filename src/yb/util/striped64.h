@@ -32,13 +32,13 @@
 
 #pragma once
 
+#include <stdint.h>
+
 #include "yb/gutil/port.h"
 #include "yb/util/atomic.h"
-#include "yb/util/threadlocal.h"
+#include "yb/gutil/macros.h"
 
 namespace yb {
-
-class Striped64;
 
 namespace striped64 {
 namespace internal {

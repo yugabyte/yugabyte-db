@@ -13,13 +13,20 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <memory>
+#include <optional>
+#include <string>
+
 #include "yb/client/client.h"
 #include "yb/client/transaction_manager.h"
-
 #include "yb/integration-tests/mini_cluster.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

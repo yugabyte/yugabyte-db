@@ -13,7 +13,18 @@
 
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <ostream>
+
 #include "yb/util/status_log.h"
+#include "gtest/gtest.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/pstack_watcher.h"
+#include "yb/util/slice.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 

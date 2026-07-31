@@ -15,16 +15,38 @@
 
 #pragma once
 
-#include "yb/gutil/casts.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <unordered_map>
+#include <utility>
 
+#include "yb/gutil/casts.h"
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/yb_rpc.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rpc/inbound_call.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/format.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace rpc {
 
 class LocalYBInboundCall;
+class CallStateListenerFactory;
+class DumpRunningRpcsRequestPB;
+class DumpRunningRpcsResponsePB;
+class RemoteMethod;
+class RpcController;
+struct RpcMetrics;
 
 // A short-circuited outbound call.
 class LocalOutboundCall : public OutboundCall {

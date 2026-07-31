@@ -15,10 +15,12 @@
 
 #include <memory>
 
-#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/heartbeater.h"
 
 namespace yb {
 namespace tserver {
+class TabletServer;
+class TabletServerOptions;
 
 std::unique_ptr<Heartbeater> CreateHeartbeater(
     const TabletServerOptions& options, TabletServer* server);

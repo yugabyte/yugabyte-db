@@ -11,28 +11,57 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <algorithm>
-
-#include <gtest/gtest.h>
+#include <chrono>
+#include <functional>
+#include <future>
+#include <memory>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_ddl_client.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/test_async_rpc_manager.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
-
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/countdown_latch.h"
-#include "yb/util/status_callback.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/unique_lock.h"
+#include "gtest/gtest.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/schema.h"
+#include "yb/common/schema_pbutil.h"
+#include "yb/common/value.messages.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/async_rpc_tasks_base.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/server/monitored_task.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/tsan_util.h"
+
+namespace yb {
+class AsyncTaskThrottlerBase;
+class ThreadPool;
+}  // namespace yb
 
 using namespace std::chrono_literals;
 

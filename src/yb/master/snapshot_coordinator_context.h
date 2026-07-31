@@ -13,28 +13,45 @@
 
 #pragma once
 
-#include "yb/common/common_fwd.h"
-#include "yb/common/entity_ids.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <functional>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 #include "yb/common/snapshot.h"
-
-#include "yb/docdb/docdb_fwd.h"
-
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_types.pb.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
-#include "yb/server/server_fwd.h"
-
-#include "yb/tablet/tablet_fwd.h"
-
 #include "yb/tserver/backup.pb.h"
-
 #include "yb/util/monotime.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/catalog_entity_info.fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+class HybridTime;
+class Schema;
+namespace rpc {
+class Scheduler;
+}  // namespace rpc
+namespace server {
+class Clock;
+}  // namespace server
+namespace tablet {
+class Operation;
+class Tablet;
+}  // namespace tablet
+
 namespace master {
+struct SnapshotScheduleRestoration;
 
 using TabletSnapshotOperationCallback =
     std::function<void(Result<const tserver::TabletSnapshotOpResponsePB&>)>;

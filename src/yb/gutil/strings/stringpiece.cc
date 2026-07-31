@@ -17,16 +17,15 @@
 //
 #include "yb/gutil/strings/stringpiece.h"
 
-#include <string.h>
-
+#include <glog/logging.h>
+#include <limits.h>
 #include <algorithm>
 #include <string>
 
-#include "yb/util/logging.h"
-
-#include "yb/gutil/hash/hash.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/memutil.h"
+#include "yb/gutil/hash/legacy_hash.h"
+#include "yb/gutil/hash/string_hash.h"
 
 using std::min;
 using std::string;

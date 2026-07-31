@@ -13,24 +13,29 @@
 
 #pragma once
 
-#include <chrono>
+#include <stddef.h>
+#include <stdint.h>
+#include <optional>
+#include <string>
+#include <vector>
 
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/snapshot.h"
-
-#include "yb/integration-tests/external_mini_cluster.h"
-
-#include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_fwd.h"
-
-#include "yb/util/tsan_util.h"
-#include "yb/util/status_fwd.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/uuid.h"
 
 
 namespace yb {
+class ExternalMiniCluster;
+namespace client {
+class YBClient;
+}  // namespace client
 
 /* Helper class for tests to use admin functionality. */
 class TestAdminClient {

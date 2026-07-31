@@ -11,27 +11,27 @@
 // under the License.
 //
 
+#include <boost/algorithm/string/predicate.hpp>
 #include <fstream>
 #include <regex>
 #include <vector>
-
-#include <boost/algorithm/string/predicate.hpp>
-#include "yb/util/logging.h"
-
-#include "yb/client/client.h"
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/external_mini_cluster.h"
-
 #include "yb/master/master_ddl.proxy.h"
-
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/util/path_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/subprocess.h"
-#include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/util/env.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
 
 using std::string;
 

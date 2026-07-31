@@ -11,14 +11,16 @@
 // under the License.
 //
 
+#include <stdint.h>
 #include <atomic>
 #include <chrono>
 #include <thread>
 #include <vector>
-
-#include <gtest/gtest.h>
+#include <compare>
+#include <string>
 
 #include "yb/util/two_group_mutex.h"
+#include "gtest/gtest.h"
 
 namespace yb {
 

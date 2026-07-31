@@ -23,16 +23,17 @@
 
 #include <inttypes.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <sys/stat.h>
-#include <sys/types.h>
-
+#include <assert.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdio.h>
+#include <string.h>
 #include <memory>
-
-#include <gtest/gtest.h>
+#include <string>
+#include <vector>
 
 #include "yb/rocksdb/db.h"
-
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/table.h"
@@ -40,17 +41,23 @@
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/log_format.h"
-#include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-
 #include "yb/rocksutil/yb_rocksdb_logger.h"
-
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/rocksdb/util/random.h"
+#include "yb/util/file_system.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 using std::unique_ptr;
 using std::shared_ptr;

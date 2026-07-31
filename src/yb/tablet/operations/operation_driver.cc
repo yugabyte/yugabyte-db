@@ -32,40 +32,45 @@
 
 #include "yb/tablet/operations/operation_driver.h"
 
-#include <atomic>
-#include <future>
-#include <map>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/memory_order.hpp>
 #include <memory>
 #include <mutex>
 #include <string>
-#include <vector>
+#include <chrono>
+#include <functional>
+#include <ostream>
+#include <ratio>
+#include <thread>
+#include <utility>
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.messages.h"
-
-#include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/thread_annotations.h"
-
 #include "yb/master/sys_catalog_constants.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/operations/operation_tracker.h"
 #include "yb/tablet/preparer.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_options.h"
-
 #include "yb/util/atomic.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
-#include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
+#include "yb/ash/wait_state.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/strings/strcat.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+enum TableType : int;
+}  // namespace yb
 
 using std::string;
 

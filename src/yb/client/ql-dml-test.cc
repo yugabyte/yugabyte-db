@@ -12,29 +12,38 @@
 //
 
 #include <boost/circular_buffer.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/core/pointer_traits.hpp>
+#include <boost/move/utility_core.hpp>
+#include <algorithm>
+#include <chrono>
+#include <future>
+#include <initializer_list>
+#include <memory>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <string_view>
+#include <thread>
+#include <vector>
 
-#include "yb/client/error.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-
 #include "yb/master/master_util.h"
-
-#include "yb/rocksdb/db.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
@@ -44,8 +53,33 @@
 #include "yb/util/status_log.h"
 #include "yb/util/tostring.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/cql/ql/util/statement_result.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/types.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 
 using std::string;
 using std::vector;

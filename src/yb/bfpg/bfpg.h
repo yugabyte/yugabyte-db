@@ -72,12 +72,21 @@
 
 #pragma once
 
+#include <glog/logging.h>
 #include <vector>
-#include <list>
+#include <functional>
+#include <ostream>
+#include <string>
+#include <utility>
 
 #include "yb/util/logging.h"
-#include "yb/bfpg/bfpg_template.h"
-#include "yb/bfpg/tserver_opcodes.h"
+#include "yb/bfcommon/bfdecl.h"
+#include "yb/bfpg/bfdecl.h"
+#include "yb/bfpg/bfpg_template.h"  // IWYU pragma: keep
+#include "yb/bfpg/gen_opcodes.h"
+#include "yb/common/value.messages.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace bfpg {

@@ -13,29 +13,41 @@
 
 #pragma once
 
-#include <condition_variable>
+#include <boost/container_hash/hash.hpp>
+#include <stddef.h>
 #include <future>
 #include <mutex>
 #include <unordered_map>
 #include <utility>
-
-#include <boost/container_hash/hash.hpp>
+#include <functional>
+#include <limits>
+#include <memory>
+#include <string>
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/common_fwd.h"
-#include "yb/common/common_types.pb.h"
-
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/util/mem_tracker.h"
 #include "yb/util/one_time_bool.h"
-
-#include "yb/yql/cql/ql/ptree/pt_option.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/common/ql_type.h"
 
 namespace yb {
+enum PermissionType : int;
+
+namespace ql {
+enum class ObjectType : int;
+}  // namespace ql
+
 namespace client {
+class YBClient;
+
+namespace internal {
+class PermissionsCache;
+}  // namespace internal
 
 enum class CacheCheckMode {
   NO_RETRY,
@@ -49,6 +61,7 @@ enum class CacheEntryFetchStatus {
 };
 
 struct YBMetaDataCacheEntry;
+
 using YBMetaDataCacheEntryPtr = std::shared_ptr<YBMetaDataCacheEntry>;
 
 struct GetTableResult {

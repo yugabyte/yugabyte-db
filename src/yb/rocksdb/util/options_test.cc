@@ -26,12 +26,16 @@
 #define __STDC_FORMAT_MACROS
 #endif
 
+#include <gflags/gflags.h>
+#include <inttypes.h>
+#include <stdarg.h>
+#include <stdio.h>
 #include <string>
 #include <unordered_map>
-
-#include <boost/preprocessor/stringize.hpp>
-
-#include <gtest/gtest.h>
+#include <memory>
+#include <sstream>
+#include <vector>
+#include <functional>
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/convenience.h"
@@ -44,12 +48,21 @@
 #include "yb/rocksdb/env.h"
 #include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
-#include "yb/util/format.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/compaction_filter.h"
+#include "yb/rocksdb/merge_operator.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/rocksdb/slice_transform.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/table.h"
+#include "yb/rocksdb/table/block_based_table_factory.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/math_util.h"
 
 #ifndef GFLAGS
 bool ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_print) = false;
 #else
-#include "yb/util/flags.h"
 using GFLAGS::ParseCommandLineFlags;
 DEFINE_NON_RUNTIME_bool(enable_print, false, "Print options generated to console.");
 #endif  // GFLAGS

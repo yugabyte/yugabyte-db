@@ -18,20 +18,26 @@
 // under the License.
 //
 #include <vector>
+#include <functional>
+#include <initializer_list>
 
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/random.h"
-#include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-
 #include "yb/util/path_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/sync_point.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/util/format.h"
+#include "yb/util/status.h"
 
 namespace rocksdb {
+
+using namespace yb::size_literals;
 
 class WritableFileWriterTest : public RocksDBTest {};
 

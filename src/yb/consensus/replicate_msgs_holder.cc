@@ -13,8 +13,12 @@
 
 #include "yb/consensus/replicate_msgs_holder.h"
 
+#include <google/protobuf/repeated_field.h>
+#include <utility>
+
 namespace yb {
 namespace consensus {
+class ReplicateMsg;
 
 ReplicateMsgsHolder::ReplicateMsgsHolder(
     google::protobuf::RepeatedPtrField<ReplicateMsg>* ops, ReplicateMsgs messages,

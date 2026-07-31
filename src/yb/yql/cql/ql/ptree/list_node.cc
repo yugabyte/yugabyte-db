@@ -16,11 +16,14 @@
 //--------------------------------------------------------------------------------------------------
 #include "yb/yql/cql/ql/ptree/list_node.h"
 
+#include <memory>
+
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/common/schema.h"
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/util/memory/arena.h"
 
 namespace yb {
 namespace ql {

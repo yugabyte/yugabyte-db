@@ -14,13 +14,21 @@
 //--------------------------------------------------------------------------------------------------
 #include "yb/yql/cql/ql/sem/analyzer.h"
 
+#include <glog/logging.h>
+#include <ostream>
+#include <string>
+#include <utility>
+
 #include "yb/util/status.h"
 #include "yb/yql/cql/ql/ptree/parse_tree.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
+#include "yb/gutil/port.h"
+#include "yb/util/logging.h"
 
 namespace yb {
 namespace ql {
+class QLEnv;
 
 using std::string;
 

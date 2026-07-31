@@ -13,17 +13,30 @@
 
 #pragma once
 
-#include <optional>
-
 #include <google/protobuf/wire_format_lite.h>
-
-#include "yb/gen_yrpc/gen_yrpc_fwd.h"
-
-#include "yb/rpc/lightweight_message.pb.h"
+#include <stddef.h>
+#include <optional>
+#include <string>
+#include <vector>
 
 #include "yb/util/strongly_typed_bool.h"
 
+namespace google {
+namespace protobuf {
+class Descriptor;
+class EnumDescriptor;
+class FieldDescriptor;
+class FileDescriptor;
+class MethodDescriptor;
+class ServiceDescriptor;
+}  // namespace protobuf
+}  // namespace google
+
 namespace yb {
+namespace rpc {
+enum RpcSides : int;
+}  // namespace rpc
+
 namespace gen_yrpc {
 
 YB_STRONGLY_TYPED_BOOL(Lightweight);

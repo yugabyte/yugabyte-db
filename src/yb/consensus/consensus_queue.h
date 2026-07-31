@@ -32,42 +32,62 @@
 
 #pragma once
 
-#include <iosfwd>
+#include <glog/logging.h>
+#include <gtest/gtest_prod.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/types.h>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <ostream>
+#include <functional>
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
-
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_types.h"
 #include "yb/consensus/log_cache.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
-
 #include "yb/gutil/ref_counted.h"
-
-#include "yb/rpc/strand.h"
-
 #include "yb/server/clock.h"
-
 #include "yb/util/locks.h"
-#include "yb/util/status_fwd.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/opid.h"
+#include "yb/consensus/log_fwd.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/gutil/threading/thread_collision_warner.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/format.h"
+#include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/consensus/log.h"
 
 namespace yb {
-template<class T>
-class AtomicGauge;
 class Cgroup;
 class MemTracker;
 class MetricEntity;
-class ThreadPoolToken;
+class OpIdPB;
+class RestartSafeCoarseTimePoint;
 
 namespace consensus {
 
 class PeerMessageQueueObserver;
 struct MajorityReplicatedData;
+class ConsensusContext;
+class LWConsensusRequestPB;
+class LWConsensusResponsePB;
+class LWReplicateMsgsHolder;
+class StartRemoteBootstrapRequestPB;
+enum OperationType : int;
 
 // The id for the server-wide consensus queue MemTracker.
 extern const char kConsensusQueueParentTrackerId[];

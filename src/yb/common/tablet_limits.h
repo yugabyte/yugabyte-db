@@ -13,9 +13,9 @@
 
 #pragma once
 
+#include <gflags/gflags.h>
+#include <stdint.h>
 #include <optional>
-
-#include "yb/util/flags.h"
 
 DECLARE_uint32(tablet_replicas_per_gib_limit);
 DECLARE_uint32(tablet_replicas_per_core_limit);

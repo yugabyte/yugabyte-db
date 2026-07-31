@@ -31,15 +31,23 @@
 //
 #include "yb/server/rpcz-path-handler.h"
 
+#include <glog/logging.h>
 #include <functional>
-#include <memory>
 #include <string>
+#include <map>
+#include <sstream>
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/server/webserver.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/status_log.h"
+#include "yb/common/common.pb.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/uuid.h"
 
 namespace yb {
 

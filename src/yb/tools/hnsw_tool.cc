@@ -11,38 +11,73 @@
 // under the License.
 //
 
+#include <boost/preprocessor/stringize.hpp>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/function.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/program_options/options_description.hpp>
+#include <boost/program_options/value_semantic.hpp>
 #include <iostream>
 #include <thread>
 #include <vector>
-
-#include <boost/program_options.hpp>
-#include <boost/preprocessor/stringize.hpp>
+#include <algorithm>
+#include <atomic>
+#include <cmath>
+#include <functional>
+#include <initializer_list>
+#include <memory>
+#include <numeric>
+#include <optional>
+#include <set>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <unordered_set>
+#include <utility>
 
 #include "yb/ann_methods/ann_methods.h"
-#include "yb/ann_methods/hnswlib_wrapper.h"
-#include "yb/ann_methods/usearch_wrapper.h"
-
-#include "yb/gutil/strings/strip.h"
-#include "yb/gutil/thread_annotations.h"
-
 #include "yb/util/logging.h"
-#include "yb/util/mem_tracker.h"
-#include "yb/util/random_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
-#include "yb/util/string_util.h"
-#include "yb/util/test_thread_holder.h"
-
 #include "yb/vector_index/ann_validation.h"
 #include "yb/vector_index/benchmark_data.h"
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/hnsw_options.h"
-#include "yb/vector_index/hnsw_util.h"
-#include "yb/vector_index/sharded_index.h"
+#include "yb/vector_index/sharded_index.h"  // IWYU pragma: keep
 #include "yb/vector_index/vector_index_fwd.h"
 #include "yb/vector_index/vector_index_wrapper_util.h"
-
 #include "yb/tools/tool_arguments.h"
+#include "yb/common/vector_types.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/endian.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/thread_holder.h"
+#include "yb/util/tostring.h"
+#include "yb/vector_index/coordinate_types.h"
+#include "yb/vector_index/vector_index_if.h"
 
 namespace po = boost::program_options;
 

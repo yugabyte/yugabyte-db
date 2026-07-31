@@ -13,22 +13,46 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <unordered_map>
 #include <vector>
+#include <memory>
+#include <mutex>
+#include <ostream>
+#include <string>
+#include <functional>
 
 #include "yb/common/entity_ids.h"
-
 #include "yb/master/master_error.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/ts_descriptor.h"
-
 #include "yb/util/status_callback.h"
 #include "yb/util/status_format.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 // Utility functions that can be shared between test and code for catalog manager.
 namespace yb {
 
 class Schema;
+class PartitionSchemaPB;
+class SchemaPB;
+enum TableType : int;
+
+namespace consensus {
+class RaftPeerPB;
+}  // namespace consensus
 
 namespace dockv {
 class PartitionSchema;
@@ -39,10 +63,12 @@ class TableInfoPB;
 }  // namespace tablet
 
 namespace master {
+class CatalogManagerIf;
+class SnapshotInfoPB;
+class YsqlTablespaceManager;
 
 using ZoneToDescMap = std::unordered_map<std::string, TSDescriptorVector>;
 
-struct Comparator;
 class SetPreferredZonesRequestPB;
 class IsTruncateTableDoneResponsePB;
 

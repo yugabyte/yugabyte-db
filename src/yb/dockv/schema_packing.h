@@ -13,28 +13,50 @@
 
 #pragma once
 
+#include <boost/container/small_vector.hpp>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/types.h>
+#include <boost/container/vector.hpp>
+#include <boost/intrusive/list.hpp>
 #include <memory>
 #include <unordered_map>
-
-#include <boost/container/small_vector.hpp>
-#include <boost/functional/hash.hpp>
-
-#include <google/protobuf/repeated_field.h>
+#include <functional>
+#include <mutex>
+#include <optional>
+#include <set>
+#include <string>
+#include <variant>
+#include <vector>
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/common_types.pb.h"
 #include "yb/common/column_id.h"
-#include "yb/common/doc_hybrid_time.h"
 #include "yb/common/id_mapping.h"
 #include "yb/common/value.pb.h"
-
-#include "yb/dockv/dockv_fwd.h"
-#include "yb/dockv/dockv.fwd.h"
 #include "yb/dockv/value_type.h"
-
-#include "yb/util/memory/arena_list.h"
 #include "yb/util/slice.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/dockv/packed_value.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class EncodedDocHybridTime;
+class LWQLColumnValuePB;
+class QLColumnValuePB;
+class Schema;
+class SchemaPB;
+enum TableType : int;
+enum class DataType;
+namespace dockv {
+class ColumnPackingPB;
+class SchemaPackingPB;
+struct ReaderProjection;
+}  // namespace dockv
+template <class Entry> class ArenaList;
+}  // namespace yb
 
 namespace yb::dockv {
 
@@ -429,6 +451,7 @@ class PackedRowColumnUpdateTracker {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

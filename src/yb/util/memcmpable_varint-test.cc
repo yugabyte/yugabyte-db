@@ -30,16 +30,22 @@
 // under the License.
 //
 
-#include "yb/util/logging.h"
 #include <glog/stl_logging.h>
-#include <gtest/gtest.h>
+#include <stdint.h>
+#include <compare>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/util/hexdump.h"
 #include "yb/util/memcmpable_varint.h"
 #include "yb/util/random.h"
-#include "yb/util/stopwatch.h" // Required in NDEBUG mode
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/util/faststring.h"
+#include "yb/util/slice.h"
+#include "yb/util/stopwatch.h" // IWYU pragma: keep
 
 using std::pair;
 using std::make_pair;

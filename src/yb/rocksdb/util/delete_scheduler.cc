@@ -20,18 +20,19 @@
 
 #include "yb/rocksdb/util/delete_scheduler.h"
 
-#include <thread>
-#include <vector>
+#include <glog/logging.h>
+#include <stddef.h>
 
-#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/sst_file_manager_impl.h"
 #include "yb/rocksdb/util/mutexlock.h"
-
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace rocksdb {
 

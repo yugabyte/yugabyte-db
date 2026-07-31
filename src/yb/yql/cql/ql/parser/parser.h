@@ -17,15 +17,29 @@
 
 #pragma once
 
-#include <cstddef>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <memory>
+#include <ostream>
+#include <string>
 
 #include "yb/yql/cql/ql/parser/parse_context.h"
 #include "yb/yql/cql/ql/parser/scanner.h"
-#include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/util/memory/arena.h"
+#include "yb/util/logging.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/parser/parser_gram.y.final.hh"
+#include "yb/yql/cql/ql/ptree/parse_tree.h"
+#include "yb/yql/cql/ql/ptree/pt_dml.h"
+#include "yb/yql/cql/ql/ptree/tree_node.h"
 
 namespace yb {
 namespace ql {
+class PTBindVar;
+class location;
+enum class ErrorCode : int64_t;
 
 class Parser {
  public:

@@ -10,12 +10,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <glog/logging.h>
 #include <functional>
+#include <chrono>
+#include <ostream>
+#include <string>
 
 #include "yb/util/logging.h"
-#include <gtest/gtest.h>
-
 #include "yb/util/backoff_waiter.h"
+#include "gtest/gtest.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 using namespace std::chrono_literals;
 using namespace std::placeholders;

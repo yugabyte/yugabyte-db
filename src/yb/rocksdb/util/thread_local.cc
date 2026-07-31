@@ -23,7 +23,8 @@
 
 #include "yb/rocksdb/util/thread_local.h"
 
-#include <algorithm>
+#include <assert.h>
+#include <stdlib.h>
 
 #include "yb/rocksdb/port/likely.h"
 #include "yb/rocksdb/util/mutexlock.h"

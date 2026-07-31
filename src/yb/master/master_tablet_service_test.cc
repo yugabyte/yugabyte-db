@@ -11,14 +11,18 @@
 // under the License.
 //
 
+#include <memory>
+#include <string>
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
-#include "yb/master/mini_master.h"
-
 #include "yb/tserver/tserver_service.proxy.h"
-
-#include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 namespace yb::master {
 

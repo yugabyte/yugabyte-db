@@ -14,6 +14,8 @@
 //--------------------------------------------------------------------------------------------------
 #include "yb/yql/cql/ql/parser/parser.h"
 
+#include "yb/yql/cql/ql/util/errcodes.h"
+
 namespace yb {
 namespace ql {
 

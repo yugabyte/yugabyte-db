@@ -23,10 +23,13 @@
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/stop_watch.h"
-
 #include "yb/util/stats/perf_step_timer.h"
+#include "yb/rocksdb/perf_context.h"
+#include "yb/rocksdb/statistics.h"
 
 namespace rocksdb {
+class Env;
+
 namespace {
 bool ShouldReportToStats(Env* env, Statistics* stats) {
   return env != nullptr && stats != nullptr &&

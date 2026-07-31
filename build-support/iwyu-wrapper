@@ -1,0 +1,207 @@
+#!/usr/bin/env bash
+#
+# Copyright (c) YugabyteDB, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.  You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software distributed under the License
+# is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+# or implied.  See the License for the specific language governing permissions and limitations
+# under the License.
+#
+# Wrapper script for IWYU that captures output to files.
+#
+# Usage: iwyu-wrapper --iwyu-path <path> --output-dir <dir> [--llvm-lib-dir <dir>]
+#                     [--source-root <dir>] [--build-root <dir>]
+#                     [--filter-path <path>] [iwyu args...]
+#
+# This script is invoked by CMake in place of IWYU directly. It:
+# 1. Runs IWYU with all provided arguments
+# 2. Captures the output to a file in the output directory
+# 3. Shows a summary message during the build
+#
+set -euo pipefail
+
+# Parse our custom arguments
+YB_IWYU_PATH=""
+YB_IWYU_OUTPUT_DIR=""
+YB_LLVM_LIB_DIR=""
+YB_IWYU_SOURCE_ROOT=""
+YB_IWYU_BUILD_ROOT=""
+YB_IWYU_FILTER_PATH=""
+iwyu_args=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --iwyu-path)
+      YB_IWYU_PATH="$2"
+      shift 2
+      ;;
+    --output-dir)
+      YB_IWYU_OUTPUT_DIR="$2"
+      shift 2
+      ;;
+    --llvm-lib-dir)
+      YB_LLVM_LIB_DIR="$2"
+      shift 2
+      ;;
+    --source-root)
+      YB_IWYU_SOURCE_ROOT="${2%/}"
+      shift 2
+      ;;
+    --build-root)
+      YB_IWYU_BUILD_ROOT="${2%/}"
+      shift 2
+      ;;
+    --filter-path)
+      YB_IWYU_FILTER_PATH="$2"
+      shift 2
+      ;;
+    *)
+      iwyu_args+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$YB_IWYU_PATH" ]]; then
+  echo "ERROR: --iwyu-path not provided" >&2
+  exit 1
+fi
+
+if [[ -z "$YB_IWYU_OUTPUT_DIR" ]]; then
+  echo "ERROR: --output-dir not provided" >&2
+  exit 1
+fi
+
+# Set up LD_LIBRARY_PATH for IWYU to find libc++ and other LLVM runtime libraries
+# If --llvm-lib-dir was provided, use it; otherwise try to find it from YB_LLVM_TOOLCHAIN_DIR
+if [[ -n "$YB_LLVM_LIB_DIR" ]]; then
+  export LD_LIBRARY_PATH="${YB_LLVM_LIB_DIR}:${LD_LIBRARY_PATH:-}"
+elif [[ -n "${YB_LLVM_TOOLCHAIN_DIR:-}" ]]; then
+  # Try standard LLVM library paths
+  for lib_subdir in "lib/x86_64-unknown-linux-gnu" "lib"; do
+    lib_path="${YB_LLVM_TOOLCHAIN_DIR}/${lib_subdir}"
+    if [[ -d "$lib_path" ]]; then
+      export LD_LIBRARY_PATH="${lib_path}:${LD_LIBRARY_PATH:-}"
+      break
+    fi
+  done
+fi
+
+# Create output directory if it doesn't exist
+mkdir -p "$YB_IWYU_OUTPUT_DIR"
+
+# Find the C++ source file from the arguments. C sources are deliberately not
+# analyzed even if this wrapper is invoked outside CMake's CXX-only integration.
+source_file=""
+c_source_file=""
+for arg in "${iwyu_args[@]}"; do
+  if [[ "$arg" =~ \.(cc|cpp|cxx)$ ]]; then
+    source_file="$arg"
+  elif [[ "$arg" =~ \.c$ ]]; then
+    c_source_file="$arg"
+  fi
+done
+
+if [[ -z "$source_file" && -n "$c_source_file" ]]; then
+  exit 0
+fi
+
+if [[ -z "$source_file" ]]; then
+  # No source file found, just run IWYU without capturing
+  exec "$YB_IWYU_PATH" "${iwyu_args[@]}"
+fi
+
+# Generated sources in the build tree are not repository source files and
+# should not be edited based on IWYU output.
+if [[ -n "$YB_IWYU_SOURCE_ROOT" &&
+      "$source_file" != "$YB_IWYU_SOURCE_ROOT/"* ]]; then
+  exit 0
+fi
+
+if [[ -n "$YB_IWYU_BUILD_ROOT" &&
+      "$source_file" == "$YB_IWYU_BUILD_ROOT/"* ]]; then
+  exit 0
+fi
+
+# Check if filter path is set and if source file matches
+if [[ -n "$YB_IWYU_FILTER_PATH" ]]; then
+  if [[ "$source_file" != *"$YB_IWYU_FILTER_PATH"* ]]; then
+    # Source file doesn't match filter, skip IWYU analysis
+    exit 0
+  fi
+fi
+
+# Create a unique output filename based on the source file path
+# Replace / with __ to create a flat filename
+output_basename="${source_file#"$YB_IWYU_SOURCE_ROOT/"}"
+output_basename=$(echo "$output_basename" | sed 's|/|__|g; s|\.cc$|.iwyu|; s|\.cpp$|.iwyu|; s|\.cxx$|.iwyu|')
+output_file="$YB_IWYU_OUTPUT_DIR/$output_basename"
+
+# Remove prior results for this source so a clean reanalysis clears stale
+# suggestions and errors without requiring a full CMake reconfiguration.
+rm -f "$output_file" "${output_file}.error" \
+  "$YB_IWYU_OUTPUT_DIR/.completed/$output_basename"
+
+# Run IWYU and capture output
+# IWYU outputs suggestions to stderr, exit code is usually 0 or 1 (1 = has suggestions)
+# We capture stderr to a temp file, then process it
+temp_output=$(mktemp)
+trap 'rm -f "$temp_output"' EXIT
+
+set +e
+"$YB_IWYU_PATH" "${iwyu_args[@]}" 2>"$temp_output"
+iwyu_status=$?
+set -e
+
+if [[ $iwyu_status -ne 0 ]]; then
+  error_file="${output_file}.error"
+  cp "$temp_output" "$error_file"
+  echo "ERROR: IWYU failed for $source_file (see $error_file)" >&2
+  cat "$temp_output" >&2
+  exit "$iwyu_status"
+fi
+
+# Debug: log all IWYU output to a debug file
+if [[ "${YB_IWYU_DEBUG:-}" == "1" ]]; then
+  echo "=== IWYU run for: $source_file ===" >> "$YB_IWYU_OUTPUT_DIR/iwyu_debug.log"
+  echo "Args: ${iwyu_args[*]}" >> "$YB_IWYU_OUTPUT_DIR/iwyu_debug.log"
+  echo "LD_LIBRARY_PATH: ${LD_LIBRARY_PATH:-}" >> "$YB_IWYU_OUTPUT_DIR/iwyu_debug.log"
+  cat "$temp_output" >> "$YB_IWYU_OUTPUT_DIR/iwyu_debug.log"
+  echo "" >> "$YB_IWYU_OUTPUT_DIR/iwyu_debug.log"
+fi
+
+# Check if there are any suggestions in the output
+if grep -q "should add these lines\|should remove these lines" "$temp_output"; then
+  # There are suggestions - save to the output directory
+  {
+    echo "=== IWYU analysis for: $source_file ==="
+    echo ""
+    cat "$temp_output"
+    echo ""
+  } > "$output_file"
+
+  # Also append to the combined output file
+  {
+    echo "=== IWYU analysis for: $source_file ==="
+    echo ""
+    cat "$temp_output"
+    echo ""
+    echo "================================================================================"
+    echo ""
+  } >> "$YB_IWYU_OUTPUT_DIR/iwyu_all.txt"
+
+  # Output to stderr so it's visible during build (but summarized)
+  echo "IWYU: Suggestions for $source_file (see $output_file)" >&2
+fi
+
+# Record successful analyses separately from the actionable report files. This
+# makes an empty report directory verifiable without polluting iwyu_all.txt.
+mkdir -p "$YB_IWYU_OUTPUT_DIR/.completed"
+touch "$YB_IWYU_OUTPUT_DIR/.completed/$output_basename"
+
+exit 0

@@ -11,14 +11,20 @@
 // under the License.
 
 #include "yb/common/termination_monitor.h"
+
 #include <signal.h>
-#include <sys/time.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <atomic>
+#include <ostream>
+#include <string>
 
 #include "yb/util/callsite_profiling.h"
-#include "yb/util/flags.h"
 #include "yb/util/signal_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
 #ifdef __linux__
 #include "yb/util/cgroups.h"
 #endif

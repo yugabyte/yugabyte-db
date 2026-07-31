@@ -21,11 +21,14 @@
 
 #pragma once
 
-#include "yb/rocksdb/table_properties.h"
-
+#include <stdint.h>
 #include <memory>
 #include <string>
 #include <vector>
+
+#include "yb/rocksdb/table_properties.h"
+#include "yb/rocksdb/status.h"
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 

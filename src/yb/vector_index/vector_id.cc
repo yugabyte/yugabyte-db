@@ -12,8 +12,9 @@
 //
 
 #include "yb/vector_index/vector_index_fwd.h"
-
 #include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 namespace yb::vector_index {
 

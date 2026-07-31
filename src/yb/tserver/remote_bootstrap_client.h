@@ -31,15 +31,43 @@
 //
 #pragma once
 
+#include <gtest/gtest_prod.h>
+#include <stdint.h>
 #include <functional>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "yb/tserver/remote_client_base.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class RemoteBootstrapITest;
+class FsManager;
+class HostPort;
+class ServerRegistrationPB;
+namespace consensus {
+class Consensus;
+class ConsensusMetadata;
+class ConsensusStatePB;
+}  // namespace consensus
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+namespace tablet {
+class TabletStatusListener;
+enum TabletDataState : int;
+}  // namespace tablet
 
 namespace tserver {
+class TSTabletManager;
 
 // Client class for using remote bootstrap to copy a tablet from another host.
 // This class is not thread-safe.

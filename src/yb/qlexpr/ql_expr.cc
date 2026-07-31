@@ -4,19 +4,34 @@
 
 #include "yb/qlexpr/ql_expr.h"
 
+#include <glog/logging.h>
+#include <string.h>
+#include <ostream>
+#include <vector>
+
 #include "yb/common/jsonb.h"
 #include "yb/common/pgsql_protocol.messages.h"
 #include "yb/common/ql_datatype.h"
 #include "yb/common/value.pb.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-
 #include "yb/dockv/pg_row.h"
-
 #include "yb/qlexpr/ql_bfunc.h"
-
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+
+namespace yb {
+namespace bfql {
+enum class BFOpcode : int32_t;
+}  // namespace bfql
+}  // namespace yb
 
 namespace yb::qlexpr {
 

@@ -18,11 +18,15 @@
 // under the License.
 //
 
+#include <stdint.h>
+#include <stdio.h>
 #include <algorithm>
 #include <thread>
 #include <vector>
-
-#include <gtest/gtest.h>
+#include <initializer_list>
+#include <iostream>
+#include <memory>
+#include <string>
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/memtablerep.h"
@@ -33,11 +37,21 @@
 #include "yb/rocksdb/util/instrumented_mutex.h"
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/testharness.h"
-
 #include "yb/util/random_util.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/stats/perf_level.h"
+#include "yb/util/tostring.h"
 
 bool FLAGS_random_key = false;
 bool FLAGS_use_set_based_memetable = false;

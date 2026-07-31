@@ -10,15 +10,23 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <atomic>
 #include <fstream>
 #include <functional>
 #include <memory>
-#include <ranges>
 #include <string>
 #include <string_view>
-
-#include <gtest/gtest.h>
+#include <chrono>
+#include <compare>
+#include <initializer_list>
+#include <optional>
+#include <ratio>
+#include <tuple>
+#include <vector>
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
@@ -33,7 +41,20 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
-#include "yb/tools/tools_test_utils.h"
+#include "gtest/gtest.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/subprocess.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
 
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(yb_enable_read_committed_isolation);

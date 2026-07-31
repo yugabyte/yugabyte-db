@@ -30,12 +30,19 @@
 // under the License.
 //
 
-#include "yb/util/logging.h"
-#include <gtest/gtest.h>
+#include <glog/logging.h>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <utility>
 
+#include "yb/util/logging.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/macros.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/gutil/ref_counted.h"
 
 namespace yb {
 

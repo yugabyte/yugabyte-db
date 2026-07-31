@@ -13,28 +13,45 @@
 
 #include "yb/tserver/pg_create_table.h"
 
-#include "yb/cdc/xcluster_types.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdlib.h>
+#include <string.h>
+#include <chrono>
+#include <memory>
+#include <ostream>
+#include <utility>
 
+#include "yb/cdc/xcluster_types.h"
 #include "yb/client/client.h"
 #include "yb/client/schema.h"  // YB_TODO(#12770): TO BE DELETED AFTER REWORKING
                                //                  PG-SCHEMA-NAME USAGE IN CDC
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
-
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/tserver/pg_client.pb.h"
-
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/transaction.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/port.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 DECLARE_bool(TEST_duplicate_create_table_request);
 

@@ -11,10 +11,30 @@
 // under the License.
 //
 
-#include "yb/bfql/gen_opcodes.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/asio/ip/address.hpp>
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <functional>
+#include <future>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <thread>
+#include <type_traits>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
+#include "yb/bfql/gen_opcodes.h"
 #include "yb/client/client.h"
-#include "yb/client/error.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/rejection_score_source.h"
 #include "yb/client/schema.h"
@@ -24,34 +44,25 @@
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/retryable_requests.h"
-
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/dockv/doc_key.h"
-
 #include "yb/rocksdb/utilities/checkpoint.h"
-
 #include "yb/rpc/messenger.h"
-
 #include "yb/server/hybrid_clock.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug.h"
 #include "yb/util/format.h"
@@ -62,8 +73,54 @@
 #include "yb/util/status_log.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/cql/ql/util/statement_result.h"
+#include "gtest/gtest.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/clock.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/log_fwd.h"
+#include "yb/docdb/docdb_types.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/options.h"
+#include "yb/server/clock.h"
+#include "yb/server/server_fwd.h"
+#include "yb/storage/frontier.h"
+#include "yb/storage/storage_fwd.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/env.h"
+#include "yb/util/logging.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
 
 using std::string;
 

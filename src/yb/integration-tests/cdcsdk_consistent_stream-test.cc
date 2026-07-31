@@ -10,13 +10,53 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/types.h>
+#include <cmath>
+#include <functional>
+#include <map>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <thread>
+#include <unordered_set>
+#include <vector>
+
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include "yb/util/test_macros.h"
-
 #include "yb/consensus/log.h"
+#include "gtest/gtest.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/client/client.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/integration-tests/cdcsdk_test_base.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/postgres-minicluster.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/status.h"
+#include "yb/util/tsan_util.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 namespace yb {
+template <class Tag> class StronglyTypedUuid;
+
 namespace cdc {
 
 class CDCSDKConsistentStreamTest : public CDCSDKYsqlTest {

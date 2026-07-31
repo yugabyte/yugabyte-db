@@ -13,15 +13,27 @@
 
 #include "yb/docdb/hybrid_scan_choices.h"
 
-#include "yb/docdb/docdb_filter_policy.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <algorithm>
+#include <limits>
+#include <memory>
+
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/intent_aware_iterator.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/key_bytes.h"
 #include "yb/dockv/value_type.h"
-
-#include "yb/qlexpr/doc_scanspec_util.h"
+#include "yb/common/constants.h"
+#include "yb/common/schema.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/qlexpr/ql_scanspec.h"
+#include "yb/util/cast.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/status_format.h"
 
 DEFINE_RUNTIME_bool(enable_scan_choices_variable_bloom_filter, true,
     "Whether to use variable bloom filter when possible in ScanChoices");

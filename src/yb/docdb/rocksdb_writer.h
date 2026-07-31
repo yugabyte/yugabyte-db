@@ -13,26 +13,68 @@
 
 #pragma once
 
-#include <span>
-
 #include <boost/logic/tribool.hpp>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/function.hpp>
+#include <span>
+#include <array>
+#include <functional>
+#include <limits>
+#include <map>
+#include <memory>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <vector>
+#include <utility>
 
-#include "yb/common/common_types.pb.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
-
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb.h"
-#include "yb/docdb/docdb.fwd.h"
 #include "yb/dockv/intent.h"
 #include "yb/docdb/storage_set.h"
-
 #include "yb/rocksdb/write_batch.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.h"
+#include "yb/docdb/bounded_rocksdb_iterator.h"
+#include "yb/docdb/doc_vector_index.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/util/byte_buffer.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/uuid.h"
+
+namespace rocksdb {
+class DB;
+}  // namespace rocksdb
 
 namespace yb {
+class LWTransactionMetadataPB;
+enum IsolationLevel : int;
+enum RowMarkType : int;
+enum TableType : int;
+
+namespace dockv {
+class SchemaPacking;
+}  // namespace dockv
+namespace tablet {
+class TransactionIntentApplier;
+}  // namespace tablet
+
 namespace docdb {
+class LWKeyValuePairPB;
+class LWKeyValueWriteBatchPB;
+class SchemaPackingProvider;
+struct KeyBounds;
 
 class NonTransactionalWriter : public rocksdb::DirectWriter {
  public:
@@ -218,6 +260,7 @@ class IntentsWriterContextBase : public IntentsWriterContext {
 };
 
 struct ExternalTxnApplyStateData;
+
 using ExternalTxnApplyState = std::map<TransactionId, ExternalTxnApplyStateData>;
 
 class IntentsWriter : public rocksdb::DirectWriter {

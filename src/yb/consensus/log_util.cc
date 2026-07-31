@@ -32,31 +32,30 @@
 
 #include "yb/consensus/log_util.h"
 
+#include <string.h>
+#include <sys/types.h>
+#include <boost/intrusive/list.hpp>
+#include <boost/iterator/iterator_facade.hpp>
 #include <algorithm>
 #include <array>
 #include <utility>
+#include <ostream>
 
 #include "yb/ash/wait_state.h"
-
 #include "yb/common/hybrid_time.h"
-
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/log.messages.h"
 #include "yb/consensus/log_index.h"
-
 #include "yb/encryption/header_manager_impl.h"
-
 #include "yb/fs/fs_manager.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/util.h"
-
 #include "yb/util/atomic.h"
 #include "yb/util/coding-inl.h"
 #include "yb/util/coding.h"
 #include "yb/util/crc.h"
-#include "yb/util/debug-util.h"
+#include "yb/util/debug.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env_util.h"
 #include "yb/util/logging.h"
@@ -69,6 +68,20 @@
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
 #include "yb/util/to_stream.h"
+#include "yb/common/opid.messages.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/util/env.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/path_util.h"
+#include "yb/util/strongly_typed_bool.h"
 
 DEFINE_UNKNOWN_int32(log_segment_size_mb, 64,
              "The default segment size for log roll-overs, in MB");

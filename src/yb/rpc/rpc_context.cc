@@ -32,25 +32,34 @@
 
 #include "yb/rpc/rpc_context.h"
 
+#include <boost/core/null_deleter.hpp>
+#include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/message.h>
 #include <sstream>
 
-#include <boost/core/null_deleter.hpp>
-
 #include "yb/rpc/connection.h"
-#include "yb/rpc/inbound_call.h"
 #include "yb/rpc/lightweight_message.h"
 #include "yb/rpc/local_call.h"
-#include "yb/rpc/outbound_call.h"
 #include "yb/rpc/reactor.h"
-#include "yb/rpc/service_if.h"
 #include "yb/rpc/yb_rpc.h"
-
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/format.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/pb_util.h"
-#include "yb/util/status_format.h"
 #include "yb/util/trace.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/rpc_header.pb.h"
+#include "yb/util/debug/trace_event_impl.h"
+#include "yb/util/logging.h"
+#include "yb/util/source_location.h"
+#include "yb/util/net/net_fwd.h"
+
+namespace yb {
+namespace rpc {
+class Sidecars;
+}  // namespace rpc
+}  // namespace yb
 
 using google::protobuf::Message;
 

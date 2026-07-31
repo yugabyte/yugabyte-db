@@ -30,27 +30,30 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <boost/range/size.hpp>
 #include <memory>
 #include <string>
 #include <vector>
-
-#include <boost/range/iterator_range.hpp>
+#include <chrono>
+#include <future>
+#include <iterator>
+#include <optional>
+#include <ostream>
+#include <string_view>
 
 #include "yb/client/client.h"
-#include "yb/client/error.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/gutil/strings/strcat.h"
-
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 #include "yb/tserver/mini_tablet_server.h"
-
 #include "yb/util/countdown_latch.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/monotime.h"
@@ -59,7 +62,21 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
-#include "yb/util/flags.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/ql_protocol.messages.h"  // IWYU pragma: keep
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/faststring.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 using namespace std::literals;
 

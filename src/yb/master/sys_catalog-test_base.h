@@ -34,6 +34,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/common/schema_pbutil.h"  // IWYU pragma: keep
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/catalog_entity_info.h"
@@ -41,10 +42,12 @@
 #include "yb/master/master.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/sys_catalog-internal.h"  // IWYU pragma: keep
 #include "yb/master/sys_catalog.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"  // IWYU pragma: keep
 
 #include "yb/server/rpc_server.h"
 

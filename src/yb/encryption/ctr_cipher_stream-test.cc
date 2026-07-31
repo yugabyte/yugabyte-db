@@ -11,25 +11,28 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <stdint.h>
+#include <string.h>
 #include <string>
 #include <thread>
-
-#include "yb/util/logging.h"
-#include <gtest/gtest.h>
+#include <functional>
+#include <memory>
+#include <utility>
+#include <vector>
 
 #include "yb/encryption/cipher_stream.h"
 #include "yb/encryption/encryption_util.h"
-#include "yb/encryption/header_manager.h"
-
 #include "yb/gutil/dynamic_annotations.h"
-
 #include "yb/rpc/secure_stream.h"
-
 #include "yb/util/random_util.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
 
 DECLARE_bool(TEST_encryption_use_openssl_compatible_counter_overflow);
 

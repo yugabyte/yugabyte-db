@@ -32,6 +32,28 @@
 
 #include "yb/integration-tests/create-table-itest-base.h"
 
+#include <glog/logging.h>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <vector>
+#include <functional>
+
+#include "gtest/gtest.h"
+#include "yb/client/client-test-util.h"
+#include "yb/client/client.h"
+#include "yb/client/schema.h"
+#include "yb/client/table_creator.h"
+#include "yb/client/table_info.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/wire_protocol-test-util.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/master/master_util.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/test_macros.h"
+
 using std::string;
 using std::vector;
 

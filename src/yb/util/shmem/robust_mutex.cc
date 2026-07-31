@@ -13,8 +13,11 @@
 
 #include "yb/util/shmem/robust_mutex.h"
 
-#include <fcntl.h>
 #include <pthread.h>
+#include <errno.h>
+#include <glog/logging.h>
+#include <string.h>
+#include <ostream>
 
 #include "yb/util/logging.h"
 

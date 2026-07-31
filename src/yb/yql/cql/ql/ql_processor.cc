@@ -15,24 +15,58 @@
 
 #include "yb/yql/cql/ql/ql_processor.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/intrusive/list.hpp>
 #include <memory>
+#include <ostream>
 
 #include "yb/ash/wait_state.h"
-
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/qlexpr/index.h"
-
 #include "yb/gutil/bind.h"
-
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
-
 #include "yb/yql/cql/ql/parser/parser.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/roles_permissions.h"
+#include "yb/gutil/bind_helpers.h"
+#include "yb/gutil/callback.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/object_pool.h"
+#include "yb/yql/cql/ql/ptree/parse_tree.h"
+#include "yb/yql/cql/ql/ptree/pt_alter_role.h"
+#include "yb/yql/cql/ql/ptree/pt_alter_table.h"
+#include "yb/yql/cql/ql/ptree/pt_create_index.h"
+#include "yb/yql/cql/ql/ptree/pt_create_table.h"
+#include "yb/yql/cql/ql/ptree/pt_create_type.h"
+#include "yb/yql/cql/ql/ptree/pt_dml.h"
+#include "yb/yql/cql/ql/ptree/pt_drop.h"
+#include "yb/yql/cql/ql/ptree/pt_explain.h"
+#include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
+#include "yb/yql/cql/ql/ptree/pt_name.h"
+#include "yb/yql/cql/ql/ptree/pt_option.h"
+#include "yb/yql/cql/ql/ptree/pt_select.h"
+#include "yb/yql/cql/ql/ptree/pt_truncate.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
+
+namespace yb {
+namespace client {
+class YBClient;
+class YBMetaDataCache;
+}  // namespace client
+namespace ql {
+class StatementParameters;
+}  // namespace ql
+}  // namespace yb
 
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_require_drop_privs_for_truncate);

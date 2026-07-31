@@ -13,11 +13,30 @@
 
 #include "yb/tools/bulk_load_utils.h"
 
-#include <boost/algorithm/string.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/algorithm/string/case_conv.hpp>
+#include <boost/iterator/iterator_categories.hpp>
+#include <boost/iterator/iterator_facade.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/range/iterator_range_core.hpp>
+#include <ostream>
 
 #include "yb/util/date_time.h"
 #include "yb/util/flags.h"
 #include "yb/util/stol_utils.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
 
 using std::string;
 

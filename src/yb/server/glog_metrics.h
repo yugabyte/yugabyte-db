@@ -33,7 +33,6 @@
 
 #include <memory>
 
-#include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
 namespace google {

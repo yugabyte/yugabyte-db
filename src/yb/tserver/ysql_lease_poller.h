@@ -14,12 +14,19 @@
 #pragma once
 
 #include <future>
+#include <functional>
+#include <memory>
 
 #include "yb/server/server_fwd.h"
-#include "yb/tserver/tserver_fwd.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/util/status.h"
 
-#include "yb/util/monotime.h"
-#include "yb/util/status_fwd.h"
+namespace yb {
+class MonoDelta;
+namespace tserver {
+class TabletServer;
+}  // namespace tserver
+}  // namespace yb
 
 namespace yb::tserver {
 
@@ -41,6 +48,7 @@ class YsqlLeaseClient {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

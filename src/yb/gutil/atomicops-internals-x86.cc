@@ -34,12 +34,15 @@
 // All rights reserved.
 
 
+#include <glog/logging.h>
+#include <stdint.h>
+#include <string.h>
+#include <ostream>
+
 // This module gets enough CPU information to optimize the
 // atomicops module on x86.
 #include "yb/gutil/atomicops.h"
-
 #include "yb/util/logging.h"
-
 #include "yb/gutil/integral_types.h"
 
 // This file only makes sense with atomicops-internals-x86.h -- it

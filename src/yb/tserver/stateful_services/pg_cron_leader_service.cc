@@ -12,20 +12,53 @@
 //
 
 #include "yb/tserver/stateful_services/pg_cron_leader_service.h"
+
 #include <rapidjson/document.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <rapidjson/allocators.h>
+#include <rapidjson/rapidjson.h>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <chrono>
+#include <memory>
+#include <mutex>
+#include <ostream>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 #include "yb/client/session.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/jsonb.h"
 #include "yb/common/json_util.h"
 #include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-
 #include "yb/yql/cql/ql/util/statement_result.h"
-
 #include "yb/util/flag_validators.h"
+#include "yb/client/table_handle.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/value.pb.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/rpc/rpc_context.h"
+#include "yb/tserver/stateful_services/pg_cron_leader_service.pb.h"
+#include "yb/util/flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/status_format.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+class MetricEntity;
+namespace client {
+class YBClient;
+}  // namespace client
+}  // namespace yb
+template <class T> class scoped_refptr;
 
 using namespace std::chrono_literals;
 

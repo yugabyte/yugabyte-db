@@ -11,13 +11,26 @@
 // under the License.
 //
 
-#include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <vector>
 
+#include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/common/opid.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_bool(advance_intents_flushed_op_id_to_match_regular);
 

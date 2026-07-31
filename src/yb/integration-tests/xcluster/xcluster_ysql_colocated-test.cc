@@ -11,7 +11,18 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
 #include <string>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <unordered_set>
+#include <vector>
 
 #include "yb/client/client.h"
 #include "yb/client/table.h"
@@ -19,6 +30,21 @@
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/util/backoff_waiter.h"
+#include "gtest/gtest.h"
+#include "libpq-fe.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/xcluster/xcluster_test_base.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_bool(ysql_legacy_colocated_database_creation);
 DECLARE_bool(ysql_enable_packed_row);

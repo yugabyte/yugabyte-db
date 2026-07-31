@@ -12,7 +12,10 @@
 //
 
 #include "yb/qlexpr/ql_name.h"
+
 #include <boost/algorithm/string/replace.hpp>
+#include <boost/algorithm/string.hpp>
+#include <boost/range/as_literal.hpp>
 
 using std::string;
 

@@ -32,12 +32,16 @@
 
 #include "yb/master/master_options.h"
 
-#include "yb/util/logging.h"
+#include <gflags/gflags.h>
+#include <memory>
+#include <string>
+#include <utility>
 
-#include "yb/master/master.h"
 #include "yb/server/server_base_options.h"
-#include "yb/util/flags.h"
 #include "yb/util/result.h"
+#include "yb/master/master_defaults.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace master {

@@ -13,15 +13,23 @@
 
 #include "yb/integration-tests/packed_row_test_base.h"
 
-#include <gtest/gtest.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <vector>
 
 #include "yb/integration-tests/mini_cluster.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/docdb/docdb_types.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/logging.h"
+#include "yb/util/size_literals.h"
 
 DECLARE_bool(ycql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row);

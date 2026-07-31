@@ -13,12 +13,28 @@
 
 #include "yb/docdb/lock_util.h"
 
-#include <ranges>
-#include <type_traits>
-
 #include <boost/logic/tribool.hpp>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <initializer_list>
+#include <ostream>
 
-#include "yb/util/flags.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/object_lock_data.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+namespace docdb {
+class ObjectLockManager;
+}  // namespace docdb
+}  // namespace yb
 
 
 namespace yb::docdb {

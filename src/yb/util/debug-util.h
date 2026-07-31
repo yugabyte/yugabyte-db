@@ -32,18 +32,16 @@
 #pragma once
 
 #include <sys/types.h>
-
+#include <absl/base/dynamic_annotations.h>
+#include <stddef.h>
+#include <boost/preprocessor/cat.hpp>
 #include <functional>
 #include <string>
 #include <vector>
 
-#include "yb/gutil/strings/fastmem.h"
-
-#include "yb/util/debug.h"
-#include "yb/util/enums.h"
-#include "yb/util/slice.h"
 #include "yb/util/stack_trace.h"
-#include "yb/util/status_fwd.h"
+#include "yb/gutil/port.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

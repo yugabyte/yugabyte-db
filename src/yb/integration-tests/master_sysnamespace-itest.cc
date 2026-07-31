@@ -12,21 +12,29 @@
 //
 
 #include <yb/master/master_defaults.h>
+#include <stddef.h>
+#include <memory>
+#include <string>
 
 #include "yb/integration-tests/mini_cluster.h"
-
 #include "yb/common/value.messages.h"
-
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/mini_master.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/util/result.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/test_macros.h"
 
 using std::string;
 

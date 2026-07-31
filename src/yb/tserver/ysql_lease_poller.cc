@@ -11,29 +11,34 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <stdint.h>
 #include <chrono>
+#include <optional>
+#include <string>
+#include <utility>
 
 #include "yb/tserver/ysql_lease_poller.h"
-
 #include "yb/common/ysql_operation_lease.h"
-
 #include "yb/master/master_ddl.proxy.h"
-#include "yb/master/master_rpc.h"
-
-#include "yb/server/server_base.proxy.h"
-
 #include "yb/tserver/master_leader_poller.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_cgroup_manager.h"
 #include "yb/tserver/ysql_lease.h"
-
-#include "yb/util/async_util.h"
-#include "yb/util/condition_variable.h"
 #include "yb/util/flags/flag_tags.h"
-#include "yb/util/mutex.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
-#include "yb/util/thread.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/random_util.h"
+#include "yb/util/result.h"
+
+namespace yb {
+class Cgroup;
+}  // namespace yb
 
 DEFINE_RUNTIME_uint64(ysql_lease_refresher_rpc_timeout_ms, 15000,
                       "Timeout used for the TS->Master ysql lease refresh RPCs.");

@@ -11,8 +11,29 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
 #include <cmath>
 #include <cstdlib>
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <map>
+#include <memory>
+#include <numeric>
+#include <optional>
+#include <ostream>
+#include <random>
+#include <ratio>
+#include <string>
+#include <thread>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include "yb/common/pg_types.h"
 #include "yb/common/wire_protocol.h"
@@ -28,6 +49,23 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/gutil/casts.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 // Usage: yb_build.sh ... --test-args --verbose=true
 DEFINE_NON_RUNTIME_bool(verbose, false, "Add certain verbose logging");

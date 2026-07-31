@@ -13,12 +13,28 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/bfql/bfql.h"
+#include <glog/logging.h>
+#include <stdint.h>
+#include <string.h>
+#include <list>
+#include <memory>
+#include <string>
 
 #include "yb/util/status_format.h"
-
 #include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/yql/cql/ql/ptree/pt_bcall.h"
+#include "yb/bfql/bfunc_names.h"
+#include "yb/bfql/gen_opcodes.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/casts.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
 
 namespace yb {
 namespace ql {

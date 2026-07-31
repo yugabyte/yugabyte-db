@@ -14,15 +14,20 @@
 #include "yb/master/cluster_balance_util.h"
 
 #include <algorithm>
+#include <cmath>
+#include <compare>
+#include <functional>
 
 #include "yb/gutil/map-util.h"
-
 #include "yb/common/common_net.h"
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/master_cluster.pb.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/status_format.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/tablet/tablet_types.pb.h"
 
 using std::string;
 using std::vector;

@@ -32,8 +32,15 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <algorithm>
 #include <random>
+#include <iterator>
+#include <limits>
+#include <string>
+#include <vector>
 
 #include "yb/util/logging.h"  // For CHECK
 

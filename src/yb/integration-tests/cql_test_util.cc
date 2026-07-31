@@ -14,15 +14,18 @@
 #include "yb/integration-tests/cql_test_util.h"
 
 #include <cassandra.h>
-
+#include <string.h>
 #include <thread>
+#include <chrono>
+#include <compare>
+#include <ratio>
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
-
-#include "yb/util/enums.h"
 #include "yb/util/status_log.h"
 #include "yb/util/tsan_util.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/logging.h"
 
 using std::string;
 

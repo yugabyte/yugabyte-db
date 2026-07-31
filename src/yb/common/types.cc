@@ -32,11 +32,12 @@
 
 #include "yb/common/types.h"
 
-
 #include <memory>
+#include <array>
+#include <unordered_map>
+#include <utility>
 
 #include "yb/gutil/singleton.h"
-
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"

@@ -19,25 +19,24 @@
 //
 #pragma once
 
-#include <memory>
+#include <assert.h>
 #include <string>
-#include <vector>
-
-#include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/db/version_edit.h"
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/util/stop_watch.h"
+#include <deque>
+#include <iterator>
 
 #include "yb/util/slice.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/types.h"
 
 namespace rocksdb {
 
 class Comparator;
-class Iterator;
 class Logger;
 class MergeOperator;
 class Statistics;
 class InternalIterator;
+class CompactionFilter;
+class Env;
 
 class MergeHelper {
  public:

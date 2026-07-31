@@ -13,42 +13,80 @@
 
 #include "yb/yql/redis/redisserver/redis_commands.h"
 
-#include <boost/algorithm/string.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/preprocessor/stringize.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <string.h>
+#include <boost/algorithm/string/predicate.hpp>
+#include <boost/container/small_vector.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <compare>
+#include <initializer_list>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string_view>
+#include <type_traits>
+#include <utility>
 
 #include "yb/client/client.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/redis_protocol.messages.h"
-
 #include "yb/dockv/partition.h"
-
 #include "yb/gutil/strings/join.h"
-
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_util.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/scheduler.h"
-
 #include "yb/util/crypt.h"
 #include "yb/util/flags.h"
 #include "yb/util/flag_validators.h"
-#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/redis_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_util.h"
-
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/redis/redisserver/redis_encoding.h"
 #include "yb/yql/redis/redisserver/redis_rpc.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/redis_protocol.pb.h"
+#include "yb/gutil/strings/strcat.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/server/rpc_server.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/slice.h"
+#include "yb/yql/redis/redisserver/redis_server.h"
+#include "yb/yql/redis/redisserver/redis_server_options.h"
+
+namespace yb {
+class MetricEntity;
+}  // namespace yb
 
 using std::string;
 using std::vector;
@@ -185,6 +223,8 @@ YBTableName RedisServiceData::GetYBTableNameForRedisDatabase(const string& db_na
 }
 
 namespace {
+
+class LocalCommandData;
 
 template<class Op>
 using Parser = Status(*)(Op*, const RedisClientCommand&);

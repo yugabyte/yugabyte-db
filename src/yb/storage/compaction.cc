@@ -11,7 +11,9 @@
 // under the License.
 //
 
-#include "yb/util/flags.h"
+#include <gflags/gflags.h>
+
+#include "yb/util/flags/flag_tags.h"
 
 DEFINE_RUNTIME_int32(compaction_priority_start_bound, 10,
     "Compaction task of DB that has number of SST files less than specified will have "

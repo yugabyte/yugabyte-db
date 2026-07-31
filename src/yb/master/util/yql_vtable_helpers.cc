@@ -13,20 +13,33 @@
 
 #include "yb/master/util/yql_vtable_helpers.h"
 
-#include <algorithm>
-
 #include <boost/container/small_vector.hpp>
+#include <glog/logging.h>
+#include <boost/asio/ip/address.hpp>
+#include <boost/container/vector.hpp>
+#include <algorithm>
+#include <ostream>
 
 #include "yb/common/ql_value.h"
-
 #include "yb/master/master_heartbeat.pb.h"
-
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/std_util.h"
 #include "yb/util/yb_partition.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/macros.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/inetaddress.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class Uuid;
+}  // namespace yb
 
 namespace yb::master::util {
 

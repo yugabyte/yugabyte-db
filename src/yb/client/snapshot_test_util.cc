@@ -13,18 +13,25 @@
 
 #include "yb/client/snapshot_test_util.h"
 
+#include <glog/logging.h>
+#include <boost/uuid/uuid.hpp>
+#include <functional>
+#include <ostream>
+#include <utility>
+
 #include "yb/client/client_fwd.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
-
-#include "yb/common/common_fwd.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
+#include "yb/client/table_handle.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 using namespace std::literals;
 

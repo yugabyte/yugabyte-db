@@ -32,33 +32,34 @@
 
 #include "yb/integration-tests/mini_cluster.h"
 
+#include <boost/algorithm/string/join.hpp>
+#include <gflags/gflags.h>
+#include <boost/asio/ip/address.hpp>
+#include <boost/range/begin.hpp>
+#include <boost/range/end.hpp>
 #include <algorithm>
 #include <string>
-
-#include <boost/algorithm/string/join.hpp>
+#include <compare>
+#include <future>
+#include <initializer_list>
+#include <sstream>
+#include <type_traits>
+#include <unordered_map>
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
-#include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/pgsql_protocol.pb.h"
-#include "yb/common/ql_type.h"
 #include "yb/dockv/partition.h"
-
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-
-#include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster_base.h"
-
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager.h"
@@ -70,35 +71,25 @@
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/object_lock_info_manager.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/ts_manager.h"
-
 #include "yb/rocksdb/db/db_impl.h"
-#include "yb/rocksdb/rate_limiter.h"
-
 #include "yb/rpc/messenger.h"
-
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/skewed_clock.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_vector_indexes.h"
 #include "yb/tablet/transaction_participant.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_flags.h"
-#include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/env.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
@@ -107,13 +98,44 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
-#include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/net/net_util.h"
-
-#include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pggate/util/pg_wire.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/opid.h"
+#include "yb/common/value.pb.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_options.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/rocksdb/compaction_job_stats.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/server/server_base.h"
+#include "yb/server/server_base_options.h"
+#include "yb/server/server_fwd.h"
+#include "yb/server/webserver_options.h"
+#include "yb/tablet/tablet_options.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tablet_server_options.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/slice.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/thread_holder.h"
+#include "yb/util/tostring.h"
 
 using namespace std::literals;
 using strings::Substitute;

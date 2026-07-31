@@ -20,14 +20,19 @@
 
 #include "yb/util/debug/trace_event_impl.h"
 
+#include <absl/base/dynamic_annotations.h>
+#include <gflags/gflags.h>
+#include <inttypes.h>
+#include <sched.h>
+#include <string.h>
+#include <unistd.h>
 #include <algorithm>
 #include <list>
 #include <vector>
+#include <utility>
 
 #include "yb/util/logging.h"
-
 #include "yb/gutil/bind.h"
-#include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/mathlimits.h"
 #include "yb/gutil/singleton.h"
@@ -38,14 +43,20 @@
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
-
 #include "yb/util/atomic.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug/trace_event_synthetic_delay.h"
-#include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/thread.h"
+#include "yb/gutil/bind_helpers.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/gutil/strings/stringpiece.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 DEFINE_UNKNOWN_string(trace_to_console, "",
               "Trace pattern specifying which trace events should be dumped "
@@ -880,6 +891,7 @@ void TraceResultBuffer::Collect(
 //
 ////////////////////////////////////////////////////////////////////////////////
 class TraceBucketData;
+
 typedef Callback<void(TraceBucketData*)> TraceSampleCallback;
 
 class TraceBucketData {

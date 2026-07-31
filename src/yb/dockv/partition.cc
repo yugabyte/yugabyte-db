@@ -32,13 +32,16 @@
 
 #include "yb/dockv/partition.h"
 
+#include <glog/logging.h>
+#include <string.h>
 #include <algorithm>
 #include <climits>
 #include <limits>
 #include <set>
+#include <ostream>
+#include <unordered_set>
 
 #include "yb/util/logging.h"
-
 #include "yb/common/common.pb.h"
 #include "yb/common/crc16.h"
 #include "yb/common/key_encoder.h"
@@ -47,17 +50,33 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/row.h"
 #include "yb/common/schema.h"
-
 #include "yb/dockv/doc_key.h"
-
 #include "yb/gutil/hash/hash.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/status_format.h"
-
 #include "yb/yql/redis/redisserver/redis_constants.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/types.h"
+#include "yb/common/value.messages.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/endian.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/util/bitmap.h"
+#include "yb/util/format.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_list.h"
+
+namespace yb {
+class faststring;
+}  // namespace yb
 
 namespace yb::dockv {
 

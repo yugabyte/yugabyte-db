@@ -13,6 +13,8 @@
 
 #include "yb/ann_methods/index_memory_consumption.h"
 
+#include <string>
+
 namespace yb::ann_methods {
 
 void IndexMemoryConsumption::Init(const MemTrackerPtr& parent) {

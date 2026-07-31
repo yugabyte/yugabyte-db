@@ -13,29 +13,50 @@
 
 #include "yb/docdb/docdb_compaction_filter_intents.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <boost/uuid/uuid.hpp>
 #include <memory>
-
-#include <boost/multi_index/member.hpp>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <unordered_map>
+#include <utility>
 
 #include "yb/common/common.pb.h"
-
-#include "yb/docdb/docdb.h"
-
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/dockv/intent.h"
-#include "yb/dockv/value.h"
-#include "yb/dockv/value_type.h"
-
 #include "yb/rocksdb/compaction_filter.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_participant.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/logging.h"
-#include "yb/util/string_util.h"
-#include "yb/util/flags.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/transaction.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/docdb/docdb_types.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/server/clock.h"
+#include "yb/storage/storage_types.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace docdb {
+struct KeyBounds;
+}  // namespace docdb
+}  // namespace yb
 
 DEFINE_RUNTIME_uint64(aborted_intent_cleanup_ms, 60000,  // 1 minute by default, 1 sec for testing
     "Duration in ms after which to check if a transaction is aborted.");

@@ -13,9 +13,17 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/yql/cql/ql/exec/executor.h"
+#include <glog/logging.h>
+#include <ostream>
 
+#include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/common/common.messages.h"  // IWYU pragma: keep
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/ptree/pt_expr_types.h"
 
 namespace yb {
 namespace ql {

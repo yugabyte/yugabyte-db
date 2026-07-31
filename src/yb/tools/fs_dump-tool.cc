@@ -30,17 +30,20 @@
 // under the License.
 //
 // Tool to dump tablets
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <iostream>
-#include <memory>
 #include <vector>
+#include <sstream>
+#include <string>
+#include <utility>
 
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/tools/fs_tool.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
-#include "yb/util/status.h"
 #include "yb/util/status_log.h"
+#include "yb/util/flags/flag_tags.h"
 
 DEFINE_NON_RUNTIME_int32(nrows, 0, "Number of rows to dump");
 DEFINE_NON_RUNTIME_bool(metadata_only, false, "Whether just to dump the block metadata, "

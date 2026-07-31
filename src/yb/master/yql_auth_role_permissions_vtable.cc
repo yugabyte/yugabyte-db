@@ -13,18 +13,35 @@
 
 #include "yb/master/yql_auth_role_permissions_vtable.h"
 
-#include <boost/asio/ip/address.hpp>
+#include <glog/logging.h>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "yb/common/ql_type.h"
 #include "yb/common/roles_permissions.h"
 #include "yb/common/schema.h"
-
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/permissions_manager.h"
-
 #include "yb/util/status_log.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+
+namespace yb {
+namespace master {
+class Master;
+}  // namespace master
+}  // namespace yb
 
 using std::string;
 

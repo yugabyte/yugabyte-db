@@ -20,9 +20,9 @@
 #include "yb/rocksdb/util/histogram.h"
 
 #include <string>
-#include <gtest/gtest.h>
 
 #include "yb/rocksdb/util/testutil.h"
+#include "gtest/gtest.h"
 
 namespace rocksdb {
 

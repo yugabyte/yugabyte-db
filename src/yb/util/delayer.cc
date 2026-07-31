@@ -13,12 +13,15 @@
 
 #include "yb/util/delayer.h"
 
+#include <glog/logging.h>
 #include <vector>
+#include <string>
 
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
+#include "yb/util/logging.h"
 
 namespace yb {
 

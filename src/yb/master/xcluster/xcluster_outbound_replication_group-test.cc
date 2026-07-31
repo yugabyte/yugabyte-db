@@ -11,21 +11,45 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <algorithm>
+#include <chrono>
+#include <functional>
+#include <initializer_list>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <set>
+#include <shared_mutex>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
-
-#include <gmock/gmock.h>
-
 #include "yb/client/xcluster_client_mock.h"
-
 #include "yb/common/xcluster_util.h"
-
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_replication.pb.h"
-#include "yb/master/xcluster/add_table_to_xcluster_source_task.h"
 #include "yb/master/xcluster/xcluster_outbound_replication_group_tasks.h"
-
 #include "yb/rpc/messenger.h"
-
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/is_operation_done_result.h"
@@ -33,6 +57,41 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "yb/cdc/xcluster_types.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/client/xcluster_client.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/tasks_tracker.h"
+#include "yb/master/xcluster/master_xcluster_types.h"
+#include "yb/master/xcluster/master_xcluster_util.h"
+#include "yb/master/xcluster/xcluster_catalog_entity.h"
+#include "yb/util/compare_util.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_callback.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_string.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/threadpool.h"
 
 DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_block_xcluster_checkpoint_namespace_task);

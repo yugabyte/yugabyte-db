@@ -37,35 +37,37 @@
 
 // Include client header so we can access YBTableType.
 
-#include <time.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/util/logging.h"
-
 #include "yb/client/table.h"
-
-#include "yb/qlexpr/ql_expr.h"
-
-#include "yb/docdb/ql_rowwise_iterator_interface.h"
-
-#include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/join.h"
-
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/tablet-test-base.h"
-#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet.h"  // IWYU pragma: keep
 #include "yb/tablet/tablet_metrics.h"
-#include "yb/tablet/tablet_bootstrap_if.h"
-
-#include "yb/rocksdb/db/db_impl.h"
-#include "yb/rocksdb/db/write_controller.h"
-
-#include "yb/util/cast.h"
-#include "yb/util/enums.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/slice.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/flags.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/opid.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/rocksdb/db/db_impl.h"  // IWYU pragma: keep
+#include "yb/rocksdb/db/write_controller.h"  // IWYU pragma: keep
+#include "yb/rocksdb/listener.h"
+#include "yb/tablet/tablet-test-util.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/jsonwriter.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/metrics.h"
+#include "yb/util/status.h"
 
 DECLARE_bool(TEST_skip_write_stop_check_in_should_apply_write);
 

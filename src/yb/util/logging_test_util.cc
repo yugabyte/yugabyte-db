@@ -12,8 +12,14 @@
 
 #include "yb/util/logging_test_util.h"
 
+#include <ostream>
+#include <chrono>
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"  // IWYU pragma: keep
 
 namespace yb {
 

@@ -24,23 +24,40 @@
 
 #pragma once
 
+#include <assert.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <atomic>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+#include <functional>
 
 #include "yb/rocksdb/db/version_edit.h"
-
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/mutable_cf_options.h"
-
 #include "yb/util/mem_tracker_fwd.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/rocksdb/status.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
 class PriorityThreadPoolSuspender;
+template <class TValue> class Result;
 
 }
 
 namespace rocksdb {
+class Logger;
+class VersionSet;
+enum CompressionType : char;
 
 using yb::Result;
 

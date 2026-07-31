@@ -22,10 +22,12 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/utilities/leveldb_options.h"
+
+#include <memory>
+
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/table.h"
 

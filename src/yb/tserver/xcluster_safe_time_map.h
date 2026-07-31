@@ -13,13 +13,17 @@
 
 #pragma once
 
+#include <google/protobuf/map.h>
+#include <google/protobuf/stubs/port.h>
 #include <optional>
 #include <string>
+#include <atomic>
 
-#include <google/protobuf/map.h>
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/util/locks.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/result.h"
 
 namespace yb {
 

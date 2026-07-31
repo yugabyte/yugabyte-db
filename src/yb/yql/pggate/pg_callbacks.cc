@@ -12,6 +12,7 @@
 
 #include "yb/yql/pggate/pg_callbacks.h"
 
+#include <glog/logging.h>
 #include <string>
 
 #include "yb/util/logging.h"

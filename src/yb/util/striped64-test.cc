@@ -29,19 +29,24 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include <memory>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <ostream>
+#include <string>
+#include <vector>
 
 #include "yb/util/logging.h"
-#include <gtest/gtest.h>
-
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/monotime.h"
 #include "yb/util/status_log.h"
 #include "yb/util/striped64.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
-#include "yb/util/flags.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/atomic.h"
+#include "yb/util/flags/flag_tags.h"
 
 namespace yb {
 

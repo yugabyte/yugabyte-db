@@ -18,10 +18,14 @@
 // under the License.
 //
 
-#include "yb/rocksdb/options.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <memory>
+
 #include "yb/rocksdb/flush_block_policy.h"
 #include "yb/rocksdb/table/block_builder.h"
 #include "yb/util/slice.h"
+#include "yb/rocksdb/table.h"
 
 namespace rocksdb {
 

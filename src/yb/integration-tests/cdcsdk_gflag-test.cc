@@ -10,11 +10,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include <boost/assign.hpp>
-#include <gtest/gtest.h>
+#include <gflags/gflags.h>
+#include <stdint.h>
+#include <string>
 
 #include "yb/integration-tests/cdcsdk_test_base.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/util/size_literals.h"
 
 DECLARE_uint64(cdc_snapshot_records_threshold_size_bytes);
 DECLARE_uint64(cdc_max_stream_intent_records);

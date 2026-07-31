@@ -11,26 +11,46 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <vector>
 
 #include "yb/client/client.h"
 #include "yb/client/transaction_status_tablets.h"
-
 #include "yb/common/transaction.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_bg_tasks.h"
 #include "yb/master/mini_master.h"
-
 #include "yb/tserver/mini_tablet_server.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
-
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gtest/gtest.h"
+#include "libpq-fe.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/tserver/tablet_server_options.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 using namespace std::chrono_literals;
 

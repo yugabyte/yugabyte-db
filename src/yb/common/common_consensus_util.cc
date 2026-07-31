@@ -32,7 +32,10 @@
 
 #include "yb/common/common_consensus_util.h"
 
+#include <string>
+
 #include "yb/consensus/metadata.messages.h"
+#include "yb/consensus/metadata.pb.h"
 
 namespace yb::consensus {
 

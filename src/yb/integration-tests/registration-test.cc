@@ -30,37 +30,47 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
 #include <memory>
 #include <string>
-
-#include "yb/util/flags.h"
-#include <gtest/gtest.h>
+#include <ostream>
+#include <vector>
 
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/schema.h"
-
-#include "yb/fs/fs_manager.h"
-
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/mini_cluster_utils.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 #include "yb/master/master_client.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/ts_descriptor.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
-
 #include "yb/util/curl_util.h"
 #include "yb/util/faststring.h"
 #include "yb/util/metrics.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
 
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(yb_num_shards_per_tserver);

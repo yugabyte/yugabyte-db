@@ -32,23 +32,19 @@
 
 #include "yb/rpc/messenger.h"
 
-#include <sys/types.h>
-
-#include <list>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdlib.h>
+#include <boost/asio/ip/address.hpp>
+#include <boost/asio/ip/basic_endpoint.hpp>
 #include <mutex>
-#include <set>
-#include <shared_mutex>
 #include <string>
-#include <thread>
+#include <optional>
+#include <ostream>
+#include <ratio>
 
 #include "yb/util/logging.h"
-
-#include "yb/gutil/map-util.h"
-#include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/rpc/acceptor.h"
-#include "yb/rpc/constants.h"
 #include "yb/rpc/delayed_task.h"
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/reactor_monitor.h"
@@ -59,9 +55,7 @@
 #include "yb/rpc/rpc_util.h"
 #include "yb/rpc/tcp_stream.h"
 #include "yb/rpc/yb_rpc.h"
-
 #include "yb/util/debug-util.h"
-#include "yb/util/errno.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/metrics.h"
@@ -74,7 +68,22 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread_restrictions.h"
-#include "yb/util/trace.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/rpc/connection_context.h"
+#include "yb/rpc/inbound_call.h"
+#include "yb/rpc/outbound_call.h"
+#include "yb/rpc/reactor_task.h"
+#include "yb/rpc/rpc_introspection.pb.h"
+#include "yb/rpc/serialization.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/source_location.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -109,9 +118,6 @@ DEFINE_test_flag(int32, rpc_reactor_index_for_init_failure_simulation,
 
 namespace yb {
 namespace rpc {
-
-class Messenger;
-class ServerBuilder;
 
 // ------------------------------------------------------------------------------------------------
 // MessengerBuilder

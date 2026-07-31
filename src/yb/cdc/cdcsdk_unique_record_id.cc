@@ -11,8 +11,15 @@
 // under the License.
 
 #include "yb/cdc/cdcsdk_unique_record_id.h"
+
+#include <glog/logging.h>
+#include <compare>
+#include <limits>
+#include <ostream>
+
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/gutil/macros.h"
 
 namespace yb {
 

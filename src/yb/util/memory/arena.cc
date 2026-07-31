@@ -34,12 +34,19 @@
 
 #include "yb/util/memory/arena.h"
 
+#include <gflags/gflags.h>
+#include <stdlib.h>
 #include <algorithm>
 #include <mutex>
+#include <limits>
+#include <ostream>
+#include <string>
 
 #include "yb/util/alignment.h"
 #include "yb/util/debug-util.h"
-#include "yb/util/flags.h"
+#include "yb/gutil/port.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
 
 using std::shared_ptr;
 

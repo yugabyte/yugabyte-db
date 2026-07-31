@@ -33,13 +33,15 @@
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
+#include <stdint.h>
+#include <utility>
 
 #include "yb/gutil/bind.h"
-
-#include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/tcmalloc_util.h"
-#include "yb/util/logging.h"
+#include "yb/gutil/bind_helpers.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/util/metric_entity.h"
 
 #if YB_TCMALLOC_ENABLED
 #define TCMALLOC_DISABLED_MSG

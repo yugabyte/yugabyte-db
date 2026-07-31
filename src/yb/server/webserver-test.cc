@@ -30,27 +30,39 @@
 // under the License.
 //
 
-#include <iosfwd>
+#include <curl/curl.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <string>
-
-#include <gtest/gtest.h>
+#include <algorithm>
+#include <memory>
+#include <sstream>
+#include <string_view>
+#include <vector>
 
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/util.h"
-
 #include "yb/server/default-path-handlers.h"
 #include "yb/server/webserver.h"
-
-#include "yb/util/file_util.h"
 #include "yb/util/curl_util.h"
-#include "yb/util/env_util.h"
 #include "yb/util/json_document.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
-#include "yb/util/string_trim.h"
 #include "yb/util/test_util.h"
 #include "yb/util/zlib.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/server/webserver_options.h"
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/path_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/test_macros.h"
 
 using std::string;
 using std::vector;

@@ -14,13 +14,21 @@
 #pragma once
 
 #include <condition_variable>
+#include <functional>
+#include <mutex>
+#include <string>
+#include <utility>
 
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/rpc/rpc_fwd.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
+
+namespace yb {
+class Status;
+namespace rpc {
+class Scheduler;
+}  // namespace rpc
+}  // namespace yb
 
 namespace yb::rpc {
 

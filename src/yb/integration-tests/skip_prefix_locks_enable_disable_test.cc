@@ -11,10 +11,26 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <atomic>
+#include <chrono>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <thread>
+#include <vector>
+
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/atomic.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 

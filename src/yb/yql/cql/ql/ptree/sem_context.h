@@ -17,17 +17,46 @@
 
 #pragma once
 
-#include "yb/client/client_fwd.h"
+#include <stddef.h>
+#include <functional>
+#include <memory>
+#include <string>
 
-#include "yb/common/common_types.pb.h"
 #include "yb/common/ql_datatype.h"
-
 #include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 #include "yb/yql/cql/ql/ptree/process_context.h"
-#include "yb/yql/cql/ql/ql_fwd.h"
+#include "yb/client/table.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/ql_type.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/status.h"
 
 namespace yb {
+enum PermissionType : int;
+enum class DataType;
+namespace client {
+class YBTableName;
+}  // namespace client
+
 namespace ql {
+class ColumnDesc;
+class IdxPredicateState;
+class IfExprState;
+class PTAlterColumnDefinition;
+class PTAlterTable;
+class PTColumnDefinition;
+class PTCreateIndex;
+class PTCreateTable;
+class PTCreateType;
+class PTDmlStmt;
+class PTTypeField;
+class QLEnv;
+class QLMetrics;
+class SelectScanInfo;
+class SemState;
+class WhereExprState;
+class YBLocation;
 
 //--------------------------------------------------------------------------------------------------
 

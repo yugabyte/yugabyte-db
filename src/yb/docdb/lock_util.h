@@ -13,24 +13,50 @@
 
 #pragma once
 
+#include <boost/logic/tribool.hpp>
+#include <stddef.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <array>
 #include <span>
-#include <tuple>
 #include <utility>
-#include <vector>
+#include <algorithm>
+#include <string>
 
-#include <boost/logic/tribool.hpp>
-
-#include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/lock_manager_traits.h"
-#include "yb/docdb/object_lock_data.h"
-
 #include "yb/dockv/intent.h"
-#include "yb/dockv/key_bytes.h"
-#include "yb/dockv/value.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/value_type.h"
+#include "yb/util/result.h"
+#include "yb/util/tostring.h"
 
-#include "yb/util/ref_cnt_buffer.h"
+namespace google {
+namespace protobuf {
+template <typename Element> class RepeatedPtrField;
+}  // namespace protobuf
+}  // namespace google
+namespace yb {
+enum IsolationLevel : int;
+enum TableLockType : int;
+
+namespace docdb {
+class ObjectLockPB;
+}  // namespace docdb
+namespace dockv {
+class KeyBytes;
+}  // namespace dockv
+}  // namespace yb
 
 namespace yb::docdb {
 

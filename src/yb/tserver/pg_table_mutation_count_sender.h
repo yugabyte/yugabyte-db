@@ -19,11 +19,11 @@
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/thread_annotations.h"
-
-#include "yb/util/status_fwd.h"
-#include "yb/util/thread.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class Thread;
 
 namespace client {
 class PgAutoAnalyzeServiceClient;

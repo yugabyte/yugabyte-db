@@ -31,52 +31,61 @@
 //
 #pragma once
 
-#include <iosfwd>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
+#include <ostream>
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/opid.h"
-#include "yb/common/opid.pb.h"
-
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_types.h"
-#include "yb/consensus/consensus_types.pb.h"
 #include "yb/consensus/metadata.pb.h"
-
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/stringprintf.h"
-#include "yb/gutil/strings/substitute.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/tserver/tserver_types.pb.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
-
-namespace server {
-class Clock;
-}
+struct CloneSourceInfo;
 
 namespace tablet {
 class TabletPeer;
 }
 
-namespace tserver {
-class TabletServerErrorPB;
-}
-
 namespace consensus {
+class ChangeConfigRequestPB;
+class LWConsensusRequestPB;
+class LWConsensusResponsePB;
+class LeaderStepDownRequestPB;
+class LeaderStepDownResponsePB;
+class UnsafeChangeConfigRequestPB;
+class VoteRequestPB;
+class VoteResponsePB;
+enum LeaderLeaseStatus : int;
+enum OpIdType : int;
 
 // After completing bootstrap, some of the results need to be plumbed through
 // into the consensus implementation.
@@ -150,6 +159,7 @@ struct LeaderElectionData {
 class Consensus {
  public:
   class ConsensusFaultHooks;
+
   Consensus() {}
   virtual ~Consensus() {}
 

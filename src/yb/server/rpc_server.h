@@ -31,21 +31,37 @@
 //
 #pragma once
 
-#include <memory>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/asio/ip/basic_endpoint.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <string>
 #include <vector>
 
-#include "yb/gutil/ref_counted.h"
-
 #include "yb/rpc/rpc_fwd.h"
-#include "yb/rpc/service_pool.h"
-
-#include "yb/util/status_fwd.h"
-#include "yb/util/enums.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/tostring.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/status.h"
 
 namespace yb {
+namespace rpc {
+class Messenger;
+class ServicePool;
+}  // namespace rpc
+
 namespace server {
 
 struct RpcServerOptions {

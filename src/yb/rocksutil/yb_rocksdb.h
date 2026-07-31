@@ -13,13 +13,12 @@
 
 #pragma once
 
-#include <cstddef>
-#include <string>
 
-#include "yb/rocksdb/options.h"
 
-#include "yb/util/cast.h"
-#include "yb/util/slice.h"
+
+namespace rocksdb {
+struct WriteOptions;
+}  // namespace rocksdb
 
 namespace yb {
 

@@ -18,19 +18,29 @@
 // under the License.
 //
 
+#include <assert.h>
+#include <stdarg.h>
 #include <limits>
 #include <string>
 #include <utility>
-
-#include <gtest/gtest.h>
+#include <unordered_map>
 
 #include "yb/rocksdb/db/compaction_picker.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/env.h"
-
 #include "yb/util/size_literals.h"
 #include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testutil.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/db/version_edit.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/types.h"
+#include "yb/rocksdb/universal_compaction.h"
+#include "yb/rocksdb/util/log_buffer.h"
+#include "yb/rocksdb/util/mutable_cf_options.h"
+#include "yb/util/tostring.h"
 
 using namespace yb::size_literals;
 

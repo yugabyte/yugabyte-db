@@ -13,11 +13,30 @@
 
 #include "yb/docdb/docdb-test.h"
 
-#include "yb/common/transaction.h"
+#include <boost/move/iterator.hpp>
+#include <gtest/gtest.h>
+#include <compare>
+#include <limits>
+#include <random>
+#include <unordered_map>
 
 #include "yb/dockv/reader_projection.h"
-
 #include "yb/util/minmax.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/docdb/docdb_compaction_context.h"
+#include "yb/docdb/docdb_types.h"
+#include "yb/docdb/docdb_util.h"
+#include "yb/rocksdb/db.h"
+#include "yb/util/env.h"
+#include "yb/util/uuid.h"
+
+namespace yb {
+namespace docdb {
+struct DocDB;
+}  // namespace docdb
+}  // namespace yb
 
 namespace yb::docdb {
 

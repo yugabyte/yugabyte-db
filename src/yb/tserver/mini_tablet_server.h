@@ -31,27 +31,33 @@
 //
 #pragma once
 
+#include <stdint.h>
 #include <functional>
 #include <string>
+#include <memory>
+#include <vector>
 
-#include "yb/common/common_fwd.h"
-#include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
-
 #include "yb/docdb/docdb_fwd.h"
-
-#include "yb/encryption/encryption_fwd.h"
-
-#include "yb/gutil/macros.h"
 #include "yb/tablet/tablet_fwd.h"
-#include "yb/tablet/tablet_types.pb.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/util/net/sockaddr.h"
-#include "yb/util/status_fwd.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
 class FsManager;
+class MemTracker;
+class MetricEntity;
+class Schema;
+class Tunnel;
+enum TableType : int;
+namespace tablet {
+enum TabletDataState : int;
+}  // namespace tablet
 
 namespace pgwrapper {
 struct PGConnSettings;
@@ -64,7 +70,6 @@ class RaftConfigPB;
 namespace tserver {
 
 class TabletServer;
-
 YB_STRONGLY_TYPED_BOOL(WaitTabletsBootstrapped);
 
 // An in-process tablet server meant for use in test cases.

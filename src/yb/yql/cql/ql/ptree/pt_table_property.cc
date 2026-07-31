@@ -13,31 +13,41 @@
 
 #include "yb/yql/cql/ql/ptree/pt_table_property.h"
 
-#include <set>
-
 #include <boost/algorithm/string/predicate.hpp>
+#include <stdint.h>
+#include <string.h>
+#include <set>
+#include <limits>
+#include <unordered_map>
+#include <vector>
+#include <functional>
 
-#include "yb/client/schema.h"
 #include "yb/client/table.h"
-
 #include "yb/common/schema.h"
 #include "yb/common/table_properties_constants.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
-
-#include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/pt_alter_table.h"
 #include "yb/yql/cql/ql/ptree/pt_column_definition.h"
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
-#include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/constants.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/yql/cql/ql/ptree/pt_expr_types.h"
+#include "yb/yql/cql/ql/ptree/tree_node.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 using std::string;
 using std::ostream;

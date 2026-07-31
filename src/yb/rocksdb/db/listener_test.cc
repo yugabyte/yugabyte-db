@@ -18,9 +18,34 @@
 // under the License.
 //
 
-#include "yb/rocksdb/db/db_test_util.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <atomic>
+#include <initializer_list>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <utility>
+#include <vector>
+#include <functional>
 
-#include "yb/util/sync_point.h"
+#include "yb/rocksdb/db/db_test_util.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/table_properties.h"
+#include "yb/rocksdb/types.h"
+#include "yb/rocksdb/universal_compaction.h"
+#include "yb/rocksdb/util/random.h"
+#include "yb/util/slice.h"
+#include "yb/util/string_util.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
 
 namespace rocksdb {
 

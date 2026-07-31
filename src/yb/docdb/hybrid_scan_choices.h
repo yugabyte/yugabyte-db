@@ -13,17 +13,57 @@
 
 #pragma once
 
-#include "yb/common/doc_hybrid_time.h"
+#include <stddef.h>
+#include <sys/types.h>
+#include <boost/container/small_vector.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/scan_choices.h"
+#include "yb/common/column_id.h"
+#include "yb/docdb/lock_util.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/util/col_group.h"
+#include "yb/util/enums.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
 
-#include "yb/dockv/value_type.h"
+namespace yb {
+class Schema;
 
-#include "yb/qlexpr/ql_scanspec.h"
-
-#include "yb/util/algorithm_util.h"
+namespace docdb {
+struct DocReadContext;
+}  // namespace docdb
+namespace dockv {
+class KeyEntryValue;
+}  // namespace dockv
+namespace qlexpr {
+class YQLScanSpec;
+}  // namespace qlexpr
+}  // namespace yb
 
 namespace yb::docdb {
 

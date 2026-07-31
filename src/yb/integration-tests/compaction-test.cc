@@ -11,10 +11,30 @@
 // under the License.
 //
 
-#include <boost/function.hpp>
+#include <absl/base/dynamic_annotations.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/intrusive/list.hpp>
+#include <algorithm>
+#include <chrono>
+#include <condition_variable>
+#include <functional>
+#include <initializer_list>
+#include <limits>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "yb/client/client.h"
-#include "yb/client/error.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_alterer.h"
@@ -22,50 +42,35 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/common_fwd.h"
 #include "yb/common/schema.h"
-
 #include "yb/consensus/consensus.h"
-
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
-
 #include "yb/dockv/doc_ttl_util.h"
 #include "yb/dockv/reader_projection.h"
-
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
-
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/mini_master.h"
-
 #include "yb/qlexpr/ql_expr.h"
-
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/util/task_metrics.h"
-
-#include "yb/rpc/messenger.h"
-
 #include "yb/server/hybrid_clock.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/full_compaction_manager.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/metrics.h"
@@ -76,6 +81,46 @@
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/unique_lock.h"
+#include "gtest/gtest.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/column_id.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/value.pb.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_fwd.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/compaction_job_stats.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/rocksdb/table_properties.h"
+#include "yb/rpc/proxy.h"
+#include "yb/server/clock.h"
+#include "yb/server/server_fwd.h"
+#include "yb/storage/frontier.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
 
 using namespace std::literals; // NOLINT
 

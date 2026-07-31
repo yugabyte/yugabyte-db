@@ -30,11 +30,22 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <algorithm>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+#include <functional>
 
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
-
 #include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log.messages.h"
@@ -46,16 +57,11 @@
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/replica_state.h"
-
 #include "yb/gutil/bind.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/substitute.h"
-
-#include "yb/rpc/messenger.h"
-
 #include "yb/server/logical_clock.h"
-
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
@@ -63,6 +69,54 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.messages.h"
+#include "yb/common/opid.pb.h"
+#include "yb/common/wire_protocol.messages.h"
+#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.messages.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_meta.h"
+#include "yb/consensus/consensus_peers.h"
+#include "yb/consensus/consensus_queue.h"
+#include "yb/consensus/consensus_round.h"
+#include "yb/consensus/consensus_types.h"
+#include "yb/consensus/consensus_types.messages.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/log_fwd.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/retryable_requests.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/thread_pool.h"
+#include "yb/server/clock.h"
+#include "yb/util/async_util.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strand.h"
+#include "yb/util/thread_pool.h"
+
+namespace yb {
+namespace consensus {
+class RaftConsensusQuorumTest_TestLeaderElectionWithQuiescedQuorum_Test;
+class RaftConsensusQuorumTest_TestReplicasEnforceTheLogMatchingProperty_Test;
+class RaftConsensusQuorumTest_TestRequestVote_Test;
+struct StateChangeContext;
+}  // namespace consensus
+}  // namespace yb
 
 DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_int32(retryable_request_timeout_secs);

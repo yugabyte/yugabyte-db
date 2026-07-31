@@ -11,13 +11,22 @@
 // under the License.
 //
 
-#include <boost/algorithm/string.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/algorithm/string/case_conv.hpp>
+#include <boost/algorithm/string/trim.hpp>
+#include <boost/iterator/iterator_facade.hpp>
+#include <iostream>
+#include <string>
+#include <vector>
 
 #include "yb/client/yb_table_name.h"
 #include "yb/master/master_util.h"
 #include "yb/tools/yb-generate_partitions.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/status.h"
 
 DEFINE_NON_RUNTIME_string(master_addresses, "",
     "Comma-separated list of YB Master server addresses");

@@ -13,7 +13,12 @@
 
 #include "yb/gen_yrpc/forward_generator.h"
 
+#include <google/protobuf/descriptor.h>
+#include <string>
+#include <vector>
+
 #include "yb/gen_yrpc/model.h"
+#include "yb/gen_yrpc/printer.h"
 
 namespace yb {
 namespace gen_yrpc {

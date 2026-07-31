@@ -32,10 +32,10 @@
 
 #include "yb/util/oid_generator.h"
 
+#include <boost/uuid/random_generator.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <mutex>
 #include <string>
-
-#include <boost/uuid/uuid_generators.hpp>
 
 #include "yb/gutil/strings/escaping.h"
 #include "yb/util/cast.h"

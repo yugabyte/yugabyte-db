@@ -13,9 +13,15 @@
 
 #include "yb/tablet/write_post_apply_metadata_task.h"
 
-#include "yb/tablet/running_transaction_context.h"
+#include <glog/logging.h>
+#include <ostream>
+#include <span>
+#include <utility>
+
 #include "yb/tablet/transaction_intent_applier.h"
 #include "yb/util/status_log.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
 
 namespace yb::tablet {
 

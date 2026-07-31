@@ -111,7 +111,8 @@
 //
 #include "yb/util/memcmpable_varint.h"
 
-#include "yb/util/logging.h"
+#include <glog/logging.h>
+#include <stddef.h>
 
 #include "yb/util/cast.h"
 #include "yb/util/faststring.h"

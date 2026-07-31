@@ -17,16 +17,23 @@
 
 #pragma once
 
-#include "yb/yql/cql/ql/ptree/parse_tree.h"
-#include "yb/yql/cql/ql/util/statement_params.h"
-#include "yb/yql/cql/ql/util/statement_result.h"
+#include <stddef.h>
+#include <atomic>
+#include <memory>
+#include <mutex>
+#include <string>
 
-#include "yb/util/monotime.h"
+#include "yb/yql/cql/ql/ptree/parse_tree.h"
+#include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace ql {
 
 class QLProcessor;
+class StatementParameters;
 
 class Statement {
  public:

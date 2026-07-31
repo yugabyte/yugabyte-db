@@ -13,8 +13,13 @@
 
 #pragma once
 
-#include "yb/common/entity_ids_types.h"
+#include <functional>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
+#include "yb/common/entity_ids_types.h"
 #include "yb/master/leader_epoch.h"
 
 namespace yb::master {

@@ -18,15 +18,57 @@
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index_container.hpp>
+#include <stdint.h>
+#include <boost/container_hash/hash.hpp>
+#include <boost/multi_index/indexed_by.hpp>
+#include <boost/multi_index/tag.hpp>
+#include <boost/multi_index_container_fwd.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <atomic>
+#include <cstddef>
+#include <functional>
+#include <future>
+#include <memory>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <utility>
 
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/transaction.h"
-
-#include "yb/docdb/wait_queue.h"
-
-#include "yb/tserver/tserver_service.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/util/compare_util.h"
+#include "yb/util/metrics_fwd.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uint_set.h"
 
 namespace yb {
+namespace client {
+class YBClient;
+}  // namespace client
+namespace tserver {
+class ProbeTransactionDeadlockRequestPB;
+class ProbeTransactionDeadlockResponsePB;
+class UpdateTransactionWaitingForStatusRequestPB;
+class UpdateTransactionWaitingForStatusResponsePB;
+}  // namespace tserver
+
 namespace tablet {
 
 // Structure holding the required data of each blocker transaction blocking the waiter request.
@@ -194,6 +236,7 @@ class WaiterInfoEntry {
 // full update, where all exisiting waiters at the tserver across all tablets are reported.
 struct TransactionIdTag;
 struct TserverUuidTag;
+
 typedef boost::multi_index_container<WaiterInfoEntry,
     boost::multi_index::indexed_by <
         boost::multi_index::hashed_unique <
@@ -299,6 +342,7 @@ class DeadlockDetector {
 
  private:
   class Impl;
+
   std::shared_ptr<Impl> impl_;
 };
 

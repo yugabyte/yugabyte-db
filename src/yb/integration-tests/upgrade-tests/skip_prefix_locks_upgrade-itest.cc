@@ -11,8 +11,29 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <atomic>
+#include <chrono>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <vector>
+
 #include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
+#include "yb/util/test_util.h"
 
 namespace yb {
 

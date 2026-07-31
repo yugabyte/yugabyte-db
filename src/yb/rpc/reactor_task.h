@@ -33,6 +33,8 @@
 
 #include <memory>
 #include <atomic>
+#include <string>
+#include <vector>
 
 #include "yb/util/status.h"
 #include "yb/util/source_location.h"

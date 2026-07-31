@@ -13,29 +13,37 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <glog/logging.h>
+#include <string.h>
+#include <boost/intrusive/list.hpp>
+#include <boost/move/iterator.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <algorithm>
 #include <fstream>
-#include <iostream>
 #include <optional>
 #include <vector>
-
-#include "yb/client/yb_op.h"
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction.pb.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
-#include "yb/util/debug-util.h"
-
 #include "yb/yql/pggate/pg_function.h"
 #include "yb/yql/pggate/pg_function_helpers.h"
 #include "yb/yql/pggate/pg_session.h"
-#include "yb/yql/pggate/ybc_pggate.h"
-#include "yb/yql/pggate/util/pg_doc_data.h"
+#include "yb/common/column_id.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/pg_types.h"
+#include "yb/common/value.messages.h"
+#include "yb/tserver/pg_client.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/uuid.h"
+#include "yb/yql/pggate/pg_client.h"
+#include "yb/yql/pggate/pg_value.h"
 
 namespace yb::pggate {
 

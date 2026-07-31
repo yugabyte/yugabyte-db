@@ -16,12 +16,20 @@
 //--------------------------------------------------------------------------------------------------
 #include "yb/yql/cql/ql/ptree/pt_create_role.h"
 
-#include "yb/gutil/strings/substitute.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <ostream>
 
+#include "yb/gutil/strings/substitute.h"
 #include "yb/util/crypt.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/sem_state.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/slice.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 DECLARE_bool(use_cassandra_authentication);
 

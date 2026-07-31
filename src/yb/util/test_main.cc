@@ -32,16 +32,22 @@
 
 #include <signal.h> // For sigaction
 #include <sys/time.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <iostream>
+#include <string>
 
 #include "yb/util/logging.h"
-#include <gtest/gtest.h>
-
 #include "yb/util/pstack_watcher.h"
 #include "yb/util/flags.h"
 #include "yb/util/signal_util.h"
-#include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/debug-util.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/stack_trace.h"
 
 using testing::EmptyTestEventListener;
 using testing::TestPartResult;

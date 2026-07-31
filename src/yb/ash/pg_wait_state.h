@@ -12,8 +12,9 @@
 //
 #pragma once
 
-#include "yb/ash/wait_state.h"
+#include <functional>
 
+#include "yb/ash/wait_state.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb::ash {

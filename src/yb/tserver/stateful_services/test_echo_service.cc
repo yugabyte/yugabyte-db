@@ -12,7 +12,15 @@
 //
 
 #include "yb/tserver/stateful_services/test_echo_service.h"
-#include "yb/client/client.h"
+
+#include <glog/logging.h>
+#include <chrono>
+#include <compare>
+#include <memory>
+#include <ostream>
+#include <string_view>
+#include <utility>
+
 #include "yb/client/session.h"
 #include "yb/client/yb_op.h"
 #include "yb/common/ql_protocol.messages.h"
@@ -21,6 +29,27 @@
 #include "yb/master/master_defaults.h"
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
+#include "yb/client/table_handle.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/tserver/stateful_services/test_echo_service.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/timestamp.h"
+
+namespace yb {
+class MetricEntity;
+namespace client {
+class YBClient;
+}  // namespace client
+namespace rpc {
+class RpcContext;
+}  // namespace rpc
+}  // namespace yb
+template <class T> class scoped_refptr;
 
 using namespace std::chrono_literals;
 

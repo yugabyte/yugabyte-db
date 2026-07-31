@@ -13,29 +13,49 @@
 
 #include "yb/ann_methods/usearch_wrapper.h"
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/container/vector.hpp>
+#include <boost/intrusive/list.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <memory>
 #include <semaphore>
+#include <algorithm>
+#include <exception>
+#include <mutex>
+#include <new>
+#include <optional>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/ann_methods/yb_hnsw_wrapper.h"
-
 #include "yb/hnsw/hnsw_block_cache.h"
-
 #include "yb/gutil/casts.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
-
 #include "yb/ann_methods/index_memory_consumption.h"
-
 #include "yb/vector_index/distance.h"
 #include "yb/vector_index/index_wrapper_base.h"
-#include "yb/vector_index/usearch_include_wrapper_internal.h"
 #include "yb/vector_index/coordinate_types.h"
-#include "yb/vector_index/vectorann_util.h"
+#include "usearch/index.hpp"
+#include "usearch/index_dense.hpp"
+#include "usearch/index_plugins.hpp"
+#include "yb/common/vector_types.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/util/cast.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/polymorphic_iterator.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/vector_index/hnsw_options.h"
+#include "yb/vector_index/vector_index_fwd.h"
 
 namespace unum::usearch {
 

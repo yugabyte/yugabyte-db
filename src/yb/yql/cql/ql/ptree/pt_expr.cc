@@ -17,19 +17,21 @@
 
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 
+#include <gflags/gflags.h>
+#include <string.h>
+#include <boost/asio/ip/address.hpp>
+#include <algorithm>
+#include <string_view>
+#include <vector>
+
 #include "yb/bfql/tserver_opcodes.h"
-
 #include "yb/client/table.h"
-
-#include "yb/common/common.pb.h"
 #include "yb/common/value.messages.h"
 #include "yb/common/value.pb.h"
 #include "yb/qlexpr/index.h"
 #include "yb/qlexpr/index_column.h"
 #include "yb/common/ql_type.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/util/date_time.h"
 #include "yb/util/decimal.h"
 #include "yb/util/logging.h"
@@ -37,7 +39,6 @@
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/stol_utils.h"
-
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/pt_bcall.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
@@ -45,6 +46,18 @@
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
 #include "yb/yql/cql/ql/ql_processor.h"
+#include "yb/client/schema.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/format.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/timestamp.h"
+#include "yb/util/varint.h"
+#include "yb/yql/cql/ql/ptree/process_context.h"
+#include "yb/yql/cql/ql/ptree/pt_dml.h"
+#include "yb/yql/cql/ql/ptree/pt_name.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 DECLARE_bool(cql_revert_to_partial_microsecond_support);
 

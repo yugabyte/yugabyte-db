@@ -12,16 +12,40 @@
 
 #include "yb/cdc/cdc_service.h"
 
-#include <algorithm>
-#include <chrono>
-#include <memory>
-
-#include <boost/algorithm/string.hpp>
-#include <boost/lexical_cast.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index_container.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <math.h>
+#include <sys/types.h>
+#include <boost/algorithm/string/predicate.hpp>
+#include <boost/container/small_vector.hpp>
+#include <boost/container/stable_vector.hpp>
+#include <boost/multi_index/indexed_by.hpp>
+#include <boost/multi_index/tag.hpp>
+#include <boost/multi_index_container_fwd.hpp>
+#include <boost/operators.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <algorithm>
+#include <chrono>
+#include <memory>
+#include <array>
+#include <iterator>
+#include <limits>
+#include <mutex>
+#include <ostream>
 
 #include "yb/cdc/cdc_error.h"
 #include "yb/cdc/cdc_producer.h"
@@ -36,43 +60,28 @@
 #include "yb/cdc/xcluster_rpc.h"
 #include "yb/cdc/xrepl_stream_metadata.h"
 #include "yb/cdc/xrepl_stream_stats.h"
-
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
-#include "yb/client/schema.h"
-#include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_util.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/xcluster_util.h"
-
 #include "yb/consensus/log.h"
-#include "yb/consensus/log_reader.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/replicate_msgs_holder.h"
-
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
-
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/sys_catalog_constants.h"
-
 #include "yb/rocksdb/rate_limiter.h"
-
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/rpc_controller.h"
-
-#include "yb/server/async_client_initializer.h"
-
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
-
 #include "yb/tserver/service_util.h"
-
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -89,6 +98,32 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
 #include "yb/util/trace.h"
+#include "yb/ash/wait_state.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/constants.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/opid.pb.h"
+#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/dockv/schema_packing.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/walltime.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/tablet/tablet.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/io.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/slice.h"
+#include "yb/util/timestamp.h"
+#include "yb/util/tostring.h"
 
 
 using std::max;

@@ -39,10 +39,17 @@
 
 #include <fcntl.h>
 #include <unistd.h>
-
+#include <errno.h>
+#include <glog/logging.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
 #include <fstream>
 #include <string>
 #include <vector>
+#include <iterator>
+#include <sstream>
+#include <string_view>
 
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
@@ -50,6 +57,10 @@
 #include "yb/util/format.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 using std::ifstream;
 using std::istreambuf_iterator;

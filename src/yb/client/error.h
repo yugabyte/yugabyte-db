@@ -13,12 +13,13 @@
 
 #pragma once
 
-#include "yb/client/client_fwd.h"
+#include <memory>
 
 #include "yb/util/status.h"
 
 namespace yb {
 namespace client {
+class YBOperation;
 
 // An error which occurred in a given operation. This tracks the operation
 // which caused the error, along with whatever the actual error was.

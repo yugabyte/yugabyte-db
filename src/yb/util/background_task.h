@@ -14,11 +14,12 @@
 
 #include <condition_variable>
 #include <functional>
-#include <memory>
+#include <chrono>
+#include <mutex>
+#include <string>
 
 #include "yb/gutil/ref_counted.h"
-
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

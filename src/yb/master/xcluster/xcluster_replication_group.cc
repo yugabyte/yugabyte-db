@@ -13,15 +13,24 @@
 
 #include "yb/master/xcluster/xcluster_replication_group.h"
 
-#include "yb/cdc/xcluster_types.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <sys/types.h>
+#include <boost/uuid/uuid.hpp>
+#include <algorithm>
+#include <iterator>
+#include <ostream>
+#include <set>
+#include <unordered_map>
+#include <unordered_set>
+
 #include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
-#include "yb/common/colocated_util.h"
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/common/xcluster_util.h"
-
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
@@ -31,11 +40,39 @@
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/xcluster_rpc_tasks.h"
-
 #include "yb/util/async_util.h"
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/result.h"
+#include "yb/cdc/cdc_consumer.pb.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/schema.h"
+#include "yb/common/schema_pbutil.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/dockv/dockv.pb.h"
+#include "yb/dockv/schema_packing.h"
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/stl_util.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/util/cow_object.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_string.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+class SchemaPB;
+}  // namespace yb
 
 DEFINE_RUNTIME_bool(xcluster_skip_health_check_on_replication_setup, false,
     "Skip health check on xCluster replication setup");

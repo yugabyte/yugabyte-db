@@ -16,8 +16,29 @@
 
 #include "yb/server/server_common_flags.h"
 
+#include <gflags/gflags.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/arithmetic/inc.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <string>
+
 #include "yb/util/flags.h"
 #include "yb/util/flag_validators.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+
+namespace google {
+class LogSink;
+}  // namespace google
 
 // User specified identifier for this cluster. On the first master leader setup, this is stored in
 // the cluster_config. if not specified, a random UUID is generated.

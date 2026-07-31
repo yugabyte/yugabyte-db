@@ -13,13 +13,40 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stdint.h>
 #include <future>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <string_view>
 
-#include "yb/tserver/pg_txn_snapshot_manager.h"
 #include "yb/tserver/tablet_peer_lookup.h"
 #include "yb/tserver/tablet_server_interface.h"
-#include "yb/tserver/ts_local_lock_manager.h"
 #include "yb/tserver/tserver_fwd.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tserver/tserver_util_fwd.h"
+#include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_callback.h"
+
+namespace yb {
+class MetricRegistry;
+namespace cdc {
+class CDCServiceImpl;
+}  // namespace cdc
+namespace client {
+class YBClient;
+}  // namespace client
+}  // namespace yb
 
 namespace yb::master {
 

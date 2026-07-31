@@ -13,17 +13,37 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <shared_mutex>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "yb/cdc/xcluster_types.h"
-
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/master/xcluster/master_xcluster_types.h"
-#include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_catalog_entity.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/catalog_entity_base.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/tasks_tracker.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_callback.h"
 
 namespace yb {
 
 class IsOperationDoneResult;
+class HostPort;
 
 namespace client {
 class XClusterRemoteClientHolder;
@@ -32,6 +52,11 @@ class XClusterRemoteClientHolder;
 namespace master {
 
 class XClusterOutboundReplicationGroupTaskFactory;
+class DeleteCDCStreamRequestPB;
+class DeleteCDCStreamResponsePB;
+class NamespaceIdentifierPB;
+struct LeaderEpoch;
+struct TableDesignator;
 
 class XClusterOutboundReplicationGroup
     : public std::enable_shared_from_this<XClusterOutboundReplicationGroup>,

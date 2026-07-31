@@ -12,8 +12,17 @@
 
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/asio.hpp>
 #include <chrono>
-
+#include <algorithm>
+#include <functional>
+#include <future>
+#include <mutex>
+#include <ostream>
+#include <ratio>
+#include <utility>
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
@@ -21,28 +30,45 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/ql_protocol.messages.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/xcluster_util.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
-
 #include "yb/rpc/messenger.h"
-
 #include "yb/tablet/tablet_peer.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/thread.h"
+#include "yb/cdc/cdc_consumer.pb.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_value.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/join.h"
+#include "yb/gutil/walltime.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/xcluster/xcluster_consumer_metrics.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/metrics.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/slice.h"
+#include "yb/util/thread_pool.h"
 
 using std::min;
 

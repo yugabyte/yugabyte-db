@@ -15,6 +15,7 @@
 
 #include "yb/util/multi_drive_test_env.h"
 
+#include <boost/algorithm/string/predicate.hpp>
 #include <mutex>
 
 #include "yb/util/shared_lock.h"

@@ -30,15 +30,16 @@
 
 #include <stdint.h>
 #include <string.h>
-
-#include <algorithm>
+#include <endian.h>
+#include <limits>
 #include <string>
 
-#include "yb/rocksdb/port/port.h"
-
-#include "yb/util/cast.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/slice_parts.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/cast.h"
 
 namespace rocksdb {
 

@@ -12,13 +12,27 @@
 
 #include "yb/master/async_rbs_info_task.h"
 
-#include "yb/common/wire_protocol.h"
+#include <glog/logging.h>
+#include <chrono>
+#include <ostream>
+#include <utility>
+#include <functional>
 
+#include "yb/common/wire_protocol.h"
 #include "yb/master/master.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
-
 #include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/master/async_task_result_collector.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_fwd.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class ThreadPool;
+}  // namespace yb
 
 using namespace std::chrono_literals;
 

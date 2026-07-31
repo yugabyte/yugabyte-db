@@ -15,20 +15,22 @@
 
 #pragma once
 
-#include <functional>
-#include <type_traits>
-
-#include <gtest/gtest.h>
+#include <stdint.h>
+#include <boost/uuid/uuid.hpp>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <utility>
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
-
-#include "yb/util/enums.h"
-#include "yb/util/math_util.h"
 #include "yb/util/result.h"
-#include "yb/util/string_trim.h"
-#include "yb/util/test_macros.h"
-#include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 namespace yb {
 

@@ -13,6 +13,9 @@
 
 #include "yb/util/ev_util.h"
 
+#include <memory>
+#include <string>
+
 #include "yb/util/debug-util.h"
 
 namespace yb {

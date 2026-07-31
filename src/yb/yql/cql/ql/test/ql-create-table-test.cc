@@ -13,18 +13,40 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include <boost/algorithm/string.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/algorithm/string/join.hpp>
+#include <boost/range/begin.hpp>
+#include <boost/range/end.hpp>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <thread>
+#include <unordered_set>
+#include <vector>
+#include <functional>
 
 #include "yb/common/ql_value.h"
 #include "yb/common/transaction.h"
-
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_defaults.h"
-
 #include "yb/util/status_log.h"
-
 #include "yb/yql/cql/ql/test/ql-test-base.h"
+#include "gtest/gtest.h"
+#include "yb/common/common.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/mini_master.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
 
 using std::string;
 
@@ -37,10 +59,6 @@ DECLARE_string(metrics_snapshotter_tserver_metrics_whitelist);
 
 
 namespace yb {
-namespace master {
-class CatalogManager;
-class Master;
-}
 namespace ql {
 
 #define EXEC_DUPLICATE_OBJECT_CREATE_STMT(stmt)                         \

@@ -19,40 +19,56 @@
 //
 
 #include "yb/rocksdb/tools/sst_dump_tool_imp.h"
+#include "yb/docdb/docdb_types.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/db/table_properties_collector.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/rocksdb/sst_dump_tool.h"
+#include "yb/rocksdb/table.h"
+#include "yb/rocksdb/table/block_based_table_reader.h"
+#include "yb/rocksdb/table/internal_iterator.h"
+#include "yb/rocksdb/table/table_builder.h"
+#include "yb/rocksdb/table/table_reader.h"
+#include "yb/rocksdb/util/coding.h"
+#include "yb/rocksdb/util/file_reader_writer.h"
+#include "yb/util/byte_buffer.h"
+#include "yb/util/file_system.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
 #endif
 
 #include <inttypes.h>
+#include <assert.h>
+#include <glog/logging.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <map>
 #include <sstream>
 #include <vector>
+#include <iostream>
+#include <memory>
+#include <string>
+#include <utility>
 
 #include "yb/rocksdb/db/filename.h"
-#include "yb/rocksdb/db/memtable.h"
-#include "yb/rocksdb/db/write_batch_internal.h"
-#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/immutable_options.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/table_properties.h"
-#include "yb/rocksdb/table/block.h"
-#include "yb/rocksdb/table/block_based_table_builder.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
-#include "yb/rocksdb/table/block_builder.h"
 #include "yb/rocksdb/table/format.h"
 #include "yb/rocksdb/table/meta_blocks.h"
-#include "yb/rocksdb/table/plain_table_factory.h"
 #include "yb/rocksdb/tools/ldb_cmd.h"
-#include "yb/rocksdb/util/random.h"
-
-#include "yb/rocksdb/port/port.h"
-
-#include "yb/docdb/docdb_debug.h"
-
 #include "yb/util/format.h"
 #include "yb/util/kv_util.h"
 #include "yb/util/status_log.h"

@@ -13,22 +13,31 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <string>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+#include <vector>
+
 #include "yb/common/transaction.h"
 #include "yb/common/value.pb.h"
-
-#include "yb/client/client_fwd.h"
-
-#include "yb/dockv/pg_row.h"
-
-#include "yb/qlexpr/ql_expr.h"
-
 #include "yb/util/physical_time.h"
 #include "yb/util/status_format.h"
 #include "yb/util/uuid.h"
-
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/common/column_id.h"
+#include "yb/common/value.messages.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class Schema;
+
+namespace dockv {
+class PgTableRow;
+}  // namespace dockv
+
 namespace pggate {
 namespace util {
 

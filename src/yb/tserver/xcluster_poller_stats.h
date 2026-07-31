@@ -13,16 +13,18 @@
 
 #pragma once
 
+#include <boost/circular_buffer.hpp>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/core/pointer_traits.hpp>
 #include <shared_mutex>
 #include <string>
-#include <boost/circular_buffer.hpp>
 
-#include "yb/cdc/cdc_util.h"
 #include "yb/cdc/xcluster_types.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/gutil/thread_annotations.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

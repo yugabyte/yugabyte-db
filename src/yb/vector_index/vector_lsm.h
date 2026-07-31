@@ -13,26 +13,62 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <condition_variable>
 #include <future>
 #include <map>
+#include <atomic>
+#include <functional>
+#include <memory>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "yb/rpc/rpc_fwd.h"
-
 #include "yb/storage/storage_types.h"
-
-#include "yb/util/env.h"
-#include "yb/util/kv_util.h"
 #include "yb/util/locks.h"
 #include "yb/util/shutdown_controller.h"
 #include "yb/util/status_callback.h"
-
 #include "yb/vector_index/vector_index_if.h"
-#include "yb/vector_index/vector_lsm_metrics.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/storage/storage_fwd.h"
+#include "yb/util/enums.h"
+#include "yb/util/file_system.h"
+#include "yb/util/metrics_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/vector_index/coordinate_types.h"
+#include "yb/vector_index/distance.h"
+#include "yb/vector_index/vector_index_fwd.h"
 
 namespace yb {
 
 class PriorityThreadPoolToken;
+class Env;
+
+namespace storage {
+class UserFrontiers;
+}  // namespace storage
+namespace vector_index {
+struct VectorLSMMetrics;
+}  // namespace vector_index
+
 using PriorityThreadPoolTokenPtr = std::shared_ptr<PriorityThreadPoolToken>;
 class PriorityThreadPoolSuspender;
 
@@ -41,6 +77,7 @@ class PriorityThreadPoolSuspender;
 namespace yb::vector_index {
 
 class VectorLSMFileMetaData;
+
 using VectorLSMFileMetaDataPtr = std::shared_ptr<VectorLSMFileMetaData>;
 
 template<IndexableVectorType Vector>
@@ -56,12 +93,7 @@ struct VectorLSMInsertContext {
 
 template<IndexableVectorType Vector,
          ValidDistanceResultType DistanceResult>
-struct VectorLSMOptions;
-
-template<IndexableVectorType Vector,
-         ValidDistanceResultType DistanceResult>
 class VectorLSMInsertRegistry;
-
 template<IndexableVectorType Vector,
          ValidDistanceResultType DistanceResult>
 class VectorLSMMergeRegistry;
@@ -188,6 +220,7 @@ class VectorLSM {
   }
 
   struct MutableChunk;
+
   using  MutableChunkPtr = std::shared_ptr<MutableChunk>;
 
  private:
@@ -195,12 +228,14 @@ class VectorLSM {
   using MergeRegistry = VectorLSMMergeRegistry<Vector, DistanceResult>;
 
   struct ImmutableChunk;
+
   using  ImmutableChunkPtr  = std::shared_ptr<ImmutableChunk>;
   using  ImmutableChunkPtrs = std::vector<ImmutableChunkPtr>;
 
   class  CompactionScope;
   struct CompactionContext;
   class  CompactionTask;
+
   using  CompactionTaskPtr = std::unique_ptr<CompactionTask>;
 
   class MergingIterator;

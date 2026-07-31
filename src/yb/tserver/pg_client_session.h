@@ -14,44 +14,134 @@
 #pragma once
 
 #include <sys/types.h>
-
+#include <boost/preprocessor/punctuation/remove_parens.hpp>
+#include <boost/preprocessor/seq/for_each.hpp>
+#include <stdint.h>
+#include <boost/container/small_vector.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/rem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <cstddef>
 #include <functional>
 #include <memory>
 #include <utility>
-
-#include <boost/preprocessor/punctuation/remove_parens.hpp>
-#include <boost/preprocessor/seq/for_each.hpp>
+#include <string>
 
 #include "yb/client/client_fwd.h"
-
-#include "yb/common/consistent_read_point.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
-
-#include "yb/docdb/object_lock_shared_fwd.h"
-
-#include "yb/gutil/ref_counted.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
-#include "yb/tserver/pg_client.fwd.h"
 #include "yb/tserver/pg_client_service.h"
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_shared_mem.h"
-
 #include "yb/util/lw_function.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/util/metrics_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+
+template <class T> class scoped_refptr;
 
 namespace yb {
 
 class WriteBuffer;
+class ClockBase;
+class MetricEntity;
+class RefCntBuffer;
+
+namespace client {
+class YBClient;
+}  // namespace client
+namespace docdb {
+class ObjectLockOwnerRegistry;
+}  // namespace docdb
+namespace rpc {
+class RpcContext;
+class Scheduler;
+}  // namespace rpc
 
 namespace tserver {
 
 class PgSessionGuard;
+class LWPgAcquireObjectLockRequestPB;
+class LWPgAcquireObjectLockResponsePB;
+class LWPgDeleteDBSequencesRequestPB;
+class LWPgDeleteDBSequencesResponsePB;
+class LWPgDeleteSequenceTupleRequestPB;
+class LWPgDeleteSequenceTupleResponsePB;
+class LWPgFetchSequenceTupleRequestPB;
+class LWPgFetchSequenceTupleResponsePB;
+class LWPgGetTableKeyRangesRequestPB;
+class LWPgGetTableKeyRangesResponsePB;
+class LWPgInsertSequenceTupleRequestPB;
+class LWPgInsertSequenceTupleResponsePB;
+class LWPgPerformRequestPB;
+class LWPgPerformResponsePB;
+class LWPgReadSequenceTupleRequestPB;
+class LWPgReadSequenceTupleResponsePB;
+class LWPgUpdateSequenceTupleRequestPB;
+class LWPgUpdateSequenceTupleResponsePB;
+class LWPgWaitForLockersMultipleRequestPB;
+class LWPgWaitForLockersMultipleResponsePB;
+class PgAcquireAdvisoryLockRequestPB;
+class PgAcquireAdvisoryLockResponsePB;
+class PgAlterDatabaseRequestPB;
+class PgAlterDatabaseResponsePB;
+class PgAlterTableRequestPB;
+class PgAlterTableResponsePB;
+class PgBackfillIndexRequestPB;
+class PgBackfillIndexResponsePB;
+class PgCreateDatabaseRequestPB;
+class PgCreateDatabaseResponsePB;
+class PgCreateReplicationSlotRequestPB;
+class PgCreateReplicationSlotResponsePB;
+class PgCreateTableRequestPB;
+class PgCreateTableResponsePB;
+class PgCreateTablegroupRequestPB;
+class PgCreateTablegroupResponsePB;
+class PgDropDatabaseRequestPB;
+class PgDropDatabaseResponsePB;
+class PgDropReplicationSlotRequestPB;
+class PgDropReplicationSlotResponsePB;
+class PgDropTableRequestPB;
+class PgDropTableResponsePB;
+class PgDropTablegroupRequestPB;
+class PgDropTablegroupResponsePB;
+class PgFetchDataRequestPB;
+class PgFetchDataResponsePB;
+class PgFinishTransactionRequestPB;
+class PgFinishTransactionResponsePB;
+class PgMutationCounter;
+class PgPerformOptionsPB;
+class PgReleaseAdvisoryLockRequestPB;
+class PgReleaseAdvisoryLockResponsePB;
+class PgReleaseSessionObjectLockRequestPB;
+class PgReleaseSessionObjectLockResponsePB;
+class PgResponseCache;
+class PgRollbackToSubTransactionRequestPB;
+class PgRollbackToSubTransactionResponsePB;
+class PgSequenceCache;
+class PgSharedMemoryPool;
+class PgTableCache;
+class PgTablesQueryResult;
+class PgTruncateTableRequestPB;
+class PgTruncateTableResponsePB;
+class PgWaitForBackendsCatalogVersionRequestPB;
+class PgWaitForBackendsCatalogVersionResponsePB;
+class TServerCgroupManager;
+class TserverXClusterContextIf;
+class YsqlAdvisoryLocksTable;
 
 #define PG_CLIENT_SESSION_METHODS \
     (AlterDatabase) \
@@ -201,6 +291,7 @@ BOOST_PP_SEQ_FOR_EACH(
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

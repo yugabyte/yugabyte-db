@@ -13,22 +13,30 @@
 
 #include "yb/tablet/abstract_tablet.h"
 
-#include "yb/common/ql_protocol.messages.h"
-#include "yb/common/ql_value.h"
-#include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
+#include <glog/logging.h>
+#include <ostream>
 
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/wire_protocol.h"
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/pgsql_operation.h"
-
-#include "yb/qlexpr/index.h"
 #include "yb/qlexpr/ql_resultset.h"
-
 #include "yb/tablet/read_result.h"
-#include "yb/tablet/tablet_metadata.h"
-
 #include "yb/util/trace.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena_list.h"
+
+namespace yb {
+class ScopedRWOperation;
+namespace docdb {
+class YQLStorageIf;
+struct ReadOperationData;
+}  // namespace docdb
+struct TransactionOperationContext;
+}  // namespace yb
 
 namespace yb::tablet {
 

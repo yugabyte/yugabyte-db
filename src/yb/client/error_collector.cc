@@ -32,8 +32,15 @@
 
 #include "yb/client/error_collector.h"
 
+#include <glog/logging.h>
+#include <ostream>
+#include <string>
+#include <utility>
+
 #include "yb/client/error.h"
 #include "yb/client/yb_op.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace client {

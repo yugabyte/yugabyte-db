@@ -32,12 +32,11 @@
 #pragma once
 
 #include <pthread.h>
-#include <sys/types.h>
-
+#include <glog/logging.h>
+#include <stdint.h>
 #include <memory>
 
 #include "yb/util/logging.h"
-
 #include "yb/gutil/macros.h"
 #include "yb/gutil/thread_annotations.h"
 

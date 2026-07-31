@@ -21,13 +21,39 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <assert.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <atomic>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/port/stack_trace.h"
-
 #include "yb/util/stopwatch.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/compaction_filter.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/table/internal_iterator.h"
+#include "yb/rocksdb/table/scoped_arena_iterator.h"
+#include "yb/rocksdb/util/arena.h"
+#include "yb/rocksdb/util/coding.h"
+#include "yb/rocksdb/utilities/merge_operators.h"
+#include "yb/storage/storage_types.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/string_util.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
 
 namespace rocksdb {
+class Snapshot;
 
 static int cfilter_count = 0;
 

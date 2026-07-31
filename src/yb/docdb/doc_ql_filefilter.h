@@ -15,12 +15,19 @@
 
 #pragma once
 
-#include "yb/common/hybrid_time.h"
-#include "yb/common/transaction.h"
 
-#include "yb/qlexpr/qlexpr_fwd.h"
 
-#include "yb/rocksdb/rocksdb_fwd.h"
+
+#include <memory>
+
+#include "yb/rocksdb/options.h"
+
+namespace yb {
+class HybridTime;
+namespace qlexpr {
+class YQLScanSpec;
+}  // namespace qlexpr
+}  // namespace yb
 
 namespace yb::docdb {
 

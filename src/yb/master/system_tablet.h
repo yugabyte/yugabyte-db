@@ -13,13 +13,24 @@
 
 #pragma once
 
-#include "yb/common/hybrid_time.h"
-
-#include "yb/master/master_fwd.h"
+#include <stddef.h>
+#include <memory>
+#include <string>
 
 #include "yb/tablet/abstract_tablet.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/master/yql_virtual_table.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class Schema;
+
 namespace master {
 
 // This is a virtual tablet that is used for our virtual tables in the system namespace.

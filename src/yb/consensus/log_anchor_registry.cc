@@ -31,10 +31,15 @@
 //
 #include "yb/consensus/log_anchor_registry.h"
 
+#include <glog/logging.h>
 #include <mutex>
 #include <string>
+#include <ostream>
 
 #include "yb/consensus/opid_util.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 namespace log {

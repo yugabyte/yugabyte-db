@@ -31,15 +31,22 @@
 //
 #include "yb/consensus/consensus.h"
 
-#include <set>
+#include <glog/logging.h>
+#include <boost/preprocessor/tuple/to_seq.hpp>
 
-#include "yb/consensus/opid_util.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/gutil/port.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 namespace consensus {
+class ChangeConfigRequestPB;
+class LeaderStepDownRequestPB;
+class LeaderStepDownResponsePB;
 
 using std::shared_ptr;
 

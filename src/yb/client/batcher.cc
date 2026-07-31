@@ -32,19 +32,20 @@
 
 #include "yb/client/batcher.h"
 
+#include <gflags/gflags.h>
+#include <boost/range/adaptor/map.hpp>
+#include <boost/range/begin.hpp>
+#include <boost/range/end.hpp>
+#include <boost/range/iterator_range_core.hpp>
 #include <algorithm>
 #include <memory>
-#include <mutex>
-#include <set>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
-
-#include <boost/range/adaptors.hpp>
+#include <functional>
 
 #include "yb/ash/wait_state.h"
-
 #include "yb/client/async_rpc.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/client.h"
@@ -60,19 +61,11 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/pgsql_utils.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/join.h"
-
-#include "yb/master/sys_catalog_constants.h"
-
 #include "yb/tserver/tserver.messages.h"
-
 #include "yb/util/debug-util.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
@@ -80,6 +73,31 @@
 #include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/consistent_read_point.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.messages.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/wire_protocol.messages.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/casts.h"
+#include "yb/server/clock.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/random_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+class Schema;
+namespace rpc {
+class Messenger;
+class ProxyCache;
+}  // namespace rpc
+}  // namespace yb
 
 // When this flag is set to false and we have separate errors for operation, then batcher would
 // report IO Error status. Otherwise we will try to combine errors from separate operation to

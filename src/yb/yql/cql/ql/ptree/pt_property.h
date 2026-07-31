@@ -13,9 +13,18 @@
 
 #pragma once
 
-#include "yb/gutil/strings/substitute.h"
+#include <stdint.h>
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
+#include "yb/gutil/port.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 
 namespace yb {
 namespace ql {

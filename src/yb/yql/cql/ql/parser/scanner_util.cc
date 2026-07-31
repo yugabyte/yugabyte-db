@@ -26,9 +26,16 @@
 //--------------------------------------------------------------------------------------------------
 #include "yb/yql/cql/ql/parser/scanner_util.h"
 
+#include <ctype.h>
+#include <glog/logging.h>
+#include <stdio.h>
+#include <string.h>
 #include <algorithm>
+#include <ostream>
 
 #include "yb/gutil/macros.h"
+#include "yb/util/logging.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 namespace yb {
 namespace ql {

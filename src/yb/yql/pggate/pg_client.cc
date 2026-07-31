@@ -13,39 +13,43 @@
 
 #include "yb/yql/pggate/pg_client.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <opentelemetry/trace/span_metadata.h>
+#include <unistd.h>
 #include <concepts>
 #include <mutex>
+#include <algorithm>
+#include <array>
+#include <cctype>
+#include <chrono>
+#include <compare>
+#include <condition_variable>
+#include <cstddef>
+#include <ostream>
+#include <ratio>
 
 #include "opentelemetry/nostd/shared_ptr.h"
 #include "opentelemetry/trace/span.h"
-
 #include "yb/ash/rpc_wait_state.h"
-
 #include "yb/cdc/cdc_service.proxy.h"
-#include "yb/client/client-internal.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/wire_protocol.h"
 #include "yb/common/common_net.pb.h"
-
 #include "yb/docdb/object_lock_shared_state.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/rpc/call_data.h"
 #include "yb/rpc/outbound_call.h"
 #include "yb/rpc/poller.h"
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/tserver/pg_client.messages.h"
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
-
 #include "yb/util/dist_trace.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/logging.h"
@@ -54,13 +58,59 @@
 #include "yb/util/shared_mem.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
-
+#include "yb/util/unique_lock.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_shared_mem.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
-#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/util/ybc_guc.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/gutil/endian.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rpc/wait_state_if.h"
+#include "yb/util/cast.h"
+#include "yb/util/concurrent_value.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/shmem/annotations.h"
+#include "yb/util/uuid.h"
+#include "yb/common/common_net.messages.h"
+#include "yb/common/common_types.messages.h"
+#include "yb/common/constants.h"
+#include "yb/common/opid.messages.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/redis_protocol.messages.h"
+#include "yb/common/schema.h"
+#include "yb/common/transaction.messages.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/version_info.messages.h"
+#include "yb/common/wire_protocol.messages.h"
+#include "yb/util/bytes_formatter.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/stack_trace.h"
+
+namespace yb {
+namespace docdb {
+enum class ObjectLockFastpathLockType;
+}  // namespace docdb
+namespace pggate {
+class PgDocMetrics;
+}  // namespace pggate
+namespace rpc {
+class Scheduler;
+}  // namespace rpc
+}  // namespace yb
 
 DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);

@@ -13,22 +13,22 @@
 
 #pragma once
 
-#include "yb/common/common_net.pb.h"
-#include "yb/common/read_hybrid_time.h"
-#include "yb/common/transaction.h"
-
-#include "yb/rpc/rpc_context.h"
-#include "yb/rpc/thread_pool.h"
-
-#include "yb/server/clock.h"
+#include <memory>
 
 #include "yb/tablet/abstract_tablet.h"
-
 #include "yb/tserver/tserver_fwd.h"
-#include "yb/tserver/tserver.fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/result.h"
 
 namespace yb {
+enum YBConsistencyLevel : int;
+namespace rpc {
+class RpcContext;
+}  // namespace rpc
+
 namespace tserver {
+class TabletServerIf;
 
 // Actually it would be better to rely on TabletServerIf::tablet_peer_lookup, but master
 // has pretty different logic in obtaining read tablet.

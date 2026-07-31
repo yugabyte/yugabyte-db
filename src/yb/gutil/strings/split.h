@@ -34,8 +34,8 @@
 #pragma once
 
 #include <stddef.h>
+#include <glog/logging.h>
 #include <algorithm>
-#include <iterator>
 #include <map>
 #include <set>
 #include <string>
@@ -43,9 +43,7 @@
 #include <vector>
 
 #include "yb/util/logging.h"
-
 #include "yb/gutil/integral_types.h"
-#include "yb/gutil/logging-inl.h"
 #include "yb/gutil/strings/charset.h"
 #include "yb/gutil/strings/split_internal.h"
 #include "yb/gutil/strings/stringpiece.h"

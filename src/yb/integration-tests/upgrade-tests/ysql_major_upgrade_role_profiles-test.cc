@@ -11,10 +11,31 @@
 // under the License.
 //
 
-#include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <map>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <string_view>
+#include <tuple>
+#include <utility>
+#include <vector>
 
+#include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 

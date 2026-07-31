@@ -11,10 +11,11 @@
 // under the License.
 //
 
-#include "yb/util/debug.h"
+#include <string>
+
 #include "yb/util/shmem/annotations.h"
-#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
 
 namespace yb {
 

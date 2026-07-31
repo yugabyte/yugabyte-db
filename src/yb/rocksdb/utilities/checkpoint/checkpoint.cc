@@ -29,22 +29,31 @@
 #endif
 
 #include <inttypes.h>
-#include <algorithm>
+#include <assert.h>
+#include <glog/logging.h>
+#include <stddef.h>
 #include <string>
+#include <memory>
+#include <ostream>
+#include <vector>
 
 #include "yb/ash/wait_state.h"
-
 #include "yb/rocksdb/db/filename.h"
-#include "yb/rocksdb/db/wal_manager.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/transaction_log.h"
 #include "yb/rocksdb/util/file_util.h"
-#include "yb/rocksdb/port/port.h"
-
 #include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
 
 using std::unique_ptr;
 

@@ -13,6 +13,22 @@
 //
 //
 
+#include <boost/uuid/uuid_io.hpp>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <deque>
 #include <functional>
 #include <list>
@@ -21,16 +37,22 @@
 #include <sstream>
 #include <unordered_map>
 #include <vector>
-
-#include <boost/uuid/uuid_io.hpp>
-#include <gtest/gtest.h>
+#include <algorithm>
+#include <array>
+#include <iomanip>
+#include <limits>
+#include <map>
+#include <string>
+#include <tuple>
+#include <utility>
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/stringpiece.h"
-
 #include "yb/util/monotime.h"
 #include "yb/util/tostring.h"
 #include "yb/util/uuid.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/integral_types.h"
 
 namespace yb {
 // We should use namespace other than yb::ToString to check how does ToString works

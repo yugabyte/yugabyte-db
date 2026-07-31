@@ -19,14 +19,8 @@
 #include <set>
 #include <string>
 
-#include <boost/algorithm/string/predicate.hpp>
-
-#include "yb/gutil/thread_annotations.h"
-
 #include "yb/util/env.h"
-#include "yb/util/status_fwd.h"
-
-#include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

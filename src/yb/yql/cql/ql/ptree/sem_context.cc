@@ -14,11 +14,17 @@
 //--------------------------------------------------------------------------------------------------
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <map>
+#include <ostream>
+#include <set>
+#include <utility>
+
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/common/roles_permissions.h"
 #include "yb/common/schema.h"
-#include "yb/util/flags.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/yql/cql/ql/ptree/column_desc.h"
@@ -31,6 +37,25 @@
 #include "yb/yql/cql/ql/ptree/sem_state.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/ql_env.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/yql/cql/ql/ptree/pt_create_table.h"
+#include "yb/yql/cql/ql/ptree/pt_option.h"
+#include "yb/yql/cql/ql/ptree/tree_node.h"
+
+namespace yb {
+enum PermissionType : int;
+enum class DataType;
+namespace ql {
+class IfExprState;
+class QLMetrics;
+class SelectScanInfo;
+class YBLocation;
+}  // namespace ql
+}  // namespace yb
 
 DECLARE_bool(use_cassandra_authentication);
 

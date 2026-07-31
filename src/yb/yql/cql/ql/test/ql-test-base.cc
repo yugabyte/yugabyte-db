@@ -15,18 +15,40 @@
 
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <ostream>
+#include <utility>
+
 #include "yb/client/client.h"
 #include "yb/client/meta_data_cache.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
-
 #include "yb/util/async_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
-
 #include "yb/yql/cql/ql/ql_processor.h"
 #include "yb/yql/cql/ql/statement.h"
+#include "gtest/gtest.h"
+#include "yb/ash/wait_state.h"
+#include "yb/gutil/bind.h"
+#include "yb/gutil/bind_helpers.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/mini_master.h"
+#include "yb/server/hybrid_clock.h"
+#include "yb/util/monotime.h"
+#include "yb/util/test_macros.h"
+#include "yb/yql/cql/ql/ptree/parse_tree.h"
+#include "yb/yql/cql/ql/ql_session.h"
+#include "yb/yql/cql/ql/util/ql_env.h"
+
+namespace yb {
+namespace client {
+class YBTableName;
+}  // namespace client
+}  // namespace yb
 
 DECLARE_bool(use_cassandra_authentication);
 

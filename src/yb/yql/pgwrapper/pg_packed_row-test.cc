@@ -11,37 +11,113 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <optional>
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <initializer_list>
+#include <iterator>
+#include <map>
+#include <memory>
+#include <ostream>
+#include <random>
+#include <ranges>
+#include <ratio>
+#include <set>
+#include <string>
+#include <string_view>
+#include <thread>
+#include <tuple>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "yb/client/snapshot_test_util.h"
-
 #include "yb/consensus/log.h"
-
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_read_context.h"
-
 #include "yb/integration-tests/packed_row_test_base.h"
-
 #include "yb/master/mini_master.h"
-
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/sst_dump_tool.h"
-
 #include "yb/tablet/kv_formatter.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/range.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
-
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/docdb_types.h"
+#include "yb/dockv/schema_packing.h"
+#include "yb/dockv/value_type.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/options.h"
+#include "yb/storage/frontier.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/cast.h"
+#include "yb/util/enums.h"
+#include "yb/util/env.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/path_util.h"
+#include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/string_trim.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/subprocess.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
+#include "yb/util/tsan_util.h"
+#include "yb/util/uuid.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 using namespace std::literals;
 

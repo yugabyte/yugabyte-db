@@ -12,11 +12,38 @@
 //
 #include "yb/util/strand.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <thread>
+#include <atomic>
+#include <chrono>
+#include <ostream>
+#include <ratio>
 
-#include "yb/util/flags.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+
+namespace yb {
+class Cgroup;
+}  // namespace yb
 
 DEFINE_test_flag(int32, strand_done_inject_delay_ms, 0,
                  "Inject into Strand::Done after resetting running flag.");

@@ -11,13 +11,43 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <string>
+
 #include "yb/client/client-test-util.h"
 #include "yb/client/snapshot_schedule-test.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/wire_protocol.h"
-
 #include "yb/util/backoff_waiter.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/client/ql-dml-test-base.h"
+#include "yb/client/snapshot_test_util.h"
+#include "yb/client/table_handle.h"
+#include "yb/client/txn-test-base.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/snapshot.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_backup.pb.h"
+#include "yb/master/master_backup.proxy.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/mini_master.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/test_macros.h"
 
 DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
 

@@ -20,13 +20,21 @@
 
 #include <vector>
 #include <string>
+#include <algorithm>
+#include <compare>
+#include <numeric>
 
-#include <gtest/gtest.h>
-
-#include "yb/rocksdb/env.h"
 #include "yb/rocksdb/table/merger.h"
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/testutil.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/casts.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/rocksdb/table/iterator_wrapper.h"
+#include "yb/rocksdb/util/random.h"
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 

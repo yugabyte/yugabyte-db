@@ -12,11 +12,14 @@
 //
 #pragma once
 
-#include "yb/ash/wait_state.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <memory>
+#include <string>
 
 #include "yb/common/common.pb.h"
-
 #include "yb/rpc/wait_state_if.h"
+#include "yb/ash/ash_fwd.h"
 
 namespace yb::ash {
 

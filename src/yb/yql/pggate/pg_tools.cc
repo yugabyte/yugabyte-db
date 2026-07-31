@@ -15,23 +15,25 @@
 
 #include "yb/yql/pggate/pg_tools.h"
 
-#include <algorithm>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/container_hash/hash.hpp>
+#include <boost/multi_index/member.hpp>
+#include <boost/multi_index_container.hpp>
+#include <boost/operators.hpp>
 #include <cstring>
+#include <locale>
+#include <sstream>
+#include <vector>
 
-#include <boost/container/small_vector.hpp>
-#include <boost/functional/hash/hash.hpp>
-
-#include "yb/common/pg_system_attr.h"
 #include "yb/common/pgsql_utils.h"
-
-#include "yb/util/memory/arena.h"
-#include "yb/util/result.h"
-
-#include "yb/yql/pggate/pg_doc_op.h"
 #include "yb/yql/pggate/pg_op.h"
-#include "yb/yql/pggate/pg_session.h"
-#include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_type.h"
+#include "yb/ash/wait_state.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/port.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
 
 DECLARE_uint32(TEST_yb_ash_sleep_at_wait_state_ms);
 DECLARE_string(TEST_yb_test_wait_event_aux_to_sleep_at_csv);

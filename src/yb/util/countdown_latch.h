@@ -31,12 +31,14 @@
 //
 #pragma once
 
+#include <stdint.h>
 #include <atomic>
 
 #include "yb/util/condition_variable.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
-#include "yb/util/status_fwd.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

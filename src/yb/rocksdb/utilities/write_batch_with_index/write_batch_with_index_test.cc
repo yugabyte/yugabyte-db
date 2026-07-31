@@ -22,8 +22,16 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 
+#include <assert.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <memory>
 #include <map>
+#include <initializer_list>
+#include <iterator>
+#include <string>
+#include <vector>
+
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/port/stack_trace.h"
 #include "yb/rocksdb/utilities/write_batch_with_index.h"
@@ -31,12 +39,22 @@
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
-#include "yb/rocksdb/utilities/merge_operators/string_append/stringappend.h"
-
 #include "yb/util/string_util.h"
-#include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/slice_parts.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
 
 namespace rocksdb {
+class Snapshot;
 
 namespace {
 class ColumnFamilyHandleImplDummy : public ColumnFamilyHandleImpl {

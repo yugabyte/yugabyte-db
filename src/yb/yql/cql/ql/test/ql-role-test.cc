@@ -13,22 +13,38 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/util/flags.h"
-#include <gtest/gtest.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <bitset>
+#include <initializer_list>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+#include <functional>
 
 #include "yb/client/client.h"
 #include "yb/client/permissions.h"
-
 #include "yb/common/ql_value.h"
-
 #include "yb/gutil/strings/substitute.h"
-
-#include "yb/master/mini_master.h"
-
 #include "yb/util/crypt.h"
 #include "yb/util/status_log.h"
-
 #include "yb/yql/cql/ql/test/ql-test-base.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/ql_datatype.h"
+#include "yb/common/roles_permissions.h"
+#include "yb/common/value.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_allow_non_authenticated_password_reset);
@@ -36,10 +52,6 @@ DECLARE_bool(ycql_allow_non_authenticated_password_reset);
 constexpr const char* const kDefaultCassandraUsername = "cassandra";
 
 namespace yb {
-namespace master {
-class CatalogManager;
-class Master;
-}
 namespace ql {
 
 using yb::util::kBcryptHashSize;

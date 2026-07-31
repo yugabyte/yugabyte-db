@@ -27,9 +27,8 @@
 #include "yb/rocksdb/util/crc32c.h"
 
 #include <stdint.h>
-#ifdef __SSE4_2__
-#include <nmmintrin.h>
-#endif
+#include <crc32intrin.h>
+
 #include "yb/rocksdb/util/coding.h"
 
 namespace rocksdb {

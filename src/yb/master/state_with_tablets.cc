@@ -13,11 +13,28 @@
 
 #include "yb/master/state_with_tablets.h"
 
+#include <gflags/gflags.h>
+#include <atomic>
+#include <chrono>
+#include <compare>
+#include <initializer_list>
+#include <ostream>
+#include <ratio>
+#include <utility>
+
 #include "yb/util/enums.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/gutil/port.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+
+namespace yb {
+namespace master {
+class SnapshotCoordinatorContext;
+}  // namespace master
+}  // namespace yb
 
 DEFINE_test_flag(bool, mark_snapshot_as_failed, false,
     "Whether we should mark snapshots as FAILED instead of their normal terminal state.");

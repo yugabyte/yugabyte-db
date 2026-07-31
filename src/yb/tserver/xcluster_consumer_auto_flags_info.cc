@@ -12,9 +12,16 @@
 //
 
 #include "yb/tserver/xcluster_consumer_auto_flags_info.h"
+
+#include <glog/logging.h>
+#include <ostream>
+
 #include "yb/client/client.h"
 #include "yb/gutil/map-util.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/logging.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_string.h"
 
 namespace yb::tserver {
 

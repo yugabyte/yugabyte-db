@@ -13,23 +13,68 @@
 
 #pragma once
 
-#include "yb/util/flags.h"
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <atomic>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
 
 #include "yb/client/client_fwd.h"
-
 #include "yb/common/common_fwd.h"
-
-#include "yb/dockv/dockv_fwd.h"
-
-#include "yb/master/master_fwd.h"
-
-#include "yb/qlexpr/qlexpr_fwd.h"
-
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/status_callback.h"
-#include "yb/util/status_fwd.h"
+#include "yb/client/yb_op.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/result.h"
+
+namespace yb {
+class LWQLReadRequestPB;
+class LWQLWriteRequestPB;
+class ReplicationInfoPB;
+class Schema;
+class Status;
+namespace client {
+class YBClient;
+class YBSchema;
+class YBTableName;
+namespace internal {
+class GetColocatedTabletSchemaRpc;
+class GetTableSchemaRpc;
+class GetTablegroupSchemaRpc;
+}  // namespace internal
+struct YBTableInfo;
+}  // namespace client
+namespace dockv {
+class PartitionSchema;
+}  // namespace dockv
+namespace qlexpr {
+class IndexInfo;
+class IndexMap;
+}  // namespace qlexpr
+}  // namespace yb
 
 DECLARE_int32(max_num_tablets_for_table);
 

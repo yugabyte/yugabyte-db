@@ -11,10 +11,22 @@
 // under the License.
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <string>
 #include <regex>
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ratio>
+#include <sstream>
+#include <string_view>
+#include <thread>
+#include <tuple>
 
-#include "yb/common/common.pb.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/json_document.h"
@@ -24,6 +36,20 @@
 #include "yb/util/tsan_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/curl_util.h"
+#include "yb/util/faststring.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/random_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
+#include "yb/util/yb_pg_errcodes.h"
 
 using std::string;
 

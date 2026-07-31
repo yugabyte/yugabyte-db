@@ -30,12 +30,25 @@
 // under the License.
 //
 
+#include <absl/base/dynamic_annotations.h>
+#include <byteswap.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/range/size.hpp>
 #include <map>
 #include <string>
 #include <utility>
-
-#include "yb/util/flags.h"
-#include <gtest/gtest.h>
+#include <algorithm>
+#include <chrono>
+#include <functional>
+#include <iterator>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string_view>
+#include <vector>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
@@ -47,38 +60,48 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-
 #include "yb/consensus/log.h"
-
-#include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/atomic.h"
-#include "yb/util/faststring.h"
 #include "yb/util/metrics.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "gtest/gtest.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/value.messages.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
 
 using namespace std::literals;
 

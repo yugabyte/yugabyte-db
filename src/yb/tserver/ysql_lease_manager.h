@@ -13,8 +13,20 @@
 
 #pragma once
 
+#include <future>
+#include <memory>
+
 #include "yb/server/server_fwd.h"
 #include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/ysql_lease.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class MonoDelta;
+namespace tserver {
+class TabletServer;
+}  // namespace tserver
+}  // namespace yb
 
 namespace yb::tserver {
 

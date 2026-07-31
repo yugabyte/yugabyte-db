@@ -13,6 +13,10 @@
 
 #include "yb/util/redis_util.h"
 
+#include <ctype.h>
+#include <stddef.h>
+#include <string>
+
 #include "yb/gutil/macros.h"
 
 namespace yb {

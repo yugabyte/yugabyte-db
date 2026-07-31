@@ -13,12 +13,21 @@
 
 #include "yb/docdb/doc_read_context.h"
 
-#include "yb/common/ql_type.h"
+#include <string.h>
+#include <boost/memory_order.hpp>
+#include <memory>
+#include <ostream>
+#include <utility>
+#include <vector>
 
+#include "yb/common/ql_type.h"
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/util/logging.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/endian.h"
+#include "yb/util/uuid.h"
 
 namespace yb::docdb {
 

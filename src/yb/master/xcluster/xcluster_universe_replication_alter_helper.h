@@ -13,21 +13,44 @@
 
 #pragma once
 
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <optional>
+#include <string>
+#include <vector>
+
 #include "yb/cdc/xcluster_types.h"
 #include "yb/master/leader_epoch.h"
-#include "yb/master/master_fwd.h"
 #include "yb/master/master_types.pb.h"
-#include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
-
-namespace rpc {
-class RpcContext;
-}  // namespace rpc
 
 namespace master {
 
 class UniverseReplicationInfo;
+class AlterUniverseReplicationRequestPB;
+class AlterUniverseReplicationResponsePB;
+class CatalogManager;
+class Master;
+class SysCatalogTable;
+class XClusterManager;
+struct XClusterSetupUniverseReplicationData;
 
 // Helper class to handle AlterUniverseReplication RPC.
 // This object will only live as long as the operation is in progress.

@@ -19,18 +19,16 @@
 //
 
 #include <string>
-
-#include <gtest/gtest.h>
+#include <vector>
 
 #include "yb/rocksdb/table/full_filter_block.h"
-
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/hash.h"
 #include "yb/rocksdb/util/logging.h"
-#include "yb/rocksdb/env.h"
-
 #include "yb/rocksdb/util/testutil.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/table.h"
 
 namespace rocksdb {
 

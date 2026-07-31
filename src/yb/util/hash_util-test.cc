@@ -29,25 +29,19 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include <stddef.h>
 #include <stdint.h>
-#include <string.h>
-
-#include <iosfwd>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <string>
-#include <type_traits>
+#include <ostream>
 
 #include "yb/util/logging.h"
-#include <gtest/gtest.h>
-
-#include "yb/gutil/hash/hash.h"
-#include "yb/gutil/integral_types.h"
-#include "yb/gutil/port.h"
-#include "yb/gutil/type_traits.h"
 #include "yb/util/format.h"
 #include "yb/util/hash_util.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/pg_util.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
 
 DECLARE_string(tmp_dir);
 

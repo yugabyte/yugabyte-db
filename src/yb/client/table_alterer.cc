@@ -13,15 +13,26 @@
 
 #include "yb/client/table_alterer.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <ostream>
+#include <utility>
+
 #include "yb/client/client-internal.h"
 #include "yb/client/schema-internal.h"
-
 #include "yb/common/common_util.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
-
 #include "yb/master/master_ddl.pb.h"
+#include "yb/client/client.h"
+#include "yb/client/schema.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/gutil/port.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 DEFINE_test_flag(bool, allow_wait_for_alter_table_to_finish, true,
     "When disabled, alter returns without waiting inline and checking the alter status at master.");

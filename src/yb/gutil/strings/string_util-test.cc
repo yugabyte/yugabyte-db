@@ -31,13 +31,15 @@
 //
 // Some portions Copyright 2013 The Chromium Authors. All rights reserved.
 
+#include <string>
+#include <vector>
+
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_util.h"
-
-#include <gtest/gtest.h>
+#include "gtest/gtest.h"
 
 using std::string;
 

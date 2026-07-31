@@ -16,19 +16,25 @@
 #pragma once
 
 #include <functional>
-
-#include "yb/client/client_fwd.h"
-#include "yb/rpc/rpc.h"
+#include <memory>
 
 #include "yb/tserver/tserver_fwd.h"
-
-#include "yb/util/status_fwd.h"
+#include "yb/gutil/port.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
+namespace client {
+class YBClient;
+class YBTable;
+namespace internal {
+class RemoteTablet;
+}  // namespace internal
+}  // namespace client
 
 namespace cdc {
 
-class CDCRecordPB;
 class GetChangesRequestPB;
 class GetChangesResponsePB;
 
@@ -36,8 +42,6 @@ class GetChangesResponsePB;
 
 namespace tserver {
 
-class WriteRequestPB;
-class WriteResponsePB;
 class GetCompatibleSchemaVersionRequestPB;
 class GetCompatibleSchemaVersionResponsePB;
 

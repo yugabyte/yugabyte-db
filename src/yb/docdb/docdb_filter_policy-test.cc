@@ -11,10 +11,19 @@
 // under the License.
 //
 
+#include <stdint.h>
+#include <memory>
+#include <string>
+
 #include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb_filter_policy.h"
-
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/rocksdb/filter_policy.h"
+#include "yb/util/slice.h"
 
 using rocksdb::FilterBitsBuilder;
 using rocksdb::FilterBitsReader;

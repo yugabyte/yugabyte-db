@@ -15,10 +15,10 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/hybrid_time.h"
-
-#include "yb/util/status_fwd.h"
-
 #include "yb/yql/pggate/pg_client.h"
+#include "yb/common/pg_types.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/result.h"
 
 namespace yb::pggate {
 

@@ -32,19 +32,20 @@
 // Utility functions which are handy when doing async/callback-based programming.
 #pragma once
 
-#include <pthread.h>
-
-#include <future>
-
 #include <boost/function.hpp>
-
-#include "yb/gutil/macros.h"
+#include <future>
+#include <chrono>
+#include <condition_variable>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <utility>
 
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
-
 #include "yb/util/concepts.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 

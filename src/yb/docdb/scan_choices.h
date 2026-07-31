@@ -13,21 +13,25 @@
 
 #pragma once
 
-#include "yb/common/doc_hybrid_time.h"
-
-#include "yb/qlexpr/ql_scanspec.h"
-
-#include "yb/dockv/doc_key.h"
-#include "yb/docdb/doc_ql_scanspec.h"
-#include "yb/dockv/value.h"
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/dockv/value_type.h"
-
-#include "yb/dockv/dockv_fwd.h"
-
-#include "yb/qlexpr/qlexpr_fwd.h"
-
 #include "yb/util/result.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/util/slice.h"
+
+namespace yb {
+class EncodedDocHybridTime;
+namespace docdb {
+class IntentAwareIterator;
+struct DocReadContext;
+}  // namespace docdb
+namespace dockv {
+class KeyBytes;
+}  // namespace dockv
+namespace qlexpr {
+class YQLScanSpec;
+struct ScanBounds;
+}  // namespace qlexpr
+}  // namespace yb
 
 namespace yb::docdb {
 

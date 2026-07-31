@@ -13,11 +13,18 @@
 
 #include "yb/master/xcluster/xcluster_bootstrap_helper.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <utility>
+
 #include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/gutil/bind.h"
-
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
@@ -27,8 +34,28 @@
 #include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster_rpc_tasks.h"
 #include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
-
 #include "yb/util/backoff_waiter.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/snapshot.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_error.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/master/sys_catalog.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
+#include "yb/util/cow_object.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_string.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 using namespace std::literals;
 

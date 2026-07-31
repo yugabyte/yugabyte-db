@@ -17,12 +17,26 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/pt_type.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 
 namespace yb {
+class QLType;
+enum class SortingType;
+
 namespace ql {
+class SemContext;
 
 //--------------------------------------------------------------------------------------------------
 // Table column.

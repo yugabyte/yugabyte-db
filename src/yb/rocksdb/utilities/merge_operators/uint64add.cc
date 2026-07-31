@@ -18,13 +18,17 @@
 // under the License.
 //
 
+#include <assert.h>
+#include <stdint.h>
 #include <memory>
+#include <string>
 
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/merge_operator.h"
 #include "yb/util/slice.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
+#include "yb/rocksdb/port/port_posix.h"
 
 using namespace rocksdb;
 

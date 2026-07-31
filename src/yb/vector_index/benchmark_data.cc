@@ -13,9 +13,8 @@
 
 #include "yb/vector_index/benchmark_data.h"
 
-#include "yb/util/errno.h"
-#include "yb/util/random_util.h"
 #include "yb/util/string_util.h"
+#include "yb/util/slice.h"
 
 namespace yb::vector_index {
 

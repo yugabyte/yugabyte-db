@@ -13,15 +13,28 @@
 
 #include "yb/master/catalog_entity_parser.h"
 
-#include "google/protobuf/text_format.h"
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <type_traits>
 
+#include "google/protobuf/text_format.h"
 #include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/catalog_entity_types.h"
-
 #include "yb/util/format.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status_format.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/status.h"
 
 namespace yb::master {
 

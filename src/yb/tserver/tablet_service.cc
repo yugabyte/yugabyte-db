@@ -32,57 +32,49 @@
 
 #include "yb/tserver/tablet_service.h"
 
-#include <algorithm>
+#include <boost/algorithm/string/replace.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/algorithm/string.hpp>
+#include <boost/range/as_literal.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <memory>
 #include <string>
 #include <vector>
-
-#include <boost/algorithm/string/replace.hpp>
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <future>
+#include <map>
+#include <ratio>
+#include <sstream>
+#include <string_view>
+#include <thread>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
 
 #include "yb/ash/wait_state.h"
-
-#include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
-#include "yb/client/transaction_pool.h"
-
 #include "yb/common/colocated_util.h"
 #include "yb/common/pg_types.h"
-#include "yb/common/pgsql_error.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/consensus_types.pb.h"
-#include "yb/consensus/leader_lease.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/raft_consensus.h"
-
 #include "yb/docdb/cql_operation.h"
-#include "yb/docdb/doc_vector_index.h"
-#include "yb/docdb/pgsql_operation.h"
-
 #include "yb/dockv/reader_projection.h"
-
-#include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
-#include "yb/gutil/stl_util.h"
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
-
 #include "yb/qlexpr/index.h"
 #include "yb/qlexpr/ql_rowblock.h"
-
 #include "yb/rpc/rpc_context.h"
 #include "yb/rpc/sidecars.h"
-#include "yb/rpc/thread_pool.h"
-
-#include "yb/server/hybrid_clock.h"
-
-#include "yb/tablet/abstract_tablet.h"
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/operations.pb.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
@@ -90,8 +82,6 @@
 #include "yb/tablet/operations/split_operation.h"
 #include "yb/tablet/operations/truncate_operation.h"
 #include "yb/tablet/operations/update_txn_operation.h"
-#include "yb/tablet/operations/write_operation.h"
-#include "yb/tablet/read_result.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_dump_helper.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -100,7 +90,6 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/write_query.h"
-
 #include "yb/tserver/heartbeater.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
 #include "yb/tserver/read_query.h"
@@ -112,50 +101,103 @@
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_types.pb.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
-#include "yb/tserver/xcluster_safe_time_map.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
 #include "yb/tserver/ysql_call_home_stats.h"
 #include "yb/tserver/ysql_lease.h"
-
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/crc.h"
 #include "yb/util/debug-util.h"
-#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/faststring.h"
-#include "yb/util/file_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
-#include "yb/util/math_util.h"
-#include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
-#include "yb/util/pb_util.h"
 #include "yb/util/pg_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
-#include "yb/util/status_callback.h"
 #include "yb/util/status_format.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
-#include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 #include "yb/util/uuid.h"
-#include "yb/util/write_buffer.h"
-#include "yb/util/yb_pg_errcodes.h"
-
 #include "yb/yql/pggate/util/ybc_pgresult_util.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/pgwrapper/ysql_binary_runner.h"
 #include "yb/yql/pgwrapper/ysql_upgrade.h"
+#include "libpq-fe.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/constants.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.pb.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/snapshot.h"
+#include "yb/common/transaction.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/value.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.messages.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/docdb/docdb.messages.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/docdb_statistics.h"
+#include "yb/docdb/local_waiting_txn_registry.h"
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
+#include "yb/dockv/partition.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/walltime.h"
+#include "yb/qlexpr/ql_expr.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/server/clock.h"
+#include "yb/server/server_base.h"
+#include "yb/server/server_base_options.h"
+#include "yb/tablet/operations.messages.h"
+#include "yb/tablet/operations/operation.h"
+#include "yb/tablet/tablet.pb.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tablet/transaction_coordinator.h"
+#include "yb/tserver/tablet_peer_lookup.h"
+#include "yb/tserver/tablet_server_interface.h"
+#include "yb/tserver/tablet_server_options.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_admin.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/util/atomic.h"
+#include "yb/util/cast.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/env.h"
+#include "yb/util/file_system.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/operation_counter.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uint_set.h"
 
 using namespace std::literals;  // NOLINT
 

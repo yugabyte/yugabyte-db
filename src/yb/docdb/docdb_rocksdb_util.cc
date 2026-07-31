@@ -13,16 +13,26 @@
 
 #include "yb/docdb/docdb_rocksdb_util.h"
 
-#include <memory>
-#include <thread>
-
 #include <boost/algorithm/string/predicate.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <memory>
+#include <algorithm>
+#include <cmath>
+#include <initializer_list>
+#include <limits>
+#include <mutex>
+#include <new>
+#include <ostream>
+#include <string_view>
+#include <utility>
+#include <vector>
+#include <functional>
 
 #include "yb/common/transaction.h"
-
-#include "yb/dockv/doc_key.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_ql_filefilter.h"
@@ -30,29 +40,22 @@
 #include "yb/docdb/docdb_filter_policy.h"
 #include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/intent_aware_iterator.h"
-#include "yb/docdb/key_bounds.h"
 #include "yb/docdb/read_operation_data.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/version_edit.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/db/writebuffer.h"
 #include "yb/rocksdb/memtablerep.h"
-#include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/rate_limiter.h"
-#include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table/block_based_table_reader.h"
 #include "yb/rocksdb/table/filtering_iterator.h"
 #include "yb/rocksdb/types.h"
 #include "yb/rocksdb/util/compression.h"
-
 #include "yb/rocksutil/yb_rocksdb_logger.h"
-
 #include "yb/util/cgroups.h"
 #include "yb/util/enum_parse.h"
 #include "yb/util/flags.h"
@@ -63,8 +66,42 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/trace.h"
 #include "yb/util/logging.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/gutil/endian.h"
+#include "yb/gutil/port.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/column_family.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/filter_policy.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/universal_compaction.h"
+#include "yb/rocksdb/util/arena.h"
+#include "yb/rocksdb/util/instrumented_mutex.h"
+#include "yb/rocksdb/util/mutable_cf_options.h"
+#include "yb/storage/frontier.h"
+#include "yb/tablet/tablet_options.h"
+#include "yb/util/cast.h"
+#include "yb/util/clone_ptr.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/math_util.h"
+
+namespace rocksdb {
+class InternalIterator;
+class Statistics;
+}  // namespace rocksdb
+namespace yb {
+namespace docdb {
+struct DocDB;
+struct KeyBounds;
+}  // namespace docdb
+}  // namespace yb
 
 using namespace yb::size_literals;  // NOLINT.
 using namespace std::literals;

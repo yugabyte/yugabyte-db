@@ -14,9 +14,13 @@
 #include "yb/yql/redis/redisserver/redis_client.h"
 
 #include <hiredis/hiredis.h>
+#include <glog/logging.h>
+#include <hiredis/read.h>
+#include <stddef.h>
+#include <ostream>
+#include <utility>
 
 #include "yb/gutil/casts.h"
-
 #include "yb/util/cast.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"

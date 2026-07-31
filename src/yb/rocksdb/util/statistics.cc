@@ -19,20 +19,27 @@
 //
 #include "yb/rocksdb/util/statistics.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <utility>
+
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
 #endif
 
-#include <inttypes.h>
-#include <algorithm>
-
 #include "yb/rocksdb/statistics.h"
-#include "yb/rocksdb/port/likely.h"
-
 #include "yb/util/aggregate_stats.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/strongly_typed_bool.h"
 
 DEFINE_RUNTIME_bool(rocksdb_collect_bloom_filter_time_metrics, false,
     "Collect bloom filter time metrics. Should only be used for perf investigations since those "

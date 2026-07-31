@@ -20,17 +20,23 @@
 
 #include "yb/rocksdb/util/file_util.h"
 
+#include <stddef.h>
 #include <algorithm>
 #include <vector>
+#include <memory>
+#include <utility>
 
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/sst_file_manager_impl.h"
-
 #include "yb/util/status_format.h"
-
 #include "yb/util/path_util.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/util/file_system.h"
+#include "yb/util/format.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace rocksdb {
 

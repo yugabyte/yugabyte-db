@@ -30,42 +30,37 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <vector>
-
-#include <boost/preprocessor/cat.hpp>
-#include <boost/preprocessor/stringize.hpp>
+#include <algorithm>
+#include <iostream>
+#include <memory>
+#include <optional>
+#include <string>
 
 #include "yb/client/client.h"
-
 #include "yb/common/opid.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/transaction.h"
-
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log.messages.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/log_reader.h"
-
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/kv_debug.h"
 #include "yb/dockv/doc_key.h"
-
 #include "yb/encryption/encrypted_file_factory.h"
 #include "yb/encryption/header_manager_impl.h"
 #include "yb/encryption/universe_key_manager.h"
-
 #include "yb/gutil/strings/numbers.h"
-
 #include "yb/rpc/messenger.h"
-#include "yb/rpc/rpc_fwd.h"
-#include "yb/rpc/secure_stream.h"
-
 #include "yb/tablet/tablet_metadata.h"
-
 #include "yb/tools/tools_utils.h"
-
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -76,6 +71,35 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_format.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.pb.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/consensus/consensus.messages.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/log.pb.h"
+#include "yb/consensus/log_fwd.h"
+#include "yb/consensus/log_util.h"
+#include "yb/docdb/docdb.pb.h"
+#include "yb/encryption/encryption.pb.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/tablet/operations.pb.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/path_util.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/threadpool.h"
+
+namespace yb {
+namespace docdb {
+class SchemaPackingProvider;
+}  // namespace docdb
+}  // namespace yb
 
 DEFINE_NON_RUNTIME_bool(print_headers, true, "print the log segment headers/footers");
 

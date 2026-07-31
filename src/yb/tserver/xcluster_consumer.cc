@@ -13,36 +13,48 @@
 
 #include "yb/tserver/xcluster_consumer.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <algorithm>
+#include <chrono>
+#include <future>
+#include <iterator>
+#include <ostream>
+#include <ratio>
+#include <string_view>
+
 #include "yb/cdc/cdc_consumer.pb.h"
 #include "yb/cdc/xcluster_types.h"
-
 #include "yb/client/client.h"
-#include "yb/client/error.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
-
-#include "yb/common/pg_types.h"
 #include "yb/common/ql_protocol.messages.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/xcluster_util.h"
 #include "yb/common/ysql_utils.h"
-
 #include "yb/gutil/map-util.h"
-
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_heartbeat.pb.h"
-
 #include "yb/rocksdb/rate_limiter.h"
 #include "yb/rpc/rpc.h"
-
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_consumer_auto_flags_info.h"
-#include "yb/tserver/xcluster_output_client.h"
 #include "yb/tserver/xcluster_poller.h"
-
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/flags.h"
 #include "yb/util/flag_validators.h"
@@ -52,6 +64,28 @@
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 #include "yb/util/unique_lock.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/value.pb.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/tserver/xcluster_poller_stats.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/jsonwriter.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/threadpool.h"
+#include "yb/util/strongly_typed_string.h"
+#include "yb/util/strongly_typed_uuid.h"
+
+namespace yb {
+class MetricEntity;
+struct XClusterPollerId;
+}  // namespace yb
 
 using std::string;
 

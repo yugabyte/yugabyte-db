@@ -15,14 +15,17 @@
 
 #pragma once
 
-#include "yb/consensus/consensus.messages.h"
+#include <glog/logging.h>
+#include <stdint.h>
+#include <utility>
 
 #include "yb/tablet/operations.messages.h"
 #include "yb/tablet/operations/operation.h"
-#include "yb/tablet/tablet_splitter.h"
+#include "yb/tablet/tablet_fwd.h"
 
 namespace yb {
 namespace tablet {
+class TabletSplitter;
 
 // Operation Context for the CloneTablet operation.
 // Keeps track of the Operation states (request, result, ...).

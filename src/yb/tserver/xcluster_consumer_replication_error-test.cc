@@ -11,8 +11,16 @@
 // under the License.
 //
 
+#include <string>
+#include <unordered_map>
+#include <functional>
+
 #include "yb/tserver/xcluster_consumer_replication_error.h"
-#include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/cdc/xcluster_types.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/tserver/xcluster_poller_id.h"
+#include "yb/util/test_macros.h"
 
 namespace yb::tserver {
 

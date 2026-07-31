@@ -13,11 +13,26 @@
 
 #include "yb/docdb/object_lock_shared_state_manager.h"
 
+#include <glog/logging.h>
 #include <atomic>
 #include <mutex>
 #include <unordered_map>
 
 #include "yb/docdb/object_lock_shared_state.h"
+#include "yb/common/object_lock_tracker.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/gutil/port.h"
+#include "yb/util/logging.h"
+#include "yb/util/shmem/annotations.h"
+
+namespace yb {
+namespace docdb {
+class ObjectLockManager;
+}  // namespace docdb
+namespace dockv {
+enum class KeyEntryType;
+}  // namespace dockv
+}  // namespace yb
 
 namespace yb::docdb {
 

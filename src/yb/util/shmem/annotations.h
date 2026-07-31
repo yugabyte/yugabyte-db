@@ -13,14 +13,14 @@
 
 #pragma once
 
+#include <glog/logging.h>
 #include <atomic>
-#include <type_traits>
 #include <utility>
+#include <ostream>
 
 #include "yb/gutil/thread_annotations.h"
-
-#include "yb/util/debug.h"
 #include "yb/util/logging.h"
+#include "yb/gutil/port.h"
 
 namespace yb {
 

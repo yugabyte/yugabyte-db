@@ -13,16 +13,25 @@
 //
 //
 
-#include "yb/rocksdb/db/dbformat.h"
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/container/small_vector.hpp>
+#include <memory>
+#include <string>
 
+#include "yb/rocksdb/db/dbformat.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/value_type.h"
-
-#include "yb/gutil/casts.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
-#include "yb/util/status_log.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/storage/frontier.h"
+#include "yb/storage/storage_fwd.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace docdb {

@@ -12,17 +12,19 @@
 //
 #include "yb/docdb/kv_debug.h"
 
-#include <functional>
+#include <glog/logging.h>
+#include <stddef.h>
 #include <string>
+#include <memory>
+#include <optional>
+#include <vector>
 
 #include "yb/common/common.pb.h"
-
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_compaction_context.h"
 #include "yb/docdb/docdb_types.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/doc_vector_id.h"
@@ -31,13 +33,27 @@
 #include "yb/dockv/schema_packing.h"
 #include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/constants.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/transaction.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/gutil/endian.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
 
 namespace yb::docdb {
 

@@ -13,18 +13,20 @@
 
 #include "yb/tserver/pg_db_cache.h"
 
+#include <glog/logging.h>
 #include <mutex>
 #include <utility>
+#include <ostream>
+#include <string>
+#include <unordered_map>
 
 #include "yb/client/client.h"
-
-#include "yb/common/pg_types.h"
-
 #include "yb/master/master_ddl.pb.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/common/entity_ids.h"
+#include "yb/util/tostring.h"
 
 namespace yb::tserver {
 

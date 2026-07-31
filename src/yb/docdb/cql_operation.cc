@@ -13,14 +13,41 @@
 
 #include "yb/docdb/cql_operation.h"
 
+#include <gflags/gflags.h>
+#include <rapidjson/allocators.h>
+#include <rapidjson/document.h>
+#include <rapidjson/encodings.h>
+#include <rapidjson/rapidjson.h>
+#include <stdint.h>
+#include <boost/container/small_vector.hpp>
+#include <boost/intrusive/list.hpp>
+#include <boost/iterator/iterator_facade.hpp>
+#include <boost/iterator/transform_iterator.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/range/iterator_range_core.hpp>
 #include <limits>
 #include <memory>
 #include <string>
 #include <unordered_set>
 #include <utility>
 #include <vector>
-
-#include "yb/bfpg/tserver_opcodes.h"
+#include <algorithm>
+#include <cstring>
+#include <iterator>
+#include <ostream>
+#include <string_view>
 
 #include "yb/common/json_util.h"
 #include "yb/common/jsonb.h"
@@ -28,7 +55,6 @@
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/value.messages.h"
-
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -37,20 +63,16 @@
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/ql_storage_interface.h"
-
 #include "yb/dockv/doc_path.h"
 #include "yb/dockv/packed_row.h"
 #include "yb/dockv/partition.h"
 #include "yb/dockv/primitive_value_util.h"
 #include "yb/dockv/reader_projection.h"
-
 #include "yb/qlexpr/index.h"
 #include "yb/qlexpr/index_column.h"
 #include "yb/qlexpr/ql_resultset.h"
 #include "yb/qlexpr/ql_rowblock.h"
-
 #include "yb/util/debug-util.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/range.h"
 #include "yb/util/result.h"
@@ -58,8 +80,45 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
-
 #include "yb/yql/cql/ql/util/errcodes.h"
+#include "yb/bfql/tserver_opcodes.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/constants.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/schema.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/value.pb.h"
+#include "yb/docdb/deadline_info.h"
+#include "yb/docdb/intent_aware_iterator.h"
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
+#include "yb/docdb/read_operation_data.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/dockv/schema_packing.h"
+#include "yb/dockv/value.h"
+#include "yb/dockv/value_type.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/stl_util.h"
+#include "yb/qlexpr/ql_expr.h"
+#include "yb/qlexpr/ql_scanspec.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
+#include "yb/util/varint.h"
+
+namespace yb {
+class ScopedRWOperation;
+}  // namespace yb
 
 DEFINE_test_flag(bool, pause_write_apply_after_if, false,
                  "Pause application of QLWriteOperation after evaluating if condition.");

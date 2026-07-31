@@ -14,9 +14,12 @@
 #include "yb/gen_yrpc/service_generator.h"
 
 #include <google/protobuf/descriptor.h>
+#include <set>
 
 #include "yb/gen_yrpc/metric_descriptor.h"
 #include "yb/gen_yrpc/model.h"
+#include "yb/gen_yrpc/printer.h"
+#include "yb/rpc/lightweight_message.pb.h"
 
 namespace yb {
 namespace gen_yrpc {
@@ -74,6 +77,7 @@ void ServiceGenerator::Header(YBPrinter printer, const google::protobuf::FileDes
     "#include \"yb/rpc/service_if.h\"\n"
     "\n"
     "#include \"yb/util/monotime.h\"\n"
+    "#include \"yb/util/result.h\"\n"
     "\n"
     "namespace yb {\n"
     "class MetricEntity;\n"

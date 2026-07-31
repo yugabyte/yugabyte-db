@@ -10,6 +10,29 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <google/protobuf/empty.pb.h>
+#include <gflags/gflags.h>
+#include <opentelemetry/nostd/shared_ptr.h>
+#include <opentelemetry/proto/common/v1/common.pb.h>
+#include <opentelemetry/proto/resource/v1/resource.pb.h>
+#include <opentelemetry/proto/trace/v1/trace.pb.h>
+#include <opentelemetry/trace/span.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/regex.hpp>
 #include <algorithm>
 #include <memory>
 #include <mutex>
@@ -20,15 +43,18 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-
-#include <google/protobuf/empty.pb.h>
-#include <gtest/gtest.h>
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <initializer_list>
+#include <iterator>
+#include <ratio>
+#include <utility>
 
 #include "opentelemetry/sdk/common/global_log_handler.h"
 #include "opentelemetry/trace/scope.h"
 #include "opentelemetry/trace/tracer.h"
 #include "opentelemetry/proto/collector/trace/v1/trace_service.pb.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/remote_method.h"
@@ -39,7 +65,6 @@
 #include "yb/util/dist_trace.h"
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random_util.h"
@@ -47,12 +72,18 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/strongly_typed_bool.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
-#include "yb/yql/pgwrapper/pg_test_utils.h"
+#include "gtest/gtest.h"
+#include "libpq-fe.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/server/webserver_options.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
 
 DECLARE_string(otel_collector_traces_endpoint);
 DECLARE_string(otel_internal_log_level);
@@ -77,6 +108,7 @@ static constexpr auto kSharedMemoryPerformSpanName =
 
 YB_DEFINE_ENUM(QueryExecMode, (kFetch)(kExecute));
 YB_STRONGLY_TYPED_BOOL(IsUtility);
+
 YB_DEFINE_ENUM(SpanType,
     (kRoot)(kParse)(kRewrite)(kExecute)(kPlan)(kCommit)(kAbort)
     (kExtParse)(kExtBind)(kExtExecute)(kExtSync)(kExtDescribe)(kExtFlush));

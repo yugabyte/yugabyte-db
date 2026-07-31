@@ -13,17 +13,35 @@
 
 #include "yb/client/transaction_cleanup.h"
 
+#include <glog/logging.h>
+#include <boost/container/stable_vector.hpp>
+#include <boost/intrusive/list.hpp>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <ostream>
+#include <string>
+
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
-
 #include "yb/rpc/rpc_controller.h"
-
-#include "yb/server/clock.h"
-
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/clock.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/master_fwd.h"
+#include "yb/tablet/operations.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 using namespace std::literals;
 using namespace std::placeholders;

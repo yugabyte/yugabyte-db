@@ -13,12 +13,17 @@
 
 #pragma once
 
-#include "yb/common/common_types.pb.h"
+#include <stdint.h>
+#include <string>
+
 #include "yb/common/typedefs.h"
-
 #include "yb/dockv/primitive_value.h"
-
 #include "yb/util/monotime.h"
+#include "yb/dockv/value_type.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb::dockv {
 

@@ -35,6 +35,15 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <atomic>
+#include <future>
+#include <mutex>
+#include <optional>
+#include <ostream>
+#include <random>
+#include <set>
+#include <thread>
+#include <utility>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
@@ -46,16 +55,11 @@
 #include "yb/client/table_info.h"
 #include "yb/client/transaction_pool.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/wire_protocol-test-util.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/mini_cluster_base.h"
-
 #include "yb/master/master_util.h"
-
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random.h"
@@ -63,8 +67,27 @@
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/transaction.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/schema.h"
+#include "yb/common/transaction.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 using namespace std::literals;
 

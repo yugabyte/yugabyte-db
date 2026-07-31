@@ -13,34 +13,72 @@
 
 #pragma once
 
-#include "yb/bfql/tserver_opcodes.h"
-
 #include <boost/logic/tribool.hpp>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <atomic>
+#include <functional>
+#include <optional>
+#include <string>
+#include <vector>
 
+#include "yb/bfql/tserver_opcodes.h"
 #include "yb/common/constants.h"
-#include "yb/common/hybrid_time.h"
 #include "yb/common/pgsql_protocol.pb.h"
-#include "yb/common/read_hybrid_time.h"
-
 #include "yb/docdb/doc_write_batch_cache.h"
-#include "yb/docdb/docdb_types.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
-#include "yb/docdb/read_operation_data.h"
+#include "yb/docdb/read_operation_data.h" // IWYU pragma: keep
 #include "yb/dockv/value.h"
-
 #include "yb/rocksdb/cache.h"
-
 #include "yb/rocksutil/write_batch_formatter.h"
-
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
-#include "yb/util/operation_counter.h"
-
 #include "yb/vector_index/vector_index_fwd.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/typedefs.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/dockv/value_type.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace rocksdb {
+class WriteBatch;
+}  // namespace rocksdb
 
 namespace yb {
+class QLValuePB;
+class ScopedRWOperation;
+class Slice;
+enum class BinaryOutputFormat;
+namespace dockv {
+class DocPath;
+class DocVectorValue;
+class SchemaPacking;
+}  // namespace dockv
+
 namespace docdb {
+class LWKeyValueWriteBatchPB;
+class SchemaPackingProvider;
+enum class StorageDbType;
 
 YB_DEFINE_ENUM(ValueRefType, (kPb)(kValueType));
 

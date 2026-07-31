@@ -13,18 +13,40 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/gutil/strings/substitute.h"
+#include <glog/logging.h>
+#include <stdint.h>
+#include <initializer_list>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/ash/wait_state.h"
-
 #include "yb/client/client.h"
-
 #include "yb/util/async_util.h"
 #include "yb/util/status_log.h"
-
 #include "yb/yql/cql/ql/statement.h"
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
+#include "gtest/gtest.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/gutil/bind.h"
+#include "yb/gutil/bind_helpers.h"
+#include "yb/gutil/callback.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/yql/cql/ql/util/statement_params.h"
+#include "yb/yql/cql/ql/util/statement_result.h"
+
+namespace yb {
+namespace ql {
+class QLProcessor;
+}  // namespace ql
+}  // namespace yb
 
 using std::string;
 

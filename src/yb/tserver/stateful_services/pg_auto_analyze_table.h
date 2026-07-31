@@ -15,10 +15,10 @@
 
 #include <cstdint>
 #include <span>
+#include <string>
 
 #include "yb/common/entity_ids_types.h"
-
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb::client {
 class TableHandle;

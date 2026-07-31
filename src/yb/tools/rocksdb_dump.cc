@@ -18,11 +18,18 @@
 // under the License.
 //
 
-#include "yb/util/flags.h"
+#include <gflags/gflags.h>
+#include <stdio.h>
+#include <memory>
+#include <string>
+
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/rocksdb/convenience.h"
 #include "yb/rocksdb/db_dump_tool.h"
 #include "yb/tablet/tablet_options.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/util/flags/flag_tags.h"
 
 DEFINE_NON_RUNTIME_string(db_path, "", "Path to the db that will be dumped");
 DEFINE_NON_RUNTIME_string(dump_location, "", "Path to where the dump file location");

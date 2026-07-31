@@ -17,16 +17,19 @@
 // under the License.
 //
 #include <string.h>
-
+#include <stdint.h>
 #include <map>
 #include <string>
 #include <vector>
+#include <memory>
 
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/util/file_system_mem.h"
 #include "yb/util/status.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/util/file_system.h"
+#include "yb/util/slice.h"
 
 using std::unique_ptr;
 

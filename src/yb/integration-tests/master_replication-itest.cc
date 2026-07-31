@@ -30,41 +30,34 @@
 // under the License.
 //
 
-#include <functional>
+#include <glog/logging.h>
+#include <stdint.h>
 #include <memory>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
-#include <utility>
 #include <vector>
-
-#include <gtest/gtest.h>
+#include <ostream>
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
-
-#include "yb/common/column_id.h"
-#include "yb/common/common.pb.h"
-#include "yb/common/entity_ids_types.h"
-#include "yb/common/hybrid_time.h"
 #include "yb/dockv/partition.h"
-
 #include "yb/gutil/algorithm.h"
-
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
-
 #include "yb/util/logging.h"
-#include "yb/util/memory/arena_fwd.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
-#include "yb/util/test_util.h"
 #include "yb/util/thread.h"
-#include "yb/util/uuid.h"
+#include "gtest/gtest.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
 
 using std::vector;
 

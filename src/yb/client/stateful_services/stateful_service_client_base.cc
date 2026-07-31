@@ -13,15 +13,33 @@
 
 #include "yb/client/stateful_services/stateful_service_client_base.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <chrono>
+#include <ostream>
+#include <utility>
 
-#include "yb/client/client-internal.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/rpc/proxy_base.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
+#include "yb/client/client.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/net_util.h"
+
+namespace yb {
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+}  // namespace yb
 
 DECLARE_bool(TEST_running_test);
 DECLARE_string(certs_dir);

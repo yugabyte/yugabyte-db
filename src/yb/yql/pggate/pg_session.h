@@ -13,6 +13,20 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <functional>
 #include <optional>
 #include <span>
@@ -20,18 +34,12 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-
-#include "yb/client/client_fwd.h"
-#include "yb/client/tablet_server.h"
+#include <memory>
 
 #include "yb/common/pg_types.h"
 #include "yb/common/transaction.h"
-
 #include "yb/gutil/ref_counted.h"
-
-#include "yb/util/debug-util.h"
 #include "yb/util/result.h"
-
 #include "yb/yql/pggate/insert_on_conflict_buffer.h"
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_doc_metrics.h"
@@ -45,6 +53,29 @@
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/master/master_fwd.h"
+#include "yb/util/logging.h"
+#include "yb/util/lw_function.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
+namespace yb {
+namespace ash {
+enum class WaitStateCode : uint32_t;
+}  // namespace ash
+namespace client {
+class YBTableName;
+}  // namespace client
+namespace tserver {
+class PgPerformOptionsPB;
+}  // namespace tserver
+}  // namespace yb
 
 namespace yb::pggate {
 

@@ -33,17 +33,20 @@
 #include "yb/util/curl_util.h"
 
 #include <curl/curl.h>
-
+#include <glog/logging.h>
+#include <stddef.h>
 #include <vector>
+#include <functional>
+#include <memory>
+#include <ostream>
 
 #include "yb/util/logging.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/faststring.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
+#include "yb/util/slice.h"
 
 using std::string;
 

@@ -10,13 +10,25 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <atomic>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <tuple>
+#include <unordered_map>
+#include <vector>
+
+#include "yb/client/client_fwd.h"  // IWYU pragma: keep
 #include "yb/client/table_info.h"
-
 #include "yb/client/client-test-util.h"
-
 #include "yb/common/ql_type.h"
 #include "yb/common/transaction.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/mini_master.h"
@@ -31,6 +43,36 @@
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/client/schema.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/schema.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/gutil/callback.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/map-util.h"
+#include "yb/integration-tests/external_daemon.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+
+namespace yb {
+template <class Tag> class StronglyTypedUuid;
+}  // namespace yb
 
 DECLARE_string(allowed_preview_flags_csv);
 DECLARE_bool(ysql_yb_enable_ddl_savepoint_support);

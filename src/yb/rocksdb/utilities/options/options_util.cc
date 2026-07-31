@@ -19,10 +19,20 @@
 //
 
 
+#include <stddef.h>
+#include <stdint.h>
+#include <string>
+#include <vector>
+
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/util/options_parser.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/rocksdb/util/options_sanity_check.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace rocksdb {
 Status LoadOptionsFromFile(const std::string& file_name, Env* env,

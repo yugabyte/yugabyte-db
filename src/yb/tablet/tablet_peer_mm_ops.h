@@ -32,17 +32,19 @@
 
 #pragma once
 
+#include <stdint.h>
+
 #include "yb/tablet/maintenance_manager.h"
-#include "yb/tablet/tablet_peer.h"
 #include "yb/util/semaphore.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
 
-class EventStats;
-template<class T>
-class AtomicGauge;
-
 namespace tablet {
+class TabletPeer;
 
 // Maintenance task that runs log GC. Reports log retention that represents the amount of data
 // that can be GC'd.

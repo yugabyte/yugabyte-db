@@ -22,17 +22,17 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include <string>
-#include <gtest/gtest.h>
+#include <utility>
 
 #include "yb/rocksdb/table/block_based_filter_block.h"
-
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/hash.h"
 #include "yb/rocksdb/util/logging.h"
-#include "yb/rocksdb/env.h"
-
 #include "yb/rocksdb/util/testutil.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/table.h"
 
 namespace rocksdb {
 

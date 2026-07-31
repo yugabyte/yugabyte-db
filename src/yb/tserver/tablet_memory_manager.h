@@ -13,12 +13,30 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <memory>
-
-#include "yb/tablet/tablet_options.h"
+#include <functional>
+#include <string>
+#include <vector>
 
 #include "yb/util/background_task.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/status.h"
+
+namespace rocksdb {
+class MemoryMonitor;
+}  // namespace rocksdb
+namespace yb {
+class MetricEntity;
+namespace tablet {
+struct TabletOptions;
+}  // namespace tablet
+}  // namespace yb
+template <class T> class scoped_refptr;
 
 namespace yb::tserver {
 

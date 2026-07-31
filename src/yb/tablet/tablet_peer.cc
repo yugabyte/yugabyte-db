@@ -32,14 +32,23 @@
 
 #include "yb/tablet/tablet_peer.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/container/small_vector.hpp>
 #include <algorithm>
 #include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
+#include <chrono>
+#include <functional>
+#include <limits>
+#include <ostream>
+#include <ratio>
+#include <string_view>
+#include <thread>
 
 #include "yb/client/client.h"
-
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_util.h"
@@ -48,19 +57,12 @@
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/retryable_requests.h"
 #include "yb/consensus/state_change_context.h"
-
 #include "yb/docdb/consensus_frontier.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/master_ddl.pb.h"
-
 #include "yb/rocksdb/db/memtable.h"
-
 #include "yb/rpc/messenger.h"
-#include "yb/rpc/periodic.h"
-
 #include "yb/tablet/operations/change_auto_flags_config_operation.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/operations/clone_operation.h"
@@ -81,10 +83,7 @@
 #include "yb/tablet/tablet_vector_indexes.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/write_query.h"
-
 #include "yb/tserver/tserver_error.h"
-
-#include "yb/util/fault_injection.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -94,6 +93,42 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
+#include "yb/ash/wait_state.h"
+#include "yb/common/clock.h"
+#include "yb/consensus/consensus.messages.h"
+#include "yb/consensus/consensus_meta.h"
+#include "yb/consensus/consensus_round.h"
+#include "yb/consensus/consensus_types.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/docdb/docdb_compaction_context.h"
+#include "yb/dockv/partition.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/stl_util.h"
+#include "yb/gutil/walltime.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/storage/frontier.h"
+#include "yb/tablet/preparer.h"
+#include "yb/tablet/tablet_bootstrap_state_manager.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/path_util.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/slice.h"
+#include "yb/util/strand.h"
+#include "yb/util/thread_pool.h"
+
+namespace yb {
+class MemTracker;
+namespace consensus {
+class MultiRaftManager;
+}  // namespace consensus
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+namespace tablet {
+class TabletSplitter;
+}  // namespace tablet
+}  // namespace yb
 
 using namespace std::literals;
 using namespace std::placeholders;

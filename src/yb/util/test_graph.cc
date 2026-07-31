@@ -32,17 +32,19 @@
 
 #include "yb/util/test_graph.h"
 
+#include <glog/logging.h>
 #include <mutex>
+#include <ostream>
+#include <utility>
 
 #include "yb/util/logging.h"
-
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/walltime.h"
-#include "yb/util/locks.h"
-#include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
+#include "yb/util/faststring.h"
+#include "yb/util/monotime.h"
 
 using std::shared_ptr;
 using std::string;

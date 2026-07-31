@@ -14,18 +14,33 @@
 
 #include "yb/yql/pgwrapper/ysql_upgrade.h"
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/algorithm/string/finder.hpp>
+#include <boost/algorithm/string/predicate.hpp>
+#include <boost/range/empty.hpp>
 #include <regex>
-
-#include <boost/algorithm/string.hpp>
+#include <algorithm>
+#include <compare>
+#include <iterator>
+#include <optional>
+#include <ostream>
+#include <string_view>
+#include <tuple>
+#include <vector>
 
 #include "server/catalog/pg_yb_migration_d.h"
-
 #include "yb/common/entity_ids.h"
 #include "yb/util/env_util.h"
 #include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/path_util.h"
-#include "yb/util/pg_util.h"
 #include "yb/util/status_format.h"
+#include "libpq-fe.h"
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
+#include "yb/util/monotime.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 namespace yb {
 namespace pgwrapper {

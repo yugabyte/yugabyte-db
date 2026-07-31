@@ -12,6 +12,8 @@
 //
 #include "yb/tserver/pg_session_guard.h"
 
+#include <ostream>
+
 namespace yb::tserver {
 
 PgSessionCrossThreadGuard::~PgSessionCrossThreadGuard() {

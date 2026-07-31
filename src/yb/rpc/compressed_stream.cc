@@ -17,22 +17,55 @@
 #include <snappy-sinksource.h>
 #include <snappy.h>
 #include <zlib.h>
-
 #include <boost/preprocessor/cat.hpp>
-#include <boost/range/iterator_range.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <string.h>
+#include <sys/uio.h>
+#include <zconf.h>
+#include <boost/container/small_vector.hpp>
+#include <boost/container/vector.hpp>
+#include <boost/intrusive/list.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/range/iterator_range_core.hpp>
+#include <algorithm>
+#include <iterator>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <utility>
 
 #include "yb/gutil/casts.h"
-
-#include "yb/rpc/circular_read_buffer.h"
 #include "yb/rpc/outbound_data.h"
 #include "yb/rpc/refined_stream.h"
 #include "yb/rpc/reactor_thread_role.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
-#include "yb/util/flags.h"
+#include "yb/gutil/endian.h"
+#include "yb/rpc/stream.h"
+#include "yb/util/cast.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/net/socket.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
+
+struct iovec;
 
 using namespace std::literals;
 

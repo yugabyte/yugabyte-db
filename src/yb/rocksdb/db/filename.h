@@ -26,19 +26,17 @@
 #pragma once
 
 #include <stdint.h>
-
-#include <string>
-#include <unordered_map>
+#include <stddef.h>
 #include <vector>
+#include <string>
 
-#include "yb/rocksdb/options.h"
-#include "yb/rocksdb/status_fwd.h"
 #include "yb/rocksdb/transaction_log.h"
-
+#include "yb/rocksdb/status.h"
 #include "yb/util/slice.h"
 
 namespace rocksdb {
-
+struct DBOptions;
+struct DbPath;
 class Env;
 class Directory;
 class WritableFileWriter;

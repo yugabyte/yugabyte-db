@@ -24,6 +24,7 @@
 
 #include <boost/mpl/and.hpp>
 
+#include "yb/util/enums.h"  // IWYU pragma: keep
 #include "yb/util/status.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"

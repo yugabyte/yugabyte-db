@@ -11,7 +11,12 @@
 // under the License.
 
 #include <signal.h>
-
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -26,8 +31,21 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-
-#include <boost/lexical_cast.hpp>
+#include <chrono>
+#include <cmath>
+#include <compare>
+#include <initializer_list>
+#include <iomanip>
+#include <iterator>
+#include <limits>
+#include <numeric>
+#include <optional>
+#include <ratio>
+#include <sstream>
+#include <string_view>
+#include <tuple>
+#include <type_traits>
+#include <unordered_set>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/client_fwd.h"
@@ -35,15 +53,11 @@
 #include "yb/client/table.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/colocated_util.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/pgsql_error.h"
-#include "yb/common/wire_protocol.h"
-
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
-
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
@@ -59,10 +73,48 @@
 #include "yb/util/status_log.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
+#include "gtest/gtest.h"
+#include "libpq-fe.h"
+#include "postgres_ext.h"
+#include "yb/client/client.h"
+#include "yb/client/schema.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/pg_types.h"
+#include "yb/common/schema.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/gutil/callback.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/escaping.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/curl_util.h"
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
+#include "yb/util/file_system.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/thread_holder.h"
+#include "yb/util/tostring.h"
+#include "yb/util/yb_pg_errcodes.h"
 
 using std::future;
 using std::pair;

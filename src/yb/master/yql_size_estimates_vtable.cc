@@ -13,15 +13,31 @@
 
 #include "yb/master/yql_size_estimates_vtable.h"
 
+#include <glog/logging.h>
+#include <stdint.h>
+#include <memory>
+#include <vector>
+
 #include "yb/dockv/partition.h"
 #include "yb/common/schema.h"
-
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_client.pb.h"
-
 #include "yb/util/status_log.h"
 #include "yb/util/yb_partition.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+
+namespace yb {
+namespace master {
+class Master;
+}  // namespace master
+}  // namespace yb
 
 using std::string;
 

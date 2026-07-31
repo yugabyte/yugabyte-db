@@ -11,76 +11,73 @@
 // under the License.
 //
 
+#include <absl/base/dynamic_annotations.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <signal.h>
+#include <stdint.h>
 #include <chrono>
 #include <limits>
 #include <thread>
-
-#include <gtest/gtest.h>
+#include <algorithm>
+#include <functional>
+#include <future>
+#include <initializer_list>
+#include <iterator>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <set>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "yb/client/meta_cache.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
-#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.h"
-#include "yb/consensus/log.messages.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/raft_consensus.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb_test_util.h"
-
-#include "yb/fs/fs_manager.h"
-
 #include "yb/gutil/dynamic_annotations.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/util.h"
-
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/create-table-itest-base.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/redis_table_test_base.h"
 #include "yb/integration-tests/tablet-split-itest-base.h"
 #include "yb/integration-tests/test_workload.h"
-
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_client.pb.h"
-#include "yb/master/master_cluster.proxy.h"
-#include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/ts_descriptor.h"
-
-#include "yb/qlexpr/ql_expr.h"
-
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/table/block_based_table_reader.h"
 #include "yb/rocksdb/table/index_reader.h"
-
-#include "yb/rpc/messenger.h"
-#include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
-
 #include "yb/tserver/full_compaction_manager.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -88,16 +85,13 @@
 #include "yb/tserver/tserver_admin.pb.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.pb.h"
-
 #include "yb/util/async_util.h"
-#include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/protobuf_util.h"
-#include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
@@ -107,6 +101,65 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/ql-dml-test-base.h"
+#include "yb/client/schema.h"
+#include "yb/client/table_handle.h"
+#include "yb/client/table_info.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/constants.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/leader_lease.h"
+#include "yb/consensus/log.pb.h"
+#include "yb/consensus/log_fwd.h"
+#include "yb/consensus/log_util.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
+#include "yb/master/master.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/mini_master.h"
+#include "yb/master/tasks_tracker.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/table/internal_iterator.h"
+#include "yb/rocksdb/table/table_reader.h"
+#include "yb/server/clock.h"
+#include "yb/server/monitored_task.h"
+#include "yb/tablet/operations.pb.h"
+#include "yb/tablet/tablet.pb.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/bytes_formatter.h"
+#include "yb/util/env.h"
+#include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/path_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
 
 using std::string;
 using std::vector;

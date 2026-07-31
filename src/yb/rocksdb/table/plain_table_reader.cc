@@ -22,30 +22,30 @@
 
 #include <string>
 #include <vector>
+#include <map>
+#include <new>
 
-#include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/comparator.h"
-#include "yb/rocksdb/env.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/table/bloom_block.h"
 #include "yb/rocksdb/table/format.h"
 #include "yb/rocksdb/table/get_context.h"
 #include "yb/rocksdb/table/internal_iterator.h"
-#include "yb/rocksdb/table/iterator_wrapper.h"
 #include "yb/rocksdb/table/meta_blocks.h"
-#include "yb/rocksdb/table/plain_table_factory.h"
 #include "yb/rocksdb/table/plain_table_key_coding.h"
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/dynamic_bloom.h"
 #include "yb/rocksdb/util/hash.h"
-#include "yb/rocksdb/util/histogram.h"
-#include "yb/rocksdb/util/murmurhash.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
-
 #include "yb/util/mem_tracker.h"
 #include "yb/util/string_util.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/perf_context.h"
+#include "yb/rocksdb/table.h"
+#include "yb/rocksdb/table_properties.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 using std::unique_ptr;
 using std::vector;

@@ -31,16 +31,25 @@
 //
 #pragma once
 
+#include <glog/logging.h>
 #include <memory>
+#include <string>
+#include <vector>
 
-#include "yb/server/server_base_options.h"
-
-#include "yb/master/master_heartbeat.fwd.h"
-#include "yb/tserver/tserver_fwd.h"
-#include "yb/util/status_fwd.h"
+#include "yb/server/server_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/status.h"
 
 namespace yb {
+namespace master {
+class TSHeartbeatRequestPB;
+class TSHeartbeatResponsePB;
+}  // namespace master
+
 namespace tserver {
+class TabletServer;
+class TabletServerOptions;
 
 // Interface data providers to be used for filling data into heartbeat request.
 // Data provider could fill in data into TSHeartbeatRequestPB that will be send by Heartbeater
@@ -88,6 +97,7 @@ class Heartbeater {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

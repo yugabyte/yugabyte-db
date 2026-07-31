@@ -11,27 +11,42 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <chrono>
+#include <future>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "yb/client/client.h"
-#include "yb/client/client-test-util.h"
-#include "yb/client/schema.h"
-#include "yb/client/session.h"
 #include "yb/client/table.h"
-#include "yb/client/table_handle.h"
-#include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
-#include "yb/master/master.h"
-#include "yb/master/master_ddl.pb.h"
-#include "yb/master/master_defaults.h"
-#include "yb/master/master_replication.proxy.h"
-#include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
-#include "yb/tserver/ts_tablet_manager.h"
-#include "yb/tserver/tablet_server.h"
-#include "yb/util/backoff_waiter.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/util/file_util.h"
+#include "gtest/gtest.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/snapshot.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/master_backup.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/path_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_macros.h"
 
 using std::string;
 using namespace std::chrono_literals;

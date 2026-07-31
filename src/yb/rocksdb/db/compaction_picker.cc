@@ -21,19 +21,43 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/db/compaction_picker.h"
+
 #include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/db/version_edit.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/types.h"
+#include "yb/rocksdb/universal_compaction.h"
+#include "yb/rocksdb/util/autovector.h"
+#include "yb/rocksdb/util/mutable_cf_options.h"
+#include "yb/storage/storage_types.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
 #endif
 
 #include <inttypes.h>
-
+#include <assert.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <limits.h>
+#include <stdio.h>
 #include <limits>
 #include <queue>
 #include <string>
 #include <utility>
-
+#include <algorithm>
+#include <functional>
+#include <ostream>
 
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/db/column_family.h"
@@ -43,9 +67,7 @@
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/statistics.h"
-
 #include "yb/util/logging.h"
-#include "yb/util/flags.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"

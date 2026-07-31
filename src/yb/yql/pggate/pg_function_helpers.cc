@@ -11,17 +11,20 @@
 // under the License.
 //
 
-#include <boost/container/small_vector.hpp>
+#include <stddef.h>
+#include <functional>
+#include <limits>
 
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-
 #include "yb/yql/pggate/pg_function_helpers.h"
 #include "yb/yql/pggate/ybc_pggate.h"
-
-#include "yb/util/net/net_util.h"
 #include "yb/util/status_format.h"
-#include "yb/util/yb_partition.h"
+#include "yb/common/types.h"
+#include "yb/dockv/pg_row.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/format.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 namespace pggate {

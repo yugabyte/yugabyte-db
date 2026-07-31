@@ -13,10 +13,12 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <mutex>
 #include <memory>
+#include <vector>
 
-#include "yb/util/env.h"
+#include "yb/util/file_system.h"
 
 namespace yb {
 

@@ -20,13 +20,17 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/range/iterator_range_core.hpp>
 #include <algorithm>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
-
-#include <boost/range/iterator_range.hpp>
+#include <initializer_list>
+#include <iterator>
+#include <utility>
 
 #include "yb/util/slice.h"
 #include "yb/util/tostring.h"

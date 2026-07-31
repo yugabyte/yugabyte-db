@@ -13,8 +13,16 @@
 
 #include "yb/master/yql_empty_vtable.h"
 
+#include <memory>
+
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/util/result.h"
+
 namespace yb {
+class Schema;
+
 namespace master {
+class Master;
 
 YQLEmptyVTable::YQLEmptyVTable(const TableName& table_name,
                                const NamespaceName& namespace_name,

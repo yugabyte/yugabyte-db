@@ -14,25 +14,23 @@
 #pragma once
 
 #include <stdint.h>
-
-#include <cstdarg>
+#include <stddef.h>
 #include <string>
+#include <memory>
+#include <utility>
 
 #include "yb/encryption/cipher_stream.h"
 #include "yb/encryption/header_manager.h"
-
-#include "yb/util/status_fwd.h"
-#include "yb/util/file_system.h"
 #include "yb/util/result.h"
-#include "yb/util/status_format.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class SequentialFile;
+
 namespace encryption {
 
 class EncryptionParamsPB;
-class RandomAccessFile;
-class HeaderManager;
-class BlockAccessCipherStream;
 
 // Struct generated for encryption status of existing files.
 struct FileEncryptionStatus {

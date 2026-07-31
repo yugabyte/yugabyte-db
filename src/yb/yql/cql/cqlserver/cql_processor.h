@@ -21,19 +21,40 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <memory>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+#include <functional>
 
 #include "yb/rpc/service_if.h"
-
 #include "yb/yql/cql/cqlserver/cqlserver_fwd.h"
 #include "yb/yql/cql/cqlserver/cql_rpc.h"
 #include "yb/yql/cql/cqlserver/cql_statement.h"
-
 #include "yb/yql/cql/ql/ql_processor.h"
-#include "yb/yql/cql/ql/statement.h"
 #include "yb/yql/cql/ql/util/cql_message.h"
+#include "yb/ash/ash_fwd.h"
+#include "yb/ash/wait_state.h"
+#include "yb/common/common_fwd.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/thread_pool.h"
+#include "yb/yql/cql/ql/ptree/parse_tree.h"
+#include "yb/yql/cql/ql/util/ql_env.h"
+#include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/gutil/callback.h"
 
 namespace yb {
+class Status;
+
 namespace cqlserver {
 
 class CQLServiceImpl;

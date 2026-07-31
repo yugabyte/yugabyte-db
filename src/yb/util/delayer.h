@@ -16,11 +16,12 @@
 #include <condition_variable>
 #include <deque>
 #include <functional>
-#include <thread>
+#include <mutex>
+#include <utility>
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/monotime.h"
-#include "yb/util/thread.h"
+#include "yb/util/thread.h"  // IWYU pragma: keep
 
 namespace yb {
 

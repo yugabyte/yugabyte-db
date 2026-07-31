@@ -16,20 +16,28 @@
 #include "yb/yql/cql/cqlserver/cql_processor.h"
 
 #include <ldap.h>
-
 #include <boost/algorithm/string.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <lber.h>
+#include <string.h>
+#include <boost/algorithm/string/replace.hpp>
+#include <boost/range/as_literal.hpp>
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <functional>
+#include <ratio>
+#include <sstream>
+#include <utility>
 
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-
 #include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
-
 #include "yb/qlexpr/ql_rowblock.h"
-
 #include "yb/rpc/messenger.h"
-
 #include "yb/util/cql_pg_util.h"
 #include "yb/util/format.h"
 #include "yb/util/jwt_util.h"
@@ -39,12 +47,33 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/trace.h"
-
 #include "yb/yql/cql/cqlserver/cql_service.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
-
 #include "ybgate/ybgate_api.h"
 #include "ybgate/ybgate_cpp_util.h"
+#include "yb/gutil/bind_helpers.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/rpc/connection.h"
+#include "yb/rpc/rpc_header.pb.h"
+#include "yb/util/faststring.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
+#include "yb/yql/cql/cqlserver/system_query_cache.h"
+#include "yb/yql/cql/ql/audit/audit_logger.h"
+#include "yb/yql/cql/ql/exec/exec_fwd.h"
+#include "yb/yql/cql/ql/exec/executor.h"
+#include "yb/yql/cql/ql/ptree/tree_node.h"
+#include "yb/yql/cql/ql/ql_fwd.h"
+#include "yb/yql/cql/ql/ql_session.h"
+#include "yb/yql/cql/ql/statement.h"
+#include "yb/server/clock.h"
 
 using namespace std::literals;
 

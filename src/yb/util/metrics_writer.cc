@@ -14,11 +14,23 @@
 //
 #include "yb/util/metrics_writer.h"
 
-#include "yb/util/metrics.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <chrono>
 
 #include "yb/util/debug.h"
 #include "yb/util/enums.h"
 #include "yb/util/sync_point.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics_aggregator.h"
+#include "yb/util/prometheus_metric_filter.h"
+#include "yb/util/status_format.h"
+
+namespace yb {
+class MetricPrototype;
+}  // namespace yb
 
 DECLARE_string(metric_node_name);
 

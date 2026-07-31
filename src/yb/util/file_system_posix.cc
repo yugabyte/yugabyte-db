@@ -20,15 +20,22 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <assert.h>
+#include <errno.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <limits.h>
+#include <linux/falloc.h>
+#include <algorithm>
+#include <limits>
+#include <ostream>
+#include <utility>
 
 #ifdef __linux__
 #include <linux/fs.h>
-#include <sys/statfs.h>
-#include <sys/syscall.h>
 #endif // __linux__
 
 #include "yb/gutil/strings/substitute.h"
-#include "yb/rocksdb/util/coding.h"
 #include "yb/util/coding-inl.h"
 #include "yb/util/coding.h"
 #include "yb/util/debug/trace_event.h"
@@ -43,6 +50,13 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_kill.h"
 #include "yb/util/thread_restrictions.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/port.h"
+#include "yb/util/cast.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/slice.h"
+#include "yb/util/stats/iostats_context.h"
+#include "yb/util/stats/perf_step_timer.h"
 
 // For platforms without fdatasync (like OS X)
 #ifndef fdatasync

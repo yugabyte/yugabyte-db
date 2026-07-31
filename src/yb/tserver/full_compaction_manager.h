@@ -15,24 +15,31 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+#include <stdint.h>
 #include <map>
 #include <unordered_map>
+#include <atomic>
+#include <deque>
+#include <memory>
+#include <string>
+#include <vector>
+#include <functional>
 
-#include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
-
 #include "yb/tablet/tablet_fwd.h"
-
-#include "yb/tserver/tserver_fwd.h"
-
-#include "yb/util/threadpool.h"
+#include "yb/util/background_task.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
-
-class BackgroundTask;
+namespace tablet {
+class TabletMetrics;
+}  // namespace tablet
 
 namespace tserver {
+class TSTabletManager;
 
 typedef std::multimap<HybridTime, tablet::TabletPeerPtr> PeerNextCompactList;
 

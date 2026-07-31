@@ -13,16 +13,32 @@
 
 #include "yb/qlexpr/ql_serialization.h"
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/intrusive/list.hpp>
+#include <boost/iterator/iterator_facade.hpp>
+#include <ostream>
+#include <string>
+#include <vector>
+
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/util/date_time.h"
 #include "yb/util/decimal.h"
 #include "yb/util/status_log.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/gutil/endian.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/logging.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
 
 namespace yb::qlexpr {
 

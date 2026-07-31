@@ -31,15 +31,31 @@
 //
 #pragma once
 
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <mutex>
 #include <string>
+#include <functional>
+#include <memory>
+#include <optional>
 
 #include "yb/gutil/macros.h"
-
 #include "yb/util/ref_wrap.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
 #include "yb/common/version_info.pb.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

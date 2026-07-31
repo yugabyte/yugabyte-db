@@ -17,13 +17,23 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/pt_type.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 
 namespace yb {
+class QLType;
+
 namespace ql {
+class SemContext;
 
 //--------------------------------------------------------------------------------------------------
 // Field of User-Defined Type

@@ -13,38 +13,49 @@
 
 #include "yb/yql/pggate/pg_operation_buffer.h"
 
+#include <boost/circular_buffer.hpp>
+#include <boost/container/small_vector.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <boost/container_hash/hash.hpp>
+#include <boost/core/pointer_traits.hpp>
+#include <boost/move/utility.hpp>
+#include <boost/move/utility_core.hpp>
 #include <string>
 #include <ostream>
 #include <unordered_map>
 #include <utility>
-#include <vector>
-
-#include <boost/circular_buffer.hpp>
-#include <boost/container/small_vector.hpp>
+#include <algorithm>
+#include <string_view>
 
 #include "yb/common/constants.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/pgsql_protocol.pb.h"
-#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-
 #include "yb/dockv/doc_key.h"
-#include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_type.h"
-
-#include "yb/gutil/casts.h"
 #include "yb/gutil/port.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/status.h"
-
 #include "yb/yql/pggate/pg_flush_debug_context.h"
-#include "yb/yql/pggate/pg_session.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pggate_flags.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/value.messages.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+#include "yb/util/yb_pg_errcodes.h"
+#include "yb/yql/pggate/pg_tools.h"
 
 DECLARE_uint64(rpc_max_message_size);
 DECLARE_double(max_buffer_size_to_rpc_limit_ratio);

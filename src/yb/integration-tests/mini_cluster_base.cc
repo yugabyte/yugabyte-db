@@ -13,14 +13,21 @@
 
 #include "yb/integration-tests/mini_cluster_base.h"
 
-#include "yb/client/client.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <ostream>
+#include <utility>
 
-#include "yb/client/stateful_services/stateful_service_client_base.h"
+#include "yb/client/client.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/rpc/secure.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 #include "yb/rpc/messenger.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/server/clock.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
 
 DECLARE_bool(TEST_enable_multi_way_tablet_split);
 DECLARE_bool(use_node_to_node_encryption);

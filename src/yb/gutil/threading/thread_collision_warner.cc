@@ -18,11 +18,13 @@
 //
 #include "yb/gutil/threading/thread_collision_warner.h"
 
-#include "yb/util/logging.h"
+#include <glog/logging.h>
+#include <stdint.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#include <ostream>
 
-#ifdef __linux__
-#include "yb/gutil/linux_syscall_support.h"
-#endif
+#include "yb/util/logging.h"
 
 namespace base {
 

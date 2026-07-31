@@ -33,14 +33,11 @@
 
 #include <stdint.h>
 
-#include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/util/metrics.h"
 
 namespace yb {
 
-template<class T>
-class AtomicGauge;
-class Counter;
 class MetricEntity;
 
 struct CacheMetrics {

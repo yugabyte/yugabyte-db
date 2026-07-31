@@ -14,17 +14,49 @@
 
 #include "yb/yql/cql/ql/audit/audit_logger.h"
 
-#include <boost/algorithm/string.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <sys/types.h>
+#include <boost/algorithm/string/case_conv.hpp>
+#include <boost/algorithm/string/classification.hpp>
+#include <boost/algorithm/string/constants.hpp>
+#include <boost/algorithm/string/join.hpp>
+#include <boost/algorithm/string/split.hpp>
+#include <boost/algorithm/string/trim.hpp>
+#include <boost/asio/ip/basic_endpoint.hpp>
+#include <boost/iterator/iterator_facade.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/stringize.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/range/begin.hpp>
+#include <boost/range/end.hpp>
+#include <boost/range/iterator_range_core.hpp>
+#include <algorithm>
+#include <optional>
+#include <ostream>
+#include <regex>
+#include <type_traits>
+#include <vector>
 
 #include "yb/rpc/connection.h"
-
 #include "yb/util/date_time.h"
-#include "yb/util/flags.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
-
 #include "yb/yql/cql/ql/ptree/pt_alter_keyspace.h"
 #include "yb/yql/cql/ql/ptree/pt_alter_table.h"
 #include "yb/yql/cql/ql/ptree/pt_create_index.h"
@@ -39,7 +71,25 @@
 #include "yb/yql/cql/ql/ptree/pt_truncate.h"
 #include "yb/yql/cql/ql/ptree/pt_use_keyspace.h"
 #include "yb/yql/cql/ql/util/ql_env.h"
-#include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/gutil/port.h"
+#include "yb/util/enums.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/timestamp.h"
+#include "yb/util/tostring.h"
+#include "yb/yql/cql/ql/ptree/pt_dml.h"
+#include "yb/yql/cql/ql/ptree/pt_name.h"
+#include "yb/yql/cql/ql/ptree/pt_option.h"
+#include "yb/yql/cql/ql/ptree/tree_node.h"
+#include "yb/yql/cql/ql/util/cql_message.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
+#include "yb/util/net/net_fwd.h"
 
 DEFINE_RUNTIME_bool(ycql_enable_audit_log, false,
     "Enable YCQL audit. Use ycql_audit_* flags for fine-grained configuration");

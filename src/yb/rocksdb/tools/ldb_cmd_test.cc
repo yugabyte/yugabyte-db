@@ -18,14 +18,15 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
 #include <string>
+#include <iostream>
 
 #include "yb/rocksdb/tools/ldb_cmd.h"
-#include "yb/rocksdb/util/testharness.h"
-#include "yb/rocksdb/env.h"
 #include "yb/rocksdb/db/db_test_util.h"
-
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
 
 using std::string;
 using std::vector;

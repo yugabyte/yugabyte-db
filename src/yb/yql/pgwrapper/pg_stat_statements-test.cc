@@ -11,9 +11,25 @@
 // under the License.
 //
 
+#include <stdint.h>
+#include <chrono>
+#include <functional>
+#include <initializer_list>
+#include <string>
+#include <vector>
+
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
+#include "gtest/gtest.h"
+#include "libpq-fe.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 using namespace std::chrono_literals;
 

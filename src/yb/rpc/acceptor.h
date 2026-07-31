@@ -35,6 +35,8 @@
 #include <mutex>
 #include <unordered_map>
 #include <vector>
+#include <functional>
+#include <memory>
 
 #undef EV_ERROR
 #include <ev++.h> // NOLINT
@@ -42,14 +44,14 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
-#include "yb/util/status_fwd.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class Cgroup;
 class Counter;
 class MetricEntity;
-class Socket;
 class Thread;
 
 namespace rpc {

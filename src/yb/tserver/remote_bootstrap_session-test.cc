@@ -13,24 +13,67 @@
 
 #include "yb/tserver/remote_bootstrap_session-test.h"
 
+#include <glog/logging.h>
 #include <memory>
+#include <functional>
+#include <future>
+#include <ostream>
+#include <utility>
+#include <vector>
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/state_change_context.h"
-
 #include "yb/rpc/messenger.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/write_query.h"
-
 #include "yb/tserver/tserver.messages.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status_log.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/schema.h"
+#include "yb/consensus/consensus_meta.h"
+#include "yb/consensus/log_util.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/opid_util.h"
+#include "yb/consensus/retryable_requests.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/bind.h"
+#include "yb/gutil/bind_helpers.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rpc/thread_pool.h"
+#include "yb/server/clock.h"
+#include "yb/tablet/operations/operation.h"
+#include "yb/tablet/tablet-test-harness.h"
+#include "yb/tablet/tablet_bootstrap_state_manager.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_types.messages.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+
+namespace yb {
+namespace client {
+class YBClient;
+}  // namespace client
+}  // namespace yb
 
 using std::string;
 

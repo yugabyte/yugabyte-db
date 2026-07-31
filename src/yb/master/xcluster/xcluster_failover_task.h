@@ -13,13 +13,30 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <string>
+#include <vector>
+
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
-
 #include "yb/master/multi_step_monitored_task.h"
-#include "yb/master/xcluster/xcluster_manager.h"
-
 #include "yb/util/status_callback.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class ThreadPool;
+namespace master {
+class Master;
+class XClusterManager;
+}  // namespace master
+namespace rpc {
+class Messenger;
+}  // namespace rpc
+}  // namespace yb
 
 namespace yb::master {
 

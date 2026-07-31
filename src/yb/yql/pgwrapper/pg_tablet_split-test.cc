@@ -11,49 +11,59 @@
 // under the License.
 //
 
+#include <absl/base/dynamic_annotations.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/types.h>
+#include <boost/regex.hpp>
 #include <mutex>
 #include <optional>
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <future>
+#include <initializer_list>
+#include <limits>
+#include <map>
+#include <memory>
+#include <ratio>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <thread>
+#include <tuple>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/table.h"
-#include "yb/client/table_info.h"
-#include "yb/client/yb_table_name.h"
-
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
-#include "yb/common/wire_protocol.h"
-
-#include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_types.pb.h"
 #include "yb/consensus/raft_consensus.h"
-
 #include "yb/docdb/bounded_rocksdb_iterator.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
-
 #include "yb/gutil/dynamic_annotations.h"
-
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
-#include "yb/master/master_admin.pb.h"
-
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/filename.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
-#include "yb/tserver/tablet_service.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_error.h"
-
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
@@ -68,12 +78,51 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/client/snapshot_test_util.h"
-
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
-#include "yb/yql/pgwrapper/pg_test_utils.h"
+#include "gtest/gtest.h"
+#include "postgres_ext.h"
+#include "yb/client/client.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/constants.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.h"
+#include "yb/common/pg_types.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/value.pb.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_fwd.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/options.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_options.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
+#include "yb/util/yb_partition.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_object_locking_for_table_locks);

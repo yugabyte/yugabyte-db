@@ -13,7 +13,8 @@
 
 #include "yb/util/enums.h"
 
-#include "yb/util/logging.h"
+#include <glog/logging.h>
+#include <stdlib.h>
 
 namespace yb {
 

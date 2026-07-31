@@ -11,27 +11,46 @@
 // under the License.
 //
 
-#include <google/protobuf/repeated_field.h>
-#include <gtest/gtest.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/uuid/uuid.hpp>
+#include <algorithm>
+#include <chrono>
+#include <memory>
+#include <ratio>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "yb/client/table.h"
-#include "yb/client/tablet_server.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/transaction.h"
-#include "yb/integration-tests/xcluster/xcluster_ycql_test_base.h"
 #include "yb/master/master_defaults.h"
-#include "yb/rpc/rpc_controller.h"
-
-#include "yb/tserver/mini_tablet_server.h"
-
-#include "yb/tserver/tablet_server.h"
-
-#include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/monotime.h"
 #include "yb/util/status_format.h"
 #include "yb/yql/pgwrapper/pg_locks_test_base.h"
-#include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
+#include "yb/util/string_util.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_macros.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 
 DECLARE_int32(transaction_table_num_tablets);

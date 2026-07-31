@@ -62,7 +62,8 @@
 
 #include <assert.h>
 #include <stdlib.h>
-
+#include <stdint.h>
+#include <string.h>
 #include <atomic>
 
 #include "yb/rocksdb/util/allocator.h"

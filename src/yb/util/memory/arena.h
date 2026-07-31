@@ -36,24 +36,37 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stdint.h>
+#include <string.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <atomic>
 #include <memory>
 #include <mutex>
-#include <shared_mutex>
-#include <vector>
-
-#include <boost/signals2/dummy_mutex.hpp>
-#include "yb/util/logging.h"
+#include <cstddef>
+#include <new>
+#include <type_traits>
+#include <utility>
 
 #include "yb/gutil/dynamic_annotations.h"
-#include "yb/gutil/logging-inl.h"
-#include "yb/gutil/macros.h"
-
 #include "yb/util/debug/lock_debug.h"
 #include "yb/util/enums.h"
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/slice.h"
+#include "yb/util/cast.h"
 
 namespace yb {
 
@@ -113,7 +126,6 @@ struct ArenaTraits {
 
 template <class Traits>
 class ArenaComponent;
-
 template <class Traits>
 class ArenaObjectFactory;
 

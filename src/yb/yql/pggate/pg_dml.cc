@@ -15,17 +15,27 @@
 
 #include "yb/yql/pggate/pg_dml.h"
 
-#include "yb/client/yb_op.h"
+#include <string.h>
+#include <boost/container/small_vector.hpp>
+#include <ostream>
+#include <utility>
+#include <vector>
 
 #include "yb/common/pg_system_attr.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
-
-#include "yb/yql/pggate/pg_select.h"
 #include "yb/yql/pggate/pg_select_index.h"
-#include "yb/yql/pggate/util/pg_doc_data.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/ql_datatype.h"
+#include "yb/gutil/casts.h"
+#include "yb/util/lw_function.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/slice.h"
+#include "yb/yql/pggate/pg_dml_read.h"
+#include "yb/yql/pggate/pg_expr.h"
+#include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/yql/pggate/util/pg_tuple.h"
 
 namespace yb::pggate {
 namespace {

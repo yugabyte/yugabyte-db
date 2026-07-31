@@ -13,22 +13,58 @@
 
 #pragma once
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <memory>
 #include <set>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-
-#include "yb/gutil/casts.h"
+#include <limits>
+#include <optional>
+#include <sstream>
+#include <utility>
+#include <functional>
 
 #include "yb/common/replica_type.h"
-
-#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/cluster_balance_activity_info.h"
 #include "yb/master/ts_descriptor.h"
-
 #include "yb/util/size_literals.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/tasks_tracker.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/std_util.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace master {
+class TabletInfo;
+struct TabletReplica;
+}  // namespace master
+}  // namespace yb
 
 DECLARE_int32(leader_balance_threshold);
 DECLARE_int32(load_balancer_max_concurrent_tablet_remote_bootstraps);

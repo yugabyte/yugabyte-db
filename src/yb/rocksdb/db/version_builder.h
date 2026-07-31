@@ -24,7 +24,8 @@
 
 
 #pragma once
-#include "yb/rocksdb/env.h"
+
+#include <stdint.h>
 
 namespace rocksdb {
 
@@ -33,6 +34,8 @@ class VersionStorageInfo;
 class VersionEdit;
 struct FileMetaData;
 class InternalStats;
+class Logger;
+struct EnvOptions;
 
 // A helper class so we can efficiently apply a whole sequence
 // of edits to a particular state without creating intermediate
@@ -52,6 +55,7 @@ class VersionBuilder {
 
  private:
   class Rep;
+
   Rep* rep_;
 };
 

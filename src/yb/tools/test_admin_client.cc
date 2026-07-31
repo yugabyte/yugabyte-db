@@ -11,20 +11,33 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <chrono>
+#include <functional>
+#include <ostream>
+#include <ratio>
+
 #include "yb/common/wire_protocol.h"
-
-#include <google/protobuf/repeated_field.h>
-
 #include "yb/client/client.h"
-
 #include "yb/master/master_backup.proxy.h"
-#include "yb/master/master_client.proxy.h"
-
 #include "yb/tools/test_admin_client.h"
-
-#include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/backoff_waiter.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_backup.pb.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/tablet/tablet.pb.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/tsan_util.h"
 
 namespace yb {
 

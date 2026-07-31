@@ -31,41 +31,67 @@
 //
 #pragma once
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/atomic/atomic.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <atomic>
 #include <deque>
 #include <mutex>
 #include <string>
-#include <utility>
 #include <vector>
-
-#include <boost/atomic.hpp>
-#include <boost/function.hpp>
-
-#include "yb/common/hybrid_time.h"
+#include <condition_variable>
+#include <functional>
+#include <memory>
 
 #include "yb/consensus/consensus_meta.h"
-#include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/consensus_types.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/retryable_requests.h"
 #include "yb/consensus/leader_lease.h"
-
 #include "yb/gutil/port.h"
-#include "yb/util/locks.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/opid.h"
+#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_round.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace boost {
+template <typename Signature> class function;
+}  // namespace boost
 
 namespace yb {
-
-class HostPort;
-class ReplicaState;
-class ThreadPool;
+class RestartSafeCoarseMonoClock;
 
 namespace consensus {
 
-class RetryableRequests;
-
 YB_STRONGLY_TYPED_BOOL(CouldStop);
+class ConsensusContext;
+class ReplicateMsg;
+struct MajorityReplicatedData;
 
 // Whether we add pending operation while running as leader or follower.
 YB_DEFINE_ENUM(OperationMode, (kLeader)(kFollower));

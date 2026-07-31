@@ -31,9 +31,13 @@
 //
 #include "yb/util/threadlocal.h"
 
+#include <glog/logging.h>
+#include <pthread.h>
+#include <ostream>
+#include <string>
+
 #include "yb/gutil/once.h"
 #include "yb/util/errno.h"
-#include "yb/util/logging.h"
 
 namespace yb {
 namespace threadlocal {

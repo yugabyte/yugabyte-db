@@ -13,21 +13,14 @@
 
 #pragma once
 
-#include <mutex>
-#include <string>
+#include <stdint.h>
+#include <utility>
 
-#include "yb/gutil/macros.h"
 #include "yb/tablet/operations.messages.h"
 #include "yb/tablet/operations/operation.h"
-#include "yb/util/locks.h"
+#include "yb/util/status.h"
 
 namespace yb {
-
-class Schema;
-
-namespace consensus {
-class Consensus;
-}
 
 namespace tablet {
 

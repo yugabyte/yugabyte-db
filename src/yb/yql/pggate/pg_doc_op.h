@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -22,30 +25,41 @@
 #include <utility>
 #include <variant>
 #include <vector>
-
-#include "yb/common/hybrid_time.h"
-
-#include "yb/dockv/doc_key.h"
-#include "yb/dockv/key_bytes.h"
+#include <ostream>
 
 #include "yb/gutil/macros.h"
-
-#include "yb/util/concepts.h"
-#include "yb/util/locks.h"
 #include "yb/util/lw_function.h"
-#include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/result.h"
-#include "yb/util/slice.h"
-
 #include "yb/yql/pggate/pg_doc_metrics.h"
 #include "yb/yql/pggate/pg_doc_op_fetch_stream.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_read_range.h"
 #include "yb/yql/pggate/pg_session.h"
-#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_sys_table_prefetcher.h"
-#include "yb/yql/pggate/util/pg_tuple.h"
+#include "yb/common/value.messages.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/yql/pggate/pg_perform_future.h"
+#include "yb/yql/pggate/pg_session_fwd.h"
+#include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
+namespace yb {
+class HybridTime;
+class LWPgsqlExpressionPB;
+class LWPgsqlReadRequestPB;
+class LWPgsqlWriteRequestPB;
+namespace pggate {
+class PgTable;
+struct YbctidGenerator;
+}  // namespace pggate
+namespace rpc {
+class CallResponse;
+}  // namespace rpc
+}  // namespace yb
 
 namespace yb::pggate {
 

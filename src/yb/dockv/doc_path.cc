@@ -14,6 +14,8 @@
 #include "yb/dockv/doc_path.h"
 
 #include "yb/dockv/doc_key.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/string_util.h"
 
 using std::string;
 

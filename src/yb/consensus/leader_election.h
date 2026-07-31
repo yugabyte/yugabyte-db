@@ -32,34 +32,45 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <functional>
 #include <map>
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-#include "yb/common/hybrid_time.h"
+#include <chrono>
+#include <memory>
+#include <optional>
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/leader_lease.h"
-
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/util/locks.h"
+#include "yb/consensus/consensus_peers.h"
+#include "yb/util/enums.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
 class Status;
 
-namespace metadata {
-class RaftPeerPB;
-}
-
 namespace consensus {
-class PeerProxyFactory;
+class RaftConfigPB;
 
 // The vote a peer has given.
 YB_DEFINE_ENUM(ElectionVote, (kDenied)(kGranted)(kUnknown));

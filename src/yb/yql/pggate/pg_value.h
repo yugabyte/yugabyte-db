@@ -14,15 +14,18 @@
 
 #pragma once
 
-#include "yb/common/common_fwd.h"
-
-#include "yb/dockv/dockv_fwd.h"
-
-#include "yb/util/status_fwd.h"
+#include <stdint.h>
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class LWQLValuePB;
+class QLValuePB;
+namespace dockv {
+class PgValue;
+}  // namespace dockv
+
 namespace pggate {
 
 /*

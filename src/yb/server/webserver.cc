@@ -43,32 +43,38 @@
 
 #include "yb/server/webserver.h"
 
-#include <stdio.h>
-
+#include <squeasel.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <netinet/in.h>
+#include <signal.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <boost/algorithm/string/case_conv.hpp>
+#include <boost/asio/ip/basic_endpoint.hpp>
+#include <boost/bind/mem_fn.hpp>
+#include <boost/range/iterator_range_core.hpp>
 #include <algorithm>
 #include <functional>
 #include <map>
 #include <mutex>
 #include <shared_mutex>
 #include <string>
-#include <type_traits>
 #include <vector>
+#include <atomic>
+#include <sstream>
+#include <utility>
 
-#include <boost/algorithm/string.hpp>
-#include <squeasel.h>
-
-#include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/stringpiece.h"
 #include "yb/gutil/strings/strip.h"
-
 #include "yb/util/env.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/net/net_util.h"
@@ -80,6 +86,12 @@
 #include "yb/util/tcmalloc_util.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/zlib.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/server/webserver_options.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/slice.h"
 
 #if defined(__APPLE__)
 typedef sig_t sighandler_t;

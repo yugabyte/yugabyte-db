@@ -18,9 +18,8 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
-
 #include "yb/util/stats/iostats_context.h"
+#include "gtest/gtest.h"
 
 namespace yb {
 

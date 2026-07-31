@@ -20,10 +20,18 @@
 
 #include "yb/rocksdb/db/auto_roll_logger.h"
 
-#include "yb/rocksdb/util/mutexlock.h"
+#include <assert.h>
+#include <glog/logging.h>
+#include <stdio.h>
 
+#include "yb/rocksdb/util/mutexlock.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status_log.h"
+#include "yb/rocksdb/db/filename.h"
+#include "yb/rocksdb/options.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 using std::string;
 

@@ -17,9 +17,15 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <memory>
+#include <string>
+
 #include "yb/client/schema.h"
 
 namespace yb {
+class QLType;
+
 namespace ql {
 
 //--------------------------------------------------------------------------------------------------

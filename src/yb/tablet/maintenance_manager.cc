@@ -33,17 +33,20 @@
 #include "yb/tablet/maintenance_manager.h"
 
 #include <stdint.h>
-
+#include <gflags/gflags.h>
+#include <stddef.h>
 #include <memory>
 #include <string>
 #include <utility>
+#include <chrono>
+#include <functional>
+#include <ostream>
+#include <ratio>
 
 #include "yb/gutil/stringprintf.h"
-
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug/trace_logging.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
@@ -52,8 +55,12 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
 #include "yb/util/unique_lock.h"
-
-#include "yb/server/total_mem_watcher.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/tablet/tablet.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/locks.h"
+#include "yb/util/threadpool.h"
 
 using std::shared_ptr;
 using std::string;

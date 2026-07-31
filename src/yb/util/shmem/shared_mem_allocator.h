@@ -13,20 +13,25 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stddef.h>
 #include <memory>
 #include <string_view>
-#include <type_traits>
-
-#include "yb/util/enums.h"
+#include <new>
+#include <string>
+#include <utility>
 
 #include "yb/util/shmem/reserved_address_segment.h"
 #include "yb/util/shmem/shared_mem_segment.h"
 #include "yb/util/status_log.h"
+#include "yb/util/cast.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class SharedMemoryBackingAllocator;
-class SharedMemoryAllocatorImpl;
 
 template<typename T>
 struct SharedMemoryDeleter {

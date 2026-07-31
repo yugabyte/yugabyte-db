@@ -14,10 +14,14 @@
 #include "yb/rpc/lightweight_message.h"
 
 #include <google/protobuf/message.h>
+#include <gflags/gflags.h>
+#include <string.h>
 
-#include "yb/util/pb_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/util/cast.h"
 
 using namespace yb::size_literals;
 

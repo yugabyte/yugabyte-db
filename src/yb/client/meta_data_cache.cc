@@ -13,20 +13,30 @@
 
 #include "yb/client/meta_data_cache.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <ostream>
+#include <vector>
+
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
 #include "yb/client/permissions.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/roles_permissions.h"
-
 #include "yb/util/memory/memory.h"
 #include "yb/util/result.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/yql/cql/ql/ptree/pt_option.h"
+
+namespace yb {
+enum PermissionType : int;
+}  // namespace yb
 
 using std::string;
 

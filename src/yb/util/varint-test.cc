@@ -11,11 +11,19 @@
 // under the License.
 //
 
+#include <stddef.h>
+#include <stdint.h>
+#include <compare>
+#include <limits>
+#include <string>
+#include <vector>
+
 #include "yb/util/format.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/varint.h"
+#include "gtest/gtest.h"
 
 using std::string;
 

@@ -11,14 +11,32 @@
 // under the License.
 //
 
+#include <absl/base/dynamic_annotations.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/function.hpp>
 #include <thread>
+#include <algorithm>
+#include <chrono>
+#include <functional>
+#include <initializer_list>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <random>
+#include <string>
+#include <string_view>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "yb/common/common.pb.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_protocol.messages.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/transaction-test-util.h"
-
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_read_context.h"
@@ -29,23 +47,77 @@
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
-
 #include "yb/dockv/reader_projection.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/qlexpr/index.h"
 #include "yb/qlexpr/ql_resultset.h"
 #include "yb/qlexpr/ql_rowblock.h"
-
-#include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/internal_stats.h"
-
-#include "yb/server/hybrid_clock.h"
-
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/tostring.h"
+#include "gtest/gtest.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/constants.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/redis_protocol.messages.h"
+#include "yb/common/redis_protocol.pb.h"
+#include "yb/common/schema.h"
+#include "yb/common/transaction.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/docdb/doc_operation.h"
+#include "yb/docdb/doc_ql_scanspec.h"
+#include "yb/docdb/doc_write_batch.h"
+#include "yb/docdb/docdb_types.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/docdb/read_operation_data.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/doc_path.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/value.h"
+#include "yb/dockv/value_type.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/qlexpr/ql_expr.h"
+#include "yb/qlexpr/ql_scanspec.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/compaction_filter.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/column_family.h"
+#include "yb/rocksdb/db/version_edit.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/storage/storage_types.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/operation_counter.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/write_buffer.h"
+
+namespace yb {
+namespace docdb {
+class SchemaPackingProvider;
+}  // namespace docdb
+namespace server {
+class HybridClock;
+}  // namespace server
+}  // namespace yb
 
 using std::vector;
 

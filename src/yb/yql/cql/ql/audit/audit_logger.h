@@ -21,20 +21,35 @@
 
 #pragma once
 
-#include <boost/uuid/uuid_generators.hpp>
+#include <stddef.h>
+#include <boost/uuid/random_generator.hpp>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <functional>
 
 #include "yb/yql/cql/ql/ql_fwd.h"
-#include "yb/yql/cql/ql/exec/exec_context.h"
-#include "yb/yql/cql/ql/util/cql_message.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+namespace rpc {
+class Connection;
+}  // namespace rpc
+
 namespace ql {
+class CQLResponse;
+class QLEnv;
+class TreeNode;
+
 namespace audit {
 
 // Whether the statement being logged is being PREPARE'd rather than executed.
 YB_STRONGLY_TYPED_BOOL(IsPrepare)
 YB_STRONGLY_TYPED_BOOL(ErrorIsFormatted)
-
 class Type;
 struct LogEntry;
 

@@ -13,11 +13,7 @@
 
 #include "yb/master/clone/clone_state_entity.h"
 
-#include <optional>
-
-#include "yb/gutil/macros.h"
-#include "yb/gutil/map-util.h"
-#include "yb/master/catalog_entity_info.pb.h"
+#include <utility>
 
 namespace yb::master {
 

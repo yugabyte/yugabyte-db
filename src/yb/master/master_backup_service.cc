@@ -10,15 +10,32 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <memory>
+
 #include "yb/master/catalog_manager.h"
-#include "yb/master/catalog_manager-internal.h"
 #include "yb/master/clone/clone_state_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_backup.service.h"
 #include "yb/master/master_service_base-internal.h"
+#include "yb/gutil/macros.h"
+#include "yb/master/master_service_base.h"
 
 
 namespace yb {
+namespace rpc {
+class ServiceIf;
+}  // namespace rpc
+
 namespace master {
 
 namespace {

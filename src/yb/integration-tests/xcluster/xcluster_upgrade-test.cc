@@ -10,6 +10,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <chrono>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <utility>
+
 #include "yb/client/table.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/integration-tests/xcluster/xcluster_ycql_test_base.h"
@@ -17,6 +28,21 @@
 #include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/mini_master.h"
+#include "gtest/gtest.h"
+#include "yb/cdc/xcluster_types.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_int32(replication_factor);
 DECLARE_int32(limit_auto_flag_promote_for_new_universe);

@@ -22,15 +22,22 @@
 
 #pragma once
 
-#include "yb/util/status_fwd.h"
+#include <stdint.h>
+#include <memory>
+#include <string>
+
 #include "yb/util/memory/arena.h"
 #include "yb/util/memory/mc_types.h"
-
 #include "yb/yql/cql/ql/ptree/ptree_fwd.h"
-#include "yb/yql/cql/ql/util/util_fwd.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace ql {
+class ParseTree;
+class TreeNode;
+class YBLocation;
+enum class ErrorCode : int64_t;
 
 //--------------------------------------------------------------------------------------------------
 

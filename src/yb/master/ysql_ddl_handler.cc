@@ -10,24 +10,70 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/uuid/uuid.hpp>
 #include <chrono>
 #include <optional>
+#include <algorithm>
+#include <functional>
+#include <future>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master.h"
-#include "yb/master/ysql/ysql_manager.h"
 #include "yb/master/object_lock_info_manager.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/ysql_ddl_verification_task.h"
-
 #include "yb/rpc/scheduler.h"
-
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/schema.h"
+#include "yb/common/schema_pbutil.h"
+#include "yb/common/transaction.h"
+#include "yb/gutil/map-util.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/walltime.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/server/clock.h"
+#include "yb/util/debug-util.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/threadpool.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace rpc {
+class RpcContext;
+}  // namespace rpc
+}  // namespace yb
 
 DEFINE_RUNTIME_bool(retry_if_ddl_txn_verification_pending, true,
     "Whether to retry a transaction if it fails verification.");

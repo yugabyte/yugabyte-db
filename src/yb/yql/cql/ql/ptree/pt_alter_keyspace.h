@@ -17,11 +17,17 @@
 
 #pragma once
 
+#include <string>
+#include <utility>
+
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/pt_keyspace_property.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 
 namespace yb {
 namespace ql {
+class SemContext;
 
 //--------------------------------------------------------------------------------------------------
 // ALTER KEYSPACE statement.

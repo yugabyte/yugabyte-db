@@ -87,24 +87,15 @@
 #pragma once
 
 #include <stddef.h>
-#include <stdint.h>     // for uintptr_t
 #include <string.h>
-#include <algorithm>
 #include <string>
 #include <string_view>
-#include <utility>
 
-#include "yb/gutil/casts.h"
-#include "yb/gutil/int128.h"
 #include "yb/gutil/integral_types.h"
-#include "yb/gutil/macros.h"
-#include "yb/gutil/port.h"
-#include "yb/gutil/hash/city.h"
-#include "yb/gutil/hash/hash128to64.h"
 #include "yb/gutil/hash/jenkins.h"
-#include "yb/gutil/hash/jenkins_lookup2.h"
 #include "yb/gutil/hash/legacy_hash.h"
 #include "yb/gutil/hash/string_hash.h"
+#include "yb/gutil/hash/builtin_type_hash.h"
 
 // ----------------------------------------------------------------------
 // Fingerprint()

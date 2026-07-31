@@ -13,16 +13,26 @@
 
 #pragma once
 
-#include <map>
 #include <string>
 
 #include "yb/gen_yrpc/gen_yrpc_fwd.h"
 
-#include "yb/rpc/lightweight_message.pb.h"
-
-#include "yb/util/status_fwd.h"
+namespace google {
+namespace protobuf {
+class Descriptor;
+class EnumDescriptor;
+class FieldDescriptor;
+class FileDescriptor;
+class MethodDescriptor;
+class ServiceDescriptor;
+}  // namespace protobuf
+}  // namespace google
 
 namespace yb {
+namespace rpc {
+enum RpcSides : int;
+}  // namespace rpc
+
 namespace gen_yrpc {
 
 class FileSubstitutions {

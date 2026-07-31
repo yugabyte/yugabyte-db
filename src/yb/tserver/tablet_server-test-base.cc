@@ -13,40 +13,61 @@
 
 #include "yb/tserver/tablet_server-test-base.h"
 
-#include "yb/client/yb_table_name.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <chrono>
+#include <functional>
+#include <ostream>
+#include <thread>
 
+#include "yb/client/yb_table_name.h"
 #include "yb/qlexpr/ql_expr.h"
 #include "yb/common/wire_protocol-test-util.h"
-
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.proxy.h"
-
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
-
 #include "yb/dockv/reader_projection.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/server/server_base.proxy.h"
-
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_server_test_util.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_graph.h"
+#include "gtest/gtest.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/value.pb.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/server/server_fwd.h"
+#include "yb/tserver/backup.proxy.h"
+#include "yb/tserver/tablet_server_options.h"
+#include "yb/tserver/tserver.messages.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
 
 using std::string;
 using std::vector;
@@ -65,10 +86,6 @@ DECLARE_bool(allow_encryption_at_rest);
 METRIC_DEFINE_entity(test);
 
 namespace yb {
-
-namespace client {
-class YBTableName;
-}
 
 namespace tserver {
 

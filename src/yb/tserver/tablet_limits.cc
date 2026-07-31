@@ -13,9 +13,12 @@
 
 #include "yb/tserver/tablet_limits.h"
 
-#include "yb/tserver/tablet_memory_manager.h"
+#include <limits>
+#include <optional>
 
+#include "yb/tserver/tablet_memory_manager.h"
 #include "yb/util/cgroups.h"
+#include "yb/common/tablet_limits.h"
 
 namespace yb::tserver {
 

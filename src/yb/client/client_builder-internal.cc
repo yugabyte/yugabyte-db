@@ -32,16 +32,10 @@
 
 #include "yb/client/client_builder-internal.h"
 
-#include <map>
-#include <set>
+#include <gflags/gflags.h>
 
-#include <boost/preprocessor/cat.hpp>
-#include <boost/preprocessor/stringize.hpp>
-
-#include "yb/util/metrics_fwd.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/metric_entity.h"
-#include "yb/util/flags.h"
+#include "yb/util/flags/flag_tags.h"
 
 DEFINE_NON_RUNTIME_int32(yb_client_num_reactors, 16,
     "Number of reactor threads for the yb client to communicate with different tservers.");

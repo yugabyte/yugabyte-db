@@ -13,22 +13,23 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/dockv/partition.h"
+#include <stdint.h>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <vector>
 
 #include "yb/integration-tests/cql_test_base.h"
 #include "yb/integration-tests/cql_test_util.h"
-
-#include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
-
-#include "yb/util/format.h"
-#include "yb/util/logging.h"
-#include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
-
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
-#include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/cql/cqlserver/cql_server.h"
+#include "gtest/gtest.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
+#include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 using std::string;
 using namespace std::literals;

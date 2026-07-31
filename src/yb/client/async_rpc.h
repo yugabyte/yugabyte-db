@@ -14,37 +14,48 @@
 #pragma once
 
 #include <boost/range/iterator_range_core.hpp>
-#include <boost/version.hpp>
+#include <stddef.h>
+#include <stdint.h>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "yb/ash/ash_fwd.h"
-
 #include "yb/client/in_flight_op.h"
 #include "yb/client/tablet_rpc.h"
-
 #include "yb/common/common_fwd.h"
-#include "yb/common/common_types.pb.h"
 #include "yb/common/opid.h"
 #include "yb/common/read_hybrid_time.h"
-
 #include "yb/rpc/rpc_fwd.h"
-
 #include "yb/tserver/tserver.pb.h"
-
 #include "yb/util/memory/arena_fwd.h"
-#include "yb/util/metrics_fwd.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rpc/rpc.h"
+#include "yb/tserver/tserver.messages.h"
+#include "yb/util/format.h"
+#include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class MetricEntity;
+class RefCntBuffer;
+enum YBConsistencyLevel : int;
+namespace tserver {
+class TabletServerServiceProxy;
+}  // namespace tserver
+template <class TValue> class Result;
+
 namespace client {
 
 class YBTable;
-class YBClient;
 
 namespace internal {
 
-class Batcher;
-struct InFlightOp;
 class RemoteTablet;
-class RemoteTabletServer;
 
 // Container for async rpc metrics
 struct AsyncRpcMetrics {

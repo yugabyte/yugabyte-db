@@ -23,12 +23,14 @@
 
 #pragma once
 
+#include <pthread.h>
+#include <stdint.h>
 #include <atomic>
 #include <unordered_map>
 #include <vector>
 
-#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/autovector.h"
+#include "yb/rocksdb/port/port_posix.h"
 
 #ifndef ROCKSDB_SUPPORT_THREAD_LOCAL  // NOLINT
 #if !defined(OS_WIN) && !defined(OS_MACOSX) && !defined(IOS_CROSS_COMPILE)

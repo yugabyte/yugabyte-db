@@ -26,6 +26,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
 
 // Include base lexer class. FLEX might or might not "include <FlexLexer.h>" in its code and
 // generated code. The macro "yyFlexLexerOnce" is used here to guard duplicate includes.
@@ -34,14 +37,15 @@
 #endif
 
 #include "yb/util/memory/mc_types.h"
-
 #include "yb/yql/cql/ql/parser/parse_context.h"
-
 // Include auto-generated file from YACC.
 #include "yb/yql/cql/ql/parser/parser_gram.y.final.hh"
+#include "yb/util/memory/arena.h"
+#include "yb/yql/cql/ql/parser/location.hh"
 
 namespace yb {
 namespace ql {
+enum class ErrorCode : int64_t;
 
 //--------------------------------------------------------------------------------------------------
 // Various declarations that are used for keyword, identifier, and text.

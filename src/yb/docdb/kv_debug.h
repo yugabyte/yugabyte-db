@@ -17,13 +17,16 @@
 
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
-
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/docdb_types.h"
 #include "yb/dockv/doc_key.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 namespace docdb {
+class SchemaPackingProvider;
+enum class KeyType;
+enum class StorageDbType;
 
 Result<std::string> DocDBKeyToDebugStr(
     Slice key_slice, StorageDbType db_type,

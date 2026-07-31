@@ -18,11 +18,18 @@
 //
 #include "yb/util/condition_variable.h"
 
-#include "yb/util/logging.h"
+#include <errno.h>
+#include <glog/logging.h>
+#include <time.h>
+#include <ostream>
+#include <string>
 
+#include "yb/util/logging.h"
 #include "yb/util/errno.h"
 #include "yb/util/monotime.h"
 #include "yb/util/thread_restrictions.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/util/mutex.h"
 
 using std::string;
 

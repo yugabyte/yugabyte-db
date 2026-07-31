@@ -12,6 +12,13 @@
 
 #include "yb/yql/pggate/ybc_pggate.h"
 
+#include <arpa/inet.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/socket.h>
+#include <boost/container/small_vector.hpp>
 #include <algorithm>
 #include <atomic>
 #include <limits>
@@ -23,36 +30,31 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <cstring>
+#include <functional>
+#include <new>
+#include <optional>
+#include <ostream>
+#include <span>
 
-#include "yb/client/session.h"
-#include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
-
-#include "yb/common/common_flags.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/jsonb.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-
 #include "yb/dockv/pg_key_decoder.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/numbers.h"
-
 #include "yb/gutil/walltime.h"
 #include "yb/server/clockbound_clock.h"
 #include "yb/server/skewed_clock.h"
-
 #include "yb/tablet/tablet.pb.h"
-
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/tserver_cgroup_manager.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/jwt_util.h"
@@ -62,24 +64,45 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/tcmalloc_profile.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/thread_pool.h"
 #include "yb/util/yb_partition.h"
-
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_flush_debug_context.h"
-#include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_value.h"
 #include "yb/yql/pggate/pggate.h"
-#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pggate/pggate_thread_local_vars.h"
 #include "yb/yql/pggate/util/pg_wire.h"
 #include "yb/yql/pggate/pg_global_view_read.h"
 #include "yb/yql/pggate/util/ybc-internal.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/ash/wait_state.h"
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/util/cgroups.h"
+#include "yb/util/enums.h"
+#include "yb/util/faststring.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/uuid.h"
+#include "yb/yql/pggate/pg_memctx.h"
+#include "yb/yql/pggate/pg_sys_table_prefetcher.h"
+#include "yb/yql/pggate/pg_type.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 
 DEFINE_UNKNOWN_int32(pggate_num_connections_to_server, 1,
              "Number of underlying connections to each server from a PostgreSQL backend process. "

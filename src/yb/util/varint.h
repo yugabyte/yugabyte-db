@@ -13,9 +13,18 @@
 
 #pragma once
 
-#include <openssl/ossl_typ.h>
+#include <openssl/types.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <type_traits>
+#include <utility>
 
 #include "yb/util/slice.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

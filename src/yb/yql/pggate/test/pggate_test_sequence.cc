@@ -13,11 +13,20 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <glog/logging.h>
+#include <stdint.h>
 #include <limits>
+#include <string>
+#include <utility>
 
 #include "yb/util/yb_pg_errcodes.h"
 #include "yb/yql/pggate/test/pggate_test.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "gtest/gtest.h"
+#include "yb/util/logging.h"
+#include "yb/util/status_log.h"
+#include "yb/yql/pggate/util/ybc_util.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
 namespace pggate {

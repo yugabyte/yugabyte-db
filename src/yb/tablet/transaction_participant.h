@@ -16,55 +16,69 @@
 #pragma once
 
 #include <stdint.h>
-
-#include <cstdint>
+#include <stddef.h>
+#include <boost/container/small_vector.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <functional>
-#include <future>
 #include <memory>
-#include <type_traits>
+#include <optional>
+#include <string>
+#include <utility>
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/opid.h"
 #include "yb/common/opid.pb.h"
 #include "yb/common/transaction.h"
-
-#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/storage_set.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
-#include "yb/server/server_fwd.h"
-
-#include "yb/tablet/operations.fwd.h"
-#include "yb/tablet/tablet_fwd.h"
-
-#include "yb/util/enums.h"
-#include "yb/util/math_util.h"
-#include "yb/util/mem_tracker.h"
-
-namespace rocksdb {
-
-class DB;
-class WriteBatch;
-
-}
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 
 class MetricEntity;
-class HybridTime;
 class OneWayBitmap;
 class RWOperationCounter;
 class TransactionMetadataPB;
+class MemTracker;
+
+namespace docdb {
+class WaitQueue;
+struct ApplyTransactionState;
+struct DocDB;
+}  // namespace docdb
+namespace rpc {
+class RpcContext;
+}  // namespace rpc
 
 namespace tserver {
 
 class GetTransactionStatusAtParticipantResponsePB;
-class TransactionStatePB;
 
 }
 
 namespace tablet {
+class LWTransactionStatePB;
+class TransactionIntentApplier;
+class TransactionParticipantContext;
+class UpdateTxnOperation;
 
 struct TransactionApplyData {
   int64_t leader_term = -1;
@@ -106,7 +120,6 @@ struct TransactionalBatchData {
 };
 
 class FastModeTransactionScope;
-
 YB_STRONGLY_TYPED_BOOL(OnlyAbortTxnsNotUsingTableLocks);
 
 // TransactionParticipant manages running transactions, i.e. transactions that have intents in
@@ -284,6 +297,7 @@ class TransactionParticipant : public TransactionStatusManager {
   friend class FastModeTransactionScope;
 
   class Impl;
+
   std::shared_ptr<Impl> impl_;
 };
 

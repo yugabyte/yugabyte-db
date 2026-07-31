@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include <stdint.h>
+
 #include <atomic>
 #include <memory>
 
@@ -27,8 +29,8 @@ namespace rocksdb {
 
 class Env;
 class WriteControllerToken;
-
 // WriteController is controlling write stalls in our write code-path. Write
+
 // stalls happen when compaction can't keep up with write rate.
 // Most methods (GetDelay, token creation/destruction) must be called while
 // holding DB mutex. IsStopped() and NeedsDelay() are safe to call without

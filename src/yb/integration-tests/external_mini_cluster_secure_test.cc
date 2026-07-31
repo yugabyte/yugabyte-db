@@ -11,16 +11,28 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/stringize.hpp>
+#include <chrono>
+#include <functional>
+#include <initializer_list>
+#include <memory>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <vector>
+
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/cql_test_util.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/file_util.h"
 #include "yb/util/env_util.h"
@@ -28,6 +40,28 @@
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/tostring.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/path_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_bool(allow_insecure_connections);
 DECLARE_bool(enable_stream_compression);

@@ -32,8 +32,17 @@
 
 #include "yb/rpc/connection.h"
 
+#include <ev.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/operators.hpp>
 #include <atomic>
 #include <utility>
+#include <algorithm>
+#include <compare>
+#include <mutex>
+#include <ostream>
+#include <ratio>
 
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/messenger.h"
@@ -43,7 +52,6 @@
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rpc_metrics.h"
-
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
 #include "yb/util/format.h"
@@ -54,6 +62,26 @@
 #include "yb/util/string_util.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/rpc/outbound_call.h"
+#include "yb/rpc/outbound_data.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/net/socket.h"
+#include "yb/util/random_util.h"
+#include "yb/util/source_location.h"
+
+namespace ev {
+struct loop_ref;
+struct timer;
+}  // namespace ev
+namespace yb {
+namespace rpc {
+class CallStateListenerFactory;
+struct CallData;
+}  // namespace rpc
+}  // namespace yb
 
 using namespace std::literals;
 using namespace std::placeholders;

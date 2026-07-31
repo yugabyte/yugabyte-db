@@ -11,11 +11,17 @@
 // under the License.
 //
 
-#include <array>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/intrusive/slist.hpp>
 #include <functional>
 #include <unordered_map>
-#include <span>
 #include <string_view>
+#include <initializer_list>
+#include <new>
+#include <ostream>
+#include <string>
+#include <utility>
 
 #include "yb/util/math_util.h"
 #include "yb/util/random_util.h"
@@ -24,7 +30,11 @@
 #include "yb/util/shmem/shared_mem_allocator.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
-#include "yb/util/thread.h"
+#include "gtest/gtest.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 using namespace std::literals;
 

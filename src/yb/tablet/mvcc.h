@@ -31,19 +31,33 @@
 //
 #pragma once
 
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <condition_variable>
 #include <deque>
-#include <vector>
+#include <memory>
+#include <mutex>
+#include <ostream>
+#include <string>
 
 #include "yb/common/opid.h"
-
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/server/clock.h"
-
 #include "yb/util/enums.h"
-#include "yb/util/math_util.h"
 #include "yb/util/result.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
 namespace tablet {
@@ -166,6 +180,7 @@ class MvccManager {
   const std::string& LogPrefix() const { return prefix_; }
 
   struct InvariantViolationLoggingHelper;
+
   InvariantViolationLoggingHelper InvariantViolationLogPrefix() const REQUIRES(mutex_);
 
   friend std::ostream& operator<<(

@@ -13,26 +13,20 @@
 
 #include "yb/yql/pggate/pg_op.h"
 
-#include "yb/client/table.h"
+#include <glog/logging.h>
+#include <stdint.h>
+#include <ostream>
+
 #include "yb/client/yb_op.h"
-
-#include "yb/common/pgsql_protocol.pb.h"
-#include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-
-#include "yb/dockv/doc_key.h"
-#include "yb/dockv/partition.h"
-#include "yb/dockv/primitive_value_util.h"
-
-#include "yb/qlexpr/doc_scanspec_util.h"
-
 #include "yb/util/logging.h"
-#include "yb/util/scope_exit.h"
-
 #include "yb/yql/pggate/pg_read_range.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
-#include "yb/yql/pggate/pggate_flags.h"
-#include "yb/yql/pggate/util/ybc_util.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/pg_types.h"
+#include "yb/util/format.h"
+#include "yb/util/memory/arena.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
 
 namespace yb::pggate {
 namespace {

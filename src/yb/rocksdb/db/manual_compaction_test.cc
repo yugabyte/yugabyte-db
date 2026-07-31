@@ -19,18 +19,26 @@
 //
 // Test for issue 178: a manual compaction causes deleted data to reappear.
 
+#include <glog/logging.h>
+#include <stdio.h>
 #include <sstream>
-
-#include <gtest/gtest.h>
+#include <string>
 
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/util/testharness.h"
-
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/storage/storage_types.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
 
 using namespace rocksdb;  // NOLINT
 

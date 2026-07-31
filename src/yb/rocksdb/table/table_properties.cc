@@ -19,10 +19,12 @@
 //
 
 #include "yb/rocksdb/table_properties.h"
-#include "yb/rocksdb/iterator.h"
-#include "yb/rocksdb/port/port.h"
+
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/util/string_util.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/util/monotime.h"
+#include "yb/util/tostring.h"
 
 namespace rocksdb {
 

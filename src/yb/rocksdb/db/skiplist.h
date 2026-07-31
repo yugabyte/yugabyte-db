@@ -47,12 +47,20 @@
 
 #pragma once
 
+#include <alloca.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
 #include <atomic>
+#include <new>
+#include <ostream>
+#include <utility>
 
 #include "yb/util/logging.h"
-
 #include "yb/rocksdb/util/allocator.h"
 #include "yb/rocksdb/util/random.h"
+#include "yb/gutil/port.h"
 
 namespace rocksdb {
 

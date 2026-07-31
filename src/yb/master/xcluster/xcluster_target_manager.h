@@ -13,22 +13,62 @@
 
 #pragma once
 
-#include "yb/master/leader_epoch.h"
-#include "yb/master/master_ddl.fwd.h"
+#include <stdint.h>
+#include <atomic>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <set>
+#include <shared_mutex>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+#include <functional>
+
 #include "yb/master/master_fwd.h"
 #include "yb/master/xcluster/master_xcluster_types.h"
 #include "yb/master/xcluster/xcluster_catalog_entity.h"
-
 #include "yb/util/is_operation_done_result.h"
-#include "yb/util/status_fwd.h"
+#include "yb/cdc/xcluster_types.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class JsonWriter;
+class SchemaPB;
+class ThreadPool;
+
+namespace cdc {
+class ProducerEntryPB;
+}  // namespace cdc
+namespace master {
+class CatalogManager;
+class CreateTableRequestPB;
+class Master;
+class SysCatalogTable;
+class SysClusterConfigEntryPB;
+class SysTablesEntryPB;
+class SysUniverseReplicationEntryPB;
+struct LeaderEpoch;
+struct SplitTabletIds;
+}  // namespace master
+}  // namespace yb
 
 namespace yb::master {
 
 class TSHeartbeatRequestPB;
 class TSHeartbeatResponsePB;
-
 class PostTabletCreateTaskBase;
-class UniverseReplicationInfo;
 class XClusterConsumerReplicationStatusPB;
 class XClusterInboundReplicationGroupSetupTaskIf;
 class XClusterSafeTimeService;

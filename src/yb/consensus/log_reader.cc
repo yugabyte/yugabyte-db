@@ -32,21 +32,46 @@
 
 #include "yb/consensus/log_reader.h"
 
+#include <absl/base/dynamic_annotations.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <algorithm>
 #include <mutex>
+#include <chrono>
+#include <compare>
+#include <deque>
+#include <iterator>
+#include <ostream>
+#include <utility>
 
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/log.messages.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/log_util.h"
-
-#include "yb/gutil/dynamic_annotations.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
+#include "yb/common/opid.h"
+#include "yb/common/opid.messages.h"
+#include "yb/consensus/log.pb.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/walltime.h"
+#include "yb/util/env.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+class MemTracker;
+}  // namespace yb
 
 using std::string;
 

@@ -13,12 +13,14 @@
 
 #pragma once
 
-#include <boost/version.hpp>
+#include <memory>
+#include <string>
 
 #include "yb/rpc/rpc_fwd.h"
-
-#include "yb/util/enums.h"
 #include "yb/util/mem_tracker_fwd.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
@@ -29,6 +31,7 @@ namespace rpc {
 YB_STRONGLY_TYPED_BOOL(MatchingCertKeyPair);
 YB_STRONGLY_TYPED_BOOL(RequireClientCertificate);
 YB_STRONGLY_TYPED_BOOL(UseClientCertificate);
+class Protocol;
 
 class SecureContext {
  public:
@@ -50,6 +53,7 @@ class SecureContext {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 
   friend class SecureRefiner;

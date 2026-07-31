@@ -12,11 +12,13 @@
 //
 #include "yb/common/column_id.h"
 
+#include <glog/logging.h>
+
 #include "yb/util/fast_varint.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
-#include "yb/util/status_log.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 

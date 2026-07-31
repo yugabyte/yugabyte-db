@@ -32,25 +32,45 @@
 
 #include "yb/tablet/operations/change_metadata_operation.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <limits>
+#include <ostream>
+#include <utility>
+
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
-
 #include "yb/consensus/consensus.messages.h"
-#include "yb/consensus/consensus_round.h"
 #include "yb/consensus/log.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/tserver_error.h"
-
 #include "yb/util/async_util.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/gutil/port.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/tablet/metadata.messages.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/result.h"
+#include "yb/util/uuid.h"
+
+namespace yb {
+namespace tablet {
+class ChangeMetadataRequestPB;
+}  // namespace tablet
+}  // namespace yb
 
 DEFINE_test_flag(bool, ignore_apply_change_metadata_on_followers, false,
                  "Used in tests to ignore applying change metadata operation"

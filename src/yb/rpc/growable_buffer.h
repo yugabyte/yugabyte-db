@@ -14,21 +14,19 @@
 //
 #pragma once
 
-#include <iosfwd>
-#include <memory>
-
 #include <boost/circular_buffer.hpp>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/core/pointer_traits.hpp>
+#include <memory>
+#include <ostream>
+#include <string>
 
 #include "yb/rpc/stream.h"
-
 #include "yb/util/mem_tracker.h"
-#include "yb/util/status_fwd.h"
-
 #include "yb/util/net/socket.h"
 
 namespace yb {
-
-class MemTracker;
 
 namespace rpc {
 
@@ -49,6 +47,7 @@ class GrowableBufferAllocator {
 
  private:
   class Impl;
+
   std::shared_ptr<Impl> impl_;
 };
 

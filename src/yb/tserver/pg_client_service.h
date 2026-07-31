@@ -13,31 +13,84 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/facilities/apply.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <functional>
 #include <future>
 #include <memory>
 #include <string>
 #include <unordered_map>
-
-#include "yb/client/client_fwd.h"
-
-#include "yb/gutil/ref_counted.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
-#include "yb/server/server_base_options.h"
+#include <unordered_set>
+#include <utility>
 
 #include "yb/tserver/pg_client.service.h"
 #include "yb/tserver/pg_txn_snapshot_manager.h"
+#include "yb/rpc/rpc_context.h"
+#include "yb/tserver/pg_client.pb.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/util/locks.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+
+template <class T> class scoped_refptr;
 
 namespace yb {
 
 class MemTracker;
+class ClockBase;
+class MetricEntity;
+namespace client {
+class YBClient;
+}  // namespace client
+namespace rpc {
+class Messenger;
+}  // namespace rpc
+namespace server {
+class ServerBaseOptions;
+}  // namespace server
 
 namespace tserver {
 
 class PgMutationCounter;
 class TserverXClusterContextIf;
+class LWPgAcquireObjectLockRequestPB;
+class LWPgAcquireObjectLockResponsePB;
+class LWPgDeleteDBSequencesRequestPB;
+class LWPgDeleteDBSequencesResponsePB;
+class LWPgDeleteSequenceTupleRequestPB;
+class LWPgDeleteSequenceTupleResponsePB;
+class LWPgFetchSequenceTupleRequestPB;
+class LWPgFetchSequenceTupleResponsePB;
+class LWPgGetTableKeyRangesRequestPB;
+class LWPgGetTableKeyRangesResponsePB;
+class LWPgInsertSequenceTupleRequestPB;
+class LWPgInsertSequenceTupleResponsePB;
+class LWPgPerformRequestPB;
+class LWPgPerformResponsePB;
+class LWPgReadSequenceTupleRequestPB;
+class LWPgReadSequenceTupleResponsePB;
+class LWPgUpdateSequenceTupleRequestPB;
+class LWPgUpdateSequenceTupleResponsePB;
+class LWPgWaitForLockersMultipleRequestPB;
+class LWPgWaitForLockersMultipleResponsePB;
+class PgRemoteExecRequestPB;
+class PgRemoteExecResponsePB;
+class TabletServerIf;
 
 // Forwards call to corresponding PgClientSession sync method (see PG_CLIENT_SESSION_METHODS).
 #define YB_PG_CLIENT_METHODS \

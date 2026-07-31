@@ -12,7 +12,24 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+#include <stdint.h>
+#include <boost/uuid/uuid.hpp>
 #include <memory>
+#include <atomic>
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <future>
+#include <map>
+#include <optional>
+#include <ratio>
+#include <set>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "yb/cdc/cdc_producer.h"
 #include "yb/cdc/cdc_service.proxy.h"
@@ -21,17 +38,32 @@
 #include "yb/cdc/cdc_util.h"
 #include "yb/cdc/xrepl_metrics.h"
 #include "yb/cdc/xrepl_types.h"
-
-#include "yb/master/master_client.fwd.h"
-
-#include "yb/rocksdb/rate_limiter.h"
-
 #include "yb/rpc/rpc.h"
-#include "yb/rpc/rpc_context.h"
-
 #include "yb/util/net/net_util.h"
 #include "yb/util/one_time_bool.h"
 #include "yb/util/semaphore.h"
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/xrepl_stream_metadata.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/meta_cache.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/locks.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/monotime.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 namespace rocksdb {
 
@@ -41,6 +73,22 @@ class RateLimiter;
 namespace yb {
 
 class Thread;
+class MetricEntity;
+class MetricRegistry;
+enum YQLDatabase : int;
+
+namespace client {
+class YBClient;
+}  // namespace client
+namespace consensus {
+class ReplicateMsg;
+}  // namespace consensus
+namespace rpc {
+class RpcContext;
+}  // namespace rpc
+namespace tablet {
+class TabletPeer;
+}  // namespace tablet
 
 namespace cdc {
 
@@ -49,12 +97,6 @@ class CDCSDKVirtualWAL;
 class CDCStateTableRange;
 
 }  // namespace cdc
-
-namespace client {
-
-class TableHandle;
-
-}
 
 namespace xrepl {
 

@@ -12,22 +12,33 @@
 
 #include "yb/util/tcmalloc_profile.h"
 
+#include <absl/functional/function_ref.h>
+#include <absl/time/time.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/preprocessor/tuple/to_seq.hpp>
 #include <algorithm>
 #include <chrono>
 #include <sstream>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <atomic>
+#include <ratio>
+#include <functional>
 
 #include "yb/util/tcmalloc_util.h"
-
 #include "absl/debugging/symbolize.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 DEFINE_RUNTIME_int32(dump_heap_snapshot_min_interval_sec, 600,
     "The minimum time to wait between dumping heap snapshots. A value of <= 0 means the logging is "

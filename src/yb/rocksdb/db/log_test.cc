@@ -21,8 +21,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <assert.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 #include <string>
-#include <gtest/gtest.h>
+#include <memory>
+#include <utility>
 
 #include "yb/rocksdb/db/log_reader.h"
 #include "yb/rocksdb/db/log_writer.h"
@@ -33,6 +38,13 @@
 #include "yb/rocksdb/util/random.h"
 #include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/db/log_format.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status.h"
+#include "yb/util/file_system.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 using std::unique_ptr;
 

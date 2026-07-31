@@ -13,11 +13,26 @@
 
 #pragma once
 
-#include "yb/server/auto_flags_manager_base.h"
+#include <stdint.h>
+#include <atomic>
+#include <optional>
 
+#include "yb/server/auto_flags_manager_base.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/clock.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/server/server_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class AutoFlagsConfigPB;
+class FsManager;
+namespace rpc {
+class Messenger;
+}  // namespace rpc
+
 namespace tserver {
 
 // There are three ways in which a new config is loaded on the yb-tservers.

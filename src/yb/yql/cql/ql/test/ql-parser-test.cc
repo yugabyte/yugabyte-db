@@ -13,7 +13,10 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <string>
+
 #include "yb/yql/cql/ql/test/ql-test-base.h"
+#include "gtest/gtest.h"
 
 namespace yb {
 namespace ql {

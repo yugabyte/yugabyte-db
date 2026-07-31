@@ -10,7 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/util/logging.h"
+#include <glog/logging.h>
+#include <string.h>
 
 #include "yb/util/slice.h"
 #include "yb/util/slice_parts.h"

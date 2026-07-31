@@ -37,6 +37,9 @@
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/io/printer.h>
 #include <google/protobuf/io/zero_copy_stream.h>
+#include <stdint.h>
+#include <memory>
+#include <string>
 
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"

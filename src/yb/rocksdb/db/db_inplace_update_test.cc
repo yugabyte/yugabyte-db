@@ -20,8 +20,14 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
+#include <string>
+#include <vector>
+
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/port/stack_trace.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/options.h"
+#include "yb/util/test_macros.h"
 
 namespace rocksdb {
 

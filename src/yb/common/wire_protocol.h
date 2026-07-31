@@ -32,32 +32,44 @@
 // Helpers for dealing with the protobufs defined in wire_protocol.proto.
 #pragma once
 
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <string>
 #include <string_view>
 #include <vector>
+#include <type_traits>
 
-#include "yb/common/common_fwd.h"
-
-#include <google/protobuf/repeated_field.h>
-
-#include "yb/gutil/endian.h"
-
-#include "yb/util/status_fwd.h"
-#include "yb/util/cast.h"
 #include "yb/util/enums.h"
-#include "yb/util/math_util.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/status_ec.h"
 #include "yb/util/type_traits.h"
 #include "yb/util/result.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class AppStatusPB;
+class LWAppStatusPB;
+class LWHostPortPB;
+class ServerRegistrationPB;
+}  // namespace yb
 
 using namespace std::literals;
 
 namespace yb {
 
-class faststring;
 class HostPort;
-class Slice;
 
 // Convert the given C++ Status object into the equivalent Protobuf.
 void StatusToPB(const Status& status, AppStatusPB* pb);

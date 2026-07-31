@@ -13,14 +13,29 @@
 
 #include "yb/master/multi_step_monitored_task.h"
 
-#include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager.h"
+#include <glog/logging.h>
+#include <stddef.h>
+#include <atomic>
+#include <ostream>
+#include <type_traits>
+#include <utility>
 
 #include "yb/rpc/messenger.h"
-
 #include "yb/util/source_location.h"
 #include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"
+#include "yb/gutil/macros.h"
+#include "yb/master/catalog_entity_base.h"
+#include "yb/rpc/scheduler.h"
+#include "yb/util/debug/long_operation_tracker.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/memory.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+#include "yb/util/unique_lock.h"
 
 namespace yb::master {
 

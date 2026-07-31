@@ -13,23 +13,61 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/container/small_vector.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <memory>
+#include <atomic>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <vector>
 
-#include "yb/client/client_fwd.h"
 #include "yb/docdb/docdb.h"
-
 #include "yb/tablet/apply_intents_task.h"
 #include "yb/tablet/remove_intents_task.h"
 #include "yb/tablet/transaction_participant.h"
-
-#include "yb/tserver/tserver_fwd.h"
-
 #include "yb/util/bitmap.h"
-#include "yb/util/operation_counter.h"
 #include "yb/util/status_format.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/transaction.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/gutil/port.h"
+#include "yb/rpc/rpc.h"
+#include "yb/tablet/running_transaction_context.h"
+#include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class ScopedRWOperation;
+namespace client {
+class YBClient;
+}  // namespace client
+namespace tserver {
+class AbortTransactionResponsePB;
+class GetTransactionStatusResponsePB;
+}  // namespace tserver
+
 namespace tablet {
+enum class RemoveReason;
 
 YB_DEFINE_ENUM(UpdateAbortCheckHTMode, (kStatusRequestSent)(kStatusResponseReceived));
 

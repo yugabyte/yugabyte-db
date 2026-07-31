@@ -13,39 +13,32 @@
 
 
 #include <string.h>
-
+#include <gflags/gflags.h>
 #include <memory>
-#include <thread>
-
-#include <glog/stl_logging.h>
-#include <gtest/gtest.h>
+#include <optional>
+#include <string>
+#include <vector>
 
 #include "yb/client/yb_table_name.h"
-
-#include "yb/common/wire_protocol.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
-
-#include "yb/rpc/rpc_context.h"
-
-#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/integration-tests/mini_cluster.h"
-
-#include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/sys_catalog_initialization.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_ddl.pb.h"
-
-#include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
-#include "yb/tserver/ts_tablet_manager.h"
-
-#include "yb/util/backoff_waiter.h"
-#include "yb/util/logging.h"
-
-#include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/test_macros.h"
 
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
 DECLARE_bool(TEST_disable_tablet_deletion);

@@ -31,24 +31,25 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stdint.h>
 #include <chrono>
 #include <shared_mutex>
 #include <string>
-#include <unordered_map>
 
 #include "yb/common/opid.h"
-
 #include "yb/master/leader_epoch.h"
-#include "yb/master/master_fwd.h"
-
-#include "yb/rpc/service_if.h"
-
 #include "yb/util/logging.h"
-#include "yb/util/status_fwd.h"
-#include "yb/util/rw_mutex.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class RWMutex;
+namespace rpc {
+class RpcContext;
+}  // namespace rpc
+
 namespace master {
+class CatalogManager;
 
 // This is how we should instantiate ScopedLeaderSharedLock. Captures context information so we can
 // use it in logging and debugging.

@@ -11,9 +11,19 @@
 // under the License.
 //
 
+#include <stdint.h>
+#include <cmath>
+#include <limits>
+#include <optional>
+#include <set>
+#include <string>
+#include <vector>
+
 #include "yb/util/stol_utils.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/util/result.h"
 
 namespace yb {
 namespace util {

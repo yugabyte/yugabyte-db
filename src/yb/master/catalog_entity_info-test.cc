@@ -10,11 +10,24 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include <gtest/gtest.h>
+#include <atomic>
+#include <memory>
+#include <string>
+#include <unordered_set>
+#include <vector>
+#include <functional>
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/common.pb.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/catalog_entity_base.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/tasks_tracker.h"
+#include "yb/server/monitored_task.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
 namespace master {

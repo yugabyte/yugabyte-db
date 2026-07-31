@@ -13,16 +13,23 @@
 #pragma once
 
 #include <memory>
+#include <set>
+#include <string>
+#include <vector>
 
 #include "yb/rpc/io_thread_pool.h"
-
-#include "yb/server/server_base.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/curl_util.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class Cgroup;
+namespace rpc {
+class Scheduler;
+}  // namespace rpc
+namespace server {
+class RpcAndWebServerBase;
+}  // namespace server
 
 enum class CollectionLevel { ALL, LOW, MEDIUM, HIGH };
 

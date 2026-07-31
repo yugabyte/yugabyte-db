@@ -14,14 +14,23 @@
 #pragma once
 
 #include <memory>
-#include "yb/docdb/docdb_fwd.h"
+#include <string>
+
 #include "yb/dockv/doc_ttl_util.h"
 #include "yb/rocksdb/compaction_filter.h"
-#include "yb/server/hybrid_clock.h"
-#include "yb/util/compare_util.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/server/clock.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+
+namespace rocksdb {
+struct FileMetaData;
+}  // namespace rocksdb
 
 namespace yb {
 namespace docdb {
+class HistoryRetentionPolicy;
 
 typedef enum {
   EXP_NORMAL,

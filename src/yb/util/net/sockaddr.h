@@ -31,15 +31,15 @@
 //
 #pragma once
 
-#include <netinet/in.h>
-
-#include <iosfwd>
-#include <string>
-
 #include <boost/asio/ip/tcp.hpp>
-#undef EV_ERROR // sys/event.h conflicts with libev
+#include <stdint.h>
+#include <boost/asio/ip/address.hpp>
+#include <string>
+#include <cstddef>
 
-#include "yb/util/status_fwd.h"
+#include "yb/util/result.h"
+
+#undef EV_ERROR // sys/event.h conflicts with libev
 
 namespace yb {
 

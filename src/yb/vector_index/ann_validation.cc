@@ -11,19 +11,23 @@
 // under the License.
 //
 
-#include <execution>
-#include <future>
+#include <glog/logging.h>
+#include <boost/uuid/uuid.hpp>
 #include <algorithm>
 #include <unordered_set>
+#include <sstream>
+#include <string>
+#include <functional>
 
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/test_thread_holder.h"
-
 #include "yb/vector_index/ann_validation.h"
-#include "yb/vector_index/hnsw_util.h"
 #include "yb/vector_index/vectorann_util.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/thread_holder.h"
 
 namespace yb::vector_index {
 

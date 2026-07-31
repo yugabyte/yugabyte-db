@@ -18,10 +18,13 @@
 // under the License.
 //
 
+#include <stddef.h>
+#include <boost/container/small_vector.hpp>
 #include <algorithm>
-#include <map>
 #include <string>
 #include <tuple>
+#include <limits>
+#include <utility>
 
 #include "yb/rocksdb/db/compaction_job.h"
 #include "yb/rocksdb/db/column_family.h"
@@ -37,11 +40,37 @@
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
-
 #include "yb/storage/storage_test_util.h"
-
 #include "yb/util/string_util.h"
-#include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/casts.h"
+#include "yb/rocksdb/compaction_filter.h"
+#include "yb/rocksdb/compaction_job_stats.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/db/background_error.h"
+#include "yb/rocksdb/db/compaction.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/db/log_writer.h"
+#include "yb/rocksdb/db/version_edit.h"
+#include "yb/rocksdb/db/write_controller.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/util/event_logger.h"
+#include "yb/rocksdb/util/instrumented_mutex.h"
+#include "yb/rocksdb/util/kv_map.h"
+#include "yb/rocksdb/util/log_buffer.h"
+#include "yb/rocksdb/util/mutable_cf_options.h"
+#include "yb/storage/frontier.h"
+#include "yb/util/clone_ptr.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/rocksdb/status_fwd.h"
+
+namespace rocksdb {
+class MergeOperator;
+}  // namespace rocksdb
 
 using std::unique_ptr;
 

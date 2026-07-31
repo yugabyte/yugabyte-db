@@ -11,33 +11,42 @@
 // under the License.
 //
 
+#include <stddef.h>
+#include <stdint.h>
 #include <string>
 #include <vector>
+#include <chrono>
+#include <functional>
+#include <utility>
 
-#include "yb/client/client-test-util.h"
-#include "yb/client/client.h"
 #include "yb/client/schema.h"
-#include "yb/client/yb_table_name.h"
-
 #include "yb/common/common.pb.h"
-#include "yb/common/common_types.pb.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/snapshot.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
-
 #include "yb/rpc/rpc_controller.h"
-
-#include "yb/tools/yb-admin_client.h"
-
 #include "yb/tserver/backup.pb.h"
 #include "yb/tserver/backup.proxy.h"
 #include "yb/tserver/tserver_admin.proxy.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status_format.h"
+#include "gtest/gtest.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/schema.h"
+#include "yb/tablet/operations.pb.h"
+#include "yb/tablet/tablet.pb.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_admin.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 namespace integration_tests {

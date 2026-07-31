@@ -12,19 +12,24 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <sys/types.h>
+#include <functional>
+#include <map>
+#include <optional>
+#include <string>
+#include <vector>
+
 #include "yb/yql/process_wrapper/common_config.h"
 #include "yb/yql/process_wrapper/process_wrapper.h"
-
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/net/net_util.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
-
-namespace tserver {
-
-class TabletServerIf;
-
-}  // namespace tserver
 
 
 // YsqlConnMgrWrapper: managing one instance of a Ysql Connection Manager child process

@@ -15,10 +15,28 @@
 
 #include <boost/dynamic_bitset/dynamic_bitset.hpp>
 #include <boost/logic/tribool.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <string.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <algorithm>
+#include <ostream>
+#include <type_traits>
+#include <utility>
 
 #include "yb/common/row_mark.h"
-
-#include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/doc_vector_index.h"
 #include "yb/docdb/docdb.messages.h"
@@ -26,29 +44,52 @@
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_format.h"
-#include "yb/docdb/kv_debug.h"
 #include "yb/docdb/transaction_dump.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/intent.h"
-#include "yb/dockv/packed_value.h"
 #include "yb/dockv/schema_packing.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/gutil/walltime.h"
-
 #include "yb/rocksdb/options.h"
-
 #include "yb/tablet/transaction_intent_applier.h"
-
 #include "yb/util/bitmap.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/fast_varint.h"
-#include "yb/util/flags.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status_format.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/transaction.messages.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb_types.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/docdb/lock_util.h"
+#include "yb/dockv/value.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/endian.h"
+#include "yb/gutil/port.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/storage/frontier.h"
+#include "yb/util/enums.h"
+#include "yb/util/faststring.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/slice_parts.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+#include "yb/vector_index/vector_index_fwd.h"
+#include "yb/docdb/object_lock_shared_fwd.h"
+
+namespace rocksdb {
+class DB;
+}  // namespace rocksdb
 
 DEFINE_UNKNOWN_bool(enable_transaction_sealing, false,
             "Whether transaction sealing is enabled.");

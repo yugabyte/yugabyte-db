@@ -13,28 +13,30 @@
 #include "yb/yql/pggate/util/ybc_util.h"
 
 #include <stdarg.h>
-
+#include <errno.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <limits.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <fstream>
 #include <string>
 #include <string_view>
+#include <cstring>
+#include <optional>
+#include <utility>
+#include <vector>
 
 #include "catalog/pg_type_d.h"
-
 #include "yb/ash/wait_state.h"
-
-#include "yb/common/entity_ids.h"
 #include "yb/common/init.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
-
 #include "yb/gutil/stringprintf.h"
-
 #include "yb/util/bytes_formatter.h"
-#include "yb/util/cgroups.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
 #include "yb/util/env.h"
@@ -46,8 +48,24 @@
 #include "yb/util/status_format.h"
 #include "yb/util/stack_trace.h"
 #include "yb/util/thread.h"
-
 #include "yb/yql/pggate/util/ybc-internal.h"
+#include "yb/common/constants.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/gutil/casts.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
+#include "yb/util/yb_pg_errcodes.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
+#include "yb/common/value.messages.h"
 
 using std::string;
 DEFINE_test_flag(string, process_info_dir, string(),

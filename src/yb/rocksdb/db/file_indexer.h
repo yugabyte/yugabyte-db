@@ -24,19 +24,19 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <functional>
-#include <limits>
 #include <vector>
 
-#include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/autovector.h"
+#include "yb/rocksdb/port/port_posix.h"
 
 namespace rocksdb {
 
 class Comparator;
 struct FileMetaData;
-struct FileLevel;
+class Arena;
 
 // The file tree structure in Version is prebuilt and the range of each file
 // is known. On Version::Get(), it uses binary search to find a potential file

@@ -13,6 +13,19 @@
 
 #include "yb/master/master_auto_flags_manager.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <algorithm>
+#include <iterator>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <ostream>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
 #include "yb/consensus/consensus.pb.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
@@ -22,6 +35,31 @@
 #include "yb/tablet/operations/change_auto_flags_config_operation.h"
 #include "yb/util/enum_parse.h"
 #include "yb/util/scope_exit.h"
+#include "yb/common/clock.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/version_info.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.messages.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/server/clock.h"
+#include "yb/tablet/operations/operation.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/flags.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/status_format.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace rpc {
+class Messenger;
+}  // namespace rpc
+}  // namespace yb
 
 DEFINE_NON_RUNTIME_int32(limit_auto_flag_promote_for_new_universe,
     std::to_underlying(yb::AutoFlagClass::kExternal),

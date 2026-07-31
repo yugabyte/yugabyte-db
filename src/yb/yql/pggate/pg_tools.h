@@ -17,7 +17,8 @@
 
 #pragma once
 
-#include <functional>
+#include <stddef.h>
+#include <stdint.h>
 #include <memory>
 #include <span>
 #include <string>
@@ -25,34 +26,35 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
-#include <vector>
+#include <optional>
+#include <ostream>
 
-#include <boost/multi_index/member.hpp>
-
-#include "yb/ash/wait_state.h"
+#include <boost/multi_index/member.hpp>  // IWYU pragma: keep
 
 #include "yb/common/pg_types.h"
-
 #include "yb/common/transaction.pb.h"
-
 #include "yb/gutil/macros.h"
-#include "yb/gutil/ref_counted.h"
-
 #include "yb/util/format.h"
 #include "yb/util/lru_cache.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/slice.h"
-#include "yb/util/status_fwd.h"
-
-#include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+
+namespace yb {
+namespace ash {
+enum class PggateRPC : uint16_t;
+enum class WaitStateCode : uint32_t;
+}  // namespace ash
+namespace pggate {
+class PgsqlOp;
+}  // namespace pggate
+}  // namespace yb
 
 std::ostream& operator<<(std::ostream& str, const YbcObjectLockId& lock_id);
 std::ostream& operator<<(std::ostream& str, const YbcAdvisoryLockId& lock_id);
 
 namespace yb::pggate {
 
-class PgSession;
 class PgTypeInfo;
 
 RowMarkType GetRowMarkType(const YbcPgExecParameters* exec_params);

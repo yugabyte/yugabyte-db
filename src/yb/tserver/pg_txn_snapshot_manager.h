@@ -13,15 +13,15 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <functional>
 #include <memory>
 #include <string>
 
 #include "yb/common/read_hybrid_time.h"
-
 #include "yb/tserver/tserver_fwd.h"
-
 #include "yb/util/result.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 namespace yb::tserver {
 

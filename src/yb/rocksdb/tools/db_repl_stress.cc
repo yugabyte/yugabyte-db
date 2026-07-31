@@ -20,24 +20,33 @@
 
 #ifndef GFLAGS
 #include <cstdio>
+
 int main() {
   fprintf(stderr, "Please install gflags to run rocksdb tools\n");
   return 1;
 }
 #else
 
-#include <cstdio>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <atomic>
 #include <memory>
+#include <string>
 
-#include "yb/util/flags.h"
-
-#include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/types.h"
-#include "yb/rocksdb/util/testutil.h"
-
 #include "yb/util/status_log.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/rocksdb/transaction_log.h"
+#include "yb/rocksdb/util/random.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/rocksdb/status_fwd.h"
 
 // Run a thread to perform Put's.
 // Another thread uses GetUpdatesSince API to keep getting the updates.

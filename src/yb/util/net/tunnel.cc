@@ -14,19 +14,39 @@
 #include "yb/util/net/tunnel.h"
 
 #include <boost/asio/ip/tcp.hpp>
-#include <boost/asio/strand.hpp>
 #include <boost/asio/write.hpp>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/asio.hpp>
+#include <boost/asio/any_io_executor.hpp>
+#include <boost/asio/associated_cancellation_slot.hpp>
+#include <boost/asio/basic_socket_acceptor.hpp>
+#include <boost/asio/basic_stream_socket.hpp>
+#include <boost/asio/buffer.hpp>
+#include <boost/asio/error.hpp>
+#include <boost/asio/io_context.hpp>
+#include <boost/asio/io_context_strand.hpp>
+#include <boost/asio/ip/basic_endpoint.hpp>
+#include <boost/asio/socket_base.hpp>
+#include <boost/system/error_code.hpp>
+#include <boost/asio/async_result.hpp>
+#include <atomic>
+#include <new>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/format.h"
 
 using namespace std::placeholders;
 
 namespace yb {
-
-class TunnelConnection;
 
 typedef std::shared_ptr<class TunnelConnection> TunnelConnectionPtr;
 

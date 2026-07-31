@@ -13,19 +13,34 @@
 
 #pragma once
 
-#include "yb/client/client_fwd.h"
+#include <stddef.h>
+#include <stdint.h>
+#include <optional>
+#include <string>
+#include <vector>
+
 #include "yb/client/schema.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/common_fwd.h"
 #include "yb/common/constants.h"
 #include "yb/common/pg_types.h"
-#include "yb/dockv/partition.h"
-
-#include "yb/tserver/pg_client.fwd.h"
-
 #include "yb/util/monotime.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace yb {
+namespace client {
+class YBClient;
+}  // namespace client
+namespace dockv {
+enum class YBHashSchema;
+}  // namespace dockv
+namespace tserver {
+class PgCreateColumnPB;
+class PgCreateTableRequestPB;
+}  // namespace tserver
+struct TransactionMetadata;
+}  // namespace yb
 
 namespace yb::tserver {
 

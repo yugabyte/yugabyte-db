@@ -11,11 +11,37 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
 #include <algorithm>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <vector>
 
 #include "yb/tablet/tablet_snapshots.h"
-
 #include "yb/tserver/remote_bootstrap_client-test.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/opid.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tserver/remote_bootstrap_client.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/path_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
 
 using std::vector;
 

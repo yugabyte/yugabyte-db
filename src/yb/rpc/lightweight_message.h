@@ -15,14 +15,34 @@
 
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/wire_format_lite.h>
+#include <glog/logging.h>
+#include <google/protobuf/repeated_field.h>
+#include <stdint.h>
+#include <cstddef>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <type_traits>
+#include <utility>
 
 #include "yb/gutil/casts.h"
-
-#include "yb/rpc/serialization.h"
-
 #include "yb/util/memory/arena.h"
-#include "yb/util/memory/arena_list.h"
 #include "yb/util/status.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
+
+namespace google {
+namespace protobuf {
+class Message;
+template <typename Key, typename T> struct MapPair;
+}  // namespace protobuf
+}  // namespace google
+namespace yb {
+template <class Entry> class ArenaList;
+}  // namespace yb
 
 namespace yb::rpc {
 

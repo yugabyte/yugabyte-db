@@ -13,10 +13,20 @@
 
 #pragma once
 
-#include "yb/gen_yrpc/metric_descriptor.h"
+#include <string>
+#include <vector>
+
+namespace google {
+namespace protobuf {
+class FileDescriptor;
+class ServiceDescriptor;
+}  // namespace protobuf
+}  // namespace google
 
 namespace yb {
 namespace gen_yrpc {
+class YBPrinter;
+struct MetricDescriptor;
 
 class ServiceGenerator {
  public:

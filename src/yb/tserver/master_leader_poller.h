@@ -13,15 +13,25 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <memory>
+#include <mutex>
+#include <string>
+
 #include "yb/util/monotime.h"
-#include "yb/util/status_fwd.h"
-
 #include "yb/rpc/rpc.h"
-
-#include "yb/server/server_base_options.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/server/server_fwd.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 class Cgroup;
+namespace rpc {
+class Messenger;
+class ProxyCache;
+}  // namespace rpc
 } // namespace yb
 
 namespace yb::tserver {
@@ -78,6 +88,7 @@ class MasterLeaderPollScheduler {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

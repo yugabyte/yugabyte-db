@@ -13,16 +13,22 @@
 
 #pragma once
 
-#include "yb/client/client_fwd.h"
+#include <memory>
 
-#include "yb/common/transaction.pb.h"
+#include "yb/client/client_fwd.h"
 #include "yb/common/read_hybrid_time.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
 class MetricEntity;
+enum IsolationLevel : int;
+struct TransactionFullLocality;
 
 namespace client {
+class TransactionManager;
 
 // Pool that maintains set of preallocated ready transactions.
 // The size of the pool is auto adjusted, i.e. the more transactions we request - the more
@@ -63,6 +69,7 @@ class TransactionPool {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

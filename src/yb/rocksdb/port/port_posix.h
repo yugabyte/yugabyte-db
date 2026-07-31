@@ -53,12 +53,12 @@
     defined(OS_DRAGONFLYBSD) || defined(OS_ANDROID)
   #include <sys/endian.h>
   #include <sys/types.h>
+
   #define PLATFORM_IS_LITTLE_ENDIAN (_BYTE_ORDER == _LITTLE_ENDIAN)
 #else
   #include <endian.h>
 #endif
 #include <pthread.h>
-
 #include <stdint.h>
 #include <string.h>
 #include <limits>
@@ -100,7 +100,6 @@ const size_t kMaxSizet = std::numeric_limits<size_t>::max();
 static const bool kLittleEndian = PLATFORM_IS_LITTLE_ENDIAN;
 #undef PLATFORM_IS_LITTLE_ENDIAN
 
-class CondVar;
 
 class Mutex {
  public:

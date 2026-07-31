@@ -30,12 +30,12 @@
 // under the License.
 //
 
+#include <errno.h>
 #include <string>
-
-#include <gtest/gtest.h>
 
 #include "yb/gutil/macros.h"
 #include "yb/util/errno.h"
+#include "gtest/gtest.h"
 
 using std::string;
 

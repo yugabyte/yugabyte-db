@@ -13,20 +13,24 @@
 
 #pragma once
 
-#include <mutex>
+#include <stdint.h>
 #include <string>
-
-#include "yb/gutil/macros.h"
+#include <utility>
 
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/operation_filter.h"
-#include "yb/tablet/operations.messages.h"
 #include "yb/tablet/operations/operation.h"
-
 #include "yb/tserver/backup.messages.h"
-#include "yb/util/locks.h"
+#include "yb/tserver/backup.pb.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+namespace consensus {
+enum OperationType : int;
+}  // namespace consensus
+struct OpId;
+
 namespace tablet {
 
 // Operation Context for the TabletSnapshot operation.

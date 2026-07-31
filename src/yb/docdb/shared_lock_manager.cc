@@ -13,30 +13,34 @@
 
 #include "yb/docdb/shared_lock_manager.h"
 
+#include <boost/range/adaptor/reversed.hpp>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/iterator/reverse_iterator.hpp>
+#include <boost/range/begin.hpp>
+#include <boost/range/end.hpp>
 #include <atomic>
 #include <condition_variable>
-#include <iostream>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-#include <boost/range/adaptor/reversed.hpp>
+#include <chrono>
+#include <utility>
+#include <functional>
 
 #include "yb/ash/wait_state.h"
-
-#include "yb/docdb/lock_batch.h"
 #include "yb/docdb/lock_util.h"
-
-#include "yb/dockv/intent.h"
-
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/logging.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/format.h"
 
 namespace yb::docdb {
 

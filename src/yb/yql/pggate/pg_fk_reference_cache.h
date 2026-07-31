@@ -17,11 +17,15 @@
 #include <memory>
 
 #include "yb/common/pg_types.h"
-
 #include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-#include "yb/yql/pggate/pg_session_fwd.h"
-#include "yb/yql/pggate/pg_tools.h"
+namespace yb {
+namespace pggate {
+class PgSession;
+}  // namespace pggate
+}  // namespace yb
 
 namespace yb::pggate {
 

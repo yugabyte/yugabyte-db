@@ -32,28 +32,38 @@
 
 #include "yb/tablet/tablet.h"
 
+#include <boost/container/static_vector.hpp>
+#include <glog/logging.h>
+#include <string.h>
+#include <boost/container/small_vector.hpp>
+#include <boost/move/iterator.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <tuple>
 #include <utility>
-
-#include <boost/container/static_vector.hpp>
+#include <algorithm>
+#include <chrono>
+#include <compare>
+#include <initializer_list>
+#include <limits>
+#include <ratio>
+#include <span>
+#include <sstream>
+#include <thread>
 
 #include "yb/client/client.h"
 #include "yb/client/meta_data_cache.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
-#include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/pgsql_error.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
-
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
-
 #include "yb/docdb/compaction_file_filter.h"
 #include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/consensus_frontier.h"
@@ -72,25 +82,16 @@
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
-
 #include "yb/dockv/value_type.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/utilities/checkpoint.h"
-
 #include "yb/rocksutil/yb_rocksdb.h"
-
 #include "yb/qlexpr/index_column.h"
 #include "yb/qlexpr/ql_rowblock.h"
-
-#include "yb/rpc/thread_pool.h"
-
 #include "yb/server/auto_flags_manager_base.h"
 #include "yb/server/hybrid_clock.h"
-
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/operations/operation.h"
 #include "yb/tablet/operations/snapshot_operation.h"
@@ -108,10 +109,8 @@
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/write_query.h"
-
 #include "yb/tserver/tserver_error.h"
 #include "yb/tserver/ysql_advisory_lock_table.h"
-
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/file_util.h"
@@ -121,7 +120,6 @@
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
-#include "yb/util/net/net_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
@@ -130,9 +128,98 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 #include "yb/util/yb_pg_errcodes.h"
-
 #include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/ash/wait_state.h"
+#include "yb/common/clock.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/constants.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/opid.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/consensus_round.h"
+#include "yb/docdb/bounded_rocksdb_iterator.h"
+#include "yb/docdb/docdb.messages.h"
+#include "yb/docdb/docdb_types.h"
+#include "yb/docdb/read_operation_data.h"
+#include "yb/docdb/wait_queue.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/doc_path.h"
+#include "yb/dockv/doc_ttl_util.h"
+#include "yb/dockv/intent.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/partition.h"
+#include "yb/dockv/reader_projection.h"
+#include "yb/dockv/value.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/stl_util.h"
+#include "yb/gutil/strings/escaping.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/qlexpr/index.h"
+#include "yb/qlexpr/ql_expr.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/version_edit.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/rate_limiter.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/table.h"
+#include "yb/rocksdb/types.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/rocksutil/write_batch_formatter.h"
+#include "yb/server/clock.h"
+#include "yb/storage/frontier.h"
+#include "yb/storage/storage_fwd.h"
+#include "yb/storage/storage_types.h"
+#include "yb/tablet/metadata.messages.h"
+#include "yb/tablet/operations.messages.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/atomic.h"
+#include "yb/util/bytes_formatter.h"
+#include "yb/util/env.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/math_util.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/path_util.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/threadpool.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uint_set.h"
+#include "yb/util/uuid.h"
+
+namespace rocksdb {
+class Env;
+}  // namespace rocksdb
+namespace yb {
+class HostPort;
+class LWSubTransactionMetadataPB;
+class WriteBuffer;
+namespace consensus {
+enum OperationType : int;
+}  // namespace consensus
+namespace docdb {
+class StorageSet;
+}  // namespace docdb
+}  // namespace yb
 
 DEPRECATE_FLAG(bool, tablet_do_dup_key_checks, "02_2024");
 

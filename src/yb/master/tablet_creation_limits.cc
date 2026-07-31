@@ -13,11 +13,22 @@
 
 #include "yb/master/tablet_creation_limits.h"
 
-#include "yb/master/catalog_entity_info.h"
+#include <glog/logging.h>
+#include <stdint.h>
+#include <limits>
+#include <memory>
+#include <optional>
+#include <ostream>
+
 #include "yb/master/catalog_manager_util.h"
 #include "yb/master/ts_descriptor.h"
-
-#include "yb/util/atomic.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 DEFINE_RUNTIME_bool(enforce_tablet_replica_limits, false,
     "When set, create table and split tablet operations will be blocked if they would cause the "

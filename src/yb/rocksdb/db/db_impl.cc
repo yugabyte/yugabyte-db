@@ -29,38 +29,50 @@
 
 #include <inttypes.h>
 #include <stdint.h>
+#include <alloca.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #ifdef OS_SOLARIS
 #include <alloca.h>
 #endif
 
+#include <boost/container/small_vector.hpp>
 #include <algorithm>
-#include <climits>
 #include <map>
-#include <set>
-#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
-
-#include <boost/container/small_vector.hpp>
+#include <chrono>
+#include <compare>
+#include <iterator>
+#include <limits>
+#include <optional>
+#include <ostream>
+#include <thread>
 
 #include "yb/ash/wait_state.h"
-
-#include "yb/gutil/stringprintf.h"
-
 #include "yb/util/atomic.h"
 #include "yb/util/callsite_profiling.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/fault_injection.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/priority_thread_pool.h"
-#include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/string_util.h"
-
 #include "yb/rocksdb/db/builder.h"
 #include "yb/rocksdb/db/compaction_job.h"
 #include "yb/rocksdb/db/compaction_picker.h"
@@ -79,26 +91,19 @@
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/db/memtable_list.h"
 #include "yb/rocksdb/db/merge_context.h"
-#include "yb/rocksdb/db/merge_helper.h"
 #include "yb/rocksdb/db/table_cache.h"
-#include "yb/rocksdb/db/table_properties_collector.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/db/write_batch_internal.h"
-#include "yb/rocksdb/db/write_callback.h"
 #include "yb/rocksdb/db/writebuffer.h"
 #include "yb/rocksdb/port/likely.h"
-#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/listener.h"
 #include "yb/rocksdb/sst_file_writer.h"
 #include "yb/rocksdb/statistics.h"
-#include "yb/rocksdb/status.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/wal_filter.h"
-#include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/index_iterator.h"
 #include "yb/rocksdb/table/merger.h"
 #include "yb/rocksdb/table/scoped_arena_iterator.h"
@@ -110,8 +115,6 @@
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/file_util.h"
 #include "yb/rocksdb/util/log_buffer.h"
-#include "yb/rocksdb/util/logging.h"
-#include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/util/sst_file_manager_impl.h"
 #include "yb/rocksdb/util/options_helper.h"
 #include "yb/rocksdb/util/options_parser.h"
@@ -119,12 +122,42 @@
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/task_metrics.h"
 #include "yb/rocksdb/db/db_iterator_wrapper.h"
-
-#include "yb/util/compare_util.h"
 #include "yb/util/enums.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stats/iostats_context_imp.h"
 #include "yb/util/sync_point.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+#include "yb/rocksdb/compaction_job_stats.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/db/internal_stats.h"
+#include "yb/rocksdb/db/version_edit.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/perf_context.h"
+#include "yb/rocksdb/snapshot.h"
+#include "yb/rocksdb/table/internal_iterator.h"
+#include "yb/rocksdb/table/iterator_wrapper.h"
+#include "yb/rocksdb/table/table_reader.h"
+#include "yb/rocksdb/table_properties.h"
+#include "yb/rocksdb/universal_compaction.h"
+#include "yb/rocksdb/util/arena.h"
+#include "yb/rocksdb/util/mutable_cf_options.h"
+#include "yb/rocksdb/util/statistics.h"
+#include "yb/storage/frontier.h"
+#include "yb/util/clone_ptr.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/io.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/monotime.h"
+#include "yb/util/stats/perf_step_timer.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
 
 using std::unique_ptr;
 using std::shared_ptr;

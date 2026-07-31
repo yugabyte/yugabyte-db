@@ -13,67 +13,71 @@
 
 #include "yb/docdb/docdb.h"
 
-#include <algorithm>
-#include <limits>
-#include <memory>
-#include <stack>
-#include <string>
-#include <unordered_map>
-#include <vector>
-#include <fstream>
-
 #include <boost/logic/tribool.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/container/small_vector.hpp>
+#include <memory>
+#include <string>
+#include <vector>
+#include <array>
+#include <chrono>
+#include <sstream>
+#include <utility>
 
-#include "yb/common/hybrid_time.h"
-#include "yb/common/ql_protocol.messages.h"
-#include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
-
-#include "yb/docdb/conflict_resolution.h"
 #include "yb/docdb/cql_operation.h"
-#include "yb/docdb/doc_rowwise_iterator.h"
-#include "yb/docdb/docdb-internal.h"
-#include "yb/docdb/docdb.messages.h"
-#include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/docdb_types.h"
-#include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/intent_format.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
-
 #include "yb/dockv/doc_key.h"
-#include "yb/dockv/doc_kv_util.h"
 #include "yb/dockv/intent.h"
-#include "yb/dockv/subdocument.h"
-#include "yb/dockv/value.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/gutil/casts.h"
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/rocksdb/options.h"
-
-#include "yb/rocksutil/write_batch_formatter.h"
-
-#include "yb/server/hybrid_clock.h"
-
 #include "yb/tablet/tablet_metrics.h"
-
 #include "yb/util/bitmap.h"
-#include "yb/util/bytes_formatter.h"
-#include "yb/util/enums.h"
-#include "yb/util/fast_varint.h"
 #include "yb/util/file_util.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
-#include "yb/util/metrics.h"
-#include "yb/util/pb_util.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-
 #include "yb/yql/cql/ql/util/errcodes.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol.messages.h" // IWYU pragma: keep
+#include "yb/common/transaction.pb.h"
+#include "yb/docdb/bounded_rocksdb_iterator.h"
+#include "yb/docdb/doc_operation.h"
+#include "yb/docdb/docdb.messages.h" // IWYU pragma: keep
+#include "yb/docdb/doc_write_batch.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/docdb/lock_util.h"
+#include "yb/docdb/read_operation_data.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/gutil/port.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/util/faststring.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/slice_parts.h"
+#include "yb/util/strongly_typed_uuid.h"
+
+namespace rocksdb {
+class DB;
+}  // namespace rocksdb
+namespace yb {
+class ScopedRWOperation;
+
+namespace docdb {
+class SchemaPackingProvider;
+class SharedLockManager;
+}  // namespace docdb
+}  // namespace yb
 
 using std::string;
 using std::stringstream;

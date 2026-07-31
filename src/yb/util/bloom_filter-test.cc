@@ -29,10 +29,16 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include "yb/util/logging.h"
-#include <gtest/gtest.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <ostream>
+#include <string>
 
+#include "yb/util/logging.h"
 #include "yb/util/bloom_filter.h"
+#include "gtest/gtest.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 

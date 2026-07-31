@@ -38,7 +38,6 @@
 #pragma once
 
 #include "yb/gutil/atomicops.h"
-#include "yb/gutil/integral_types.h"
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"

@@ -14,7 +14,12 @@
 //
 #include "yb/rocksdb/slice_transform.h"
 
+#include <assert.h>
+#include <algorithm>
+#include <string>
+
 #include "yb/util/string_util.h"
+#include "yb/util/tostring.h"
 
 namespace rocksdb {
 

@@ -18,22 +18,33 @@
 // under the License.
 //
 
+#include <errno.h>
+#include <glog/logging.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <fstream>
 #include <string>
 #include <thread>
 #include <vector>
-
-#include <gtest/gtest.h>
+#include <algorithm>
+#include <functional>
+#include <iostream>
+#include <iterator>
+#include <sstream>
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/auto_roll_logger.h"
-#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/util/posix_logger.h"
+#include "yb/util/logging.h"
 
 using std::string;
 using std::shared_ptr;

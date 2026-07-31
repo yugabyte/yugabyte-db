@@ -29,10 +29,15 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <ostream>
+#include <string>
+
 #include "yb/util/debug-util.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/malloc.h"
+#include "yb/util/flags/flag_tags.h"
 
 #if defined(__linux__)
 #include <malloc.h>

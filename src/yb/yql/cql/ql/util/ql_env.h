@@ -20,21 +20,39 @@
 
 #pragma once
 
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
 #include "yb/client/client_fwd.h"
-
-#include "yb/common/common_types.pb.h"
-#include "yb/common/transaction.pb.h"
-
-#include "yb/server/hybrid_clock.h"
-
-#include "yb/util/enums.h"
-
-#include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/ql_session.h"
 #include "yb/yql/cql/ql/util/util_fwd.h"
+#include "yb/client/table.h"
+#include "yb/client/table_alterer.h"
+#include "yb/client/table_creator.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/ql_type.h"
+#include "yb/server/clock.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+enum IsolationLevel : int;
+enum PermissionType : int;
+enum ResourceType : int;
+
+namespace client {
+class TransactionPool;
+class YBClient;
+class YBMetaDataCache;
+class YBTableName;
+}  // namespace client
+
 namespace ql {
+enum class ObjectType : int;
 
 class QLEnv {
  public:

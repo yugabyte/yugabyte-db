@@ -21,7 +21,10 @@
 
 #pragma once
 
+#include <stddef.h>
+
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 namespace yb::pggate {
 
 //-----------------------------------------------------------------------------

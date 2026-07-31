@@ -13,10 +13,11 @@
 
 #pragma once
 
-#include "yb/yql/redis/redisserver/redis_fwd.h"
-#include "yb/yql/redis/redisserver/redis_service.service.h"
-
 #include <memory>
+#include <string>
+
+#include "yb/yql/redis/redisserver/redis_service.service.h"
+#include "yb/rpc/rpc_fwd.h"
 
 namespace yb {
 namespace redisserver {
@@ -33,6 +34,7 @@ class RedisServiceImpl : public RedisServerServiceIf {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

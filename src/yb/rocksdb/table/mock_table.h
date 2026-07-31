@@ -21,23 +21,33 @@
 //
 #pragma once
 
-#include <algorithm>
+#include <assert.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <atomic>
 #include <map>
-#include <memory>
 #include <string>
 #include <utility>
+#include <initializer_list>
 
-#include "yb/rocksdb/comparator.h"
-#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/table/table_reader.h"
 #include "yb/rocksdb/util/kv_map.h"
 #include "yb/rocksdb/util/mutexlock.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/table_properties.h"
+#include "yb/util/slice.h"
 
 namespace rocksdb {
+class Env;
+class RandomAccessFileReader;
+class WritableFileWriter;
+
 namespace mock {
 
 stl_wrappers::KVMap MakeMockFile(

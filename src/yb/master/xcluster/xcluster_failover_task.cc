@@ -13,6 +13,15 @@
 
 #include "yb/master/xcluster/xcluster_failover_task.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <ostream>
+#include <unordered_map>
+#include <utility>
+
 #include "yb/common/constants.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
@@ -20,8 +29,35 @@
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/tablet_split_manager.h"
 #include "yb/master/xcluster/xcluster_target_manager.h"
-
 #include "yb/util/status_format.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_backup.pb.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/master/sys_catalog.h"
+#include "yb/master/xcluster/xcluster_manager.h"
+#include "yb/server/monitored_task.h"
+#include "yb/util/debug-util.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_string.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+class ThreadPool;
+
+namespace rpc {
+class Messenger;
+}  // namespace rpc
+}  // namespace yb
 
 DEFINE_RUNTIME_uint32(xcluster_failover_restoration_wait_secs, 120,
     "Maximum number of seconds to wait for an xCluster failover restoration to finish before "

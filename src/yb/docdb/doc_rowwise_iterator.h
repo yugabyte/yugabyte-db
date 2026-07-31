@@ -13,33 +13,69 @@
 
 #pragma once
 
-#include <atomic>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <string>
-#include <variant>
-
-#include "yb/common/hybrid_time.h"
-#include "yb/common/read_hybrid_time.h"
-#include "yb/common/schema.h"
+#include <functional>
+#include <memory>
+#include <optional>
 
 #include "yb/docdb/deadline_info.h"
-#include "yb/docdb/doc_pgsql_scanspec.h"
-#include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 #include "yb/docdb/read_operation_data.h"
-
 #include "yb/dockv/pg_key_decoder.h"
 #include "yb/dockv/subdocument.h"
-#include "yb/dockv/value.h"
-
-#include "yb/qlexpr/ql_scanspec.h"
-
-#include "yb/rocksdb/db.h"
-
 #include "yb/util/operation_counter.h"
-#include "yb/util/status_fwd.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/transaction.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/util/enums.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace rocksdb {
+class ReadFileFilter;
+}  // namespace rocksdb
+namespace yb {
+class Schema;
+enum TableType : int;
+namespace docdb {
+class BloomFilterOptions;
+class ScanChoices;
+struct DocReadContext;
+}  // namespace docdb
+namespace dockv {
+class PgTableRow;
+class SchemaPackingStorage;
+struct ReaderProjection;
+}  // namespace dockv
+namespace qlexpr {
+class QLTableRow;
+class YQLScanSpec;
+}  // namespace qlexpr
+}  // namespace yb
 
 namespace yb::docdb {
 

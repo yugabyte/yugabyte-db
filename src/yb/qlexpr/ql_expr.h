@@ -7,23 +7,49 @@
 #pragma once
 
 #include <boost/container/small_vector.hpp>
+#include <stddef.h>
+#include <stdint.h>
+#include <functional>
+#include <limits>
+#include <memory>
+#include <optional>
+#include <string>
+#include <type_traits>
+#include <unordered_map>
+#include <utility>
 
 #include "yb/bfql/tserver_opcodes.h"
 #include "yb/bfpg/tserver_opcodes.h"
-
 #include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/value.messages.h"
-
-#include "yb/dockv/dockv_fwd.h"
-
-#include "yb/gutil/casts.h"
-
-#include "yb/qlexpr/qlexpr_fwd.h"
-
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/common/value.pb.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+
+namespace yb {
+class LWPgsqlBCallPB;
+class LWPgsqlConditionPB;
+class LWPgsqlExpressionPB;
+class LWQLBCallPB;
+class LWQLConditionPB;
+class LWQLExpressionPB;
+class PgsqlBCallPB;
+class PgsqlConditionPB;
+class PgsqlExpressionPB;
+class QLBCallPB;
+class QLConditionPB;
+class QLExpressionPB;
+class Schema;
+namespace dockv {
+class PgTableRow;
+}  // namespace dockv
+}  // namespace yb
 
 namespace yb::qlexpr {
 
@@ -51,7 +77,6 @@ struct QLTableColumn {
 
 template <class Val>
 class ExprResultWriter;
-
 template <class Val>
 class ExprResult;
 

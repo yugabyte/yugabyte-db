@@ -13,14 +13,24 @@
 
 #include "yb/gen_yrpc/messages_generator.h"
 
-#include <boost/algorithm/string/predicate.hpp>
 #include <google/protobuf/io/printer.h>
+#include <google/protobuf/descriptor.h>
+#include <google/protobuf/descriptor.pb.h>
+#include <google/protobuf/wire_format_lite.h>
+#include <algorithm>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "yb/gen_yrpc/model.h"
-
 #include "yb/gutil/stl_util.h"
-
 #include "yb/util/format.h"
+#include "yb/gen_yrpc/printer.h"
+#include "yb/rpc/lightweight_message.pb.h"
+#include "yb/util/strongly_typed_bool.h"
 
 using google::protobuf::internal::WireFormatLite;
 using namespace std::literals;

@@ -13,24 +13,45 @@
 
 #pragma once
 
-#include <set>
+#include <stdint.h>
 #include <utility>
+#include <functional>
+#include <memory>
+#include <string>
+#include <type_traits>
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/ql_protocol.pb.h"
-
-#include "yb/docdb/docdb_fwd.h"
-
-#include "yb/tablet/tablet_fwd.h"
-
 #include "yb/tserver/tserver_fwd.h"
-
-#include "yb/util/memory/arena.h"
 #include "yb/util/status.h"
 #include "yb/util/type_traits.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/slice.h"
+
+namespace google {
+namespace protobuf {
+class Message;
+}  // namespace protobuf
+}  // namespace google
+template <class T> class scoped_refptr;
 
 namespace yb {
+class Schema;
+namespace docdb {
+class DocRowwiseIterator;
+}  // namespace docdb
+namespace qlexpr {
+class QLTableRow;
+}  // namespace qlexpr
+namespace tablet {
+class Tablet;
+}  // namespace tablet
+namespace tserver {
+class LWWriteRequestPB;
+}  // namespace tserver
+
 namespace master {
 
 class TableInfo;

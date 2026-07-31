@@ -13,10 +13,11 @@
 #include "yb/util/jwtcpp_util.h"
 
 #include <jwt-cpp/jwt.h>
-#include "yb/util/logging.h"
-#include "yb/util/status_format.h"
+#include <jwt-cpp/traits/kazuho-picojson/defaults.h>
+#include <exception>
 
-#include "yb/gutil/casts.h"
+#include "yb/util/status_format.h"
+#include "yb/gutil/macros.h"
 
 namespace yb::util {
 

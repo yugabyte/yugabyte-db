@@ -13,22 +13,26 @@
 
 // This utility converts a proto ascii format file into a binary proto file in the yb format.
 
+#include <google/protobuf/message.h>
+#include <iostream>
+#include <memory>
+#include <string>
+#include <string_view>
+
 #include "google/protobuf/text_format.h"
-
 #include "yb/consensus/metadata.pb.h"
-
 #include "yb/master/master_backup.pb.h"
-
 #include "yb/tablet/metadata.pb.h"
-
 #include "yb/tools/pbc_tools_lib.h"
-
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/faststring.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
 
 namespace yb::pb_util {
 

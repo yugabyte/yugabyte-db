@@ -32,9 +32,8 @@
 // under the License.
 #pragma once
 
-#include <sys/resource.h>
-#include <sys/time.h>
-
+#include <stdint.h>
+#include <sys/types.h>
 #include <string>
 
 #if defined(__APPLE__)

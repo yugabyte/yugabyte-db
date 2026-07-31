@@ -15,23 +15,34 @@
 
 #include "yb/tserver/full_compaction_manager.h"
 
+#include <absl/base/dynamic_annotations.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <math.h>
+#include <boost/container_hash/hash.hpp>
 #include <utility>
+#include <chrono>
+#include <compare>
+#include <cstddef>
+#include <functional>
+#include <ostream>
+#include <ratio>
+#include <unordered_set>
 
 #include "yb/common/hybrid_time.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/background_task.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
-#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/server/clock.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
 
 namespace {
 

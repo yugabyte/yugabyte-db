@@ -23,24 +23,22 @@
 
 #include <assert.h>
 #include <stdint.h>
-
+#include <stddef.h>
 #include <atomic>
-#include <chrono>
 #include <condition_variable>
 #include <mutex>
-#include <stack>
-#include <string>
 #include <type_traits>
-#include <vector>
+#include <new>
 
 #include "yb/rocksdb/db/write_callback.h"
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/types.h"
 #include "yb/rocksdb/util/autovector.h"
-#include "yb/rocksdb/util/instrumented_mutex.h"
-#include "yb/rocksdb/write_batch_base.h"
 
 namespace rocksdb {
+class DB;
+class InstrumentedMutex;
+class WriteBatch;
 
 class WriteThread {
  public:

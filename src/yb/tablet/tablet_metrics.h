@@ -31,24 +31,39 @@
 //
 #pragma once
 
-#include "yb/common/pgsql_protocol.fwd.h"
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <memory>
+#include <mutex>
+#include <sstream>
+#include <vector>
 
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/util/aggregate_stats.h"
 #include "yb/util/enums.h"
 #include "yb/util/monotime.h"
+#include "yb/util/logging.h"
 
 namespace yb {
 
-template<class T>
-class AtomicGauge;
-class Counter;
-class EventStats;
 class MetricEntity;
 class PgsqlResponsePB;
-
 enum PgsqlMetricsCaptureType : int;
+class LWPgsqlResponsePB;
 
 namespace tablet {
 

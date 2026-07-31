@@ -11,22 +11,29 @@
 // under the License.
 //
 
-#include <cassert>
-
-#include <iostream>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <fstream>
 #include <string>
 #include <vector>
 #include <random>
+#include <atomic>
+#include <new>
 
 #include "yb/util/logging.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/env.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
-
-#include "yb/vector_index/usearch_include_wrapper_internal.h"
+#include "gtest/gtest.h"
+#include "usearch/index_dense.hpp"
+#include "usearch/index_plugins.hpp"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 

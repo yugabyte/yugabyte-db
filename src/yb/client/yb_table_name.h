@@ -13,20 +13,20 @@
 
 #pragma once
 
+#include <gflags/gflags.h>
+#include <stddef.h>
 #include <string>
+#include <optional>
 
-#include "yb/util/flags.h"
 #include "yb/util/memory/memory_usage.h"
-
 #include "yb/common/common_types.pb.h"
-
-#include "yb/master/master_types.pb.h"
 
 namespace yb {
 
 namespace master {
 class NamespaceIdentifierPB;
 class TableIdentifierPB;
+enum RelationType : int;
 }
 
 namespace client {

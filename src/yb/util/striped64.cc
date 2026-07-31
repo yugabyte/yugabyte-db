@@ -30,10 +30,17 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <memory>
+#include <new>
+#include <ostream>
+#include <random>
+
 #include "yb/util/monotime.h"
-#include "yb/util/random.h"
 #include "yb/util/striped64.h"
-#include "yb/util/threadlocal.h"
+#include "yb/gutil/atomicops.h"
 
 using yb::striped64::internal::HashCode;
 using yb::striped64::internal::Cell;

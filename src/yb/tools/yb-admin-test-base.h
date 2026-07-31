@@ -13,12 +13,32 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <rapidjson/document.h>
+#include <rapidjson/rapidjson.h>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <utility>
+
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/tools/admin-test-base.h"
-
 #include "yb/util/status_format.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/master_backup.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/string_util.h"
+#include "yb/util/subprocess.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
+namespace master {
+class MasterBackupProxy;
+}  // namespace master
+
 namespace tools {
 
 template <class... Args>

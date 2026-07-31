@@ -25,6 +25,8 @@
 
 #include "postgres.h"
 
+#include <unistd.h>
+
 #include "access/relation.h"
 #include "catalog/heap.h"
 #include "catalog/namespace.h"

@@ -42,23 +42,34 @@
 //   Function HashPrimaryKey().
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/types.h>
 #include <string>
 #include <vector>
+#include <memory>
+#include <ostream>
 
 #include "yb/common/constants.h"
 #include "yb/common/schema.h"
 #include "yb/common/pg_types.h"
-#include "yb/common/common_types.pb.h"
 #include "yb/common/value.pb.h"
-
-#include "yb/client/client_fwd.h"
-#include "yb/client/value.h"
-
-#include "yb/dockv/dockv_fwd.h"
-
-#include "yb/util/status_fwd.h"
+#include "yb/common/common_fwd.h"
+#include "yb/dockv/partial_row.h"
+#include "yb/gutil/strings/stringpiece.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+class QLType;
+class SchemaPB;
+enum JsonOperatorPB : int;
+enum class DataType;
+
+namespace client {
+class YBSchema;
+}  // namespace client
 
 // the types used internally and sent over the wire to the tserver
 typedef QLValuePB::ValueCase InternalType;
@@ -72,10 +83,6 @@ Schema& GetSchema(YBSchema* schema);
 
 } // namespace internal
 
-class YBClient;
-class YBSchema;
-class YBSchemaBuilder;
-class YBOperation;
 
 class YBColumnSchema {
  public:
@@ -191,6 +198,7 @@ class YBColumnSpec {
 
  private:
   class Data;
+
   friend class YBSchemaBuilder;
   friend class YBTableAlterer;
 
@@ -238,6 +246,7 @@ class YBSchemaBuilder {
 
  private:
   class Data;
+
   // Owned.
   Data* data_;
 };

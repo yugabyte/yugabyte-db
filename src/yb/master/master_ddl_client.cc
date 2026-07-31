@@ -13,9 +13,20 @@
 
 #include "yb/master/master_ddl_client.h"
 
-#include "yb/common/wire_protocol.h"
+#include <functional>
+#include <utility>
 
+#include "yb/common/wire_protocol.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/monotime.h"
+
+namespace yb {
+enum YQLDatabase : int;
+}  // namespace yb
 
 namespace yb::master {
 

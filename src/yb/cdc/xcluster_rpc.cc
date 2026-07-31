@@ -15,24 +15,48 @@
 
 #include "yb/cdc/xcluster_rpc.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <ostream>
+#include <string>
+#include <string_view>
+#include <utility>
+
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
-
 #include "yb/client/client.h"
 #include "yb/client/client_error.h"
-#include "yb/client/client-internal.h"
 #include "yb/client/table.h"
-#include "yb/client/meta_cache.h"
 #include "yb/client/tablet_rpc.h"
-
 #include "yb/rpc/rpc.h"
-#include "yb/rpc/rpc_controller.h"
-
-#include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
-#include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/trace.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/master/master_fwd.h"
+#include "yb/tserver/tserver.messages.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+namespace client {
+namespace internal {
+class RemoteTablet;
+}  // namespace internal
+}  // namespace client
+namespace rpc {
+class RpcController;
+}  // namespace rpc
+}  // namespace yb
 
 DEFINE_test_flag(bool, xcluster_print_write_request, false,
     "When enabled the write request will be printed to the log.");

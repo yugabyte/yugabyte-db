@@ -24,8 +24,10 @@
 #include "yb/rocksdb/util/histogram.h"
 
 #include <math.h>
+#include <inttypes.h>
+#include <stdio.h>
 
-#include "yb/gutil/port.h"
+#include "yb/rocksdb/statistics.h"
 
 namespace rocksdb {
 

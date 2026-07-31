@@ -31,7 +31,11 @@
 //
 #include "yb/util/hexdump.h"
 
+#include <ctype.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <string>
+#include <algorithm>
 
 #include "yb/gutil/stringprintf.h"
 #include "yb/util/slice.h"

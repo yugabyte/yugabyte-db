@@ -32,18 +32,18 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <functional>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 #include "yb/common/entity_ids_types.h"
-
 #include "yb/gutil/macros.h"
-
-#include "yb/tablet/metadata.pb.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 class Env;
@@ -56,6 +56,7 @@ class ConsensusMetadataPB;
 
 namespace tablet {
 class RaftGroupReplicaSuperBlockPB;
+enum TabletDataState : int;
 }
 
 namespace itest {

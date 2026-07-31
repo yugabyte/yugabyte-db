@@ -13,10 +13,11 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <string>
 #include <memory>
 
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

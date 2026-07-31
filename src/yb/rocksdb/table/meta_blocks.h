@@ -21,29 +21,29 @@
 
 #pragma once
 
-#include <map>
+#include <stdint.h>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "yb/rocksdb/comparator.h"
-#include "yb/rocksdb/db/table_properties_collector.h"
-#include "yb/rocksdb/options.h"
-#include "yb/rocksdb/table/format.h"
 #include "yb/rocksdb/util/kv_map.h"
-
-#include "yb/util/mem_tracker_fwd.h"
 #include "yb/util/slice.h"
+#include "yb/rocksdb/table/block_builder.h"
+#include "yb/rocksdb/table_properties.h"
+#include "yb/rocksdb/types.h"
+#include "yb/rocksdb/status.h"
+#include "yb/util/mem_tracker.h"
 
 namespace rocksdb {
 
-class BlockBuilder;
 class BlockHandle;
 class Env;
 class Footer;
 class Logger;
-struct TableProperties;
 class InternalIterator;
+class IntTblPropCollector;
+class RandomAccessFileReader;
+struct BlockContents;
 
 // We use kKeyDeltaEncodingSharedPrefix format for meta index blocks, but since
 // kMetaIndexBlockRestartInterval == 1 every key in these blocks will still have zero shared prefix

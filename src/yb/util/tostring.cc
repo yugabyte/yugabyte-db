@@ -13,9 +13,11 @@
 
 #include "yb/util/tostring.h"
 
+#include <inttypes.h>
 #include <chrono>
 
 #include "yb/util/format.h"
+#include "yb/gutil/stringprintf.h"
 
 namespace yb {
 

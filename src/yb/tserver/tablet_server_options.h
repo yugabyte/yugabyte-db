@@ -32,11 +32,15 @@
 #pragma once
 
 #include <vector>
+#include <memory>
 
-#include "yb/encryption/encryption_fwd.h"
 #include "yb/server/server_base_options.h"
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/listener.h"
+#include "yb/server/server_fwd.h"
+#include "yb/util/result.h"
+
+namespace rocksdb {
+class EventListener;
+}  // namespace rocksdb
 
 namespace yb {
 namespace tserver {

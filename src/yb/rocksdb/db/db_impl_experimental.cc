@@ -22,20 +22,34 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/db/db_impl.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/db/version_edit.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/rocksdb/util/instrumented_mutex.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
 #endif
 
 #include <inttypes.h>
+#include <assert.h>
+#include <stddef.h>
 #include <vector>
+#include <algorithm>
+#include <atomic>
+#include <memory>
 
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/job_context.h"
 #include "yb/rocksdb/db/version_set.h"
-#include "yb/rocksdb/status.h"
 
 namespace rocksdb {
+class ColumnFamilyHandle;
 
 Status DBImpl::SuggestCompactRange(ColumnFamilyHandle* column_family,
                                    const Slice* begin, const Slice* end) {

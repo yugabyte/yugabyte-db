@@ -31,7 +31,13 @@
 //
 #include "yb/util/pb_util-internal.h"
 
+#include <string.h>
+#include <ostream>
+#include <string>
+
 #include "yb/gutil/casts.h"
+#include "yb/gutil/port.h"
+#include "yb/util/logging.h"
 
 namespace yb {
 namespace pb_util {

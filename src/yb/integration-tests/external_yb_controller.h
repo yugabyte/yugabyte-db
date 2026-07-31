@@ -14,14 +14,17 @@
 #pragma once
 
 #include <string.h>
+#include <stdint.h>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/integration-tests/external_daemon.h"
-#include "yb/util/status_fwd.h"
-#include "yb/util/subprocess.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class Subprocess;
 
 struct ExternalYbControllerOptions {
   size_t idx;

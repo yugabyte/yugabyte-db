@@ -31,17 +31,23 @@
 //
 #pragma once
 
+#include <stdint.h>
 #include <future>
-
-#include <google/protobuf/repeated_field.h>
-
-#include "yb/common/common_fwd.h"
+#include <memory>
 
 #include "yb/gutil/macros.h"
-
 #include "yb/tablet/write_query_context.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/status.h"
+#include "yb/util/status_callback.h"
 
-#include "yb/tserver/tserver_fwd.h"
+namespace yb {
+namespace tserver {
+class WriteRequestPB;
+class WriteResponsePB;
+}  // namespace tserver
+}  // namespace yb
 
 namespace yb::tablet {
 

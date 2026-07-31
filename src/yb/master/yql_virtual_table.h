@@ -13,17 +13,39 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "yb/qlexpr/ql_rowblock.h"
-
 #include "yb/docdb/ql_storage_interface.h"
-
-#include "yb/master/ts_descriptor.h"
 #include "yb/master/util/yql_vtable_helpers.h"
-
-#include "yb/util/metrics_fwd.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/schema.h"
+#include "yb/common/value.messages.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class Histogram;
+
 namespace master {
+class CatalogManagerIf;
+class Master;
+class TSDescriptor;
 
 using VTableDataPtr = std::shared_ptr<qlexpr::QLRowBlock>;
 

@@ -14,11 +14,21 @@
 #pragma once
 
 #include <google/protobuf/repeated_field.h>
+#include <stdint.h>
+#include <boost/container/small_vector.hpp>
+#include <cstddef>
+#include <string>
 
 #include "yb/rpc/rpc_fwd.h"
-
 #include "yb/util/locks.h"
 #include "yb/util/write_buffer.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class ScopedTrackedConsumption;
+}  // namespace yb
 
 namespace yb::rpc {
 

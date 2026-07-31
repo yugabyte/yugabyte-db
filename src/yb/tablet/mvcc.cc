@@ -33,22 +33,34 @@
 #include "yb/tablet/mvcc.h"
 
 #include <boost/circular_buffer.hpp>
-#include <boost/variant.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/core/pointer_traits.hpp>
+#include <boost/move/utility_core.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/variant/apply_visitor.hpp>
+#include <boost/variant/static_visitor.hpp>
+#include <boost/variant/variant.hpp>
+#include <algorithm>
+#include <chrono>
+#include <sstream>
+#include <utility>
 
 #include "yb/ash/wait_state.h"
-
-#include "yb/gutil/macros.h"
-
 #include "yb/util/atomic.h"
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/compare_util.h"
-#include "yb/util/enums.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
 #include "yb/util/to_stream.h"
 #include "yb/util/trace.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 using std::ostream;
 

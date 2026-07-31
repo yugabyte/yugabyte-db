@@ -18,10 +18,7 @@
 
 #pragma once
 
-#include "yb/util/logging.h"
-
 #include "yb/gutil/integral_types.h"
-#include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
 
 class Bits {

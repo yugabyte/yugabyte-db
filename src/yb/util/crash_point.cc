@@ -13,8 +13,10 @@
 
 #include "yb/util/crash_point.h"
 
+#include <glog/logging.h>
 #include <cstdlib>
 #include <string>
+#include <ostream>
 
 #include "yb/util/logging.h"
 

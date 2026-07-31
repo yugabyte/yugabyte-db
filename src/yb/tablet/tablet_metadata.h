@@ -32,35 +32,67 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <google/protobuf/map.h>
+#include <google/protobuf/stubs/port.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/uuid/uuid.hpp>
 #include <memory>
 #include <string>
 #include <unordered_set>
 #include <vector>
+#include <functional>
+#include <limits>
+#include <mutex>
+#include <optional>
+#include <unordered_map>
+#include <utility>
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/constants.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/opid.h"
 #include "yb/common/snapshot.h"
-
 #include "yb/docdb/docdb_compaction_context.h"
-#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/key_bounds.h"
-
 #include "yb/dockv/partition.h"
 #include "yb/dockv/schema_packing.h"
-
-#include "yb/fs/fs_manager.h"
-
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/metadata.pb.h"
-
 #include "yb/util/locks.h"
 #include "yb/util/mutex.h"
-#include "yb/util/status_fwd.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/schema.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/stl_util.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/qlexpr/index.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/uuid.h"
+
+namespace yb {
+class Env;
+class FsManager;
+class MetricRegistry;
+class PgVectorIdxOptionsPB;
+namespace docdb {
+struct DocReadContext;
+}  // namespace docdb
+namespace dockv {
+class SchemaPackingPB;
+struct ReaderProjection;
+}  // namespace dockv
+}  // namespace yb
 
 namespace yb::tablet {
 

@@ -12,19 +12,42 @@
 //
 #include "yb/tablet/restore_util.h"
 
+#include <glog/logging.h>
+#include <boost/container/vector.hpp>
+#include <functional>
+#include <ostream>
+#include <utility>
+#include <variant>
+
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/doc_read_context.h"
-
 #include "yb/dockv/packed_value.h"
 #include "yb/dockv/value_packing_v2.h"
-
 #include "yb/rpc/lightweight_message.h"
-
 #include "yb/tablet/tablet_metadata.h"
-
 #include "yb/util/logging.h"
+#include "yb/common/column_id.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/schema.h"
+#include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/doc_write_batch.h"
+#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/docdb_types.h"
+#include "yb/docdb/rocksdb_writer.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/dockv/value.h"
+#include "yb/dockv/value_type.h"
+#include "yb/gutil/casts.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/tablet/tablet.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
+enum class DataType;
+struct OpId;
 
 namespace {
 

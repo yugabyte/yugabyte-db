@@ -13,20 +13,28 @@
 
 #include "yb/docdb/doc_ql_scanspec.h"
 
-#include "yb/common/common.messages.h"
+#include <glog/logging.h>
+#include <algorithm>
+#include <functional>
+#include <initializer_list>
+#include <utility>
+
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-
 #include "yb/docdb/doc_expr.h"
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/qlexpr/doc_scanspec_util.h"
-
 #include "yb/util/range.h"
-#include "yb/util/result.h"
-#include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/value.pb.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/uuid.h"
 
 using std::vector;
 

@@ -31,14 +31,29 @@
 //
 
 #include "yb/tserver/remote_bootstrap_anchor_client.h"
-#include "yb/tserver/remote_bootstrap_file_downloader.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <functional>
+#include <ostream>
+#include <utility>
+
+#include "yb/tserver/remote_bootstrap_file_downloader.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/callback.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
+#include "yb/common/opid.pb.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/tserver/remote_bootstrap.proxy.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/monotime.h"
+
+namespace yb {
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+}  // namespace yb
 
 using std::string;
 

@@ -20,29 +20,42 @@
 
 #pragma once
 
-#include <deque>
+#include <stddef.h>
+#include <stdint.h>
 #include <list>
-#include <set>
 #include <string>
 #include <vector>
+#include <atomic>
 
 #include "yb/rocksdb/rocksdb_fwd.h"
-
 #include "yb/rocksdb/db.h"
-#include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/db/memtable.h"
-#include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/types.h"
 #include "yb/rocksdb/util/autovector.h"
-#include "yb/rocksdb/util/instrumented_mutex.h"
-#include "yb/rocksdb/util/log_buffer.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/storage/storage_fwd.h"
+#include "yb/util/slice.h"
+
+namespace yb {
+namespace storage {
+enum class UpdateUserValueType;
+}  // namespace storage
+}  // namespace yb
 
 namespace rocksdb {
 
 class ColumnFamilyData;
-class InternalKeyComparator;
 class InstrumentedMutex;
+class Arena;
+class Directory;
+class FileNumbersHolder;
+class InternalIterator;
+class LogBuffer;
+class LookupKey;
+class MemTable;
+class MergeContext;
+class VersionSet;
+struct MutableCFOptions;
 
 // keeps a list of immutable memtables in a vector. the list is immutable
 // if refcount is bigger than one. It is used as a state for Get() and

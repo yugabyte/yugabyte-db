@@ -13,16 +13,24 @@
 
 #pragma once
 
-#include "yb/util/status_fwd.h"
+#include <memory>
+#include <string>
 
-#include "yb/common/common_fwd.h"
 #include "yb/common/pgsql_protocol.messages.h"
 #include "yb/common/read_hybrid_time.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace yb {
+namespace pggate {
+class PgTableDesc;
+}  // namespace pggate
+}  // namespace yb
 
 namespace yb::pggate {
 

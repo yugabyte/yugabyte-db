@@ -15,40 +15,41 @@
 
 #include "yb/yql/cql/ql/exec/executor.h"
 
-#include "yb/ash/wait_state.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/function.hpp>  // IWYU pragma: keep
+#include <algorithm>
+#include <chrono>
+#include <compare>
+#include <initializer_list>
+#include <ostream>
+#include <set>
+#include <thread>
+#include <utility>
+#include <vector>
 
-#include "yb/client/client.h"
+#include "yb/ash/wait_state.h"
 #include "yb/client/error.h"
 #include "yb/client/rejection_score_source.h"
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/common/common.pb.h"
 #include "yb/common/consistent_read_point.h"
 #include "yb/qlexpr/index.h"
 #include "yb/qlexpr/index_column.h"
 #include "yb/common/ql_protocol.messages.h"
-#include "yb/common/ql_protocol_util.h"
 #include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
-
 #include "yb/gutil/casts.h"
-
-#include "yb/rpc/inbound_call.h"
-#include "yb/rpc/rpc_introspection.pb.h"
-#include "yb/rpc/thread_pool.h"
-
-#include "yb/util/decimal.h"
 #include "yb/util/metrics.h"
-#include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
-
 #include "yb/yql/cql/ql/exec/exec_context.h"
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/parse_tree.h"
@@ -74,7 +75,43 @@
 #include "yb/yql/cql/ql/ptree/pt_use_keyspace.h"
 #include "yb/yql/cql/ql/ql_processor.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
-#include "yb/util/flags.h"
+#include "yb/client/schema.h"
+#include "yb/client/session.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/constants.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/util/atomic.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/monotime.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/write_buffer.h"
+#include "yb/yql/cql/ql/audit/audit_logger.h"
+#include "yb/yql/cql/ql/exec/rescheduler.h"
+#include "yb/yql/cql/ql/ptree/list_node.h"
+#include "yb/yql/cql/ql/ptree/pt_dml.h"
+#include "yb/yql/cql/ql/ptree/pt_name.h"
+#include "yb/yql/cql/ql/ptree/pt_option.h"
+#include "yb/yql/cql/ql/ptree/pt_select.h"
+#include "yb/yql/cql/ql/ptree/tree_node.h"
+#include "yb/yql/cql/ql/util/ql_env.h"
+#include "yb/yql/cql/ql/util/statement_params.h"
 
 DECLARE_bool(ysql_yb_enable_ash);
 

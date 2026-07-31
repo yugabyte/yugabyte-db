@@ -32,47 +32,95 @@
 
 #include "yb/tools/yb-admin_cli.h"
 
+#include <boost/lexical_cast.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <rapidjson/allocators.h>
+#include <rapidjson/document.h>
+#include <rapidjson/rapidjson.h>
+#include <stdint.h>
+#include <boost/algorithm/string/classification.hpp>
+#include <boost/algorithm/string/predicate.hpp>
+#include <boost/algorithm/string/split.hpp>
+#include <boost/algorithm/string/trim.hpp>
+#include <boost/iterator/iterator_facade.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/range/iterator_range_core.hpp>
 #include <algorithm>
 #include <limits>
 #include <memory>
 #include <unordered_set>
 #include <utility>
+#include <array>
+#include <compare>
+#include <iostream>
+#include <iterator>
+#include <optional>
+#include <sstream>
+#include <tuple>
+#include <unordered_map>
 
-#include <boost/algorithm/string.hpp>
-#include <boost/lexical_cast.hpp>
-
-#include "yb/client/client.h"
 #include "yb/client/xcluster_client.h"
-
 #include "yb/common/hybrid_time.h"
 #include "yb/common/json_util.h"
 #include "yb/common/transaction.h"
-#include "yb/common/wire_protocol.h"
 #include "yb/common/xcluster_util.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/util.h"
-
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_defaults.h"
-
 #include "yb/tools/yb-admin_client.h"
 #include "yb/tools/yb-admin_util.h"
-
 #include "yb/util/enum_parse.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
-#include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 #include "yb/util/jsonwriter.h"
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/client/namespace_info.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/snapshot.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/strings/ascii_ctype.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/enums.h"
+#include "yb/util/faststring.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_string.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+#include "yb/cdc/xcluster_types.h"
 
 DEFINE_NON_RUNTIME_string(master_addresses, "localhost:7100",
     "Comma-separated list of YB Master server addresses");

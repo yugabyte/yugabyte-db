@@ -30,17 +30,17 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <string>
 #include <vector>
+#include <ostream>
 
-#include <gmock/gmock.h>
-
-#include "yb/util/flags.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
-#include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
 
 DECLARE_string(vmodule);
 

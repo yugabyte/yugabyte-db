@@ -13,10 +13,15 @@
 
 #include "yb/master/table_index.h"
 
+#include <string>
+#include <vector>
+
 #include "gmock/gmock.h"
 #include "yb/common/colocated_util.h"
-#include "yb/master/master_util.h"
-#include <gtest/gtest.h>
+#include "gtest/gtest.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/util/cow_object.h"
 
 namespace tt = testing;
 

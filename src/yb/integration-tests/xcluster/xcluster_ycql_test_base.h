@@ -13,13 +13,28 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "yb/client/schema.h"
-
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
-
 #include "yb/server/hybrid_clock.h"
+#include "yb/client/table.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/server/clock.h"
+#include "yb/server/server_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/tsan_util.h"
 
 namespace yb {
+namespace client {
+class YBClient;
+}  // namespace client
 
 using YBTables = std::vector<std::shared_ptr<client::YBTable>>;
 using YBClusters = std::vector<XClusterTestBase::Cluster*>;

@@ -14,12 +14,23 @@
 
 #pragma once
 
+#include <stdint.h>
+
 #include "yb/common/constants.h"
-#include "yb/common/transaction.h"
-
-#include "yb/tserver/pg_client.messages.h"
-
 #include "yb/yql/pggate/pg_statement.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/pg_types.h"
+#include "yb/tserver/pg_client.pb.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/yql/pggate/pg_session_fwd.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
+namespace yb {
+namespace pggate {
+class PgExpr;
+}  // namespace pggate
+}  // namespace yb
 
 namespace yb::pggate {
 

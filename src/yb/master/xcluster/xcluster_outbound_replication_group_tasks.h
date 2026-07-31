@@ -13,15 +13,27 @@
 
 #pragma once
 
+#include <functional>
+#include <memory>
+#include <string>
+
 #include "yb/common/entity_ids_types.h"
 #include "yb/master/multi_step_monitored_task.h"
 #include "yb/master/xcluster/master_xcluster_types.h"
+#include "yb/server/monitored_task.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class ThreadPool;
+namespace rpc {
+class Messenger;
+}  // namespace rpc
 
 namespace master {
 
 class XClusterOutboundReplicationGroup;
+struct LeaderEpoch;
 
 class XClusterCheckpointNamespaceTask : public MultiStepCatalogEntityTask {
  public:

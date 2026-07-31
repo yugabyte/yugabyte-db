@@ -10,42 +10,46 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <sys/types.h>
 #include <memory>
 #include <string>
-#include <unordered_map>
-#include <utility>
-
-#include <gtest/gtest.h>
+#include <chrono>
+#include <functional>
+#include <ostream>
+#include <ratio>
 
 #include "yb/client/client.h"
-#include "yb/client/table.h"
-#include "yb/client/table_handle.h"
-
-#include "yb/consensus/raft_consensus.h"
 #include "yb/common/wire_protocol.h"
-
-#include "yb/integration-tests/cluster_itest_util.h"
-#include "yb/integration-tests/yb_table_test_base.h"
-
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/master.h"
-#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
-#include "yb/master/sys_catalog_constants.h"
-
-#include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
-
 #include "yb/tablet/tablet_peer.h"
-
-#include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
-
 #include "yb/util/flags.h"
 #include "yb/util/backoff_waiter.h"
-
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/mini_master.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 using yb::master::CreateNamespaceRequestPB;

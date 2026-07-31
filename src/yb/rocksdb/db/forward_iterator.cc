@@ -21,20 +21,28 @@
 
 #include "yb/rocksdb/db/forward_iterator.h"
 
+#include <assert.h>
+#include <stddef.h>
 #include <limits>
 #include <string>
-#include <utility>
+#include <memory>
 
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/job_context.h"
 #include "yb/rocksdb/db/version_set.h"
-#include "yb/rocksdb/env.h"
 #include "yb/rocksdb/slice_transform.h"
-
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
+#include "yb/rocksdb/db/file_indexer.h"
+#include "yb/rocksdb/db/memtable.h"
+#include "yb/rocksdb/db/memtable_list.h"
+#include "yb/rocksdb/db/table_cache.h"
+#include "yb/rocksdb/db/version_edit.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/util/instrumented_mutex.h"
+#include "yb/util/tostring.h"
 
 namespace rocksdb {
 

@@ -25,6 +25,8 @@
 */
 #pragma once
 #include <stdint.h>
+#include <stddef.h>
+
 #include "yb/util/slice.h"
 
 #if defined(__x86_64__)

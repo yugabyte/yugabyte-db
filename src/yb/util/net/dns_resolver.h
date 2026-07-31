@@ -33,19 +33,17 @@
 
 #include <functional>
 #include <future>
+#include <memory>
+#include <string_view>
 
-#include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/net/net_fwd.h"
+#include "yb/util/result.h"
 
 namespace yb {
 
 class EventStats;
 class MetricEntity;
-class HostPort;
-class ThreadPool;
 
 using AsyncResolveCallback = std::function<void(const Result<IpAddress>& result)>;
 
@@ -64,6 +62,7 @@ class DnsResolver {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

@@ -31,13 +31,11 @@
 //
 #pragma once
 
-#include <sstream>
-
 #include "yb/gutil/macros.h"
-#include "yb/server/webserver.h"
-#include "yb/util/status_fwd.h"
 
 namespace yb {
+class Webserver;
+
 namespace server {
 
 // Web handlers for Chromium tracing.

@@ -17,20 +17,38 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <utility>
+
 #include "yb/common/common_fwd.h"
-#include "yb/common/ql_datatype.h"
 #include "yb/qlexpr/ql_name.h"
-
-#include "yb/util/net/net_fwd.h"
-
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 #include "yb/yql/cql/ql/ptree/pt_expr_types.h"
 #include "yb/yql/cql/ql/ptree/sem_state.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
-#include "yb/yql/cql/ql/ql_fwd.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/client/schema.h"
 
 namespace yb {
+class InetAddress;
+class QLType;
 
 namespace bfql {
 enum class TSOpcode : int32_t;
@@ -42,10 +60,10 @@ class Decimal;
 
 namespace ql {
 
-// Because statements own expressions and their headers include expression headers, we forward
-// declare statement classes here.
-class PTSelectStmt;
 class PTDmlStmt;
+class ProcessContextBase;
+class QLMetrics;
+class SemContext;
 
 //--------------------------------------------------------------------------------------------------
 // The order of the following enum values are not important.

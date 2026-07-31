@@ -11,19 +11,41 @@
 // under the License.
 //
 
+#include <glog/logging.h>
 #include <regex>
 #include <string>
 #include <vector>
-
-#include <gtest/gtest.h>
+#include <algorithm>
+#include <chrono>
+#include <cstdlib>
+#include <memory>
+#include <sstream>
+#include <utility>
+#include <functional>
 
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
-
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/faststring.h"
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/common/column_id.h"
+#include "yb/integration-tests/cluster_itest_util.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/path_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_log.h"
+#include "yb/util/subprocess.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
 
 using std::string;
 using std::vector;

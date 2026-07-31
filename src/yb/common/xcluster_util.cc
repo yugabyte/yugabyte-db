@@ -13,11 +13,36 @@
 
 #include "yb/common/xcluster_util.h"
 
+#include <glog/logging.h>
+#include <string.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <compare>
+#include <string_view>
+#include <tuple>
+
 #include "yb/common/entity_ids.h"
 #include "yb/common/ysql_utils.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/gutil/strings/stringpiece.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 namespace yb::xcluster {
 

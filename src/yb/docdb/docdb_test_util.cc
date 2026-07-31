@@ -13,37 +13,61 @@
 
 #include "yb/docdb/docdb_test_util.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdlib.h>
 #include <algorithm>
 #include <memory>
 #include <sstream>
+#include <iostream>
+#include <optional>
 
 #include "yb/common/hybrid_time.h"
-#include "yb/common/ql_value.h"
-
 #include "yb/common/transaction.h"
 #include "yb/dockv/doc_key.h"
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/docdb-internal.h"
-#include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/in_mem_docdb.h"
-
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/rocksdb/db/filename.h"
-
 #include "yb/rocksutil/write_batch_formatter.h"
-
-#include "yb/util/bytes_formatter.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/path_util.h"
-#include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tostring.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/docdb/doc_write_batch.h"
+#include "yb/docdb/docdb_compaction_context.h"
+#include "yb/docdb/docdb_types.h"
+#include "yb/docdb/read_operation_data.h"
+#include "yb/dockv/doc_path.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/dockv/subdocument.h"
+#include "yb/dockv/value_type.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/util/algorithm_util.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
 
 using std::string;
 using std::unique_ptr;

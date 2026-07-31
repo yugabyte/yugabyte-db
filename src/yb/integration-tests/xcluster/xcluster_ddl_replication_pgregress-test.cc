@@ -12,15 +12,40 @@
 //
 
 #include <boost/regex.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <chrono>
+#include <functional>
+#include <initializer_list>
+#include <iostream>
+#include <ratio>
+#include <string>
+#include <vector>
 
 #include "yb/client/yb_table_name.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
-#include "yb/master/mini_master.h"
 #include "yb/tools/tools_test_utils.h"
 #include "yb/util/env_util.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/cdc/xcluster_types.h"
+#include "yb/client/client.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/path_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_string(ysql_catalog_preload_additional_table_list);
 DECLARE_int32(ysql_num_tablets);

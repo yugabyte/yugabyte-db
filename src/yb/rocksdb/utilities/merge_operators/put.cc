@@ -18,7 +18,11 @@
 // under the License.
 //
 
+#include <assert.h>
 #include <memory>
+#include <deque>
+#include <string>
+
 #include "yb/util/slice.h"
 #include "yb/rocksdb/merge_operator.h"
 #include "yb/rocksdb/utilities/merge_operators.h"

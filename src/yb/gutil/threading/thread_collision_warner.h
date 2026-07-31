@@ -21,7 +21,6 @@
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/macros.h"
-#include "yb/gutil/port.h"
 
 #ifndef BASE_EXPORT
 #define BASE_EXPORT

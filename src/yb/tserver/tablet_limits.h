@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include "yb/common/tablet_limits.h"
+#include <stdint.h>
 
 namespace yb::tserver {
 

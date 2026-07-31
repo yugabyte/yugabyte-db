@@ -13,26 +13,41 @@
 
 #include "yb/master/xcluster/xcluster_manager.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <string>
+#include <algorithm>
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <iterator>
+#include <optional>
+#include <ratio>
+#include <utility>
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/hybrid_time.h"
-
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager_util.h"
-#include "yb/master/master.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/master_ddl.pb.h"
-#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/master_replication.pb.h"
-#include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster/xcluster_config.h"
 #include "yb/master/xcluster/xcluster_status.h"
 #include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
-
 #include "yb/rpc/rpc_context.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/is_operation_done_result.h"
@@ -40,6 +55,35 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/constants.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/stl_util.h"
+#include "yb/gutil/walltime.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/sys_catalog.h"
+#include "yb/master/xcluster/xcluster_catalog_entity.h"
+#include "yb/util/flags.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/jsonwriter.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/pb_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_callback.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/strongly_typed_string.h"
+
+namespace yb {
+namespace master {
+class Master;
+struct LeaderEpoch;
+}  // namespace master
+}  // namespace yb
 
 DEFINE_RUNTIME_AUTO_bool(enable_xcluster_api_v2, kExternal, false, true,
     "Allow the usage of v2 xCluster APIs that support DB Scoped replication groups");

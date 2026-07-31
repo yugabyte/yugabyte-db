@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <memory>
 
 namespace yb {

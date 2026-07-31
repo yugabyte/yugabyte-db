@@ -20,9 +20,13 @@
 
 #include "yb/rocksdb/table/adaptive_table_factory.h"
 
-#include "yb/rocksdb/table/format.h"
+#include <stdio.h>
+#include <utility>
 
-#include "yb/rocksdb/table/table_builder.h"
+#include "yb/rocksdb/table/format.h"
+#include "yb/rocksdb/table/table_builder.h"  // IWYU pragma: keep
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 using std::unique_ptr;
 

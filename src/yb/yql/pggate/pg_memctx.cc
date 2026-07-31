@@ -15,8 +15,10 @@
 
 #include "yb/yql/pggate/pg_memctx.h"
 
+#include <memory>
+
 #include "yb/yql/pggate/pg_tabledesc.h"
-#include "yb/yql/pggate/pggate.h"
+#include "yb/gutil/ref_counted.h"
 
 namespace yb {
 namespace pggate {

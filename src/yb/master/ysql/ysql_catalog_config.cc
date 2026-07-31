@@ -13,13 +13,24 @@
 
 #include "yb/master/ysql/ysql_catalog_config.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <mutex>
+#include <ostream>
+#include <string>
+
 #include "yb/master/master_defaults.h"
 #include "yb/util/shared_lock.h"
 #include "yb/master/sys_catalog.h"
-
 #include "yb/master/catalog_entity_info.h"
 #include "yb/util/is_operation_done_result.h"
 #include "yb/common/version_info.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
 
 DECLARE_bool(log_ysql_catalog_versions);
 

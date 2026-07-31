@@ -15,23 +15,35 @@ extern "C" {
 #include <clockbound.h>
 }
 
+#include <absl/base/dynamic_annotations.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <sched.h>
+#include <string.h>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
+#include <algorithm>
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <utility>
 
 #include "yb/server/clockbound_clock.h"
-
+#include "yb/gutil/dynamic_annotations.h"  // IWYU pragma: keep
 #include "yb/gutil/port.h"
 #include "yb/gutil/sysinfo.h"
 #include "yb/server/hybrid_clock.h"
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/math_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/status.h"
 
 static constexpr auto kAutoConfigNumClockboundCtxs = 0;
 

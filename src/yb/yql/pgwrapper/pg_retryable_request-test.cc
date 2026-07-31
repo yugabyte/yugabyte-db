@@ -11,14 +11,24 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "yb/consensus/raft_consensus.h"
-
 #include "yb/integration-tests/mini_cluster.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(retryable_request_timeout_secs);

@@ -30,12 +30,15 @@
 // under the License.
 //
 
+#include <map>
+#include <memory>
+#include <string>
+#include <utility>
+
 // This unit test belongs in gutil, but it depends on test_main which is
 // part of util.
 #include "yb/gutil/map-util.h"
-
-
-#include <gtest/gtest.h>
+#include "gtest/gtest.h"
 
 using std::map;
 using std::string;

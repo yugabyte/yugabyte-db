@@ -10,8 +10,42 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <absl/base/dynamic_annotations.h>
+#include <dirent.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <memory>
+#include <ratio>
+#include <sstream>
+#include <string>
+#include <thread>
+#include <tuple>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #include "yb/common/wire_protocol.h"
-#include "yb/gutil/strings/util.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/util/env_util.h"
@@ -21,11 +55,42 @@
 #include "yb/util/string_util.h"
 #include "yb/util/tostring.h"
 #include "yb/util/test_thread_holder.h"
-
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_test_utils.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 #include "yb/yql/pgwrapper/ysql_binary_runner.h"
+#include "gtest/gtest.h"
+#include "postgres_ext.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/pg_types.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/concurrent_value.h"
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
+#include "yb/util/file_system.h"
+#include "yb/util/format.h"
+#include "yb/util/hash_util.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 using std::string;
 

@@ -13,14 +13,17 @@
 
 #include "yb/docdb/doc_write_batch_cache.h"
 
+#include <glog/logging.h>
 #include <vector>
 #include <algorithm>
 #include <sstream>
+#include <iterator>
+#include <utility>
 
 #include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb-internal.h"
-#include "yb/dockv/primitive_value.h"
-#include "yb/util/bytes_formatter.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/util/logging.h"
 
 using std::back_inserter;
 using std::copy;

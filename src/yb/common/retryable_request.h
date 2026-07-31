@@ -13,29 +13,20 @@
 
 #pragma once
 
-#include <float.h>
 #include <stdint.h>
-
-#include <chrono>
-#include <sstream>
 #include <string>
 #include <string_view>
-#include <type_traits>
-
-#include <boost/functional/hash/hash.hpp>
-#include <boost/mpl/and.hpp>
 
 #include "yb/util/format.h"
 #include "yb/util/status_ec.h"
 #include "yb/util/strongly_typed_uuid.h"
-#include "yb/util/tostring.h"
-#include "yb/util/type_traits.h"
 
 using namespace std::literals;
 
 namespace yb {
 
 YB_STRONGLY_TYPED_UUID_DECL(ClientId);
+
 typedef int64_t RetryableRequestId;
 
 struct MinRunningRequestIdTag : IntegralErrorTag<int64_t> {

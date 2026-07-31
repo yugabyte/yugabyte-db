@@ -15,7 +15,13 @@
 
 #include "yb/yql/pggate/pg_doc_metrics.h"
 
-#include "yb/util/flags.h"
+#include <chrono>
+
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/gutil/port.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/monotime.h"
+#include "yb/yql/pggate/pg_metrics_list.h"
 
 namespace yb::pggate {
 namespace {

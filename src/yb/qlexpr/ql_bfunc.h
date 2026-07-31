@@ -28,18 +28,21 @@
 
 #pragma once
 
-#include <vector>
-#include <unordered_set>
+#include <stdint.h>
 
 #include "yb/bfpg/bfdecl.h"
-#include "yb/bfpg/gen_opcodes.h"
-
 #include "yb/bfql/bfdecl.h"
-#include "yb/bfql/gen_opcodes.h"
+#include "yb/bfcommon/bfdecl.h"
+#include "yb/util/result.h"
 
-#include "yb/common/common_fwd.h"
-
-#include "yb/util/status_fwd.h"
+namespace yb {
+namespace bfpg {
+enum class BFOpcode : int32_t;
+}  // namespace bfpg
+namespace bfql {
+enum class BFOpcode : int32_t;
+}  // namespace bfql
+}  // namespace yb
 
 namespace yb::qlexpr {
 

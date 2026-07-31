@@ -20,7 +20,7 @@
 #include "yb/gutil/cpu.h"
 
 #include <string.h>
-
+#include <utility>
 
 #include "yb/gutil/integral_types.h"
 

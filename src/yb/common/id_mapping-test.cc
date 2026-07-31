@@ -30,13 +30,15 @@
 // under the License.
 //
 
+#include <stddef.h>
+#include <stdint.h>
 #include <vector>
-
-#include <gtest/gtest.h>
+#include <string>
 
 #include "yb/common/id_mapping.h"
 #include "yb/util/random.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
 
 namespace yb {
 // Basic unit test for IdMapping.

@@ -11,44 +11,61 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <atomic>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <cmath>
+#include <compare>
+#include <functional>
+#include <future>
+#include <initializer_list>
+#include <map>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <thread>
 
 #include "gtest/gtest.h"
-
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
 #include "yb/client/txn-test-base.h"
 #include "yb/client/yb_op.h"
-
-#include "yb/common/entity_ids_types.h"
-#include "yb/common/opid.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/transaction_error.h"
-
 #include "yb/consensus/consensus.h"
-#include "yb/consensus/consensus.pb.h"
-
 #include "yb/docdb/consensus_frontier.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/dynamic_annotations.h"
-
 #include "yb/rocksdb/db.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/enums.h"
@@ -58,9 +75,44 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/ql-dml-test-base.h"
+#include "yb/client/table_handle.h"
+#include "yb/client/transaction_manager.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/consistent_read_point.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/transaction.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/server/clock.h"
+#include "yb/server/hybrid_clock.h"
+#include "yb/server/skewed_clock.h"
+#include "yb/storage/frontier.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
+#include "yb/client/schema.h"
 
 using namespace std::literals;
 

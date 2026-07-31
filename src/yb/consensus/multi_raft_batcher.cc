@@ -11,17 +11,36 @@
 // under the License.
 
 #include "yb/consensus/multi_raft_batcher.h"
+
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <memory>
 #include <thread>
+#include <chrono>
+#include <limits>
+#include <ostream>
+#include <utility>
+#include <vector>
 
 #include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus.proxy.h"
-
 #include "yb/rpc/periodic.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
 
-#include "yb/util/flags.h"
+namespace yb {
+namespace consensus {
+class RaftPeerPB;
+}  // namespace consensus
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+}  // namespace yb
 
 using namespace std::literals;
 using namespace std::placeholders;

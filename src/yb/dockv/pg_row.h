@@ -13,25 +13,37 @@
 
 #pragma once
 
-#include <optional>
-
 #include <boost/container/small_vector.hpp>
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/types.h>
+#include <optional>
+#include <functional>
+#include <string>
 
-#include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
 #include "yb/common/value.pb.h"
-
-#include "yb/dockv/dockv_fwd.h"
 #include "yb/dockv/schema_packing.h"
-
-#include "yb/qlexpr/qlexpr_fwd.h"
-
-#include "yb/util/algorithm_util.h"
 #include "yb/util/kv_util.h"
+#include "yb/gutil/endian.h"
+#include "yb/util/cast.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class WriteBuffer;
+class LWQLValuePB;
+class Schema;
+enum class DataType;
+enum class SortOrder : uint8_t;
+namespace dockv {
+class PackedValueV1;
+class PackedValueV2;
+class PgTableRow;
+struct ReaderProjection;
+}  // namespace dockv
 
 }
 

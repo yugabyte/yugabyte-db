@@ -12,16 +12,22 @@
 //
 
 #include <signal.h>
-
+#include <glog/logging.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <chrono>
 #include <condition_variable>
 #include <iostream>
 #include <mutex>
 #include <thread>
 #include <vector>
+#include <algorithm>
+#include <compare>
+#include <ratio>
+#include <stdexcept>
+#include <string>
 
 #include "yb/gutil/stringprintf.h"
-
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/logging.h"
@@ -30,6 +36,7 @@
 #include "yb/util/result.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/thread.h"
+#include "yb/gutil/ref_counted.h"
 
 #ifdef __linux__
 #include <sys/resource.h>

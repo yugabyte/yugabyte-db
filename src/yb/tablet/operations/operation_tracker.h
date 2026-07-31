@@ -32,23 +32,30 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <condition_variable>
+#include <functional>
+#include <mutex>
+#include <utility>
 
 #include "yb/common/opid.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/tablet/operations/operation.h"
-#include "yb/util/locks.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/metrics.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
-template<class T>
-class AtomicGauge;
-class Counter;
 class MemTracker;
 class MetricEntity;
+class MonoDelta;
 
 namespace tablet {
 class OperationDriver;

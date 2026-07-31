@@ -13,10 +13,15 @@
 
 #pragma once
 
-#include "yb/common/hybrid_time.h"
+#include <optional>
+#include <string>
+#include <vector>
 
+#include "yb/common/hybrid_time.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/path_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

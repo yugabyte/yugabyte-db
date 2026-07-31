@@ -32,13 +32,20 @@
 // Utility functions for dealing with a byte array as if it were a bitmap.
 #pragma once
 
-#include <string>
-
 #include <boost/container/small_vector.hpp>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/intrusive/list.hpp>
+#include <boost/move/iterator.hpp>
+#include <string>
+#include <ostream>
 
 #include "yb/gutil/bits.h"
-
-#include "yb/util/status_fwd.h"
+#include "yb/gutil/port.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 

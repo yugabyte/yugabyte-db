@@ -13,15 +13,23 @@
 
 #pragma once
 
-#include <deque>
-
 #include <ev++.h>
+#include <stddef.h>
+#include <boost/container/small_vector.hpp>
+#include <deque>
+#include <string>
 
 #include "yb/rpc/stream.h"
-
 #include "yb/util/net/socket.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/ref_cnt_buffer.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+struct iovec;
 
 namespace yb {
 

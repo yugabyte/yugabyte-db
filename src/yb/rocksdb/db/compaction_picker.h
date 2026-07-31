@@ -24,6 +24,8 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <memory>
 #include <set>
 #include <string>
@@ -31,18 +33,23 @@
 #include <vector>
 
 #include "yb/rocksdb/db/compaction.h"
-#include "yb/rocksdb/env.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/status_fwd.h"
-#include "yb/rocksdb/util/mutable_cf_options.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/status.h"
+#include "yb/util/mem_tracker_fwd.h"
 
 
 namespace rocksdb {
 
 class LogBuffer;
-class Compaction;
 class VersionStorageInfo;
-struct CompactionInputFiles;
+class Comparator;
+class InternalKey;
+class InternalKeyComparator;
+struct ColumnFamilyMetaData;
+struct FileMetaData;
+struct MutableCFOptions;
+struct SstFileMetaData;
 
 class CompactionPicker {
  public:

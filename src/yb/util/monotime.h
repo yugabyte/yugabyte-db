@@ -32,18 +32,15 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+#include <time.h>
 #include <chrono>
 #include <cstdint>
 #include <optional>
 #include <string>
-
-#include <gtest/gtest_prod.h>
-
-struct timeval;
-struct timespec;
+#include <ostream>
 
 namespace yb {
-class MonoTime;
 
 // Represent an elapsed duration of time -- i.e the delta between
 // two MonoTime instances.

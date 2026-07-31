@@ -13,11 +13,12 @@
 
 #pragma once
 
+#include <glog/logging.h>
 #include <atomic>
 #include <mutex>
+#include <chrono>
 
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 

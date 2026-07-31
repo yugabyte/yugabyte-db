@@ -11,7 +11,15 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <string>
+
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_string(allowed_preview_flags_csv);
 

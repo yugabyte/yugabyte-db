@@ -13,17 +13,36 @@
 
 #include "yb/master/tablet_split_manager.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <algorithm>
 #include <optional>
+#include <chrono>
+#include <compare>
+#include <map>
+#include <memory>
+#include <ostream>
+#include <ratio>
+#include <unordered_set>
+#include <utility>
 
 #include "yb/common/constants.h"
 #include "yb/common/schema.h"
-
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
-
 #include "yb/dockv/partition.h"
-
 #include "yb/master/async_rpc_tasks_base.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
@@ -33,9 +52,7 @@
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
-
 #include "yb/server/monitored_task.h"
-
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -46,6 +63,30 @@
 #include "yb/util/sync_point.h"
 #include "yb/util/tostring.h"
 #include "yb/util/unique_lock.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/tablet_split_fwd.h"
+#include "yb/rpc/rpc_context.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/slice.h"
+
+namespace yb {
+namespace master {
+struct LeaderEpoch;
+}  // namespace master
+}  // namespace yb
 
 DEFINE_RUNTIME_int32(process_split_tablet_candidates_interval_msec, 0,
     "The minimum time between automatic splitting attempts. The actual splitting time "

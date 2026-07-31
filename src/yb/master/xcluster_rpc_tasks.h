@@ -13,20 +13,22 @@
 
 #pragma once
 
-#include <stdlib.h>
-
-#include <google/protobuf/repeated_field.h>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
+#include <functional>
 
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/client_fwd.h"
-#include "yb/common/entity_ids.h"
-
 #include "yb/common/snapshot.h"
-#include "yb/gutil/callback_forward.h"
-#include "yb/master/master_types.pb.h"
 #include "yb/master/master_backup.pb.h"
-#include "yb/util/status_fwd.h"
-#include "yb/util/net/net_util.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/callback.h"
+#include "yb/rpc/secure_stream.h" // IWYU pragma: keep
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace client {
@@ -39,13 +41,13 @@ class YBTableName;
 namespace rpc {
 
 class Messenger;
-class SecureContext;
 
 }  // namespace rpc
 
 namespace master {
-class TableIdentifierPB;
 class TabletLocationsPB;
+class NamespaceIdentifierPB;
+
 typedef std::unordered_map<TableId, xrepl::StreamId> TableBootstrapIdsMap;
 typedef Callback<void(Result<TableBootstrapIdsMap>)> BootstrapProducerCallback;
 

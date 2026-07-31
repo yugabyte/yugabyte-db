@@ -13,6 +13,21 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <array>
 #include <functional>
 #include <memory>
@@ -25,19 +40,23 @@
 #include <vector>
 
 #include "libpq-fe.h" // NOLINT
-
 #include "yb/common/transaction.pb.h"
-
 #include "yb/util/format.h"
-#include "yb/util/json_document.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/monotime.h"
-#include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/type_traits.h"
-#include "yb/util/uuid.h"
+#include "postgres_ext.h"
+#include "yb/util/enums.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class HostPort;
+class JsonDocument;
+class Uuid;
+}  // namespace yb
 
 namespace yb::pgwrapper {
 

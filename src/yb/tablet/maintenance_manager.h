@@ -32,23 +32,21 @@
 #pragma once
 
 #include <stdint.h>
-
+#include <glog/logging.h>
+#include <gtest/gtest_prod.h>
 #include <condition_variable>
 #include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <vector>
+#include <mutex>
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/thread_annotations.h"
-
-#include "yb/tablet/tablet.pb.h"
-
-#include "yb/util/condition_variable.h"
 #include "yb/util/monotime.h"
-#include "yb/util/mutex.h"
-#include "yb/util/threadpool.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
@@ -58,6 +56,11 @@ class AtomicGauge;
 class EventStats;
 class MaintenanceManager;
 class MemTracker;
+class Thread;
+class ThreadPool;
+namespace tablet {
+class MaintenanceManagerStatusPB;
+}  // namespace tablet
 
 class MaintenanceOpStats {
  public:

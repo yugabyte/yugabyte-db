@@ -13,10 +13,17 @@
 
 #pragma once
 
-#include <boost/asio/io_context.hpp>
+#include <functional>
+#include <memory>
 
 #include "yb/util/net/net_fwd.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
+
+namespace boost {
+namespace asio {
+class io_context;
+}  // namespace asio
+}  // namespace boost
 
 namespace yb {
 
@@ -39,6 +46,7 @@ class Tunnel {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

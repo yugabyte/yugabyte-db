@@ -10,23 +10,39 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <string>
+#include <algorithm>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <random>
+#include <string_view>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/table_info.h"
-#include "yb/client/yb_table_name.h"
-
-#include "yb/gutil/bind_internal.h"
-
-#include "yb/integration-tests/mini_cluster_base.h"
-
 #include "yb/util/async_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/test_macros.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/client/schema.h"
+#include "yb/common/common.pb.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/callback.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 using std::string;
 

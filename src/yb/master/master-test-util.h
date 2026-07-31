@@ -32,15 +32,17 @@
 
 #pragma once
 
-#include "yb/client/client_fwd.h"
-#include "yb/master/master_client.fwd.h"
-#include "yb/master/master_fwd.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
+namespace client {
+class YBTableName;
+}  // namespace client
+
 namespace master {
 
 class MiniMaster;
+class GetTableLocationsResponsePB;
 
 Status WaitForRunningTabletCount(MiniMaster* mini_master,
                                  const client::YBTableName& table_name,

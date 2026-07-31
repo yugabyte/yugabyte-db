@@ -33,23 +33,26 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <functional>
 
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/schema.h"
-
-#include "yb/gutil/callback_forward.h"
-
-#include "yb/util/status_fwd.h"
+#include "yb/gutil/callback.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
-class MonoDelta;
+enum TableType : int;
+
 namespace tools {
 
 // Options for checksum scans.

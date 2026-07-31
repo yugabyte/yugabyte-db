@@ -13,42 +13,64 @@
 
 #include "yb/tserver/tablet_validator.h"
 
-#include <chrono>
-#include <iterator>
-#include <mutex>
-#include <vector>
-#include <unordered_map>
-#include <unordered_set>
-
 #include <boost/multi_index/composite_key.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index_container.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/multi_index/indexed_by.hpp>
+#include <boost/multi_index/tag.hpp>
+#include <boost/operators.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <chrono>
+#include <iterator>
+#include <mutex>
+#include <vector>
+#include <unordered_map>
+#include <unordered_set>
+#include <algorithm>
+#include <atomic>
+#include <compare>
+#include <functional>
+#include <ostream>
+#include <ratio>
+#include <string_view>
+#include <utility>
 
 #include "yb/client/client.h"
-
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/schema.h"
-
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/master/master_ddl.pb.h"
-
 #include "yb/qlexpr/index.h"
-
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/background_task.h"
-#include "yb/util/compare_util.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/tostring.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
 
 DEFINE_RUNTIME_uint32(tablet_validator_retain_delete_markers_validation_period_sec, 60,
     "The time period in seconds for validation of retain delete markers property for index tables. "
@@ -86,6 +108,7 @@ namespace {
 // backfilling status and such grouping allows to make only one search of the indexed table --
 // refer to CatalogManager::GetBackfillStatus() for the details.
 struct IndexTableIdTag;
+
 struct IndexTableInfo {
   TabletId index_tablet_id;
   TableId  index_table_id;
@@ -121,6 +144,7 @@ struct TableCacheEntry {
 };
 
 struct TableIdTag;
+
 using TableCache = boost::multi_index::multi_index_container<
     TableCacheEntry,
     boost::multi_index::indexed_by<

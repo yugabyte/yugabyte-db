@@ -13,13 +13,18 @@
 
 #include "yb/master/sys_catalog_initialization.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdlib.h>
+#include <string.h>
+#include <boost/multi_index_container.hpp>
+#include <memory>
+#include <ostream>
+#include <utility>
+
 #include "yb/ash/wait_state.h"
-
-#include "yb/common/wire_protocol.h"
-
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/sys_catalog.h"
-
 #include "yb/master/ysql/ysql_manager_if.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
 #include "yb/tablet/operations/snapshot_operation.h"
@@ -27,10 +32,32 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
-
 #include "yb/util/countdown_latch.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/master/sys_catalog_constants.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/operations/operation.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tserver/backup.messages.h"
+#include "yb/tserver/backup.pb.h"
+#include "yb/tserver/tserver_admin.pb.h"
+#include "yb/util/env.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/path_util.h"
+#include "yb/util/pb_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_log.h"
 
 using std::string;
 

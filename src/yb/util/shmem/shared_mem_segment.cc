@@ -12,30 +12,30 @@
 //
 #include "yb/util/shmem/shared_mem_segment.h"
 
+// IWYU pragma: no_include <boost/metaparse/v1/cpp11/impl/string.hpp>
+// IWYU pragma: no_include <boost/metaparse/v1/cpp11/impl/string_at.hpp>
+// IWYU pragma: no_include <boost/metaparse/v1/cpp11/string.hpp>
+
 #include <fcntl.h>
-#include <signal.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
-
-#include <atomic>
+#include <errno.h>
+#include <glog/logging.h>
+#include <string.h>
 #include <cstddef>
 #include <string>
-#include <thread>
-
-#include "yb/gutil/dynamic_annotations.h"
+#include <ostream>
+#include <string_view>
 
 #include "yb/util/crash_point.h"
 #include "yb/util/errno.h"
-#include "yb/util/flags.h"
-#include "yb/util/logging.h"
-#include "yb/util/math_util.h"
+#include "yb/util/math_util.h"  // IWYU pragma: keep
 #include "yb/util/result.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/shmem/reserved_address_segment.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
-#include "yb/util/thread.h"
+#include "yb/util/cast.h"
 
 using namespace std::literals;
 using namespace yb::size_literals;

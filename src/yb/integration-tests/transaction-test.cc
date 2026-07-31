@@ -12,21 +12,44 @@
 //
 
 #include <boost/container/stable_vector.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/intrusive/list.hpp>
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <future>
+#include <memory>
+#include <mutex>
+#include <ostream>
+#include <string>
+#include <thread>
+#include <vector>
 
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/session.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/random_error_clock.h"
-
 #include "yb/util/random_util.h"
-#include "yb/util/thread.h"
-
 #include "yb/yql/cql/ql/util/errcodes.h"
+#include "gtest/gtest.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/server/clock.h"
+#include "yb/server/server_fwd.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
 
 using namespace std::literals;
 

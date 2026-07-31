@@ -29,14 +29,20 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include "yb/util/logging.h"
-#include <gtest/gtest.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <sstream>
+#include <string>
 
+#include "yb/util/logging.h"
 #include "yb/gutil/spinlock.h"
 #include "yb/util/spinlock_profiling.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/trace.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
 
 using std::string;
 

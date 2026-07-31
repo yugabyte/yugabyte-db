@@ -12,8 +12,11 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <memory>
+#include <string>
+
 #include "yb/cdc/cdc_service.pb.h"
-#include "yb/common/entity_ids_types.h"
 
 namespace yb {
 namespace cdc {

@@ -13,14 +13,38 @@
 
 #include "yb/docdb/object_lock_shared_state.h"
 
+#include <glog/logging.h>
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <cstring>
+#include <limits>
+#include <mutex>
+#include <ostream>
+#include <utility>
+#include <functional>
+
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/object_lock_data.h"
-
 #include "yb/util/crash_point.h"
-#include "yb/util/lw_function.h"
 #include "yb/util/shmem/annotations.h"
 #include "yb/util/shmem/robust_mutex.h"
 #include "yb/util/shmem/shared_mem_allocator.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/intent.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
+
+namespace yb {
+namespace docdb {
+class ObjectLockManager;
+}  // namespace docdb
+}  // namespace yb
 
 namespace yb::docdb {
 

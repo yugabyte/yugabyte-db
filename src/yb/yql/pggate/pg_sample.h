@@ -14,15 +14,23 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <memory>
-
-#include "yb/common/hybrid_time.h"
+#include <vector>
 
 #include "yb/util/result.h"
-#include "yb/util/status_fwd.h"
-
 #include "yb/yql/pggate/pg_dml_read.h"
 #include "yb/yql/pggate/pg_tools.h"
+#include "yb/util/status.h"
+#include "yb/yql/pggate/pg_session_fwd.h"
+#include "yb/yql/pggate/pg_statement.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
+namespace yb {
+class HybridTime;
+class Slice;
+struct PgObjectId;
+}  // namespace yb
 
 namespace yb::pggate {
 

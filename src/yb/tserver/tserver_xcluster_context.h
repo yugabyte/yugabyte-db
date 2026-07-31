@@ -13,9 +13,23 @@
 
 #pragma once
 
-#include <optional>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <shared_mutex>
 #include <unordered_map>
+#include <string>
+#include <unordered_set>
+#include <functional>
 
 #include "yb/common/common_types.pb.h"  // gcc needs for std::unordered_map XClusterNamespaceInfoPB
 #include "yb/common/entity_ids_types.h"
@@ -23,11 +37,19 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
-#include "yb/util/status_fwd.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/locks.h"
+#include "yb/util/tostring.h"
+
+namespace google {
+namespace protobuf {
+template <typename Key, typename T> class Map;
+}  // namespace protobuf
+}  // namespace google
 
 namespace yb {
-class HybridTime;
-class XClusterSafeTimeMap;
 
 namespace tserver {
 

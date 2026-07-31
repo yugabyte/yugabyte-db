@@ -32,9 +32,9 @@
 
 #include "yb/util/random_util.h"
 
-#include <cmath>
-#include <cstdlib>
+#include <string.h>
 #include <random>
+#include <memory>
 
 #include "yb/util/random.h"
 

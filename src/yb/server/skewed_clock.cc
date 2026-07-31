@@ -13,10 +13,15 @@
 
 #include "yb/server/skewed_clock.h"
 
-#include "yb/server/hybrid_clock.h"
+#include <glog/logging.h>
+#include <utility>
 
+#include "yb/server/hybrid_clock.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stol_utils.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace server {

@@ -12,19 +12,39 @@
 
 #include "yb/master/master_call_home.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <vector>
+
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
-
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/ysql_call_home_stats.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace yb {
+namespace server {
+class RpcAndWebServerBase;
+}  // namespace server
+}  // namespace yb
 
 DEFINE_RUNTIME_int32(callhome_ysql_cluster_stats_rpc_timeout_ms, 90000,
     "Timeout in milliseconds for the CollectYsqlCallHomeStats RPC from the master leader "

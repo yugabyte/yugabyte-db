@@ -17,10 +17,18 @@
 
 #include "yb/yql/cql/ql/ptree/pt_delete.h"
 
+#include <glog/logging.h>
+#include <stdint.h>
+#include <algorithm>
+#include <functional>
+#include <list>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <vector>
+
 #include "yb/common/common.pb.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/yql/cql/ql/ptree/column_arg.h"
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/pt_dml_using_clause.h"
@@ -28,6 +36,10 @@
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 #include "yb/yql/cql/ql/ptree/sem_state.h"
 #include "yb/yql/cql/ql/ptree/yb_location.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
+#include "yb/yql/cql/ql/ptree/list_node.h"
 
 using std::max;
 

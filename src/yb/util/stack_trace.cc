@@ -14,24 +14,35 @@
 #include "yb/util/stack_trace.h"
 
 #include <execinfo.h>
+#include <absl/base/dynamic_annotations.h>
+#include <alloca.h>
+#include <errno.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <limits.h>
+#include <time.h>
+
 #define UNW_LOCAL_ONLY
 #include <libunwind.h>
 #include <signal.h>
 
 #ifdef __linux__
 #include <linux/futex.h>
-#include <sys/syscall.h>
 #endif
 
 #include <algorithm>
 #include <mutex>
+#include <atomic>
+#include <chrono>
+#include <cstring>
+#include <memory>
+#include <ostream>
+#include <ratio>
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/hash/city.h"
 #include "yb/gutil/linux_syscall_support.h"
-
 #include "yb/util/callsite_profiling.h"
-#include "yb/util/flags.h"
 #include "yb/util/libbacktrace_util.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/monotime.h"
@@ -41,6 +52,12 @@
 #include "yb/util/symbolize.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
 
 #if YB_GOOGLE_TCMALLOC
 #include <tcmalloc/malloc_extension.h>

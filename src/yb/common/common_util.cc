@@ -13,14 +13,18 @@
 
 #include "yb/common/common_util.h"
 
+#include <gflags/gflags.h>
+#include <algorithm>
+
 #include "yb/common/common_flags.h"
-
 #include "yb/gutil/casts.h"
-
-#include "yb/master/master_replication.pb.h"
-
+#include "yb/master/master_replication.pb.h"  // IWYU pragma: keep
 #include "yb/util/cgroups.h"
 #include "yb/util/tsan_util.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/tablet/operations.messages.h"
+#include "yb/tablet/operations.pb.h"
+#include "yb/util/memory/arena.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(ysql_yb_ddl_rollback_enabled);

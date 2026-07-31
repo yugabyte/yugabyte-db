@@ -32,9 +32,8 @@
 
 #include "yb/util/faststring.h"
 
+#include <glog/logging.h>
 #include <memory>
-
-#include "yb/util/logging.h"
 
 namespace yb {
 

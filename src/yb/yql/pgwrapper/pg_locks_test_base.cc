@@ -11,28 +11,44 @@
 // under the License.
 //
 
-#include <google/protobuf/repeated_field.h>
-#include <gtest/gtest.h>
+#include <glog/logging.h>
+#include <chrono>
+#include <functional>
+#include <ratio>
 
-#include "yb/client/meta_cache.h"
-#include "yb/client/table.h"
-#include "yb/client/tablet_server.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
-#include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_format.h"
 #include "yb/yql/pgwrapper/pg_locks_test_base.h"
+#include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tsan_util.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_mini_test_base.h"
+
+namespace yb {
+namespace client {
+namespace internal {
+class RemoteTablet;
+}  // namespace internal
+}  // namespace client
+}  // namespace yb
 
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(enable_wait_queues);

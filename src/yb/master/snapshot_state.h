@@ -13,22 +13,51 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <limits>
+#include <optional>
+#include <string>
+#include <vector>
+
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
-
-#include "yb/docdb/docdb_fwd.h"
-
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/state_with_tablets.h"
-
-#include "yb/tablet/tablet_fwd.h"
-
-#include "yb/tserver/tserver_fwd.h"
-
 #include "yb/util/async_task_util.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/tablet/tablet_snapshots.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
+namespace docdb {
+class KeyValueWriteBatchPB;
+}  // namespace docdb
+namespace tablet {
+class SnapshotOperation;
+}  // namespace tablet
+namespace tserver {
+class TabletSnapshotOpRequestPB;
+}  // namespace tserver
+
 namespace master {
+class SnapshotCoordinatorContext;
 
 struct TabletSnapshotOperation {
   TabletId tablet_id;

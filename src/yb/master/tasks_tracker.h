@@ -13,12 +13,17 @@
 
 #pragma once
 
-#include <vector>
-
 #include <boost/circular_buffer.hpp>
+#include <gflags/gflags.h>
+#include <boost/core/pointer_traits.hpp>
+#include <vector>
+#include <memory>
+#include <string>
 
 #include "yb/server/monitored_task.h"
 #include "yb/util/locks.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/strongly_typed_bool.h"
 
 DECLARE_int32(tasks_tracker_num_tasks);
 DECLARE_int32(tasks_tracker_keep_time_multiplier);

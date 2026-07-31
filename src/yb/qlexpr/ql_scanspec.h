@@ -15,28 +15,58 @@
 
 #pragma once
 
-#include <map>
+#include <stddef.h>
+#include <boost/container_hash/hash.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <memory>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <optional>
+#include <string>
 
-#include <boost/functional/hash.hpp>
-
-#include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
-#include "yb/common/common_types.pb.h"
 #include "yb/common/schema.h"
 #include "yb/common/value.pb.h"
-
 #include "yb/dockv/dockv_fwd.h"
 #include "yb/dockv/key_bytes.h"
-
 #include "yb/qlexpr/qlexpr_fwd.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/constants.h"
+#include "yb/common/value.messages.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/gutil/macros.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/util/enums.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
-#include "yb/util/col_group.h"
+namespace yb {
+class ColGroupHolder;
+class LWPgsqlConditionPB;
+class PgsqlConditionPB;
+enum QLClient : int;
 
-#include "yb/rocksdb/options.h"
+namespace qlexpr {
+class QLTableRow;
+}  // namespace qlexpr
+}  // namespace yb
 
 namespace yb::qlexpr {
 

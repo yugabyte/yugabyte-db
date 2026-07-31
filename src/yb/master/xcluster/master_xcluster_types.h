@@ -17,6 +17,7 @@
 #include "yb/cdc/xrepl_types.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/schema.h"
+#include "yb/gutil/ref_counted.h" // IWYU pragma: keep
 
 namespace yb::master {
 

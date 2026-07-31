@@ -33,26 +33,46 @@
 #pragma once
 
 #include <boost/asio/io_context.hpp>
-#include <boost/asio/strand.hpp>
-
-#include "yb/client/client_fwd.h"
+#include <stdint.h>
+#include <boost/asio/io_context_strand.hpp>
+#include <shared_mutex>
+#include <map>
+#include <memory>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+#include <functional>
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/xcluster_util.h"
-
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/master/master_defaults.h"
-#include "yb/master/xcluster/xcluster_consumer_metrics.h"
-#include "yb/master/xcluster/xcluster_manager_if.h"
-
 #include "yb/rpc/poller.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/master/xcluster/master_xcluster_types.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class MetricRegistry;
 
+namespace client {
+class TableHandle;
+}  // namespace client
+namespace xcluster {
+class XClusterConsumerClusterMetrics;
+}  // namespace xcluster
+
 namespace master {
+class CatalogManager;
+class GetXClusterSafeTimeResponsePB;
+class Master;
+enum XClusterSafeTimeFilter : int;
+struct LeaderEpoch;
 
 // Periodically compute the xCluster safe time and store it in sys catalog.
 // If there is no active xCluster replication streams it will go into idle mode and shutdown all

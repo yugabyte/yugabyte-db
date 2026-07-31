@@ -13,9 +13,14 @@
 
 #include "yb/common/roles_permissions.h"
 
-#include "yb/util/logging.h"
+#include <glog/logging.h>
+#include <ostream>
+#include <unordered_map>
+#include <functional>
 
+#include "yb/util/logging.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/common/common_types.pb.h"
 
 using std::string;
 using std::vector;

@@ -31,15 +31,14 @@
 //
 #pragma once
 
-#include <curl/curl.h>
-
+#include <stdint.h>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "yb/gutil/macros.h"
-
-#include "yb/util/status_fwd.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/util/status.h"
 
 typedef void CURL;
 

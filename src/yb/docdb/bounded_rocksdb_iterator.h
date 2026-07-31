@@ -13,15 +13,21 @@
 
 #pragma once
 
-#include <stdint.h>
-
 #include <string>
-#include <vector>
-
-#include "yb/docdb/docdb_fwd.h"
+#include <memory>
 
 #include "yb/rocksdb/iterator.h"
-#include "yb/rocksdb/options.h"
+#include "yb/util/status.h"
+
+namespace rocksdb {
+class DB;
+struct ReadOptions;
+}  // namespace rocksdb
+namespace yb {
+namespace docdb {
+struct KeyBounds;
+}  // namespace docdb
+}  // namespace yb
 
 namespace yb::docdb {
 

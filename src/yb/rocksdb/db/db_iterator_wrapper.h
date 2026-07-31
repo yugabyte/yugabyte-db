@@ -13,8 +13,11 @@
 #pragma once
 
 #include <memory>
+#include <string>
 
 #include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/status.h"
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 

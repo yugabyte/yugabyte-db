@@ -44,62 +44,68 @@
 #include "yb/server/default-path-handlers.h"
 
 #include <sys/stat.h>
-
+#include <boost/algorithm/string.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <limits.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/algorithm/string/replace.hpp>
+#include <boost/range/as_literal.hpp>
 #include <chrono>
 #include <fstream>
 #include <functional>
-#include <memory>
 #include <sstream>
 #include <string>
 #include <thread>
-#include <unordered_set>
 #include <vector>
 #include <set>
-
-#include <boost/algorithm/string.hpp>
-#include <boost/regex.hpp>
+#include <algorithm>
+#include <exception>
+#include <iterator>
+#include <map>
+#include <optional>
+#include <stdexcept>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
 
 #include "yb/common/version_info.h"
-
-#if YB_TCMALLOC_ENABLED
-#include <gperftools/malloc_extension.h>
-#endif
-
 #include "yb/fs/fs_manager.h"
-
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/rpc/secure.h"
 #include "yb/rpc/secure_stream.h"
-
 #include "yb/server/pprof-path-handlers.h"
 #include "yb/server/server_base.h"
 #include "yb/server/webserver.h"
-
 #include "yb/util/flags.h"
-#include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/format.h"
-#include "yb/util/histogram.pb.h"
 #include "yb/util/html_print_helper.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
-#include "yb/util/path_util.h"
+#include "yb/util/metrics_writer.h"
 #include "yb/util/perf_util.h"
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
 #include "yb/util/stack_trace_tracker.h"
 #include "yb/util/status_log.h"
-#include "yb/util/string_case.h"
-#include "yb/util/subprocess.h"
-#include "yb/util/tostring.h"
 #include "yb/util/url-coding.h"
+#include "yb/common/version_info.pb.h"
+#include "yb/util/enums.h"
+#include "yb/util/env.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/subprocess.h"
 
 DEFINE_RUNTIME_uint64(web_log_bytes, 1024 * 1024,
     "The maximum number of bytes to display on the debug webserver's log page");

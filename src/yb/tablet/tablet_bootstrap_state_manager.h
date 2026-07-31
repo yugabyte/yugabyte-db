@@ -13,20 +13,24 @@
 
 #pragma once
 
+#include <atomic>
+#include <string>
+#include <string_view>
+
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
-
 #include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/consensus_fwd.h"
-
-#include "yb/fs/fs_manager.h"
-
-#include "yb/server/server_fwd.h"
-
 #include "yb/tablet/tablet_fwd.h"
+#include "yb/util/path_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
-#include "yb/util/pb_util.h"
-#include "yb/util/status_fwd.h"
+namespace yb {
+class FsManager;
+namespace consensus {
+class RaftConsensus;
+}  // namespace consensus
+}  // namespace yb
 
 namespace yb::tablet {
 

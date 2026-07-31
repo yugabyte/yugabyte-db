@@ -11,10 +11,31 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/regex.hpp>
+#include <chrono>
+#include <functional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <thread>
+#include <vector>
+
 #include "yb/util/logging_test_util.h"
 #include "yb/util/sync_point.h"
-
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 using namespace std::literals;
 

@@ -11,24 +11,53 @@
 // under the License.
 //
 
-#include "yb/rpc/proxy.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/write_query.h"
-
 #include "yb/tserver/remote_bootstrap_session-test.h"
 #include "yb/tserver/tserver.messages.h"
-
-#include "yb/util/flags.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/wire_protocol-test-util.h"
+#include "yb/consensus/log.pb.h"
+#include "yb/consensus/log_fwd.h"
+#include "yb/consensus/log_util.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/operations/operation.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tserver/remote_bootstrap_session.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_types.messages.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/env.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/monotime.h"
+#include "yb/util/path_util.h"
+#include "yb/util/status.h"
 
 using std::string;
 using std::vector;

@@ -12,18 +12,47 @@
 //
 
 #include <google/protobuf/any.pb.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <functional>
+#include <limits>
+#include <memory>
+#include <mutex>
+#include <random>
+#include <ratio>
+#include <sstream>
+#include <string>
+#include <thread>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+#include <compare>
 
 #include "yb/ann_methods/ann_methods.h"
 #include "yb/ann_methods/hnswlib_wrapper.h"
 #include "yb/ann_methods/usearch_wrapper.h"
 #include "yb/ann_methods/vector_lsm-test.pb.h"
-
 #include "yb/hnsw/vector_index_test_base.h"
-
-#include "yb/rocksdb/metadata.h"
-
 #include "yb/rpc/thread_pool.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/mem_tracker.h"
@@ -33,13 +62,46 @@
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
-#include "yb/util/test_util.h"
 #include "yb/util/thread_holder.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/vector_index/vector_lsm.h"
 #include "yb/vector_index/vector_lsm_metadata.h"
-#include "yb/vector_index/vectorann_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/vector_types.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/hnsw/hnsw_block_cache.h"
+#include "yb/hnsw/hnsw_fwd.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/storage/frontier.h"
+#include "yb/storage/storage_types.h"
+#include "yb/util/compare_util.h"
+#include "yb/util/enums.h"
+#include "yb/util/env.h"
+#include "yb/util/format.h"
+#include "yb/util/locks.h"
+#include "yb/util/logging.h"
+#include "yb/util/math_util.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/metrics.h"
+#include "yb/util/metrics_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/thread_pool.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
+#include "yb/vector_index/distance.h"
+#include "yb/vector_index/hnsw_options.h"
+#include "yb/vector_index/vector_index_fwd.h"
+#include "yb/vector_index/vector_index_if.h"
+#include "yb/vector_index/vector_lsm.pb.h"
+#include "yb/vector_index/vector_lsm_metrics.h"
 
 using namespace std::literals;
 using namespace yb::size_literals;

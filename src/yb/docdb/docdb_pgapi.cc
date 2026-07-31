@@ -13,33 +13,48 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/docdb/docdb_pgapi.h"
+
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdlib.h>
+#include <string.h>
+#include <limits>
+#include <map>
+#include <optional>
+#include <ostream>
+#include <tuple>
+#include <utility>
+
 #include "yb/docdb/docdb_pgapi_private.h"
-
 #include "yb/common/pg_types.h"
-#include "yb/common/schema.h"
-
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
-
 #include "yb/gutil/singleton.h"
-
-#include "yb/qlexpr/ql_expr.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
-
 #include "yb/yql/pggate/pg_expr.h"
 #include "yb/yql/pggate/pg_value.h"
 #include "yb/yql/pggate/pg_type.h"
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
-
 #include "ybgate/ybgate_cpp_util.h"
 #include "ybgate/ybgate_status.h"
-
 #include "catalog/pg_type_d.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/strings/escaping.h"
+#include "yb/util/decimal.h"
+#include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/slice.h"
+#include "ybgate/ybgate_api.h"
 
 using std::string;
 

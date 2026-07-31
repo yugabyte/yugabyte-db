@@ -14,6 +14,22 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/container/small_vector.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <functional>
 #include <list>
 #include <memory>
@@ -25,17 +41,23 @@
 #include <vector>
 
 #include "yb/gutil/macros.h"
-
 #include "yb/rpc/rpc_fwd.h"
-
 #include "yb/util/concepts.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
-
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/util/pg_tuple.h"
+#include "yb/util/enums.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/yql/pggate/pg_expr.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
+namespace yb {
+class LWPgsqlResponsePB;
+}  // namespace yb
 
 namespace yb::pggate {
 

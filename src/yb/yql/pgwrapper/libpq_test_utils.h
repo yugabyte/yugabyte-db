@@ -13,9 +13,15 @@
 
 #pragma once
 
-#include "yb/yql/pgwrapper/libpq_utils.h"
+#include <stdint.h>
 
 #include "yb/util/result.h"
+
+namespace yb {
+namespace pgwrapper {
+class PGConn;
+}  // namespace pgwrapper
+}  // namespace yb
 
 namespace yb::pgwrapper {
 

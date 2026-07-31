@@ -11,25 +11,35 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <stddef.h>
 #include <algorithm>
 #include <string>
-
-#include <gtest/gtest.h>
+#include <memory>
+#include <ostream>
+#include <utility>
+#include <vector>
 
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/integration-tests/cql_test_base.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/mini_tablet_server.h"
-
 #include "yb/util/status.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/opid.h"
+#include "yb/integration-tests/cql_test_util.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/test_macros.h"
 
 using std::string;
 

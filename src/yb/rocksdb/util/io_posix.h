@@ -22,8 +22,15 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #pragma once
-#include <unistd.h>
+#include <assert.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <string>
+
 #include "yb/rocksdb/env.h"
+#include "yb/util/errno.h"
+#include "yb/util/file_system.h"
+#include "yb/util/slice.h"
 
 // For non linux platform, the following macros are used only as place
 // holder.

@@ -11,27 +11,65 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
-
 #include <boost/algorithm/string/join.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/move/iterator.hpp>
+#include <boost/range/begin.hpp>
+#include <boost/range/end.hpp>
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <ostream>
+#include <ranges>
+#include <ratio>
+#include <set>
+#include <string>
+#include <thread>
+#include <tuple>
+#include <vector>
 
-#include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include "yb/rocksdb/db.h"
-
 #include "yb/tablet/tablet.h"
-
-#include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
+#include "gtest/gtest.h"
+#include "yb/common/column_id.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/options.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_util.h"
+#include "yb/util/thread_holder.h"
+#include "yb/util/tostring.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 using std::string;
 

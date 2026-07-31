@@ -14,6 +14,7 @@
 #pragma once
 
 #include "yb/common/entity_ids_types.h"
+#include "yb/common/read_hybrid_time.h" // IWYU pragma: keep
 #include "yb/master/leader_epoch.h"
 #include "yb/master/sys_catalog_types.h"
 #include "yb/util/status_fwd.h"

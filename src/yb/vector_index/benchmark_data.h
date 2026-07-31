@@ -16,9 +16,18 @@
 
 #pragma once
 
+#include <errno.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <memory>
-#include <optional>
 #include <type_traits>
+#include <limits>
+#include <ostream>
+#include <random>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
@@ -27,10 +36,10 @@
 #include "yb/util/result.h"
 #include "yb/util/logging.h"
 #include "yb/util/status_format.h"
-
 #include "yb/common/vector_types.h"
-
 #include "yb/vector_index/coordinate_types.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/util/status.h"
 
 namespace yb::vector_index {
 

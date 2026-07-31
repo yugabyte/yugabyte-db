@@ -13,10 +13,9 @@
 
 #include <string>
 
-#include <gtest/gtest.h>
-
 #include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
 
 namespace yb::util {
 

@@ -11,16 +11,23 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <stdint.h>
+#include <memory>
+#include <optional>
 
 #include "yb/master/tablet_creation_limits.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_descriptor_test_util.h"
-
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/uuid.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/net/net_util.h"
 
 namespace yb::master {
 

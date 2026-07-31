@@ -13,11 +13,24 @@
 
 #pragma once
 
+#include <future>
+#include <memory>
+#include <string>
+
 #include "yb/docdb/wait_queue.h"
 #include "yb/server/server_fwd.h"
-#include "yb/tserver/tserver_service.fwd.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class ThreadPool;
+namespace client {
+class YBClient;
+}  // namespace client
+namespace tserver {
+class GetOldSingleShardWaitersRequestPB;
+class GetOldSingleShardWaitersResponsePB;
+}  // namespace tserver
+
 namespace docdb {
 
 // This class is responsible for aggregating all wait-for relationships across WaitQueue instances
@@ -53,6 +66,7 @@ class LocalWaitingTxnRegistry : public WaitingTxnRegistry {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

@@ -32,30 +32,48 @@
 
 #include "yb/consensus/consensus_queue.h"
 
+#include <boost/container/small_vector.hpp>
+#include <absl/base/dynamic_annotations.h>
+#include <gflags/gflags.h>
+#include <boost/container/vector.hpp>
+#include <boost/intrusive/list.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <algorithm>
 #include <mutex>
 #include <string>
 #include <utility>
-
-#include <boost/container/small_vector.hpp>
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <limits>
+#include <ratio>
+#include <tuple>
+#include <unordered_set>
 
 #include "yb/cdc/cdc_error.h"
-
 #include "yb/common/tablespace_parser.h"
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_context.h"
-#include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/replicate_msgs_holder.h"
-
 #include "yb/gutil/bind.h"
-#include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
-
+#include "yb/rpc/strand.h"  // IWYU pragma: keep
 #include "yb/util/enums.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_validators.h"
@@ -71,6 +89,42 @@
 #include "yb/util/status_log.h"
 #include "yb/util/tostring.h"
 #include "yb/util/url-coding.h"
+#include "yb/cdc/cdc_service.pb.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common_consensus_util.h"
+#include "yb/common/common_net.messages.h"
+#include "yb/common/common_types.messages.h"
+#include "yb/common/opid.messages.h"
+#include "yb/common/opid.pb.h"
+#include "yb/common/replica_type.h"
+#include "yb/common/transaction.messages.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/wire_protocol.messages.h"
+#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_types.messages.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/metadata.messages.h"
+#include "yb/gutil/bind_helpers.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/tserver/tserver_types.messages.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/bytes_formatter.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/io.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/restart_safe_clock.h"
+#include "yb/util/slice.h"
+#include "yb/util/strand.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/type_traits.h"
+#include "yb/common/wire_protocol.h"
 
 using namespace std::literals;
 using namespace yb::size_literals;

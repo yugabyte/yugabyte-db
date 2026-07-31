@@ -11,9 +11,40 @@
 // under the License.
 //
 
-#include "yb/docdb/docdb.messages.h"
+#include <chrono>
+#include <memory>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb-test.h"
+#include "gtest/gtest.h"
+#include "yb/common/column_id.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/ql_value.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/value.pb.h"
+#include "yb/docdb/doc_write_batch.h"
+#include "yb/docdb/docdb_test_util.h"
+#include "yb/docdb/docdb_util.h"
+#include "yb/docdb/read_operation_data.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/doc_path.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/subdocument.h"
+#include "yb/dockv/value.h"
+#include "yb/dockv/value_type.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 namespace docdb {

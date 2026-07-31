@@ -13,6 +13,14 @@
 
 #include "yb/tserver/tserver_xcluster_context.h"
 
+#include <glog/logging.h>
+#include <functional>
+#include <mutex>
+#include <optional>
+#include <ostream>
+#include <string_view>
+#include <utility>
+
 #include "yb/common/pg_types.h"
 #include "yb/gutil/map-util.h"
 #include "yb/tserver/pg_client.pb.h"
@@ -20,6 +28,10 @@
 #include "yb/tserver/xcluster_safe_time_map.h"
 #include "yb/util/result.h"
 #include "yb/util/shared_lock.h"
+#include "yb/common/constants.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 namespace yb::tserver {
 

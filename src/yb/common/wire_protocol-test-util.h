@@ -32,17 +32,29 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <string>
+#include <vector>
 
-#include "yb/common/ql_protocol.messages.h"
 #include "yb/common/schema.h"
-
-#include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/docdb.pb.h"
-
 #include "yb/util/yb_partition.h"
+#include "yb/common/column_id.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+namespace docdb {
+class KeyValuePairPB;
+class KeyValueWriteBatchPB;
+class LWKeyValueWriteBatchPB;
+}  // namespace docdb
+namespace dockv {
+class DocKey;
+class PrimitiveValue;
+class SubDocKey;
+}  // namespace dockv
 
 using docdb::KeyValuePairPB;
 using dockv::SubDocKey;

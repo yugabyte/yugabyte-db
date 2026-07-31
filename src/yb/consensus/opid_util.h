@@ -33,22 +33,17 @@
 #pragma once
 
 #include <stdint.h>
-
-#include <iosfwd>
+#include <stddef.h>
 #include <string>
-#include <utility>
-
-#include "yb/common/opid.h"
-
-#include "yb/consensus/consensus_fwd.h"
+#include <ostream>
 
 namespace yb {
 
 class OpIdPB;
+struct OpId;
 
 namespace consensus {
-
-class ConsensusRequestPB;
+class LWConsensusRequestPB;
 
 // Minimum possible term.
 extern const int64_t kMinimumTerm;

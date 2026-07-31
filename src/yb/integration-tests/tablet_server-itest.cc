@@ -11,8 +11,20 @@
 // under the License.
 //
 
-#include "yb/util/logging.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <chrono>
+#include <initializer_list>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <thread>
+#include <utility>
+#include <vector>
+#include <functional>
 
+#include "yb/util/logging.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/ts_itest-base.h"
 #include "yb/tserver/mini_tablet_server.h"
@@ -22,6 +34,24 @@
 #include "yb/consensus/log-test-base.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "yb/client/table_handle.h"
+#include "yb/common/wire_protocol-test-util.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/integration-tests/cluster_itest_util.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/util/file_system.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/path_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
 
 DECLARE_bool(TEST_simulate_fs_create_with_empty_uuid);
 DECLARE_int32(num_replicas);

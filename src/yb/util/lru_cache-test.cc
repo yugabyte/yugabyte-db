@@ -11,10 +11,13 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <boost/multi_index_container.hpp>
+#include <iterator>
+#include <string>
 
 #include "yb/util/lru_cache.h"
 #include "yb/util/tostring.h"
+#include "gtest/gtest.h"
 
 namespace yb {
 

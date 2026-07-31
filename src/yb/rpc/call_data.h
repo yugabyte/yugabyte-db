@@ -13,15 +13,25 @@
 
 #pragma once
 
-#include <boost/range/iterator_range.hpp>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/container/small_vector.hpp>
+#include <utility>
 
 #include "yb/rpc/rpc_fwd.h"
-
 #include "yb/util/memory/memory_usage.h"
 #include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+
+namespace boost {
+template <class IteratorT> class iterator_range;
+}  // namespace boost
 
 namespace yb {
 namespace rpc {
+class Sidecars;
 
 struct CallData {
  public:

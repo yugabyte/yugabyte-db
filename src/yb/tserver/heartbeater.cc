@@ -32,51 +32,59 @@
 
 #include "yb/tserver/heartbeater.h"
 
+#include <gflags/gflags.h>
 #include <cstdint>
-#include <iosfwd>
 #include <memory>
-#include <mutex>
 #include <ostream>
 #include <string>
 #include <vector>
+#include <chrono>
+#include <compare>
+#include <optional>
+#include <ratio>
+#include <utility>
+#include <string_view>
 
 #include "yb/common/common_flags.h"
-#include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/version_info.h"
 #include "yb/common/wire_protocol.h"
-
-#include "yb/gutil/bind.h"
-#include "yb/gutil/ref_counted.h"
-#include "yb/gutil/thread_annotations.h"
-
 #include "yb/master/master_heartbeat.proxy.h"
-#include "yb/master/master_rpc.h"
 #include "yb/master/master_types.pb.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/server/hybrid_clock.h"
-#include "yb/server/server_base.proxy.h"
-
 #include "yb/tserver/master_leader_poller.h"
 #include "yb/tserver/service_util.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_cgroup_manager.h"
-
-#include "yb/util/async_util.h"
-#include "yb/util/callsite_profiling.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/slice.h"
 #include "yb/util/status_format.h"
-#include "yb/util/status_log.h"
 #include "yb/util/status.h"
-#include "yb/util/thread.h"
-#include "yb/util/threadpool.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/master/master_heartbeat.pb.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/server/clock.h"
+#include "yb/tserver/tablet_memory_manager.h"
+#include "yb/tserver/tablet_server_options.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/result.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace master {
+class GetLeaderMasterRpc;
+}  // namespace master
+}  // namespace yb
 
 using namespace std::literals;
 

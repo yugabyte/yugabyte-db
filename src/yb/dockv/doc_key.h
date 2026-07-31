@@ -13,23 +13,54 @@
 
 #pragma once
 
-#include <ostream>
-#include <vector>
-
 #include <boost/container/small_vector.hpp>
+#include <assert.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <ostream>
+#include <initializer_list>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <utility>
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/constants.h"
-
 #include "yb/dockv/dockv_fwd.h"
 #include "yb/dockv/key_bytes.h"
 #include "yb/dockv/key_entry_value.h"
-#include "yb/dockv/primitive_value.h"
-
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/slice.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/uuid.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/util/enums.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class Schema;
+
+namespace dockv {
+class DocPath;
+}  // namespace dockv
+}  // namespace yb
 
 namespace yb::dockv {
 
@@ -70,9 +101,7 @@ YB_DEFINE_ENUM(DocKeyPart,
     (kWholeDocKey));
 
 class DocKeyDecoder;
-
 YB_STRONGLY_TYPED_BOOL(HybridTimeRequired)
-
 // Whether to allow parts of the range component of a doc key that should not be present in stored
 // doc key, but could be used during read, for instance kLowest and kHighest.
 YB_STRONGLY_TYPED_BOOL(AllowSpecial)
@@ -296,6 +325,7 @@ class DocKey {
 
  private:
   class DecodeFromCallback;
+
   friend class DecodeFromCallback;
 
   template<class Callback>
@@ -826,6 +856,7 @@ class SubDocKey {
 
  private:
   class DecodeCallback;
+
   friend class DecodeCallback;
 
   // Attempts to decode and consume a subkey from the beginning of the given slice.

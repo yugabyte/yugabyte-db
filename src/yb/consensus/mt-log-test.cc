@@ -30,23 +30,53 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
 #include <algorithm>
 #include <mutex>
 #include <vector>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <utility>
 
 #include "yb/consensus/log.h"
 #include "yb/consensus/log.messages.h"
 #include "yb/consensus/log-test-base.h"
-#include "yb/consensus/log_index.h"
-
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/locks.h"
 #include "yb/util/random.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
+#include "gtest/gtest.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.messages.h"
+#include "yb/common/wire_protocol-test-util.h"
+#include "yb/consensus/consensus.messages.h"
+#include "yb/consensus/consensus_fwd.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/log.pb.h"
+#include "yb/consensus/log_fwd.h"
+#include "yb/consensus/log_reader.h"
+#include "yb/consensus/log_util.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/bind.h"
+#include "yb/gutil/callback.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/server/clock.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/util/status_callback.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 
 // TODO: Semantics of the Log and Appender thread interactions changed and now multi-threaded
 // writing is no longer allowed, or to be more precise, does no longer guarantee the ordering of

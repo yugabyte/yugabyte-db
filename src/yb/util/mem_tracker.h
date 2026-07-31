@@ -32,7 +32,9 @@
 #pragma once
 
 #include <stdint.h>
-
+#include <boost/container/small_vector.hpp>
+#include <glog/logging.h>
+#include <stddef.h>
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -40,25 +42,23 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
-
-#include <boost/container/small_vector.hpp>
+#include <algorithm>
+#include <utility>
+#include <version>
 
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/util/atomic.h"
-#include "yb/util/enums.h"
 #include "yb/util/high_water_mark.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
-#include "yb/util/mutex.h"
-#include "yb/util/random.h"
 #include "yb/util/strongly_typed_bool.h"
-#include "yb/util/tcmalloc_util.h"
+#include "yb/util/logging.h"
 
 namespace yb {
 
 class MemTracker;
 class MetricEntity;
+
 using MemTrackerPtr = std::shared_ptr<MemTracker>;
 
 static const std::string kTCMallocTrackerNamePrefix = "TCMalloc ";
@@ -503,6 +503,7 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   std::atomic<int64_t> consumption_upper_bound_for_update_;
 
   class TrackerMetrics;
+
   std::unique_ptr<TrackerMetrics> metrics_;
 
   HighWaterMark consumption_{0};

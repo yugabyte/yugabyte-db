@@ -12,23 +12,39 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#include <gtest/gtest.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/common/common.pb.h"
 #include "yb/common/schema.h"
 #include "yb/common/schema_pbutil.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/partition.h"
-
 #include "yb/master/master_ddl.pb.h"
-
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
-
 #include "yb/yql/pggate/pg_read_range.h"
 #include "yb/yql/pggate/pg_table.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
+#include "gtest/gtest.h"
+#include "yb/client/table.h"
+#include "yb/common/column_id.h"
+#include "yb/common/pg_types.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/value.messages.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/value_type.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb::pggate {
 

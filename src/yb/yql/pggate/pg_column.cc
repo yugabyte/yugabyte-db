@@ -15,18 +15,32 @@
 
 #include "yb/yql/pggate/pg_column.h"
 
-#include "yb/client/schema.h"
+#include <glog/logging.h>
+#include <ostream>
+#include <string_view>
+#include <utility>
 
+#include "yb/client/schema.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/pgsql_protocol.messages.h"
 #include "yb/common/schema.h"
-
 #include "yb/dockv/key_entry_value.h"
-
 #include "yb/util/logging.h"
-
 #include "yb/yql/pggate/pg_expr.h"
+#include "yb/common/column_id.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+enum class SortingType;
+namespace pggate {
+class PgDml;
+}  // namespace pggate
+}  // namespace yb
 
 namespace yb::pggate {
 

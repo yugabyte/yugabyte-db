@@ -17,19 +17,29 @@
 
 #pragma once
 
-#include "yb/client/client_fwd.h"
+#include <stdint.h>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "yb/client/yb_table_name.h"
-
-#include "yb/common/common_fwd.h"
-#include "yb/common/value.pb.h"
-
-#include "yb/gutil/callback_forward.h"
-
-#include "yb/qlexpr/qlexpr_fwd.h"
-
 #include "yb/util/ref_cnt_buffer.h"
+#include "yb/common/schema.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class LWQLPagingStatePB;
+class QLPagingStatePB;
+class QLType;
+enum QLClient : int;
+
+namespace client {
+class YBqlOp;
+}  // namespace client
+template <typename Sig> class Callback;
+
 namespace ql {
 
 // This module is included by a few outside classes, so we cannot include ptree header files here.

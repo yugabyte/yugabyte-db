@@ -33,12 +33,14 @@
 
 #include <string>
 #include <unordered_set>
+#include <memory>
+#include <sstream>
 
-#include "yb/common/common_fwd.h"
-
-#include "yb/server/server_fwd.h"
+#include "yb/server/monitored_task.h"
 
 namespace yb {
+class Schema;
+
 namespace server {
 
 void HtmlOutputSchemaTable(const Schema& schema,

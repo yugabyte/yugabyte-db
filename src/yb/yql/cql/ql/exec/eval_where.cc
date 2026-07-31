@@ -13,23 +13,43 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/common/ql_protocol.messages.h"
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/iterator/transform_iterator.hpp>
+#include <algorithm>
+#include <limits>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <vector>
+
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/value.pb.h"
-
 #include "yb/qlexpr/ql_rowblock.h"
-
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/yb_partition.h"
-
 #include "yb/yql/cql/ql/exec/exec_context.h"
 #include "yb/yql/cql/ql/exec/executor.h"
 #include "yb/yql/cql/ql/ptree/column_arg.h"
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/ql_protocol.messages.h"  // IWYU pragma: keep
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/qlexpr/ql_expr.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/status.h"
+#include "yb/yql/cql/ql/ptree/list_node.h"
 
 namespace yb {
 namespace ql {

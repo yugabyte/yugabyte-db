@@ -13,6 +13,8 @@
 #pragma once
 
 #include "yb/tserver/backup.service.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/util/metric_entity.h"
 
 namespace yb {
 namespace tserver {

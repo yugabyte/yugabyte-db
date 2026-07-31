@@ -11,6 +11,12 @@
 // under the License.
 #pragma once
 
+#include <optional>
+#include <string_view>
+#include <vector>
+
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 #ifdef __linux__
 
 #include <atomic>
@@ -21,11 +27,9 @@
 #include <mutex>
 #include <span>
 #include <string>
-#include <tuple>
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/util/result.h"
 
 namespace yb {

@@ -13,7 +13,15 @@
 
 #include "yb/yql/process_wrapper/common_config.h"
 
+#include <gflags/gflags.h>
+#include <vector>
+
 #include "yb/rpc/secure.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/server/rpc_server.h"
+#include "yb/server/server_base_options.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
 
 DECLARE_string(certs_dir);
 DECLARE_string(certs_for_client_dir);

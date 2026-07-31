@@ -15,6 +15,11 @@
 
 #include "yb/yql/pggate/util/pg_wire.h"
 
+#include <string.h>
+
+#include "yb/gutil/integral_types.h"
+#include "yb/util/write_buffer.h"
+
 namespace yb {
 namespace pggate {
 

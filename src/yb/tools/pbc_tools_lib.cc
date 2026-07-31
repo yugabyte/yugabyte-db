@@ -13,11 +13,19 @@
 
 #include "yb/tools/pbc_tools_lib.h"
 
+#include <glog/logging.h>
+#include <ostream>
+#include <utility>
+
 #include "yb/encryption/encrypted_file_factory.h"
 #include "yb/encryption/header_manager_impl.h"
 #include "yb/encryption/universe_key_manager.h"
-
 #include "yb/util/status.h"
+#include "yb/util/env.h"
+#include "yb/util/faststring.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 namespace yb::pb_util {
 

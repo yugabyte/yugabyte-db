@@ -19,22 +19,39 @@
 
 #pragma once
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <string>
-
-#include <rapidjson/document.h>
+#include <list>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <vector>
 
 #include "yb/client/session.h"
-
-#include "yb/common/ql_protocol.messages.h"
-
-#include "yb/util/status_fwd.h"
-
-#include "yb/yql/cql/ql/exec/exec_fwd.h"
 #include "yb/yql/cql/ql/ptree/process_context.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+enum IsolationLevel : int;
+namespace qlexpr {
+class QLRowBlock;
+}  // namespace qlexpr
+
 namespace ql {
+class ParseTree;
+class QLEnv;
+class Rescheduler;
+class StatementParameters;
+class TreeNode;
 
 //--------------------------------------------------------------------------------------------------
 // In addition to actual data, a CQL result contains a paging state for the CURSOR position.

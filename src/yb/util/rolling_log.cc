@@ -32,9 +32,15 @@
 #include "yb/util/rolling_log.h"
 
 #include <zlib.h>
-
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <time.h>
+#include <unistd.h>
 #include <iomanip>
 #include <string>
+#include <sstream>
+#include <utility>
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/numbers.h"
@@ -46,6 +52,9 @@
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 #include "yb/util/user.h"
+#include "yb/util/file_system.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 using std::ostringstream;
 using std::setw;

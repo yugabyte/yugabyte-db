@@ -14,21 +14,36 @@
 #pragma once
 
 #include <shared_mutex>
+#include <functional>
+#include <map>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "yb/cdc/xcluster_types.h"
-
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/xcluster/master_xcluster_types.h"
 #include "yb/util/status_callback.h"
+#include "yb/cdc/cdc_types.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class IsOperationDoneResult;
 class JsonWriter;
+class HostPort;
 
 namespace cdc {
 class CDCStateTable;
@@ -38,10 +53,13 @@ struct CDCStateTableKey;
 namespace master {
 class PostTabletCreateTaskBase;
 class XClusterOutboundReplicationGroup;
-class XClusterOutboundReplicationGroupInfo;
 class XClusterOutboundReplicationGroupTaskFactory;
 struct TabletDeleteRetainerInfo;
 struct XClusterStatus;
+class CatalogManager;
+class Master;
+class SysCatalogTable;
+struct LeaderEpoch;
 
 class XClusterSourceManager {
  public:

@@ -13,16 +13,49 @@
 
 #include "yb/master/xcluster/xcluster_universe_replication_alter_helper.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+
 #include "yb/common/wire_protocol.h"
 #include "yb/common/xcluster_util.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master_util.h"
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_replication_group.h"
 #include "yb/master/xcluster/xcluster_universe_replication_setup_helper.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/cdc/cdc_consumer.pb.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/gutil/map-util.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_error.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/master/sys_catalog.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_string.h"
+
+namespace yb {
+namespace master {
+class Master;
+}  // namespace master
+}  // namespace yb
 
 DEFINE_RUNTIME_uint32(xcluster_alter_universe_replication_setup_timeout_ms, 10 * 60 * 1000,
     "Maximum time in milliseconds to wait for setup replication to complete when altering "

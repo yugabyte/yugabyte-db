@@ -20,13 +20,17 @@
 
 #include "yb/rocksdb/table/block_hash_index.h"
 
-#include <algorithm>
+#include <assert.h>
+#include <string.h>
+#include <string>
+#include <utility>
 
 #include "yb/rocksdb/comparator.h"
-#include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/util/coding.h"
+#include "yb/rocksdb/status.h"
+#include "yb/util/status.h"
 
 namespace rocksdb {
 

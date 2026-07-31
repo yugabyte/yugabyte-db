@@ -33,14 +33,14 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <string>
 #include <memory>
-
-#include "yb/rocksdb/env.h"
 
 #include "yb/util/slice.h"
 
 namespace rocksdb {
+class Logger;
 
 // A class that takes a bunch of keys, then generates filter
 class FilterBitsBuilder {

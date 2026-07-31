@@ -13,14 +13,21 @@
 
 #pragma once
 
-#include "yb/integration-tests/cql_test_util.h"
-#include "yb/integration-tests/mini_cluster.h"
-#include "yb/integration-tests/yb_mini_cluster_test_base.h"
+#include <stdint.h>
+#include <memory>
+#include <string>
+#include <vector>
 
+#include "yb/integration-tests/cql_test_util.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/tools/tools_test_utils.h"
 #include "yb/yql/cql/cqlserver/cql_server.h"
+#include "yb/util/status.h"
 
 namespace yb {
+namespace client {
+class YBClient;
+}  // namespace client
 
 template <class MiniClusterType>
 class CqlTestBase : public MiniClusterTestWithClient<MiniClusterType> {

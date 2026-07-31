@@ -11,9 +11,12 @@
 // under the License.
 #include "yb/yql/pggate/util/ybc-internal.h"
 
-#include "yb/util/status_fwd.h"
-#include "yb/util/status_format.h"
-#include "yb/util/status_log.h"
+#include <glog/logging.h>
+#include <string.h>
+#include <string>
+
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 using std::string;
 

@@ -32,8 +32,11 @@
 
 #include <chrono>
 #include <thread>
-
-#include <gtest/gtest.h>
+#include <atomic>
+#include <functional>
+#include <memory>
+#include <ratio>
+#include <string>
 
 #include "yb/util/background_task.h"
 #include "yb/util/backoff_waiter.h"
@@ -42,6 +45,8 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/util/monotime.h"
 
 using namespace std::chrono_literals;
 

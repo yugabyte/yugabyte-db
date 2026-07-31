@@ -13,24 +13,49 @@
 
 #include "yb/client/table.h"
 
+#include <glog/logging.h>
+#include <algorithm>
+#include <limits>
+#include <ostream>
+#include <type_traits>
+#include <utility>
+
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/table_info.h"
 #include "yb/client/yb_op.h"
-
 #include "yb/gutil/casts.h"
-
 #include "yb/master/master_client.pb.h"
-
 #include "yb/tserver/tserver_fwd.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory_usage.h"
 #include "yb/util/result.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
 #include "yb/util/unique_lock.h"
-#include "yb/util/flags.h"
+#include "yb/client/schema.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/qlexpr/index.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+class LWQLReadRequestPB;
+class LWQLWriteRequestPB;
+class ReplicationInfoPB;
+class Schema;
+namespace client {
+class YBTableName;
+}  // namespace client
+namespace dockv {
+class PartitionSchema;
+}  // namespace dockv
+}  // namespace yb
 
 using std::string;
 

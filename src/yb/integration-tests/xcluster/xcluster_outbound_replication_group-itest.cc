@@ -11,22 +11,68 @@
 // under the License.
 //
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <chrono>
+#include <functional>
+#include <future>
+#include <initializer_list>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <set>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "yb/client/xcluster_client.h"
-#include "yb/client/yb_table_name.h"
 #include "yb/common/xcluster_util.h"
 #include "yb/consensus/log.h"
-
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/backoff_waiter.h"
+#include "gmock/gmock.h"
+#include "gtest/gtest.h"
+#include "yb/cdc/xcluster_types.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/client/client.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/xcluster/xcluster_test_base.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/leader_epoch.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_macros.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
+
+namespace yb {
+namespace client {
+class YBTable;
+}  // namespace client
+}  // namespace yb
 
 DECLARE_int32(update_min_cdc_indices_interval_secs);
 DECLARE_uint32(cdc_wal_retention_time_secs);

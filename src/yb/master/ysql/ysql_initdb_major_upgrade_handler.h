@@ -13,11 +13,21 @@
 
 #pragma once
 
-#include "yb/master/master_admin.pb.h"
+#include <atomic>
+#include <functional>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "yb/master/master_fwd.h"
+#include "yb/master/master_admin.pb.h"
 #include "yb/util/status.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/util/result.h"
 
 
 namespace yb {
@@ -29,6 +39,9 @@ class VersionInfoPB;
 namespace master {
 struct LeaderEpoch;
 class YsqlCatalogConfig;
+class CatalogManager;
+class Master;
+class SysCatalogTable;
 
 // Helper class to handle global initdb and major version upgrade for YSQL.
 // Only one operation can be run at a time.

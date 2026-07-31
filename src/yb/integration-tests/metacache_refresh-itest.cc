@@ -30,13 +30,16 @@
 // under the License.
 //
 
-#include <map>
+#include <gflags/gflags.h>
+#include <stddef.h>
 #include <memory>
-#include <set>
 #include <string>
-
-#include <glog/stl_logging.h>
-#include <gtest/gtest.h>
+#include <chrono>
+#include <functional>
+#include <future>
+#include <optional>
+#include <ratio>
+#include <vector>
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/client-test-util.h"
@@ -45,31 +48,35 @@
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
-#include "yb/client/table_info.h"
 #include "yb/client/yb_op.h"
-
-#include "yb/common/common.pb.h"
-#include "yb/common/transaction.h"
-#include "yb/common/wire_protocol-test-util.h"
-
-#include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
-#include "yb/master/master_client.pb.h"
-#include "yb/master/master_ddl.pb.h"
-#include "yb/master/master_defaults.h"
-#include "yb/master/master_util.h"
-#include "yb/master/master_admin.proxy.h"
-
 #include "yb/util/async_util.h"
 #include "yb/rpc/sidecars.h"
 #include "yb/util/sync_point.h"
-#include "yb/tserver/tserver_service.pb.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
-#include "yb/yql/pgwrapper/pg_wrapper.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/client/schema.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/master/master_fwd.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_callback.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
 
 
 using strings::Substitute;

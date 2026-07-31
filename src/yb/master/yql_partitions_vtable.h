@@ -13,11 +13,40 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <atomic>
+#include <future>
+#include <map>
+#include <shared_mutex>
+#include <string>
+#include <unordered_map>
+#include <vector>
+#include <functional>
+
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/yql_virtual_table.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/schema.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/master_fwd.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/util/net/inetaddress.h"
+#include "yb/util/net/net_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+namespace google {
+namespace protobuf {
+class Arena;
+}  // namespace protobuf
+}  // namespace google
 
 namespace yb {
 namespace master {
+class Master;
+class TabletLocationsPB;
 
 // VTable implementation of system.partitions.
 class YQLPartitionsVTable : public YQLVirtualTable {

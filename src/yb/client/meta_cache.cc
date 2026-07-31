@@ -33,18 +33,46 @@
 #include "yb/client/meta_cache.h"
 
 #include <stdint.h>
-
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/core/addressof.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/variant/apply_visitor.hpp>
+#include <boost/variant/get.hpp>
 #include <atomic>
-#include <list>
 #include <memory>
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <algorithm>
+#include <chrono>
+#include <compare>
+#include <functional>
+#include <limits>
+#include <mutex>
+#include <ostream>
+#include <ratio>
+#include <set>
+#include <string_view>
+#include <tuple>
+#include <type_traits>
+#include <utility>
 
 #include "yb/ash/wait_state.h"
-
 #include "yb/client/client.h"
 #include "yb/client/client_error.h"
 #include "yb/client/client_master_rpc.h"
@@ -52,43 +80,52 @@
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_consensus_util.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/ysql_utils.h"
-
 #include "yb/consensus/metadata.messages.h"
-
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/sys_catalog_constants.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/tserver/local_tablet_server.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
 #include "yb/util/async_util.h"
-#include "yb/util/atomic.h"
 #include "yb/util/callsite_profiling.h"
-#include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/net_util.h"
-#include "yb/util/net/sockaddr.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
 #include "yb/util/unique_lock.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/rpc/lightweight_message.h"
+#include "yb/rpc/rpc.h"
+#include "yb/tablet/tablet.pb.h"
+#include "yb/tserver/tserver.messages.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/jsonwriter.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/status_ec.h"
+#include "yb/util/tostring.h"
 
 using std::map;
 using std::shared_ptr;

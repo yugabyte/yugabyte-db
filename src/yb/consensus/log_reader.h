@@ -31,26 +31,34 @@
 //
 #pragma once
 
+#include <gtest/gtest_prod.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <string>
 #include <vector>
-
-#include <gtest/gtest.h>
+#include <memory>
+#include <mutex>
 
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/log.fwd.h"
-#include "yb/consensus/log_metrics.h"
 #include "yb/consensus/log_fwd.h"
-
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/util/locks.h"
-#include "yb/util/mem_tracker.h"
 #include "yb/util/monotime.h"
+#include "yb/consensus/log.messages.h"
+#include "yb/consensus/log_index.h"
+#include "yb/consensus/log_util.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class Env;
 struct OpId;
+class Counter;
+class EventStats;
+class MemTracker;
 
 namespace cdc {
 class CDCServiceTestMaxRentionTime_TestLogRetentionByOpId_MaxRentionTime_Test;

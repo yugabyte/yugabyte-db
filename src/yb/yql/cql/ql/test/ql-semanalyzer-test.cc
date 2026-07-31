@@ -11,18 +11,20 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <stdint.h>
 #include <memory>
+#include <ostream>
+#include <string>
+#include <string_view>
 
 #include "yb/common/ql_type.h"
-
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/table_info.h"
-
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 #include "yb/util/varint.h"
-
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/parse_tree.h"
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
@@ -30,6 +32,21 @@
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/ptree/pt_table_property.h"
 #include "yb/yql/cql/ql/test/ql-test-base.h"
+#include "gtest/gtest.h"
+#include "yb/client/schema.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/test_macros.h"
+#include "yb/yql/cql/ql/ptree/list_node.h"
+#include "yb/yql/cql/ql/ptree/pt_expr_types.h"
+#include "yb/yql/cql/ql/ptree/pt_name.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
+#include "yb/yql/cql/ql/ptree/tree_node.h"
 
 namespace yb {
 namespace ql {

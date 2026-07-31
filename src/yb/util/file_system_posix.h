@@ -13,11 +13,20 @@
 
 #pragma once
 
-#include "yb/util/file_system.h"
+#include <stdint.h>
+#include <stdio.h>
+#include <sys/types.h>
+#include <atomic>
+#include <string>
 
-struct iovec;
+#include "yb/util/file_system.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+
+struct iovec;  // IWYU pragma: keep
 
 namespace yb {
+class Slice;
 
 #if defined(__linux__)
 size_t GetUniqueIdFromFile(int fd, uint8_t* id);

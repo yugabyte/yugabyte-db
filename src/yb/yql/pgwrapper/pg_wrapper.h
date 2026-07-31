@@ -12,29 +12,29 @@
 
 #pragma once
 
-#include <atomic>
-#include <optional>
+#include <stdint.h>
+#include <sys/types.h>
 #include <string>
 #include <variant>
 #include <vector>
-
-#include "yb/gutil/ref_counted.h"
-
-#include "yb/util/enums.h"
-#include "yb/util/flags.h"
-#include "yb/util/status_fwd.h"
-#include "yb/util/subprocess.h"
+#include <utility>
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
-
 #include "yb/yql/pgwrapper/pg_wrapper_context.h"
-
 #include "yb/yql/process_wrapper/common_config.h"
 #include "yb/yql/process_wrapper/process_wrapper.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/flags/flags_callback.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class FsManager;
+class Subprocess;
 
-class Thread;
+namespace server {
+class ServerBaseOptions;
+}  // namespace server
 
 namespace pgwrapper {
 

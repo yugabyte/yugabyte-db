@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include <string>
+
 #include "yb/common/common_types.pb.h"
 #include "yb/util/strongly_typed_uuid.h"
 

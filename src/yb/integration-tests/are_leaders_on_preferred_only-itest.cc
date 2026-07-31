@@ -11,25 +11,43 @@
 // under the License.
 //
 
-#include "yb/client/meta_cache.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
 #include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
-
 #include "yb/common/wire_protocol.h"
-
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
-#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_cluster.proxy.h"
-#include "yb/master/mini_master.h"
-
 #include "yb/tools/yb-admin_client.h"
-
 #include "yb/tserver/mini_tablet_server.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status_log.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/value.messages.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/tserver/tablet_server_options.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 DECLARE_bool(transaction_tables_use_preferred_zones);
 

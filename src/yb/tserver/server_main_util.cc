@@ -13,32 +13,38 @@
 
 #include "yb/tserver/server_main_util.h"
 
+#include <boost/algorithm/string/trim.hpp>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <unistd.h>
 #include <algorithm>
 #include <iostream>
 #include <string>
-#include <boost/algorithm/string/trim.hpp>
+#include <optional>
+#include <vector>
+
 #include "yb/util/string_case.h"
-
 #include "absl/debugging/symbolize.h"
-
 #include "yb/common/init.h"
 #include "yb/common/wire_protocol.h"
-
-#include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/log_util.h"
-
 #include "yb/server/clockbound_clock.h"
 #include "yb/server/skewed_clock.h"
-
-#include "yb/util/debug/trace_event.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/csv_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
-#include "yb/util/pg_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/util/debug/trace_event_impl.h"
+#include "yb/util/env.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_log.h"
 
 DEFINE_NON_RUNTIME_bool(use_memory_defaults_optimized_for_ysql, false,
     "If true, the recommended defaults for the memory usage settings take into account the amount "

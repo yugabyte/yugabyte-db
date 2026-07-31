@@ -13,7 +13,12 @@
 
 #include "yb/master/cluster_balance_activity_info.h"
 
+#include <boost/move/utility_core.hpp>
+#include <mutex>
+
 #include "yb/util/shared_lock.h"
+#include "yb/master/async_rpc_tasks_base.h"
+#include "yb/util/status.h"
 
 namespace yb::master {
 

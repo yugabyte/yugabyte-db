@@ -30,9 +30,19 @@
 // under the License.
 //
 
+#include <glog/logging.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <algorithm>
 #include <map>
 #include <vector>
+#include <chrono>
+#include <iterator>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <utility>
 
 #include "yb/client/client-test-util.h"
 #include "yb/client/client.h"
@@ -44,19 +54,27 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
-
-#include "yb/gutil/casts.h"
-#include "yb/gutil/map-util.h"
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
-
 #include "yb/util/random.h"
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/ql_protocol.messages.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 using namespace std::literals;
 

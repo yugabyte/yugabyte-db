@@ -28,10 +28,13 @@
 #endif
 
 #include <inttypes.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
 #include <vector>
 #include <string>
 #include <algorithm>
 #include <limits>
+#include <ostream>
 
 #include "yb/rocksdb/db/compaction_picker.h"
 #include "yb/rocksdb/db/db_impl.h"
@@ -40,14 +43,28 @@
 #include "yb/rocksdb/db/table_properties_collector.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/db/write_controller.h"
-#include "yb/rocksdb/db/writebuffer.h"
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/options_helper.h"
 #include "yb/rocksdb/util/statistics.h"
-
 #include "yb/util/logging.h"
-#include "yb/util/flags.h"
+#include "yb/rocksdb/db/compaction.h"
+#include "yb/rocksdb/db/memtable.h"
+#include "yb/rocksdb/db/table_cache.h"
+#include "yb/rocksdb/memtablerep.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/util/instrumented_mutex.h"
+#include "yb/rocksdb/util/thread_local.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
+
+namespace rocksdb {
+class Cache;
+class Comparator;
+class WriteBuffer;
+}  // namespace rocksdb
 
 DEFINE_UNKNOWN_int32(memstore_arena_size_kb, 64, "Size of each arena allocation for the memstore");
 

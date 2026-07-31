@@ -10,9 +10,22 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/util/status_format.h"
+#include <unistd.h>
+#include <memory>
+#include <string>
+#include <vector>
 
+#include "yb/util/status_format.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
+#include "gtest/gtest.h"
+#include "libpq-fe.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 using std::string;
 

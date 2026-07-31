@@ -72,15 +72,23 @@
 
 #pragma once
 
+#include <glog/logging.h>
 #include <vector>
-#include <list>
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <utility>
 
 #include "yb/bfql/bfql_template.h"
-#include "yb/bfql/tserver_opcodes.h"
 #include "yb/bfql/bfunc_names.h"
-
 #include "yb/util/logging.h"
-#include "yb/util/memory/arena.h"
+#include "yb/bfcommon/bfdecl.h"
+#include "yb/bfql/bfdecl.h"
+#include "yb/bfql/gen_opcodes.h"
+#include "yb/common/value.messages.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace bfql {

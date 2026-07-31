@@ -13,25 +13,37 @@
 
 #include "yb/docdb/in_mem_docdb.h"
 
+#include <glog/logging.h>
+#include <stddef.h>
 #include <sstream>
+#include <memory>
+#include <optional>
+#include <utility>
 
 #include "yb/common/hybrid_time.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/docdb/doc_reader.h"
-#include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/docdb/iter_util.h"
-
-#include "yb/gutil/strings/substitute.h"
-
-#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
-
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/docdb/bounded_rocksdb_iterator.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/docdb/read_operation_data.h"
+#include "yb/dockv/doc_path.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/dockv/value_type.h"
+#include "yb/util/bytes_formatter.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
 
 using std::endl;
 using std::string;

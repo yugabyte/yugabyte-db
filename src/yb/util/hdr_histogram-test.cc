@@ -30,10 +30,13 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <stdint.h>
+#include <string>
 
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 

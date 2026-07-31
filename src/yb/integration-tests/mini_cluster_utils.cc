@@ -13,30 +13,44 @@
 
 #include "yb/integration-tests/mini_cluster_utils.h"
 
-#include "yb/client/yb_table_name.h"
+#include <glog/logging.h>
+#include <algorithm>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <ratio>
+#include <vector>
 
+#include "yb/client/yb_table_name.h"
 #include "yb/common/common_util.h"
 #include "yb/common/schema_pbutil.h"
-
 #include "yb/integration-tests/mini_cluster.h"
-
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master-test-util.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+
+namespace yb {
+class Schema;
+}  // namespace yb
 
 using namespace std::literals;
 

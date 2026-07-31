@@ -10,9 +10,22 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <string.h>
+#include <atomic>
+#include <chrono>
+#include <memory>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <thread>
+#include <tuple>
+#include <vector>
+
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
-#include "yb/client/async_rpc.h"
 #include "yb/client/client.h"
 #include "yb/client/client-test-util.h"
 #include "yb/client/snapshot_test_util.h"
@@ -22,6 +35,18 @@
 #include "yb/util/timestamp.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
 
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks);

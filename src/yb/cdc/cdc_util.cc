@@ -13,8 +13,10 @@
 
 #include "yb/cdc/cdc_util.h"
 
+#include <glog/logging.h>
+#include <ostream>
+
 #include "yb/cdc/cdc_consumer.pb.h"
-#include "yb/gutil/strings/stringpiece.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 

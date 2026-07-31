@@ -13,11 +13,18 @@
 
 #pragma once
 
+#include <gflags/gflags.h>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "yb/common/tablet_limits.h"
-
 #include "yb/master/master_fwd.h"
+#include "yb/util/status.h"
 
-#include "yb/util/status_fwd.h"
+namespace yb {
+class ReplicationInfoPB;
+}  // namespace yb
 
 DECLARE_bool(enforce_tablet_replica_limits);
 

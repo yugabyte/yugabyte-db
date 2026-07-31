@@ -21,20 +21,29 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include <math.h>
+#include <assert.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <string.h>
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
 
 #include "yb/rocksdb/filter_policy.h"
-
 #include "yb/rocksdb/util/hash.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/util/slice.h"
 #include "yb/util/math_util.h"
+#include "yb/gutil/port.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/port/port_posix.h"
 
 namespace rocksdb {
 
-class BlockBasedFilterBlockBuilder;
-class FullFilterBlockBuilder;
-class FixedSizeFilterBlockBuilder;
 typedef FilterPolicy::FilterType FilterType;
 
 namespace {

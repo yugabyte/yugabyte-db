@@ -13,10 +13,14 @@
 
 #pragma once
 
+#include <stdint.h>
+
 #include "yb/tserver/heartbeater.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
 namespace tserver {
+class TabletServer;
 
 class TServerMetricsHeartbeatDataProvider : public PeriodicalHeartbeatDataProvider {
  public:

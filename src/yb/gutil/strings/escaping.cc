@@ -21,17 +21,17 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
-
 #include <limits>
 #include <memory>
 #include <vector>
+#include <ostream>
 
 #include "yb/gutil/charmap.h"
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/port.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/utf/utf.h"  // for runetochar
+#include "yb/gutil/strings/strcat.h"
 
 using std::numeric_limits;
 using std::vector;

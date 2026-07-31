@@ -13,22 +13,35 @@
 
 #pragma once
 
+#include <boost/container/small_vector.hpp>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <memory>
 #include <optional>
 #include <string>
 #include <variant>
 
-#include <boost/container/small_vector.hpp>
-
 #include "yb/common/pg_types.h"
-#include "yb/common/pgsql_protocol.fwd.h"
 #include "yb/common/read_hybrid_time.h"
-
 #include "yb/rpc/rpc_fwd.h"
-
 #include "yb/util/enums.h"
-#include "yb/util/result.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class LWPgsqlReadRequestPB;
+}  // namespace yb
 
 namespace yb::pggate {
 
@@ -88,6 +101,7 @@ class PgSysTablePrefetcher {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

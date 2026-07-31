@@ -13,11 +13,26 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "yb/cdc/xcluster_types.h"
 #include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
 #include "yb/tools/tools_test_utils.h"
+#include "yb/client/client.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/integration-tests/xcluster/xcluster_test_base.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 namespace yb {
+class MiniClusterBase;
+namespace client {
+class YBTableName;
+}  // namespace client
 
 class XClusterDDLReplicationTestBase : public XClusterYsqlTestBase {
  public:

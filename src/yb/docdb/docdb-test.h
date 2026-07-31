@@ -13,23 +13,109 @@
 
 #pragma once
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/asio/ip/address.hpp>
+#include <boost/container/small_vector.hpp>
+#include <boost/container/vector.hpp>
+#include <boost/intrusive/list.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <span>
+#include <algorithm>
+#include <chrono>
+#include <functional>
+#include <map>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <set>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "yb/common/ql_value.h"
-
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/doc_reader_redis.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_test_base.h"
-
 #include "yb/dockv/doc_key.h"
-
 #include "yb/gutil/walltime.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/stack_trace.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/constants.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/schema.h"
+#include "yb/common/transaction.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/docdb/doc_write_batch.h"
+#include "yb/docdb/docdb_test_util.h"
+#include "yb/docdb/lock_util.h"
+#include "yb/docdb/read_operation_data.h"
+#include "yb/dockv/doc_path.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/dockv/subdocument.h"
+#include "yb/dockv/value.h"
+#include "yb/dockv/value_type.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/util/byte_buffer.h"
+#include "yb/util/enums.h"
+#include "yb/util/faststring.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/inetaddress.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/string_trim.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace docdb {
+class DocDBTest;
+class DocDBTestQl;
+struct DocDB;
+}  // namespace docdb
+namespace dockv {
+struct ReaderProjection;
+}  // namespace dockv
+}  // namespace yb
 
 using std::map;
 using std::string;

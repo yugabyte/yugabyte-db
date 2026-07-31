@@ -11,8 +11,21 @@
 // under the License.
 //
 
+#include <rapidjson/document.h>
+#include <rapidjson/error/en.h>
+#include <rapidjson/istreamwrapper.h>
+#include <rapidjson/prettywriter.h>
+#include <errno.h>
+#include <glog/logging.h>
+#include <rapidjson/allocators.h>
+#include <rapidjson/encodings.h>
+#include <rapidjson/rapidjson.h>
+#include <rapidjson/stringbuffer.h>
+#include <string.h>
 #include <fstream>
 #include <string>
+#include <set>
+#include <utility>
 
 #include "yb/common/json_util.h"
 #include "yb/gutil/map-util.h"
@@ -21,12 +34,10 @@
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/status.h"
-
-#include <rapidjson/document.h>
-#include <rapidjson/error/en.h>
-#include <rapidjson/istreamwrapper.h>
-#include <rapidjson/prettywriter.h>
-#include <rapidjson/writer.h>
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/status_format.h"
 
 using rapidjson::Document;
 using rapidjson::SizeType;

@@ -10,13 +10,22 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <gtest/gtest.h>
+#include <ostream>
+#include <string>
+#include <vector>
+
 // This program creates an "initial sys catalog snapshot" at a given directory that can later be
 // used to bring up YSQL clusters without the time-consuming step of running initdb.
 #include "yb/util/path_util.h"
 #include "yb/util/status_log.h"
-#include "yb/util/test_macros.h"
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
-#include "yb/util/flags.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/env.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
 
 DEFINE_UNKNOWN_string(initial_sys_catalog_snapshot_dest_path, "",
               "Destination path to write the initial sys catalog snapshot to");

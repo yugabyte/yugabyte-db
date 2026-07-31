@@ -13,13 +13,13 @@
 #pragma once
 
 #include <jwt-cpp/jwt.h>
-
+#include <jwt-cpp/traits/kazuho-picojson/traits.h>
 #include <set>
 #include <string>
+#include <vector>
 
 #include "yb/util/result.h"
-#include "yb/util/status_fwd.h"
-#include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/util/status.h"
 
 // This file contains utility wrappers & extensions functions over the JWT-CPP library.
 //

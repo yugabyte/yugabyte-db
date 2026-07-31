@@ -23,15 +23,35 @@
 
 #include <inttypes.h>
 #include <stdio.h>
-
+#include <assert.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <algorithm>
 #include <cmath>
 #include <map>
 #include <memory>
 #include <string>
 #include <vector>
-
-#include <gtest/gtest.h>
+#include <cstdlib>
+#include <functional>
+#include <initializer_list>
+#include <iterator>
+#include <optional>
+#include <sstream>
+#include <utility>
 
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/memtable.h"
@@ -63,15 +83,37 @@
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/random.h"
-#include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/utilities/checkpoint.h"
-
 #include "yb/util/enums.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/casts.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/table_properties_collector.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/table/table_builder.h"
+#include "yb/rocksdb/table/table_reader.h"
+#include "yb/rocksdb/table_properties.h"
+#include "yb/rocksdb/types.h"
+#include "yb/rocksdb/util/arena.h"
+#include "yb/rocksdb/util/kv_map.h"
+#include "yb/rocksdb/util/mutable_cf_options.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/slice.h"
+#include "yb/util/slice_parts.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
 
 using std::unique_ptr;
 

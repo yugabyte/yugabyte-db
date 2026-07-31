@@ -47,13 +47,13 @@
 #include <unordered_set>
 #include <vector>
 
-#include "yb/server/webserver_options.h"
-
-#include "yb/util/status_fwd.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/web_callback_registry.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class HostPort;
+struct WebserverOptions;
 
 // Wrapper class for the Squeasel web server library. Clients may register callback
 // methods which produce output for a given URL path
@@ -106,6 +106,7 @@ class Webserver : public WebCallbackRegistry {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

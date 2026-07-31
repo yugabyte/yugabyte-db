@@ -13,18 +13,15 @@
 
 #pragma once
 
-#include <functional>
-
 #include "yb/gutil/macros.h"
-
-#include "yb/master/master_fwd.h"
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
 class Status;
+namespace rpc {
+class RpcContext;
+}  // namespace rpc
 
 namespace master {
 
@@ -40,10 +37,12 @@ class XClusterManager;
 class MasterAutoFlagsManager;
 class MasterClusterHandler;
 class YsqlManager;
-
 // Tells HandleIn/HandleOnLeader to either acquire the lock briefly to check leadership (kFalse)
 // or to hold it throughout the handler invocation (kTrue).
 YB_STRONGLY_TYPED_BOOL(HoldCatalogLock);
+class CloneStateManager;
+class TabletSplitManager;
+class TestAsyncRpcManager;
 
 // Base class for any master service with a few helpers.
 class MasterServiceBase {

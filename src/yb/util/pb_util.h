@@ -35,14 +35,26 @@
 // library itself, but using yb::faststring instances instead of STL strings.
 #pragma once
 
-#include <string>
-
 #include <google/protobuf/repeated_field.h>
 #include <gtest/gtest_prod.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor/cat.hpp>  // IWYU pragma: keep
+#include <boost/preprocessor/seq/for_each.hpp>  // IWYU pragma: keep
+#include <boost/preprocessor/stringize.hpp>
+#include <boost/preprocessor/variadic/to_seq.hpp>  // IWYU pragma: keep
+#include <string>
+#include <memory>
+#include <ostream>
 
-#include "yb/util/faststring.h"
 #include "yb/util/slice.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"  // IWYU pragma: keep
+
+namespace yb {
+class faststring;
+}  // namespace yb
 
 // Check that the provided fields have been set in the protobuf. If the check fails, this returns
 // an InvalidArgument Status who's message containing the list of missing fields.
@@ -140,7 +152,6 @@ bool IsPbFieldEmpty(const google::protobuf::RepeatedPtrField<T>& repeated_field)
 class Env;
 class RandomAccessFile;
 class SequentialFile;
-class Slice;
 class WritableFile;
 
 namespace pb_util {

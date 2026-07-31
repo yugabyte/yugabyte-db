@@ -13,22 +13,36 @@
 
 #include "yb/tserver/tablet_memory_manager.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/stringize.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <algorithm>
+#include <ostream>
+#include <utility>
+#include <string_view>
+
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_cache.h"
 #include "yb/consensus/raft_consensus.h"
-
 #include "yb/gutil/bits.h"
 #include "yb/gutil/strings/human_readable.h"
-
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/memory_monitor.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/server_main_util.h"
-
 #include "yb/util/background_task.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
@@ -36,6 +50,19 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/options.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+class MetricEntity;
+}  // namespace yb
+template <class T> class scoped_refptr;
 
 using namespace std::literals;
 using namespace std::placeholders;

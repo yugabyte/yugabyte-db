@@ -15,11 +15,30 @@
 // This file contains flag definitions that should be known to master, tserver, and pggate
 // (linked into postgres).
 
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <string>
+
 #include "yb/util/flag_validators.h"
 #include "yb/util/flags.h"
 #include "yb/util/size_literals.h"
-
 #include "yb/yql/pggate/pggate_flags.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/util/flags/flag_tags.h"
+
+namespace google {
+class LogSink;
+}  // namespace google
 
 using namespace yb::size_literals;
 

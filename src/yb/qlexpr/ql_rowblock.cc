@@ -15,16 +15,33 @@
 
 #include "yb/qlexpr/ql_rowblock.h"
 
-#include "yb/bfql/bfql.h"
+#include <glog/logging.h>
+#include <stdint.h>
+#include <string.h>
+#include <new>
+#include <utility>
+#include <vector>  // IWYU pragma: keep
 
 #include "yb/common/ql_protocol_util.h"
 #include "yb/qlexpr/ql_serialization.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
-
 #include "yb/util/status_log.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/value.pb.h"
+#include "yb/gutil/endian.h"
+#include "yb/util/cast.h"
+#include "yb/util/logging.h"
+#include "yb/util/write_buffer.h"
+
+namespace yb {
+class ColumnId;
+class QLType;
+}  // namespace yb
 
 namespace yb::qlexpr {
+
+using std::vector;
 
 using std::shared_ptr;
 using std::string;

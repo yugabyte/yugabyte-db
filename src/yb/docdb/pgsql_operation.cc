@@ -13,17 +13,43 @@
 
 #include "yb/docdb/pgsql_operation.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/intrusive/list.hpp>
+#include <boost/iterator/iterator_facade.hpp>
+#include <boost/iterator/transform_iterator.hpp>
+#include <boost/move/iterator.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <algorithm>
 #include <functional>
 #include <limits>
 #include <ranges>
 #include <string>
-#include <unordered_set>
 #include <variant>
 #include <utility>
 #include <vector>
-
-#include <boost/logic/tribool.hpp>
+#include <chrono>
+#include <compare>
+#include <concepts>
+#include <cstddef>
+#include <initializer_list>
+#include <iterator>
+#include <memory>
+#include <ratio>
+#include <sstream>
+#include <string_view>
 
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
@@ -31,12 +57,9 @@
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/pgsql_protocol.messages.h"
-#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/row_mark.h"
-
 #include "yb/common/transaction_error.h"
-
 #include "yb/docdb/doc_pg_expr.h"
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_read_context.h"
@@ -46,12 +69,10 @@
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
-#include "yb/docdb/docdb_pgapi.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/ql_storage_interface.h"
-
 #include "yb/dockv/doc_path.h"
 #include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/packed_row.h"
@@ -60,16 +81,11 @@
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/primitive_value_util.h"
 #include "yb/dockv/reader_projection.h"
-
 #include "yb/gutil/macros.h"
-
 #include "yb/qlexpr/ql_expr_util.h"
-
 #include "yb/rpc/sidecars.h"
-
 #include "yb/util/algorithm_util.h"
 #include "yb/util/debug.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -79,13 +95,51 @@
 #include "yb/util/status_format.h"
 #include "yb/util/trace.h"
 #include "yb/util/yb_pg_errcodes.h"
-
 #include "yb/vector_index/vector_index_if.h"
-
 #include "yb/yql/pggate/util/pg_doc_data.h"
-#include "yb/yql/pgwrapper/pg_wrapper.h"
-
 #include "ybgate/ybgate_api.h"
+#include "yb/bfpg/tserver_opcodes.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/common/read_hybrid_time.h"
+#include "yb/common/schema.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/docdb/bounded_rocksdb_iterator.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/docdb/read_operation_data.h"
+#include "yb/dockv/dockv.pb.h"
+#include "yb/dockv/intent.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/dockv/schema_packing.h"
+#include "yb/dockv/value.h"
+#include "yb/dockv/value_type.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/strings/escaping.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/options.h"
+#include "yb/util/byte_buffer.h"
+#include "yb/util/flags/auto_flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
+#include "yb/vector_index/vector_index_fwd.h"
+#include "yb/yql/pggate/util/pg_wire.h"
 
 using namespace std::literals;
 

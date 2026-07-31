@@ -13,9 +13,24 @@
 //
 //
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <algorithm>
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <utility>
+
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/port.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 namespace yb::test {
 

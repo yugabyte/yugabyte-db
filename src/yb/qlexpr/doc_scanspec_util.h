@@ -15,9 +15,17 @@
 
 #pragma once
 
-#include "yb/qlexpr/ql_scanspec.h"
+#include <vector>
+
 #include "yb/dockv/dockv_fwd.h"
-#include "yb/util/status_fwd.h"
+
+namespace yb {
+class Schema;
+namespace qlexpr {
+class QLScanRange;
+enum class BoundType;
+}  // namespace qlexpr
+}  // namespace yb
 
 namespace yb::qlexpr {
 

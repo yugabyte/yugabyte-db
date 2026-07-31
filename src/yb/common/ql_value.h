@@ -16,18 +16,32 @@
 #pragma once
 
 #include <stdint.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <boost/preprocessor/cat.hpp>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <string_view>
+#include <utility>
 
 #include "yb/util/logging.h"
-
-#include "yb/common/common_fwd.h"
-#include "yb/common/common_types.pb.h"
 #include "yb/common/ql_datatype.h"
-
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/uuid.h"
 #include "yb/util/varint.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/value.pb.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class QLType;
+enum QLClient : int;
+}  // namespace yb
 
 // The list of unsupported datatypes to use in switch statements
 #define QL_UNSUPPORTED_TYPES_IN_SWITCH \

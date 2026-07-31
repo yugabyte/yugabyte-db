@@ -41,50 +41,72 @@
 #pragma once
 
 #include <inttypes.h>
-
-#include <cstdint>
-#include <iosfwd>
-#include <limits>
+#include <stddef.h>
 #include <memory>
-#include <ostream>
 #include <string>
-#include <type_traits>
 #include <unordered_map>
 #include <vector>
+#include <chrono>
+#include <optional>
+#include <set>
+#include <unordered_set>
+#include <functional>
 
 #include "yb/client/client_fwd.h"
-
-#include "yb/common/entity_ids.h"
-#include "yb/common/hybrid_time.h"
-#include "yb/common/opid.h"
-
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_types.pb.h"
 #include "yb/consensus/leader_lease.h"
-#include "yb/consensus/metadata.pb.h"
-
-#include "yb/gutil/ref_counted.h"
-
 #include "yb/integration-tests/mini_cluster.h"
-
-#include "yb/master/master_client.fwd.h"
 #include "yb/master/master_client.pb.h"
-#include "yb/master/master_ddl_client.h"
 #include "yb/master/master_fwd.h"
-
 #include "yb/rpc/rpc_controller.h"
-
-#include "yb/server/server_fwd.h"
-
-#include "yb/tablet/metadata.pb.h"
-#include "yb/tablet/tablet_peer.h"
-
-#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_types.pb.h"
-
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
+#include "yb/client/schema.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+class OpIdPB;
+
+namespace client {
+class YBClient;
+class YBTableName;
+}  // namespace client
+namespace consensus {
+class ConsensusServiceProxy;
+class ConsensusStatePB;
+enum ConsensusConfigType : int;
+enum PeerMemberType : int;
+}  // namespace consensus
+namespace master {
+class CatalogManagerIf;
+class MasterClusterProxy;
+class MasterDDLClient;
+class TSRegistrationPB;
+}  // namespace master
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
+namespace server {
+class GenericServiceProxy;
+}  // namespace server
+namespace tablet {
+enum RaftGroupStatePB : int;
+enum TabletDataState : int;
+}  // namespace tablet
+namespace tserver {
+class ListTabletsResponsePB_StatusAndSchemaPB;
+class TabletServer;
+class TabletServerAdminServiceProxy;
+class TabletServerBackupServiceProxy;
+class TabletServerServiceProxy;
+}  // namespace tserver
+struct OpId;
+}  // namespace yb
 
 using namespace std::literals;
 
@@ -92,9 +114,6 @@ namespace yb {
 
 class ExternalMiniCluster;
 class HostPort;
-class MonoDelta;
-class MiniCluster;
-class Schema;
 class Status;
 
 using yb::OpId;

@@ -13,11 +13,17 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <vector>
 #include <limits>
+#include <ostream>
+#include <string>
 
 #include "yb/util/slice.h"
 #include "yb/util/varint.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace util {

@@ -31,24 +31,32 @@
 //
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <map>
 #include <memory>
 #include <string>
+#include <sstream>
+#include <unordered_set>
+#include <vector>
+#include <functional>
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-
 #include "yb/server/server_base_options.h"
 #include "yb/server/webserver.h"
-
-#include "yb/util/metrics_fwd.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/server/clock.h"
+#include "yb/util/net/net_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
-class Env;
 class FsManager;
 class MemTracker;
 class MetricEntity;
@@ -57,13 +65,18 @@ class NodeInstancePB;
 class ScopedGLogMetrics;
 class ServerRegistrationPB;
 class Thread;
-class Webserver;
+class AtomicMillisLag;
+
+namespace rpc {
+class Messenger;
+class MessengerBuilder;
+class ProxyCache;
+}  // namespace rpc
+template <class T> class AtomicGauge;
 
 namespace server {
 
-class Clock;
 class RpcServer;
-class ServerBaseOptions;
 class ServerStatusPB;
 
 // Base class that is common to implementing a Redis server, as well as

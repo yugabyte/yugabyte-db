@@ -23,6 +23,9 @@
 
 #include "yb/rocksdb/merge_operator.h"
 
+#include <assert.h>
+#include <stddef.h>
+
 namespace rocksdb {
 
 // The default implementation of PartialMergeMulti, which invokes

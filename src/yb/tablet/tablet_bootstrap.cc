@@ -32,41 +32,60 @@
 
 #include "yb/tablet/tablet_bootstrap.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/container/small_vector.hpp>
+#include <boost/intrusive/list.hpp>
+#include <boost/move/iterator.hpp>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <map>
-
-#include <boost/preprocessor/cat.hpp>
-#include <boost/preprocessor/stringize.hpp>
+#include <algorithm>
+#include <chrono>
+#include <deque>
+#include <functional>
+#include <iterator>
+#include <limits>
+#include <memory>
+#include <optional>
+#include <sstream>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 #include "yb/ash/wait_state.h"
-
-#include "yb/common/common_fwd.h"
 #include "yb/common/opid.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
-
 #include "yb/client/session.h"
-
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log.messages.h"
-#include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/retryable_requests.h"
-
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/tablet/mvcc.h"
 #include "yb/tablet/operations/change_auto_flags_config_operation.h"
 #include "yb/tablet/operations/change_metadata_operation.h"
@@ -88,9 +107,7 @@
 #include "yb/tablet/tablet_vector_indexes.h"
 #include "yb/tablet/transaction_coordinator.h"
 #include "yb/tablet/transaction_participant.h"
-
 #include "yb/tserver/ysql_advisory_lock_table.h"
-
 #include "yb/util/atomic.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
@@ -102,6 +119,50 @@
 #include "yb/util/status_format.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/to_stream.h"
+#include "yb/common/common.messages.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.messages.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/consensus/consensus.messages.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/log.pb.h"
+#include "yb/consensus/metadata.messages.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/docdb/docdb.messages.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/docdb/storage_set.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/walltime.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/types.h"
+#include "yb/server/clock.h"
+#include "yb/storage/frontier.h"
+#include "yb/tablet/metadata.pb.h"
+#include "yb/tablet/operations.messages.h"
+#include "yb/tablet/operations/operation.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/util/env.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/memory/arena_list.h"
+#include "yb/util/path_util.h"
+#include "yb/util/restart_safe_clock.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+class MemTracker;
+class ThreadPool;
+}  // namespace yb
 
 DEFINE_UNKNOWN_bool(skip_remove_old_recovery_dir, false,
             "Skip removing WAL recovery dir after startup. (useful for debugging)");

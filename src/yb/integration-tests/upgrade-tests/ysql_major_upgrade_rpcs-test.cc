@@ -11,12 +11,42 @@
 // under the License.
 //
 
-#include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
+#include <glog/logging.h>
+#include <chrono>
+#include <functional>
+#include <initializer_list>
+#include <map>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/status_format.h"
+#include "gtest/gtest.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 
 using namespace std::literals;
 

@@ -30,11 +30,20 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
 #include <functional>
 #include <string>
 #include <vector>
-
-#include <gtest/gtest.h>
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <compare>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
 
 #include "yb/client/client-internal.h"
 #include "yb/client/client-test-util.h"
@@ -47,35 +56,41 @@
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/common.pb.h"
-#include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
-
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/mini_master.h"
-
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/server/monitored_task.h"
-
 #include "yb/tools/yb-admin_client.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
-#include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.pb.h"
+#include "yb/common/value.messages.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/consensus_types.pb.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/qlexpr/index.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tostring.h"
 
 using namespace std::literals;
 

@@ -21,16 +21,14 @@
 
 #include "yb/gutil/strings/util.h"
 
-#include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>           // for FastTimeToBuffer()
-
-#include <algorithm>
+#include <glog/logging.h>
+#include <ostream>
 
 #include "yb/util/logging.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/stl_util.h"  // for string_as_array, STLAppendToString
 #include "yb/gutil/strings/ascii_ctype.h"

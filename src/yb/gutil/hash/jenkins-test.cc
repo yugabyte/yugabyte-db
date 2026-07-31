@@ -11,11 +11,12 @@
 // under the License.
 //
 
+#include <stdint.h>
+#include <string>
+
 #include "yb/gutil/hash/jenkins.h"
-
-#include <gtest/gtest.h>
-
 #include "yb/util/cast.h"
+#include "gtest/gtest.h"
 
 namespace yb {
 

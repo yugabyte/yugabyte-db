@@ -21,26 +21,27 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-// Syncpoint prevents us building and running tests in release
-
-#ifndef OS_WIN
-#include <unistd.h>
-#endif
-#include <iostream>
+#include <stddef.h>
 #include <thread>
-#include <utility>
-#include "yb/rocksdb/db/db_impl.h"
+#include <string>
+#include <vector>
+
 #include "yb/rocksdb/port/stack_trace.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/utilities/checkpoint.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-
 #include "yb/util/sync_point.h"
-#include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/util/slice.h"
+#include "yb/util/test_macros.h"
 
 namespace rocksdb {
+class Snapshot;
+
 class DBTest : public RocksDBTest {
  protected:
   // Sequence of option configurations to try

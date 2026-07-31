@@ -13,15 +13,26 @@
 
 #pragma once
 
+#include <functional>
+#include <string>
+
 #include "yb/common/hybrid_time.h"
-
 #include "yb/master/async_rpc_tasks_base.h"
-
 #include "yb/tserver/tserver_admin.pb.h"
-#include "yb/tserver/tserver_service.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/master/master_fwd.h"
+#include "yb/server/monitored_task.h"
+#include "yb/tablet/operations.pb.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class ThreadPool;
+
 namespace master {
+class Master;
+struct LeaderEpoch;
 
 class AsyncCloneTablet: public AsyncTabletLeaderTask {
  public:

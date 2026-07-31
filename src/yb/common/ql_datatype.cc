@@ -11,8 +11,10 @@
 // under the License.
 //
 
-#include "yb/util/logging.h"
+#include <glog/logging.h>
+#include <ostream>
 
+#include "yb/util/logging.h"
 #include "yb/common/value.messages.h"
 #include "yb/common/ql_datatype.h"
 

@@ -10,16 +10,27 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
 #include <fstream>
-#include <functional>
-#include <ranges>
 #include <string>
-
-#include <gtest/gtest.h>
+#include <optional>
+#include <string_view>
+#include <tuple>
+#include <vector>
 
 #include "yb/util/test_macros.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_string(ysql_pg_conf_csv);

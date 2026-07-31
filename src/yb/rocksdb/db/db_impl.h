@@ -23,43 +23,51 @@
 
 #pragma once
 
-#include <algorithm>
+#include <assert.h>
+#include <stdint.h>
 #include <atomic>
 #include <deque>
-#include <limits>
-#include <list>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
+#include <cstddef>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/background_error.h"
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/compaction.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/flush_scheduler.h"
-#include "yb/rocksdb/db/internal_stats.h"
 #include "yb/rocksdb/db/log_writer.h"
-#include "yb/rocksdb/db/memtable_list.h"
 #include "yb/rocksdb/db/snapshot_impl.h"
-#include "yb/rocksdb/db/version_edit.h"
 #include "yb/rocksdb/db/wal_manager.h"
 #include "yb/rocksdb/db/write_controller.h"
 #include "yb/rocksdb/db/write_thread.h"
 #include "yb/rocksdb/db/writebuffer.h"
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/listener.h"
-#include "yb/rocksdb/memtablerep.h"
-#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/transaction_log.h"
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/event_logger.h"
 #include "yb/rocksdb/util/instrumented_mutex.h"
-#include "yb/rocksdb/util/stop_watch.h"
-#include "yb/rocksdb/util/thread_local.h"
+#include "yb/rocksdb/db/file_numbers.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/rocksdb/table/merger.h"
+#include "yb/rocksdb/types.h"
+#include "yb/rocksdb/write_batch.h"
+#include "yb/storage/storage_fwd.h"
+#include "yb/storage/storage_types.h"
+#include "yb/util/file_system.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 class Cgroup;
@@ -68,16 +76,27 @@ class Cgroup;
 namespace rocksdb {
 
 class MemTable;
-class TableCache;
 class Version;
 class VersionEdit;
 class VersionSet;
 class Arena;
 class WriteCallback;
-class FileNumbersProvider;
 struct JobContext;
-struct ExternalSstFileInfo;
 struct RocksDBPriorityThreadPoolMetrics;
+class Cache;
+class InternalIterator;
+class InternalStats;
+class LogBuffer;
+class Snapshot;
+class Statistics;
+enum class CompactionReason;
+enum class FlushReason;
+struct CompactionJobStats;
+struct DBPropertyInfo;
+struct FileMetaData;
+struct ImmutableCFOptions;
+struct MutableCFOptions;
+struct TableProperties;
 
 class DBImpl : public DB {
  public:
@@ -588,20 +607,19 @@ class DBImpl : public DB {
   friend class XFTransactionWriteHandler;
 #endif
   struct CompactionState;
-
   struct ManualCompaction;
-
   struct WriteContext;
-
   class ThreadPoolTask;
-
   class CompactionTask;
+
   friend class CompactionTask;
 
   class FlushTask;
+
   friend class FlushTask;
 
   class TaskPriorityUpdater;
+
   friend class TaskPriorityUpdater;
 
   Status NewDB();

@@ -14,21 +14,46 @@
 #pragma once
 
 #include <stdint.h>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+#include <functional>
 
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/master_dcl.fwd.h"
-#include "yb/master/master_fwd.h"
-
 #include "yb/common/roles_permissions.h"
-
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/util/debug/lock_debug.h"
-#include "yb/util/status_callback.h"
-#include "yb/util/status_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/locks.h"
+#include "yb/util/status.h"
 
 namespace yb {
+enum PermissionType : int;
+enum ResourceType : int;
+
+namespace rpc {
+class RpcContext;
+}  // namespace rpc
+
 namespace master {
+class AlterRoleRequestPB;
+class AlterRoleResponsePB;
+class CatalogManager;
+class CreateRoleRequestPB;
+class CreateRoleResponsePB;
+class DeleteRoleRequestPB;
+class DeleteRoleResponsePB;
+class GetPermissionsRequestPB;
+class GetPermissionsResponsePB;
+class GrantRevokePermissionRequestPB;
+class GrantRevokePermissionResponsePB;
+class GrantRevokeRoleRequestPB;
+class GrantRevokeRoleResponsePB;
 
 class PermissionsManager final {
  public:

@@ -12,12 +12,18 @@
 //
 #include "yb/master/yql_aggregates_vtable.h"
 
+#include <glog/logging.h>
+#include <string>
+
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 #include "yb/util/status_log.h"
+#include "yb/common/value.messages.h"
+#include "yb/util/logging.h"
 
 namespace yb {
 namespace master {
+class Master;
 
 YQLAggregatesVTable::YQLAggregatesVTable(const TableName& table_name,
                                          const NamespaceName& namespace_name,

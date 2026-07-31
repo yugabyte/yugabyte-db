@@ -10,32 +10,49 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/uuid/uuid.hpp>
 #include <algorithm>
-#include <boost/assign.hpp>
-#include <gtest/gtest.h>
+#include <functional>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <unordered_set>
+#include <vector>
 
 #include "yb/cdc/cdc_service.pb.h"
-
 #include "yb/client/client.h"
-#include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
-
-#include "yb/common/common.pb.h"
-
 #include "yb/integration-tests/cdcsdk_test_base.h"
 #include "yb/integration-tests/mini_cluster.h"
-
-#include "yb/master/master_client.pb.h"
-#include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_replication.proxy.h"
-
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "yb/cdc/cdc_service.proxy.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/cdc_test_util.h"
+#include "yb/integration-tests/postgres-minicluster.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_bool(cdc_enable_implicit_checkpointing);
 DECLARE_bool(ysql_yb_enable_implicit_dynamic_tables_logical_replication);

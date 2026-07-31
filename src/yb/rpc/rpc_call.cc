@@ -14,10 +14,15 @@
 //
 #include "yb/rpc/rpc_call.h"
 
-#include "yb/rpc/connection.h"
+#include <glog/logging.h>
+#include <ostream>
 
+#include "yb/rpc/connection.h"
 #include "yb/util/status.h"
 #include "yb/util/logging.h"
+#include "yb/gutil/walltime.h"
+#include "yb/util/monotime.h"
+#include "yb/util/tostring.h"
 
 namespace yb::rpc {
 

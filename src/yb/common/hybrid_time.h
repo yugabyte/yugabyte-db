@@ -34,19 +34,37 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
 #include <limits>
 #include <string>
+#include <algorithm>
+#include <ostream>
 
-#include "yb/util/faststring.h"
 #include "yb/util/kv_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/physical_time.h"
-#include "yb/util/status_fwd.h"
 #include "yb/util/tostring.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
 class Slice;
+class faststring;
 
 // An alias for the raw in-memory representation of a HybridTime.
 using HybridTimeRepr = uint64_t;
@@ -271,9 +289,7 @@ inline constexpr HybridTime HybridTime::kInvalid(kInvalidHybridTimeValue);
 constexpr MicrosTime kMaxHybridTimePhysicalMicros{
     kMaxHybridTimeValue >> HybridTime::kBitsForLogicalComponent};
 
-class faststring;
 
-class Slice;
 
 constexpr int HybridTime::CompareTo(const HybridTime &other) const {
   if (v < other.v) {

@@ -13,9 +13,16 @@
 
 #include "yb/util/stol_utils.h"
 
+#include <ctype.h>
+#include <errno.h>
 #include <cstring>
+#include <charconv>
+#include <cstdlib>
+#include <functional>
+#include <system_error>
+#include <utility>
 
-#include "yb/util/string_util.h"
+#include "yb/util/format.h"
 
 using namespace std::placeholders;
 

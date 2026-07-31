@@ -12,8 +12,18 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <queue>
 #include <unordered_set>
+#include <limits>
+#include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+#include <functional>
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
@@ -22,11 +32,18 @@
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/opid.h"
 #include "yb/util/monotime.h"
-#include "yb/util/net/net_util.h"
+#include "yb/cdc/cdc_service.proxy.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
+class HostPort;
+class PartitionPB;
+enum ReplicationSlotLsnType : int;
 
 namespace cdc {
+struct CDCStateTableEntry;
 
 class CDCSDKVirtualWAL {
  public:

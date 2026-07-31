@@ -19,11 +19,16 @@
 
 #include "yb/util/env.h"
 
+#include <glog/logging.h>
+
 #include "yb/util/faststring.h"
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/file_system.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 using std::string;
 

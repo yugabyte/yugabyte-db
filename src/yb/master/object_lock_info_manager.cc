@@ -13,6 +13,24 @@
 
 #include "yb/master/object_lock_info_manager.h"
 
+#include <google/protobuf/util/message_differencer.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <google/protobuf/descriptor.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/tuple/to_seq.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/uuid/uuid.hpp>
 #include <optional>
 #include <ranges>
 #include <string>
@@ -20,44 +38,71 @@
 #include <unordered_map>
 #include <vector>
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <functional>
+#include <future>
+#include <limits>
+#include <map>
+#include <mutex>
+#include <ratio>
+#include <sstream>
+#include <utility>
+#include <variant>
 
-#include <google/protobuf/util/message_differencer.h>
-
-#include "yb/common/common_flags.h"
 #include "yb/common/pg_catversions.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/common/ysql_operation_lease.h"
-
 #include "yb/gutil/strings/substitute.h"
-
-#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
-#include "yb/master/master_error.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/scoped_leader_shared_lock.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/ts_manager.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/poller.h"
 #include "yb/rpc/rpc_context.h"
-
 #include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
-
-#include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/to_stream.h"
 #include "yb/util/trace.h"
+#include "yb/ash/ash_fwd.h"
+#include "yb/ash/wait_state.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/docdb/docdb.pb.h"
+#include "yb/docdb/local_waiting_txn_registry.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/async_rpc_tasks_base.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/master_tserver.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/master/ts_descriptor.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/server/clock.h"
+#include "yb/server/monitored_task.h"
+#include "yb/server/server_fwd.h"
+#include "yb/tserver/ts_local_lock_manager.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/cow_object.h"
+#include "yb/util/debug-util.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_callback.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/threadpool.h"
+#include "yb/util/tostring.h"
 
 DEFINE_RUNTIME_uint64(master_ysql_operation_lease_ttl_ms, 30 * 1000,
                       "The lifetime of ysql operation lease extensions. The ysql operation lease "

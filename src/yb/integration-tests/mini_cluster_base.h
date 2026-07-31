@@ -13,22 +13,30 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <algorithm>
+#include <atomic>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "yb/common/constants.h"
-
-#include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/secure_stream.h"
-
-#include "yb/util/status_fwd.h"
-#include "yb/util/net/net_fwd.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rpc/messenger.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
 
 namespace yb {
 
 class ExternalYbController;
+namespace rpc {
+class ProxyCache;
+}  // namespace rpc
 
 namespace client {
 class YBClientBuilder;
 class YBClient;
-class StatefulServiceClientBase;
 } // namespace client
 
 // Base class for ExternalMiniCluster and MiniCluster with common interface required by

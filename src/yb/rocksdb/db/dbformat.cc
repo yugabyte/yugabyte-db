@@ -29,13 +29,10 @@
 #include <inttypes.h>
 #include <stdio.h>
 
-#include "yb/util/logging.h"
-#include "yb/util/result.h"
-
-#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
+#include "yb/rocksdb/perf_context.h"
 
 namespace rocksdb {
 

@@ -33,8 +33,16 @@
 #include "yb/util/semaphore.h"
 
 #include <semaphore.h>
-#include "yb/util/logging.h"
+#include <errno.h>
+#include <glog/logging.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <time.h>
+#include <ostream>
+
 #include "yb/gutil/walltime.h"
+#include "yb/util/monotime.h"
+
 namespace yb {
 
 Semaphore::Semaphore(int capacity) {

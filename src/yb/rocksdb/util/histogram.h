@@ -22,17 +22,19 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #pragma once
-#include "yb/rocksdb/statistics.h"
+
+#include <stddef.h>
+#include <stdint.h>
 
 #include <atomic>
 #include <cassert>
+#include <map>
 #include <string>
 #include <vector>
-#include <map>
-
-#include <string.h>
 
 namespace rocksdb {
+
+struct HistogramData;
 
 static constexpr int kHistogramNumBuckets = 138;
 

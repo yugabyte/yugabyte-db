@@ -30,8 +30,11 @@
 // under the License.
 //
 
-#include "yb/util/logging.h"
+#include <glog/logging.h>
+#include <ostream>
+#include <string>
 
+#include "yb/util/logging.h"
 #include "yb/util/thread.h"
 #include "yb/util/threadlocal.h"
 #include "yb/util/thread_restrictions.h"

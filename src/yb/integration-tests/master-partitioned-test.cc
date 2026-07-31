@@ -11,50 +11,71 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <sys/types.h>
+#include <boost/asio/ip/address.hpp>
 #include <map>
 #include <memory>
-#include <thread>
-
-#include <gtest/gtest.h>
+#include <chrono>
+#include <functional>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "yb/gutil/casts.h"
-
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
-
-#include "yb/common/wire_protocol.h"
-
 #include "yb/consensus/consensus.h"
-
 #include "yb/fs/fs_manager.h"
-
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
-
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
-
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
-
-#include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status_log.h"
 #include "yb/util/tsan_util.h"
-#include "yb/util/flags.h"
+#include "gtest/gtest.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/server/rpc_server.h"
+#include "yb/server/server_base.h"
+#include "yb/tablet/tablet_types.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
 
 using yb::client::YBClient;
 using yb::client::YBClientBuilder;

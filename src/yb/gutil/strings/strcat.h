@@ -20,7 +20,9 @@
 //
 #pragma once
 
+#include <string.h>
 #include <string>
+#include <utility>
 
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/strings/numbers.h"

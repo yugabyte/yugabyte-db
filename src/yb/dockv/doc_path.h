@@ -14,25 +14,17 @@
 #pragma once
 
 #include <stdint.h>
-
+#include <assert.h>
 #include <cstring>
-#include <functional>
 #include <ostream>
 #include <string>
-#include <type_traits>
-#include <unordered_set>
 #include <utility>
-#include <vector>
+#include <string_view>
 
 #include "yb/dockv/dockv_fwd.h"
 #include "yb/dockv/key_bytes.h"
 #include "yb/dockv/key_entry_value.h"
-
-#include "yb/gutil/integral_types.h"
-#include "yb/gutil/macros.h"
-#include "yb/gutil/strings/substitute.h"
-
-#include "yb/util/string_util.h"
+#include "yb/util/slice.h"
 
 namespace yb::dockv {
 

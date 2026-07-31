@@ -34,11 +34,12 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include <string_view>
 
-#include <gtest/gtest.h>
-
-#include "yb/client/client-internal.h"
 #include "yb/client/schema.h"
+#include "gtest/gtest.h"
+#include "yb/common/value.messages.h"
+#include "yb/util/status.h"
 
 namespace yb {
 namespace client {

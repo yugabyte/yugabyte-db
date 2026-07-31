@@ -26,20 +26,18 @@
 #pragma once
 
 
+#include <stddef.h>
 #include <string>
 
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/status_fwd.h"
-#include "yb/rocksdb/write_batch.h"
 #include "yb/rocksdb/write_batch_base.h"
-
 #include "yb/util/slice.h"
 
 namespace rocksdb {
 
 class ColumnFamilyHandle;
-class Comparator;
 class DB;
 struct ReadOptions;
 struct DBOptions;
@@ -209,6 +207,7 @@ class WriteBatchWithIndex : public WriteBatchBase {
 
  private:
   struct Rep;
+
   Rep* rep;
 };
 

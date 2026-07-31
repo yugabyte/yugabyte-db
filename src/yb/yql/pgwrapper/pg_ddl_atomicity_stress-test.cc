@@ -10,40 +10,38 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include <condition_variable>
+#include <glog/logging.h>
 #include <memory>
-#include <mutex>
-#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
 #include <utility>
+#include <initializer_list>
+#include <optional>
+#include <ostream>
+#include <tuple>
 
-#include "yb/client/client_fwd.h"
-#include "yb/client/table_info.h"
-#include "yb/client/yb_table_name.h"
 #include "yb/client/client-test-util.h"
-
-#include "yb/common/common.pb.h"
-#include "yb/common/pgsql_error.h"
-#include "yb/common/schema.h"
-
 #include "yb/gutil/strings/join.h"
-
-#include "yb/master/master_client.pb.h"
-
-#include "yb/util/async_util.h"
-#include "yb/util/backoff_waiter.h"
-#include "yb/util/monotime.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_thread_holder.h"
-#include "yb/util/timestamp.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_ddl_atomicity_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
+#include "gtest/gtest.h"
+#include "libpq-fe.h"
+#include "yb/client/client.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
 
 const auto kTable = "test_table";
 

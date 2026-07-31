@@ -12,31 +12,41 @@
 //
 
 #include <sys/utsname.h>
+#include <errno.h>
+#include <glog/logging.h>
+#include <boost/asio/ip/basic_endpoint.hpp>
+#include <ostream>
+#include <utility>
+#include <vector>
 
 #include "yb/tserver/db_server_base.h"
-
 #include "yb/client/client.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
-
 #include "yb/common/init.h"
-
 #include "yb/common/wire_protocol.h"
 #include "yb/server/async_client_initializer.h"
-#include "yb/server/clock.h"
-
-#include "yb/master/master_types.pb.h"
-
-#include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/tserver_shared_mem.h"
-
 #include "yb/util/jsonwriter.h"
-#include "yb/util/metrics.h"
 #include "yb/util/mem_tracker.h"
-#include "yb/util/shared_mem.h"
-#include "yb/util/status_log.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/fs/fs_manager.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/server/rpc_server.h"
+#include "yb/util/errno.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
+namespace server {
+class ServerBaseOptions;
+}  // namespace server
+
 namespace tserver {
 
 DbServerBase::DbServerBase(

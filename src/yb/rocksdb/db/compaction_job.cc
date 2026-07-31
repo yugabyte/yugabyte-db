@@ -28,7 +28,10 @@
 #endif
 
 #include <inttypes.h>
-
+#include <assert.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -36,38 +39,29 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <limits>
+#include <ostream>
 
 #include "yb/ash/wait_state.h"
-
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/perf_level.h"
 #include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/table.h"
-
 #include "yb/rocksdb/db/builder.h"
 #include "yb/rocksdb/db/compaction_context.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/event_helpers.h"
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/file_numbers.h"
-#include "yb/rocksdb/db/memtable.h"
-#include "yb/rocksdb/db/memtable_list.h"
 #include "yb/rocksdb/db/merge_helper.h"
 #include "yb/rocksdb/db/version_set.h"
-
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/table_builder.h"
-
 #include "yb/rocksdb/util/file_reader_writer.h"
-#include "yb/rocksdb/util/file_util.h"
 #include "yb/rocksdb/util/log_buffer.h"
-#include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/sst_file_manager_impl.h"
-
-#include "yb/util/atomic.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/stats/iostats_context_imp.h"
@@ -75,6 +69,41 @@
 #include "yb/util/string_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/sync_point.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rocksdb/compaction_filter.h"
+#include "yb/rocksdb/compaction_job_stats.h"
+#include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/db/background_error.h"
+#include "yb/rocksdb/db/column_family.h"
+#include "yb/rocksdb/db/compaction.h"
+#include "yb/rocksdb/db/compaction_iterator.h"
+#include "yb/rocksdb/db/table_cache.h"
+#include "yb/rocksdb/db/version_edit.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/rocksdb/table_properties.h"
+#include "yb/rocksdb/util/event_logger.h"
+#include "yb/rocksdb/util/instrumented_mutex.h"
+#include "yb/rocksdb/util/mutable_cf_options.h"
+#include "yb/rocksdb/util/statistics.h"
+#include "yb/storage/frontier.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/flags/flags_callback.h"
+#include "yb/util/io.h"
+#include "yb/util/stats/iostats_context.h"
+#include "yb/util/stats/perf_level.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
+#include "yb/util/tostring.h"
+#include "yb/util/uuid.h"
+#include "yb/rocksdb/status_fwd.h"
+
+namespace rocksdb {
+class Cache;
+}  // namespace rocksdb
 
 DECLARE_uint64(rocksdb_check_sst_file_tail_for_zeros);
 DECLARE_uint64(rocksdb_max_sst_write_retries);

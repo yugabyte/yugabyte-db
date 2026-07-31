@@ -22,13 +22,14 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include <string>
-
-#include <gtest/gtest.h>
+#include <initializer_list>
 
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/env.h"
 #include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/options.h"
 
 namespace rocksdb {
 

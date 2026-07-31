@@ -32,24 +32,36 @@
 
 #include "yb/util/metrics.h"
 
-#include <map>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <string.h>
 #include <set>
+#include <ostream>
 
-#include "yb/gutil/atomicops.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
-
 #include "yb/util/aggregate_stats.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/histogram.pb.h"
 #include "yb/util/jsonwriter.h"
-#include "yb/util/locks.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/flags.h"
+#include "yb/gutil/bind_helpers.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/raw_scoped_refptr_mismatch_checker.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics_writer.h"
+
+namespace yb {
+class MemTracker;
+}  // namespace yb
 
 DEFINE_UNKNOWN_bool(expose_metric_histogram_percentiles, true,
             "Should we expose the percentiles information for metrics histograms.");

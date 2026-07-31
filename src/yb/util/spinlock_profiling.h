@@ -31,9 +31,9 @@
 //
 #pragma once
 
-#include <iosfwd>
+#include <stdint.h>
+#include <sstream>
 
-#include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
 namespace yb {

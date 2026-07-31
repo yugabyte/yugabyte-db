@@ -26,59 +26,59 @@
 #define __STDC_FORMAT_MACROS
 #endif
 
-#include <fcntl.h>
 #include <inttypes.h>
-#ifndef OS_WIN
-#include <unistd.h>
-#endif
-
-#include <algorithm>
-#include <map>
-#include <set>
+#include <stdio.h>
+#include <string.h>
 #include <string>
-#include <thread>
 #include <unordered_set>
 #include <utility>
 #include <vector>
-
-#include <gtest/gtest.h>
-
-#include "yb/encryption/encryption_fwd.h"
+#include <atomic>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <ostream>
+#include <unordered_map>
 
 #include "yb/rocksdb/db/compaction_context.h"
-#include "yb/rocksdb/db/db_impl.h"
-#include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/db/filename.h"
-#include "yb/rocksdb/db/version_edit.h"
-#include "yb/rocksdb/memtable/hash_linklist_rep.h"
-#include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/compaction_filter.h"
-#include "yb/rocksdb/convenience.h"
-#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/options.h"
-
-#include "yb/rocksdb/table.h"
-#include "yb/rocksdb/utilities/checkpoint.h"
-#include "yb/rocksdb/table/block_based_table_factory.h"
-#include "yb/rocksdb/table/mock_table.h"
-#include "yb/rocksdb/table/plain_table_factory.h"
-#include "yb/rocksdb/table/scoped_arena_iterator.h"
-#include "yb/rocksdb/util/compression.h"
-#include "yb/rocksdb/util/mock_env.h"
 #include "yb/rocksdb/util/mutexlock.h"
-#include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-#include "yb/rocksdb/utilities/merge_operators.h"
-
 #include "yb/util/callsite_profiling.h"
 #include "yb/util/slice.h"
-#include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
-#include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/sysinfo.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/memtablerep.h"
+#include "yb/rocksdb/port/port_posix.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/util/random.h"
+#include "yb/storage/storage_fwd.h"
+#include "yb/util/file_system.h"
+#include "yb/util/status.h"
+
+namespace yb {
+class MonoDelta;
+
+namespace encryption {
+class UniverseKeyManager;
+}  // namespace encryption
+}  // namespace yb
 
 namespace rocksdb {
+class ColumnFamilyHandle;
+class DB;
+class DBImpl;
+class FilterPolicy;
+class Iterator;
+class MemTableAllocator;
+class MockEnv;
+class Snapshot;
 
 uint64_t TestGetTickerCount(const Options& options, Tickers ticker_type) {
   return options.statistics->getTickerCount(ticker_type);

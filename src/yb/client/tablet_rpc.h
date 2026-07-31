@@ -15,32 +15,55 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdint.h>
 #include <memory>
 #include <string>
-#include <unordered_set>
-
-#include <gtest/gtest_prod.h>
-
-#include "yb/ash/wait_state.h"
+#include <ostream>
+#include <unordered_map>
 
 #include "yb/client/client_fwd.h"
-
 #include "yb/common/hybrid_time.h"
-
 #include "yb/master/master_fwd.h"
-
-#include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/lightweight_message.h"
-#include "yb/rpc/rpc.h"
-
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_types.messages.h"
-
-#include "yb/util/atomic.h"
-#include "yb/util/flags.h"
-#include "yb/util/net/net_fwd.h"
 #include "yb/util/pb_util.h"
-#include "yb/util/status_fwd.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+
+namespace yb {
+class Trace;
+
+namespace ash {
+struct WaitStateSnapshot;
+}  // namespace ash
+namespace client {
+class YBClient;
+class YBTable;
+
+namespace internal {
+class RemoteTablet;
+class RemoteTabletServer;
+}  // namespace internal
+}  // namespace client
+namespace rpc {
+class RpcCommand;
+class RpcRetrier;
+}  // namespace rpc
+namespace tserver {
+class LWTabletConsensusInfoPB;
+}  // namespace tserver
+template <class TValue> class Result;
+}  // namespace yb
 
 DECLARE_bool(TEST_always_return_consensus_info_for_succeeded_rpc);
 

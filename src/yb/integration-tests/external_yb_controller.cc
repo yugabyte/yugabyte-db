@@ -13,16 +13,24 @@
 
 #include "yb/integration-tests/external_yb_controller.h"
 
-#include <gtest/gtest.h>
+#include <glog/logging.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <iostream>
 
 #include "yb/gutil/strings/join.h"
-
 #include "yb/util/path_util.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "yb/util/env.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/subprocess.h"
+#include "yb/util/tostring.h"
 
 using std::string;
 

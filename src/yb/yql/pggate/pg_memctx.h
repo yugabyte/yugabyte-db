@@ -14,14 +14,18 @@
 
 #pragma once
 
+#include <boost/intrusive/list.hpp>
+#include <stddef.h>
+#include <boost/core/addressof.hpp>
+#include <boost/intrusive/list_hook.hpp>
 #include <unordered_map>
 
-#include <boost/intrusive/list.hpp>
-
 #include "yb/yql/pggate/pg_gate_fwd.h"
+#include "yb/gutil/macros.h"
 
 namespace yb {
 namespace pggate {
+class PgTableDesc;
 
 // This is the YB counterpart of Postgres's MemoryContext.
 // YugaByte memory context hold one reference count to PgGate objects such as PgGate::PgStatement.

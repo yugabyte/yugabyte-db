@@ -13,9 +13,15 @@
 
 #include "yb/common/tablet_limits.h"
 
-#include "yb/util/atomic.h"
+#include <glog/logging.h>
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <ostream>
+
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/logging.h"
 
 DEFINE_RUNTIME_uint32(tablet_replicas_per_gib_limit, 1024 / 0.7,
     "The maximum number of tablets the universe can support per GiB of RAM reserved by TServers "

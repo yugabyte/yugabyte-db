@@ -19,6 +19,17 @@
 //
 
 
+#include <assert.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <map>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+#include <functional>
+
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/table.h"
@@ -27,9 +38,17 @@
 #include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-
 #include "yb/util/string_util.h"
-#include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/immutable_options.h"
+#include "yb/rocksdb/iterator.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status_fwd.h"
+#include "yb/rocksdb/util/random.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
 
 namespace rocksdb {
 

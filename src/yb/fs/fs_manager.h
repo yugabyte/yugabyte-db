@@ -32,23 +32,32 @@
 
 #pragma once
 
-#include <iosfwd>
+#include <gtest/gtest_prod.h>
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <map>
 #include <memory>
 #include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-#include "yb/util/flags.h"
-#include <gtest/gtest_prod.h>
+#include <mutex>
+#include <ostream>
+#include <utility>
+#include <functional>
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/env.h"
-#include "yb/util/metrics_fwd.h"
 #include "yb/util/path_util.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/strongly_typed_uuid.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 DECLARE_bool(enable_data_block_fsync);
 
@@ -61,14 +70,7 @@ class Message;
 namespace yb {
 
 class MemTracker;
-class MetricEntity;
-
-namespace itest {
-class ExternalMiniClusterFsInspector;
-}
-
 class InstanceMetadataPB;
-
 YB_STRONGLY_TYPED_BOOL(CleanupTemporaryFiles);
 YB_STRONGLY_TYPED_BOOL(ShouldDeleteLogs);
 YB_STRONGLY_TYPED_UUID_DECL(UniverseUuid);

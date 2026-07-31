@@ -28,26 +28,34 @@
 #endif
 
 #include <inttypes.h>
+#include <assert.h>
+#include <glog/logging.h>
+#include <stddef.h>
 #include <algorithm>
 #include <vector>
 #include <memory>
+#include <utility>
 
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/transaction_log_impl.h"
 #include "yb/rocksdb/db/log_reader.h"
 #include "yb/rocksdb/db/write_batch_internal.h"
-#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/write_batch.h"
-#include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
-#include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/mutexlock.h"
-
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
+
+namespace rocksdb {
+class VersionSet;
+}  // namespace rocksdb
 
 using std::unique_ptr;
 

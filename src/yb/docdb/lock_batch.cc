@@ -13,11 +13,16 @@
 
 #include "yb/docdb/lock_batch.h"
 
-#include "yb/docdb/object_lock_data.h"
-#include "yb/docdb/shared_lock_manager.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <ostream>
+#include <string>
 
+#include "yb/docdb/shared_lock_manager.h"
 #include "yb/util/status_format.h"
-#include "yb/util/flags.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 
 DEFINE_UNKNOWN_bool(dump_lock_keys, true,
             "Whether to add keys to error message when lock batch timed out");

@@ -14,10 +14,22 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <memory>
 #include <optional>
 
 #include "yb/yql/pggate/pg_dml.h"
+#include "yb/common/pg_types.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/pgsql_protocol.pb.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/yql/pggate/pg_session_fwd.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
+namespace yb {
+class HybridTime;
+}  // namespace yb
 
 namespace yb::pggate {
 

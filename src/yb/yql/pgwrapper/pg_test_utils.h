@@ -13,22 +13,25 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <array>
 #include <chrono>
 #include <functional>
 #include <string_view>
 #include <utility>
+#include <string>
 
 #include "yb/gutil/macros.h"
-
-#include "yb/util/metric_entity.h"
-#include "yb/util/metrics_fwd.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
 class ExternalDaemon;
+class MetricEntity;
+class MetricPrototype;
 
 namespace server {
 

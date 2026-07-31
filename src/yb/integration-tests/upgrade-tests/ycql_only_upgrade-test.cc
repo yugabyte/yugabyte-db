@@ -11,8 +11,16 @@
 // under the License.
 //
 
-#include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
+#include <stdint.h>
+#include <chrono>
+#include <memory>
+#include <optional>
+#include <ratio>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "yb/integration-tests/upgrade-tests/upgrade_test_base.h"
 #include "yb/client/schema.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/client/client-test-util.h"
@@ -21,6 +29,20 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
+#include "gtest/gtest.h"
+#include "yb/client/client.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/ql_protocol.messages.h"  // IWYU pragma: keep
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/value.messages.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
 
 namespace yb {
 

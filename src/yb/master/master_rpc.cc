@@ -33,16 +33,36 @@
 
 #include "yb/master/master_rpc.h"
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <boost/container/stable_vector.hpp>
+#include <boost/function.hpp>
 #include <mutex>
+#include <chrono>
+#include <functional>
+#include <ostream>
+#include <utility>
 
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
-
 #include "yb/master/master_cluster.proxy.h"
-
 #include "yb/util/async_util.h"
-#include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/net/net_util.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace rpc {
+class Messenger;
+class ProxyCache;
+}  // namespace rpc
+}  // namespace yb
 
 using std::shared_ptr;
 using std::string;

@@ -13,18 +13,64 @@
 
 #pragma once
 
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <memory>
+#include <optional>
+#include <string>
+#include <unordered_map>
+
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/docdb_fwd.h"
-
 #include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/table.h"
-
-#include "yb/tablet/tablet_options.h"
-
 #include "yb/util/slice.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/rocksdb/types.h"
+#include "yb/util/enums.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/uuid.h"
+
+namespace rocksdb {
+class DB;
+class Statistics;
+}  // namespace rocksdb
+namespace yb {
+class DocHybridTime;
+class HybridTime;
+class PriorityThreadPool;
+class TransactionStatusManager;
+namespace docdb {
+class ConsensusFrontier;
+struct DocDB;
+struct DocReadContext;
+struct KeyBounds;
+struct ReadOperationData;
+}  // namespace docdb
+namespace tablet {
+struct TabletOptions;
+}  // namespace tablet
+struct TransactionOperationContext;
+}  // namespace yb
 
 namespace yb::docdb {
 
@@ -199,6 +245,7 @@ class RocksDBPatcher {
 
  private:
   class Impl;
+
   std::unique_ptr<Impl> impl_;
 };
 

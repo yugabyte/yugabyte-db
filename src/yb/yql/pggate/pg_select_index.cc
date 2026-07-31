@@ -15,11 +15,17 @@
 
 #include "yb/yql/pggate/pg_select_index.h"
 
-#include "yb/util/atomic.h"
-#include "yb/util/status_format.h"
+#include <span>
+#include <string>
+#include <utility>
 
+#include "yb/util/atomic.h"
 #include "yb/yql/pggate/pggate_flags.h"
-#include "yb/yql/pggate/util/pg_doc_data.h"
+#include "yb/common/pg_types.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/yql/pggate/pg_doc_op.h"
+#include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pg_table.h"
 
 
 namespace yb::pggate {

@@ -11,13 +11,25 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <chrono>
+#include <memory>
+#include <ratio>
+#include <string>
+#include <thread>
 
 #include "yb/util/countdown_latch.h"
-#include "yb/util/flags/flag_tags.h"
 #include "yb/util/test_thread_holder.h"
-
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_bool(TEST_emulate_op_lost_on_write);
 DECLARE_uint64(pg_client_session_expiration_ms);

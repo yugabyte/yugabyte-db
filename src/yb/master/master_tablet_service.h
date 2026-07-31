@@ -13,13 +13,17 @@
 
 #pragma once
 
-#include "yb/master/master_fwd.h"
-#include "yb/master/master_tserver.h"
-
 #include "yb/tserver/tablet_service.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
 namespace master {
+class Master;
+class MasterTabletServer;
 
 // A subset of the TabletService supported by the Master to query specific tables.
 class MasterTabletServiceImpl : public tserver::TabletServiceImpl {

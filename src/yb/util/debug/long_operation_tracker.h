@@ -15,6 +15,7 @@
 
 #include <memory>
 #include <mutex>
+#include <chrono>
 
 #include "yb/util/monotime.h"
 

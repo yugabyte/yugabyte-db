@@ -13,11 +13,17 @@
 
 #include "yb/tools/yb-admin-test-base.h"
 
+#include <chrono>
+#include <functional>
+
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/tools/yb-admin_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status_format.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/monotime.h"
 
 namespace yb {
 namespace tools {

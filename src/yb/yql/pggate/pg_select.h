@@ -18,8 +18,12 @@
 #include <optional>
 
 #include "yb/util/result.h"
-
 #include "yb/yql/pggate/pg_dml_read.h"
+#include "yb/common/pg_types.h"
+#include "yb/util/status.h"
+#include "yb/yql/pggate/pg_session_fwd.h"
+#include "yb/yql/pggate/pg_statement.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb::pggate {
 

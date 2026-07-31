@@ -18,6 +18,9 @@
 // under the License.
 //
 
+#include <memory>
+#include <string>
+
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/rocksdb/options.h"
 #include "yb/tablet/tablet_options.h"

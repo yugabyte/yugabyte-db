@@ -14,13 +14,15 @@
 #pragma once
 
 #include <cstddef>
-
-#include "yb/client/client_fwd.h"
-#include "yb/util/status_fwd.h"
+#include <string>
 
 namespace yb {
 
 class MiniCluster;
+class Schema;
+namespace client {
+class YBTableName;
+}  // namespace client
 
 size_t CountRunningTransactions(MiniCluster* cluster);
 void AssertNoRunningTransactions(MiniCluster* cluster);

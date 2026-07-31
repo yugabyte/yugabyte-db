@@ -13,21 +13,22 @@
 
 #include "yb/docdb/iter_util.h"
 
-#include "yb/docdb/bounded_rocksdb_iterator.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <ostream>
 
+#include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/key_bytes.h"
 #include "yb/dockv/value_type.h"
-
 #include "yb/gutil/port.h"
-
 #include "yb/rocksdb/iterator.h"
-
-#include "yb/util/bytes_formatter.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/trace.h"
+#include "yb/gutil/strings/numbers.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/status.h"
 
 // Empirically 2 is a minimal value that provides the best performance on sequential scan.
 DEFINE_RUNTIME_int32(max_nexts_to_avoid_seek, 2,

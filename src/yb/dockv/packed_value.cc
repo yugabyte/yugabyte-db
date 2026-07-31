@@ -14,10 +14,13 @@
 #include "yb/dockv/packed_value.h"
 
 #include "yb/common/doc_hybrid_time.h"
-
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_packing_v2.h"
 #include "yb/dockv/value_type.h"
+
+namespace yb {
+enum class DataType;
+}  // namespace yb
 
 namespace yb::dockv {
 

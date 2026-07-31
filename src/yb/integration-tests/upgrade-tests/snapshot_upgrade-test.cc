@@ -11,8 +11,14 @@
 // under the License.
 //
 
-#include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <ratio>
+#include <string>
+#include <string_view>
 
+#include "yb/integration-tests/upgrade-tests/ysql_major_upgrade_test_base.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/snapshot.h"
 #include "yb/master/master_backup.proxy.h"
@@ -21,6 +27,22 @@
 #include "yb/util/status_format.h"
 #include "yb/util/timestamp.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_backup.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::chrono_literals;
 

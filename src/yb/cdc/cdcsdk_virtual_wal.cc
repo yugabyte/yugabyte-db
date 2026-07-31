@@ -10,17 +10,44 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <algorithm>
+#include <chrono>
+#include <functional>
+#include <optional>
+#include <ratio>
+#include <sstream>
+
 #include "yb/cdc/cdc_state_table.h"
 #include "yb/cdc/cdcsdk_virtual_wal.h"
 #include "yb/cdc/xrepl_stream_metadata.h"
-
 #include "yb/client/client.h"
 #include "yb/common/entity_ids.h"
-
 #include "yb/master/sys_catalog_constants.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/status_format.h"
+#include "yb/cdc/cdc_types.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/constants.h"
+#include "yb/common/value.pb.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/walltime.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/tostring.h"
+
+using yb::operator""_MB;
 
 // TODO(22655): Remove the below macro once YB_LOG_EVERY_N_SECS_OR_VLOG() is fixed.
 #define YB_CDC_LOG_WITH_PREFIX_EVERY_N_SECS_OR_VLOG(oss, n_secs, verbose_level) \

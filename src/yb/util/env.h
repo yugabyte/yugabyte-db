@@ -27,17 +27,18 @@
 #pragma once
 
 #include <stdint.h>
-
+#include <stddef.h>
 #include <functional>
 #include <string>
 #include <vector>
+#include <memory>
+#include <optional>
 
-#include "yb/gutil/callback_forward.h"
-
-#include "yb/util/status_fwd.h"
-#include "yb/util/file_system.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/ulimit.h"
+#include "yb/gutil/macros.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
@@ -46,11 +47,11 @@ class RandomAccessFile;
 class RWFile;
 class Slice;
 class WritableFile;
-
 struct RWFileOptions;
 struct WritableFileOptions;
-
 YB_STRONGLY_TYPED_BOOL(ExcludeDots);
+class SequentialFile;
+class faststring;
 
 // FileFactory is the implementation of all NewxxxFile Env methods as well as any methods that
 // are used to create new files. This class is created to allow easy definition of how we create

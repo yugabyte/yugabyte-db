@@ -23,23 +23,44 @@
 
 #ifndef GFLAGS
 #include <cstdio>
+
 int main() {
   fprintf(stderr, "Please install gflags to run this test... Skipping...\n");
   return 0;
 }
 #else
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stdio.h>
+#include <string.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <limits>
+#include <memory>
+#include <ostream>
+#include <string>
 #include <vector>
-#include "yb/util/flags.h"
 
 #include "yb/rocksdb/filter_policy.h"
-#include "yb/rocksdb/util/logging.h"
-#include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-#include "yb/rocksdb/util/arena.h"
-
 #include "yb/util/enums.h"
-#include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/stringprintf.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 using GFLAGS::ParseCommandLineFlags;
 

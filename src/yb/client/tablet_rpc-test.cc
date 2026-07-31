@@ -13,13 +13,26 @@
 //
 //
 
+#include <gtest/gtest.h>
+#include <atomic>
+#include <initializer_list>
+#include <memory>
+#include <optional>
+#include <string>
+#include <thread>
+
 #include "yb/client/meta_cache.h"
 #include "yb/client/tablet_rpc.h"
-
 #include "yb/master/master_client.pb.h"
-
 #include "yb/util/test_util.h"
 #include "yb/util/trace.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/common_net.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/consensus/metadata.pb.h"
+#include "yb/dockv/partition.h"
+#include "yb/gutil/ref_counted.h"
 
 namespace yb {
 namespace client {

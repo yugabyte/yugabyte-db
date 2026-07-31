@@ -12,28 +12,48 @@
 //
 
 #include "yb/tablet/transaction_status_resolver.h"
+
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
 #include <deque>
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <compare>
+#include <ostream>
+#include <ratio>
+#include <unordered_map>
+#include <utility>
 
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/transaction_rpc.h"
-
 #include "yb/common/wire_protocol.h"
-
 #include "yb/rpc/rpc.h"
-
 #include "yb/tablet/transaction_participant_context.h"
-
 #include "yb/tserver/tserver_service.pb.h"
-
 #include "yb/util/atomic.h"
 #include "yb/util/countdown_latch.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/tsan_util.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/wire_protocol.pb.h"
+#include "yb/gutil/port.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/master/master_fwd.h"
+#include "yb/tserver/tserver_types.pb.h"
+#include "yb/util/cast.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/uint_set.h"
 
 DEFINE_test_flag(int32, inject_status_resolver_delay_ms, 0,
                  "Inject delay before launching transaction status resolver RPC.");

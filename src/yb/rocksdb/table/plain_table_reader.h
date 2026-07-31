@@ -20,41 +20,39 @@
 #pragma once
 
 #include <stdint.h>
-#include <unordered_map>
+#include <assert.h>
+#include <glog/logging.h>
+#include <stddef.h>
 #include <memory>
 #include <vector>
-#include <string>
+#include <ostream>
+#include <utility>
 
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/slice_transform.h"
-#include "yb/rocksdb/table.h"
-#include "yb/rocksdb/table_properties.h"
-
 #include "yb/rocksdb/table/format.h"
 #include "yb/rocksdb/table/table_reader.h"
-#include "yb/rocksdb/table/plain_table_factory.h"
 #include "yb/rocksdb/table/plain_table_index.h"
-
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/dynamic_bloom.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/rocksdb_fwd.h"
+#include "yb/rocksdb/status.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
+
+namespace yb {
+class MemTracker;
+}  // namespace yb
 
 namespace rocksdb {
 
-class Block;
-struct BlockContents;
-class BlockHandle;
-class Footer;
-struct Options;
-struct ReadOptions;
-class TableCache;
-class TableReader;
-class InternalKeyComparator;
 class PlainTableKeyDecoder;
-class GetContext;
-class InternalIterator;
+enum EncodingType : char;
+struct ImmutableCFOptions;
+struct TableProperties;
 
 extern const uint32_t kPlainTableVariableLength;
 

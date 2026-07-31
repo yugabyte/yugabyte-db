@@ -1,11 +1,14 @@
 // Copyright (c) YugabyteDB, Inc.
 
+#include <gflags/gflags.h>
 #include <thread>
+#include <string>
 
 #include "yb/gutil/sysinfo.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/gutil/dynamic_annotations.h"
 
 DECLARE_int32(num_cpus);
 

@@ -13,15 +13,15 @@
 
 #include "yb/client/yb_table_name.h"
 
-#include <boost/functional/hash.hpp>
+#include <glog/logging.h>
+#include <boost/container_hash/hash.hpp>
 
 #include "yb/util/logging.h"
-
 #include "yb/common/redis_constants_common.h"
-
 #include "yb/master/master_util.h"
-#include "yb/util/flags.h"
 #include "yb/util/format.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/util/flags/flag_tags.h"
 
 namespace yb::client {
 

@@ -16,28 +16,28 @@
 #pragma once
 
 #include <stdint.h>
-
-#include <functional>
-#include <set>
+#include <gtest/gtest.h>
+#include <stddef.h>
 #include <string>
-#include <type_traits>
-#include <unordered_set>
-#include <utility>
-
-#include <boost/range/iterator_range.hpp>
+#include <memory>
+#include <optional>
 
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/transaction_manager.h"
-
-#include "yb/common/entity_ids.h"
-
 #include "yb/server/hybrid_clock.h"
 #include "yb/server/skewed_clock.h"
-
-#include "yb/util/enums.h"
-#include "yb/util/math_util.h"
+#include "yb/client/client_fwd.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/server/clock.h"
+#include "yb/server/server_fwd.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+class MonoDelta;
+class Schema;
+
 namespace client {
 
 constexpr size_t kNumRows = 5;

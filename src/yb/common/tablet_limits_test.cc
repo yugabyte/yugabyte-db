@@ -11,14 +11,12 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <limits>
+#include <string>
 
 #include "yb/common/tablet_limits.h"
-
-#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
-#include "yb/util/test_macros.h"
-#include "yb/util/uuid.h"
+#include "gtest/gtest.h"
 
 namespace yb {
 

@@ -13,33 +13,68 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <unistd.h>
+#include <boost/container/small_vector.hpp>
+#include <boost/intrusive/list.hpp>
+#include <boost/move/iterator.hpp>
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <compare>
+#include <functional>
+#include <initializer_list>
+#include <limits>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <string>
+#include <tuple>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
 #include "catalog/pg_namespace_d.h"
-
 #include "yb/common/constants.h"
-#include "yb/common/hybrid_time.h"
-
 #include "yb/client/client.h"
-
 #include "yb/dockv/doc_key.h"
-
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
-
 #include "yb/tools/test_admin_client.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
-
 #include "yb/yql/pggate/pg_dml_read.h"
 #include "yb/yql/pggate/test/pggate_test.h"
 #include "yb/yql/pggate/util/ybc-internal.h"
 #include "yb/yql/pggate/ybc_pggate.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "pg_type_d.h"
+#include "yb/common/pg_types.h"
+#include "yb/common/value.messages.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/util/cast.h"
+#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
+#include "yb/yql/pggate/pg_statement.h"
+#include "yb/yql/pggate/util/ybc_guc.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 using std::string;
 

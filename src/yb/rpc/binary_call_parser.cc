@@ -13,17 +13,22 @@
 
 #include "yb/rpc/binary_call_parser.h"
 
-#include "yb/gutil/endian.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <ostream>
+#include <string>
 
+#include "yb/gutil/endian.h"
 #include "yb/rpc/connection.h"
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/rpc_metrics.h"
-#include "yb/rpc/stream.h"
-
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/slice.h"
+#include "yb/util/tostring.h"
 
 DEFINE_UNKNOWN_bool(binary_call_parser_reject_on_mem_tracker_hard_limit, true,
     "Whether to reject/ignore calls on hitting mem tracker hard limit.");

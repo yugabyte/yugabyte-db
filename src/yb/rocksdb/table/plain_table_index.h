@@ -22,20 +22,23 @@
 #pragma once
 
 
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <string>
 #include <vector>
 
-#include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/immutable_options.h"
-#include "yb/rocksdb/options.h"
-#include "yb/rocksdb/util/murmurhash.h"
-#include "yb/rocksdb/util/hash.h"
-#include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/histogram.h"
-
 #include "yb/util/status_log.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/util/coding.h"
+#include "yb/util/logging.h"
+#include "yb/util/slice.h"
 
 namespace rocksdb {
+class Arena;
+class SliceTransform;
 
 // PlainTableIndex contains buckets size of index_size_, each is a
 // 32-bit integer. The lower 31 bits contain an offset value (explained below)

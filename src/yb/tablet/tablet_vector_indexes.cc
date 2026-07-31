@@ -13,37 +13,79 @@
 
 #include "yb/tablet/tablet_vector_indexes.h"
 
-#include "yb/common/read_hybrid_time.h"
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <functional>
+#include <mutex>
+#include <ostream>
+#include <ratio>
+#include <thread>
+#include <tuple>
+#include <type_traits>
+#include <compare>
 
+#include "yb/common/read_hybrid_time.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
-#include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_vector_index.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/key_bounds.h"
-
-#include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/reader_projection.h"
-
 #include "yb/qlexpr/index.h"
-
 #include "yb/rocksdb/write_batch.h"
-
-#include "yb/rpc/thread_pool.h"
-
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
-
 #include "yb/util/operation_counter.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
+#include "yb/util/unique_lock.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/opid.h"
+#include "yb/common/schema.h"
+#include "yb/common/transaction.h"
+#include "yb/docdb/intent_aware_iterator.h"
+#include "yb/docdb/read_operation_data.h"
+#include "yb/dockv/value_type.h"
+#include "yb/gutil/casts.h"
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/util/flags/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/kv_util.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/metrics.h"
+#include "yb/util/metrics_fwd.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/std_util.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/thread_pool.h"
+#include "yb/util/tostring.h"
+
+namespace yb {
+namespace docdb {
+class DocDBStatistics;
+}  // namespace docdb
+}  // namespace yb
 
 using namespace std::literals;
 using namespace yb::size_literals;

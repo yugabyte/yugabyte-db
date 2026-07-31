@@ -11,14 +11,17 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
+#include <string>
 
 #include "yb/dockv/intent.h"
-
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/key_bytes.h"
-#include "yb/dockv/value_type.h"
 #include "yb/util/uuid.h"
+#include "gtest/gtest.h"
+#include "yb/common/common_fwd.h"
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/key_entry_value.h"
+#include "yb/util/enums.h"
 
 namespace yb::dockv {
 

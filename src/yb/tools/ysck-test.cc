@@ -30,20 +30,25 @@
 // under the License.
 //
 
+#include <boost/lexical_cast.hpp>
+#include <stdint.h>
 #include <memory>
 #include <unordered_map>
+#include <string>
+#include <vector>
+#include <functional>
 
-#include <boost/lexical_cast.hpp>
-#include "yb/util/logging.h"
-#include <gtest/gtest.h>
-
-#include "yb/gutil/callback.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/tools/ysck.h"
-
 #include "yb/util/test_util.h"
+#include "gtest/gtest.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/schema.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 namespace tools {

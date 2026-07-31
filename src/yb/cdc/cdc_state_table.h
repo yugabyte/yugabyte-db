@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <stdint.h>
 #include <future>
 #include <memory>
 #include <optional>
@@ -19,16 +20,23 @@
 #include <string>
 #include <unordered_set>
 #include <vector>
+#include <utility>
+#include <functional>
 
 #include "yb/client/table_handle.h"
-
 #include "yb/common/opid.h"
-
 #include "yb/gutil/thread_annotations.h"
-
 #include "yb/util/condition_variable.h"
 #include "yb/util/mutex.h"
-#include "yb/util/status_fwd.h"
+#include "yb/cdc/xrepl_types.h"
+#include "yb/client/session.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/value.pb.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_callback.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
@@ -37,7 +45,6 @@ class YBClient;
 }  // namespace client
 
 namespace master {
-class IsCreateTableDoneResponsePB;
 class CreateTableRequestPB;
 }  // namespace master
 

@@ -14,25 +14,30 @@
 #pragma once
 
 #include <sys/types.h>
-
+#include <stddef.h>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
-
-#include <gtest/gtest_prod.h>
+#include <ostream>
+#include <string_view>
+#include <thread>
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/curl_util.h"
-#include "yb/util/env.h"
 #include "yb/util/json_document.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/status.h"
-#include "yb/util/status_fwd.h"
+#include "yb/gutil/strings/stringpiece.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/util/faststring.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
@@ -46,11 +51,9 @@ class ServerStatusPB;
 }  // namespace server
 
 class HybridTime;
-class OpIdPB;
 class NodeInstancePB;
 class Subprocess;
 struct GlobalLogTailerState;
-
 YB_STRONGLY_TYPED_BOOL(RequireExitCode0);
 YB_STRONGLY_TYPED_BOOL(SafeShutdown);
 

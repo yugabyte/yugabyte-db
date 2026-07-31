@@ -11,42 +11,106 @@
 // under the License.
 //
 
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <boost/preprocessor.hpp>
+#include <boost/preprocessor/arithmetic/dec.hpp>
+#include <boost/preprocessor/control/expr_iif.hpp>
+#include <boost/preprocessor/control/iif.hpp>
+#include <boost/preprocessor/logical/bool.hpp>
+#include <boost/preprocessor/punctuation/is_begin_parens.hpp>
+#include <boost/preprocessor/repetition/for.hpp>
+#include <boost/preprocessor/seq/elem.hpp>
+#include <boost/preprocessor/seq/enum.hpp>
+#include <boost/preprocessor/seq/fold_left.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/variadic/elem.hpp>
+#include <boost/regex.hpp>
 #include <atomic>
+#include <algorithm>
+#include <chrono>
+#include <functional>
+#include <initializer_list>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <ratio>
+#include <set>
+#include <string>
+#include <thread>
+#include <tuple>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "yb/cdc/xcluster_types.h"
-
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
 #include "yb/client/xcluster_client.h"
 #include "yb/client/yb_table_name.h"
-
 #include "yb/common/colocated_util.h"
 #include "yb/common/common_types.pb.h"
-
 #include "yb/integration-tests/xcluster/xcluster_ddl_replication_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_base.h"
 #include "yb/integration-tests/xcluster/xcluster_test_utils.h"
-
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/xcluster/xcluster_manager.h"
-
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/xcluster_poller_stats.h"
-
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/tsan_util.h"
-
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "gtest/gtest.h"
+#include "libpq-fe.h"
+#include "yb/cdc/cdc_consumer.pb.h"
+#include "yb/client/client.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/sysinfo.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/xcluster/xcluster_ysql_test_base.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_replication.pb.h"
+#include "yb/master/master_types.pb.h"
+#include "yb/master/sys_catalog-internal.h"
+#include "yb/master/sys_catalog.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
+#include "yb/server/clock.h"
+#include "yb/tablet/tablet.h"
+#include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+#include "yb/util/thread.h"
+#include "yb/util/tostring.h"
 
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 DECLARE_bool(enable_pg_cron);

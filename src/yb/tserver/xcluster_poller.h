@@ -11,39 +11,49 @@
 // under the License.
 //
 
+#include <stdint.h>
 #include <string>
+#include <atomic>
+#include <condition_variable>
+#include <functional>
+#include <memory>
+#include <mutex>
 
 #include "yb/ash/ash_fwd.h"
 #include "yb/cdc/cdc_types.h"
 #include "yb/tserver/xcluster_async_executor.h"
-#include "yb/tserver/xcluster_ddl_queue_handler.h"
-#include "yb/tserver/xcluster_output_client.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/tserver/xcluster_poller_id.h"
 #include "yb/tserver/xcluster_poller_stats.h"
 #include "yb/util/locks.h"
-#include "yb/util/status_fwd.h"
+#include "yb/cdc/xcluster_types.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/opid.pb.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/tserver/xcluster_consumer_if.h"
+#include "yb/util/status.h"
+
+namespace rocksdb {
+class RateLimiter;
+}  // namespace rocksdb
 
 #pragma once
 
 namespace yb {
 
 class ThreadPool;
-
-namespace rpc {
-
-class RpcController;
-
-} // namespace rpc
-
 namespace cdc {
-
-class CDCServiceProxy;
-
-} // namespace cdc
+class GetChangesResponsePB;
+}  // namespace cdc
+namespace rpc {
+class Rpcs;
+}  // namespace rpc
 
 namespace client {
 class XClusterRemoteClientHolder;
+class YBClient;
 }  // namespace client
 
 namespace tserver {
@@ -51,6 +61,9 @@ namespace tserver {
 class AutoFlagsCompatibleVersion;
 class XClusterConsumer;
 class XClusterDDLQueueHandler;
+class TserverXClusterContextIf;
+class XClusterOutputClient;
+struct XClusterOutputClientResponse;
 
 class XClusterPoller : public XClusterAsyncExecutor {
  public:

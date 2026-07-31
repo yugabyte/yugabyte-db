@@ -31,13 +31,24 @@
 //
 #pragma once
 
+#include <gflags/gflags.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <memory>
+#include <string>
+#include <unordered_set>
+#include <vector>
+#include <functional>
+
 #include "yb/integration-tests/cluster_itest_util.h"
-
 #include "yb/tserver/tablet_server-test-base.h"
-
 #include "yb/client/table_handle.h"
-
 #include "yb/util/random.h"
+#include "yb/client/client.h"
+#include "yb/client/table.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(consensus_rpc_timeout_ms);
