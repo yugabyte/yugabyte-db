@@ -309,6 +309,15 @@ class PgConcurrentCreateIndexWithSlowRefreshMatViewTest :
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->replication_factor = 1;
     PgConcurrentCreateIndexWithSlowOtherDDLTest::UpdateMiniClusterOptions(options);
+    // TODO(#32565): remove this override once backfill pins history at its read time.  The test
+    // harness runs with timestamp_history_retention_interval_sec=0 to surface stale-read-point
+    // bugs.  Here that canary trips on a known, deferred limitation instead: the minutes-long
+    // CREATE UNIQUE INDEX backfill of slow_mv reads at a fixed read time, and a full compaction of
+    // slow_mv between two backfill reads advances the history cutoff past that read time, failing
+    // the backfill with "Snapshot too old".  Raise retention to at least the test's entire
+    // lifetime, even under a raised YB_TEST_TIMEOUT, so the cutoff can never reach a read time
+    // chosen during the test.
+    options->extra_tserver_flags.push_back("--timestamp_history_retention_interval_sec=3600");
   }
 };
 
