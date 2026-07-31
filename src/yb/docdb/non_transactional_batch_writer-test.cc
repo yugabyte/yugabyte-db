@@ -19,8 +19,11 @@
 
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/rocksdb_writer.h"
+#include "yb/dockv/doc_vector_id.h"
 #include "yb/dockv/dockv_fwd.h"
 #include "yb/dockv/partition.h"
+
+#include "yb/vector_index/vector_index_fwd.h"
 
 namespace yb::docdb {
 
@@ -39,12 +42,15 @@ class NonTransactionalBatchWriterTest : public DocDBTestBase {
   Schema CreateSchema() override { return Schema(); }
 
   Status SendWriteBatch(
-      const docdb::LWKeyValueWriteBatchPB& put_batch, HybridTime write_ht, HybridTime batch_ht) {
+      const docdb::LWKeyValueWriteBatchPB& put_batch, HybridTime write_ht, HybridTime batch_ht,
+      const DocVectorIndexesPtr& vector_indexes = nullptr,
+      const StorageSet& apply_to_storages = StorageSet::All(),
+      TableType table_type = TableType::PGSQL_TABLE_TYPE) {
     ConsensusFrontiers frontiers;
     rocksdb::WriteBatch intents_write_batch;
     NonTransactionalBatchWriter batcher(
         put_batch, write_ht, batch_ht, intents_db(), &intents_write_batch, *this, frontiers,
-        StorageSet::All());
+        vector_indexes, apply_to_storages, table_type);
 
     rocksdb::WriteBatch regular_write_batch;
     regular_write_batch.SetFrontiers(&frontiers);
@@ -492,6 +498,69 @@ SubDocKey(DocKey([], ["r8"]), [HT{ physical: 6000 w: 2 }]) -> "value16"
 SubDocKey(DocKey([], ["r9"]), [HT{ physical: 6000 w: 5 }]) -> "value19"
 SubDocKey(DocKey([], ["r9"]), [HT{ physical: 6000 w: 4 }]) -> "value18"
     )#");
+}
+
+namespace {
+
+std::string EncodeTableOwnedVectorColumnValue(
+    const vector_index::VectorId& id, Slice vector_binary_value = {}) {
+  QLValuePB ql_value;
+  ql_value.set_binary_value(vector_binary_value.cdata(), vector_binary_value.size());
+  dockv::DocVectorValue doc_vector_value(dockv::VectorValueFormat::kTyped, ql_value, id);
+  std::string out;
+  doc_vector_value.EncodeTo(&out);
+  return out;
+}
+
+KeyBytes EncodeDocPathKey(const DocPath& doc_path) {
+  KeyBytes encoded_key(doc_path.encoded_doc_key().AsSlice());
+  for (size_t i = 0; i < doc_path.num_subkeys(); ++i) {
+    doc_path.subkey(i).AppendToKey(&encoded_key);
+  }
+  return encoded_key;
+}
+
+}  // namespace
+
+// GH#32310: YSQL single-shard fast path applies via NonTransactionalBatchWriter without intents.
+// Table-owned reverse mapping must be written for column-keyed vector values, and delete_vector_ids
+// must tombstone obsolete vector ids.
+TEST_F(NonTransactionalBatchWriterTest, FastPathVectorReverseMapping) {
+  const auto vector_id = ASSERT_RESULT(vector_index::VectorIdFromString(
+      "10000000-2000-3000-4000-000000000001"));
+
+  const DocKey doc_key(MakeKeyEntryValues("row1"));
+  const auto column_path = DocPath(doc_key.Encode(), KeyEntryValue::MakeColumnId(ColumnId(11)));
+  const auto encoded_key = EncodeDocPathKey(column_path);
+  const auto encoded_value = EncodeTableOwnedVectorColumnValue(vector_id);
+
+  const auto kWriteHT = 6000_usec_ht;
+  const auto kBatchHT = 5000_usec_ht;
+
+  docdb::LWKeyValueWriteBatchPB put_batch(&arena_);
+  auto* write_pair = put_batch.add_write_pairs();
+  write_pair->dup_key(encoded_key.AsSlice());
+  write_pair->dup_value(encoded_value);
+  ASSERT_OK(SendWriteBatch(put_batch, kWriteHT, kBatchHT));
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+MetaKey(VectorId(10000000-2000-3000-4000-000000000001), [HT{ physical: 6000 }]) -> \
+    SubDocKey(DocKey([], ["row1"]), [ColumnId(11)])
+SubDocKey(DocKey([], ["row1"]), [ColumnId(11); HT{ physical: 6000 }]) -> \
+    VECTOR_DATA(561000000020003000400000000000000111)
+  )#");
+
+  put_batch.Clear();
+  put_batch.dup_delete_vector_ids(vector_id.AsSlice());
+  ASSERT_OK(SendWriteBatch(put_batch, 7000_usec_ht, 6500_usec_ht));
+
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
+MetaKey(VectorId(10000000-2000-3000-4000-000000000001), [HT{ physical: 7000 }]) -> DEL
+MetaKey(VectorId(10000000-2000-3000-4000-000000000001), [HT{ physical: 6000 }]) -> \
+    SubDocKey(DocKey([], ["row1"]), [ColumnId(11)])
+SubDocKey(DocKey([], ["row1"]), [ColumnId(11); HT{ physical: 6000 }]) -> \
+    VECTOR_DATA(561000000020003000400000000000000111)
+  )#");
 }
 
 }  // namespace yb::docdb

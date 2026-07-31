@@ -16,6 +16,7 @@
 #include "yb/client/client_error.h"
 #include "yb/client/client_fwd.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/schema.h"
 #include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 
@@ -26,6 +27,7 @@
 #include "yb/docdb/doc_vector_index.h"
 
 #include "yb/docdb/docdb_util.h"
+#include "yb/dockv/value_type.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 
@@ -60,7 +62,9 @@
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(enable_table_owned_vector_reverse_mapping);
 DECLARE_bool(enable_tablet_split_of_tables_with_vector_index);
+DECLARE_bool(TEST_skip_process_apply);
 DECLARE_bool(TEST_use_custom_varz);
 DECLARE_bool(TEST_vector_index_exact);
 DECLARE_bool(vector_index_enable_compactions);
@@ -80,6 +84,8 @@ DECLARE_int32(TEST_sleep_after_vector_index_backfill_chunk_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int64(db_block_cache_size_bytes);
+DECLARE_int64(db_block_size_bytes);
+DECLARE_int64(db_write_buffer_size);
 DECLARE_int64(tablet_force_split_threshold_bytes);
 DECLARE_string(vector_index_backend);
 DECLARE_uint64(post_split_compaction_input_size_threshold_bytes);
@@ -90,8 +96,7 @@ DECLARE_uint64(vector_index_initial_chunk_size);
 DECLARE_uint64(vector_index_max_insert_tasks);
 DECLARE_uint64(vector_index_max_merge_tasks);
 DECLARE_uint64(vector_index_task_size);
-DECLARE_bool(enable_automatic_tablet_splitting);
-DECLARE_bool(enable_tablet_split_of_tables_with_vector_index);
+DECLARE_uint64(vector_index_max_merge_tasks);
 
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 
@@ -103,16 +108,11 @@ extern size_t TEST_vector_index_max_checked_entries;
 
 } // namespace yb::docdb
 
-namespace yb::internal {
-
-extern std::optional<bool> TEST_vector_index_skip_reverse_mapping_backfill;
-
-} // namespace yb::internal
-
 namespace yb::tablet {
 
 extern bool TEST_block_after_backfilling_first_vector_index_chunks;
 extern bool TEST_fail_on_seq_scan_with_vector_indexes;
+extern std::optional<bool> TEST_vector_index_skip_reverse_mapping_backfill;
 
 } // namespace yb::tablet
 
@@ -175,6 +175,7 @@ class PgVectorIndexTestBase : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_vector_index_exact) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_enable_compactions) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_num_compactions_limit) = 0;
+
     auto packing_mode = GetPackingMode();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = packing_mode != PackingMode::kNone;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) = packing_mode == PackingMode::kV2;
@@ -1782,6 +1783,101 @@ template <typename TestClass>
 using PgDistributedVectorIndexTestParamsDecorator =
     PgVectorIndexTestParamsDecoratorBase<TestClass, PgDistributedVectorIndexTestParam>;
 
+// Colocation + packing only (engine fixed). Distinct from PgVectorIndexReverseMappingTestParam,
+// which is also tuple<bool, PackingMode> for ownership + packing.
+struct PgVectorIndexColocationPackingTestParam {
+  bool colocated = false;
+  PackingMode packing_mode = PackingMode::kNone;
+
+  friend bool operator==(
+      const PgVectorIndexColocationPackingTestParam& lhs,
+      const PgVectorIndexColocationPackingTestParam& rhs) {
+    return lhs.colocated == rhs.colocated && lhs.packing_mode == rhs.packing_mode;
+  }
+};
+
+template <>
+struct TestParamTraits<PgVectorIndexColocationPackingTestParam> {
+  using ParamType = PgVectorIndexColocationPackingTestParam;
+
+  static bool IsColocated(const ParamType& param) {
+    return param.colocated;
+  }
+
+  static VectorIndexEngine Engine(const ParamType&) {
+    return VectorIndexEngine::kYbHnswHnswlib;
+  }
+
+  static PackingMode GetPackingMode(const ParamType& param) {
+    return param.packing_mode;
+  }
+
+  static auto TestParamGenerator() {
+    std::vector<ParamType> params;
+    for (const bool colocated : {false, true}) {
+      for (const auto packing_mode : kPackingModeArray) {
+        params.push_back(ParamType{ .colocated = colocated, .packing_mode = packing_mode });
+      }
+    }
+    return testing::ValuesIn(params);
+  }
+
+  static auto TestParamNameGenerator() {
+    // Engine is fixed for this suite; keep gtest names as Colocated/Distributed[+Packing].
+    return [](const testing::TestParamInfo<ParamType>& param_info) -> std::string {
+      const auto packing_mode = GetPackingMode(param_info.param);
+      return Format(
+          "$0$1",
+          IsColocated(param_info.param) ? "Colocated" : "Distributed",
+          packing_mode == PackingMode::kNone
+              ? ""
+              : "Packing" + ToString(packing_mode).substr(1));
+    };
+  }
+};
+
+template <typename TestClass>
+using PgVectorIndexColocationPackingTestParamsDecorator =
+    PgVectorIndexTestParamsDecoratorBase<TestClass, PgVectorIndexColocationPackingTestParam>;
+
+using PgVectorIndexColocatedPackingTestParam = PackingMode;
+
+template <>
+struct TestParamTraits<PgVectorIndexColocatedPackingTestParam> {
+  using ParamType = PgVectorIndexColocatedPackingTestParam;
+
+  static bool IsColocated(const ParamType&) {
+    return true;
+  }
+
+  static VectorIndexEngine Engine(const ParamType&) {
+    return VectorIndexEngine::kYbHnswHnswlib;
+  }
+
+  static PackingMode GetPackingMode(const ParamType& param) {
+    return param;
+  }
+
+  static auto TestParamGenerator() {
+    return testing::ValuesIn(kPackingModeArray);
+  }
+
+  static auto TestParamNameGenerator() {
+    return [](const testing::TestParamInfo<ParamType>& param_info) -> std::string {
+      const auto packing_mode = GetPackingMode(param_info.param);
+      // Colocation/engine are fixed; packing is the only name component.
+      if (packing_mode == PackingMode::kNone) {
+        return "None";
+      }
+      return "Packing" + ToString(packing_mode).substr(1);
+    };
+  }
+};
+
+template <typename TestClass>
+using PgVectorIndexColocatedPackingTestParamsDecorator =
+    PgVectorIndexTestParamsDecoratorBase<TestClass, PgVectorIndexColocatedPackingTestParam>;
+
 class PgDistributedVectorIndexTest
     : public PgDistributedVectorIndexTestParamsDecorator<PgVectorIndexTestBase> {
   using Base = PgDistributedVectorIndexTestParamsDecorator<PgVectorIndexTestBase>;
@@ -1835,6 +1931,10 @@ MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgDistributedVectorIndexTest);
 // before the vector index creation.
 TEST_P(PgDistributedVectorIndexTest, BaseTableManualSplitSimple) {
   constexpr size_t kNumRows = 20;
+
+  // Small data blocks so compact rows (and any reverse-mapping records) span multiple blocks;
+  // otherwise GetMiddleKey's single-block fallback can pick an internal key and split fails.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 256;
 
   num_pre_split_tablets_ = 1;
   auto conn = ASSERT_RESULT(MakeTable());
@@ -1955,6 +2055,9 @@ TEST_P(PgDistributedVectorIndexTest, ManualSplitSimple) {
 // while the backfill is still running.
 TEST_P(PgDistributedVectorIndexTest, AutoSplitDuringBackfill) {
   constexpr size_t kNumRows = RegularBuildVsSanitizers(500, 200);
+
+  // Split threshold is sized for backfill-written reverse mappings; table-owned skips that path.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = false;
 
   // Allow splitting of a table that has a vector index; otherwise the split is rejected outright.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_tables_with_vector_index) = true;
@@ -2127,6 +2230,10 @@ TEST_P(PgDistributedVectorIndexTest, MetaCacheBaseTableStaleLookupAfterSplit) {
 TEST_P(PgDistributedVectorIndexTest, MetaCacheLookupAfterDropWithoutReads) {
   constexpr size_t kNumRows = 20;
 
+  // Small data blocks so compact rows (and any reverse-mapping records) span multiple blocks;
+  // otherwise GetMiddleKey's single-block fallback can pick an internal key and split fails.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 256;
+
   num_pre_split_tablets_ = 1;
   auto conn = ASSERT_RESULT(MakeTable());
   ASSERT_OK(InsertRows(conn, 0, kNumRows - 1, /* keep_vectors = */ true));
@@ -2238,7 +2345,8 @@ TEST_P(PgVectorIndexSingleServerTest, OnDiskSize) {
 
 // Expected Key -> Value format:
 // 1) MetaKey(VectorId(uuid), [HT{ ... }]) -> DocKey(...)
-// 2) MetaKey(VectorId(uuid), [HT{ ... }]) -> DEL
+// 2) MetaKey(VectorId(uuid), [HT{ ... }]) -> SubDocKey(DocKey(...), [ColumnId(...)])
+// 3) MetaKey(VectorId(uuid), [HT{ ... }]) -> DEL
 // Value contains only unsigned integer.
 class TestKVFormatter : public tablet::KVFormatter {
   const std::string kKVDelimiter = " -> ";
@@ -2283,16 +2391,19 @@ class TestKVFormatter : public tablet::KVFormatter {
   }
 
   std::string ExtractIdx(const std::string& ybctid) const {
-    // Expected formats of ybctid: "DocKey([], [1])" or "DocKey(0xeda9, [1], [])".
+    // Expected formats:
+    // - legacy: "DocKey([], [1])" or "DocKey(0xeda9, [1], [])"
+    // - V1:     "SubDocKey(DocKey([], [1]), [ColumnId(...)])"
     static const std::string kDocKeyPrefix = "DocKey(";
     static const std::string kIdxDigits = "0123456789";
 
-    if (ybctid.rfind(kDocKeyPrefix, 0) != 0) {
-        return {};
+    auto doc_key_pos = ybctid.find(kDocKeyPrefix);
+    if (doc_key_pos == std::string::npos) {
+      return {};
     }
 
     // Find the first '[' to skip hash part.
-    auto start = ybctid.find('[', kDocKeyPrefix.length() - 1);
+    auto start = ybctid.find('[', doc_key_pos + kDocKeyPrefix.length() - 1);
     if (start == std::string::npos) {
       return {};
     }
@@ -2322,7 +2433,8 @@ class TestKVFormatter : public tablet::KVFormatter {
     //    the order for a particular ybctid.
     static const std::string kTombstone = "DEL";
     for (const auto& entry : entries_) {
-      if (entry.ybctid == kTombstone) {
+      if (entry.ybctid.starts_with(kTombstone)) {
+        vector_labels_.insert({entry.vector_id, yb::Format("vector_$0", vector_labels_.size())});
         continue;
       }
 
@@ -2331,10 +2443,10 @@ class TestKVFormatter : public tablet::KVFormatter {
         continue;
       }
 
-      vector_labels_.insert({
-        entry.vector_id,
-        yb::Format("$0_vector_$1", FormatYbctid(entry.ybctid), vectors.size())
-      });
+      vector_labels_.insert_or_assign(
+          entry.vector_id,
+          yb::Format("$0_vector_$1", FormatYbctid(entry.ybctid), vectors.size())
+      );
     }
 
     // 3. Build output excluding HT.
@@ -2342,7 +2454,7 @@ class TestKVFormatter : public tablet::KVFormatter {
     for (const auto& entry : entries_) {
       ss << vector_labels_.at(entry.vector_id);
       ss << kKVDelimiter;
-      ss << (entry.ybctid == kTombstone ? entry.ybctid : FormatYbctid(entry.ybctid));
+      ss << (entry.ybctid.starts_with(kTombstone) ? entry.ybctid : FormatYbctid(entry.ybctid));
       ss << std::endl;
     }
     return ss.str();
@@ -3009,14 +3121,67 @@ TEST_P(PgVectorIndexSmallBlockCacheTest, IndexReservesBlockCacheSpace) {
          "accounted within the block cache budget.";
 }
 
-class PgVectorIndexUtilTest : public PgVectorIndexSingleServerTestBase {
+class PgVectorIndexSingleServerDumpTestBase : public PgVectorIndexSingleServerTestBase {
+ protected:
+  // Flushes the single tablet and returns the vector index reverse mapping entries currently
+  // persisted in the Regular DB.
+  Result<std::string> DumpSingleTabletReverseMapping(
+      const std::string& table_name = "test") {
+    RETURN_NOT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+    RETURN_NOT_OK(cluster_->FlushTablets());
+
+    const auto table_id = VERIFY_RESULT(FindTableId(cluster_.get(), table_name));
+    auto table_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+    SCHECK(!table_peers.empty(), IllegalState, "Expected at least one active tablet leader");
+
+    TestKVFormatter formatter;
+    for (const auto& peer : table_peers) {
+      auto tablet = VERIFY_RESULT(peer->shared_tablet());
+      auto rocksdb_dir = tablet->metadata()->rocksdb_dir();
+      SCHECK(!rocksdb_dir.empty(), IllegalState, "Empty RocksDB dir");
+      LOG(INFO) << "RocksDB dir: " << rocksdb_dir;
+      RETURN_NOT_OK(RunSstDump(formatter, rocksdb_dir));
+    }
+    auto output = formatter.FormatVectorsMeta();
+    LOG(INFO) << "Parsed SST dump output:\n" << output;
+    return output;
+  }
+
+  Status CompactTabletForTable(const std::string& table_name = "test") {
+    const auto table_id = VERIFY_RESULT(FindTableId(cluster_.get(), table_name));
+    auto table_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+    SCHECK(!table_peers.empty(), IllegalState, "Expected at least one active tablet leader");
+    RETURN_NOT_OK(WaitForAllIntentsApplied(cluster_.get(), 10s * kTimeMultiplier));
+
+    std::vector<rocksdb::DBImpl*> db_impls;
+    db_impls.reserve(table_peers.size());
+    for (const auto& peer : table_peers) {
+      auto tablet = VERIFY_RESULT(peer->shared_tablet());
+      db_impls.push_back(down_cast<rocksdb::DBImpl*>(tablet->regular_db()));
+      RETURN_NOT_OK(tablet->Flush(
+          tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs, rocksdb::FlushReason::kTestOnly));
+      RETURN_NOT_OK(tablet->ForceManualRocksDBCompact(docdb::SkipFlush::kTrue));
+    }
+    return LoggedWaitFor([db_impls]() -> Result<bool> {
+      for (auto* db_impl : db_impls) {
+        if (db_impl->TEST_NumBackgroundCompactionsScheduled() != 0 ||
+            db_impl->TEST_NumTotalRunningCompactions() != 0) {
+          return false;
+        }
+      }
+      return true;
+    }, 30s * kTimeMultiplier, "Wait for reverse-mapping compaction");
+  }
+};
+
+class PgVectorIndexUtilTest : public PgVectorIndexSingleServerDumpTestBase {
  protected:
   bool IsColocated() const override {
     return false;
   }
 
   VectorIndexEngine Engine() const override {
-    return VectorIndexEngine::kUsearch;
+    return VectorIndexEngine::kYbHnswHnswlib;
   }
 
   size_t NumTabletServers() override {
@@ -3026,66 +3191,57 @@ class PgVectorIndexUtilTest : public PgVectorIndexSingleServerTestBase {
   PackingMode GetPackingMode() const override {
     return PackingMode::kV1;
   }
-
-  // Flushes the single tablet and returns the vector index reverse mapping entries currently
-  // persisted in the Regular DB.
-  Result<std::string> DumpSingleTabletReverseMapping() {
-    RETURN_NOT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
-    RETURN_NOT_OK(cluster_->FlushTablets());
-
-    auto table_peers = VERIFY_RESULT(
-        ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
-    SCHECK_EQ(table_peers.size(), 1, IllegalState, "Expected exactly one tablet leader");
-    auto tablet = VERIFY_RESULT(table_peers.front()->shared_tablet());
-    auto rocksdb_dir = tablet->metadata()->rocksdb_dir();
-    SCHECK(!rocksdb_dir.empty(), IllegalState, "Empty RocksDB dir");
-    LOG(INFO) << "RocksDB dir: " << rocksdb_dir;
-
-    TestKVFormatter formatter;
-    RETURN_NOT_OK(RunSstDump(formatter, rocksdb_dir));
-    auto output = formatter.FormatVectorsMeta();
-    LOG(INFO) << "Parsed SST dump output:\n" << output;
-    return output;
-  }
 };
 
-TEST_F(PgVectorIndexUtilTest, AutomaticTabletSplit) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_tables_with_vector_index) = true;
-
-  constexpr size_t kNumRows = RegularBuildVsSanitizers(500, 64);
-  constexpr size_t kQueryLimit = 5;
-
-  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
-  ASSERT_OK(cluster_->FlushTablets());
-
-  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
-  ASSERT_OK(WaitForTabletSplit(table_id));
-
-  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
-}
-
 TEST_F(PgVectorIndexUtilTest, BackfillSkipsReverseMapping) {
-  ANNOTATE_UNPROTECTED_WRITE(internal::TEST_vector_index_skip_reverse_mapping_backfill) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = true;
 
   constexpr size_t kNumRows = 5;
-  ASSERT_RESULT(MakeIndexAndFill(kNumRows, Backfill::kTrue));
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
 
-  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  auto before_backfill = ASSERT_RESULT(DumpSingleTabletReverseMapping());
 
-  // No reverse mapping entries are expected: backfill skipped them and the rows predate the index.
-  ASSERT_TRUE(output.empty()) << "Unexpected reverse mapping entries:\n" << output;
+  // Table owned vector reverse mapping populating reuses insert logic, which updates write_id
+  // component for the hybrid time. That's why the output is ordered by the timestamp.
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_3_vector_1 -> ybctid_3
+          ybctid_4_vector_1 -> ybctid_4
+          ybctid_5_vector_1 -> ybctid_5
+      )#",
+      before_backfill);
+
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+
+  auto after_backfill = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(before_backfill, after_backfill);
 }
 
 TEST_F(PgVectorIndexUtilTest, BackfillWritesReverseMapping) {
-  ANNOTATE_UNPROTECTED_WRITE(internal::TEST_vector_index_skip_reverse_mapping_backfill) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = false;
 
   constexpr size_t kNumRows = 5;
-  ASSERT_RESULT(MakeIndexAndFill(kNumRows, Backfill::kTrue));
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, kNumRows));
 
-  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  auto before_backfill = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  ASSERT_STR_EQ_VERBOSE_TRIMMED("", before_backfill);
+
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+
+  auto after_backfill = ASSERT_RESULT(DumpSingleTabletReverseMapping());
 
   // The order is deterministic and stable, but follows [HT, str(hash, id)] ordering, where
   // HT is the backfill time and is the same for all entries for this particular backfill case.
+  // The difference from the insertion logic is that backfill does not increment the write_id
+  // component for the hybrid time, and that's how each entry has the same timestamp.
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
       R"#(
           ybctid_3_vector_1 -> ybctid_3
@@ -3094,7 +3250,7 @@ TEST_F(PgVectorIndexUtilTest, BackfillWritesReverseMapping) {
           ybctid_2_vector_1 -> ybctid_2
           ybctid_1_vector_1 -> ybctid_1
       )#",
-      output);
+      after_backfill);
 }
 
 TEST_F(PgVectorIndexUtilTest, SearchSkipsTombstonedReverseMapping) {
@@ -3135,6 +3291,10 @@ TEST_F(PgVectorIndexUtilTest, NumTopVectorsToRemoveExceedsResultEntries) {
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_vector_index_skip_filter_check) = true;
 
+  // Needs legacy ownership: pre-index inserts must not write reverse mappings so that skipping
+  // backfill leaves rows 1..kNumRows unresolvable during search.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = false;
+
   auto conn = ASSERT_RESULT(MakeTable());
   ASSERT_OK(InsertRows(conn, /* start_row = */ 1, kNumRows));
 
@@ -3142,9 +3302,9 @@ TEST_F(PgVectorIndexUtilTest, NumTopVectorsToRemoveExceedsResultEntries) {
   // The search will drop these results with vector_index_skip_filter_check enabled, so the first
   // page will resolve fewer than kQueryLimit rows while could_have_more_data stays true, forcing
   // a second fetch with num_top_vectors_to_remove_ > 0.
-  ANNOTATE_UNPROTECTED_WRITE(internal::TEST_vector_index_skip_reverse_mapping_backfill) = true;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_vector_index_skip_reverse_mapping_backfill) = true;
   ASSERT_OK(CreateIndex(conn));
-  ANNOTATE_UNPROTECTED_WRITE(internal::TEST_vector_index_skip_reverse_mapping_backfill) = false;
+  ANNOTATE_UNPROTECTED_WRITE(tablet::TEST_vector_index_skip_reverse_mapping_backfill) = false;
   ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
 
   // Insert the second half of the rows with the reverse mapping entries.
@@ -3318,6 +3478,120 @@ TEST_F(PgVectorIndexUtilTest, SstDump) {
       output);
 }
 
+// Verifies table-owned V1 reverse-mapping values dump as SubDocKey(..., [ColumnId(...)]).
+TEST_F(PgVectorIndexUtilTest, ReverseMappingDumpFormatV1) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = true;
+
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, 1));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  const auto lines = ASSERT_RESULT(DumpTableLeadersDocDBToVector(cluster_.get(), "test"));
+  size_t v1_meta_values = 0;
+  for (const auto& line : lines) {
+    if (line.find("MetaKey(VectorId(") == std::string::npos) {
+      continue;
+    }
+    // Legacy: MetaKey(...) -> DocKey(...)
+    // V1:     MetaKey(...) -> SubDocKey(DocKey(...), [ColumnId(...)])
+    ASSERT_NE(line.find("SubDocKey("), std::string::npos) << line;
+    ASSERT_NE(line.find("ColumnId("), std::string::npos) << line;
+    ++v1_meta_values;
+  }
+  ASSERT_EQ(v1_meta_values, 1);
+}
+
+// Covers table-owned V1 reverse-mapping packing GC across packing modes.
+class PgVectorIndexReverseMappingCompactionGcTestBase
+    : public PgVectorIndexSingleServerDumpTestBase {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(
+        FLAGS_timestamp_history_retention_interval_sec) = kRetentionIntervalSec;
+
+    // Keep a single active tablet so dump/compact helpers stay deterministic.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
+
+    PgVectorIndexSingleServerDumpTestBase::SetUp();
+
+    // Enable table-owned V1 reverse mappings for compaction GC tests.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = true;
+  }
+
+  static constexpr auto kRetentionIntervalSec = 2;
+};
+
+class PgVectorIndexReverseMappingCompactionGcTest
+    : public PgVectorIndexColocationPackingTestParamsDecorator<
+          PgVectorIndexReverseMappingCompactionGcTestBase> {};
+
+MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexReverseMappingCompactionGcTest);
+
+TEST_P(PgVectorIndexReverseMappingCompactionGcTest, DropColumn) {
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_3_vector_1 -> ybctid_3
+      )#",
+      ASSERT_RESULT(DumpSingleTabletReverseMapping()));
+
+  ASSERT_OK(conn.Execute("DROP INDEX " + kVectorIndexName));
+  ASSERT_OK(conn.Execute("ALTER TABLE test DROP COLUMN embedding"));
+
+  SleepFor(MonoDelta::FromSeconds(kRetentionIntervalSec));
+  ASSERT_OK(CompactTabletForTable());
+  ASSERT_STR_EQ_VERBOSE_TRIMMED("", ASSERT_RESULT(DumpSingleTabletReverseMapping()));
+}
+
+// Table-owned reverse mappings survive DROP INDEX.
+TEST_P(PgVectorIndexReverseMappingCompactionGcTest, DropIndexKeepsMapping) {
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  const auto before = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_3_vector_1 -> ybctid_3
+      )#",
+      before);
+
+  ASSERT_OK(conn.Execute("DROP INDEX " + kVectorIndexName));
+  SleepFor(MonoDelta::FromSeconds(kRetentionIntervalSec));
+  ASSERT_OK(CompactTabletForTable());
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(before, ASSERT_RESULT(DumpSingleTabletReverseMapping()));
+}
+
+// Covers colocation is being dropped.
+class PgVectorIndexReverseMappingCompactionGcColocatedTest
+    : public PgVectorIndexColocatedPackingTestParamsDecorator<
+          PgVectorIndexReverseMappingCompactionGcTestBase> {};
+
+MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexReverseMappingCompactionGcColocatedTest);
+
+TEST_P(PgVectorIndexReverseMappingCompactionGcColocatedTest, DropTable) {
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(conn.Execute("CREATE TABLE dummy (id int PRIMARY KEY) WITH (COLOCATED = 1)"));
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_3_vector_1 -> ybctid_3
+      )#",
+      ASSERT_RESULT(DumpSingleTabletReverseMapping()));
+
+  ASSERT_OK(conn.Execute("DROP TABLE test"));
+  SleepFor(MonoDelta::FromSeconds(kRetentionIntervalSec));
+  // Keep the colocated tablet alive via dummy; compact and dump through that table.
+  ASSERT_OK(CompactTabletForTable("dummy"));
+  ASSERT_STR_EQ_VERBOSE_TRIMMED("", ASSERT_RESULT(DumpSingleTabletReverseMapping("dummy")));
+}
+
 TEST_F(PgVectorIndexUtilTest, DeleteTabletDirs) {
   constexpr size_t kNumRows = 10;
   num_pre_split_tablets_ = 2; // To have test both types of delete_state.
@@ -3358,6 +3632,537 @@ TEST_F(PgVectorIndexUtilTest, DeleteTabletDirs) {
     tablet_peers.pop_back();
   }
 }
+
+TEST_F(PgVectorIndexUtilTest, AutomaticTabletSplit) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_tables_with_vector_index) = true;
+
+  constexpr size_t kNumRows = RegularBuildVsSanitizers(500, 64);
+  constexpr size_t kQueryLimit = 5;
+
+  auto conn = ASSERT_RESULT(MakeIndexAndFill(kNumRows));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  const auto table_id = ASSERT_RESULT(GetTableIDFromTableName("test"));
+  ASSERT_OK(WaitForTabletSplit(table_id));
+
+  ASSERT_NO_FATALS(VerifyRead(conn, kQueryLimit, AddFilter::kFalse));
+}
+
+using PgVectorIndexReverseMappingTestParam = std::tuple<bool, PackingMode>;
+
+template <>
+struct TestParamTraits<PgVectorIndexReverseMappingTestParam> {
+  using ParamType = PgVectorIndexReverseMappingTestParam;
+
+  static bool TableOwnsReverseMapping(const ParamType& param) {
+    return std::get<0>(param);
+  }
+
+  static bool IsColocated(const ParamType&) {
+    return false;
+  }
+
+  static VectorIndexEngine Engine(const ParamType&) {
+    return VectorIndexEngine::kUsearch;
+  }
+
+  static PackingMode GetPackingMode(const ParamType& param) {
+    return std::get<1>(param);
+  }
+
+  static auto TestParamGenerator() {
+    return testing::Combine(testing::Bool(), testing::ValuesIn(kPackingModeArray));
+  }
+
+  static auto TestParamNameGenerator() {
+    return [](const testing::TestParamInfo<ParamType>& param_info) -> std::string {
+      const auto table_owned = TableOwnsReverseMapping(param_info.param);
+      const auto packing_mode = GetPackingMode(param_info.param);
+      return Format(
+          "$0$1",
+          table_owned ? "TableOwned" : "LegacyOwned",
+          packing_mode == PackingMode::kNone ? "" : "Packing" + ToString(packing_mode).substr(1));
+    };
+  }
+};
+
+class PgVectorIndexReverseMappingTest
+    : public PgVectorIndexTestParamsDecoratorBase<
+          PgVectorIndexSingleServerDumpTestBase, PgVectorIndexReverseMappingTestParam> {
+ protected:
+  void SetUp() override {
+    PgVectorIndexSingleServerDumpTestBase::SetUp();
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) =
+        TableOwnsVectorReverseMapping();
+  }
+
+  bool TableOwnsVectorReverseMapping() const {
+    return ParamTraits::TableOwnsReverseMapping(GetParam());
+  }
+};
+
+MAKE_VECTOR_INDEX_PARAM_TEST_SUITE(PgVectorIndexReverseMappingTest);
+
+TEST_P(PgVectorIndexReverseMappingTest, InsertReverseMapping_NoIndex) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, 3));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  if (TableOwnsVectorReverseMapping()) {
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            ybctid_1_vector_1 -> ybctid_1
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_3_vector_1 -> ybctid_3
+        )#",
+        output);
+  } else {
+    ASSERT_STR_EQ_VERBOSE_TRIMMED("", output);
+  }
+}
+
+TEST_P(PgVectorIndexReverseMappingTest, InsertReverseMapping_OneIndex) {
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, 3));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_3_vector_1 -> ybctid_3
+      )#",
+      output);
+}
+
+TEST_P(PgVectorIndexReverseMappingTest, InsertReverseMapping_MultipleIndexes) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(CreateIndex(conn, "vi_1"));
+  ASSERT_OK(CreateIndex(conn, "vi_2"));
+  ASSERT_OK(InsertRows(conn, 1, 3));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_3_vector_1 -> ybctid_3
+      )#",
+      output);
+}
+
+TEST_P(PgVectorIndexReverseMappingTest, BackfillReverseMapping_NoIndex) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  if (TableOwnsVectorReverseMapping()) {
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            ybctid_1_vector_1 -> ybctid_1
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_3_vector_1 -> ybctid_3
+        )#",
+        output);
+  } else {
+    ASSERT_STR_EQ_VERBOSE_TRIMMED("", output);
+  }
+}
+
+TEST_P(PgVectorIndexReverseMappingTest, BackfillReverseMapping_OneIndex) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  ASSERT_OK(CreateIndex(conn));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  if (TableOwnsVectorReverseMapping()) {
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            ybctid_1_vector_1 -> ybctid_1
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_3_vector_1 -> ybctid_3
+        )#",
+        output);
+  } else {
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            ybctid_3_vector_1 -> ybctid_3
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_1_vector_1 -> ybctid_1
+        )#",
+        output);
+  }
+}
+
+TEST_P(PgVectorIndexReverseMappingTest, BackfillReverseMapping_MultipleIndexes) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  ASSERT_OK(CreateIndex(conn, "vi_1"));
+  ASSERT_OK(CreateIndex(conn, "vi_2"));
+  ASSERT_OK(WaitNoBackgroundInserts(WaitForIntents::kFalse, 30s * kTimeMultiplier));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  if (TableOwnsVectorReverseMapping()) {
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            ybctid_1_vector_1 -> ybctid_1
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_3_vector_1 -> ybctid_3
+        )#",
+        output);
+  } else {
+    // Each index backfill writes reverse mapping entries for all rows.
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            ybctid_3_vector_1 -> ybctid_3
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_1_vector_1 -> ybctid_1
+            ybctid_3_vector_1 -> ybctid_3
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_1_vector_1 -> ybctid_1
+        )#",
+        output);
+  }
+}
+
+TEST_P(PgVectorIndexReverseMappingTest, UpdateReverseMapping_NoIndex) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[10, 20, 30]' WHERE id = 2"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  if (TableOwnsVectorReverseMapping()) {
+    // Fast path writes the new reverse-mapping entry before tombstoning the old vector id.
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            ybctid_1_vector_1 -> ybctid_1
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_3_vector_1 -> ybctid_3
+            ybctid_2_vector_2 -> ybctid_2
+            ybctid_2_vector_1 -> DEL
+        )#",
+        output);
+  } else {
+    // Legacy update does tombstone the reverse mapping despite the index existence.
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            vector_0 -> DEL
+        )#",
+        output);
+  }
+}
+
+TEST_P(PgVectorIndexReverseMappingTest, UpdateReverseMapping_OneIndex) {
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[10, 20, 30]' WHERE id = 2"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  if (TableOwnsVectorReverseMapping()) {
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            ybctid_1_vector_1 -> ybctid_1
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_3_vector_1 -> ybctid_3
+            ybctid_2_vector_1 -> DEL
+            ybctid_2_vector_2 -> ybctid_2
+        )#",
+        output);
+  } else {
+    // Legacy tables with an index still tombstone obsolete vector ids on update (#24064).
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            ybctid_1_vector_1 -> ybctid_1
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_3_vector_1 -> ybctid_3
+            ybctid_2_vector_1 -> DEL
+            ybctid_2_vector_2 -> ybctid_2
+        )#",
+        output);
+  }
+}
+
+TEST_P(PgVectorIndexReverseMappingTest, UpdateReverseMapping_MultipleIndexes) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(CreateIndex(conn, "vi_1"));
+  ASSERT_OK(CreateIndex(conn, "vi_2"));
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  ASSERT_OK(conn.Execute("UPDATE test SET embedding = '[10, 20, 30]' WHERE id = 2"));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  if (TableOwnsVectorReverseMapping()) {
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            ybctid_1_vector_1 -> ybctid_1
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_3_vector_1 -> ybctid_3
+            ybctid_2_vector_1 -> DEL
+            ybctid_2_vector_2 -> ybctid_2
+        )#",
+        output);
+  } else {
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            ybctid_1_vector_1 -> ybctid_1
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_3_vector_1 -> ybctid_3
+            ybctid_2_vector_1 -> DEL
+            ybctid_2_vector_2 -> ybctid_2
+        )#",
+        output);
+  }
+}
+
+TEST_P(PgVectorIndexReverseMappingTest, DeleteReverseMapping_NoIndex) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  if (TableOwnsVectorReverseMapping()) {
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            ybctid_1_vector_1 -> ybctid_1
+            ybctid_2_vector_1 -> ybctid_2
+            ybctid_3_vector_1 -> ybctid_3
+            ybctid_2_vector_1 -> DEL
+        )#",
+        output);
+  } else {
+    // Legacy delete tombstones the reverse mapping despite the index existence.
+    ASSERT_STR_EQ_VERBOSE_TRIMMED(
+        R"#(
+            vector_0 -> DEL
+        )#",
+        output);
+  }
+}
+
+TEST_P(PgVectorIndexReverseMappingTest, DeleteReverseMapping_OneIndex) {
+  auto conn = ASSERT_RESULT(MakeIndex());
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_3_vector_1 -> ybctid_3
+          ybctid_2_vector_1 -> DEL
+      )#",
+      output);
+}
+
+TEST_P(PgVectorIndexReverseMappingTest, DeleteReverseMapping_MultipleIndexes) {
+  auto conn = ASSERT_RESULT(MakeTable());
+  ASSERT_OK(CreateIndex(conn, "vi_1"));
+  ASSERT_OK(CreateIndex(conn, "vi_2"));
+  ASSERT_OK(InsertRows(conn, 1, 3));
+  ASSERT_OK(conn.Execute("DELETE FROM test WHERE id = 2"));
+
+  auto output = ASSERT_RESULT(DumpSingleTabletReverseMapping());
+  ASSERT_STR_EQ_VERBOSE_TRIMMED(
+      R"#(
+          ybctid_1_vector_1 -> ybctid_1
+          ybctid_2_vector_1 -> ybctid_2
+          ybctid_3_vector_1 -> ybctid_3
+          ybctid_2_vector_1 -> DEL
+      )#",
+      output);
+}
+
+namespace {
+
+// kNoTypePrefix marks packed V2 column values, which do not carry a ValueEntryType prefix byte.
+constexpr char kNoTypePrefix = '\0';
+
+char ParseTypePrefixFromValueDump(const std::string& value_dump, PackingMode packing_mode) {
+  if (value_dump.starts_with("VECTOR_DATA")) {
+    return dockv::ValueEntryTypeAsChar::kVector;
+  }
+  if (packing_mode == PackingMode::kV2) {
+    return kNoTypePrefix;
+  }
+  return dockv::ValueEntryTypeAsChar::kString; // Legacy vector value format.
+}
+
+std::optional<std::string> ExtractPackedColumnValueDump(
+    const std::string& value_dump, ColumnId column_id) {
+  const auto packed_col = Format(" $0: ", column_id);
+  const auto pos = value_dump.find(packed_col);
+  if (pos == std::string::npos) {
+    return std::nullopt;
+  }
+  return value_dump.substr(pos + packed_col.size());
+}
+
+Status CheckTypePrefixes(const std::vector<char>& prefixes, char expected, size_t expected_count) {
+  if (prefixes.size() != expected_count) {
+    return STATUS_FORMAT(
+        IllegalState, "Expected $0 type prefixes, got $1", expected_count, prefixes.size());
+  }
+  for (size_t i = 0; i < prefixes.size(); ++i) {
+    if (prefixes[i] != expected) {
+      return STATUS_FORMAT(IllegalState,
+          "Type prefix mismatch at index $0: got $1, expected $2", i, prefixes[i], expected);
+    }
+  }
+  return Status::OK();
+}
+
+} // namespace
+
+class PgVectorValueFormatTest :
+    public PgMiniTestBase, public ::testing::WithParamInterface<PackingMode> {
+ protected:
+  static constexpr char kTypedTable[] = "typed_table";
+  static constexpr char kLegacyTable[] = "legacy_table";
+  static constexpr char kVectorColumn[] = "embedding";
+  static constexpr char kTypedPrefix = dockv::ValueEntryTypeAsChar::kVector;
+  static constexpr char kLegacyPrefix = dockv::ValueEntryTypeAsChar::kString;
+
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = false;
+
+    const auto packing_mode = GetParam();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = packing_mode != PackingMode::kNone;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_packed_row_v2) = packing_mode == PackingMode::kV2;
+
+    PgMiniTestBase::SetUp();
+  }
+
+  // Dumps table SST files and collects type prefixes for the vector column.
+  // Table must have only one vector column.
+  Result<std::vector<char>> CollectTypePrefixes(
+      const std::string& table_name, const std::string& vector_column_name) {
+    const auto table_id = VERIFY_RESULT(GetTableIDFromTableName(table_name));
+    const auto yb_table = VERIFY_RESULT(client_->OpenTable(table_id));
+    ColumnId vector_column_id = kInvalidColumnId;
+    const auto& columns = yb_table->schema().columns();
+    for (size_t i = 0; i < columns.size(); ++i) {
+      if (columns[i].is_vector()) {
+        vector_column_id = ColumnId(yb_table->schema().ColumnId(i));
+        break;
+      }
+    }
+    SCHECK(vector_column_id != kInvalidColumnId, NotFound,
+           "Vector column $0 not found in table $1", vector_column_name, table_name);
+
+    const auto dump = VERIFY_RESULT(DumpTableLeadersDocDBToVector(cluster_.get(), table_name));
+    const auto column_subkey = Format("[ColumnId($0)]", vector_column_id);
+
+    std::vector<char> prefixes;
+    for (const auto& line : dump) {
+      // V1 reverse-mapping values also contain [ColumnId(N)] in their dump text, so the
+      // column_subkey search below would count them as vector-column cells. Skip those lines.
+      if (line.find("MetaKey(VectorId(") != std::string::npos) {
+        continue;
+      }
+      std::optional<std::string> value;
+      if (line.find(column_subkey) != std::string::npos) {
+        value = line.substr(line.find(" -> ") + 4);
+      } else {
+        value = ExtractPackedColumnValueDump(line, vector_column_id);
+      }
+      if (!value) {
+        continue;
+      }
+      prefixes.push_back(ParseTypePrefixFromValueDump(*value, GetParam()));
+    }
+    return prefixes;
+  }
+
+  Status ValidateVectorColumnPrefixes(const std::string& table_name, size_t expected_count) {
+    RETURN_NOT_OK(WaitForAllIntentsApplied(cluster_.get()));
+    RETURN_NOT_OK(cluster_->FlushTablets());
+
+    const auto prefixes = VERIFY_RESULT(CollectTypePrefixes(table_name, kVectorColumn));
+
+    const auto expected_prefix = GetParam() == PackingMode::kV2
+        ? kNoTypePrefix : table_name == kLegacyTable ? kLegacyPrefix : kTypedPrefix;
+    return CheckTypePrefixes(prefixes, expected_prefix, expected_count);
+  }
+
+  Result<bool> TableOwnsVectorReverseMapping(const std::string& table_name) {
+    const auto table_id = VERIFY_RESULT(GetTableIDFromTableName(table_name));
+    const auto yb_table = VERIFY_RESULT(client_->OpenTable(table_id));
+    return yb_table->schema().table_properties().owns_vector_reverse_mapping();
+  }
+
+  Status RestartClusterWithTableOwnedFlag() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = true;
+    RETURN_NOT_OK(cluster_->RestartSync());
+    return cluster_->WaitForAllTabletServers();
+  }
+};
+
+TEST_P(PgVectorValueFormatTest, TableOwnedEncodingSurvivesClusterRestart) {
+  constexpr char kCreateQuery[] =
+      "CREATE TABLE $0 (id INT PRIMARY KEY, $1 vector(3)) SPLIT INTO 1 TABLETS";
+
+  // Force legacy ownership for kLegacyTable before it is created.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_owned_vector_reverse_mapping) = false;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+  ASSERT_OK(conn.ExecuteFormat(kCreateQuery, kLegacyTable, kVectorColumn));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, '[1, 2, 3]')", kLegacyTable));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_FALSE(ASSERT_RESULT(TableOwnsVectorReverseMapping(kLegacyTable)));
+
+  ASSERT_OK(ValidateVectorColumnPrefixes(kLegacyTable, 1));
+
+  ASSERT_OK(RestartClusterWithTableOwnedFlag());
+  conn = ASSERT_RESULT(Connect());
+
+  ASSERT_FALSE(ASSERT_RESULT(TableOwnsVectorReverseMapping(kLegacyTable)));
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (2, '[4, 5, 6]')", kLegacyTable));
+  ASSERT_OK(conn.ExecuteFormat(kCreateQuery, kTypedTable, kVectorColumn));
+  ASSERT_TRUE(ASSERT_RESULT(TableOwnsVectorReverseMapping(kTypedTable)));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, '[7, 8, 9]')", kTypedTable));
+
+  ASSERT_OK(ValidateVectorColumnPrefixes(kLegacyTable, 2));
+  ASSERT_OK(ValidateVectorColumnPrefixes(kTypedTable, 1));
+
+  const auto get_count = [&conn](const std::string& table_name) {
+    return conn.FetchRow<int64_t>(Format("SELECT COUNT(*) FROM $0", table_name));
+  };
+  ASSERT_EQ(2, ASSERT_RESULT(get_count(kLegacyTable)));
+  ASSERT_EQ(1, ASSERT_RESULT(get_count(kTypedTable)));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    , PgVectorValueFormatTest,
+    ::testing::Values(PackingMode::kNone, PackingMode::kV1, PackingMode::kV2),
+    [](const testing::TestParamInfo<PackingMode>& param_info) {
+      switch (param_info.param) {
+        case PackingMode::kNone: return "None";
+        case PackingMode::kV1: return "PackingV1";
+        case PackingMode::kV2: return "PackingV2";
+      }
+      FATAL_INVALID_ENUM_VALUE(PackingMode, param_info.param);
+    });
 
 // Reproduces the SIGSEGV in MvccManager::SafeTimeForFollower during tablet bootstrap.
 //

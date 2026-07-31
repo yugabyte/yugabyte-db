@@ -353,6 +353,8 @@ std::string PrimitiveValue::ValueToString() const {
       return FormatBytesAsStr(str_val_);
     case ValueEntryType::kUuid:
       return uuid_val_.ToString();
+    case ValueEntryType::kVector:
+      return Format("VECTOR_DATA($0)", Slice(str_val_).ToDebugHexString());
     case ValueEntryType::kVectorId:
       return DocVectorIdToString(uuid_val_);
     case ValueEntryType::kDeleteVectorIds:
@@ -360,7 +362,7 @@ std::string PrimitiveValue::ValueToString() const {
     case ValueEntryType::kRowLock:
       return "l";
     case ValueEntryType::kArrayIndex:
-      return Substitute("ArrayIndex($0)", int64_val_);
+      return Format("ArrayIndex($0)", int64_val_);
     case ValueEntryType::kPackedRowV1:
       return "<PACKED ROW>";
     case ValueEntryType::kPackedRowV2:
@@ -383,9 +385,9 @@ std::string PrimitiveValue::ValueToString() const {
     case ValueEntryType::kColocationId:
       return Format("ColocationId($0)", uint32_val_);
     case ValueEntryType::kTransactionId:
-      return Substitute("TransactionId($0)", uuid_val_.ToString());
+      return Format("TransactionId($0)", uuid_val_.ToString());
     case ValueEntryType::kSubTransactionId:
-      return Substitute("SubTransactionId($0)", uint32_val_);
+      return Format("SubTransactionId($0)", uint32_val_);
     case ValueEntryType::kWriteId:
       return Format("WriteId($0)", int32_val_);
     case ValueEntryType::kMaxByte:
@@ -702,6 +704,18 @@ class SizeCounter {
   size_t value_ = 0;
 };
 
+template <class Buffer>
+void DoAppendEncodedNullValue(Buffer* out) {
+  out->push_back(ValueEntryTypeAsChar::kTombstone);
+}
+
+template <class Value, class Buffer>
+void DoAppendEncodedBinaryValue(char value_type_prefix, const Value& value, Buffer* out) {
+  DCHECK_EQ(value.value_case(), QLValuePB::kBinaryValue);
+  out->push_back(value_type_prefix);
+  out->append(value.binary_value());
+}
+
 template <class Value, class Buffer>
 void DoAppendEncodedValue(const Value& value, Buffer* out) {
   switch (value.value_case()) {
@@ -754,8 +768,7 @@ void DoAppendEncodedValue(const Value& value, Buffer* out) {
       return;
     }
     case QLValuePB::kBinaryValue:
-      out->push_back(ValueEntryTypeAsChar::kString);
-      out->append(value.binary_value());
+      DoAppendEncodedBinaryValue(EncodedBinaryValueDefaultTypePrefix(), value, out);
       return;
     case QLValuePB::kBoolValue:
       if (value.bool_value()) {
@@ -812,7 +825,7 @@ void DoAppendEncodedValue(const Value& value, Buffer* out) {
       return;
     }
     case QLValuePB::VALUE_NOT_SET:
-      out->push_back(ValueEntryTypeAsChar::kTombstone);
+      DoAppendEncodedNullValue(out);
       return;
 
     case QLValuePB::kMapValue: FALLTHROUGH_INTENDED;
@@ -840,6 +853,50 @@ void DoAppendEncodedValue(const Value& value, Buffer* out) {
 }
 
 } // namespace
+
+void AppendEncodedNullValue(ValueBuffer* out) {
+  DoAppendEncodedNullValue(out);
+}
+
+void AppendEncodedNullValue(std::string* out) {
+  DoAppendEncodedNullValue(out);
+}
+
+constexpr char EncodedBinaryValueDefaultTypePrefix() {
+  return ValueEntryTypeAsChar::kString;
+}
+
+void AppendEncodedBinaryValue(char value_type_prefix, const QLValuePB& value, ValueBuffer* out) {
+  DoAppendEncodedBinaryValue(value_type_prefix, value, out);
+}
+
+void AppendEncodedBinaryValue(char value_type_prefix, const QLValuePB& value, std::string* out) {
+  DoAppendEncodedBinaryValue(value_type_prefix, value, out);
+}
+
+void AppendEncodedBinaryValue(char value_type_prefix, const LWQLValuePB& value, ValueBuffer* out) {
+  DoAppendEncodedBinaryValue(value_type_prefix, value, out);
+}
+
+void AppendEncodedBinaryValue(char value_type_prefix, const LWQLValuePB& value, std::string* out) {
+  DoAppendEncodedBinaryValue(value_type_prefix, value, out);
+}
+
+size_t EncodedBinaryValueSize(const QLValuePB& value) {
+  SizeCounter counter;
+
+  // Value type prefix does not matter for size calculation.
+  DoAppendEncodedBinaryValue(EncodedBinaryValueDefaultTypePrefix(), value, &counter);
+  return counter.value();
+}
+
+size_t EncodedBinaryValueSize(const LWQLValuePB& value) {
+  SizeCounter counter;
+
+  // Value type prefix does not matter for size calculation.
+  DoAppendEncodedBinaryValue(EncodedBinaryValueDefaultTypePrefix(), value, &counter);
+  return counter.value();
+}
 
 void AppendEncodedValue(const QLValuePB& value, ValueBuffer* out) {
   DoAppendEncodedValue(value, out);
@@ -1346,7 +1403,8 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
       return STATUS(Corruption, "Reached end of slice looking for frozen group end marker");
     }
     case ValueEntryType::kCollString: FALLTHROUGH_INTENDED;
-    case ValueEntryType::kString:
+    case ValueEntryType::kString: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kVector:
       new(&str_val_) string(slice.cdata(), slice.size());
       // Only set type to string after string field initialization succeeds.
       type_ = value_type;
@@ -1637,7 +1695,8 @@ Status PrimitiveValue::DecodeToQLValuePB(
     }
 
     case ValueEntryType::kCollString: FALLTHROUGH_INTENDED;
-    case ValueEntryType::kString:
+    case ValueEntryType::kString: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kVector:
       if (data_type == DataType::STRING) {
         ql_value->set_string_value(slice.cdata(), slice.size());
       } else if (data_type == DataType::BINARY || data_type == DataType::VECTOR) {
@@ -1838,7 +1897,8 @@ bool PrimitiveValue::operator==(const PrimitiveValue& other) const {
     case ValueEntryType::kMaxByte: return true;
 
     case ValueEntryType::kCollString: FALLTHROUGH_INTENDED;
-    case ValueEntryType::kString: return str_val_ == other.str_val_;
+    case ValueEntryType::kString: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kVector: return str_val_ == other.str_val_;
 
     case ValueEntryType::kFrozen: return *frozen_val_ == *other.frozen_val_;
 
@@ -1897,7 +1957,8 @@ int PrimitiveValue::CompareTo(const PrimitiveValue& other) const {
     case ValueEntryType::kCollString: FALLTHROUGH_INTENDED;
     case ValueEntryType::kDecimal: FALLTHROUGH_INTENDED;
     case ValueEntryType::kVarInt: FALLTHROUGH_INTENDED;
-    case ValueEntryType::kString:
+    case ValueEntryType::kString: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kVector:
       return str_val_.compare(other.str_val_);
     case ValueEntryType::kInt32: FALLTHROUGH_INTENDED;
     case ValueEntryType::kWriteId:
@@ -2068,7 +2129,7 @@ bool PrimitiveValue::IsString() const {
 
 bool PrimitiveValue::IsStoredAsString() const {
   return IsString() || type_ == ValueEntryType::kJsonb || type_ == ValueEntryType::kDecimal ||
-         type_ == ValueEntryType::kVarInt;
+         type_ == ValueEntryType::kVarInt || type_ == ValueEntryType::kVector;
 }
 
 bool PrimitiveValue::IsDouble() const {
