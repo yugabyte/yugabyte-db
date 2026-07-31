@@ -370,6 +370,12 @@ uint64_t PgTxnManager::NewPriority(YbcTxnPriorityRequirement txn_priority_requir
     return yb::kHighPriTxnUpperBound;
   }
 
+  if (txn_priority_requirement == kLowestPriority) {
+    // Ignores the priority bound GUCs on purpose: must stay below every other priority, including
+    // the regular range.
+    return yb::kRegularTxnLowerBound;
+  }
+
   if (txn_priority_requirement == kHigherPriorityRange) {
     return RandomUniformInt(txn_priority_highpri_lower_bound,
                             txn_priority_highpri_upper_bound);
@@ -1170,17 +1176,24 @@ YbcTxnPriorityRequirement PgTxnManager::GetTxnPriorityRequirement(RowMarkType ro
     // catalog versions.
     //
     // We want ANALYZE DDLs spawned by auto-analyze to be pre-empted in case of such concurrent
-    // DDL conflicts. To achieve this, all regular DDL take a FOR KEY SHARE lock on the catalog
-    // version row with a high priority and ANALZYE spawned by auto-analyze takes a
-    // FOR UPDATE exclusive lock with a lower priority. Given DDLs run with fail-on-conflict
+    // DDL conflicts. To achieve this, all regular DDLs take a FOR KEY SHARE lock on the catalog
+    // version row with the highest priority and ANALYZE spawned by auto-analyze takes a
+    // FOR UPDATE exclusive lock with the lowest priority. Given DDLs run with fail-on-conflict
     // concurrency control, these priorities achieve the goal.
+    //
+    // The lowest priority is used for auto-analyze instead of the higher priority range because a
+    // DDL that joins an already started plain transaction block keeps the regular range priority
+    // picked by the first, non-DDL statement of that block, and would otherwise lose to
+    // auto-analyze.
+    //
+    // Regular DDLs keep the highest priority: since conflict resolution aborts the incoming
+    // transaction on a priority tie, a single priority shared by all DDLs makes concurrent DDL
+    // conflicts resolve in favour of the first writer, and keeps a plain user transaction from
+    // aborting a DDL.
     //
     // With object level locking, priorities are meaningless since DDLs don't rely on DocDB's
     // conflict resolution for concurrent DDLs.
-    if (!yb_use_internal_auto_analyze_service_conn)
-      return kHighestPriority;
-    else
-      return kHigherPriorityRange;
+    return yb_use_internal_auto_analyze_service_conn ? kLowestPriority : kHighestPriority;
   }
   if (GetPgIsolationLevel() == PgIsolationLevel::READ_COMMITTED) {
     return kHighestPriority;

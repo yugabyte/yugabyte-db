@@ -213,7 +213,9 @@ typedef enum {
 typedef enum {
   kLowerPriorityRange,
   kHigherPriorityRange,
-  kHighestPriority
+  kHighestPriority,
+  // Pre-empted by any conflicting transaction, whichever priority range it belongs to.
+  kLowestPriority
 } YbcTxnPriorityRequirement;
 
 // Single key column value for YBCGetTabletForKey (used by yb_get_tablet_for_key).
