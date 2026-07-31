@@ -27,6 +27,7 @@ import com.yugabyte.yba.v2.client.models.ClusterNodeSpec;
 import com.yugabyte.yba.v2.client.models.ClusterPerProcessNodeSpec;
 import com.yugabyte.yba.v2.client.models.ClusterSpec;
 import com.yugabyte.yba.v2.client.models.ClusterStorageBase;
+import com.yugabyte.yba.v2.client.models.ClusterStorageSpec;
 import com.yugabyte.yba.v2.client.models.PerProcessNodeSpec;
 import com.yugabyte.yba.v2.client.models.PerProviderResizeNodesSpec;
 import com.yugabyte.yba.v2.client.models.ResizeUpdateOption;
@@ -305,6 +306,13 @@ public class UniverseApiControllerTest extends UniverseTestBase {
 
     ClusterPerProcessNodeSpec clusterMasterSpec = new ClusterPerProcessNodeSpec();
     clusterMasterSpec.setInstanceType("c5.4xlarge");
+    // Explicit master storage so dedicated create does not auto-fill masterDeviceInfo from
+    // deviceInfo (which would break validateUniverseCreateSpec).
+    clusterMasterSpec.setStorageSpec(
+        new ClusterStorageSpec()
+            .volumeSize(50)
+            .numVolumes(1)
+            .storageType(nodeSpec.getStorageSpec().getStorageType()));
     nodeSpec.setMaster(clusterMasterSpec);
 
     ClusterPerProcessNodeSpec clusterTserverSpec = new ClusterPerProcessNodeSpec();
