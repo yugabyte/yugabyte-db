@@ -1,4 +1,4 @@
-import { FC, ReactNode } from 'react';
+import { FC, ReactElement, ReactNode } from 'react';
 import { makeStyles, Typography, useTheme } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import {
@@ -10,6 +10,7 @@ import {
   YBSmartStatus
 } from '@yugabyte-ui-library/core';
 
+import { YBTooltip } from '@app/redesign/components';
 import { RbacValidator } from '@app/redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '@app/redesign/features/rbac/ApiAndUserPermMapping';
 
@@ -171,6 +172,9 @@ const useStyles = makeStyles((theme) => ({
     fontSize: '13px',
     fontWeight: 400,
     lineHeight: '16px'
+  },
+  actionTooltipTarget: {
+    display: 'inline-flex'
   }
 }));
 
@@ -179,6 +183,7 @@ interface TelemetryExportCardCommonProps {
   icon: ReactNode;
   title: string;
   actionDisabled?: boolean;
+  actionTooltip?: string;
   actionTestId: string;
 }
 
@@ -214,6 +219,14 @@ export const TelemetryExportCard: FC<TelemetryExportCardProps> = (props) => {
   const { t } = useTranslation('translation', { keyPrefix: props.translationKeyPrefix });
 
   const { icon, title, actionDisabled = false, actionTestId } = props;
+  const withActionTooltip = (action: ReactElement) =>
+    props.actionTooltip ? (
+      <YBTooltip title={props.actionTooltip}>
+        <span className={classes.actionTooltipTarget}>{action}</span>
+      </YBTooltip>
+    ) : (
+      action
+    );
 
   const titleGroup = (
     <Typography className={classes.titleGroup} component="div">
@@ -232,48 +245,50 @@ export const TelemetryExportCard: FC<TelemetryExportCardProps> = (props) => {
         <div className={classes.header}>
           {titleGroup}
           <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
-            <YBDropdown
-              growDirection="left"
-              dataTestId={actionTestId}
-              disabled={actionDisabled}
-              slotProps={{
-                paper: {
-                  sx: {
-                    minWidth: 220,
-                    width: 'max-content',
-                    py: 1,
-                    border: `1px solid ${theme.palette.grey[200]}`
+            {withActionTooltip(
+              <YBDropdown
+                growDirection="left"
+                dataTestId={actionTestId}
+                disabled={actionDisabled}
+                slotProps={{
+                  paper: {
+                    sx: {
+                      minWidth: 220,
+                      width: 'max-content',
+                      py: 1,
+                      border: `1px solid ${theme.palette.grey[200]}`
+                    }
                   }
+                }}
+                origin={
+                  <YBButton
+                    variant="ghost"
+                    dataTestId={`${actionTestId}-Trigger`}
+                    startIcon={<EditIcon width={20} height={20} />}
+                    endIcon={<DropdownArrowIcon width={16} height={16} />}
+                    disabled={actionDisabled}
+                  >
+                    {t('editExportConfiguration')}
+                  </YBButton>
                 }
-              }}
-              origin={
-                <YBButton
-                  variant="ghost"
-                  dataTestId={`${actionTestId}-Trigger`}
-                  startIcon={<EditIcon width={20} height={20} />}
-                  endIcon={<DropdownArrowIcon width={16} height={16} />}
+              >
+                <MenuItem
+                  data-testid={`${actionTestId}-Edit`}
+                  onClick={props.onEditClick}
                   disabled={actionDisabled}
                 >
-                  {t('editExportConfiguration')}
-                </YBButton>
-              }
-            >
-              <MenuItem
-                data-testid={`${actionTestId}-Edit`}
-                onClick={props.onEditClick}
-                disabled={actionDisabled}
-              >
-                {t('editExport')}
-              </MenuItem>
-              <Divider sx={{ borderColor: theme.palette.grey[200], my: 0.5 }} />
-              <MenuItem
-                data-testid={`${actionTestId}-Disable`}
-                onClick={props.onDisableClick}
-                disabled={actionDisabled || !props.onDisableClick}
-              >
-                {t('disableExport')}
-              </MenuItem>
-            </YBDropdown>
+                  {t('editExport')}
+                </MenuItem>
+                <Divider sx={{ borderColor: theme.palette.grey[200], my: 0.5 }} />
+                <MenuItem
+                  data-testid={`${actionTestId}-Disable`}
+                  onClick={props.onDisableClick}
+                  disabled={actionDisabled || !props.onDisableClick}
+                >
+                  {t('disableExport')}
+                </MenuItem>
+              </YBDropdown>
+            )}
           </RbacValidator>
         </div>
         <div className={classes.statusRow}>
@@ -325,27 +340,29 @@ export const TelemetryExportCard: FC<TelemetryExportCardProps> = (props) => {
         </div>
       </div>
       <RbacValidator accessRequiredOn={ApiPermissionMap.EDIT_V2_UNIVERSE_CLUSTER} isControl>
-        {isLinkAction ? (
-          <button
-            type="button"
-            className={classes.enableLoggingLink}
-            data-testid={actionTestId}
-            disabled={actionDisabled}
-            aria-disabled={actionDisabled}
-            onClick={props.onActionClick}
-          >
-            <InternalLinkIcon width={24} height={24} />
-            {props.actionLabel}
-          </button>
-        ) : (
-          <YBButton
-            dataTestId={actionTestId}
-            variant="secondary"
-            disabled={actionDisabled}
-            onClick={props.onActionClick}
-          >
-            {props.actionLabel}
-          </YBButton>
+        {withActionTooltip(
+          isLinkAction ? (
+            <button
+              type="button"
+              className={classes.enableLoggingLink}
+              data-testid={actionTestId}
+              disabled={actionDisabled}
+              aria-disabled={actionDisabled}
+              onClick={props.onActionClick}
+            >
+              <InternalLinkIcon width={24} height={24} />
+              {props.actionLabel}
+            </button>
+          ) : (
+            <YBButton
+              dataTestId={actionTestId}
+              variant="secondary"
+              disabled={actionDisabled}
+              onClick={props.onActionClick}
+            >
+              {props.actionLabel}
+            </YBButton>
+          )
         )}
       </RbacValidator>
     </div>

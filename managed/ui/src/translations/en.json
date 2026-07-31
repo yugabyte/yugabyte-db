@@ -4742,9 +4742,11 @@
           "auditLogExport": "audit log export"
         }
       },
-      "telemetryExport": {
+        "telemetryExport": {
         "title": "Telemetry Export",
         "subtitle": "Export metrics and logs to external observability tools.",
+        "k8sUnsupportedAuditExportVersion": "Requires database version {{stableVersion}} (stable) or {{previewVersion}} (preview) or later.",
+        "k8sUnsupportedPassthroughExportVersion": "Requires database version {{stableVersion}} (stable) or {{previewVersion}} (preview) or later.",
         "toast": {
           "disableMetricsExportRequestFailedLabel": "Metrics export disable request failed",
           "disableQueryLogExportRequestFailedLabel": "Query log export disable request failed",
