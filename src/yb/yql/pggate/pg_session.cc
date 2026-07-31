@@ -1089,7 +1089,9 @@ Status PgSession::SetupPerformOptionsForDdl(tserver::PgPerformOptionsPB* options
     false /* read_only */,
     pg_txn_manager_->GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT)));
 
-  return SetupPerformOptions(*options, NonTransactionalWrites::kFalse);
+  return SetupPerformOptions(
+      *options, NonTransactionalWrites::kFalse, /* read_time_action= */ std::nullopt,
+      SkipReadTimeOptions::kTrue);
 }
 
 void PgSession::SetupDeferReadPointOptionForSeparateDdlTxn(

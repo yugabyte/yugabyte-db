@@ -726,7 +726,8 @@ Status PgTxnManager::CheckConflictsAcrossReadTimeOptions(
     bool need_defer_read_point) const {
   const auto has_read_time = read_time_options.has_read_time();
 
-  if (need_restart_ || manipulation == tserver::ReadTimeManipulation::RESTART) {
+  if (read_time_options.restart_transaction() ||
+      manipulation == tserver::ReadTimeManipulation::RESTART) {
     RSTATUS_DCHECK(
         !IsSerializableIsolation(), IllegalState,
         "Serializable transactions do not face read restart errors.");
@@ -779,9 +780,24 @@ Status PgTxnManager::CheckConflictsAcrossReadTimeOptions(
 Status PgTxnManager::SetupReadTimeOptions(
     tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options,
     std::optional<ReadTimeAction> read_time_action,
-    NonTransactionalWrites ops_has_non_transactional_writes) {
-  read_time_options.set_read_time_serial_no(serial_no_.read_time());
+    NonTransactionalWrites ops_has_non_transactional_writes,
+    SkipReadTimeOptions skip_read_time_options) {
+  if (need_restart_) {
+    read_time_options.set_restart_transaction(true);
+    need_restart_ = false;
+  }
+
   read_time_options.set_read_time_serial_no_history_min(serial_no_.min_read_time());
+
+  if (skip_read_time_options) {
+    // Not all RPCs target docdb data and hence do not need a read time.
+    // In fact, this might be too early to determine read time options.
+    // However, the RPC still needs to restart the transaction if necessary.
+    // Invalid read_time_serial_no skips read time logic on the proxy.
+    return Status::OK();
+  }
+
+  read_time_options.set_read_time_serial_no(serial_no_.read_time());
 
   // read_time may be set by
   // - PgSession::SetReadTimeIfPresent.
@@ -831,12 +847,6 @@ Status PgTxnManager::SetupReadTimeOptions(
     return Status::OK();
   }
 
-  if (need_restart_) {
-    read_time_options.set_restart_transaction(true);
-    need_restart_ = false;
-    return Status::OK();
-  }
-
   if (!IsDdlModeWithSeparateTransaction() &&
       manipulation == tserver::ReadTimeManipulation::RESTART) {
     read_time_options.set_read_time_manipulation(tserver::ReadTimeManipulation::RESTART);
@@ -877,7 +887,8 @@ Status PgTxnManager::SetupReadTimeOptions(
 Status PgTxnManager::SetupPerformOptions(
     SetupPerformOptionsAccessorTag, tserver::PgPerformOptionsPB& options,
     NonTransactionalWrites ops_has_non_transactional_writes,
-    std::optional<ReadTimeAction> read_time_action) {
+    std::optional<ReadTimeAction> read_time_action,
+    SkipReadTimeOptions skip_read_time_options) {
   if (!IsDdlModeWithSeparateTransaction() && !txn_in_progress_) {
     IncTxnSerialNo();
   }
@@ -900,7 +911,8 @@ Status PgTxnManager::SetupPerformOptions(
   }
 
   RETURN_NOT_OK(SetupReadTimeOptions(
-      *options.mutable_read_time_options(), read_time_action, ops_has_non_transactional_writes));
+      *options.mutable_read_time_options(), read_time_action, ops_has_non_transactional_writes,
+      skip_read_time_options));
 
   options.set_force_global_transaction(yb_force_global_transaction);
   options.set_force_tablespace_locality(yb_force_tablespace_locality);
@@ -1132,7 +1144,9 @@ Status PgTxnManager::AcquireObjectLock(
       GetTxnPriorityRequirement(RowMarkType::ROW_MARK_ABSENT),
       IsLocalObjectLockOp(mode <= YbcObjectLockMode::YB_OBJECT_ROW_EXCLUSIVE_LOCK)));
   tserver::PgPerformOptionsPB options;
-  RETURN_NOT_OK(SetupPerformOptions(tag, options, NonTransactionalWrites::kFalse));
+  RETURN_NOT_OK(SetupPerformOptions(
+      tag, options, NonTransactionalWrites::kFalse, /* read_time_action= */ {},
+      SkipReadTimeOptions::kTrue));
   RETURN_NOT_OK(client_->AcquireObjectLock(
       &options, lock_id, mode, is_session_lock, tablespace_oid));
   DEBUG_ONLY(DEBUG_UpdateLastObjectLockingInfo());

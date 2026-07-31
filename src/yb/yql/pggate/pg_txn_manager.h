@@ -56,6 +56,7 @@ YB_DEFINE_ENUM(PgIsolationLevel,
 YB_DEFINE_ENUM(ReadTimeAction, (ENSURE_IS_SET)(RESET));
 YB_STRONGLY_TYPED_BOOL(IsLocalObjectLockOp);
 YB_STRONGLY_TYPED_BOOL(NonTransactionalWrites);
+YB_STRONGLY_TYPED_BOOL(SkipReadTimeOptions);
 
 struct TxnReadPoint {
   uint64_t txn; // Transaction serial number
@@ -141,7 +142,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   Status SetupPerformOptions(SetupPerformOptionsAccessorTag tag,
       tserver::PgPerformOptionsPB& options, NonTransactionalWrites ops_has_non_transactional_writes,
-      std::optional<ReadTimeAction> read_time_action = {});
+      std::optional<ReadTimeAction> read_time_action = {},
+      SkipReadTimeOptions skip_read_time_options = SkipReadTimeOptions::kFalse);
 
   double GetTransactionPriority() const;
   YbcTxnPriorityRequirement GetTransactionPriorityType() const;
@@ -238,7 +240,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status SetupReadTimeOptions(
       tserver::PgPerformOptionsPB::ReadTimeOptionsPB& read_time_options,
       std::optional<ReadTimeAction> read_time_action,
-      NonTransactionalWrites ops_has_non_transactional_writes);
+      NonTransactionalWrites ops_has_non_transactional_writes,
+      SkipReadTimeOptions skip_read_time_options);
   bool ShouldResetReadTime(std::optional<ReadTimeAction> read_time_action) const;
   bool ShouldClamp() const;
   Status CheckConflictsAcrossReadTimeOptions(

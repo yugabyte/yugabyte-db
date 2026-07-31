@@ -1292,11 +1292,16 @@ std::atomic<bool>& InUseAtomic(const SharedMemorySegmentHandle& handle) {
   return *pointer_cast<std::atomic<bool>*>(handle.address() - sizeof(std::atomic<bool>));
 }
 
+constexpr uint64_t kInvalidReadTimeSerialNo = 0;
+
 class ReadPointHistory {
  public:
   explicit ReadPointHistory(const PrefixLogger& prefix_logger) : prefix_logger_(prefix_logger) {}
 
   [[nodiscard]] bool Restore(ConsistentReadPoint* read_point, uint64_t read_time_serial_no) {
+    if (read_time_serial_no == kInvalidReadTimeSerialNo) {
+      return false;
+    }
     auto result = false;
     if (const auto i = read_points_.find(read_time_serial_no);
         i != read_points_.end() && read_time_serial_no >= min_) {
@@ -1310,6 +1315,9 @@ class ReadPointHistory {
   }
 
   void Save(const ConsistentReadPoint& read_point, uint64_t read_time_serial_no) {
+    if (read_time_serial_no == kInvalidReadTimeSerialNo) {
+      return;
+    }
     auto momento = read_point.GetMomento();
     const auto& read_time = momento.read_time();
     DCHECK(read_time);
@@ -2988,6 +2996,9 @@ class PgClientSession::Impl {
 
     RSTATUS_DCHECK(
         options.is_using_table_locks(), IllegalState, "Table Locking feature not enabled.");
+    RSTATUS_DCHECK(
+        options.read_time_options().read_time_serial_no() == kInvalidReadTimeSerialNo,
+        IllegalState, "Object lock RPCs must not carry a read time serial no");
 
     auto primary_session_kind = GetSessionKindBasedOnDDLOptions(
         options.ddl_mode(), options.ddl_use_regular_transaction_block());
@@ -3010,8 +3021,7 @@ class PgClientSession::Impl {
       }
       active_subtxn_id = *subtxn_with_session_object_locks_;
     } else {
-      RETURN_NOT_OK(SetupSession(
-          options, deadline, /* arena= */ nullptr, GetInTxnLimit(options, clock().get())));
+      RETURN_NOT_OK(SetupSession(options, deadline, /* arena= */ nullptr));
       active_subtxn_id = options.active_sub_transaction_id();
     }
 
@@ -3819,6 +3829,8 @@ class PgClientSession::Impl {
     const auto& read_time_options = options.read_time_options();
     const auto txn_serial_no = options.txn_serial_no();
     const auto read_time_serial_no = read_time_options.read_time_serial_no();
+    const auto skip_read_time =
+        read_time_serial_no == kInvalidReadTimeSerialNo && kind == PgClientSessionKind::kPlain;
 
     if (read_time_options.restart_transaction()) {
       VLOG_WITH_PREFIX(3) << "Restarting transaction";
@@ -3836,7 +3848,7 @@ class PgClientSession::Impl {
         session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
         VLOG_WITH_PREFIX(2) << "Clamping read time to " << session.read_point()->GetReadTime();
       }
-    } else {
+    } else if (!skip_read_time) {
       const auto is_plain_session = (kind == PgClientSessionKind::kPlain);
       const auto has_read_time = read_time_options.has_read_time();
       const auto has_follower_staleness = read_time_options.has_follower_read_staleness_ms();
@@ -3913,15 +3925,27 @@ class PgClientSession::Impl {
       }
     }
 
-    RETURN_NOT_OK(
-        UpdateReadPointForXClusterConsistentReads(options, deadline, session.read_point()));
+    if (!skip_read_time) {
+      RETURN_NOT_OK(
+          UpdateReadPointForXClusterConsistentReads(options, deadline, session.read_point()));
 
-    if (!options.ddl_mode() && !options.use_legacy_catalog_session() &&
-        read_time_options.defer_read_point()) {
-      // For DMLs, only fast path writes cannot be deferred.
-      RETURN_NOT_OK(session.read_point()->TrySetDeferredCurrentReadTime());
-      VLOG_WITH_PREFIX(3) << "Set current read time for deferred mode "
-          << session.read_point()->GetReadTime();
+      if (!options.ddl_mode() && !options.use_legacy_catalog_session() &&
+          read_time_options.defer_read_point()) {
+        // For DMLs, only fast path writes cannot be deferred.
+        RETURN_NOT_OK(session.read_point()->TrySetDeferredCurrentReadTime());
+        VLOG_WITH_PREFIX(3) << "Set current read time for deferred mode "
+            << session.read_point()->GetReadTime();
+      }
+
+      // Do not clamp uncertainty window for legacy catalog reads.
+      // TODO(#30357): Measure the performance of picking time here instead of the storage layer.
+      if (read_time_options.clamp_uncertainty_window() && !session.read_point()->GetReadTime()) {
+        RSTATUS_DCHECK(
+          !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
+          IllegalState, "Clamping does not apply to SERIALIZABLE txns.");
+        session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
+        VLOG_WITH_PREFIX(2) << "Clamping read time to " << session.read_point()->GetReadTime();
+      }
     }
 
     // TODO: Reset in_txn_limit which might be on session from past Perform? Not resetting will not
@@ -3929,21 +3953,13 @@ class PgClientSession::Impl {
     if (!(options.ddl_mode() && !options.ddl_use_regular_transaction_block()) &&
         !options.use_legacy_catalog_session()) {
       txn_serial_no_ = txn_serial_no;
-      read_time_serial_no_ = read_time_serial_no;
-      if (in_txn_limit) {
-        // TODO: Shouldn't the below logic for DDL transactions as well?
-        session.SetInTxnLimit(in_txn_limit);
+      if (!skip_read_time) {
+        read_time_serial_no_ = read_time_serial_no;
+        if (in_txn_limit) {
+          // TODO: Shouldn't the below logic for DDL transactions as well?
+          session.SetInTxnLimit(in_txn_limit);
+        }
       }
-    }
-
-    // Do not clamp uncertainty window for legacy catalog reads.
-    // TODO(#30357): Measure the performance of picking time here instead of the storage layer.
-    if (read_time_options.clamp_uncertainty_window() && !session.read_point()->GetReadTime()) {
-      RSTATUS_DCHECK(
-        !(txn && txn->isolation() == SERIALIZABLE_ISOLATION),
-        IllegalState, "Clamping does not apply to SERIALIZABLE txns.");
-      session.read_point()->SetCurrentReadTime(ClampUncertaintyWindow::kTrue);
-      VLOG_WITH_PREFIX(2) << "Clamping read time to " << session.read_point()->GetReadTime();
     }
 
     return Status::OK();
@@ -4079,10 +4095,11 @@ class PgClientSession::Impl {
 
     VLOG_WITH_PREFIX(1) << "Setting up session for DDL with options: "
                         << options.ShortDebugString();
-    const auto in_txn_limit = GetInTxnLimit(options, clock().get());
-    VLOG_WITH_PREFIX(5) << "using in_txn_limit_ht: " << in_txn_limit;
+    RSTATUS_DCHECK(
+        options.read_time_options().read_time_serial_no() == kInvalidReadTimeSerialNo,
+        IllegalState, "Schema change RPCs must not carry a read time serial no");
     RETURN_NOT_OK(SetupSession(
-        options, deadline, /* arena= */ nullptr, in_txn_limit, TransactionFullLocality::Global()));
+        options, deadline, /* arena= */ nullptr, {}, TransactionFullLocality::Global()));
     return Status::OK();
   }
 
