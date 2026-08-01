@@ -89,6 +89,7 @@
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(data_size_metric_updater_interval_sec);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enforce_tablet_replica_limits);
 DECLARE_int32(load_balancer_initial_delay_secs);
 DECLARE_bool(master_auto_run_initdb);
@@ -499,6 +500,10 @@ class MasterExportSnapshotTest
       public ::testing::WithParamInterface<master::YsqlColocationConfig> {
  public:
   void SetUp() override {
+    // The snapshot generated as of a time reflects the tablet consensus state at that time, while
+    // the ground truth export reflects the current one. A load balancer leader move in between
+    // makes them differ, so keep tablet leadership stable.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
     PostgresMiniClusterTest::SetUp();
     messenger_ = ASSERT_RESULT(rpc::MessengerBuilder("test-msgr").set_num_reactors(1).Build());
     proxy_cache_ = std::make_unique<rpc::ProxyCache>(messenger_.get());
