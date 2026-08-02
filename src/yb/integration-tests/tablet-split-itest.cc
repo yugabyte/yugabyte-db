@@ -3511,7 +3511,10 @@ TEST_F_EX(
 
   ASSERT_OK(cluster_->SetFlagOnTServers("TEST_do_not_start_election_test_only", "false"));
 
-  // Wait for child tablets to be ready on server_to_bootstrap.
+  // Wait for both children to be registered on server_to_bootstrap, otherwise
+  // WaitForTabletsRunning returns before their remote bootstrap starts and other_follower could be
+  // taken down below while still being an RBS source for a child.
+  ASSERT_OK(WaitForTabletsExcept(2, server_to_bootstrap_idx, source_tablet_id));
   ASSERT_OK(cluster_->WaitForTabletsRunning(server_to_bootstrap, kWaitForTabletsRunningTimeout));
 
   ASSERT_OK(cluster_->WaitForTabletsRunning(leader, kWaitForTabletsRunningTimeout));
