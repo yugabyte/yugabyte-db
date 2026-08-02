@@ -2934,12 +2934,16 @@ class PersistRetryableRequestsRBSITest: public RemoteBootstrapMiniClusterITest {
         20s * kTimeMultiplier, "Waiting for new tserver having one tablet."));
 
     if (elect_new_replica_as_leader) {
-      SleepFor(5s);
-      ASSERT_OK(itest::LeaderStepDown(
-          ts_map_[leader_id].get(), tablet_id, ts_map_[new_ts_id].get(), 10s));
+      // The leader refuses to step down while the new peer is still in transition to VOTER.
+      ASSERT_OK(itest::WaitUntilCommittedConfigNumVotersIs(
+          new_ts + 1, leader, tablet_id, 60s * kTimeMultiplier));
+      // The new peer also has to catch up with the leader before it can be nominated.
+      ASSERT_OK(WaitFor([&] {
+        return itest::LeaderStepDown(leader, tablet_id, ts_map_[new_ts_id].get(), 10s).ok();
+      }, 60s * kTimeMultiplier, "Leader steps down in favor of the new tablet peer"));
       ASSERT_OK(WaitFor([&] {
         return new_tserver->LeaderAndReady(tablet_id);
-      }, 10s, "New tablet peer is elected as new leader"));
+      }, 10s * kTimeMultiplier, "New tablet peer is elected as new leader"));
     }
   }
 
