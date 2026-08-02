@@ -291,7 +291,7 @@ Status TabletVectorIndexes::DoCreateIndex(
           std::make_shared<ScopedRWOperation>(std::move(read_op)));
     } else {
       LOG_WITH_PREFIX_AND_FUNC(WARNING)
-          << "Failed to create operation for backfill: " << read_op.GetAbortedStatus();
+          << "Failed to create operation for backfill: " << read_op.CreateStatus();
     }
   }
 
@@ -549,9 +549,7 @@ Status TabletVectorIndexes::Backfill(
   // inside Tablet::Flush. On success, hold it across the flush and skip Flush's own scoped
   // operation via kNoScopedOperation.
   auto flush_op = tablet().CreateScopedRWOperationBlockingRocksDbShutdownStart();
-  if (!flush_op.ok()) {
-    return flush_op.GetAbortedStatus();
-  }
+  RETURN_NOT_OK(flush_op);
   // TODO(vector_index) Need to handle scenario when regular db was not flushed before restart.
   RETURN_NOT_OK_PREPEND(
       Flush(FlushMode::kSync, FlushFlags::kRegular | FlushFlags::kNoScopedOperation,
@@ -614,7 +612,7 @@ void TabletVectorIndexes::LaunchBackfillsIfNecessary() {
     }
     if (!read_op->ok()) {
       LOG_WITH_PREFIX_AND_FUNC(WARNING)
-          << "Failed to create operation for backfill: " << read_op->GetAbortedStatus();
+          << "Failed to create operation for backfill: " << read_op->CreateStatus();
       continue;
     }
 

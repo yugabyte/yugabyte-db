@@ -74,6 +74,7 @@
 #include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/status_fwd.h"
+#include "yb/util/abort_source.h"
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
 #include "yb/util/memory/arena_list.h"
@@ -693,7 +694,8 @@ class Tablet : public AbstractTablet,
         .intents = intents_db_.get(),
         .key_bounds = &key_bounds_,
         .retention_policy = retention_policy_.get(),
-        .metrics = metrics ? metrics : metrics_.get() };
+        .metrics = metrics ? metrics : metrics_.get(),
+        .abort_source = &abort_pending_op_source_ };
   }
 
   struct SplitKeysData {
@@ -1340,8 +1342,9 @@ class Tablet : public AbstractTablet,
   // RocksDB in-memory instance.
   mutable RWOperationCounter pending_op_counter_not_blocking_rocksdb_shutdown_start_;
 
-  // Used to abort pending operations that are not blocking RocksDB shutdown start.
-  StatusHolder abort_pending_op_status_holder_;
+  // Signals long-running operations (e.g. iterators, which poll it via docdb::DocDB) to abort
+  // while StartShutdownStorages drains pending operations for truncate, restore or shutdown.
+  AbortSource abort_pending_op_source_;
 
   // Used by Alter/Schema-change ops to pause new write ops from being submitted.
   RWOperationCounter write_ops_being_submitted_counter_;

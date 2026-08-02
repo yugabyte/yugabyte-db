@@ -46,6 +46,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/abort_source.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -697,7 +698,9 @@ Result<bool> DocRowwiseIterator::FetchNextImpl(TableRow table_row) {
     prev_doc_found_ = DocReaderResult::kNotFound;
   }
 
-  RETURN_NOT_OK(pending_op_ref_.GetAbortedStatus());
+  if (doc_db_.abort_source) {
+    RETURN_NOT_OK(doc_db_.abort_source->AbortStatus());
+  }
 
   if (PREDICT_FALSE(FLAGS_TEST_fetch_next_delay_ms > 0)) {
     const auto column_names = schema().column_names();

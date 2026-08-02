@@ -99,6 +99,7 @@ endif()
 
 set(UTIL_SRCS
   ${SEMAPHORE_CC}
+  abort_source.cc
   aggregate_stats.cc
   allocation_tracker.cc
   async_util.cc

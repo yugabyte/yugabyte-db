@@ -1848,19 +1848,15 @@ TabletScopedRWOperationPauses Tablet::StartShutdownStorages(
     }
   }
 
-  if (abort_ops) {
-    abort_pending_op_status_holder_.SetError(
-        STATUS_FORMAT(ShutdownInProgress, "$0aborted pending operations", LogPrefix()));
-  }
+  // Abort in-flight operations polling the abort source (e.g. iterators), so the pause below
+  // does not wait for their natural completion. Clearing the signal on return is safe: both
+  // counters are drained and disabled by then.
+  auto abort_scope = abort_ops
+      ? std::make_optional(abort_pending_op_source_.Abort(
+            STATUS_FORMAT(ShutdownInProgress, "$0aborted pending operations", LogPrefix())))
+      : std::nullopt;
 
   op_pauses.not_blocking_rocksdb_shutdown_start = pause(BlockingRocksDbShutdownStart::kFalse);
-
-  if (abort_ops) {
-    // Clean aborted status after all pending operations have been completed.
-    // This is necessary for the cases when we want to start rocksdb again for the tablet, for
-    // example after truncate or restore.
-    abort_pending_op_status_holder_.Reset();
-  }
 
   return op_pauses;
 }
@@ -4125,9 +4121,7 @@ ScopedRWOperationPause Tablet::PauseReadWriteOperations(
 
 ScopedRWOperation Tablet::CreateScopedRWOperationNotBlockingRocksDbShutdownStart(
     const CoarseTimePoint deadline) const {
-  return ScopedRWOperation(
-      &pending_op_counter_not_blocking_rocksdb_shutdown_start_, abort_pending_op_status_holder_,
-      deadline);
+  return ScopedRWOperation(&pending_op_counter_not_blocking_rocksdb_shutdown_start_, deadline);
 }
 
 ScopedRWOperation Tablet::CreateScopedRWOperationBlockingRocksDbShutdownStart(
