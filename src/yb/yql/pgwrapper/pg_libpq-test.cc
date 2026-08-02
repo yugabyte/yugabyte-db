@@ -5484,15 +5484,17 @@ class PgPostmasterExitTest : public PgLibPqTest {
     SCHECK_EQ(ret, 0, IllegalState, "Failed to kill postmaster");
 
     // Give the backend enough time to ensure that it has received and processed
-    // the PDEATH_SIG. The sleep time is set to a generous 500ms to ensure that in the future,
-    // the backend has enough time to cleanup and gracefully exit if PDEATH_SIG is changed from
-    // SIGKILL to a signal that can be caught and handled.
+    // the PDEATH_SIG. The timeout is generous to ensure that in the future, the backend has
+    // enough time to cleanup and gracefully exit if PDEATH_SIG is changed from SIGKILL to a
+    // signal that can be caught and handled. Sanitizer builds need a much larger budget: tearing
+    // down the instrumented postmaster and then the backend address spaces alone takes ~600ms.
+    const auto kExitTimeout = RegularBuildVsSanitizers(500ms, 5000ms);
     RETURN_NOT_OK(WaitFor(
         [&backend_pid]() -> Result<bool> {
           // Ensure that the backend is no longer running.
           return !RunShellProcess(Format("ps -p $0", backend_pid)).ok();
         },
-        500ms, "Backend still running, should have exited"));
+        kExitTimeout, "Backend still running, should have exited"));
 
     thread_holder.Stop();
     return Status::OK();
