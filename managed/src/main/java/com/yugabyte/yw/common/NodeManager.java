@@ -703,17 +703,8 @@ public class NodeManager extends DevopsBase {
               serverCertPath = String.format("%s/%s", tempStorageDirectory, serverCertFile);
               serverKeyPath = String.format("%s/%s", tempStorageDirectory, serverKeyFile);
               certsLocation = CERT_LOCATION_PLATFORM;
-
-              if (taskParam.rootAndClientRootCASame && taskParam.enableClientToNodeEncrypt) {
-                // These client certs are used for node to postgres communication
-                // These are separate from clientRoot certs which are used for server to client
-                // communication These are not required anymore as this is not mandatory now and
-                // can be removed. The code is still here to maintain backward compatibility
-                subcommandStrings.add("--client_cert_path");
-                subcommandStrings.add(CertificateHelper.getClientCertFile(taskParam.rootCA));
-                subcommandStrings.add("--client_key_path");
-                subcommandStrings.add(CertificateHelper.getClientKeyFile(taskParam.rootCA));
-              }
+              // Do not deploy client certs to ~/.yugabytedb on DB nodes. Leftovers are cleaned
+              // only during ROTATE_CERTS via cleanup_client_certs.
             } catch (IOException e) {
               log.error(e.getMessage(), e);
               throw new RuntimeException(e);
@@ -727,22 +718,8 @@ public class NodeManager extends DevopsBase {
             serverCertPath = customCertInfo.nodeCertPath;
             serverKeyPath = customCertInfo.nodeKeyPath;
             certsLocation = CERT_LOCATION_NODE;
-            if (taskParam.rootAndClientRootCASame
-                && taskParam.enableClientToNodeEncrypt
-                && customCertInfo.clientCertPath != null
-                && !customCertInfo.clientCertPath.isEmpty()
-                && customCertInfo.clientKeyPath != null
-                && !customCertInfo.clientKeyPath.isEmpty()) {
-              // These client certs are used for node to postgres communication
-              // These are seprate from clientRoot certs which are used for server to client
-              // communication These are not required anymore as this is not mandatory now and
-              // can be removed
-              // The code is still here to mantain backward compatibility
-              subcommandStrings.add("--client_cert_path");
-              subcommandStrings.add(customCertInfo.clientCertPath);
-              subcommandStrings.add("--client_key_path");
-              subcommandStrings.add(customCertInfo.clientKeyPath);
-            }
+            // Do not deploy client certs to ~/.yugabytedb on DB nodes. Leftovers are cleaned
+            // only during ROTATE_CERTS via cleanup_client_certs.
             break;
           }
         case CustomServerCert:
@@ -2635,8 +2612,7 @@ public class NodeManager extends DevopsBase {
   }
 
   private void appendCertPathsToCheck(List<String> commandArgs, UUID rootCA, boolean isClient) {
-    // We are not checking --client_cert_path here because it is not used in the current
-    // implementation. We are only checking root_certs and server_certs.
+    // Client certs are not deployed to ~/.yugabytedb; only root and server certs are checked.
     if (rootCA == null) {
       return;
     }
