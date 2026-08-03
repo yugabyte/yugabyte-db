@@ -1641,7 +1641,7 @@ Status PgApiImpl::NewSample(
   *handle = nullptr;
   return AddToCurrentPgMemctx(
       VERIFY_RESULT(PgSample::Make(
-          pg_session_, table_id, is_region_local, targrows, rand_state, clock_->Now())),
+          pg_session_, table_id, is_region_local, targrows, rand_state, clock_)),
       handle);
 }
 
