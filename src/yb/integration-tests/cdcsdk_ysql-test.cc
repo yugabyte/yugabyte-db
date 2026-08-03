@@ -14384,8 +14384,13 @@ TEST_F(CDCSDKYsqlTest, TestgRPCStreamBoundToSpecificTables) {
       1 /* start */, 2 /* end */, &test_cluster_, true, 2,
       (kTableName + std::string("_1")).c_str()));
 
-  // GetChanges on the bound table's tablet should succeed.
-  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets_0));
+  // GetChanges on the bound table's tablet should succeed. The committed transaction is applied to
+  // the tablet asynchronously, so poll until its record surfaces.
+  GetChangesResponsePB change_resp;
+  ASSERT_OK(WaitForGetChangesToFetchRecords(
+      &change_resp, stream_id, tablets_0, /* expected_count */ 1,
+      /* is_explicit_checkpoint */ true, /* cp */ nullptr, /* tablet_idx */ 0,
+      /* safe_hybrid_time */ -1, /* wal_segment_index */ 0, /* timeout_secs */ 30));
   ASSERT_EQ(change_resp.cdc_sdk_proto_records_size(), 4);
 
   // GetChanges on the unbound table's tablet errors out.
