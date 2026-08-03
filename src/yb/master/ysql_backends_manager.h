@@ -349,7 +349,9 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
   Version target_version() const { return target_version_; }
   TabletServerId requestor_ts_uuid() const { return requestor_ts_uuid_; }
   pid_t requestor_pg_backend_pid() const { return requestor_pg_backend_pid_; }
-  const std::vector<Status>& failure_statuses() const {
+  // Returns a copy: concurrent AddFailureStatus calls may reallocate the vector.
+  std::vector<Status> failure_statuses() const EXCLUDES(mutex_) {
+    std::lock_guard l(mutex_);
     return failure_statuses_;
   }
   const ash::WaitStateInfoPtr& wait_state() const { return wait_state_; }
@@ -383,7 +385,7 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
   std::unordered_map<std::string, int> ts_map_ GUARDED_BY(mutex_);
   // In case of failures, each failure status.  These can be communicated when responding to the
   // client.
-  std::vector<Status> failure_statuses_;
+  std::vector<Status> failure_statuses_ GUARDED_BY(mutex_);
   // ASH wait state for propagating metadata to tserver RPCs.
   ash::WaitStateInfoPtr wait_state_;
 };
