@@ -197,6 +197,7 @@ YbSeqScanState
 YbSessionStats
 YbSkippableEntities
 YbSkippableEntityType
+YbSortArrayContext
 YbSortInfo
 YbSplitType
 YbStatLabel
