@@ -1268,8 +1268,9 @@ TEST_P(VectorLSMTest, ChunkedCompactionRespectsMemStoreLimit) {
 TEST_P(VectorLSMTest, ChunkedCompactionRespectsBlockCachePercentage) {
   constexpr size_t kDimensions = 16;
   constexpr size_t kNumInputChunks = 4;
-  // Test block cache is 8MB; 13% ~= 1MB, matching the absolute-size test budget.
-  constexpr uint32_t kBlockCachePercentage = 13;
+  // Test block cache is 8MB. The percentage only scales the per-chunk vector budget, so a smaller
+  // one keeps the same number of output chunks with fewer inserts, fitting the sanitizer timeout.
+  constexpr uint32_t kBlockCachePercentage = RegularBuildVsSanitizers<uint32_t>(13, 4);
 
   ChunkedCompactionHelper compaction(*this);
   ASSERT_OK(compaction.RunWithBlockCachePercentage(
