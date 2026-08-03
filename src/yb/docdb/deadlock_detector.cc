@@ -45,6 +45,7 @@
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
 #include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/unique_lock.h"
 #include "yb/util/yb_pg_errcodes.h"
 
@@ -242,12 +243,14 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
     auto& blocker_id = info.blocker_txn_info.id;
     auto& blocker_status_tablet = info.blocker_txn_info.status_tablet;
     auto& blocking_subtxn_set = info.blocker_txn_info.blocking_subtxn_set;
-    handles_.push_back(rpcs_->Prepare());
-    auto handle = handles_.back();
+    auto handle = rpcs_->Prepare();
     if (handle == rpcs_->InvalidHandle()) {
+      // Must not reach handles_: InvalidHandle() is calls_.end(), and Send() dereferences every
+      // element of handles_ unconditionally.
       LOG_WITH_PREFIX_AND_FUNC(WARNING) << "Shutting down. Cannot send probe.";
       return;
     }
+    handles_.push_back(handle);
 
     tserver::ProbeTransactionDeadlockRequestPB req;
     req.set_detector_id(origin_detector_id_.data(), origin_detector_id_.size());
@@ -1155,6 +1158,12 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
     auto local_processor = std::make_shared<LocalProbeProcessor>(
         log_prefix_, detector_id, probe_num, req.min_probe_num(), probe_origin_txn_id, &rpcs_,
         &client(), nullptr /* probe_latency */);
+
+    // Lets tests shut the status tablet down while this handler is parked, so that AddBlocker below
+    // sees an already shut down rpcs_. The argument tells the test which tablet to shut down.
+    TEST_SYNC_POINT_CALLBACK(
+        "DeadlockDetector::GetProbesToForward:BeforeAddBlockers",
+        const_cast<TabletId*>(&status_tablet_));
 
     for (const auto& blockers : blockers_per_ts) {
       local_processor->CaptureSharedBlockingDataPtr(blockers);
