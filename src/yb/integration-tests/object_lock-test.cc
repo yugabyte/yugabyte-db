@@ -1767,7 +1767,9 @@ TEST_F(MultiMasterObjectLockTest, TServerCanAcquireLeaseAfterProlongedPartition)
 
   auto ts_uuid = TSUuid(idx);
   LOG(INFO) << Format("Waiting for tablet server $0 to lose its lease", ts_uuid);
-  ASSERT_OK(WaitForTServerLeaseToExpire(ts_uuid, kLeaseTimeout));
+  // The newly elected master leader restarts the lease deadline clock at sys catalog load time, so
+  // the expiry cannot be observed earlier than a full lease TTL after this point.
+  ASSERT_OK(WaitForTServerLeaseToExpire(ts_uuid, kLeaseTimeout * 2));
   LOG(INFO) << Format("tablet server $0 has lost its lease", ts_uuid);
 
   LOG(INFO) << "Re-establishing connectivity to all other tservers from tserver/master" << idx;
