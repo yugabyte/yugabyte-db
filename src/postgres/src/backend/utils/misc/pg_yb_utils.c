@@ -3290,6 +3290,7 @@ YBCommitTransactionContainingDDL()
 
 	Oid			database_oid = YbGetDatabaseOidToIncrementCatalogVersion();
 	bool		use_regular_txn_block = ddl_transaction_state.use_regular_txn_block;
+	bool		is_global_ddl = ddl_transaction_state.is_global_ddl;
 
 	YBClearDdlTransactionState();
 
@@ -3329,11 +3330,19 @@ YBCommitTransactionContainingDDL()
 			 * That is even if the DDL has global impact, we only set the new
 			 * catalog version of MyDatabaseId in shared memory because we do
 			 * not know the new catalog version of any other databases for a
-			 * global impact DDL.
+			 * global impact DDL. For a breaking global impact DDL that is not
+			 * enough: a session on another database of this node would still
+			 * see its own database's stale shared catalog version, would not
+			 * refresh, and its next statement would fail with an invalidated
+			 * catalog snapshot. Wait for the heartbeat instead, it brings the
+			 * new catalog versions of all the databases.
 			 */
-			YbCheckNewSharedCatalogVersionOptimization(is_breaking_change,
-													   currentInvalMessages,
-													   nmsgs);
+			if (is_global_ddl && is_breaking_change)
+				YbWaitForSharedCatalogVersionToCatchup(YbGetNewCatalogVersion());
+			else
+				YbCheckNewSharedCatalogVersionOptimization(is_breaking_change,
+														   currentInvalMessages,
+														   nmsgs);
 			YbCheckNewLocalCatalogVersionOptimization();
 		}
 		else if (database_oid == MyDatabaseId || !YBIsDBCatalogVersionMode())
