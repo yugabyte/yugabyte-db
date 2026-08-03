@@ -55,6 +55,36 @@ for YB_DEFINE_HANDLE_TYPE($handle_type):1:"
       fi
     done
 else
+  # typedefs.list is owned by upstream.  A YB-added type whose name has no "yb"
+  # is only visible as a difference from upstream, not to the
+  # bad_yb_in_type_name lint rule.
+  if [[ "$1" == */typedefs.list ]]; then
+    diff_result=$("${BASH_SOURCE%/*}"/diff_file_with_upstream.py "$1")
+    exit_code=$?
+    if [ $exit_code -ne 0 ]; then
+      if [ $exit_code -eq 2 ]; then
+        echo "Unexpected exit code 2"
+      fi
+      # The following messages are not emitted to stderr because those messages
+      # may be buried under a large python stacktrace also emitted to stderr.
+      if [ -z "$diff_result" ]; then
+        echo "Unexpected failure, exit code $exit_code"
+      else
+        echo "$diff_result"
+      fi
+      exit 1
+    fi
+
+    grep -Eo '^[0-9]+' <<<"$diff_result" \
+      | while read -r lineno; do
+          echo 'error:upstream_typedefs_list_modified:'\
+'Upstream-owned typedefs.list should not be modified. YB types belong in'\
+' yb_typedefs.list and should have "yb" in the name, or if importing an'\
+' upstream commit, upstream_repositories.csv should be updated.:'\
+"$lineno:$(sed -n "$lineno"p "$1")"
+        done
+  fi
+
   grep -En "$pattern" "$1" \
     | sed 's/^/error:bad_yb_in_type_name:'\
 'Types in non-yb_typedefs.list should not have "yb":/'
