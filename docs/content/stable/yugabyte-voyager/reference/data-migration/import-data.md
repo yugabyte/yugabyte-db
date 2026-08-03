@@ -214,6 +214,27 @@ import-data:
 
 | For partitioned tables during live migration, controls whether CDC data is imported via the root table or child partitions only: <ul><li><code>true</code> (default): Import CDC data only via the root table.</li><li><code>false</code>: Import CDC data only via child partitions.</li></ul>**Note**: Supported only for YugabyteDB target {{<release "2025.2.3.0">}} and later.<br>Default: true<br>Accepted values: true, false, yes, no, 0, 1 |
 
+| --cdc-partition-key |
+
+```yaml{.nocopy}
+import-data:
+  cdc-partition-key:
+```
+
+| Global strategy for all tables on how CDC events are partitioned across parallel channels. Supported values:
+<ul><li><code>auto</code> (default): Automatically pick `pk` or `table` per table (for example, expression unique-index tables use `table`).</li>
+<li><code>pk</code>: Partition CDC events by primary key.</li>
+<li><code>table</code>: Partition CDC events by table (all events for a table share one channel).</li></ul> |
+
+| --cdc-partition-key-overrides |
+
+```yaml{.nocopy}
+import-data:
+  cdc-partition-key-overrides:
+```
+
+| Per-table CDC partition-key overrides as `schema.table:pk` or `schema.table:table` pairs, separated by ';'. Example: `public.orders:table;sales.events:pk` Unlisted tables keep the global `--cdc-partition-key`. |
+
 | -e, --export-dir |
 
 ```yaml{.nocopy}
