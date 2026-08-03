@@ -95,7 +95,6 @@ class ObjectLockInfoManager {
       const RelinquishYsqlLeaseRequestPB& req, RelinquishYsqlLeaseResponsePB& resp,
       rpc::RpcContext& rpc, const LeaderEpoch& epoch);
 
-  tserver::DdlLockEntriesPB ExportObjectLockInfo();
   void UpdateObjectLocks(const std::string& tserver_uuid, std::shared_ptr<ObjectLockInfo> info);
   void RelaunchInProgressRequests(const LeaderEpoch& leader_epoch, const std::string& tserver_uuid);
   void Clear();

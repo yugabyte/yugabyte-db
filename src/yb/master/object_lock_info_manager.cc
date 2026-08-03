@@ -82,8 +82,8 @@ DEFINE_test_flag(bool, skip_launch_release_request, false,
 DEFINE_test_flag(bool, allow_unknown_txn_release_request, false,
     "If true, do not error out if a release request comes in for an unknown transaction.");
 
-DEFINE_test_flag(bool, pause_obj_lock_release_relaunch, false,
-    "If true, pause at the start of object lock release RelaunchIfNecessary.");
+DEFINE_test_flag(bool, pause_obj_lock_release_before_persist, false,
+    "If true, pause before persisting release request acked from all tservers.");
 
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 DECLARE_int32(send_wait_for_report_interval_ms);
@@ -136,13 +136,6 @@ constexpr bool kIsReleaseRequest = false;
 
 template <>
 constexpr bool kIsReleaseRequest<ReleaseObjectLockRequestPB> = true;
-
-struct TSDescriptorLiveLeaseInfo {
-  TSDescriptorPtr ts_descriptor;
-  uint64_t lease_epoch;
-};
-
-using TSDescriptorLiveLeaseInfoVector = std::vector<TSDescriptorLiveLeaseInfo>;
 
 }  // namespace
 
@@ -252,8 +245,10 @@ class ObjectLockInfoManager::Impl {
       EXCLUDES(mutex_);
   Status AddToInProgress(LeaderEpoch epoch, const ReleaseObjectLockRequestPB& req) EXCLUDES(mutex_);
 
-  tserver::DdlLockEntriesPB ExportObjectLockInfo() EXCLUDES(mutex_);
-  tserver::DdlLockEntriesPB ExportObjectLockInfoUnlocked() REQUIRES(mutex_);
+  tserver::DdlLockEntriesPB ExportObjectLockInfoForMaster() EXCLUDES(mutex_);
+  tserver::DdlLockEntriesPB ExportObjectLockInfoForTServer() EXCLUDES(mutex_);
+  tserver::DdlLockEntriesPB ExportObjectLockInfoUnlocked(
+      bool include_in_progress_releases) REQUIRES(mutex_);
 
   void UpdateObjectLocks(const std::string& tserver_uuid, std::shared_ptr<ObjectLockInfo> info)
       EXCLUDES(mutex_);
@@ -297,7 +292,6 @@ class ObjectLockInfoManager::Impl {
   }
 
   TSDescriptorVector GetAllTSDescriptorsWithALiveLease() const;
-  TSDescriptorLiveLeaseInfoVector SnapshotLiveLeaseInfo() const;
 
   std::optional<uint64_t> GetLeaseEpoch(const std::string& ts_uuid) EXCLUDES(mutex_);
 
@@ -403,8 +397,6 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
   void LaunchRpcsFrom(size_t from_idx);
   void Done(size_t i, const Status& s);
   void CheckForDone();
-  // Relaunches if there have been new TServers who joined. Returns true if relaunched.
-  bool RelaunchIfNecessary();
   void DoneAll();
   Status AfterRpcs();
   void DoCallbackAndRespond(const Status& s);
@@ -417,7 +409,7 @@ class UpdateAllTServers : public std::enable_shared_from_this<UpdateAllTServers<
   Master& master_;
   CatalogManager& catalog_manager_;
   ObjectLockInfoManager::Impl& object_lock_info_manager_;
-  TSDescriptorLiveLeaseInfoVector ts_lease_infos_;
+  TSDescriptorVector ts_descriptors_;
   std::atomic<size_t> ts_pending_;
   std::vector<Status> statuses_;
   const Req req_;
@@ -711,10 +703,6 @@ Status ObjectLockInfoManager::RelinquishYsqlLease(
   return impl_->RelinquishYsqlLease(req, resp, rpc, epoch);
 }
 
-tserver::DdlLockEntriesPB ObjectLockInfoManager::ExportObjectLockInfo() {
-  return impl_->ExportObjectLockInfo();
-}
-
 std::shared_ptr<CountDownLatch> ObjectLockInfoManager::ReleaseLocksHeldByExpiredLeaseEpoch(
     const std::string& tserver_uuid, uint64 max_lease_epoch_to_release,
     std::optional<LeaderEpoch> leader_epoch) {
@@ -809,29 +797,6 @@ TSDescriptorVector ObjectLockInfoManager::Impl::GetAllTSDescriptorsWithALiveLeas
   return descriptors;
 }
 
-TSDescriptorLiveLeaseInfoVector
-ObjectLockInfoManager::Impl::SnapshotLiveLeaseInfo() const {
-  auto descriptors = master_.ts_manager()->GetAllDescriptors();
-  TSDescriptorLiveLeaseInfoVector result;
-  result.reserve(descriptors.size());
-  LockGuard lock(mutex_);
-  for (const auto& desc : descriptors) {
-    auto it = object_lock_infos_map_.find(desc->id());
-    if (it == object_lock_infos_map_.end()) {
-      continue;
-    }
-    auto l = it->second->LockForRead();
-    if (!l->pb.lease_info().live_lease()) {
-      continue;
-    }
-    result.push_back(TSDescriptorLiveLeaseInfo{
-        .ts_descriptor = desc,
-        .lease_epoch = l->pb.lease_info().lease_epoch(),
-    });
-  }
-  return result;
-}
-
 Status ObjectLockInfoManager::Impl::PersistRequest(
     LeaderEpoch epoch, const AcquireObjectLockRequestPB& req, const TransactionId& txn_id) {
   TRACE_FUNC();
@@ -847,9 +812,7 @@ Status ObjectLockInfoManager::Impl::PersistRequest(
     subtxns_map.set_background_transaction_id(req.background_transaction_id());
   }
   auto& object_locks_list = (*subtxns_map.mutable_subtxns())[req.subtxn_id()];
-  for (const auto& object_lock : req.object_locks()) {
-    object_locks_list.add_locks()->CopyFrom(object_lock);
-  }
+  object_locks_list.mutable_locks()->MergeFrom(req.object_locks());
   RETURN_NOT_OK(catalog_manager_.sys_catalog()->Upsert(epoch, object_lock_info));
   lock.Commit();
   return Status::OK();
@@ -916,26 +879,60 @@ Status ObjectLockInfoManager::Impl::PersistRequest(
   return Status::OK();
 }
 
-tserver::DdlLockEntriesPB ObjectLockInfoManager::Impl::ExportObjectLockInfo() {
+tserver::DdlLockEntriesPB ObjectLockInfoManager::Impl::ExportObjectLockInfoForMaster() {
   LockGuard lock(mutex_);
-  return ExportObjectLockInfoUnlocked();
+  // Master reconstructs the state upon failover, and doesn't need to apply in progress releases
+  // as they would be re-launched and applied locally when all tservers ack the release.
+  return ExportObjectLockInfoUnlocked(true /* include_in_progress_releases */);
 }
 
-tserver::DdlLockEntriesPB ObjectLockInfoManager::Impl::ExportObjectLockInfoUnlocked() {
+tserver::DdlLockEntriesPB ObjectLockInfoManager::Impl::ExportObjectLockInfoForTServer() {
+  LockGuard lock(mutex_);
+  // Ignore in progress releases for tservers being newly granted a ysql lease, since the release
+  // was already launched and would eventually go through.
+  return ExportObjectLockInfoUnlocked(false /* include_in_progress_releases */);
+}
+
+tserver::DdlLockEntriesPB ObjectLockInfoManager::Impl::ExportObjectLockInfoUnlocked(
+    bool include_in_progress_releases) REQUIRES(mutex_) {
   VLOG(2) << __PRETTY_FUNCTION__;
+  std::unordered_map<TransactionId, std::unordered_set<int>> in_progress_release_txns;
+  if (!include_in_progress_releases) {
+    for (const auto& [host_uuid, per_host_entry] : object_lock_infos_map_) {
+      auto l = per_host_entry->LockForRead();
+      for (const auto& [_, release_req] : l->pb.in_progress_release_request()) {
+        auto it = in_progress_release_txns.try_emplace(
+            CHECK_RESULT(FullyDecodeTransactionId(release_req.txn_id()))).first;
+        it->second.insert(release_req.has_subtxn_id() ? release_req.subtxn_id() : 0);
+      }
+    }
+  }
+
   tserver::DdlLockEntriesPB entries;
   for (const auto& [host_uuid, per_host_entry] : object_lock_infos_map_) {
     auto l = per_host_entry->LockForRead();
-    if (!l->pb.lease_info().has_lease_epoch() || !l->pb.lease_info().live_lease()) {
+    if (!l->pb.lease_info().has_lease_epoch()) {
       continue;
     }
-    auto txns_map_it = l->pb.lease_epochs().find(l->pb.lease_info().lease_epoch());
-    if (txns_map_it == l->pb.lease_epochs().end()) {
+    if (!include_in_progress_releases && !l->pb.lease_info().live_lease()) {
       continue;
     }
-    for (const auto& [txn_id_str, subtxns_map] : txns_map_it->second.transactions()) {
-      auto txn_id = CHECK_RESULT(TransactionId::FromString(txn_id_str));
-      for (const auto& [subtxn_id, object_locks_list] : subtxns_map.subtxns()) {
+    for (const auto& [lease_epoch, txns_map] : l->pb.lease_epochs()) {
+      if (!include_in_progress_releases && lease_epoch != l->pb.lease_info().lease_epoch()) {
+        continue;
+      }
+      for (const auto& [txn_id_str, subtxns_map] : txns_map.transactions()) {
+        auto txn_id = CHECK_RESULT(TransactionId::FromString(txn_id_str));
+        auto it = include_in_progress_releases
+            ? in_progress_release_txns.end()
+            : in_progress_release_txns.find(txn_id);
+        if (it != in_progress_release_txns.end() && it->second.contains(0)) {
+          continue;
+        }
+        for (const auto& [subtxn_id, object_locks_list] : subtxns_map.subtxns()) {
+          if (it != in_progress_release_txns.end() && it->second.contains(subtxn_id)) {
+            continue;
+          }
           auto* lock_entries_pb = entries.add_lock_entries();
           lock_entries_pb->set_session_host_uuid(host_uuid);
           lock_entries_pb->set_txn_id(txn_id.data(), txn_id.size());
@@ -946,6 +943,7 @@ tserver::DdlLockEntriesPB ObjectLockInfoManager::Impl::ExportObjectLockInfoUnloc
             lock_entries_pb->set_background_transaction_id(subtxns_map.background_transaction_id());
           }
         }
+      }
     }
   }
   VLOG(3) << "Exported " << yb::ToString(entries);
@@ -1296,7 +1294,7 @@ Status ObjectLockInfoManager::Impl::RefreshYsqlLease(
   resp.mutable_info()->set_new_lease(true);
   resp.mutable_info()->set_lease_epoch(lockp->mutable_data()->pb.lease_info().lease_epoch());
   lockp->Commit();
-  *resp.mutable_info()->mutable_ddl_lock_entries() = ExportObjectLockInfo();
+  *resp.mutable_info()->mutable_ddl_lock_entries() = ExportObjectLockInfoForTServer();
   LOG(INFO) << Format(
       "Granting a new ysql op lease to TS $0 ($1). Lease epoch $2", req.instance().permanent_uuid(),
       req.instance().instance_seqno(), resp.info().lease_epoch());
@@ -1380,7 +1378,7 @@ ObjectLockInfoManager::Impl::GetLeaseInfos() const {
 
 void ObjectLockInfoManager::Impl::BootstrapLocksPostLoad() {
   CHECK_OK(ts_local_lock_manager_during_catalog_loading()->BootstrapDdlObjectLocks(
-      ExportObjectLockInfo()));
+      ExportObjectLockInfoForMaster()));
 }
 
 void ObjectLockInfoManager::Impl::UpdateObjectLocks(
@@ -1585,18 +1583,18 @@ UpdateAllTServers<Req>::UpdateAllTServers(
 
 template <class Req>
 void UpdateAllTServers<Req>::Done(size_t i, const Status& s) {
-  if (s.ok() ||
-      object_lock_info_manager_.TabletServerHasLiveLease(ts_lease_infos_[i].ts_descriptor->id())) {
+  if (s.ok() || object_lock_info_manager_.TabletServerHasLiveLease(ts_descriptors_[i]->id())) {
+
     statuses_[i] = s;
   } else {
     VLOG(3) << Format(
         "Ignoring status for tserver $0 because it does not have a live lease",
-        ts_lease_infos_[i].ts_descriptor->id());
+        ts_descriptors_[i]->id());
     // If the tablet server does not have a live lease then ignore it.
     statuses_[i] = Status::OK();
   }
   TRACE_TO(
-      trace(), "Done $0 ($1) : $2", i, ts_lease_infos_[i].ts_descriptor->permanent_uuid(),
+      trace(), "Done $0 ($1) : $2", i, ts_descriptors_[i]->permanent_uuid(),
       statuses_[i].ToString());
   // TODO: There is a potential here for early return if s is not OK.
   if (--ts_pending_ == 0) {
@@ -1649,9 +1647,9 @@ std::string UpdateAllTServers<Req>::LogPrefix() const {
 template <class Req>
 void UpdateAllTServers<Req>::LaunchRpcs() {
   // todo(zdrudi): special case for 0 tservers with a live lease. This doesn't work.
-  ts_lease_infos_ =
-      object_lock_info_manager_.SnapshotLiveLeaseInfo();
-  statuses_ = std::vector<Status>{ts_lease_infos_.size(), STATUS(Uninitialized, "")};
+  ts_descriptors_ = object_lock_info_manager_.GetAllTSDescriptorsWithALiveLease();
+  statuses_ = std::vector<Status>{ts_descriptors_.size(), STATUS(Uninitialized, "")};
+
   LaunchRpcsFrom(0);
 }
 
@@ -1664,13 +1662,13 @@ Status UpdateAllTServers<Req>::Launch() {
 
 template <class Req>
 void UpdateAllTServers<Req>::LaunchRpcsFrom(size_t start_idx) {
-  TRACE("Launching for $0 TServers from $1", ts_lease_infos_.size(), start_idx);
-  ts_pending_ = ts_lease_infos_.size() - start_idx;
+  TRACE("Launching for $0 TServers from $1", ts_descriptors_.size(), start_idx);
+  ts_pending_ = ts_descriptors_.size() - start_idx;
   VLOG(1) << __func__ << " launching for " << ts_pending_ << " tservers.";
-  for (size_t i = start_idx; i < ts_lease_infos_.size(); ++i) {
-    auto ts_uuid = ts_lease_infos_[i].ts_descriptor->permanent_uuid();
-    VLOG(1) << "Launching for " << ts_uuid << " lease epoch "
-            << ts_lease_infos_[i].lease_epoch;
+  for (size_t i = start_idx; i < ts_descriptors_.size(); ++i) {
+    auto ts_uuid = ts_descriptors_[i]->permanent_uuid();
+    VLOG(1) << "Launching for " << ts_uuid;
+
     auto task = TServerTaskFor(
         ts_uuid,
         std::bind(&UpdateAllTServers<Req>::Done, this->shared_from_this(), i, _1));
@@ -1706,16 +1704,14 @@ void UpdateAllTServers<Req>::CheckForDone() {
     if (!status.ok()) {
       LOG(WARNING) << Format(
                           "Error from tserver $0 for forwarded $1 object lock request",
-                          ts_lease_infos_[i].ts_descriptor->permanent_uuid(),
+                          ts_descriptors_[i]->permanent_uuid(),
                           ObjectLockOpName<Req>())
                    << status;
       DoCallbackAndRespond(status);
       return;
     }
   }
-  if (RelaunchIfNecessary()) {
-    return;
-  }
+
   DoneAll();
 }
 
@@ -1747,6 +1743,7 @@ template <>
 Status UpdateAllTServers<ReleaseObjectLockRequestPB>::AfterRpcs() {
   TRACE_FUNC();
   VLOG_WITH_FUNC(2);
+  TEST_PAUSE_IF_FLAG(TEST_pause_obj_lock_release_before_persist);
   SCOPED_LEADER_SHARED_LOCK(l, &catalog_manager_);
   RETURN_NOT_OK(DoPersistRequestUnlocked(l));
   // Update Local State.
@@ -1773,46 +1770,6 @@ Status UpdateAllTServers<WaitForLockersMultipleRequestPB>::AfterRpcs() {
   SCOPED_LEADER_SHARED_LOCK(l, &catalog_manager_);
   RETURN_NOT_OK(CheckLeaderLockStatus(l, epoch_));
   return Status::OK();
-}
-
-template <>
-bool UpdateAllTServers<AcquireObjectLockRequestPB>::RelaunchIfNecessary() {
-  return false;
-}
-
-template <>
-bool UpdateAllTServers<WaitForLockersMultipleRequestPB>::RelaunchIfNecessary() {
-  return false;
-}
-
-template <>
-bool UpdateAllTServers<ReleaseObjectLockRequestPB>::RelaunchIfNecessary() {
-  TRACE_TO(trace(), "Relaunching");
-  TEST_PAUSE_IF_FLAG(TEST_pause_obj_lock_release_relaunch);
-  auto old_size = ts_lease_infos_.size();
-  auto current_ts_descriptors =
-      object_lock_info_manager_.SnapshotLiveLeaseInfo();
-  for (const auto& ts_lease_info : current_ts_descriptors) {
-    // Re-launch if this is a newly joined tserver, or the same tserver restarted and acquired a
-    // new lease epoch (possibly bootstrapping locks that this release has not yet persisted away).
-    auto it = std::find_if(
-        ts_lease_infos_.begin(), ts_lease_infos_.end(),
-        [&ts_lease_info](const TSDescriptorLiveLeaseInfo& existing) {
-          return existing.ts_descriptor == ts_lease_info.ts_descriptor &&
-                 existing.lease_epoch == ts_lease_info.lease_epoch;
-        });
-    if (it == ts_lease_infos_.end()) {
-      ts_lease_infos_.push_back(ts_lease_info);
-      statuses_.push_back(STATUS(Uninitialized, ""));
-    }
-  }
-  if (ts_lease_infos_.size() == old_size) {
-    return false;
-  }
-
-  VLOG(1) << "New TServers were added or acquired a new lease epoch. Relaunching.";
-  LaunchRpcsFrom(old_size);
-  return true;
 }
 
 template <class Req, class Resp>
