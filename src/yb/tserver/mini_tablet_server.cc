@@ -253,7 +253,15 @@ Status MiniTabletServer::FlushTablets(tablet::FlushMode mode, tablet::FlushFlags
     if (!tablet) {
       return Status::OK();
     }
-    return tablet->Flush(mode, flags, rocksdb::FlushReason::kTestOnly);
+    // A tablet can start shutting down concurrently (e.g. tombstoned while being remote
+    // bootstrapped), and then it has nothing left to flush. Holding the blocking operation across
+    // the flush skips such a tablet instead of tripping the DFATAL inside Tablet::Flush.
+    auto flush_op = tablet->CreateScopedRWOperationBlockingRocksDbShutdownStart();
+    if (!flush_op.ok()) {
+      return Status::OK();
+    }
+    return tablet->Flush(
+        mode, flags | tablet::FlushFlags::kNoScopedOperation, rocksdb::FlushReason::kTestOnly);
   });
 }
 
