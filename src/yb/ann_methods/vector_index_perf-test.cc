@@ -55,7 +55,8 @@ class VectorIndexPerfTest : public hnsw::VectorIndexTestBase {
             vector_index::FactoryMode::kCreate, block_cache_, options,
             HnswBackend::YB_HNSW_HNSWLIB, mem_tracker_));
     for (const auto& [_, index] : indexes_) {
-      ASSERT_OK(index->Reserve(count, 1, 1));
+      ASSERT_OK(index->Reserve(
+          count, 1, 1, rocksdb::Cache::ReservationMode::kAlways));
     }
 
     Vector holder;

@@ -23,6 +23,7 @@
 
 #include "yb/qlexpr/qlexpr_fwd.h"
 
+#include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/rocksdb_fwd.h"
 
@@ -114,6 +115,8 @@ struct DocVectorIndexMetrics {
 struct InsertOptions {
   const rocksdb::UserFrontiers* frontiers = nullptr;
   size_t chunk_size = 0;
+  rocksdb::Cache::ReservationMode reservation_mode =
+      rocksdb::Cache::ReservationMode::kAlways;
 };
 
 class DocVectorIndex {

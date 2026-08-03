@@ -64,7 +64,8 @@ class IndexMergeTest : public YBTest {
   IndexData CreateAndFillIndex(
       VectorIndexFactory<FloatVector, float> index_factory, size_t first_id, size_t num_entries) {
     auto index = index_factory(vector_index::FactoryMode::kCreate);
-    CHECK_OK(index->Reserve(num_entries, 1, 1));
+    CHECK_OK(index->Reserve(
+        num_entries, 1, 1, rocksdb::Cache::ReservationMode::kAlways));
 
     std::vector<VectorId> ids;
     ids.reserve(num_entries);
@@ -118,7 +119,8 @@ class IndexMergeTest : public YBTest {
   void TestMergeWithEmptyIndex(VectorIndexFactory<FloatVector, float> index_factory) {
     // Create an empty index with the same options.
     VectorIndexIfPtr<FloatVector, float> empty_index = index_factory(FactoryMode::kCreate);
-    CHECK_OK(empty_index->Reserve(10, 0, 0));
+    CHECK_OK(empty_index->Reserve(
+        10, 0, 0, rocksdb::Cache::ReservationMode::kAlways));
 
     // Generate indexes for the input set.
     auto data_a = CreateAndFillIndex(index_factory, 0, input_vectors_.size() / 2);
