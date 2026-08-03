@@ -3052,6 +3052,35 @@ void od_frontend(void *arg)
 	char client_ip[64];
 	od_getpeername(client->io.io, client_ip, sizeof(client_ip), 1, 0);
 
+	/*
+	 * YB: Logical client's ip addr and port are set as GUC's in startup packet, so
+	 * that on every attach they remain updated on the backend. The GUC's are used
+	 * to update pg_stat_activity view.
+	 * Client hostname GUC is updated by doing DNS lookup on the client ip addr in postgres
+	 * during authentication and parameter status is returned to cache it client struct as
+	 * done for any other startup guc.
+	 */
+	if (client_ip[0] != '\0' && client_ip[0] != '<') {
+		char client_port[8];
+		od_getpeername(client->io.io, client_port,
+			       sizeof(client_port), 0, 1);
+
+		kiwi_vars_update(&client->yb_startup_settings,
+				 "yb_conn_mgr_client_addr",
+				 sizeof("yb_conn_mgr_client_addr"),
+				 client_ip,
+				 strlen(client_ip) + 1);
+
+		kiwi_vars_update(&client->yb_startup_settings,
+				 "yb_conn_mgr_client_port",
+				 sizeof("yb_conn_mgr_client_port"),
+				 client_port,
+				 strlen(client_port) + 1);
+		od_debug(&instance->logger, "startup", client, NULL,
+				 "injected yb_conn_mgr_client_addr = %s, yb_conn_mgr_client_port = %s",
+				 client_ip, client_port);
+	}
+
 	/* client authentication */
 	if (rc == OK_RESPONSE)
 		rc = od_auth_frontend(client);
