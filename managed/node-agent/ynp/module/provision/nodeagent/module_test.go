@@ -175,6 +175,22 @@ func TestGenerateInstanceTypePayloadMissingMountPoints(t *testing.T) {
 	}
 }
 
+func TestGenerateInstanceTypePayloadRootMountPoint(t *testing.T) {
+	m := &InstallNodeAgent{}
+	values := map[string]any{
+		"instance_type_name":         "c5.large",
+		"instance_type_cores":        8.0,
+		"instance_type_memory_size":  32.0,
+		"instance_type_volume_size":  250.0,
+		"instance_type_mount_points": "['/', '/mnt']",
+	}
+
+	_, err := m.generateInstanceTypePayload(values)
+	if err == nil {
+		t.Fatalf("generateInstanceTypePayload() error = nil, want error for root mount point")
+	}
+}
+
 func TestGenerateAddNodePayload(t *testing.T) {
 	m := &InstallNodeAgent{}
 	values := map[string]any{
