@@ -3014,12 +3014,33 @@ TEST_F(PgMiniTest, TestAppliedTransactionsStateInFlight) {
   ASSERT_OK(tablet_server->Restart());
   ASSERT_OK(tablet_server->WaitStarted());
 
-  ASSERT_OK(conn1.CommitTransaction());
-  ASSERT_OK(conn2.CommitTransaction());
-  ASSERT_OK(conn3.CommitTransaction());
+  // The recently applied transactions map only retains a staircase of (first_write_ht,
+  // apply_op_id) pairs, so an apply landing out of first write order subsumes the entry of an
+  // earlier transaction. Applies are asynchronous with respect to commit, so let each transaction
+  // apply, i.e. leave the participant, before committing the next one.
+  const auto& tablet_id = tablet_peer->tablet_id();
+  auto commit_and_wait_apply = [this, tablet_id, kApplyWait](
+      PGConn* conn, size_t expected_running) -> Status {
+    RETURN_NOT_OK(conn->CommitTransaction());
+    return WaitFor([this, &tablet_id, expected_running]() -> Result<bool> {
+      size_t running = 0;
+      for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
+        if (peer->tablet_id() != tablet_id) {
+          continue;
+        }
+        auto peer_tablet = peer->shared_tablet_maybe_null();
+        if (!peer_tablet) {
+          return false;
+        }
+        running += peer_tablet->transaction_participant()->GetNumRunningTransactions();
+      }
+      return running <= expected_running;
+    }, kApplyWait, Format("$0 running transactions left", expected_running));
+  };
 
-  // Wait for apply.
-  SleepFor(kApplyWait);
+  ASSERT_OK(commit_and_wait_apply(&conn1, 6));
+  ASSERT_OK(commit_and_wait_apply(&conn2, 3));
+  ASSERT_OK(commit_and_wait_apply(&conn3, 0));
 
   std::unordered_map<std::string, uint64_t> metric_values;
   for (auto peer : ListTabletPeers(cluster_.get(), ListPeersFilter::kAll)) {
