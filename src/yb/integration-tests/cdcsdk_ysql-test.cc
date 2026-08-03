@@ -1701,9 +1701,17 @@ void CDCSDKYsqlTest::TestMultipleActiveStreamOnSameTablet(CDCCheckpointType chec
 CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(CDCSDKYsqlTest, TestMultipleActiveStreamOnSameTablet);
 
 void CDCSDKYsqlTest::TestActiveAndInactiveStreamOnSameTablet(CDCCheckpointType checkpoint_type) {
+  // The test freezes the cdc_state checkpoints below by raising
+  // cdc_state_checkpoint_update_interval_ms. A load balancer leader move defeats that: the new
+  // leader's CDC service has no cached checkpoint for the stream, so its first GetChanges writes a
+  // fresh checkpoint to cdc_state regardless of the interval, and the checkpoints read here would
+  // never match the retention barriers on the peers.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 20000;
+  // Stream-2 stays inactive for the whole test, so its retention must outlive the test. Otherwise
+  // its cdc_state entry is cleaned up as expired and the barriers verified below are released.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 120000;
   uint32_t num_tservers = 3;
   ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
 
@@ -1794,8 +1802,13 @@ void CDCSDKYsqlTest::TestActiveAndInactiveStreamOnSameTablet(CDCCheckpointType c
 
     GetChangesResponsePB latest_change_resp = ASSERT_RESULT(
         GetChangesFromCDC(stream_id[0], tablets, &change_resp[0].cdc_sdk_checkpoint()));
-    if (row.key.tablet_id == tablets[0].tablet_id() &&
-        stream_id[0] == row.key.stream_id) {
+    // Only the entries of this tablet hold its retention barriers. Entries of other tablets, in
+    // particular the sys catalog entry created for every stream, keep an OpId::Invalid() checkpoint
+    // until they are first polled, which no peer ever reports as its retained op id.
+    if (row.key.tablet_id != tablets[0].tablet_id() || !row.checkpoint) {
+      continue;
+    }
+    if (stream_id[0] == row.key.stream_id) {
       LOG(INFO) << "Read cdc_state table with tablet_id: " << row.key.tablet_id
                 << " stream_id: " << row.key.stream_id << " checkpoint is: " << *row.checkpoint;
       active_stream_checkpoint = *row.checkpoint;
@@ -1803,6 +1816,10 @@ void CDCSDKYsqlTest::TestActiveAndInactiveStreamOnSameTablet(CDCCheckpointType c
       overall_min_checkpoint = min(overall_min_checkpoint, *row.checkpoint);
     }
   }
+  // A failed scan silently ends the iteration, leaving the checkpoints below unpopulated.
+  ASSERT_OK(s);
+  LOG(INFO) << "Overall minimum checkpoint: " << overall_min_checkpoint
+            << ", active stream checkpoint: " << active_stream_checkpoint;
 
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
@@ -1815,7 +1832,9 @@ void CDCSDKYsqlTest::TestActiveAndInactiveStreamOnSameTablet(CDCCheckpointType c
               auto tablet = VERIFY_RESULT(peer->shared_tablet());
               if (tablet->transaction_participant()->GetRetainOpId() != overall_min_checkpoint &&
                   tablet->transaction_participant()->GetRetainOpId() != active_stream_checkpoint) {
-                SleepFor(MonoDelta::FromMilliseconds(2));
+                // Retry through WaitFor, so that a barrier that never converges times out instead
+                // of spinning here forever.
+                return false;
               } else {
                 i += 1;
                 LOG(INFO) << "In tserver: " << i
