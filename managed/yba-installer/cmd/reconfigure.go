@@ -10,6 +10,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/ybactlstate"
 )
 
@@ -36,6 +37,14 @@ var reconfigureCmd = &cobra.Command{
 
 		if err := state.ValidateReconfig(); err != nil {
 			log.Fatal("invalid reconfigure: " + err.Error())
+		}
+
+		// Validate the edited config before anything is applied to the running install.
+		results := preflight.Run(preflight.ReconfigureChecks, skippedPreflightChecks...)
+		if preflight.ShouldFail(results) {
+			preflight.PrintPreflightResults(results)
+			log.Fatal("Preflight checks failed. To skip (not recommended), " +
+				"rerun the command with --skip_preflight <check name1>,<check name2>")
 		}
 
 		handleEnabledFlagChange(PerfAdvisorServiceName, state.Services.PerfAdvisor,
@@ -198,4 +207,6 @@ var configGenCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(reconfigureCmd, configGenCmd)
+	reconfigureCmd.Flags().StringSliceVarP(&skippedPreflightChecks, "skip_preflight", "s",
+		[]string{}, "Preflight checks to skip by name")
 }
