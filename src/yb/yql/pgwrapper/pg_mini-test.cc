@@ -118,6 +118,7 @@ DECLARE_int32(TEST_txn_participant_inject_latency_on_apply_update_txn_ms);
 DECLARE_int32(gzip_stream_compression_level);
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
+DECLARE_int32(sampled_trace_1_in_n);
 DECLARE_int32(stream_compression_algo);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(timestamp_syscatalog_history_retention_interval_sec);
@@ -575,6 +576,9 @@ class PgMiniTestTracing : public PgMiniTest, public ::testing::WithParamInterfac
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tracing) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_tracing_level) = 1;
+    // Disable probabilistic tracing. Otherwise a sampled trace of an unrelated background RPC
+    // (e.g. a slow remote bootstrap) is dumped into the log and counted by the test's log sink.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_sampled_trace_1_in_n) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_client_use_shared_memory) = GetParam();
     // Disable auto analyze because it introduces flakiness for query plans and metrics.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze) = false;
@@ -588,7 +592,12 @@ TEST_P(PgMiniTestTracing, Tracing) {
     void send(
         google::LogSeverity severity, const char* full_filename, const char* base_filename,
         int line, const struct ::tm* tm_time, const char* message, size_t message_len) {
-      if (strcmp(base_filename, "trace.cc") == 0) {
+      // Count only traces of PG session RPCs. Traces of unrelated background RPCs (e.g. a slow
+      // remote bootstrap of a system tablet) are dumped to the same log and would otherwise be
+      // attributed to the queries below.
+      if (strcmp(base_filename, "trace.cc") == 0 &&
+          std::string_view(message, message_len).find("pg_client_session.cc") !=
+              std::string_view::npos) {
         last_logged_bytes_ = message_len;
       }
     }
