@@ -33,6 +33,7 @@ YbAshTrackNestedQueries
 YbAttnumBmsState
 YbAttrProcessorState
 YbAttrToColIdxMap
+YbAutoAnalyzeOpts
 YbBNLHashClauseInfo
 YbBackfillIndexStmt
 YbBackfillInfo
@@ -75,6 +76,7 @@ YbDatabaseConnectionWorkerInfo
 YbDatumDecodeOptions
 YbDdlMode
 YbDdlModeOptional
+YbDdlOriginalStmtState
 YbDdlTransactionState
 YbDefaultSysScan
 YbDefaultSysScanData
@@ -91,8 +93,6 @@ YbExprColrefDesc
 YbFKTriggerScanDesc
 YbFKTriggerScanDescData
 YbFKTriggerVTable
-YbFdwExecState
-YbFdwPlanState
 YbFetchKeysParam
 YbFetchStatus
 YbFlushTupleFn_t
@@ -116,12 +116,15 @@ YbInsertOnConflictBatchState
 YbInsertOnConflictPhase
 YbInstrumentation
 YbIntCounters
+YbInternalConnKind
+YbInternalConnKindDescriptor
 YbIssueDetectionCheck
 YbIssueDetectionPlan
 YbJumbleState
 YbListenerQueueScanCurrentXactState
 YbLocationLen
 YbLockMechanism
+YbLockRowsStateInfo
 YbLogicalClientVersionType
 YbLsmBuildState
 YbMergeScanInfo
@@ -179,6 +182,7 @@ YbQueryDiagnosticsMetadata
 YbQueryDiagnosticsParams
 YbQueryDiagnosticsPgss
 YbQueryDiagnosticsStatusType
+YbQueryState
 YbRange
 YbReCacheInfo
 YbRegisterOuterMatchFn_t
@@ -196,6 +200,7 @@ YbSendDirectFn
 YbSeqScan
 YbSeqScanState
 YbSessionStats
+YbSkipIntentsTxnState
 YbSkippableEntities
 YbSkippableEntityType
 YbSortInfo
@@ -226,11 +231,13 @@ YbTerminatedQueriesBuffer
 YbTerminatedQuery
 YbTraceparentResult
 YbTruncateType
+YbTserverUuidClauseResult
 YbTupleBitmap
 YbTupleCache
 YbTupleCacheEntry
 YbTupleCacheIterator
 YbTupleCacheKeyExtractor
+YbTxnError
 YbUpdateAffectedEntities
 YbUpdateRelationCacheState
 YbUserIdAndSecContext
@@ -255,12 +262,14 @@ YbcConstSliceSet
 YbcConstSliceVector
 YbcCreateMemoryContextFn
 YbcCstringToTextWithLenFn
+YbcDbCatalogCacheMetricVisitor
 YbcDeleteMemoryContextFn
 YbcFlushDebugContext
 YbcGetTableKeyRangesCallback
 YbcHeapSnapshotSample
 YbcIsExplicitlyLockedRowSkippedCheckHandle
 YbcIsExplicitlyLockedRowSkippedCheckHandleOptional
+YbcIterateDbCatalogCacheMetricsFunc
 YbcLsnType
 YbcMetricsInfo
 YbcObjectLockId
@@ -270,7 +279,6 @@ YbcOtelNodeSpan
 YbcOtelSpanContext
 YbcPallocFn
 YbcPgAshConfig
-YbcPgAtomicUint64
 YbcPgAttrValueDescriptor
 YbcPgBoundType
 YbcPgCallbacks
@@ -384,6 +392,7 @@ YbgTypeDesc
 YbginBuildState
 YbginScanOpaque
 YbginScanOpaqueData
+YbpgmCatalogCacheMetricsEntry
 pgssYbReader
 pgssYbReaderContext
 yb_ambackfill_function
