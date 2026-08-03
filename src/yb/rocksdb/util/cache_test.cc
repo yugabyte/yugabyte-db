@@ -561,6 +561,37 @@ TEST_F(CacheTest, SetCapacity) {
   }
 }
 
+TEST_F(CacheTest, ConsumeSpaceReservationModes) {
+  auto cache = NewLRUCache(10, 0);
+
+  auto result = cache->ConsumeSpace(6, Cache::ReservationMode::kStrict);
+  ASSERT_TRUE(result.ok());
+  ASSERT_TRUE(result.get());
+
+  result = cache->ConsumeSpace(5, Cache::ReservationMode::kStrict);
+  ASSERT_FALSE(result.ok());
+  ASSERT_TRUE(result.status().IsTryAgain());
+
+  result = cache->ConsumeSpace(4, Cache::ReservationMode::kStrict);
+  ASSERT_TRUE(result.ok());
+  ASSERT_TRUE(result.get());
+
+  cache->ReleaseSpace(10);
+  result = cache->ConsumeSpace(11, Cache::ReservationMode::kAlways);
+  ASSERT_TRUE(result.ok());
+  ASSERT_FALSE(result.get());
+
+  result = cache->ConsumeSpace(1, Cache::ReservationMode::kStrict);
+  ASSERT_FALSE(result.ok());
+  ASSERT_TRUE(result.status().IsTryAgain());
+
+  cache->ReleaseSpace(11);
+  result = cache->ConsumeSpace(10, Cache::ReservationMode::kStrict);
+  ASSERT_TRUE(result.ok());
+  ASSERT_TRUE(result.get());
+  cache->ReleaseSpace(10);
+}
+
 TEST_F(CacheTest, SetStrictCapacityLimit) {
   std::shared_ptr<Cache> cache = NewLRUCache(10, 0, true);
   std::vector<Cache::Handle*> handles(2);

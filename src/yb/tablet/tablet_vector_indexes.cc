@@ -409,6 +409,7 @@ class VectorIndexBackfillHelper : public VectorIndexBackfillContext {
     docdb::InsertOptions options {
       .frontiers = &frontiers,
       .chunk_size = chunk_size_,
+      .reservation_mode = rocksdb::Cache::ReservationMode::kAlways,
     };
     auto num_entries = entries().size();
     RETURN_NOT_OK_PREPEND(index.Insert(entries(), options), "Insert entries");

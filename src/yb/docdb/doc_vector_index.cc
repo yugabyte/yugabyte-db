@@ -336,6 +336,7 @@ class DocVectorIndexImpl : public DocVectorIndex {
     vector_index::VectorLSMInsertContext context {
       .frontiers = insert_options.frontiers,
       .chunk_size = insert_options.chunk_size,
+      .reservation_mode = insert_options.reservation_mode,
     };
     return lsm_.Insert(lsm_entries, context);
   }
