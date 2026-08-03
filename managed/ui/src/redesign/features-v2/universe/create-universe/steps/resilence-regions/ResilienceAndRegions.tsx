@@ -47,6 +47,10 @@ import {
   RESILIENCE_FORM_MODE,
   RESILIENCE_TYPE
 } from '../../fields/FieldNames';
+import {
+  GuidedExpertModePopover,
+  useGuidedExpertModePopover
+} from '@app/redesign/features-v2/onboarding/universe-revamp/popovers/GuidedExpertModePopover';
 
 //icons
 import MapIcon from '@app/redesign/assets/map.svg';
@@ -91,6 +95,13 @@ export const ResilienceAndRegions = forwardRef<
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.resilienceAndRegions'
   });
+
+  const {
+    open: isGuidedExpertModePopoverOpen,
+    anchorRef: guidedExpertModeAnchorRef,
+    handleGuidedExpertModeClick,
+    handleClose: handleGuidedExpertModePopoverClose
+  } = useGuidedExpertModePopover();
 
   const methods = useForm<ResilienceAndRegionsProps>({
     defaultValues: resilienceAndRegionsSettings,
@@ -388,36 +399,46 @@ export const ResilienceAndRegions = forwardRef<
       {resilienceType === ResilienceType.REGULAR && (
         <>
           <Grid alignItems={'center'} justifyContent={'flex-end'} container width="100%">
-            <YBButtonGroup
-              key={modeButtonGroupKey}
-              size="large"
-              dataTestId="yb-button-group-multiselect-normal"
-              value={formMode}
-              buttons={[
-                {
-                  value: ResilienceFormMode.GUIDED,
-                  label: t('formType.guidedMode'),
-                  icon: disableGuidedMode ? <MapDisabled /> : formMode === ResilienceFormMode.GUIDED ? <MapIconSelected /> : <MapIcon />,
-                  onClick: handleGuidedModeClick,
-                  buttonProps: {
-                    dataTestId: 'guided-mode-button',
-                    disabled: disableGuidedMode
+            <span
+              ref={guidedExpertModeAnchorRef}
+              onClickCapture={handleGuidedExpertModeClick}
+            >
+              <YBButtonGroup
+                key={modeButtonGroupKey}
+                size="large"
+                dataTestId="yb-button-group-multiselect-normal"
+                value={formMode}
+                buttons={[
+                  {
+                    value: ResilienceFormMode.GUIDED,
+                    label: t('formType.guidedMode'),
+                    icon: disableGuidedMode ? <MapDisabled /> : formMode === ResilienceFormMode.GUIDED ? <MapIconSelected /> : <MapIcon />,
+                    onClick: handleGuidedModeClick,
+                    buttonProps: {
+                      dataTestId: 'guided-mode-button',
+                      disabled: disableGuidedMode
+                    },
+                    tooltip: disableGuidedMode ? t('guidedModeNotSupported') : undefined
                   },
-                  tooltip: disableGuidedMode ? t('guidedModeNotSupported') : undefined
-                },
-                {
-                  value: ResilienceFormMode.EXPERT_MODE,
-                  label: t('formType.expertMode'),
-                  onClick: () => {
-                    methods.setValue(RESILIENCE_FORM_MODE, ResilienceFormMode.EXPERT_MODE, {
-                      shouldValidate: true
-                    });
-                  },
-                  buttonProps: {
-                    dataTestId: 'expert-mode-button'
+                  {
+                    value: ResilienceFormMode.EXPERT_MODE,
+                    label: t('formType.expertMode'),
+                    onClick: () => {
+                      methods.setValue(RESILIENCE_FORM_MODE, ResilienceFormMode.EXPERT_MODE, {
+                        shouldValidate: true
+                      });
+                    },
+                    buttonProps: {
+                      dataTestId: 'expert-mode-button'
+                    }
                   }
-                }
-              ]}
+                ]}
+              />
+            </span>
+            <GuidedExpertModePopover
+              open={isGuidedExpertModePopoverOpen}
+              anchorRef={guidedExpertModeAnchorRef}
+              onClose={handleGuidedExpertModePopoverClose}
             />
           </Grid>
           {formMode === ResilienceFormMode.GUIDED ? <GuidedMode /> : <ExpertMode />}
