@@ -27,6 +27,7 @@ import java.util.function.Function;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.yb.CommonNet.HostPortPB;
 import org.yb.client.ModifyMasterClusterConfigBlacklist;
 import org.yb.client.YBClientApi;
@@ -99,8 +100,8 @@ public class ModifyBlackList extends UniverseTaskBase {
 
       List<HostPortPB> removeHosts = getHostPortPBs(universe, taskParams().removeNodes);
       if (!taskParams().isLeaderBlacklist
-          && CollectionUtils.isEmpty(taskParams().addNodes)
-          && CollectionUtils.isEmpty(taskParams().removeNodes)) {
+          && CollectionUtils.isEmpty(addHosts)
+          && CollectionUtils.isEmpty(removeHosts)) {
         log.info("No nodes to be added or removed from blacklist");
         return;
       }
@@ -124,6 +125,14 @@ public class ModifyBlackList extends UniverseTaskBase {
       hostPorts = new ArrayList<>(nodes.size());
       for (NodeDetails node : nodes) {
         String ip = Util.getNodeIp(universe, node);
+        // Skip not-yet-provisioned nodes, or ADDs already removed from universe after destroy.
+        if (StringUtils.isBlank(ip)) {
+          log.warn(
+              "Skipping ModifyBlackList for node {} in universe {}: private IP is not set",
+              node.getNodeName(),
+              universe.getUniverseUUID());
+          continue;
+        }
         HostPortPB.Builder hpb = HostPortPB.newBuilder().setPort(node.tserverRpcPort).setHost(ip);
         hostPorts.add(hpb.build());
       }

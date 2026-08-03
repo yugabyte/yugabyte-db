@@ -81,9 +81,9 @@ import play.libs.Json;
 @Retryable
 // TODO(PLAT-21484): add @CanRollback here once RollbackEditKubernetesUniverse (PLAT-21484), the
 // state_transition_details safe-window gate (PLAT-21387 / PLAT-21483) and the runtime flag
-// (PLAT-21488) are in place. The TaskRollbackComputer registry already has a placeholder
-// (EditUniverseRollbackComputer) that rejects until those land. Annotating before they exist
-// would surface canRollback=true in the UI/API while the rollback action is not yet implemented.
+// (PLAT-21488) are in place. Bind EditKubernetesUniverse in TaskRollbackModule when those land.
+// Annotating before they exist would surface canRollback=true in the UI/API while the rollback
+// action is not yet implemented.
 public class EditKubernetesUniverse extends KubernetesTaskBase {
 
   static final int DEFAULT_WAIT_TIME_MS = 10000;

@@ -731,7 +731,7 @@ public class CustomerTaskManager {
   }
 
   private boolean canTaskRollback(TaskInfo taskInfo) {
-    return commissioner.canTaskRollback(taskInfo);
+    return commissioner.canTaskRollbackDetailed(taskInfo);
   }
 
   // This performs actual retryability check on the task parameters.
@@ -866,6 +866,7 @@ public class CustomerTaskManager {
       case CreateKubernetesUniverse:
       case CreateUniverse:
       case EditUniverse:
+      case RollbackEditUniverse:
       case InstallYbcSoftwareOnK8s:
       case EditKubernetesUniverse:
       case ReadOnlyKubernetesClusterCreate:

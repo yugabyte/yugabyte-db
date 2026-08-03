@@ -3,23 +3,27 @@
 package com.yugabyte.yw.common.rollback;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.NOT_IMPLEMENTED;
 
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.StateTransitionDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import javax.inject.Inject;
 import javax.inject.Singleton;
+import play.libs.Json;
 
 /**
- * Placeholder for EditUniverse / EditKubernetesUniverse rollback until PLAT-21484 lands.
+ * Builds a {@link com.yugabyte.yw.commissioner.tasks.RollbackEditUniverse} submission for a failed
+ * {@link TaskType#EditUniverse}. Only registered for {@code EditUniverse} in {@link
+ * TaskRollbackModule}; Kubernetes edit rollback remains unbound until implemented.
  *
- * <p>Currently unreachable in production (those tasks are not yet annotated {@code @CanRollback});
- * registered so a forced eligibility path fails explicitly rather than attempting a rollback.
- *
- * <p>Edit-universe rollback is gated behind a runtime flag while the feature is built out. The
- * eligibility gate/annotation should also consult this flag once the rollback path lands.
+ * <p>Edit-universe rollback is gated behind {@code yb.task.allow_edit_universe_rollback}. Edits
+ * that flip primary {@code dedicatedNodes} are refused (Live tserver gflags rewritten before the
+ * checkpoint; same as auto-rollback).
  */
 @Singleton
 public class EditUniverseRollbackComputer implements TaskRollbackComputer {
@@ -42,11 +46,21 @@ public class EditUniverseRollbackComputer implements TaskRollbackComputer {
                   + " enable it.",
               taskType));
     }
-    throw new PlatformServiceException(
-        NOT_IMPLEMENTED,
-        String.format(
-            "Rollback for task type %s is not yet supported; edit-universe rollback is under"
-                + " development (tracked by PLAT-21484).",
-            taskType));
+    UniverseDefinitionTaskParams params =
+        Json.fromJson(context.getOldTaskParams(), UniverseDefinitionTaskParams.class);
+    Universe universe = Universe.getOrBadRequest(params.getUniverseUUID());
+    StateTransitionDetails details = universe.getStateTransitionDetails();
+    if (details != null) {
+      // Authoritative rejection also lives in RollbackEditUniverse / requireRollbackable.
+      details.requireRollbackable();
+    }
+    // Skip optimistic version check for this programmatically-submitted task.
+    params.expectedUniverseVersion = -1;
+    // Fresh task: must not inherit EditUniverse runtimeInfo / retry semantics.
+    return new RollbackSubmission(
+        TaskType.RollbackEditUniverse,
+        params,
+        CustomerTask.TaskType.RollbackEditUniverse,
+        false /* setPreviousTaskUUID */);
   }
 }

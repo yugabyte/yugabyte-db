@@ -244,7 +244,7 @@ public class CustomerTaskHandlerTest extends FakeDBApplication {
     rollbackInfo.setTaskState(TaskInfo.State.Created);
     rollbackInfo.save();
 
-    when(mockCommissioner.canTaskRollback(any())).thenReturn(true);
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(true);
     when(mockCommissioner.getTaskParams(taskUUID)).thenReturn(paramsJson);
     when(mockCommissioner.submit(eq(TaskType.RollbackUpgrade), any())).thenReturn(rollbackTaskUUID);
 
@@ -289,7 +289,7 @@ public class CustomerTaskHandlerTest extends FakeDBApplication {
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.Update,
         universe.getName());
-    when(mockCommissioner.canTaskRollback(any())).thenReturn(false);
+    when(mockCommissioner.canTaskRollbackDetailed(any())).thenReturn(false);
 
     PlatformServiceException ex =
         assertThrows(

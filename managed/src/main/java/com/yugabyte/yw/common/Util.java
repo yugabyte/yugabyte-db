@@ -869,15 +869,26 @@ public class Util {
     return "";
   }
 
+  /**
+   * Private IP from {@code node}, or from the on-disk universe row if the passed details have none.
+   * Returns {@code null} when unresolved (blank IP, or node already removed from universe details).
+   */
   public static String getNodeIp(Universe universe, NodeDetails node) {
-    String ip = null;
-    if (node.cloudInfo == null || node.cloudInfo.private_ip == null) {
-      NodeDetails onDiskNode = universe.getNode(node.nodeName);
-      ip = onDiskNode.cloudInfo.private_ip;
-    } else {
-      ip = node.cloudInfo.private_ip;
+    if (node != null
+        && node.cloudInfo != null
+        && StringUtils.isNotBlank(node.cloudInfo.private_ip)) {
+      return node.cloudInfo.private_ip;
     }
-    return ip;
+    if (universe == null || node == null || node.nodeName == null) {
+      return null;
+    }
+    NodeDetails onDiskNode = universe.getNode(node.nodeName);
+    if (onDiskNode != null
+        && onDiskNode.cloudInfo != null
+        && StringUtils.isNotBlank(onDiskNode.cloudInfo.private_ip)) {
+      return onDiskNode.cloudInfo.private_ip;
+    }
+    return null;
   }
 
   public static String getIpToUse(Universe universe, String nodeName, boolean cloudEnabled) {
