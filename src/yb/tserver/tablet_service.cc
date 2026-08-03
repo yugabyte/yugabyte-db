@@ -2559,7 +2559,10 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
       },
       modified_deadline,
       description,
-      (prev_num_lagging_backends == -1 ? 10ms : 5s) /* initial_delay */,
+      // Start with a small delay even on retries (prev_num_lagging_backends != -1): a flat delay
+      // would report backends catching up that much later, adding the same latency to DDLs waiting
+      // on this.
+      10ms /* initial_delay */,
       1.4 /* delay_multiplier */,
       5s /* max_delay */);
 
