@@ -170,7 +170,7 @@ libraryDependencies ++= Seq(
   "org.apache.httpcomponents.core5" % "httpcore5" % "5.2.4",
   "org.apache.httpcomponents.core5" % "httpcore5-h2" % "5.2.4",
   "org.apache.httpcomponents.client5" % "httpclient5" % "5.2.3",
-  "org.apache.mina" % "mina-core" % "2.2.7",
+  "org.apache.mina" % "mina-core" % "2.2.9",
   "org.flywaydb" %% "flyway-play" % "9.0.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "java-driver-core" % "4.15.0-yb-3",
