@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
 
 import com.yugabyte.yw.common.RegexMatcher;
@@ -92,7 +93,8 @@ public class TlsToggleKubernetesTest extends KubernetesUpgradeTaskTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
 
     String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));
@@ -159,7 +161,8 @@ public class TlsToggleKubernetesTest extends KubernetesUpgradeTaskTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
 
     String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
     assertThat(expectedOverrideFile.getValue(), RegexMatcher.matchesRegex(overrideFileRegex));

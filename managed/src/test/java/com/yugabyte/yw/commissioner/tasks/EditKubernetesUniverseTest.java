@@ -23,6 +23,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -504,7 +505,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
     verify(mockKubernetesManager, times(3))
         .getPodInfos(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedNamespace.capture());
@@ -588,7 +590,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
     verify(mockKubernetesManager, times(2))
         .getPodInfos(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedNamespace.capture());
@@ -678,7 +681,8 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
-            expectedOverrideFile.capture());
+            expectedOverrideFile.capture(),
+            isNull());
     verify(mockKubernetesManager, times(3))
         .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());

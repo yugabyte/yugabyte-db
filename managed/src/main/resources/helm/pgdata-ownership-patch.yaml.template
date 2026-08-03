@@ -1,0 +1,36 @@
+# Copyright 2026 YugabyteDB, Inc. and Contributors
+# Strategic-merge patch adding a root init container to the yb-tserver StatefulSet, which hands
+# /mnt/disk0/pg_data back to UID 0 when a universe is rolled back from a chart that runs the DB as a
+# non-root user (PLAT-21180) to an older one that runs it as root.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  # Ignored: the kustomization selects the target by label. Kustomize still wants the patch to look
+  # like a resource.
+  name: pgdata-root-ownership-reconcile
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: pgdata-root-ownership-reconcile
+          image: "{{DB_IMAGE}}"
+          imagePullPolicy: "{{IMAGE_PULL_POLICY}}"
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+          command:
+            - "/bin/bash"
+            - "-c"
+            - |
+              set -euo pipefail
+              shopt -s nullglob
+              targets=(/mnt/disk0/pg_data*)
+              if [ ${#targets[@]} -eq 0 ]; then
+                echo "No pg_data under /mnt/disk0; nothing to reconcile"
+                exit 0
+              fi
+              echo "Reclaiming for root: ${targets[*]}"
+              chown -R 0:0 "${targets[@]}"
+          volumeMounts:
+            - name: "{{DATA_VOLUME_NAME}}"
+              mountPath: /mnt/disk0

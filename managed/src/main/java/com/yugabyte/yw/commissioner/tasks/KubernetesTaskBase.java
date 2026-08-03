@@ -73,6 +73,7 @@ import play.libs.Json;
 public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
 
   protected int leaderBacklistWaitTimeMs;
+  protected boolean reconcilePgDataOwnershipToRoot = false;
   public static final String K8S_NODE_YW_DATA_DIR = "/mnt/disk0/yw-data";
   protected final KubernetesManagerFactory kubernetesManagerFactory;
 
@@ -2269,6 +2270,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.isReadOnlyCluster = isReadOnlyCluster;
     params.setEnableYbc(enableYbc);
     params.usePreviousGflagsChecksum = usePreviousGflagsChecksum;
+    // pg_data only lives on the tserver pods, so the master StatefulSet never needs the reconcile.
+    params.reconcilePgDataOwnershipToRoot =
+        reconcilePgDataOwnershipToRoot && serverType == ServerType.TSERVER;
     // full move for AZs runs after disk resize, set params accordingly
     if (oldMasterDiskSize != null) {
       params.oldMasterDiskSize = oldMasterDiskSize;
@@ -2868,6 +2872,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.isReadOnlyCluster = isReadOnlyCluster;
     params.podName = podName;
     params.newDiskSize = newDiskSize;
+    // pg_data only lives on the tserver pods, so the master StatefulSet never needs the reconcile.
+    params.reconcilePgDataOwnershipToRoot =
+        reconcilePgDataOwnershipToRoot && serverType == ServerType.TSERVER;
     params.setEnableYbc(enableYbc);
     params.setYbcSoftwareVersion(ybcSoftwareVersion);
     params.usePreviousGflagsChecksum = usePreviousGflagsChecksum;
@@ -2960,6 +2967,9 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.serverType = serverType;
     params.isReadOnlyCluster = isReadOnlyCluster;
     params.updateStrategy = KubernetesCommandExecutor.UpdateStrategy.OnDelete;
+    // pg_data only lives on the tserver pods, so the master StatefulSet never needs the reconcile.
+    params.reconcilePgDataOwnershipToRoot =
+        reconcilePgDataOwnershipToRoot && serverType == ServerType.TSERVER;
     params.setEnableYbc(enableYbc);
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
