@@ -203,6 +203,7 @@ YbSessionStats
 YbSkipIntentsTxnState
 YbSkippableEntities
 YbSkippableEntityType
+YbSortArrayContext
 YbSortInfo
 YbSplitType
 YbStatLabel
