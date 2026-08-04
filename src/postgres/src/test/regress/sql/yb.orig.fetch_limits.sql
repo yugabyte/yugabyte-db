@@ -109,3 +109,61 @@ CREATE INDEX ON t_colo(a ASC, k ASC);
 SET enable_seqscan = off;
 SET yb_fetch_size_limit = '1kB';
 EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_colo WHERE a = 1;
+
+-- #### parallel fetch limits ####
+ANALYZE t_large, t_medium, t_small;
+set yb_enable_cbo = on;
+set yb_test_force_parallel = 'force';
+set max_parallel_workers = 0;
+set yb_fetch_row_limit = 10;
+set yb_parallel_fetch_row_limit = 0;
+set yb_parallel_fetch_size_limit = 0;
+
+/*+ SeqScan(t_large) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_large;
+/*+ SeqScan(t_medium) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_medium;
+/*+ SeqScan(t_small) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_small;
+-- index scan
+/*+ IndexScan(t_large t_large_v_idx_asc) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_large WHERE v > '';
+/*+ IndexScan(t_medium t_medium_v_idx_asc) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_medium WHERE v > '';
+/*+ IndexScan(t_small t_small_v_idx_asc) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_small WHERE v > '';
+-- index only scan
+/*+ IndexOnlyScan(t_large t_large_v_idx_asc) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_large WHERE v > '';
+/*+ IndexOnlyScan(t_medium t_medium_v_idx_asc) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_medium WHERE v > '';
+/*+ IndexOnlyScan(t_small t_small_v_idx_asc) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_small WHERE v > '';
+
+set yb_parallel_fetch_row_limit = 100;
+set yb_parallel_fetch_size_limit = 0;
+
+/*+ SeqScan(t_large) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_large;
+/*+ SeqScan(t_medium) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_medium;
+/*+ SeqScan(t_small) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_small;
+-- index scan
+/*+ IndexScan(t_large t_large_v_idx_asc) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_large WHERE v > '';
+/*+ IndexScan(t_medium t_medium_v_idx_asc) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_medium WHERE v > '';
+/*+ IndexScan(t_small t_small_v_idx_asc) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_small WHERE v > '';
+-- index only scan
+/*+ IndexOnlyScan(t_large t_large_v_idx_asc) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_large WHERE v > '';
+/*+ IndexOnlyScan(t_medium t_medium_v_idx_asc) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_medium WHERE v > '';
+/*+ IndexOnlyScan(t_small t_small_v_idx_asc) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_small WHERE v > '';
+
+set yb_parallel_fetch_row_limit = 0;
+set yb_parallel_fetch_size_limit = 10240; -- 10kB
+
+/*+ SeqScan(t_large) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_large;
+/*+ SeqScan(t_medium) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_medium;
+/*+ SeqScan(t_small) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_small;
+-- index scan
+/*+ IndexScan(t_large t_large_v_idx_asc) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_large WHERE v > '';
+/*+ IndexScan(t_medium t_medium_v_idx_asc) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_medium WHERE v > '';
+/*+ IndexScan(t_small t_small_v_idx_asc) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT * FROM t_small WHERE v > '';
+-- index only scan
+/*+ IndexOnlyScan(t_large t_large_v_idx_asc) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_large WHERE v > '';
+/*+ IndexOnlyScan(t_medium t_medium_v_idx_asc) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_medium WHERE v > '';
+/*+ IndexOnlyScan(t_small t_small_v_idx_asc) */ EXPLAIN (ANALYZE, DIST, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT v FROM t_small WHERE v > '';
+
+reset yb_enable_cbo;
+reset yb_test_force_parallel;
+reset max_parallel_workers;
+reset yb_fetch_row_limit;
+reset yb_parallel_fetch_row_limit;
+reset yb_parallel_fetch_size_limit;

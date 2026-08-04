@@ -83,6 +83,10 @@ int yb_fetch_row_limit = 0;
 
 int yb_fetch_size_limit = 0;
 
+int yb_parallel_fetch_row_limit = 0;
+
+int yb_parallel_fetch_size_limit = 0;
+
 int yb_locks_min_txn_age = 1000;
 
 int yb_locks_max_transactions = 16;

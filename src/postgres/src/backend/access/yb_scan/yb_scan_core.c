@@ -401,8 +401,8 @@ yb_scan_apply_next_parallel_range(YbcPgStatement handle,
 	 * unlikely to exceed the message size, but may save some RPCs.
 	 */
 	exec_params->plan_limit = 0;
-	exec_params->yb_fetch_row_limit = 0;
-	exec_params->yb_fetch_size_limit = 0;
+	exec_params->yb_fetch_row_limit = yb_parallel_fetch_row_limit;
+	exec_params->yb_fetch_size_limit = yb_parallel_fetch_size_limit;
 	return true;
 }
 
