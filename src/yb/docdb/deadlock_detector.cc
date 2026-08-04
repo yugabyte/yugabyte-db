@@ -245,8 +245,6 @@ class LocalProbeProcessor : public std::enable_shared_from_this<LocalProbeProces
     auto& blocking_subtxn_set = info.blocker_txn_info.blocking_subtxn_set;
     auto handle = rpcs_->Prepare();
     if (handle == rpcs_->InvalidHandle()) {
-      // Must not reach handles_: InvalidHandle() is calls_.end(), and Send() dereferences every
-      // element of handles_ unconditionally.
       LOG_WITH_PREFIX_AND_FUNC(WARNING) << "Shutting down. Cannot send probe.";
       return;
     }
@@ -1159,8 +1157,6 @@ class DeadlockDetector::Impl : public std::enable_shared_from_this<DeadlockDetec
         log_prefix_, detector_id, probe_num, req.min_probe_num(), probe_origin_txn_id, &rpcs_,
         &client(), nullptr /* probe_latency */);
 
-    // Lets tests shut the status tablet down while this handler is parked, so that AddBlocker below
-    // sees an already shut down rpcs_. The argument tells the test which tablet to shut down.
     TEST_SYNC_POINT_CALLBACK(
         "DeadlockDetector::GetProbesToForward:BeforeAddBlockers",
         const_cast<TabletId*>(&status_tablet_));
