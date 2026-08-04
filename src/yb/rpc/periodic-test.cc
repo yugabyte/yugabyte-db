@@ -25,10 +25,16 @@
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/periodic.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/dist_trace.h"
+#include "yb/util/dist_trace_test_util.h"
+#include "yb/util/flags.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
+
 
 using std::atomic;
 using std::shared_ptr;
@@ -254,6 +260,80 @@ TEST_F(PeriodicTimerTest, TestCallbackRestartsOneShotTimer) {
   // callbacks are running) by the time 'counter' is destroyed.
   messenger_->Shutdown();
 }
+
+namespace dist_trace_hops {
+
+// Enables distributed tracing, pointed at an unreachable collector.
+class PeriodicTimerTraceTest : public PeriodicTimerTest {
+ public:
+  void SetUp() override {
+    dist_trace::TEST_SetOtelCollectorEndpoint("http://127.0.0.1:1/v1/traces");
+    PeriodicTimerTest::SetUp();
+  }
+
+ private:
+  google::FlagSaver flag_saver_;
+};
+
+// Create a one-shot timer under an active trace context, then Start() it after the context is gone:
+// the reactor thread runs the task under that context.
+TEST_F(PeriodicTimerTraceTest, TraceContextCarriedToTask) {
+  const auto expected = dist_trace::MakeTestSpanContext(0x77);
+
+  CountDownLatch latch(1);
+  std::optional<dist_trace::trace::SpanContext> observed;
+
+  PeriodicTimer::Options opts;
+  opts.jitter_pct = 0.0;
+  opts.one_shot = true;
+  shared_ptr<PeriodicTimer> timer;
+  {
+    auto scope = dist_trace::ActivateParentScope(expected);
+    ASSERT_TRUE(scope != nullptr);
+    timer = PeriodicTimer::Create(
+        messenger_.get(),
+        [&observed, &latch] {
+          observed = dist_trace::GetActiveSpanContext();
+          latch.CountDown();
+        },
+        MonoDelta::FromMilliseconds(period_ms_), std::move(opts));
+  }
+
+  timer->Start();
+  ASSERT_TRUE(latch.WaitFor(MonoDelta::FromSeconds(30 * kTimeMultiplier)));
+  timer->Stop();
+  messenger_->Shutdown();
+
+  ASSERT_TRUE(observed.has_value());
+  ASSERT_EQ(observed->trace_id(), expected.trace_id());
+  ASSERT_EQ(observed->span_id(), expected.span_id());
+}
+
+// Create a timer with no active trace context: the reactor thread runs the task with none.
+TEST_F(PeriodicTimerTraceTest, NoTraceContextCarriedWhenNoneActive) {
+  CountDownLatch latch(1);
+  std::optional<dist_trace::trace::SpanContext> observed;
+
+  PeriodicTimer::Options opts;
+  opts.jitter_pct = 0.0;
+  opts.one_shot = true;
+  auto timer = PeriodicTimer::Create(
+      messenger_.get(),
+      [&observed, &latch] {
+        observed = dist_trace::GetActiveSpanContext();
+        latch.CountDown();
+      },
+      MonoDelta::FromMilliseconds(period_ms_), std::move(opts));
+
+  timer->Start();
+  ASSERT_TRUE(latch.WaitFor(MonoDelta::FromSeconds(30 * kTimeMultiplier)));
+  timer->Stop();
+  messenger_->Shutdown();
+
+  ASSERT_FALSE(observed.has_value());
+}
+
+} // namespace dist_trace_hops
 
 } // namespace rpc
 } // namespace yb

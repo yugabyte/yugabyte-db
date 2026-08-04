@@ -14,6 +14,7 @@
 
 #include <thread>
 
+#include "yb/util/dist_trace.h"
 #include "yb/util/flags.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
@@ -121,6 +122,9 @@ Strand::~Strand() {
 }
 
 bool Strand::Enqueue(StrandTask* task) {
+  // Capture the active trace context; Strand::Task::Done re-activates it around task->Run() so the
+  // task's RPCs nest under the triggering trace. No-op if no scope/off.
+  task->set_trace_parent(dist_trace::GetActiveSpanContext());
   return EnqueueHelper([this, task](bool ok) {
     if (ok) {
       if (task_->Enqueue(task)) {
@@ -153,6 +157,10 @@ void Strand::Task::Done(const Status& status) {
 
       auto running = active_enqueues_.load(std::memory_order_acquire) < Strand::kStopMark;
       const auto& actual_status = running ? status : StrandAbortedStatus();
+      // Re-activate the context captured at Enqueue for this task only, so its RPCs nest under the
+      // triggering trace.
+      auto parent_scope =
+        dist_trace::ActivateParentScope(task->trace_parent());
       if (actual_status.ok()) {
         task->Run();
       }
