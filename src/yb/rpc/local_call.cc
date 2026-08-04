@@ -20,6 +20,7 @@
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_header.messages.h"
 
+#include "yb/util/dist_trace.h"
 #include "yb/util/format.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/result.h"
@@ -40,6 +41,12 @@ LocalOutboundCall::LocalOutboundCall(
                    response_storage, controller, std::move(rpc_metrics), std::move(callback),
                    callback_thread_pool, /* metadata_serializer_factory= */ nullptr) {
   TRACE_TO(trace_, "LocalOutboundCall");
+  if (otel_span()) {
+    otel_span()->SetAttribute("rpc.local_call", true);
+    // The OutboundCall ctor left the client span's scope on this thread; a local call never drops
+    // it. Drop it here or it re-parents later work. The span stays alive via GetContext().
+    otel_span()->DropScope();
+  }
 }
 
 Status LocalOutboundCall::SetRequestParam(

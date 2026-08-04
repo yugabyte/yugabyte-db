@@ -54,6 +54,21 @@ message RemoteMethodPB {
   required string method_name = 2;
 };
 
+// Distributed-trace context (W3C trace-context; https://www.w3.org/TR/trace-context/) propagated
+// across a process boundary. Defined here so a single message and wire format serves both
+// transports: it is carried in the RPC RequestHeader below (alongside AshMetadataPB), and as an
+// independent length-prefixed slot in the shared-memory PG<->tserver exchange.
+message TraceContextPB {
+  // 8 bytes (high 64 bits of trace_id)
+  optional fixed64 trace_id_hi = 1;
+  // 8 bytes (low 64 bits of trace_id)
+  optional fixed64 trace_id_lo = 2;
+  // 8 bytes
+  optional fixed64 span_id = 3;
+  // Low byte: flags, High byte: version (1-2 bytes on wire)
+  optional uint32 version_and_flags = 4;
+}
+
 // The header for the RPC request frame.
 message RequestHeader {
   reserved 6;
@@ -81,6 +96,9 @@ message RequestHeader {
   optional AshMetadataPB metadata = 5;
 
   optional uint64 pool_tag = 7;
+
+  // Distributed-trace context, propagating the trace from caller to the server handling this RPC.
+  optional TraceContextPB trace_context = 8;
 
   // CRC32C for message body and header without CRC field. Use 15 as max 1 byte tag.
   optional fixed32 crc = 15;
