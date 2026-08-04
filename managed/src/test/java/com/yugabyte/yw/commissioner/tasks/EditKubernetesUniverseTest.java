@@ -83,7 +83,7 @@ import org.yaml.snakeyaml.Yaml;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.IsServerReadyResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -93,7 +93,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
   private EditKubernetesUniverse editUniverse;
 
   private Universe defaultUniverse;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   private static final String NODE_PREFIX = "demo-universe";
   private static final String YB_SOFTWARE_VERSION = "1.0.0";
@@ -119,7 +119,7 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
       when(mockKubernetesManager.getPodObject(any(), any(), any())).thenReturn(testPod);
     } catch (Exception e) {
     }
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
     ChangeMasterClusterConfigResponse ccr = new ChangeMasterClusterConfigResponse(1111, "", null);
     try {

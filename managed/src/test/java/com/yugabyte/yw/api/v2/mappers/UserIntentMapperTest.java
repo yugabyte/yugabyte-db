@@ -3,12 +3,17 @@
 package com.yugabyte.yw.api.v2.mappers;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import api.v2.mappers.UserIntentMapper;
+import api.v2.models.ClusterEditSpec;
 import api.v2.models.ClusterNodeSpec;
-import api.v2.models.PerProcessNodeSpec;
+import api.v2.models.ClusterPerProcessNodeSpec;
+import api.v2.models.ClusterSpec;
+import api.v2.models.UniverseResizeNodesCluster;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.PerProcessDetails;
@@ -17,6 +22,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
@@ -78,7 +84,7 @@ public class UserIntentMapperTest {
     ClusterNodeSpec clusterNodeSpec =
         UserIntentMapper.INSTANCE.userIntentToClusterNodeSpec(userIntent);
 
-    PerProcessNodeSpec masterNodeSpec = clusterNodeSpec.getMaster();
+    ClusterPerProcessNodeSpec masterNodeSpec = clusterNodeSpec.getMaster();
     assertNotNull(masterNodeSpec);
     assertEquals("m5.2xlarge", masterNodeSpec.getInstanceType());
     assertEquals(Integer.valueOf(75), masterNodeSpec.getStorageSpec().getVolumeSize());
@@ -110,9 +116,66 @@ public class UserIntentMapperTest {
     ClusterNodeSpec clusterNodeSpec =
         UserIntentMapper.INSTANCE.userIntentToClusterNodeSpec(userIntent);
 
-    PerProcessNodeSpec masterNodeSpec = clusterNodeSpec.getMaster();
+    ClusterPerProcessNodeSpec masterNodeSpec = clusterNodeSpec.getMaster();
     assertNotNull(masterNodeSpec);
     assertEquals("m5.2xlarge", masterNodeSpec.getInstanceType());
     assertEquals(Integer.valueOf(75), masterNodeSpec.getStorageSpec().getVolumeSize());
+  }
+
+  @Test
+  public void testEditOmittingDedicatedNodesPreservesExisting() {
+    UserIntent userIntent = new UserIntent();
+    userIntent.dedicatedNodes = true;
+
+    ClusterEditSpec editSpec = new ClusterEditSpec().uuid(UUID.randomUUID()).numNodes(5);
+    UserIntentMapper.INSTANCE.toV1UserIntentFromClusterEditSpec(editSpec, userIntent);
+
+    assertTrue(userIntent.dedicatedNodes);
+    assertEquals(5, userIntent.numNodes);
+  }
+
+  @Test
+  public void testClusterLevelDedicatedNodesPreferredOverNodeSpec() {
+    ClusterSpec clusterSpec = new ClusterSpec();
+    clusterSpec.setDedicatedNodes(true);
+    clusterSpec.setNodeSpec(new ClusterNodeSpec().dedicatedNodes(false));
+
+    UserIntent userIntent = UserIntentMapper.INSTANCE.toV1UserIntent(clusterSpec);
+
+    assertTrue(userIntent.dedicatedNodes);
+  }
+
+  @Test
+  public void testDeprecatedNodeSpecDedicatedNodesStillHonored() {
+    ClusterSpec clusterSpec = new ClusterSpec();
+    clusterSpec.setNodeSpec(new ClusterNodeSpec().dedicatedNodes(true));
+
+    UserIntent userIntent = UserIntentMapper.INSTANCE.toV1UserIntent(clusterSpec);
+
+    assertTrue(userIntent.dedicatedNodes);
+  }
+
+  @Test
+  public void testCreateOmittingDedicatedNodesDefaultsFalse() {
+    ClusterSpec clusterSpec = new ClusterSpec();
+    UserIntent userIntent = UserIntentMapper.INSTANCE.toV1UserIntent(clusterSpec);
+
+    assertFalse(userIntent.dedicatedNodes);
+  }
+
+  @Test
+  public void testGflagsOnlyResizeDoesNotRequireNodeSpec() {
+    UserIntent userIntent = new UserIntent();
+    userIntent.instanceType = "c5.xlarge";
+
+    UniverseResizeNodesCluster resizeCluster = new UniverseResizeNodesCluster();
+    resizeCluster.setUuid(UUID.randomUUID());
+    // gflags-only: no node_spec / provider_nodes_specs
+
+    UserIntent mapped =
+        UserIntentMapper.INSTANCE.toV1UserIntentFromUniverseResizeNodesCluster(
+            resizeCluster, userIntent);
+
+    assertEquals("c5.xlarge", mapped.instanceType);
   }
 }

@@ -328,7 +328,7 @@ TEST_F(ReadaheadTest, SequentialScan) {
     for (auto seq_disk_reads_for_readahead : {0, 1, 2, 3, 4, 5, 8, 16}) {
       LOG(INFO) << "Setting FLAGS_rocksdb_iterator_sequential_disk_reads_for_auto_readahead = "
                 << seq_disk_reads_for_readahead;
-      FLAGS_rocksdb_iterator_sequential_disk_reads_for_auto_readahead =
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_iterator_sequential_disk_reads_for_auto_readahead) =
           seq_disk_reads_for_readahead;
       std::vector<bool> purge_block_cache_options = {true};
       if (seq_disk_reads_factor == 0) {
@@ -528,7 +528,7 @@ TEST_F(ReadaheadTest, MixedReads) {
     for (auto seq_disk_reads_for_readahead : {2, 3, 4, 5, 8, 16}) {
       LOG(INFO) << "Setting FLAGS_rocksdb_iterator_sequential_disk_reads_for_auto_readahead = "
                 << seq_disk_reads_for_readahead;
-      FLAGS_rocksdb_iterator_sequential_disk_reads_for_auto_readahead =
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_iterator_sequential_disk_reads_for_auto_readahead) =
           seq_disk_reads_for_readahead;
       PurgeBlockCache();
 

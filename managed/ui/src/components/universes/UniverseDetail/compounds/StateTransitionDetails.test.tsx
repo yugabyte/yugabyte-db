@@ -40,6 +40,17 @@ const DUMMY_STATE_TRANSITION = {
   }
 };
 
+// formatJsonHtml feeds dangerouslySetInnerHTML in StateTransitionDetails, so it HTML-escapes
+// its output. Convert back to raw characters before comparing to formatJsonText or to any
+// literal we expect to see once the browser renders the string as text.
+function decodeHtml(html: string): string {
+  return html
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
 describe('formatJson (state transition UI)', () => {
   it('formats the full dummy delta JSON with themed ADD/DELETE/REPLACE colors', () => {
     const fullText = formatJsonText(DUMMY_STATE_TRANSITION);
@@ -57,14 +68,16 @@ describe('formatJson (state transition UI)', () => {
     expect(html).toContain('ADD');
     expect(html).toContain('DELETE');
     expect(html).toContain('REPLACE');
-    // Plain text and HTML should represent the same full document.
-    expect(html.replace(/<[^>]+>/g, '')).toBe(fullText);
+    // Plain text and HTML should represent the same full document once tags are stripped and
+    // HTML entities are decoded back to their original characters.
+    expect(decodeHtml(html.replace(/<[^>]+>/g, ''))).toBe(fullText);
   });
 
   it('does not color plain objects that lack a valid $deltaType', () => {
     const html = formatJsonHtml({ foo: { $deltaType: 'UNKNOWN', value: 1 } });
     expect(html).not.toContain('color:');
-    expect(html).toContain('"$deltaType"');
-    expect(html).toContain('"UNKNOWN"');
+    const rendered = decodeHtml(html);
+    expect(rendered).toContain('"$deltaType"');
+    expect(rendered).toContain('"UNKNOWN"');
   });
 });

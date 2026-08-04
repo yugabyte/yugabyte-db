@@ -31,6 +31,7 @@ import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupRequestParams;
@@ -64,7 +65,9 @@ import io.fabric8.mockwebserver.ServerRequest;
 import io.fabric8.mockwebserver.ServerResponse;
 import io.yugabyte.operator.v1alpha1.KMSConfig;
 import io.yugabyte.operator.v1alpha1.KMSConfigSpec;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.Azure;
 import io.yugabyte.operator.v1alpha1.kmsconfigspec.Vault;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.azure.ClientSecretSecret;
 import io.yugabyte.operator.v1alpha1.kmsconfigspec.vault.AppRole;
 import io.yugabyte.operator.v1alpha1.kmsconfigspec.vault.TokenSecret;
 import io.yugabyte.operator.v1alpha1.kmsconfigspec.vault.approle.SecretIdSecret;
@@ -1296,6 +1299,63 @@ public class OperatorUtilsTest extends FakeDBApplication {
     assertEquals("admin/transit/", field(formData, HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH));
     // APPROLE auth must not carry a token.
     assertFalse(formData.has(HashicorpVaultConfigParams.HC_VAULT_TOKEN));
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataAzureServicePrincipal() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.AZU);
+    Azure azure = new Azure();
+    azure.setClientID("client-id");
+    azure.setTenantID("tenant-id");
+    azure.setKeyVaultURL("https://myvault.vault.azure.net/");
+    azure.setKeyName("yb-key");
+    azure.setKeySize(3072L);
+    ClientSecretSecret clientSecretSecret = new ClientSecretSecret();
+    clientSecretSecret.setName("azure-client-secret");
+    clientSecretSecret.setKey("client-secret");
+    azure.setClientSecretSecret(clientSecretSecret);
+    kmsConfig.getSpec().setAzure(azure);
+
+    doReturn(new Secret()).when(operatorUtils).getSecret(anyString(), nullable(String.class));
+    doReturn("client-secret-value")
+        .when(operatorUtils)
+        .parseSecretForKey(any(Secret.class), anyString());
+
+    ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
+
+    assertEquals("client-id", field(formData, AzuKmsAuthConfigField.CLIENT_ID.fieldName));
+    assertEquals("tenant-id", field(formData, AzuKmsAuthConfigField.TENANT_ID.fieldName));
+    assertEquals(
+        "https://myvault.vault.azure.net/",
+        field(formData, AzuKmsAuthConfigField.AZU_VAULT_URL.fieldName));
+    assertEquals("yb-key", field(formData, AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName));
+    assertEquals("RSA", field(formData, AzuKmsAuthConfigField.AZU_KEY_ALGORITHM.fieldName));
+    assertEquals("3072", field(formData, AzuKmsAuthConfigField.AZU_KEY_SIZE.fieldName));
+    assertEquals(
+        "client-secret-value", field(formData, AzuKmsAuthConfigField.CLIENT_SECRET.fieldName));
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataAzureManagedIdentityOmitsSecret() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.AZU);
+    Azure azure = new Azure();
+    azure.setClientID("managed-identity-client-id");
+    azure.setTenantID("tenant-id");
+    azure.setKeyVaultURL("https://myvault.vault.azure.net/");
+    azure.setKeyName("yb-key");
+    azure.setUseManagedIdentity(true);
+    kmsConfig.getSpec().setAzure(azure);
+
+    ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
+
+    // clientID and tenantID are always required, even with managed identity.
+    assertEquals(
+        "managed-identity-client-id", field(formData, AzuKmsAuthConfigField.CLIENT_ID.fieldName));
+    assertEquals("tenant-id", field(formData, AzuKmsAuthConfigField.TENANT_ID.fieldName));
+    // Managed identity omits the client secret; defaults are applied.
+    assertFalse(formData.has(AzuKmsAuthConfigField.CLIENT_SECRET.fieldName));
+    assertEquals("RSA", field(formData, AzuKmsAuthConfigField.AZU_KEY_ALGORITHM.fieldName));
+    assertEquals("2048", field(formData, AzuKmsAuthConfigField.AZU_KEY_SIZE.fieldName));
   }
 
   @Test

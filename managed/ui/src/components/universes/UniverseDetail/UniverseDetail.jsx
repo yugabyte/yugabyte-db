@@ -1,6 +1,6 @@
 // Copyright (c) YugabyteDB, Inc.
 
-import { Component } from 'react';
+import { Component, createRef } from 'react';
 import { Link, withRouter, browserHistory } from 'react-router';
 import { Grid, DropdownButton, MenuItem, Tab, Alert } from 'react-bootstrap';
 import Measure from 'react-measure';
@@ -88,7 +88,16 @@ import {
 } from '../../../redesign/helpers/constants';
 import { AppName } from '@app/redesign/helpers/dtos';
 import { isActionFrozen } from '../../../redesign/helpers/utils';
-import { isV2CreateEditUniverseEnabled } from '@app/redesign/features-v2/universe/create-universe/CreateUniverseUtils';
+import {
+  subscribeOnboardingNewExperienceChange,
+  isOnboardingNewExperienceEnabled,
+  isUniverseRevampExperienceEnabled
+} from '@app/redesign/features-v2/onboarding/universe-revamp/helper-methods';
+import { SettingsTabTitleWithPopover } from '@app/redesign/features-v2/onboarding/universe-revamp/popovers/DetailSettingsPopover';
+import {
+  BeforeProceedWithNewModal,
+  BEFORE_PROCEED_WITH_NEW_MODAL_DISMISS_KEY
+} from '@app/redesign/features-v2/onboarding/universe-revamp/modals/BeforeProceedWithNewModal';
 import {
   getCurrentVersion,
   isVersionPGSupported,
@@ -144,11 +153,15 @@ class UniverseDetail extends Component {
 
     this.showUpgradeMarker = this.showUpgradeMarker.bind(this);
     this.onEditUniverseButtonClick = this.onEditUniverseButtonClick.bind(this);
+    this.settingsTabPopoverRef = createRef();
     this.state = {
       dimensions: {},
       showAlert: false,
       actionsDropdownOpen: false,
-      refetchedUniverseDetails: false
+      refetchedUniverseDetails: false,
+      showBeforeProceedModal:
+        localStorage.getItem(BEFORE_PROCEED_WITH_NEW_MODAL_DISMISS_KEY) !== 'true',
+      isOnboardingExperienceEnabled: isOnboardingNewExperienceEnabled()
     };
   }
 
@@ -157,7 +170,12 @@ class UniverseDetail extends Component {
     return clusters.some((cluster) => cluster.clusterType === 'ASYNC');
   };
 
+  handleOnboardingExperienceChange = (enabled) => {
+    this.setState({ isOnboardingExperienceEnabled: enabled });
+  };
+
   componentWillUnmount() {
+    this.unsubscribeOnboardingExperience?.();
     this.props.resetUniverseInfo();
     this.props.resetTablesList();
   }
@@ -178,6 +196,9 @@ class UniverseDetail extends Component {
 
   componentDidMount() {
     this.props.fetchPerfAdvisorList();
+    this.unsubscribeOnboardingExperience = subscribeOnboardingNewExperienceChange(
+      this.handleOnboardingExperienceChange
+    );
     const {
       customer: { currentCustomer }
     } = this.props;
@@ -581,7 +602,11 @@ class UniverseDetail extends Component {
         (config) => config.key === RuntimeConfigKey.ENABLE_NON_RESTART_GFLAG_UPGRADE_OPTION
       )?.value === 'true';
 
-    const isV2EditUniverseUIEnabled = isV2CreateEditUniverseEnabled(runtimeConfigs?.data);
+    const isV2EditUniverseUIEnabled = isUniverseRevampExperienceEnabled(
+      runtimeConfigs?.data,
+      currentUser?.data?.role,
+      this.state.isOnboardingExperienceEnabled
+    );
 
     if (
       getPromiseState(currentUniverse).isLoading() ||
@@ -946,7 +971,14 @@ class UniverseDetail extends Component {
               <Tab.Pane
                 eventKey="settings"
                 key="settings-tab"
-                tabtitle="Settings"
+                tabtitle={<SettingsTabTitleWithPopover ref={this.settingsTabPopoverRef} />}
+                onBeforeSelect={() => {
+                  // Block Settings navigation until the tip is dismissed.
+                  if (this.settingsTabPopoverRef.current?.tryIntercept()) {
+                    return false;
+                  }
+                  return true;
+                }}
                 mountOnEnter={true}
                 unmountOnExit={true}
               >
@@ -2207,6 +2239,15 @@ class UniverseDetail extends Component {
             {[...tabElements, <div title={actionMenuButtons} />]}
           </YBTabsWithLinksPanel>
         </Measure>
+        {isV2EditUniverseUIEnabled && (
+          <BeforeProceedWithNewModal
+            open={this.state.showBeforeProceedModal}
+            onClose={() => {
+              localStorage.setItem(BEFORE_PROCEED_WITH_NEW_MODAL_DISMISS_KEY, 'true');
+              this.setState({ showBeforeProceedModal: false });
+            }}
+          />
+        )}
       </Grid>
     );
   }

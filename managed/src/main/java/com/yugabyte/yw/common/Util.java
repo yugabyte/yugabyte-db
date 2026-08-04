@@ -77,6 +77,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -933,6 +934,7 @@ public class Util {
     int maxNamespaceLen = 63;
     int firstPartLength = maxNamespaceLen - reserveSuffixLen;
     checkArgument(firstPartLength > 0, "Invalid suffix length");
+    checkArgument(name != null, "node prefix cannot be null");
     String sanitizedName = name.toLowerCase();
     if (sanitizedName.equals(name) && firstPartLength >= sanitizedName.length()) {
       // Backward compatibility taken care as old namespaces must have already passed this test for
@@ -1069,6 +1071,41 @@ public class Util {
               return cluster.getProviderCloudType(n) == expectedType;
             })
         .collect(Collectors.toSet());
+  }
+
+  /**
+   * Filling old fields from provider specifications if not present (for compatibility with old UI)
+   *
+   * @param userIntent
+   */
+  public static void fillIntentFromProviderSpecifications(UserIntent userIntent) {
+    if (userIntent == null) {
+      return;
+    }
+    if (userIntent.isMulticloudSupport() && userIntent.provider == null) {
+      // Filling with the first provider from the list.
+      UniverseDefinitionTaskParams.ProviderSpecification firstSpec =
+          userIntent.providerSpecifications.stream()
+              .sorted(Comparator.comparing(p -> p.getProviderUUID().toString()))
+              .findFirst()
+              .get();
+      firstSpec.validate(false);
+      userIntent.provider = firstSpec.getProviderUUID().toString();
+      userIntent.providerType = firstSpec.getProviderType();
+      userIntent.accessKeyCode = firstSpec.getAccessKeyCode();
+      userIntent.deviceInfo = userIntent.getBaseDeviceInfo(firstSpec.getProviderUUID());
+      userIntent.imageBundleUUID = firstSpec.getImageBundleUUID();
+      userIntent.instanceTags = new HashMap<>(firstSpec.getInstanceTags());
+      userIntent.awsArnString = firstSpec.getAwsInstanceProfile();
+      if (userIntent.dedicatedNodes) {
+        HierarchicalNodesSpec.NodeSpec masterSpecification =
+            firstSpec.getNodesSpecs().getMasterSpecification();
+        if (masterSpecification != null) {
+          userIntent.masterInstanceType = masterSpecification.getInstanceType();
+          userIntent.masterDeviceInfo = masterSpecification.getDeviceInfo();
+        }
+      }
+    }
   }
 
   /**

@@ -21,6 +21,7 @@ import {
   isValidEditUniverseTab,
   parseEditUniverseTabFromPath
 } from './editUniverseTabUtils';
+import { WhereThingsMovedTip } from '@app/redesign/features-v2/onboarding/universe-revamp/tips/WhereThingsMovedTip';
 
 const { Grid2: Grid, styled, Box } = mui;
 
@@ -129,6 +130,9 @@ const EditUniverseComponent: FC<EditUniverseProps & WithRouterProps> = ({
               <TabItem value={EditUniverseTabs.LOGS} label={t('logs')} />
               <TabItem value={EditUniverseTabs.TELEMETRY_EXPORT} label={t('telemetryExport')} />
             </YBTabs>
+            <Box sx={{ marginTop: '-8px' }}>
+              <WhereThingsMovedTip />
+            </Box>
           </Box>
         </Grid>
         <Grid

@@ -49,7 +49,7 @@ class XClusterOutboundReplicationGroup
         get_tables_func;
     const std::function<bool(const NamespaceId& namespace_id)> is_automatic_mode_switchover_func;
     const std::function<Result<std::unique_ptr<XClusterCreateStreamsContext>>(
-        const std::vector<TableId>&, const LeaderEpoch&)>
+        const std::vector<TableId>&, const LeaderEpoch&, bool /* automatic_ddl_mode */)>
         create_xcluster_streams_func;
     const std::function<Status(
         const std::vector<std::pair<TableId, xrepl::StreamId>>&, StreamCheckpointLocation,

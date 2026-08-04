@@ -18,6 +18,8 @@ export {
   assignRegionsAZNodeByReplicationFactor,
   reduceExpertNodeCountsToAtMostRf,
   getExpertNodesStepDefaultPlacement,
+  toExpertResilienceForDefaults,
+  getExpertAvailabilityZonesOrEmpty,
   getPlacementRegions,
   getAZCount,
   distributeReplicationFactorAcrossAzs

@@ -217,6 +217,23 @@ public class KMSConfigReconcilerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateNewKMSConfigAzu() throws Exception {
+    KMSConfig kmsConfig = baseCr("test-kms-azu", KMSConfigSpec.Provider.AZU);
+    UUID taskUUID = UUID.randomUUID();
+
+    doReturn(Json.newObject()).when(mockOperatorUtils).getKMSConfigFormDataFromCr(any());
+    when(mockKmsConfigHelper.createKMSConfig(
+            eq(testCustomer.getUuid()), eq(KeyProvider.AZU), any(ObjectNode.class)))
+        .thenReturn(taskUUID);
+
+    kmsConfigReconciler.createActionReconcile(kmsConfig, testCustomer);
+
+    verify(mockKmsConfigHelper, times(1))
+        .createKMSConfig(eq(testCustomer.getUuid()), eq(KeyProvider.AZU), any(ObjectNode.class));
+    assertEquals(taskUUID, kmsConfigReconciler.getKMSConfigTaskMapValue(workQueueKey(kmsConfig)));
+  }
+
+  @Test
   public void testCreateSetsFinalizer() throws Exception {
     KMSConfig kmsConfig = createHashicorpTokenCr("test-kms");
     kmsConfig.getMetadata().setFinalizers(Collections.emptyList());

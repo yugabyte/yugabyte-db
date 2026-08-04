@@ -40,14 +40,11 @@ macro(yb_find_third_party_installed_dir)
 
   # We support a layout of third-party dependencies where there are build-type-specific
   # subdirectories inside "build" and "installed" directories, such as clang15-x86_64,
-  # clang15-full-lto-x86_64, or clang15-linuxbrew-full-lto-x86_64. The logic below should match how
+  # or clang15-full-lto-x86_64. The logic below should match how
   # the subdir_items list is constructed in https://bit.ly/yb_thirdparty_fs_layout_py.
 
   set(YB_THIRDPARTY_INSTALLED_DIR_BASE "${YB_THIRDPARTY_DIR}/installed")
   set(YB_THIRDPARTY_SPECIFIC_BASENAME "${YB_COMPILER_TYPE}")
-  if(USING_LINUXBREW)
-    set(YB_THIRDPARTY_SPECIFIC_BASENAME "${YB_THIRDPARTY_SPECIFIC_BASENAME}-linuxbrew")
-  endif()
   if(YB_LTO_ENABLED)
     set(YB_THIRDPARTY_SPECIFIC_BASENAME "${YB_THIRDPARTY_SPECIFIC_BASENAME}-${YB_LINKING_TYPE}")
   endif()

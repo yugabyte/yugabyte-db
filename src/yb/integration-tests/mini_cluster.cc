@@ -259,11 +259,11 @@ Status MiniCluster::StartAsync(
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_ysql_operation_lease_expiry_check) = false;
 
   // This dictates the RF of newly created tables.
-  FLAGS_replication_factor = options_.num_tablet_servers >= 3 ? 3 : 1;
-  FLAGS_memstore_size_mb = 16;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = options_.num_tablet_servers >= 3 ? 3 : 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_memstore_size_mb) = 16;
   // Default master args to make sure we don't wait to trigger new LB tasks upon master leader
   // failover.
-  FLAGS_load_balancer_initial_delay_secs = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_initial_delay_secs) = 0;
 
   // Unlike real deployments, minicluster tests have multiple master/tserver in one process. This
   // results in multiple reserved address segments needed in one process, which is likely enough to
@@ -1709,7 +1709,7 @@ Result<size_t> ServerWithLeaders(MiniCluster* cluster) {
 void SetCompactFlushRateLimitBytesPerSec(MiniCluster* cluster, const size_t bytes_per_sec) {
   LOG(INFO) << "Setting FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec to: " << bytes_per_sec
             << " and updating compact/flush rate in existing tablets";
-  FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec = bytes_per_sec;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec) = bytes_per_sec;
   for (auto& tablet_peer : ListTabletPeers(cluster, ListPeersFilter::kAll)) {
     auto tablet_result = tablet_peer->shared_tablet();
     if (!tablet_result.ok()) {

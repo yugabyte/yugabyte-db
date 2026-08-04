@@ -183,6 +183,13 @@ DEFINE_RUNTIME_int32(backfill_index_timeout_grace_margin_ms, -1,
              "how far we have processed the rows.");
 TAG_FLAG(backfill_index_timeout_grace_margin_ms, advanced);
 
+DEFINE_RUNTIME_bool(backfill_index_check_snapshot_too_old, true,
+    "Whether an index backfill's read of the indexed table registers its fixed read time with the "
+    "retention policy, failing with SnapshotTooOld if the tablet's history cutoff has already "
+    "advanced past that read time.  Without the check, such a read can silently return "
+    "garbage-collected state and produce an incorrect index.");
+TAG_FLAG(backfill_index_check_snapshot_too_old, advanced);
+
 DEFINE_RUNTIME_bool(yql_allow_compatible_schema_versions, true,
             "Allow YCQL requests to be accepted even if they originate from a client who is ahead "
             "of the server's schema, but is determined to be compatible with the current version.");
@@ -351,6 +358,9 @@ DEFINE_RUNTIME_uint64(cdc_min_sec_to_retain_intent, 8 * 3600,
     "retained when cdc_enable_time_based_intent_retention is true. Intent SST files are not "
     "deleted until their maximum hybrid time is at least this many seconds old. This flag is not "
     "applicable when cdc_enable_time_based_intent_retention is false.");
+
+DEFINE_RUNTIME_AUTO_bool(enable_transaction_metadata_update, kLocalPersisted, false, true,
+    "Allow transaction metadata update records to be written to intentsdb.");
 
 DECLARE_bool(cdc_immediate_transaction_cleanup);
 DECLARE_bool(cdc_enable_time_based_intent_retention);
@@ -2015,6 +2025,29 @@ Status Tablet::ApplyOperation(
       batch_idx, write_batch, frontiers, write_hybrid_time, batch_hybrid_time, apply_to_storages);
 }
 
+Status Tablet::WriteTransactionMetadataUpdate(
+    OpId op_id, HybridTime write_hybrid_time, Slice transaction_id,
+    const LWTransactionMetadataPB& metadata_update) {
+  if (!FLAGS_enable_transaction_metadata_update) {
+    return Status::OK();
+  }
+
+  docdb::ConsensusFrontiers frontiers;
+  InitFrontiers(op_id, write_hybrid_time, /*commit_ht=*/HybridTime::kInvalid, frontiers);
+
+  docdb::TransactionMetadataUpdateWriter writer(transaction_id, write_hybrid_time, metadata_update);
+  rocksdb::WriteBatch write_batch;
+  write_batch.SetDirectWriter(&writer);
+
+  RequestScope request_scope = VERIFY_RESULT(CreateRequestScope(/* allow_when_closing= */ true));
+  WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
+  if (auto duration = write_batch.GetWriteGroupJoinDuration().ToMicroseconds()) {
+    metrics_->Increment(TabletEventStats::kIntentDbWriteThreadJoinDuration, duration);
+  }
+
+  return Status::OK();
+}
+
 Status Tablet::WriteTransactionalBatch(
     int64_t batch_idx, const docdb::LWKeyValueWriteBatchPB& put_batch, HybridTime hybrid_time,
     const storage::UserFrontiers& frontiers) {
@@ -3265,6 +3298,10 @@ string GenerateSerializedBackfillSpec(uint64_t batch_size, const string& next_ro
   return serialized_backfill_spec;
 }
 
+constexpr auto kBackfillReadSnapshotTooOldRemedy =
+    "Consider increasing tserver timestamp_history_retention_interval_sec above the expected "
+    "CREATE INDEX duration and retrying";
+
 // On success, returns
 // - backfilled_until
 // - num rows processed in table
@@ -3283,6 +3320,15 @@ Result<std::tuple<std::string, uint64_t, double>> QueryPostgresToDoBackfill(
     constexpr auto kSchemaMismatchSubstring = "ERROR:  schema version mismatch";
     if (libpq_error_msg.starts_with(kSchemaMismatchSubstring)) {
       return STATUS(TryAgain, libpq_error_msg);
+    }
+    // Attach the remedy hint to SnapshotTooOld errors.  The SQLSTATE does not say which read was
+    // rejected, so the hint may also land on a SnapshotTooOld arising from something other than
+    // the indexed-table scan, such as the syscatalog snapshot.  That is acceptable: such cases are
+    // practically unreachable from a fresh per-chunk backend, and the hint is merely advisory.
+    const auto pg_error_code = PgsqlError::ValueFromStatus(result.status());
+    if (pg_error_code && *pg_error_code == YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD) {
+      return STATUS(IllegalState, Format(
+          "$0. $1", libpq_error_msg, kBackfillReadSnapshotTooOldRemedy));
     }
     return STATUS(IllegalState, libpq_error_msg);
   }
@@ -3543,6 +3589,27 @@ Status Tablet::BackfillIndexes(
   // We must hold this RequestScope for the lifetime of this iterator to ensure backfill has a
   // consistent snapshot of the tablet w.r.t. transaction state.
   RequestScope scope = VERIFY_RESULT(CreateRequestScope());
+  // The scan below reads via a direct iterator, not the guarded tserver read path, so register the
+  // fixed backfill read time with the retention policy ourselves.  This rejects the read with
+  // SnapshotTooOld if the history cutoff has already advanced past the read time (reading anyway
+  // can silently return garbage-collected state and build an incorrect index) and prevents
+  // compaction from garbage-collecting history past the read time for the duration of this chunk.
+  ScopedReadOperation backfill_read_op;
+  if (PREDICT_TRUE(FLAGS_backfill_index_check_snapshot_too_old)) {
+    auto read_op_result = ScopedReadOperation::Create(
+        this, RequireLease::kFalse, ReadHybridTime::SingleTime(read_time));
+    if (!read_op_result.ok()) {
+      if (read_op_result.status().IsSnapshotTooOld() && metrics()) {
+        metrics()->Increment(TabletCounters::kBackfillReadsRejectedBelowHistoryCutoff);
+      }
+      LOG_WITH_PREFIX(WARNING) << "Rejecting index backfill read at " << read_time << ": "
+                               << read_op_result.status();
+      return STATUS_FORMAT(
+          IllegalState, "Index backfill read of the indexed table failed: $0. $1",
+          read_op_result.status().message().ToBuffer(), kBackfillReadSnapshotTooOldRemedy);
+    }
+    backfill_read_op = std::move(*read_op_result);
+  }
   auto iter = VERIFY_RESULT(NewRowIterator(
       projection, ReadHybridTime::SingleTime(read_time), "" /* table_id */, deadline,
       docdb::SkipSeek(!backfill_from.empty())));

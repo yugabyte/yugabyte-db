@@ -4408,12 +4408,14 @@
         "editPodsAndAvailabilityZones": "Edit AZ and Pod Placement",
         "advancedPlacementOptions": "Advanced Placement Options",
         "editMasterServerNodeAllocation": "Edit Master Server Node Allocation",
+        "masterServerNodeAllocation": "Master Server Node Allocation",
+        "masterServerNodeAllocationHelpText": "Improve metadata performance by allocating dedicated master server nodes. <a>Learn more</a>",
         "clusterPlacement": "Cluster Placement",
         "primaryCluster": "Primary Cluster",
         "addReadReplica": "Add Read Replica",
         "editReadReplica": "Edit Read Replica",
         "readReplica": "Read Replica",
-        "addReadReplicaHelpText": "Enhance read scalability and availability with Read Replicas.",
+        "addReadReplicaHelpText": "Enhance read scalability and availability with Read Replicas. <a>Learn more</a>",
         "addGeoPartition": "Add Geo Partition",
         "geoPartitionHelpText": "Optimize regional data placement for low-latency access or GDPR compliance. <a>Learn more</a>",
         "faultTolerance": "Fault Tolerance",
@@ -4995,6 +4997,136 @@
           "nodesPositiveInteger": "Nodes must be a positive whole number.",
           "universeUuidMissing": "Universe identifier is missing."
         }
+      }
+    },
+    "onBoarding": {
+      "whatChangedModal": {
+        "title": "What Changed",
+        "newAndImproved": "New and Improved",
+        "enhancedUniverseConfigTitle": "Enhanced Universe Configuration",
+        "enhancedUniverseConfigDescription": "Set up and manage universes using a wizard in Guided or Expert mode to help you build the right topology. <learnMore>Learn more</learnMore>",
+        "centralizedSettingsTitle": "Centralized Settings",
+        "centralizedSettingsDescription": "Access all your universe configuration settings from a single Settings tab. <learnMore>Learn more</learnMore>",
+        "preferredAzRankingTitle": "Preferred availability zone ranking",
+        "preferredAzRankingDescription": "Rank preferred availability zones to optimize connection latency. <learnMore>Learn more</learnMore>",
+        "otherImprovements": "Learn about other improvements in <releaseLink>this release.</releaseLink>",
+        "whereDidFeaturesMove": "Where did features move?",
+        "whereDidFeaturesMoveDescription": "Same features, new home. Here's where to find them now.",
+        "then": "Then",
+        "now": "Now",
+        "editUniverse": "Edit Universe",
+        "editUniversePlacementDetail": "(Region, AZ, and node placement)",
+        "editUniverseHardwareDetail": "(Instance Configuration)",
+        "logs": "Logs",
+        "logsAndMetricsExport": "Logs & Metrics Export",
+        "settings": "Settings",
+        "close": "Close",
+        "findOutMore": "Find Out More",
+        "nowPlacement": "Placement",
+        "nowHardware": "Hardware",
+        "nowLogs": "Logs",
+        "nowTelemetryExport": "Telemetry Export"
+      },
+      "whereThingsMovedModal": {
+        "title": "Where Things Moved",
+        "description": "Same features, new home. Here's where to find them now.",
+        "then": "Then",
+        "now": "Now",
+        "editUniversePlacement": "Edit Universe Placement",
+        "editUniverseInstance": "Edit Universe Instance",
+        "logs": "Logs",
+        "exportLogs": "Export Logs",
+        "exportMetrics": "Export Metrics",
+        "settings": "Settings",
+        "nowPlacement": "Placement",
+        "nowPlacementDetail": "(Availability zone placement and node allocation)",
+        "nowHardware": "Hardware",
+        "nowHardwareDetail": "(Instance settings)",
+        "nowLogs": "Logs",
+        "nowTelemetryExport": "Telemetry Export",
+        "close": "Close",
+        "findOutMore": "Find Out More"
+      },
+      "whereThingsMovedTip": {
+        "label": "Where things moved?"
+      },
+      "whatNewInPlacement": {
+        "title": "What's New",
+        "editPlacement": "Edit Placement",
+        "placement": "Placement",
+        "stepRegions": "Regions",
+        "stepAvailabilityZones": "Availability Zones and Nodes",
+        "calloutAddRegions": "Add or remove regions",
+        "calloutEditAz": "Edit availability zones and node distribution",
+        "instanceSettingsTip": "<bold>Looking for instance settings?</bold><br />Instance configuration is now available under →   <bold>Settings / Hardware</bold>",
+        "close": "Close",
+        "findOutMore": "Find Out More"
+      },
+      "beforeProceedWithNewModal": {
+        "title": "Before you proceed...",
+        "note": "Note that database audit log is now available under  “<settings>Settings</settings>”.",
+        "databaseAuditLogs": "Database audit logs",
+        "databaseAuditLogExport": "Database audit log export",
+        "settings": "Settings",
+        "nowLogs": "Logs",
+        "nowTelemetryExport": "Telemetry Export",
+        "close": "Close"
+      },
+      "universeCreationPopover": {
+        "title": "New Universe creation",
+        "body": "Explore the new workflow.",
+        "hideTip": "Hide tip"
+      },
+      "detailSettingsPopover": {
+        "title": "Centralized Settings",
+        "body": "Universe settings are now organized into dedicated sections where you can view configuration details and status.",
+        "hideTip": "Hide tip"
+      },
+      "advancedPlacementPopover": {
+        "title": "Advanced placement options",
+        "body": "Add read replicas, or configure dedicated master nodes.",
+        "hideTip": "Hide tip"
+      },
+      "guidedExpertModePopover": {
+        "hideTip": "Hide tip",
+        "learnMore": "Learn More",
+        "guided": {
+          "badge": "Recommended for most users",
+          "title": "Guided Mode",
+          "subtitle": "Outcome-driven setup",
+          "description": "Choose the resilience and let the system guide you through the steps to build your ideal cluster."
+        },
+        "expert": {
+          "badge": "Advanced",
+          "title": "Expert Mode",
+          "subtitle": "Flexible control",
+          "description": "Take full control to fine-tune node placement and provisioning and match the most exacting requirements."
+        }
+      },
+      "onBoardingBanner": {
+        "availableMessage": "A new and improved YugabyteDB Anywhere experience is available",
+        "enabledMessage": "You are now using the new experience.",
+        "usingNewExperienceMessage": "You are using a new and improved YugabyteDB Anywhere experience.",
+        "seeWhatsChanged": "See what's changed",
+        "newBadge": "New",
+        "tryItFirst": "Try it first on your account",
+        "tryItFirstInfoHeadline": "Applies only to your account. Other users will not see any change.",
+        "tryItFirstInfoBody": "To enable the new experience for all users on this YugabyteDB Anywhere instance, enable the <bold>{{runtimeConfig}}</bold> runtime configuration.",
+        "findOutMore": "Find out more"
+      },
+      "beforeNewExperiencePopover": {
+        "title": "Try the new experience",
+        "bodyLine1": "Switch between the current and new experiences at any time.",
+        "bodyLine2": "Once ready, use the <bold>{{runtimeConfig}} runtime configuration</bold> to enable the new experience for all users.",
+        "seeWhatsChanged": "See what's changed",
+        "hideTip": "Hide tip"
+      },
+      "afterNewExperiencePopover": {
+        "title": "Welcome to the new experience",
+        "bodyLine1": "YugabyteDB Anywhere has been updated with improved workflows, navigation, and settings organization.",
+        "bodyLine2": "See what's changed to learn about the new layout.",
+        "seeWhatsChanged": "See what's changed",
+        "hideTip": "Hide tip"
       }
     }
   }

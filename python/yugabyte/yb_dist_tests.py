@@ -26,7 +26,7 @@ import atexit
 import glob
 import argparse
 
-from typing import Optional, List, Set, Dict, cast
+from typing import Optional, List, Set, Dict
 
 from yugabyte.common_util import (
     get_build_type_from_build_root,
@@ -40,14 +40,12 @@ from yugabyte.test_descriptor import TestDescriptor
 import dataclasses
 
 
-global_conf: Optional['GlobalTestConfig'] = None
-
 CLOCK_SYNC_WAIT_LOGGING_INTERVAL_SEC = 10
 
 MAX_TIME_TO_WAIT_FOR_CLOCK_SYNC_SEC = 60
 
 
-class GlobalTestConfig:
+class TestConfig:
     build_root: str
     build_type: str
     yb_src_root: str
@@ -109,7 +107,9 @@ class TestResult:
                 logging.info("Had errors during artifact upload: %s", copy_result)
 
 
-def set_global_conf_from_args(args: argparse.Namespace) -> GlobalTestConfig:
+# The conf for this checkout, from the command line. Also settles $YB_COMPILER_TYPE, which the build
+# scripts read, so it has to run before anything shells out.
+def conf_from_args(args: argparse.Namespace) -> TestConfig:
     build_root = os.path.realpath(args.build_root)
 
     # This module is expected to be under python/yugabyte.
@@ -144,11 +144,9 @@ def set_global_conf_from_args(args: argparse.Namespace) -> GlobalTestConfig:
         raise ValueError(
                 "Build root '%s' implies compiler type '%s' but YB_COMPILER_TYPE is '%s'" % (
                     build_root, compiler_type, compiler_type_from_env))
-    from yugabyte import common_util
     os.environ['YB_COMPILER_TYPE'] = compiler_type
 
-    global global_conf
-    global_conf = GlobalTestConfig(
+    return TestConfig(
             build_root=build_root,
             build_type=build_type,
             yb_src_root=yb_src_root,
@@ -157,22 +155,6 @@ def set_global_conf_from_args(args: argparse.Namespace) -> GlobalTestConfig:
             compiler_type=compiler_type,
             # The archive might not even exist yet.
             archive_sha256sum=None)
-    return global_conf
-
-
-def set_global_conf_from_dict(global_conf_dict: Dict[str, str]) -> GlobalTestConfig:
-    """
-    This is used in functions that run on Spark. We use a dictionary to pass the configuration from
-    the main program to distributed workers.
-    """
-    global global_conf
-    try:
-        global_conf = GlobalTestConfig(**global_conf_dict)
-    except Exception as ex:
-        logging.exception("Cannot set global configuration from dictionary %s" % global_conf_dict)
-        raise ex
-
-    return global_conf
 
 
 # -------------------------------------------------------------------------------------------------
@@ -191,7 +173,6 @@ ARCHIVED_PATHS_IN_BUILD_DIR = [
     'master_flags.xml',
     'tserver_flags.xml',
     'version_metadata.json',
-    'linuxbrew_path.txt',
     'thirdparty_path.txt',
     'thirdparty_url.txt',
     'upgrade_test_builds',
@@ -280,20 +261,19 @@ def validate_mvn_local_repo(mvn_local_repo: str) -> None:
         logging.info(f"All Maven plugin patterns were found in local repo {mvn_local_repo}")
 
 
-def create_archive_for_workers() -> None:
-    assert global_conf is not None
-    dest_path = global_conf.archive_for_workers
+def create_archive_for_workers(conf: TestConfig) -> None:
+    dest_path = conf.archive_for_workers
     if dest_path is None:
         return
     tmp_dest_path = '%s.tmp.%d' % (dest_path, random.randint(0, 2 ** 64 - 1))
 
     start_time_sec = time.time()
     try:
-        build_root = os.path.abspath(global_conf.build_root)
+        build_root = os.path.abspath(conf.build_root)
         compiler_type = get_compiler_type_from_build_root(build_root)
-        yb_src_root = os.path.abspath(global_conf.yb_src_root)
+        yb_src_root = os.path.abspath(conf.yb_src_root)
         build_root_parent = os.path.join(yb_src_root, 'build')
-        rel_build_root = global_conf.rel_build_root
+        rel_build_root = conf.rel_build_root
         if os.path.exists(dest_path):
             logging.info("Removing existing archive file %s", dest_path)
             os.remove(dest_path)
@@ -314,11 +294,6 @@ def create_archive_for_workers() -> None:
                 mvn_local_repo, build_root_parent))
 
         files_that_must_exist_in_build_dir = ['thirdparty_path.txt']
-
-        # This will not include version-specific compiler types like clang11 or gcc9.
-        # We will eventually get rid of Linuxbrew and simplify this.
-        if sys.platform == 'linux' and compiler_type in ['gcc', 'clang']:
-            files_that_must_exist_in_build_dir.append('linuxbrew_path.txt')
 
         for rel_file_path in files_that_must_exist_in_build_dir:
             full_path = os.path.join(build_root, rel_file_path)
@@ -348,7 +323,7 @@ def create_archive_for_workers() -> None:
         ]
 
         logging.info("Running the tar command: %s", tar_args)
-        subprocess.check_call(tar_args, cwd=global_conf.yb_src_root)
+        subprocess.check_call(tar_args, cwd=conf.yb_src_root)
         if not os.path.exists(tmp_dest_path):
             raise IOError(
                     "Archive '%s' did not get created after command %s" % (
@@ -385,12 +360,11 @@ def compute_sha256sum(file_path: str) -> str:
     return checksum_str
 
 
-def compute_archive_sha256sum() -> None:
-    assert global_conf is not None
-    if global_conf.archive_for_workers is not None:
-        global_conf.archive_sha256sum = compute_sha256sum(global_conf.archive_for_workers)
+def compute_archive_sha256sum(conf: TestConfig) -> None:
+    if conf.archive_for_workers is not None:
+        conf.archive_sha256sum = compute_sha256sum(conf.archive_for_workers)
         logging.info("SHA256 checksum of archive %s: %s" % (
-            global_conf.archive_for_workers, global_conf.archive_sha256sum))
+            conf.archive_for_workers, conf.archive_sha256sum))
 
 
 def to_real_nfs_path(path: str) -> str:
@@ -409,8 +383,3 @@ def get_tmp_filename(prefix: str = '', suffix: str = '', auto_remove: bool = Fal
                 os.remove(file_path)
         atexit.register(cleanup)
     return file_path
-
-
-def get_global_conf() -> GlobalTestConfig:
-    assert global_conf is not None
-    return global_conf

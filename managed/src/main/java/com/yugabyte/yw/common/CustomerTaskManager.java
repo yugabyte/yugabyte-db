@@ -116,7 +116,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.ChangeLoadBalancerStateResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 
 @Singleton
@@ -608,7 +608,7 @@ public class CustomerTaskManager {
 
   private void enableLoadBalancer(Universe universe) {
     ChangeLoadBalancerStateResponse resp = null;
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       resp = client.changeLoadBalancerState(true);
     } catch (Exception e) {
       log.error(

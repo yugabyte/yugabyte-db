@@ -56,7 +56,7 @@ import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.RollbackAutoFlagsResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterClusterOuterClass;
 import org.yb.master.MasterClusterOuterClass.GetAutoFlagsConfigResponsePB;
@@ -65,7 +65,7 @@ import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
 public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
 
   protected Universe defaultUniverse;
-  protected YBClient mockClient;
+  protected YBClientApi mockClient;
   protected static final String NODE_PREFIX = "demo-universe";
   protected static final String YB_SOFTWARE_VERSION_OLD = "2.14.12.0-b1";
   protected static final String YB_SOFTWARE_VERSION_NEW = "2.18.2.0-b65";
@@ -73,7 +73,7 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
 
   @Before
   public void setUp() {
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
   }
 

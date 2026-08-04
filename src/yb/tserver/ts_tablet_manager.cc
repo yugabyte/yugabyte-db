@@ -330,9 +330,6 @@ DEFINE_test_flag(bool, crash_before_mark_clone_attempted, false,
 DEFINE_NON_RUNTIME_uint32(vector_index_concurrent_writes, 0,
     "Number of threads used by vector index thread pool. 0 - use number of CPUs for it.");
 
-DEFINE_RUNTIME_uint32(vector_index_num_compactions_limit, 1,
-    "Number of vector index compaction per tserver. 0 - no limit per tserver.");
-
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
 DECLARE_bool(lazily_flush_superblock);
@@ -342,6 +339,7 @@ DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 DECLARE_bool(qos_compaction_per_db_cgroups);
 DECLARE_bool(qos_consensus_per_db_cgroups);
 DECLARE_bool(qos_system_dbs_use_shared_pool);
+DECLARE_uint32(vector_index_num_compactions_limit);
 
 namespace yb::tserver {
 

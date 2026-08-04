@@ -12,10 +12,12 @@ import { ResilienceAndRegionsProps, ResilienceFormMode } from '../../create-univ
 import { NodeAvailabilityProps } from '../../create-universe/steps/nodes-availability/dtos';
 import { InstanceSettingProps } from '../../create-universe/steps/hardware-settings/dtos';
 import {
+  getAZCount,
   getEffectiveReplicationFactorForResilience,
   getNodeCount,
   getPlacementRegions,
-  isCurrentConfigSupportedByGuidedMode
+  isCurrentConfigSupportedByGuidedMode,
+  toExpertResilienceForDefaults
 } from '../../create-universe/CreateUniverseUtils';
 import {
   getExistingGeoPartitions
@@ -47,6 +49,7 @@ export const getResilienceAndRegionsProps = (
   const primaryCluster = getClusterByType(universeData, ClusterSpecClusterType.PRIMARY);
   const resilienceFormMode = getUniverseCreationMode(universeData);
   let resilience: ResilienceAndRegionsProps;
+  let clusterReplicationFactor = 1;
 
   if (hasGeoPartitions) {
     const selectedPartition = primaryCluster?.partitions_spec?.find(
@@ -57,6 +60,7 @@ export const getResilienceAndRegionsProps = (
     }
     const effectiveReplicationFactor =
       selectedPartition.replication_factor ?? primaryCluster?.replication_factor ?? 1;
+    clusterReplicationFactor = effectiveReplicationFactor;
     const stats = countRegionsAzsAndNodes(selectedPartition.placement);
     resilience = mapUniversePayloadToResilienceAndRegionsProps(
       providerRegions!,
@@ -68,10 +72,20 @@ export const getResilienceAndRegionsProps = (
     );
 
   } else {
+    clusterReplicationFactor = primaryCluster?.replication_factor ?? 1;
     const stats = countRegionsAzsAndNodes(primaryCluster!.placement_spec!);
     resilience = mapUniversePayloadToResilienceAndRegionsProps(providerRegions!, stats, primaryCluster!);
     
   }
+
+  // Expert form uses raw RF and AZ/REGION FT — not guided NODE_LEVEL collapse.
+  if (resilienceFormMode === ResilienceFormMode.EXPERT_MODE) {
+    return {
+      ...toExpertResilienceForDefaults(resilience),
+      resilienceFactor: clusterReplicationFactor
+    };
+  }
+
   return {
     ...resilience,
     resilienceFormMode
@@ -110,6 +124,17 @@ export const getNodesAvailabilityDefaultsForEditPlacement = (
 
   return defaults;
 };
+
+/** Re-seed universe placement when ResilienceAndRegions clears nodes to {}. */
+export function resolveEditPlacementNodesOnSave(
+  incoming: NodeAvailabilityProps | undefined,
+  universeDefaults: NodeAvailabilityProps
+): NodeAvailabilityProps {
+  if (!incoming || getAZCount(incoming.availabilityZones ?? {}) === 0) {
+    return universeDefaults;
+  }
+  return incoming;
+}
 
 const buildPlacementSpecFromRegionList = (
   existingPlacementSpec: ClusterPlacementSpec,

@@ -6,9 +6,9 @@ allOf:
   - properties:
       enable_exposing_service:
         description: Whether to create a load balancer service for this cluster. Defaults to NONE.
+        default: NONE
         allOf:
           - $ref: "./ExposingServiceState.yaml"
-        default: NONE
       enable_lb:
         description: Create target groups if enabled. Used by YBM.
         type: boolean

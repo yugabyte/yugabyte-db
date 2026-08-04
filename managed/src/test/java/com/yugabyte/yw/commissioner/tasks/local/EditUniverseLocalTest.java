@@ -51,7 +51,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.hamcrest.CoreMatchers;
 import org.junit.Before;
 import org.junit.Test;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 
 @Slf4j
@@ -1014,7 +1014,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
               }
             });
 
-    try (YBClient client =
+    try (YBClientApi client =
         ybClientService.getClient(
             universe.getMasterAddresses(), universe.getCertificateNodetoNode())) {
       RetryTaskUntilCondition<List<String>> waiter =

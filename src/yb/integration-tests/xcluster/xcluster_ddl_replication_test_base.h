@@ -69,6 +69,13 @@ class XClusterDDLReplicationTestBase : public XClusterYsqlTestBase {
 
   Status StepDownDdlQueueTablet(Cluster& cluster);
 
+  // This is used when setting up RF>1 replication to co-locate the ddl_queue tablet leader and
+  // the pg proxy tserver.
+  // At RF>1 the target's ddl_queue tablet leader is usually not the single pg proxy tserver.
+  // The ddl_queue handler stores the source to target table id mapping in its tserver's xCluster
+  // context, but the replicated CREATE runs on the proxy tserver and reads the mapping from there.
+  Status MoveDdlQueueTabletLeaderToPgProxy(Cluster& cluster);
+
   // We require at least one colocated table to exist before setting up replication.
   Status CreateInitialColocatedTable();
 

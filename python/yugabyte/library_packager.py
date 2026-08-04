@@ -47,7 +47,6 @@ from yugabyte.common_util import (
 from yugabyte.rpath import set_rpath, remove_rpath
 from yugabyte.sanitize_pg_compiler_config import assert_sanitized, sanitize_cc, sanitize_flags
 from yugabyte.file_util import clean_path_join
-from yugabyte.linuxbrew import get_linuxbrew_home, using_linuxbrew, LinuxbrewHome
 
 from typing import List, Optional, Any, Set, Tuple, Dict, cast
 
@@ -116,8 +115,6 @@ class DependencyCategory(enum.Enum):
 
     # Binaries built as part of llvm-installer (only used for sanitizers)
     LLVM_INSTALLER = 'llvm-installer'
-
-    LINUXBREW = 'linuxbrew'
 
     # Libraries residing in system-wide library directories. We do not copy these.
     SYSTEM = 'system'
@@ -193,11 +190,8 @@ class Dependency:
         if self.category is not None:
             return self.category
 
-        linuxbrew_home = get_linuxbrew_home()
         llvm_toolchain_dir = get_llvm_toolchain_dir()
-        if linuxbrew_home is not None and linuxbrew_home.path_is_in_linuxbrew_dir(self.target):
-            self.category = DependencyCategory.LINUXBREW
-        elif self.target.startswith(get_thirdparty_dir() + '/'):
+        if self.target.startswith(get_thirdparty_dir() + '/'):
             self.category = DependencyCategory.YB_THIRDPARTY
         elif llvm_toolchain_dir and self.target.startswith(llvm_toolchain_dir + '/'):
             self.category = DependencyCategory.LLVM_INSTALLER
@@ -218,15 +212,9 @@ class Dependency:
         if self.category:
             return self.category
 
-        if linuxbrew_home:
-            linuxbrew_dir_str = linuxbrew_home.get_human_readable_dirs()
-        else:
-            linuxbrew_dir_str = 'N/A'
-
         raise RuntimeError(
             ("Could not determine the category of this binary "
-             "(yugabyte / yb-thirdparty / linuxbrew / system): '{}'. "
-             "Does not reside in the Linuxbrew directory ({}), "
+             "(yugabyte / yb-thirdparty / system): '{}'. "
              "YB third-party directory ('{}'), "
              "YB llvm-installer directory ('{}'), "
              "YB build directory ('{}'), "
@@ -235,7 +223,6 @@ class Dependency:
              "and does not appear to be a system library (does not start with any of {})."
              ).format(
                 self.target,
-                linuxbrew_dir_str,
                 get_thirdparty_dir(),
                 llvm_toolchain_dir,
                 self.context.build_dir,
@@ -328,7 +315,6 @@ class LibraryPackager:
         Get the list of absolute paths of subdirectories of the destination directory that should be
         accessible
         """
-        assert not using_linuxbrew()
         return [
             os.path.abspath(os.path.join(dest_root_dir, 'lib', library_category.subdir_name))
             for library_category in CATEGORIES_FOR_RPATH
@@ -349,7 +335,7 @@ class LibraryPackager:
 
         if not os.access(file_path, os.W_OK):
             # Make sure we can write to the file. This may be necessary for e.g. files copied from
-            # Linuxbrew or third-party dependencies.
+            # third-party dependencies.
             subprocess.check_call(['chmod', 'u+w', file_path])
         if not os.access(file_path, os.X_OK):
             subprocess.check_call(['chmod', 'u+x', file_path])
@@ -379,14 +365,8 @@ class LibraryPackager:
         @param elf_file_path: ELF file (executable/library) path
         """
 
-        linuxbrew_home: Optional[LinuxbrewHome] = get_linuxbrew_home()
         elf_file_path = os.path.realpath(elf_file_path)
-        if SYSTEM_LIBRARY_PATH_RE.match(elf_file_path) or not using_linuxbrew():
-            ldd_path = '/usr/bin/ldd'
-        else:
-            assert linuxbrew_home is not None
-            assert linuxbrew_home.ldd_path is not None
-            ldd_path = linuxbrew_home.ldd_path
+        ldd_path = '/usr/bin/ldd'
 
         ldd_result = run_program([ldd_path, elf_file_path], error_ok=True)
         dependencies: Set[Dependency] = set()
@@ -463,8 +443,6 @@ class LibraryPackager:
         starting with the given set of "seed executables", in the destination directory so that
         the executables can find all of their dependencies.
         """
-
-        linuxbrew_home = get_linuxbrew_home()
 
         all_deps: List[Dependency] = []
 
@@ -544,15 +522,6 @@ class LibraryPackager:
 
         all_deps += self.get_all_postgres_lib_deps()
 
-        if using_linuxbrew():
-            # Not using the install_dyn_linked_binary method for copying patchelf and ld.so as we
-            # won't need to do any post-processing on these two later.
-            assert linuxbrew_home is not None
-            assert linuxbrew_home.patchelf_path is not None
-            assert linuxbrew_home.ld_so_path is not None
-            shutil.copy(linuxbrew_home.patchelf_path, self.main_dest_bin_dir)
-            shutil.copy(linuxbrew_home.ld_so_path, dest_lib_dir)
-
         all_deps = sorted(set(all_deps))
 
         deps_sorted_by_name: List[Tuple[str, List[Dependency]]] = sorted_grouped_by(
@@ -566,24 +535,6 @@ class LibraryPackager:
                     "Multiple dependencies with the same name {} but different targets: {}".format(
                         dep_name, deps_with_same_name
                     ))
-
-        linuxbrew_dest_dir = os.path.join(self.dest_dir, 'linuxbrew')
-        linuxbrew_lib_dest_dir = os.path.join(linuxbrew_dest_dir, 'lib')
-
-        # Add libresolv and libnss_* libs explicitly because they are loaded by glibc at runtime.
-        additional_libs: Set[str] = set()
-        if using_linuxbrew():
-            for additional_lib_name_glob in ADDITIONAL_LIB_NAME_GLOBS:
-                assert linuxbrew_home is not None
-                assert linuxbrew_home.cellar_glibc_dir is not None
-                additional_libs.update(
-                    lib_path for lib_path in
-                    glob.glob(os.path.join(
-                        linuxbrew_home.cellar_glibc_dir,
-                        '*',
-                        'lib',
-                        additional_lib_name_glob))
-                    if not lib_path.endswith('.a'))
 
         for category, deps_in_category in sorted_grouped_by(all_deps,
                                                             lambda dep: dep.get_category()):
@@ -604,33 +555,15 @@ class LibraryPackager:
                     "installed as part of copying the entire postgres directory.")
                 continue
 
-            if category == DependencyCategory.LINUXBREW:
-                category_dest_dir = linuxbrew_lib_dest_dir
-            else:
-                category_dest_dir = os.path.join(dest_lib_dir, category.subdir_name)
+            category_dest_dir = os.path.join(dest_lib_dir, category.subdir_name)
             mkdir_p(category_dest_dir)
 
             for dep in deps_in_category:
-                additional_libs.discard(dep.target)
                 self.install_dyn_linked_binary(dep.target, category_dest_dir)
                 target_name = os.path.basename(dep.target)
                 if target_name != dep.name:
                     target_src = os.path.join(os.path.dirname(dep.target), dep.name)
-                    additional_libs.discard(target_src)
                     symlink(target_name, os.path.join(category_dest_dir, dep.name))
-
-        for lib_path in additional_libs:
-            if os.path.isfile(lib_path):
-                self.install_dyn_linked_binary(lib_path, linuxbrew_lib_dest_dir)
-                logging.info("Installed additional lib: " + lib_path)
-            elif os.path.islink(lib_path):
-                link_target_basename = os.path.basename(os.readlink(lib_path))
-                logging.info("Installed additional symlink: " + lib_path)
-                symlink(link_target_basename,
-                        os.path.join(linuxbrew_lib_dest_dir, os.path.basename(lib_path)))
-            else:
-                raise RuntimeError(
-                    "Expected '{}' to be a file or a symlink".format(lib_path))
 
         for installed_binary in self.installed_dyn_linked_binaries:
             # Sometimes files that we copy from other locations are not even writable by user!

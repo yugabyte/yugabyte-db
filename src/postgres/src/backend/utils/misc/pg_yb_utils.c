@@ -153,6 +153,7 @@
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "yb_ash.h"
+#include "yb_dist_trace.h"
 #include "yb_internal_conn.h"
 #include "yb_qpm.h"
 #include "yb_query_diagnostics.h"
@@ -1098,6 +1099,9 @@ YBInitPostgresBackend(const char *program_name, const YbcPgInitPostgresInfo *ini
 			hex_uuid[2 * UUID_LEN] = '\0';
 
 			YBCInitDistTrace(MyProcPid, hex_uuid);
+
+			/* Hooks that close node spans left open by a query abort. */
+			YbDistTraceInstallExecutorHooks();
 		}
 	}
 }

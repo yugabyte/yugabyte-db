@@ -473,6 +473,30 @@ public class UsersControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testUpdateUserProfileNewUniverseUiTourCompleted() throws IOException {
+    Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
+    assertNull(testUser1.getNewUniverseUiTourCompleted());
+    String authTokenTest = testUser1.createAuthToken();
+    ObjectNode params = Json.newObject();
+    params.put("newUniverseUiTourCompleted", true);
+    params.put("role", "Admin");
+    Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
+    Result result =
+        route(
+            fakeRequest(
+                    "PUT",
+                    String.format(
+                        "%s/%s/update_profile",
+                        String.format(baseRoute, customer1.getUuid()), testUser1.getUuid()))
+                .cookie(validCookie)
+                .bodyJson(params));
+    assertOk(result);
+    testUser1 = Users.get(testUser1.getUuid());
+    assertEquals(Boolean.TRUE, testUser1.getNewUniverseUiTourCompleted());
+    assertAuditEntry(1, customer1.getUuid());
+  }
+
+  @Test
   public void testUpdateUserProfileValidOnlyTimezone() throws IOException {
     Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
     String testTimezone1 = "America/Toronto";

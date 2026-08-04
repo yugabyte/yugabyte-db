@@ -1,6 +1,6 @@
 module github.com/yugabyte/yugabyte-db/managed/yba-cli
 
-go 1.26.4
+go 1.26.5
 
 require (
 	github.com/Masterminds/sprig/v3 v3.2.3
@@ -16,7 +16,7 @@ require (
 	github.com/yugabyte/platform-go-client v0.0.0-20260424070128-33f8cf839dd2
 	github.com/yugabyte/platform-go-client/v2 v2.0.0-20260424070128-33f8cf839dd2
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
-	golang.org/x/term v0.30.0
+	golang.org/x/term v0.45.0
 	gopkg.in/yaml.v2 v2.4.0
 	gotest.tools/v3 v3.5.0
 )
@@ -56,8 +56,8 @@ require (
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/spf13/pflag v1.0.10
 	github.com/subosito/gotenv v1.6.0 // indirect
-	golang.org/x/crypto v0.36.0 // indirect
-	golang.org/x/sys v0.31.0 // indirect
-	golang.org/x/text v0.28.0 // indirect
+	golang.org/x/crypto v0.54.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

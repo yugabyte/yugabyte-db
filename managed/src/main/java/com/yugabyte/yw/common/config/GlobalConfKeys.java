@@ -2311,7 +2311,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Estimated memory usage per node when advanced observability is enabled (in MB). Used"
               + " to precheck YBA node memory headroom before enabling advanced observability.",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> paMemoryPerNodePaCollectorMb =
       new ConfKeyInfo<>(
           "yb.pa.memory_per_node_pa_collector_mb",
@@ -2321,7 +2321,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " observability (in MB). Used to precheck YBA node memory headroom before enabling"
               + " PA collection.",
           ConfDataType.IntegerType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> skipPaMemoryValidation =
       new ConfKeyInfo<>(
           "yb.pa.skip_memory_validation",

@@ -45,7 +45,7 @@ import org.pac4j.core.context.session.SessionStore;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.yb.client.GetTableSchemaResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
@@ -94,7 +94,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public YbcClientService mockYbcClientService = mock(YbcClientService.class);
   public YbcUpgrade mockYbcUpgrade = mock(YbcUpgrade.class);
   public YbcManager mockYbcManager = mock(YbcManager.class);
-  public YBClient mockYBClient = mock(YBClient.class);
+  public YBClientApi mockYBClient = mock(YBClientApi.class);
   public SwamperHelper mockSwamperHelper = mock(SwamperHelper.class);
   public FileHelperService mockFileHelperService = mock(FileHelperService.class);
   public PrometheusConfigManager mockPrometheusConfigManager = mock(PrometheusConfigManager.class);
@@ -155,7 +155,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(CloudQueryHelper.class).toInstance(mockCloudQueryHelper))
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
                 .overrides(bind(YBClientService.class).toInstance(mockService))
-                .overrides(bind(YBClient.class).toInstance(mockYBClient))
+                .overrides(bind(YBClientApi.class).toInstance(mockYBClient))
                 .overrides(bind(NetworkManager.class).toInstance(mockNetworkManager))
                 .overrides(bind(DnsManager.class).toInstance(mockDnsManager))
                 .overrides(bind(YamlWrapper.class).toInstance(mockYamlWrapper))

@@ -45,6 +45,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -104,6 +105,17 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     Map<String, String> flagMap = super.getMasterFlags();
     flagMap.put("TEST_dcheck_for_missing_schema_packing", "false");
     return flagMap;
+  }
+
+  private void assertReplicationSlotExists(String slotName, boolean expectedExists)
+      throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      ResultSet res = stmt.executeQuery(
+          "SELECT count(*) FROM pg_replication_slots WHERE slot_name = '" + slotName + "'");
+      assertTrue(res.next());
+      assertEquals("Unexpected pg_replication_slots state for slot " + slotName,
+          expectedExists ? 1 : 0, res.getInt(1));
+    }
   }
 
   void createSlot(PGReplicationConnection replConnection, String slotName, String pluginName)
@@ -6785,5 +6797,122 @@ public class TestPgReplicationSlot extends BasePgSQLTest {
     stream.close();
     colConn.close();
     replConn.close();
+  }
+
+  @Test
+  public void testDropReplicationSlotWaitWalsender() throws Exception {
+    restartClusterWithFlags(getMasterFlags(), getTServerFlagsWithExclusiveLock());
+
+    String slotName = "drop_slot_wait_test";
+
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("DROP TABLE IF EXISTS t_drop_wait");
+      stmt.execute("CREATE TABLE t_drop_wait(k int primary key, v text)");
+      stmt.execute("INSERT INTO t_drop_wait VALUES (1, 'a')");
+    }
+
+    Connection replConn0 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replApi0 =
+        replConn0.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replApi0, slotName, "test_decoding");
+    assertReplicationSlotExists(slotName, true);
+
+    PGReplicationStream stream0 = replApi0.replicationStream()
+        .logical()
+        .withSlotName(slotName)
+        .withStartPosition(LogSequenceNumber.valueOf(0L))
+        .start();
+
+    // Without WAIT, the drop must fail immediately since the slot lock is
+    // held by the active walsender on tserver 0.
+    Connection replConn1 = getConnectionBuilder().withTServer(1).replicationConnect();
+    boolean exceptionThrown = false;
+    try (Statement stmt = replConn1.createStatement()) {
+      stmt.execute("DROP_REPLICATION_SLOT " + slotName);
+    } catch (PSQLException e) {
+      exceptionThrown = true;
+      String expectedErrorMessage = "could not acquire replication slot";
+      if (StringUtils.containsIgnoreCase(e.getMessage(), expectedErrorMessage)) {
+        LOG.info("Expected exception", e);
+      } else {
+        fail(String.format("Unexpected Error Message. Got: '%s', Expected to contain: '%s'",
+            e.getMessage(), expectedErrorMessage));
+      }
+    } finally {
+      replConn1.close();
+    }
+    assertTrue("Expected DROP_REPLICATION_SLOT without WAIT to fail for an in-use slot",
+        exceptionThrown);
+    assertReplicationSlotExists(slotName, true);
+
+    // With WAIT, the drop must block until the slot is released.
+    AtomicReference<Exception> dropError = new AtomicReference<>();
+    Thread dropThread = new Thread(() -> {
+      try (Connection replConn2 = getConnectionBuilder().withTServer(1).replicationConnect();
+           Statement stmt = replConn2.createStatement()) {
+        stmt.execute("DROP_REPLICATION_SLOT " + slotName + " WAIT");
+      } catch (Exception e) {
+        dropError.set(e);
+      }
+    });
+    dropThread.start();
+
+    // Verify the drop is still blocked while the slot is in use.
+    Thread.sleep(5000);
+    assertTrue("Expected DROP_REPLICATION_SLOT ... WAIT to block while the slot is in use",
+        dropThread.isAlive());
+    assertReplicationSlotExists(slotName, true);
+
+    // Release the slot; the blocked drop should now finish.
+    stream0.close();
+    replConn0.close();
+
+    dropThread.join(60000);
+    assertFalse("Expected DROP_REPLICATION_SLOT ... WAIT to complete after the slot was released",
+        dropThread.isAlive());
+    if (dropError.get() != null) {
+      throw new AssertionError("DROP_REPLICATION_SLOT ... WAIT failed", dropError.get());
+    }
+    assertReplicationSlotExists(slotName, false);
+  }
+
+  @Test
+  public void testDropReplicationSlotWaitRequiresExclusiveLock() throws Exception {
+    // Without yb_enable_replication_slot_exclusive_lock, WAIT must be rejected.
+    restartClusterWithFlags(getMasterFlags(), getTServerFlags());
+
+    String slotName = "drop_slot_wait_no_lock_test";
+
+    Connection replConn0 = getConnectionBuilder().withTServer(0).replicationConnect();
+    PGReplicationConnection replApi0 =
+        replConn0.unwrap(PGConnection.class).getReplicationAPI();
+
+    createSlot(replApi0, slotName, "test_decoding");
+    assertReplicationSlotExists(slotName, true);
+
+    boolean exceptionThrown = false;
+    try (Statement stmt = replConn0.createStatement()) {
+      stmt.execute("DROP_REPLICATION_SLOT " + slotName + " WAIT");
+    } catch (PSQLException e) {
+      exceptionThrown = true;
+      String expectedErrorMessage = "waiting for a replication slot is not yet supported";
+      if (StringUtils.containsIgnoreCase(e.getMessage(), expectedErrorMessage)) {
+        LOG.info("Expected exception", e);
+      } else {
+        fail(String.format("Unexpected Error Message. Got: '%s', Expected to contain: '%s'",
+            e.getMessage(), expectedErrorMessage));
+      }
+    }
+    assertTrue("Expected DROP_REPLICATION_SLOT ... WAIT to fail when the exclusive slot lock"
+        + " is disabled", exceptionThrown);
+    assertReplicationSlotExists(slotName, true);
+
+    // Cleanup: a plain drop still works.
+    Connection replConn1 = getConnectionBuilder().withTServer(0).replicationConnect();
+    replConn1.unwrap(PGConnection.class).getReplicationAPI().dropReplicationSlot(slotName);
+    assertReplicationSlotExists(slotName, false);
+    replConn1.close();
+    replConn0.close();
   }
 }

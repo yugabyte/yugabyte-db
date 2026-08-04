@@ -134,7 +134,7 @@ import org.yb.CommonNet.PlacementInfoPB;
 import org.yb.CommonNet.ReplicationInfoPB;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
@@ -966,7 +966,8 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     log.info("universe definition json {}", universe.getUniverseDetailsJson());
     String certificate = universe.getCertificateNodetoNode();
     verifyDNS(universe);
-    try (YBClient client = ybClientService.getClient(universe.getMasterAddresses(), certificate)) {
+    try (YBClientApi client =
+        ybClientService.getClient(universe.getMasterAddresses(), certificate)) {
       GetMasterClusterConfigResponse masterClusterConfig = client.getMasterClusterConfig();
       CatalogEntityInfo.SysClusterConfigEntryPB config = masterClusterConfig.getConfig();
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -1196,7 +1197,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
   }
 
   protected String getMasterLeader(Universe universe) {
-    try (YBClient client =
+    try (YBClientApi client =
         ybClientService.getClient(
             universe.getMasterAddresses(), universe.getCertificateNodetoNode())) {
       HostAndPort leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();
@@ -1326,7 +1327,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     return localNodeManager.isProcessRunning(nodeName, ServerType.MASTER);
   }
 
-  protected void waitTillNumOfTservers(YBClient ybClient, int expected) {
+  protected void waitTillNumOfTservers(YBClientApi ybClient, int expected) {
     RetryTaskUntilCondition<Integer> condition =
         new RetryTaskUntilCondition<>(
             () -> getNumberOfTservers(ybClient), (num) -> num == expected);
@@ -1336,7 +1337,7 @@ public abstract class LocalProviderUniverseTestBase extends CommissionerBaseTest
     }
   }
 
-  protected Integer getNumberOfTservers(YBClient ybClient) {
+  protected Integer getNumberOfTservers(YBClientApi ybClient) {
     try {
       return ybClient.listTabletServers().getTabletServersCount();
     } catch (Exception e) {

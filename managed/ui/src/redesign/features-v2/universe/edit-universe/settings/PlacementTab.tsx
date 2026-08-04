@@ -213,6 +213,7 @@ export const PlacementTab = () => {
           onEditMasterAllocationClick={
             isK8s ? undefined : () => setShowMasterServerNodeAllocationModal(true)
           }
+          useDedicatedNodes={!!primaryCluster?.node_spec?.dedicated_nodes}
           showAddGeoPartition={false}
           readReplicaAlreadyPresent={readReplicaPlacementEntries.length > 0}
         />

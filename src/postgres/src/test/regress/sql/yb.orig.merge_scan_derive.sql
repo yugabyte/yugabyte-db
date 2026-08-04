@@ -113,10 +113,9 @@ SPLIT AT VALUES (
 DROP INDEX r5n_expr_r2_r3_r4_idx;
 
 --
--- Derive from secondary index expression, expression not being a prefix,
--- modulus being negative.
+-- Derive from secondary index expression, expression not being a prefix
 --
-CREATE INDEX NONCONCURRENTLY ON r5n (r1 ASC, (yb_hash_code(r1, r3, r4) % -5) ASC, r3, r4)
+CREATE INDEX NONCONCURRENTLY r5n_r1_expr_r3_r4_idx ON r5n (r1 ASC, (yb_hash_code(r1, r3, r4) % 5) ASC, r3, r4)
 SPLIT AT VALUES (
     (1),
     (2),
@@ -127,11 +126,11 @@ SPLIT AT VALUES (
 
 -- Expression in sort, so not derived
 -- Merge scan should not be used.
-\set query ':explain :Q SELECT r1, yb_hash_code(r1, r3, r4) % -5, r3, n FROM r5n WHERE r1 = 1 ORDER BY yb_hash_code(r1, r3, r4) % -5, r3, n LIMIT 5;'
+\set query ':explain :Q SELECT r1, yb_hash_code(r1, r3, r4) % 5, r3, n FROM r5n WHERE r1 = 1 ORDER BY yb_hash_code(r1, r3, r4) % 5, r3, n LIMIT 5;'
 \i :run_query
 
 -- Expression in sort, so not derived (v2)
-\set query ':P :Q SELECT yb_hash_code(r1, r3, r4) % -5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % -5, r3, n LIMIT 5;'
+\set query ':P :Q SELECT yb_hash_code(r1, r3, r4) % 5, r3, n, r1 FROM r5n WHERE r1 in (0, 1, 2) ORDER BY yb_hash_code(r1, r3, r4) % 5, r3, n LIMIT 5;'
 \i :run_query
 
 -- Derived

@@ -659,6 +659,9 @@ DEFINE_test_flag(bool, enable_multi_way_tablet_split, false,
 DEFINE_test_flag(bool, cdcsdk_disable_stream_drop_during_db_drop, false,
     "When enabled, the DeleteNamespace workflow won't mark associated CDCSDK streams as DELETING.");
 
+DEFINE_test_flag(int32, delay_at_start_of_schedule_post_tablet_create_tasks_ms, 0,
+    "Sleep at the start of SchedulePostTabletCreationTasks.");
+
 DECLARE_bool(create_initial_sys_catalog_snapshot);
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_truncate_cdcsdk_table);
@@ -2002,6 +2005,8 @@ Status CatalogManager::PrepareSystemTable(const TableName& table_name,
                                           const Schema& schema,
                                           const LeaderEpoch& epoch,
                                           YQLVirtualTable* vtable) {
+  TableCommitLockAssertSuppression no_table_commit_assert;
+
   std::unique_ptr<YQLVirtualTable> yql_storage(vtable);
 
   scoped_refptr<TableInfo> table = FindPtrOrNull(table_names_map_,
@@ -4447,6 +4452,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
                                    const LeaderEpoch& epoch) {
   DVLOG(3) << __PRETTY_FUNCTION__ << " Begin. " << orig_req->DebugString();
 
+  TableCommitLockAssertSuppression no_table_commit_assert;
+
   const bool is_pg_table = orig_req->table_type() == PGSQL_TABLE_TYPE;
   const bool is_pg_catalog_table = is_pg_table && orig_req->is_pg_catalog_table();
   if (!is_pg_catalog_table || !FLAGS_hide_pg_catalog_table_creation_logs) {
@@ -5511,9 +5518,11 @@ Status CatalogManager::AddTransactionStatusTablet(
   auto old_tablet_lock = VERIFY_RESULT(
       table->AddStatusTabletViaSplitPartition(old_tablet, left_partition, new_tablet));
   RETURN_NOT_OK(sys_catalog_->Upsert(epoch, table, new_tablet, old_tablet));
-  write_lock.Commit();
+  // Release tablet locks before table lock otherwise we may deadlock with heartbeats.
+  // Note that in-mem datastructures have already been updated by this point.
   old_tablet_lock.Commit();
   new_tablet->mutable_metadata()->CommitMutation();
+  write_lock.Commit();
   TRACE("Wrote table to system table");
 
   // Increment transaction status version if needed.
@@ -6332,9 +6341,12 @@ Result<scoped_refptr<TableInfo>> CatalogManager::FindTableByIdUnlocked(
     const TableId& table_id, bool include_deleted) const {
   auto table = tables_->FindTableOrNull(table_id);
   if (table == nullptr || (!include_deleted && table->is_deleted())) {
+    // Use the same wording as CheckIfTableDeletedOrNotVisibleToClient uses for the DELETING state,
+    // so the error for a concurrently dropped table does not depend on how far the asynchronous
+    // deletion progressed.
     return STATUS_EC_FORMAT(
         NotFound, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
-        "Table with identifier $0 not found", table_id);
+        "Table with id $0 does not exist", table_id);
   }
   return table;
 }
@@ -6690,25 +6702,6 @@ Status CatalogManager::BackfillIndex(
                   index_table_identifier.ShortDebugString());
   }
 
-  uint32_t current_version;
-  {
-    auto l = indexed_table->LockForRead();
-    current_version = l->pb.version();
-  }
-
-  // Validate that the index is at the correct permission.
-  IndexInfoPB index_info_pb;
-  indexed_table->GetIndexInfo(index_table->id()).ToPB(&index_info_pb);
-  if (index_info_pb.index_permissions() != INDEX_PERM_WRITE_AND_DELETE) {
-    return SetupError(
-        resp->mutable_error(),
-        MasterErrorPB::INVALID_SCHEMA,
-        STATUS_FORMAT(
-            InvalidArgument,
-            "Expected WRITE_AND_DELETE perm, got $0",
-            IndexPermissions_Name(index_info_pb.index_permissions())));
-  }
-
   std::optional<TransactionMetadata> requester_txn;
   if (req->has_requester_transaction()) {
     auto result = TransactionMetadata::FromPB(req->requester_transaction());
@@ -6719,9 +6712,48 @@ Status CatalogManager::BackfillIndex(
     }
   }
 
-  return MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
-      this, indexed_table, current_version, epoch, std::move(requester_txn),
-      /* respect_backfill_deferrals */ false, /* update_ysql_to_backfill */ true);
+  // A concurrent DDL can bump the indexed table's schema version between reading it here and
+  // updating the index permission, which fails the update with AlreadyPresent. The conflict is
+  // transient, so retry, re-reading the permission together with the version: the new version
+  // could carry a permission that no longer allows backfill.
+  constexpr int kMaxAttempts = 10;
+  Status s;
+  for (int attempt = 1; attempt <= kMaxAttempts; ++attempt) {
+    uint32_t current_version;
+    // IndexInfoPB default, i.e. what an index absent from the list reports.
+    auto index_permissions = INDEX_PERM_READ_WRITE_AND_DELETE;
+    {
+      auto l = indexed_table->LockForRead();
+      current_version = l->pb.version();
+      for (const auto& index_info_pb : l->pb.indexes()) {
+        if (index_info_pb.table_id() == index_table->id()) {
+          index_permissions = index_info_pb.index_permissions();
+          break;
+        }
+      }
+    }
+
+    // Validate that the index is at the correct permission.
+    if (index_permissions != INDEX_PERM_WRITE_AND_DELETE) {
+      return SetupError(
+          resp->mutable_error(),
+          MasterErrorPB::INVALID_SCHEMA,
+          STATUS_FORMAT(
+              InvalidArgument,
+              "Expected WRITE_AND_DELETE perm, got $0",
+              IndexPermissions_Name(index_permissions)));
+    }
+
+    s = MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
+        this, indexed_table, current_version, epoch, requester_txn,
+        /* respect_backfill_deferrals */ false, /* update_ysql_to_backfill */ true);
+    if (!s.IsAlreadyPresent()) {
+      break;
+    }
+    LOG(WARNING) << "BackfillIndex: schema version race on " << indexed_table->ToString()
+                 << ", attempt " << attempt << ": " << s;
+  }
+  return s;
 }
 
 Status CatalogManager::GetBackfillJobs(
@@ -14114,11 +14146,22 @@ void CatalogManager::WriteTabletToSysCatalog(const TabletId& tablet_id) {
 void CatalogManager::SchedulePostTabletCreationTasks(
     const TableInfoPtr& table_info, const LeaderEpoch& epoch,
     const std::set<TabletId>& new_running_tablets) {
+  if (PREDICT_FALSE(FLAGS_TEST_delay_at_start_of_schedule_post_tablet_create_tasks_ms > 0)) {
+    SleepFor(MonoDelta::FromMilliseconds(
+        FLAGS_TEST_delay_at_start_of_schedule_post_tablet_create_tasks_ms));
+  }
+
   if (!table_info->LockForRead()->IsPreparing()) {
     return;
   }
   auto tablets_running_result = table_info->AreAllTabletsRunning(new_running_tablets);
   if (!tablets_running_result.ok() || !*tablets_running_result) {
+    return;
+  }
+
+  if (!table_info->TrySetPostTabletCreateTasksScheduled()) {
+    VLOG(1) << "PostTabletCreateTasks already scheduled for table: " << table_info->ToString()
+            << " skipping scheduling";
     return;
   }
 
@@ -14132,9 +14175,13 @@ void CatalogManager::SchedulePostTabletCreationTasks(
         *this, *AsyncTaskPool(), *master_->messenger(), table_info, epoch));
   }
 
-  WARN_NOT_OK(
-      PostTabletCreateTaskBase::StartTasks(table_creation_tasks, this, table_info, epoch),
-      "Failed to schedule PostTabletCreateTasks");
+  auto status = PostTabletCreateTaskBase::StartTasks(table_creation_tasks, this, table_info, epoch);
+  if (!status.ok()) {
+    table_info->SetCreateTableErrorStatus(status);
+    LOG_WITH_FUNC(WARNING) << Format(
+        "Failed to schedule PostTabletCreateTasks for table: $0. Reason: $1",
+        table_info->ToString(), status.ToString());
+  }
 }
 
 Status CatalogManager::PromoteTableToRunningState(
@@ -14148,6 +14195,10 @@ Status CatalogManager::PromoteTableToRunningState(
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->Upsert(epoch, table_info.get()), "Promote table to RUNNING state");
   l.Commit();
+
+  // A RUNNING table can be moved back to PREPARING later (e.g. repartitions table),
+  // and then needs to be able to schedule the post tablet create tasks again.
+  table_info->ClearPostTabletCreateTasksScheduled();
   return Status::OK();
 }
 

@@ -29,7 +29,8 @@ import {
   computeResilienceTypeFromProvider,
   getAZCount,
   getFaultToleranceNeeded,
-  isCurrentConfigSupportedByGuidedMode
+  isCurrentConfigSupportedByGuidedMode,
+  getGuidedNodesStepReplicationFactor
 } from '../../CreateUniverseUtils';
 import {
   CreateUniverseContext,
@@ -46,6 +47,10 @@ import {
   RESILIENCE_FORM_MODE,
   RESILIENCE_TYPE
 } from '../../fields/FieldNames';
+import {
+  GuidedExpertModePopover,
+  useGuidedExpertModePopover
+} from '@app/redesign/features-v2/onboarding/universe-revamp/popovers/GuidedExpertModePopover';
 
 //icons
 import MapIcon from '@app/redesign/assets/map.svg';
@@ -90,6 +95,13 @@ export const ResilienceAndRegions = forwardRef<
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.resilienceAndRegions'
   });
+
+  const {
+    open: isGuidedExpertModePopoverOpen,
+    anchorRef: guidedExpertModeAnchorRef,
+    handleGuidedExpertModeClick,
+    handleClose: handleGuidedExpertModePopoverClose
+  } = useGuidedExpertModePopover();
 
   const methods = useForm<ResilienceAndRegionsProps>({
     defaultValues: resilienceAndRegionsSettings,
@@ -222,13 +234,20 @@ export const ResilienceAndRegions = forwardRef<
 
     if (formMode === ResilienceFormMode.EXPERT_MODE) {
       const ft = methods.getValues(FAULT_TOLERANCE_TYPE);
-      if (ft === FaultToleranceType.NODE_LEVEL || ft === FaultToleranceType.NONE) {
-        methods.setValue(FAULT_TOLERANCE_TYPE, FaultToleranceType.AZ_LEVEL, { shouldValidate: true });
-        saveResilienceAndRegionsSettings({
-          ...methods.getValues(),
-          [FAULT_TOLERANCE_TYPE]: FaultToleranceType.AZ_LEVEL
-        });
-      }
+      const factor = methods.getValues(RESILIENCE_FACTOR);
+      const nextFt =
+        ft === FaultToleranceType.NODE_LEVEL || ft === FaultToleranceType.NONE
+          ? FaultToleranceType.AZ_LEVEL
+          : ft;
+      // Guided stores FT degree; expert stores raw RF (mirror RF→FT when entering guided).
+      const nextRf = getGuidedNodesStepReplicationFactor(ft, factor);
+      methods.setValue(FAULT_TOLERANCE_TYPE, nextFt, { shouldValidate: true });
+      methods.setValue(RESILIENCE_FACTOR, nextRf, { shouldValidate: true });
+      saveResilienceAndRegionsSettings({
+        ...methods.getValues(),
+        [FAULT_TOLERANCE_TYPE]: nextFt,
+        [RESILIENCE_FACTOR]: nextRf
+      });
     }
   }, [formMode, methods, saveNodesAvailabilitySettings, saveResilienceAndRegionsSettings]);
 
@@ -380,36 +399,46 @@ export const ResilienceAndRegions = forwardRef<
       {resilienceType === ResilienceType.REGULAR && (
         <>
           <Grid alignItems={'center'} justifyContent={'flex-end'} container width="100%">
-            <YBButtonGroup
-              key={modeButtonGroupKey}
-              size="large"
-              dataTestId="yb-button-group-multiselect-normal"
-              value={formMode}
-              buttons={[
-                {
-                  value: ResilienceFormMode.GUIDED,
-                  label: t('formType.guidedMode'),
-                  icon: disableGuidedMode ? <MapDisabled /> : formMode === ResilienceFormMode.GUIDED ? <MapIconSelected /> : <MapIcon />,
-                  onClick: handleGuidedModeClick,
-                  buttonProps: {
-                    dataTestId: 'guided-mode-button',
-                    disabled: disableGuidedMode
+            <span
+              ref={guidedExpertModeAnchorRef}
+              onClickCapture={handleGuidedExpertModeClick}
+            >
+              <YBButtonGroup
+                key={modeButtonGroupKey}
+                size="large"
+                dataTestId="yb-button-group-multiselect-normal"
+                value={formMode}
+                buttons={[
+                  {
+                    value: ResilienceFormMode.GUIDED,
+                    label: t('formType.guidedMode'),
+                    icon: disableGuidedMode ? <MapDisabled /> : formMode === ResilienceFormMode.GUIDED ? <MapIconSelected /> : <MapIcon />,
+                    onClick: handleGuidedModeClick,
+                    buttonProps: {
+                      dataTestId: 'guided-mode-button',
+                      disabled: disableGuidedMode
+                    },
+                    tooltip: disableGuidedMode ? t('guidedModeNotSupported') : undefined
                   },
-                  tooltip: disableGuidedMode ? t('guidedModeNotSupported') : undefined
-                },
-                {
-                  value: ResilienceFormMode.EXPERT_MODE,
-                  label: t('formType.expertMode'),
-                  onClick: () => {
-                    methods.setValue(RESILIENCE_FORM_MODE, ResilienceFormMode.EXPERT_MODE, {
-                      shouldValidate: true
-                    });
-                  },
-                  buttonProps: {
-                    dataTestId: 'expert-mode-button'
+                  {
+                    value: ResilienceFormMode.EXPERT_MODE,
+                    label: t('formType.expertMode'),
+                    onClick: () => {
+                      methods.setValue(RESILIENCE_FORM_MODE, ResilienceFormMode.EXPERT_MODE, {
+                        shouldValidate: true
+                      });
+                    },
+                    buttonProps: {
+                      dataTestId: 'expert-mode-button'
+                    }
                   }
-                }
-              ]}
+                ]}
+              />
+            </span>
+            <GuidedExpertModePopover
+              open={isGuidedExpertModePopoverOpen}
+              anchorRef={guidedExpertModeAnchorRef}
+              onClose={handleGuidedExpertModePopoverClose}
             />
           </Grid>
           {formMode === ResilienceFormMode.GUIDED ? <GuidedMode /> : <ExpertMode />}

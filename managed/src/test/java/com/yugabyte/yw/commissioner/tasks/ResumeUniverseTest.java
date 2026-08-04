@@ -62,7 +62,7 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.IsServerReadyResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -74,7 +74,7 @@ public class ResumeUniverseTest extends CommissionerBaseTest {
 
   @Before
   public void setUp() {
-    YBClient mockClient = mock(YBClient.class);
+    YBClientApi mockClient = mock(YBClientApi.class);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     try {

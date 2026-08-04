@@ -56,7 +56,7 @@ import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.yb.client.ListMasterRaftPeersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -66,13 +66,13 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
 
-  private YBClient mockClient;
+  private YBClientApi mockClient;
 
   private Region region;
 
   @Before
   public void setUp() {
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     try {
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);

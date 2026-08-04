@@ -681,12 +681,6 @@
         },
         {
           "properties" : {
-            "apiKey" : {
-              "description" : "API key",
-              "maxLength" : 2147483647,
-              "minLength" : 1,
-              "type" : "string"
-            },
             "routingKey" : {
               "description" : "Routing key",
               "maxLength" : 2147483647,
@@ -695,7 +689,6 @@
             }
           },
           "required" : [
-            "apiKey",
             "routingKey"
           ],
           "type" : "object"
@@ -2409,6 +2402,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -5330,6 +5326,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -8482,6 +8481,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -9305,6 +9307,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -10858,6 +10863,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -11617,6 +11625,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -14645,6 +14656,11 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "embedded" : {
+          "description" : "True when this collector is the embedded PA managed by EmbeddedCollectorInitializer",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
         "inUseStatus" : {
           "description" : "In Use Status",
           "enum" : [
@@ -14758,6 +14774,11 @@
           "format" : "uuid",
           "readOnly" : true,
           "type" : "string"
+        },
+        "embedded" : {
+          "description" : "True when this collector is the embedded PA managed by EmbeddedCollectorInitializer",
+          "readOnly" : true,
+          "type" : "boolean"
         },
         "metricsPassword" : {
           "description" : "Metrics API Password",
@@ -16443,6 +16464,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -17149,6 +17173,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -18232,6 +18259,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -19101,6 +19131,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -20662,6 +20695,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -23149,6 +23185,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -24319,6 +24358,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -25663,6 +25705,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -26357,6 +26402,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -27200,6 +27248,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -27869,6 +27920,9 @@
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
         },
+        "creationSucceeded" : {
+          "type" : "boolean"
+        },
         "currentClusterType" : {
           "enum" : [
             "PRIMARY",
@@ -28530,6 +28584,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -29707,6 +29764,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [
@@ -30911,6 +30971,9 @@
         },
         "creatingUser" : {
           "$ref" : "#/definitions/Users"
+        },
+        "creationSucceeded" : {
+          "type" : "boolean"
         },
         "currentClusterType" : {
           "enum" : [

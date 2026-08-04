@@ -51,6 +51,7 @@ type Services struct {
 	PerfAdvisor  bool `json:"yb-perf-advisor"`
 	Platform     bool `json:"yb-platform"`
 	NodeExporter bool `json:"node-exporter"`
+	ByocApiProxy bool `json:"byoc-api-proxy"`
 }
 
 func New() *State {

@@ -23,7 +23,7 @@ import org.yb.CommonNet;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.client.CreateXClusterReplicationResponse;
 import org.yb.client.IsCreateXClusterReplicationDoneResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.util.NetUtil;
 
 @Slf4j
@@ -46,7 +46,7 @@ public class XClusterDbReplicationSetup extends XClusterConfigTaskBase {
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     Duration xClusterWaitTimeout =
         this.confGetter.getConfForScope(sourceUniverse, UniverseConfKeys.xclusterSetupAlterTimeout);
-    try (YBClient client = ybService.getUniverseClient(sourceUniverse)) {
+    try (YBClientApi client = ybService.getUniverseClient(sourceUniverse)) {
       Set<CommonNet.HostPortPB> targetMasterAddresses =
           new HashSet<>(
               NetUtil.parseStringsAsPB(
@@ -105,7 +105,7 @@ public class XClusterDbReplicationSetup extends XClusterConfigTaskBase {
   }
 
   protected void waitForCreateXClusterReplicationDone(
-      YBClient client,
+      YBClientApi client,
       String replicationGroupName,
       Set<CommonNet.HostPortPB> targetMasterAddresses,
       long xClusterWaitTimeoutMs) {

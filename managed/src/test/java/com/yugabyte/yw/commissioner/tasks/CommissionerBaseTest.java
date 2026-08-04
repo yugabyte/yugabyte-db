@@ -162,7 +162,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.client.AreNodesSafeToTakeDownResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ListLiveTabletServersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.util.TabletServerInfo;
 import play.Application;
@@ -573,11 +573,11 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         .build();
   }
 
-  public void mockWaits(YBClient mockClient) {
+  public void mockWaits(YBClientApi mockClient) {
     mockWaits(mockClient, 1);
   }
 
-  public void mockWaits(YBClient mockClient, int version) {
+  public void mockWaits(YBClientApi mockClient, int version) {
     try {
       // PlacementUtil mock.
       CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
@@ -966,7 +966,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     }
   }
 
-  protected void setCheckNodesAreSafeToTakeDown(YBClient mockClient) {
+  protected void setCheckNodesAreSafeToTakeDown(YBClientApi mockClient) {
     try {
       when(mockClient.areNodesSafeToTakeDown(any(), any(), anyLong()))
           .thenReturn(new AreNodesSafeToTakeDownResponse(null));
@@ -1138,7 +1138,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                     + "    Leap status     : Normal"));
   }
 
-  protected void setMockLiveTabletServers(YBClient mockClient, Universe universe) {
+  protected void setMockLiveTabletServers(YBClientApi mockClient, Universe universe) {
     try {
       List<TabletServerInfo> tabletServerInfoList = new ArrayList<>();
 

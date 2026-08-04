@@ -452,7 +452,7 @@ void SetTransactional(YBSchemaBuilder* builder) {
 class QLTransactionalStressTest : public QLStressTest {
  public:
   void SetUp() override {
-    FLAGS_transaction_rpc_timeout_ms =
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_rpc_timeout_ms) =
         std::chrono::duration_cast<std::chrono::milliseconds>(1min).count();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_max_missed_heartbeat_periods) = 1000000;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_range_time_limit_secs) = 600;

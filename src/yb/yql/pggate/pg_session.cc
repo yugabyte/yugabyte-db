@@ -1166,6 +1166,9 @@ Result<TxnReadPoint> PgSession::UpdateReadPointForCatalogOps(PgOid catalog_table
       << " for txn no " << original_read_point.txn;
   RSTATUS_DCHECK(
       catalog_read_time_serial_no != 0, IllegalState, "Catalog snapshot read time is 0");
+  // Changing snapshots. Buffered writes are on the current snapshot. Flush them before the switch.
+  RETURN_NOT_OK(FlushBufferedEntities(
+      PgFlushDebugContext::SwitchToCatalogSnapshot(catalog_read_time_serial_no)));
   RETURN_NOT_OK(pg_txn_manager_->RestoreReadPoint(catalog_read_time_serial_no));
   // Clamp the uncertainty window for catalog reads.
   //
@@ -1273,6 +1276,8 @@ Result<PerformFuture> PgSession::DoRunAsync(
         << "Restoring original read time serial no to "
         << read_point_before_catalog_ops->read_time_serial_no
         << " for txn no " << read_point_before_catalog_ops->txn;
+    RETURN_NOT_OK(FlushBufferedEntities(PgFlushDebugContext::ChangeTxnSnapshot(
+        read_point_before_catalog_ops->read_time_serial_no)));
     RETURN_NOT_OK(pg_txn_manager_->RestoreReadPoint(*read_point_before_catalog_ops));
   }
   return result;
