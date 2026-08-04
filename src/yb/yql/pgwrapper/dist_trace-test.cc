@@ -570,6 +570,58 @@ class OtlpHttpCollector {
     return server_span;
   }
 
+  // Waits for three spans in trace_id, each the parent of the next, all with op names starting
+  // with op_prefix:
+  //
+  //   inbound on service A -> outbound on service A -> inbound on downstream_service
+  //
+  // Returns the last one.
+  Result<Span> WaitForLocalHopToRemoteSpan(
+      std::string_view trace_id, std::string_view op_prefix,
+      std::string_view downstream_service) const EXCLUDES(mutex_) {
+    // True if span is an RPC span of the given direction whose op name starts with op_prefix.
+    auto matches = [&op_prefix](const Span& span, std::string_view rpc_system) {
+      if (!span.op_name.starts_with(op_prefix)) return false;
+      auto it = span.str_attrs.find("rpc.system");
+      return it != span.str_attrs.end() && it->second == rpc_system;
+    };
+
+    Span downstream_span;
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          std::lock_guard lock(mutex_);
+          auto it = traces_.find(std::string(trace_id));
+          if (it == traces_.end()) return false;
+          const auto& spans = it->second.spans;
+          for (const auto& downstream : spans) {
+            if (downstream.service_name != downstream_service ||
+                !matches(downstream, "inbound_rpc") || downstream.parent_span_id.empty()) {
+              continue;
+            }
+            for (const auto& client : spans) {
+              if (client.span_id != downstream.parent_span_id ||
+                  !matches(client, "outbound_rpc") || client.parent_span_id.empty()) {
+                continue;
+              }
+              for (const auto& server : spans) {
+                if (server.span_id != client.parent_span_id ||
+                    server.service_name != client.service_name ||
+                    !matches(server, "inbound_rpc")) {
+                  continue;
+                }
+                downstream_span = downstream;
+                return true;
+              }
+            }
+          }
+          return false;
+        },
+        kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+        Format("Chain inbound -> outbound -> '$0' inbound for '$1*' in trace '$2'",
+               downstream_service, op_prefix, trace_id)));
+    return downstream_span;
+  }
+
  private:
   void HandleTraceRequest(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
     if (req.request_method != "POST") {
@@ -1966,6 +2018,42 @@ TEST_F(DistTraceTest, TestSharedMemoryFallbackToRpc) {
       },
       kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
       "Childless shared memory Perform span for the abandoned attempt"));
+}
+
+// Cross-boundary to master: a DDL fans out from the tserver to the master. A master inbound RPC
+// span should join the query's trace as a child of a tserver outbound span -- proving the trace
+// propagated the full PG -> tserver -> master chain. Any master method suffices, so match on the
+// "rpc " prefix and distinguish the boundary by service_name (TabletServer -> Master).
+TEST_F(DistTraceTest, TestDdlRpcReachesMaster) {
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  ASSERT_OK(conn_->Execute(
+      "CREATE TABLE master_crossing_test (id int PRIMARY KEY, val text)"));
+
+  auto server_span = ASSERT_RESULT(collector_.WaitForRemoteChildSpan(
+      tp.trace_id, "rpc yb.master.",
+      "TabletServer" /* client_service */, "Master" /* server_service */,
+      "inbound_rpc" /* expected_rpc_system */));
+
+  ASSERT_STR_CONTAINS(server_span.str_attrs["rpc.service"], "yb.master.");
+}
+
+// Runs a CREATE TABLE under a known traceparent and asserts the trace contains an
+// UpdateTransaction the tserver sent to the master from a tablet apply thread.
+TEST_F(DistTraceTest, TestApplyTaskCarriesTraceContextToMaster) {
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  ASSERT_OK(conn_->Execute(
+      "CREATE TABLE apply_task_test (id int PRIMARY KEY, val text)"));
+
+  auto master_span = ASSERT_RESULT(collector_.WaitForLocalHopToRemoteSpan(
+      tp.trace_id, "rpc yb.tserver.TabletServerService.UpdateTransaction",
+      "Master" /* downstream_service */));
+
+  ASSERT_EQ(master_span.str_attrs["rpc.service"], "yb.tserver.TabletServerService");
+  ASSERT_EQ(master_span.str_attrs["rpc.method"], "UpdateTransaction");
 }
 
 TEST_F(DistTraceRpcTest, TestOtelInternalMessagesAreLogged) {
