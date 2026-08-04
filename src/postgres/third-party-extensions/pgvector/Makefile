@@ -12,7 +12,15 @@ REGRESS = $(patsubst test/sql/%.sql,%,$(TESTS))
 REGRESS_OPTS = --inputdir=test --load-extension=$(EXTENSION)
 
 # To compile for portability, run: make OPTFLAGS=""
-OPTFLAGS = -march=native
+#
+# YB: Do NOT default to -march=native. YugabyteDB binaries are built on one host
+# and run on arbitrary customer CPUs, so baking in the build machine's ISA makes
+# auto-vectorized distance kernels (e.g. cosine) emit AVX-512 instructions that
+# fault with SIGILL on hosts without AVX-512, crashing the backend. The rest of
+# the codebase pins a portable baseline (see -march=ivybridge / -mno-avx in the
+# top-level CMakeLists.txt); pgvector must match. Runtime SIMD acceleration is
+# still available via the target_clones("default","fma") dispatch in the source.
+OPTFLAGS =
 
 # Mac ARM doesn't always support -march=native
 ifeq ($(shell uname -s), Darwin)

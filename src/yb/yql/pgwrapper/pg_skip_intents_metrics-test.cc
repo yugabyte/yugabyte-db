@@ -18,6 +18,7 @@
 #include "yb/client/snapshot_test_util.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/util/physical_time.h"
+#include "yb/util/status_log.h"
 #include "yb/util/timestamp.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -47,8 +48,8 @@ class SkipIntentsMetricTest : public pgwrapper::LibPqTestBase {
 
     options->extra_tserver_flags.emplace_back(
         "--ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks=true");
-    options->extra_tserver_flags.push_back(
-        "--allowed_preview_flags_csv=ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks");
+    AppendFlagToAllowedPreviewFlagsCsv(
+        options->extra_tserver_flags, "ysql_yb_enable_new_relation_fastpath_write_in_txn_blocks");
 
     // Set a high max batch size to ensure metric tests stay reliable.
     // If the batch size is too low, inserting rows into a single table might

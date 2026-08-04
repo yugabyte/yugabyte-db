@@ -18,6 +18,7 @@
 
 #include "yb/common/pgsql_protocol.pb.h"
 
+#include "yb/util/format.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/status_ec.h"
 #include "yb/util/tostring.h"

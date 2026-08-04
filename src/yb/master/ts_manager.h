@@ -173,6 +173,9 @@ class TSManager {
       const std::string& permanent_uuid, const BlacklistSet& blacklist,
       const std::vector<TableInfoPtr>& tables, const LeaderEpoch& epoch);
 
+  // Mark live tservers as needing a leader blacklist notification on the next heartbeat.
+  void MarkTServersForLeaderBlacklistNotification();
+
   // Make sure all live tservers are on the expected version.
   Status ValidateAllTserverVersions(ValidateVersionInfoOp op) const;
 

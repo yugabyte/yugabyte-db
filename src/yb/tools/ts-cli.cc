@@ -72,6 +72,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/protobuf_util.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 using yb::cdc::CDCServiceProxy;
 using yb::cdc::UpdateCdcReplicatedIndexRequestPB;

@@ -61,7 +61,7 @@ The colors in the chart are typically CPU for the active TServer threads and TSe
 
 If other waits show up as a significant portion of the bar chart that could indicate some kind of bottleneck.
 
-For more information, refer to [Wait events](../../launch-and-manage/monitor-and-alert/active-session-history-monitor/#wait-events).
+For more information, refer to [Wait events](../../../launch-and-manage/monitor-and-alert/active-session-history-monitor/#wait-events).
 
 ### Queries
 

@@ -21,7 +21,6 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -30,6 +29,7 @@ import com.yugabyte.yw.common.logging.LogUtil;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.RequestContext;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
+import com.yugabyte.yw.forms.HierarchicalNodesSpec;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -77,6 +77,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -90,7 +91,6 @@ import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -145,6 +145,7 @@ public class Util {
   public static final String AZ = "AZ";
   public static final String GCS = "GCS";
   public static final String S3 = "S3";
+  public static final String OCI = "OCI";
   public static final String NFS = "NFS";
   public static final String HTTP = "HTTP";
 
@@ -155,6 +156,9 @@ public class Util {
   public static final String UNIVERSE_UUID = "universeUUID";
   public static final String SOURCE_UNIVERSE_UUID = "sourceUniverseUUID";
   public static final String TARGET_UNIVERSE_UUID = "targetUniverseUUID";
+  // Nested path into TaskInfo.taskParams used by the V2 task rollback authz to resolve the
+  // universe from a failed task (mirrors the V1 rollback @Resource path).
+  public static final String TASK_PARAMS_UNIVERSE_UUID = "taskParams.universeUUID";
 
   public static final String AVAILABLE_MEMORY = "MemAvailable";
 
@@ -565,7 +569,7 @@ public class Util {
   }
 
   public static List<UniverseDetailSubset> getUniverseDetails(Set<Universe> universes) {
-    List<UniverseDetailSubset> details = new ArrayList<>();
+    List<UniverseDetailSubset> details = new ArrayList<>(universes.size());
     for (Universe universe : universes) {
       details.add(new UniverseDetailSubset(universe));
     }
@@ -933,6 +937,7 @@ public class Util {
     int maxNamespaceLen = 63;
     int firstPartLength = maxNamespaceLen - reserveSuffixLen;
     checkArgument(firstPartLength > 0, "Invalid suffix length");
+    checkArgument(name != null, "node prefix cannot be null");
     String sanitizedName = name.toLowerCase();
     if (sanitizedName.equals(name) && firstPartLength >= sanitizedName.length()) {
       // Backward compatibility taken care as old namespaces must have already passed this test for
@@ -998,35 +1003,10 @@ public class Util {
     return checkAnyProviderMatches(params, Provider::isManualOnprem);
   }
 
-  public static void traverseAzNodeSpecs(
-      UserIntent userIntent,
-      UniverseTaskBase.ServerType filter,
-      BiConsumer<UUID, UniverseDefinitionTaskParams.NodeSpecification> consumer) {
-    for (UniverseDefinitionTaskParams.ProviderSpecification providerSpecification :
-        userIntent.providerSpecifications) {
-      if (providerSpecification.getPerAZOverrides() != null) {
-        providerSpecification
-            .getPerAZOverrides()
-            .forEach(
-                (azUUID, nodesSpec) -> {
-                  if (nodesSpec.getTserverSpecification() != null
-                      && (filter == null || filter == UniverseTaskBase.ServerType.TSERVER)) {
-                    consumer.accept(azUUID, nodesSpec.getTserverSpecification());
-                  }
-                  if (nodesSpec.getMasterSpecification() != null
-                      && (filter == null || filter == UniverseTaskBase.ServerType.MASTER)) {
-                    consumer.accept(azUUID, nodesSpec.getMasterSpecification());
-                  }
-                });
-      }
-    }
-  }
-
   public static void mergeProviderSpecifications(
       UserIntent userIntent,
       UserIntent newUserIntent,
-      Consumer<UniverseDefinitionTaskParams.ProviderSpecification.NodesSpecificationMergeContext>
-          merger) {
+      Consumer<HierarchicalNodesSpec.NodesSpecsMergeItem> merger) {
     for (UUID providerUUID : userIntent.getAllProviderUUIDs()) {
       UniverseDefinitionTaskParams.ProviderSpecification newProviderSpecification =
           newUserIntent.getProviderSpecification(providerUUID);
@@ -1094,6 +1074,41 @@ public class Util {
               return cluster.getProviderCloudType(n) == expectedType;
             })
         .collect(Collectors.toSet());
+  }
+
+  /**
+   * Filling old fields from provider specifications if not present (for compatibility with old UI)
+   *
+   * @param userIntent
+   */
+  public static void fillIntentFromProviderSpecifications(UserIntent userIntent) {
+    if (userIntent == null) {
+      return;
+    }
+    if (userIntent.isMulticloudSupport() && userIntent.provider == null) {
+      // Filling with the first provider from the list.
+      UniverseDefinitionTaskParams.ProviderSpecification firstSpec =
+          userIntent.providerSpecifications.stream()
+              .sorted(Comparator.comparing(p -> p.getProviderUUID().toString()))
+              .findFirst()
+              .get();
+      firstSpec.validate(false);
+      userIntent.provider = firstSpec.getProviderUUID().toString();
+      userIntent.providerType = firstSpec.getProviderType();
+      userIntent.accessKeyCode = firstSpec.getAccessKeyCode();
+      userIntent.deviceInfo = userIntent.getBaseDeviceInfo(firstSpec.getProviderUUID());
+      userIntent.imageBundleUUID = firstSpec.getImageBundleUUID();
+      userIntent.instanceTags = new HashMap<>(firstSpec.getInstanceTags());
+      userIntent.awsArnString = firstSpec.getAwsInstanceProfile();
+      if (userIntent.dedicatedNodes) {
+        HierarchicalNodesSpec.NodeSpec masterSpecification =
+            firstSpec.getNodesSpecs().getMasterSpecification();
+        if (masterSpecification != null) {
+          userIntent.masterInstanceType = masterSpecification.getInstanceType();
+          userIntent.masterDeviceInfo = masterSpecification.getDeviceInfo();
+        }
+      }
+    }
   }
 
   /**
@@ -1902,6 +1917,18 @@ public class Util {
     }
   }
 
+  public static void validateSpecificationsIfPresent(
+      List<UniverseDefinitionTaskParams.ProviderSpecification> specs, boolean isPartialUpdate) {
+    if (specs != null) {
+      for (UniverseDefinitionTaskParams.ProviderSpecification spec : specs) {
+        if (spec == null) {
+          throw new PlatformServiceException(BAD_REQUEST, "Found null specification");
+        }
+        spec.validate(isPartialUpdate);
+      }
+    }
+  }
+
   public static List<String> getCheckProcessStatusCommand(String user, String processName) {
     return ImmutableList.<String>builder()
         .add("pgrep")
@@ -2025,5 +2052,22 @@ public class Util {
             String.format("Found discrepancy between values for %s: %s ", property, list));
       }
     }
+  }
+
+  /**
+   * Find the diff between the given universe details and the database universe details.
+   *
+   * @param universe the universe.
+   * @return the diff between the current and the DB universe details. Null if they are same.
+   */
+  public static JsonNode findDiffJsonNode(Universe universe) {
+    // Get the database universe details.
+    UniverseDefinitionTaskParams dbTaskParams =
+        Universe.getOrBadRequest(universe.getUniverseUUID()).getUniverseDetails();
+    dbTaskParams.sequenceNumber = universe.getUniverseDetails().sequenceNumber;
+    JsonNode deltaTree =
+        DeltaEvaluator.buildDeltaJsonTree(
+            universe.getUniverseDetails(), dbTaskParams, new NodeDetailsArrayComparator());
+    return DeltaEvaluator.generateOnlyDelta(deltaTree);
   }
 }

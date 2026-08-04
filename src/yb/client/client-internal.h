@@ -363,7 +363,8 @@ class YBClient::Data {
       std::shared_ptr<TableId> table_id,
       std::shared_ptr<std::unordered_map<std::string, std::string>> options,
       CoarseTimePoint deadline,
-      StdStatusCallback callback);
+      StdStatusCallback callback,
+      std::shared_ptr<bool> xcluster_use_target_applied_filter = nullptr);
 
   void DeleteNotServingTablet(
       YBClient* client, const TabletId& tablet_id, CoarseTimePoint deadline,

@@ -36,6 +36,7 @@
 #include "yb/client/client_error.h"
 #include "yb/client/error.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/namespace_info.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/stateful_services/pg_cron_leader_service_client.h"
@@ -44,6 +45,7 @@
 #include "yb/client/tablet_server.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
+#include "yb/client/transaction_status_tablets.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/pg_types.h"
@@ -2337,7 +2339,7 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     VLOG(1) << "ImportTxnSnapshot from " << RequestorString(context) << ": " << req.DebugString();
     auto snapshot = VERIFY_RESULT(txn_snapshot_manager_.Get(req.snapshot_id()));
     auto options = req.options();
-    snapshot.read_time.ToPB(options.mutable_read_time());
+    snapshot.read_time.ToPB(options.mutable_read_time_options()->mutable_read_time());
     RETURN_NOT_OK(VERIFY_RESULT(GetSession(req))->SetTxnSnapshotReadTime(
         options, context->GetClientDeadline()));
     snapshot.ToPBNoReadTime(*resp->mutable_snapshot());

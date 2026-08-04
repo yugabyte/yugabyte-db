@@ -44,8 +44,12 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/logging_test_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_callback.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -53,6 +57,7 @@ using namespace std::chrono_literals;
 
 DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(TEST_tserver_disable_heartbeat);
 DECLARE_bool(TEST_skip_launch_release_request);
@@ -65,7 +70,7 @@ DECLARE_double(TEST_tserver_ysql_lease_refresh_failure_prob);
 DECLARE_bool(enable_load_balancing);
 DECLARE_uint64(object_lock_cleanup_interval_ms);
 DECLARE_bool(TEST_olm_skip_sending_wait_for_probes);
-
+DECLARE_bool(TEST_pause_obj_lock_release_before_persist);
 namespace yb {
 
 namespace {
@@ -991,6 +996,116 @@ TEST_F(ObjectLockTest, BootstrapTServersUponAddition) {
   }
 }
 
+TEST_F(ObjectLockTest, NewTServerIsntBootstrappedWithInProgressReleases) {
+  google::SetVLOGLevel("object_lock_info_manager*", 2);
+  const auto& kSessionHostUuid = TSUuid(0);
+  auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
+
+  ASSERT_OK(AcquireLockGlobally(&master_proxy, kSessionHostUuid, kTxn2, kDatabaseID, kRelationId));
+  auto expected_locks =
+      cluster_->mini_tablet_server(0)->server()->ts_local_lock_manager()->TEST_GrantedLocksSize();
+  ASSERT_GE(expected_locks, 1);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_obj_lock_release_before_persist) = true;
+  auto se = ScopeExit([] {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_obj_lock_release_before_persist) = false;
+  });
+
+  StringWaiterLogSink log_waiter_1("AfterRpcs:");
+  auto release_timeout = MonoDelta::FromSeconds(60);
+  Status release_status;
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([&] {
+    release_status = ReleaseLockGloballyAt(
+        &master_proxy, kSessionHostUuid, kTxn2, kLeaseEpoch, nullptr, std::nullopt,
+        release_timeout);
+  });
+
+  ASSERT_OK(log_waiter_1.WaitFor(kTimeout));
+  StringWaiterLogSink log_waiter_2("Granting a new ysql op lease to TS");
+  auto* added_tserver = ASSERT_NOTNULL(ASSERT_RESULT(AddTabletServer(kTimeout)));
+  LOG(INFO) << "Added tserver: " << added_tserver->ToString();
+  ASSERT_OK(log_waiter_2.WaitFor(kTimeout));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_obj_lock_release_before_persist) = false;
+  thread_holder.JoinAll();
+  ASSERT_OK(release_status);
+  ASSERT_EQ(added_tserver->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), 0);
+
+  auto master_local_lock_manager = cluster_->mini_master()
+                                       ->master()
+                                       ->catalog_manager_impl()
+                                       ->object_lock_info_manager()
+                                       ->TEST_ts_local_lock_manager();
+  ASSERT_OK(WaitFor(
+      [&]() -> bool {
+        return master_local_lock_manager->TEST_WaitingLocksSize() == 0 &&
+                master_local_lock_manager->TEST_GrantedLocksSize() == 0;
+      },
+      60s, "wait for DDL locks to clear at the master"));
+
+  for (const auto& ts : cluster_->mini_tablet_servers()) {
+    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), 0)
+        << "TS: " << ts->ToString();
+  }
+
+  // Test the case for partial release, the new tserver should get the active subtxn's locks.
+  auto owner_subtxn1 = docdb::ObjectLockOwner{kTxn1.txn_id, 1};
+  auto owner_subtxn2 = docdb::ObjectLockOwner{kTxn1.txn_id, 2};
+  ASSERT_OK(AcquireLockGlobally(
+      &master_proxy, kSessionHostUuid, owner_subtxn1, kDatabaseID, kRelationId));
+  auto locks_after_one_acquire =
+      cluster_->mini_tablet_server(0)->server()->ts_local_lock_manager()->TEST_GrantedLocksSize();
+  ASSERT_GE(locks_after_one_acquire, 1);
+  ASSERT_OK(AcquireLockGlobally(
+      &master_proxy, kSessionHostUuid, owner_subtxn2, kDatabaseID, kRelationId2));
+  auto locks_after_two_acquires =
+      cluster_->mini_tablet_server(0)->server()->ts_local_lock_manager()->TEST_GrantedLocksSize();
+  ASSERT_GT(locks_after_two_acquires, locks_after_one_acquire);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_obj_lock_release_before_persist) = true;
+  StringWaiterLogSink log_waiter_3("AfterRpcs:");
+  Status release_subtxn2_status;
+  thread_holder.AddThreadFunctor([&] {
+    release_subtxn2_status = ReleaseLockGloballyAt(
+        &master_proxy, kSessionHostUuid, owner_subtxn2, kLeaseEpoch, nullptr, std::nullopt,
+        release_timeout);
+  });
+  ASSERT_OK(log_waiter_3.WaitFor(kTimeout));
+
+  StringWaiterLogSink log_waiter_4("Granting a new ysql op lease to TS");
+  auto* added_tserver2 = ASSERT_NOTNULL(ASSERT_RESULT(AddTabletServer(kTimeout)));
+  LOG(INFO) << "Added tserver: " << added_tserver2->ToString();
+  ASSERT_OK(log_waiter_4.WaitFor(kTimeout));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_obj_lock_release_before_persist) = false;
+  thread_holder.JoinAll();
+  ASSERT_OK(release_subtxn2_status);
+  ASSERT_EQ(
+      added_tserver2->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(),
+      locks_after_one_acquire);
+  ASSERT_OK(WaitFor(
+      [&]() -> bool {
+        return master_local_lock_manager->TEST_WaitingLocksSize() == 0 &&
+                master_local_lock_manager->TEST_GrantedLocksSize() == locks_after_one_acquire;
+      },
+      60s, "wait for DDL locks to clear at the master"));
+  for (const auto& ts : cluster_->mini_tablet_servers()) {
+    ASSERT_EQ(
+        ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), locks_after_one_acquire);
+  }
+  ASSERT_OK(ReleaseLockGloballyAt(&master_proxy, kSessionHostUuid, owner_subtxn1));
+  ASSERT_OK(WaitFor(
+      [&]() -> bool {
+        return master_local_lock_manager->TEST_WaitingLocksSize() == 0 &&
+                master_local_lock_manager->TEST_GrantedLocksSize() == 0;
+      },
+      60s, "wait for DDL locks to clear at the master"));
+  for (const auto& ts : cluster_->mini_tablet_servers()) {
+    ASSERT_EQ(ts->server()->ts_local_lock_manager()->TEST_GrantedLocksSize(), 0)
+        << "TS: " << ts->ToString();
+  }
+}
+
+
 TEST_F(ObjectLockTest, ReleaseExclusiveLocksWhenTServerLeaseExpires) {
   auto master_proxy = ASSERT_RESULT(MasterLeaderProxy());
   // Acquire exclusive lock for tserver0. Should succeed.
@@ -1421,6 +1536,89 @@ TEST_F(ExternalObjectLockTest, TestWaitForLockers) {
       "SELECT count(*) FROM pg_inherits WHERE inhparent = 'parent_t'::regclass"));
   ASSERT_EQ(num_partitions, 1);
 }
+
+struct IndexPhaseParam {
+  std::string phase;
+  std::string log_message;
+};
+
+class ExternalObjectLockTestBootstrapDuringCreateIndex
+    : public ExternalObjectLockTest,
+      public ::testing::WithParamInterface<IndexPhaseParam> {};
+
+TEST_P(ExternalObjectLockTestBootstrapDuringCreateIndex, TxnsOrderedWrtBgTxnsDuringBootstrap) {
+  const auto& param = GetParam();
+  constexpr size_t kTSIdx = 0;
+  auto conn = ASSERT_RESULT(cluster_->ConnectToDB("yugabyte", kTSIdx));
+  ASSERT_OK(conn.Execute("CREATE TABLE test_ci(k INT PRIMARY KEY, v1 INT, v2 INT)"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO test_ci SELECT i, i, i FROM generate_series(1, 100) AS i"));
+
+  // First CREATE INDEX completes normally.
+  ASSERT_OK(conn.Execute("CREATE INDEX test_ci_idx1 ON test_ci(v1)"));
+
+  // Block the second CREATE INDEX at the specified phase.
+  // At this point, the kPlain txn operates with the kPgSession txn as its background txn.
+  // And the kPgSession txn operates with the kPlain txn as its background txn.
+  auto* ts = tablet_server(kTSIdx);
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", param.phase));
+  LogWaiter log_waiter(ts, param.log_message);
+  auto idx_future = std::async(std::launch::async, [&conn]() -> Status {
+    return conn.Execute("CREATE INDEX test_ci_idx2 ON test_ci(v2)");
+  });
+  ExternalTabletServer* added_ts = nullptr;
+  // On early exit, shut down the added tserver and unblock the GUC so idx_future's
+  // destructor doesn't hang waiting for the CREATE INDEX to finish.
+  CancelableScopeExit cleanup([this, &added_ts]() {
+    if (added_ts) {
+      added_ts->Shutdown();
+    }
+    WARN_NOT_OK(
+        cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"),
+        "Failed to unblock CREATE INDEX");
+  });
+  ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(30)));
+
+  // Add a new tserver while DDL locks are held. It must bootstrap DDL locks and acquire a
+  // lease before it can accept PG connections.
+  ASSERT_OK(cluster_->AddTabletServer(
+      ExternalMiniClusterOptions::kDefaultStartCqlProxy, {}, -1,
+      /* wait_for_registration */ false));
+  auto new_ts_idx = cluster_->num_tablet_servers() - 1;
+  added_ts = cluster_->tablet_server(new_ts_idx);
+
+  // Wait for the new tserver to accept a PG connection and serve a DML. A successful
+  // connection implies the tserver acquired a lease, and a successful INSERT confirms
+  // bootstrap completed (DML lock acquisition requires the lock manager to be bootstrapped).
+  ASSERT_OK(WaitFor(
+      [this, new_ts_idx]() -> Result<bool> {
+        ExternalClusterPGConnectionOptions conn_options;
+        conn_options.tserver_index = new_ts_idx;
+        conn_options.timeout_secs = 2;
+        auto conn = cluster_->ConnectToDB(std::move(conn_options));
+        if (!conn.ok()) {
+          return false;
+        }
+        return conn->Execute("INSERT INTO test_ci VALUES (101, 101, 101)").ok();
+      },
+      MonoDelta::FromSeconds(20),
+      "Wait for new tserver to bootstrap and serve DML"));
+
+  cleanup.Cancel();
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+  ASSERT_OK(idx_future.get());
+}
+
+INSTANTIATE_TEST_CASE_P(
+    IndexPhases, ExternalObjectLockTestBootstrapDuringCreateIndex,
+    ::testing::Values(
+        IndexPhaseParam{"indislive", "blocking index state change indislive=true"},
+        IndexPhaseParam{"indisready", "blocking index state change indisready=true"},
+        IndexPhaseParam{"backfill", "blocking concurrent index backfill"},
+        IndexPhaseParam{"postbackfill", "blocking operations after concurrent index backfill"}),
+    [](const ::testing::TestParamInfo<IndexPhaseParam>& info) {
+      return info.param.phase;
+    });
 
 class ExternalObjectLockTestLongLeaseTTL : public ExternalObjectLockTest {
   ClusterFlags FlagOverrides() override;

@@ -89,18 +89,6 @@ class PendingLockRequests {
   ChildProcessForbidden<SessionLockOwnerTag> TEST_last_owner_;
 };
 
-// State tracking active kStrongWrite, kWeakWrite intent types at the tserver's Object lock Manager.
-// - first 32 bits store the num_active kStrongWrite
-// - last 32 bits store the num_active kWeakWrite
-//
-// Since fastpath object locking is enabled for kAccessShare, kRowShare & kRowExclusive alone, all
-// of which request intent_type(s) kWeakRead/kStrongRead, it is sufficient to just track active
-// write intent types for detecting fast path locking conflicts. Hence not reusing LockState here.
-//
-// Additionally, since write lock state for multiple objects (with same hash) is stored in the same
-// entry, it is better to not use LockState here as it could potentially lead to overflow.
-using SharedWriteLockState = uint64_t;
-
 constexpr size_t kSharedWriteLockStateBits = 2 * kIntentTypeBits;
 
 constexpr SharedWriteLockState kSharedWriteStateMask =
@@ -134,16 +122,6 @@ std::array<SharedWriteLockState, dockv::kIntentTypeSetMapSize> GenerateWriteConf
 const std::array<SharedWriteLockState, dockv::kIntentTypeSetMapSize>
     kWriteIntentTypeSetConflicts = GenerateWriteConflicts();
 
-SharedWriteLockState IncSharedWriteLockState(LockState lock_state) {
-  static constexpr auto kWeakWriteBitShift =
-      std::to_underlying(dockv::IntentType::kWeakWrite) * kIntentTypeBits;
-  static constexpr auto kStrongWriteBitShift =
-      std::to_underlying(dockv::IntentType::kStrongWrite) * kIntentTypeBits;
-  return ((lock_state >> kWeakWriteBitShift) & kFirstIntentTypeMask) +
-         (((lock_state >> kStrongWriteBitShift) & kFirstIntentTypeMask) <<
-               kSharedWriteLockStateBits);
-}
-
 SharedWriteLockState SharedWriteTypeSetConflict(dockv::IntentTypeSet intent_types) {
   return kWriteIntentTypeSetConflicts[intent_types.ToUIntPtr()];
 }
@@ -160,6 +138,28 @@ struct GroupLockState {
 };
 
 } // namespace
+
+SharedWriteLockState LockStateToSharedWriteLockState(LockState lock_state) {
+  static constexpr auto kWeakWriteBitShift =
+      std::to_underlying(dockv::IntentType::kWeakWrite) * kIntentTypeBits;
+  static constexpr auto kStrongWriteBitShift =
+      std::to_underlying(dockv::IntentType::kStrongWrite) * kIntentTypeBits;
+  return ((lock_state >> kWeakWriteBitShift) & kFirstIntentTypeMask) +
+         (((lock_state >> kStrongWriteBitShift) & kFirstIntentTypeMask) <<
+               kSharedWriteLockStateBits);
+}
+
+void SharedWriteLockStateRelease(SharedWriteLockState& held, SharedWriteLockState release) {
+  auto weak_write_sub = std::min(held & kSharedWriteStateMask, release & kSharedWriteStateMask);
+  auto strong_write_sub = std::min(
+     (held >> kSharedWriteLockStateBits) & kSharedWriteStateMask,
+     (release >> kSharedWriteLockStateBits) & kSharedWriteStateMask);
+  auto sub = strong_write_sub << kSharedWriteLockStateBits | weak_write_sub;
+  LOG_IF(DFATAL, sub != release)
+      << "Attempting to release " << DebugSharedWriteLockStateStr(release) << " but only hold "
+      << DebugSharedWriteLockStateStr(held);
+  held -= sub;
+}
 
 TableLockType FastpathLockTypeToTableLockType(ObjectLockFastpathLockType lock_type) {
   switch (lock_type) {
@@ -239,14 +239,14 @@ class ObjectLockSharedState::Impl {
   }
 
   ObjectLockSharedState::ActivationGuard Activate(
-      const std::unordered_map<ObjectLockPrefix, LockState>& initial_intents)
+      const std::unordered_map<ObjectLockPrefix, SharedWriteLockState>& initial_intents)
       EXCLUDES(mutex_) PARENT_PROCESS_ONLY {
     std::lock_guard lock(mutex_);
     DCHECK(waiting_for_manager_.Get());
     LOG_WITH_FUNC(INFO) << "Activating with initial exclusive lock intents: "
                         << CollectionToString(initial_intents);
     for (const auto& [object_id, lock_state] : initial_intents) {
-      AcquireExclusiveLockIntent(object_id, lock_state);
+      LoadExclusiveLockIntent(object_id, lock_state);
     }
     SHARED_MEMORY_STORE(waiting_for_manager_, false);
     return ObjectLockSharedState::ActivationGuard(this);
@@ -294,7 +294,7 @@ class ObjectLockSharedState::Impl {
       PARENT_PROCESS_ONLY {
     auto& group_entry = group(object_id);
     VLOG_WITH_FUNC(1) << AsString(object_id) << ": " << LockStateDebugString(lock_state);
-    const auto sub = IncSharedWriteLockState(lock_state);
+    const auto sub = LockStateToSharedWriteLockState(lock_state);
     [[maybe_unused]] auto value = group_entry.exclusive_intents.fetch_sub(sub);
     DCHECK_GE(value, sub);
   }
@@ -313,9 +313,15 @@ class ObjectLockSharedState::Impl {
  private:
   void AcquireExclusiveLockIntent(const ObjectLockPrefix& object_id, LockState lock_state)
       PARENT_PROCESS_ONLY {
+    VLOG_WITH_FUNC(1) << AsString(object_id) << ": " << LockStateDebugString(lock_state);
+    LoadExclusiveLockIntent(object_id, LockStateToSharedWriteLockState(lock_state));
+  }
+
+  void LoadExclusiveLockIntent(
+      const ObjectLockPrefix& object_id, SharedWriteLockState lock_state)
+      PARENT_PROCESS_ONLY {
     auto& group_entry = group(object_id);
-    VLOG_WITH_FUNC(1) << AsString(object_id);
-    group_entry.exclusive_intents.fetch_add(IncSharedWriteLockState(lock_state));
+    group_entry.exclusive_intents.fetch_add(lock_state);
   }
 
   [[nodiscard]] static size_t GroupFor(const ObjectLockPrefix& object_id) {
@@ -364,7 +370,7 @@ bool ObjectLockSharedState::Lock(const ObjectLockFastpathRequest& request) {
 }
 
 ObjectLockSharedState::ActivationGuard ObjectLockSharedState::Activate(
-    const std::unordered_map<ObjectLockPrefix, LockState>& initial_intents) {
+    const std::unordered_map<ObjectLockPrefix, SharedWriteLockState>& initial_intents) {
   return impl_->Activate(initial_intents);
 }
 

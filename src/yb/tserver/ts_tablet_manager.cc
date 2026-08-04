@@ -330,9 +330,6 @@ DEFINE_test_flag(bool, crash_before_mark_clone_attempted, false,
 DEFINE_NON_RUNTIME_uint32(vector_index_concurrent_writes, 0,
     "Number of threads used by vector index thread pool. 0 - use number of CPUs for it.");
 
-DEFINE_RUNTIME_uint32(vector_index_num_compactions_limit, 1,
-    "Number of vector index compaction per tserver. 0 - no limit per tserver.");
-
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
 DECLARE_bool(lazily_flush_superblock);
@@ -342,6 +339,7 @@ DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 DECLARE_bool(qos_compaction_per_db_cgroups);
 DECLARE_bool(qos_consensus_per_db_cgroups);
 DECLARE_bool(qos_system_dbs_use_shared_pool);
+DECLARE_uint32(vector_index_num_compactions_limit);
 
 namespace yb::tserver {
 
@@ -1004,7 +1002,8 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
     RaftConfigPB config,
     const bool colocated,
     const std::vector<SnapshotScheduleId>& snapshot_schedules,
-    const std::unordered_set<StatefulServiceKind>& hosted_services) {
+    const std::unordered_set<StatefulServiceKind>& hosted_services,
+    const std::string& target_storage_tier) {
   LOG_WITH_FUNC(INFO) << "Table: " << table_info->ToString();
 
   SCOPED_WAIT_STATUS(CreatingNewTablet);
@@ -1029,7 +1028,8 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
   string data_root_dir;
   string wal_root_dir;
   GetAndRegisterDataAndWalDir(
-      fs_manager_, table_info->table_id, tablet_id, &data_root_dir, &wal_root_dir);
+      fs_manager_, table_info->table_id, tablet_id, &data_root_dir, &wal_root_dir,
+      target_storage_tier);
   fs_manager_->SetTabletPathByDataPath(tablet_id, data_root_dir);
   auto create_result = RaftGroupMetadata::CreateNew(tablet::RaftGroupMetadataData {
     .fs_manager = fs_manager_,
@@ -1732,7 +1732,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
 
   auto rb_client = InitRemoteClient<RemoteBootstrapClient>(
       kLogPrefix, tablet_id, bootstrap_peer_uuid, bootstrap_peer_addr.ToString(),
-      kDebugBootstrapString);
+      kDebugBootstrapString, [this] { return IsShutdownStarted(); });
 
   if (replacing_tablet) {
     RETURN_NOT_OK(rb_client->SetTabletToReplace(meta, leader_term));
@@ -1813,8 +1813,7 @@ Status TSTabletManager::StartRemoteBootstrap(const StartRemoteBootstrapRequestPB
   // it to VOTER, so the wait is guaranteed to time out, exceeding the 30s budget that
   // WaitForRemoteSessionsToEnd (called from StartShutdown) allows the RBS to finish in.
   auto status = rb_client->VerifyChangeRoleSucceeded(
-      VERIFY_RESULT(tablet_peer->GetConsensus()),
-      [this] { return IsShutdownStarted(); });
+      VERIFY_RESULT(tablet_peer->GetConsensus()));
   if (status.IsShutdownInProgress()) {
     LOG_WITH_PREFIX(INFO) << status;
   } else if (!status.ok()) {
@@ -1856,7 +1855,8 @@ Status TSTabletManager::StartRemoteSnapshotTransfer(
   const auto& rocksdb_dir = tablet->tablet_metadata()->rocksdb_dir();
 
   auto remote_snapshot_client = InitRemoteClient<RemoteSnapshotTransferClient>(
-      kLogPrefix, tablet_id, source_uuid, source_addr.ToString(), kDebugSnapshotTransferString);
+      kLogPrefix, tablet_id, source_uuid, source_addr.ToString(), kDebugSnapshotTransferString,
+      [this] { return IsShutdownStarted(); });
 
   // Download and persist the remote superblock.
   RETURN_NOT_OK(remote_snapshot_client->Start(
@@ -2001,9 +2001,30 @@ Status TSTabletManager::DeleteTablet(
     }
     return meta->Flush();
   }
-  RETURN_NOT_OK(tablet_peer->Shutdown(
-      should_abort_active_txns, tablet::DisableFlushOnShutdown::kTrue,
-      std::move(exclude_aborting_txn_id)));
+  // Shut the peer down. We cannot use TabletPeer::TEST_Shutdown here: this runs on an RPC handler
+  // thread, and if another thread (e.g. the tserver shutdown sequence) already initiated the peer's
+  // shutdown, blocking in TabletPeer::WaitUntilShutdown until it reaches SHUTDOWN would deadlock --
+  // that other thread may be joining this RPC threadpool before it drives CompleteShutdown. So we
+  // drive CompleteShutdown ourselves when we initiate the shutdown, and otherwise poll while
+  // bailing out if the tablet manager itself starts shutting down. See issue #32211.
+  auto shutdown_initiated = tablet_peer->StartShutdown(
+      tablet::DisableFlushOnShutdown::kTrue, tablet::AbortOps(should_abort_active_txns));
+  if (should_abort_active_txns) {
+    tablet_peer->AbortActiveTransactions(std::move(exclude_aborting_txn_id));
+  }
+  if (shutdown_initiated) {
+    tablet_peer->CompleteShutdown();
+  } else {
+    const auto kPollInterval = MonoDelta::FromMilliseconds(10);
+    while (tablet_peer->state() != tablet::RaftGroupStatePB::SHUTDOWN) {
+      if (IsShutdownStarted()) {
+        return STATUS(
+            ShutdownInProgress,
+            "Tablet manager is shutting down while waiting for concurrent tablet shutdown");
+      }
+      SleepFor(kPollInterval);
+    }
+  }
 
   auto last_logged_opid = tablet_peer->GetLatestLogEntryOpId();
 
@@ -2017,6 +2038,12 @@ Status TSTabletManager::DeleteTablet(
     tracked_dirs.push_back(meta->intents_rocksdb_dir());
     tracked_dirs.push_back(meta->wal_dir());
     tracked_dirs.push_back(meta->snapshots_dir());
+    // Tiered storage: include each non-home tier disk's per-tablet dir (slot 0 == rocksdb_dir).
+    for (const auto& tp : meta->tier_paths()) {
+      if (tp.path != meta->rocksdb_dir()) {
+        tracked_dirs.push_back(tp.path);
+      }
+    }
     for (const auto& info : meta->GetAllColocatedVectorIndexes()) {
       tracked_dirs.push_back(
           meta->vector_index_dir(info->index_info->vector_idx_options()));
@@ -2549,7 +2576,10 @@ void TSTabletManager::StartShutdown() {
   // on to the lock while shutting them down, which might cause a lock
   // inversion. (see KUDU-308 for example).
   for (const TabletPeerPtr& peer : GetTabletPeers()) {
-    if (peer->StartShutdown()) {
+    // StartShutdown carries the flush-on-shutdown / abort options (CompleteShutdown takes none).
+    if (peer->StartShutdown(
+            tablet::DisableFlushOnShutdown(FLAGS_TEST_disable_flush_on_shutdown),
+            tablet::AbortOps::kFalse)) {
       shutting_down_peers_.push_back(peer);
     }
   }
@@ -2577,9 +2607,7 @@ void TSTabletManager::CompleteShutdown() {
   tablet_metadata_validator_->CompleteShutdown();
 
   for (const TabletPeerPtr& peer : shutting_down_peers_) {
-    peer->CompleteShutdown(
-        tablet::DisableFlushOnShutdown(FLAGS_TEST_disable_flush_on_shutdown),
-        tablet::AbortOps::kFalse);
+    peer->CompleteShutdown();
   }
 
   for (auto& vector_index_thread_pool_ref : vector_index_thread_pools_) {
@@ -3249,7 +3277,8 @@ void TSTabletManager::GetAndRegisterDataAndWalDir(FsManager* fs_manager,
                                                   const string& table_id,
                                                   const string& tablet_id,
                                                   string* data_root_dir,
-                                                  string* wal_root_dir) {
+                                                  string* wal_root_dir,
+                                                  const string& target_tier) {
   // Skip sys catalog table and kudu table from modifying the map.
   if (table_id == master::kSysCatalogTableId) {
     return;
@@ -3267,33 +3296,40 @@ void TSTabletManager::GetAndRegisterDataAndWalDir(FsManager* fs_manager,
       table_data_assignment_map_[table_id][data_root_iter] = tablet_id_set;
     }
   }
-  // Find the data directory with the least count of tablets for this table.
-  // Break ties by choosing the data directory with the least number of tablets overall.
-  table_data_assignment_iter = table_data_assignment_map_.find(table_id);
-  auto data_assignment_value_map = table_data_assignment_iter->second;
-  string min_dir;
-  uint64_t min_dir_count = kuint64max;
-  uint64_t min_tablet_counts_across_tables = kuint64max;
-  for (auto& [dir, tablets_in_dir] : data_assignment_value_map) {
-    if (min_dir_count > tablets_in_dir.size() ||
-        (min_dir_count == tablets_in_dir.size() &&
-         min_tablet_counts_across_tables > data_dirs_per_drive_[dir])) {
-      min_dir = dir;
-      min_dir_count = tablets_in_dir.size();
-      min_tablet_counts_across_tables = data_dirs_per_drive_[min_dir];
+
+  // Tiered storage: if a target tier was requested (e.g. from the tablespace's storage_tier),
+  // restrict the candidate disks to that tier so the new tablet's home dir (path_id 0) lands
+  // on the right tier. If the tier isn't configured on this node, fall back to all disks rather
+  // than failing tablet creation outright.
+  // TODO(TieredStorage): wire up LB detection/reconciliation for tier-violating replicas.
+  // For this fallback to be safe long-term, the master's load balancer needs to detect a
+  // replica that isn't respecting its tablespace's tier placement and reconcile it
+  // (locally via AlterTabletTier, or RBS).
+  std::vector<string> candidate_dirs = data_root_dirs;
+  if (!target_tier.empty()) {
+    auto tier_dirs = fs_manager->GetDataRootDirsForTier(target_tier);
+    if (tier_dirs.empty()) {
+      LOG(WARNING) << Format(
+          "No data roots configured for target storage tier '$0' on this node; falling back to "
+          "default disk selection for tablet $1", target_tier, tablet_id);
+    } else {
+      candidate_dirs = std::move(tier_dirs);
     }
   }
+
+  // Find the data directory with the least count of tablets for this table.
+  // Break ties by choosing the data directory with the least number of tablets overall.
+  string min_dir = PickMinLoadDataRootUnlocked(table_id, candidate_dirs);
   *data_root_dir = min_dir;
   // Increment the count for min_dir.
-  auto data_assignment_value_iter = table_data_assignment_map_[table_id].find(min_dir);
-  data_assignment_value_iter->second.insert(tablet_id);
+  table_data_assignment_map_[table_id][min_dir].insert(tablet_id);
   data_dirs_per_drive_[min_dir] += 1;
 
   // Find the wal directory with the least count of tablets for this table.
   // Break ties by choosing the wal directory with the least number of tablets overall.
   min_dir = "";
-  min_dir_count = kuint64max;
-  min_tablet_counts_across_tables = kuint64max;
+  uint64_t min_dir_count = kuint64max;
+  uint64_t min_tablet_counts_across_tables = kuint64max;
   auto wal_root_dirs = fs_manager->GetWalRootDirs();
   CHECK(!wal_root_dirs.empty()) << "No wal root directories found";
   auto table_wal_assignment_iter = table_wal_assignment_map_.find(table_id);
@@ -3318,6 +3354,68 @@ void TSTabletManager::GetAndRegisterDataAndWalDir(FsManager* fs_manager,
   auto wal_assignment_value_iter = table_wal_assignment_map_[table_id].find(min_dir);
   wal_assignment_value_iter->second.insert(tablet_id);
   wal_dirs_per_drive_[min_dir] += 1;
+}
+
+Result<uint32_t> TSTabletManager::SelectPathIdForTier(
+    const tablet::RaftGroupMetadata& meta,
+    const std::string& table_id,
+    const std::string& target_tier) {
+  // Get candidate data roots directly from FsManager's tier map (built from --fs_data_dirs).
+  // These are the same directory strings used as keys in table_data_assignment_map_.
+  const auto candidate_dirs = fs_manager_->GetDataRootDirsForTier(target_tier);
+  if (candidate_dirs.empty()) {
+    return STATUS_FORMAT(
+        NotFound,
+        "No data roots configured for tier '$0' on this node (tablet $1)",
+        target_tier, meta.raft_group_id());
+  }
+
+  std::lock_guard dir_assignment_lock(dir_assignment_mutex_);
+  const std::string chosen_dir = PickMinLoadDataRootUnlocked(table_id, candidate_dirs);
+
+  // Map chosen data root back to path_id via the tablet's tier_paths.
+  for (const auto& tp : meta.tier_paths()) {
+    if (tp.tier == target_tier && tablet::GetDataRootFromTabletDir(tp.path) == chosen_dir) {
+      return tp.path_id;
+    }
+  }
+  return STATUS_FORMAT(
+      InternalError,
+      "Data root '$0' selected for tier '$1' has no matching tier_paths entry in tablet $2",
+      chosen_dir, target_tier, meta.raft_group_id());
+}
+
+std::string TSTabletManager::PickMinLoadDataRootUnlocked(
+    const std::string& table_id,
+    const std::vector<std::string>& candidate_dirs) {
+  std::string min_dir;
+  // Number of tablets belonging to table_id already on the candidate dir (per-table count).
+  uint64_t min_tablet_count = kuint64max;
+  // Number of tablets from any table already on the candidate dir (global tie-break count).
+  uint64_t min_global_count = kuint64max;
+
+  auto table_it = table_data_assignment_map_.find(table_id);
+  for (const auto& dir : candidate_dirs) {
+    uint64_t tablet_count = 0;
+    if (table_it != table_data_assignment_map_.end()) {
+      auto dir_it = table_it->second.find(dir);
+      if (dir_it != table_it->second.end()) {
+        tablet_count = dir_it->second.size();
+      }
+    }
+    uint64_t global_count = 0;
+    auto gc_it = data_dirs_per_drive_.find(dir);
+    if (gc_it != data_dirs_per_drive_.end()) {
+      global_count = gc_it->second;
+    }
+    if (tablet_count < min_tablet_count ||
+        (tablet_count == min_tablet_count && global_count < min_global_count)) {
+      min_dir = dir;
+      min_tablet_count = tablet_count;
+      min_global_count = global_count;
+    }
+  }
+  return min_dir;
 }
 
 void TSTabletManager::RegisterDataAndWalDir(FsManager* fs_manager,
@@ -3777,13 +3875,14 @@ Result<tablet::TabletPeerPtr> TSTabletManager::CheckStateAndLookupTabletUnlocked
 template <class RemoteClient>
 std::unique_ptr<RemoteClient> TSTabletManager::InitRemoteClient(
     const std::string& log_prefix, const TabletId& tablet_id, const PeerId& source_uuid,
-    const std::string& source_addr, const std::string& debug_session_string) {
+    const std::string& source_addr, const std::string& debug_session_string,
+    std::function<bool()> is_cancelled) {
   const auto& init_msg = Format(
       "$0 Initiating $1 from Peer $2 ($3)", log_prefix, debug_session_string, source_uuid,
       source_addr);
   LOG(INFO) << init_msg;
   TRACE(init_msg);
-  return std::make_unique<RemoteClient>(tablet_id, fs_manager_);
+  return std::make_unique<RemoteClient>(tablet_id, fs_manager_, std::move(is_cancelled));
 }
 
 client::YBMetaDataCache* TSTabletManager::CreateYBMetaDataCache() {
@@ -4034,8 +4133,9 @@ Status ShutdownAndTombstoneTabletPeerNotOk(
     return status;
   }
   // If shutdown was initiated by someone else we should not wait for shutdown to complete.
-  if (tablet_peer && tablet_peer->StartShutdown()) {
-    tablet_peer->CompleteShutdown(tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kFalse);
+  if (tablet_peer && tablet_peer->StartShutdown(
+                         tablet::DisableFlushOnShutdown::kFalse, tablet::AbortOps::kFalse)) {
+    tablet_peer->CompleteShutdown();
   }
   tserver::LogAndTombstone(meta, msg, uuid, status, ts_tablet_manager);
   return status;

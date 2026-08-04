@@ -953,6 +953,46 @@ class MasterPathHandlersUnderReplicationItest : public MasterPathHandlersExterna
     return CheckUnderReplicatedInPlacements(test_tablet_ids, {} /* placements */);
   }
 
+  Status CheckLiveMissingZeroZoneReplica(
+      const std::unordered_set<TabletId>& test_tablet_ids, int expected_num_replicas) {
+    faststring result;
+    RETURN_NOT_OK(GetUrl("/api/v1/tablet-under-replication", &result));
+    JsonDocument doc;
+    auto json_obj = VERIFY_RESULT(doc.Parse(result.ToString()));
+    auto tablets_json = VERIFY_RESULT(json_obj["underreplicated_tablets"].GetArray());
+    SCHECK_EQ(tablets_json.size(), test_tablet_ids.size(), IllegalState,
+        "Unexpected amount of underreplicated tablets");
+    for (const auto& tablet_json : tablets_json) {
+      auto tablet_id = VERIFY_RESULT(tablet_json["tablet_uuid"].GetString());
+      if (!test_tablet_ids.contains(tablet_id)) {
+        return STATUS_FORMAT(IllegalState, "Tablet $0 unexpectedly underreplicated", tablet_id);
+      }
+
+      SCHECK_EQ(VERIFY_RESULT(tablet_json["expected_num_replicas"].GetInt32()),
+          expected_num_replicas, IllegalState, "Unexpected expected_num_replicas");
+
+      auto missing_replicas = VERIFY_RESULT(tablet_json["missing_replicas"].GetArray());
+      SCHECK_EQ(missing_replicas.size(), 1, IllegalState,
+          "Expected exactly one placement with missing replicas");
+      const auto placement = missing_replicas[0];
+      SCHECK_EQ(VERIFY_RESULT(placement["placement_uuid"].GetString()), kLivePlacementUuid,
+          IllegalState, "Unexpected placement_uuid");
+      SCHECK(VERIFY_RESULT(placement["is_live"].GetBool()), IllegalState,
+        "Expected live placement");
+      SCHECK_EQ(VERIFY_RESULT(placement["missing_replicas"].GetInt32()), 1, IllegalState,
+          "Expected one missing replica in the live placement");
+
+      auto blocks = VERIFY_RESULT(placement["placement_blocks"].GetArray());
+      SCHECK_EQ(blocks.size(), 1, IllegalState, "Expected one placement block missing replicas");
+      const auto block = blocks[0];
+      SCHECK_EQ(VERIFY_RESULT(block["cloud_info"].GetString()), "c.r.z0", IllegalState,
+          "Unexpected placement block cloud info");
+      SCHECK_EQ(VERIFY_RESULT(block["missing_replicas"].GetInt32()), 1, IllegalState,
+          "Expected one missing replica in the z0 placement block");
+    }
+    return Status::OK();
+  }
+
   Result<std::unordered_set<TabletId>> CreateTestTableAndGetTabletIds() {
     table_ = CreateTestTable(kNumTablets);
 
@@ -991,6 +1031,21 @@ TEST_F_EX(MasterPathHandlersItest, TestTabletUnderReplicationEndpoint,
   }, 10s, "Wait for underreplicated"));
 
   // YBMiniClusterTestBase test-end verification will fail if the cluster is up with stopped nodes.
+  cluster_->Shutdown();
+}
+
+TEST_F_EX(MasterPathHandlersItest, TestTabletUnderReplicationMissingReplicas,
+    MasterPathHandlersUnderReplicationItest) {
+  auto tablet_ids = ASSERT_RESULT(CreateTestTableAndGetTabletIds());
+  ASSERT_OK(WaitFor([&]() {
+    return CheckNotUnderReplicated(tablet_ids).ok();
+  }, 10s, "Wait for not underreplicated"));
+
+  cluster_->tablet_server(0)->Shutdown();
+  ASSERT_OK(WaitFor([&]() {
+    return CheckLiveMissingZeroZoneReplica(tablet_ids, 3).ok();
+  }, 3s * FLAGS_follower_unavailable_considered_failed_sec, "Wait for underreplicated"));
+
   cluster_->Shutdown();
 }
 

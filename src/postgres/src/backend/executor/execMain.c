@@ -282,8 +282,6 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	estate->es_instrument = queryDesc->instrument_options;
 	estate->es_jit_flags = queryDesc->plannedstmt->jitFlags;
 
-	estate->yb_read_ahead_allowed = IsYugaByteEnabled() && YbIsReadAheadAllowed();
-
 	/*
 	 * Set up an AFTER-trigger statement context, unless told not to, or
 	 * unless it's EXPLAIN-only mode (when ExecutorFinish won't be called).
@@ -1684,6 +1682,7 @@ ExecutePlan(QueryDesc *queryDesc,
 	bool		use_parallel_mode;
 	TupleTableSlot *slot;
 	uint64		current_tuple_count;
+	bool		yb_read_ahead_allowed = false;
 
 	/*
 	 * initialize local variables
@@ -1705,12 +1704,17 @@ ExecutePlan(QueryDesc *queryDesc,
 	if (queryDesc->already_executed || numberTuples != 0)
 		use_parallel_mode = false;
 	else
+	{ /* YB: Account for read-ahead logic */
 		use_parallel_mode = queryDesc->plannedstmt->parallelModeNeeded;
+		yb_read_ahead_allowed = IsYugaByteEnabled() && YbIsReadAheadAllowed();
+	}
 	queryDesc->already_executed = true;
 
 	estate->es_use_parallel_mode = use_parallel_mode;
 	if (use_parallel_mode)
 		EnterParallelMode();
+
+	estate->yb_read_ahead_allowed = yb_read_ahead_allowed;
 
 	/*
 	 * Loop until we've processed the proper number of tuples from the plan.
@@ -2009,39 +2013,40 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 		int			natts = tupdesc->natts;
 		int			attrChk;
 
+		/*
+		 * YB: When the plan does not fetch the target tuple (e.g. the
+		 * single-row UPDATE path), unmodified columns are absent from the
+		 * slot, so the NOT NULL check below must skip them.  Skip only for
+		 * UPDATE and DELETE: an INSERT has no target tuple to fetch, and the
+		 * inserted tuple is always complete.  Any future operation (e.g.
+		 * MERGE) must opt in deliberately.
+		 */
+		bool		yb_skip_unmodified = (mtstate &&
+										  (mtstate->operation == CMD_UPDATE ||
+										   mtstate->operation == CMD_DELETE) &&
+										  mtstate->yb_skip_fetch_target_tuple);
+		Bitmapset  *yb_modifiedCols = NULL;
+
+		if (yb_skip_unmodified)
+			yb_modifiedCols = bms_union(ExecGetInsertedCols(resultRelInfo,
+															estate),
+										ExecGetUpdatedCols(resultRelInfo,
+														   estate));
+
 		for (attrChk = 1; attrChk <= natts; attrChk++)
 		{
 			Form_pg_attribute att = TupleDescAttr(tupdesc, attrChk - 1);
 
-			/*
-			 * YB: Below we check if attribute belongs to the modified columns
-			 * for the NOT NULL constraint and if so, performs single-row
-			 * updates. Thus modified columns must be calculated beforehand.
-			 */
-			if (resultRelInfo->ri_RootResultRelInfo)
-			{
-				ResultRelInfo *rootrel = resultRelInfo->ri_RootResultRelInfo;
-
-				modifiedCols = bms_union(ExecGetInsertedCols(rootrel, estate),
-										 ExecGetUpdatedCols(rootrel, estate));
-			}
-			else
-			{
-				modifiedCols = bms_union(ExecGetInsertedCols(resultRelInfo, estate),
-										 ExecGetUpdatedCols(resultRelInfo, estate));
-			}
-
-			bool		att_in_modified_cols = bms_is_member(att->attnum - YBGetFirstLowInvalidAttributeNumber(rel),
-															 modifiedCols);
-
-			if (mtstate && !mtstate->yb_fetch_target_tuple && !att_in_modified_cols)
+			if (yb_skip_unmodified &&
+				!bms_is_member(att->attnum -
+							   YBGetFirstLowInvalidAttributeNumber(rel),
+							   yb_modifiedCols))
 			{
 				/*
 				 * Without a target tuple, we only know the values of the
 				 * modified columns. But in this case it is safe to skip the
 				 * unmodified columns anyway.
 				 */
-				bms_free(modifiedCols);
 				continue;
 			}
 
@@ -2096,8 +2101,9 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 						 val_desc ? errdetail("Failing row contains %s.", val_desc) : 0,
 						 errtablecol(orig_rel, attrChk)));
 			}
-			bms_free(modifiedCols);
 		}
+
+		bms_free(yb_modifiedCols);
 	}
 
 	if (rel->rd_rel->relchecks > 0)

@@ -34,6 +34,7 @@
 
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 DECLARE_bool(TEST_duplicate_create_table_request);
 

@@ -152,7 +152,10 @@ void TabletInvoker::SelectTabletServer()  {
     // refresh has occurred. This also avoids LookupTabletByKey() going into
     // "fast path" mode and not actually performing a metadata refresh from the
     // Master when it needs to.
-    tablet_->MarkTServerAsFollower(current_ts_);
+    const auto marked_as_follower = tablet_->MarkTServerAsFollower(current_ts_);
+    DCHECK(marked_as_follower)
+        << "Tablet " << tablet_id_ << ": Specified server not found: "
+        << current_ts_->ToString() << ". Replicas: " << tablet_->ReplicasAsString();
     current_ts_ = nullptr;
   }
   if (!current_ts_) {
@@ -194,6 +197,15 @@ void TabletInvoker::Execute(TabletIdView tablet_id, bool leader_only) {
     } else {
       tablet_id_ = CHECK_NOTNULL(tablet_.get())->tablet_id();
     }
+  }
+
+  // Neither tablet lookups nor tablet RPCs can make progress once the client is shutting down, so
+  // retrying until the operation deadline (10 minutes for YSQL by default) would only keep the
+  // caller's resources pinned. E.g. a PG session's shared memory holds the request of an in-flight
+  // operation, and releasing it waits for that operation, blocking the whole tserver shutdown.
+  if (client_->data_->Closing()) {
+    command_->Finished(STATUS(ShutdownInProgress, "Client is shutting down"));
+    return;
   }
 
   ash::WaitStateSnapshot wait_state_snapshot;
@@ -598,9 +610,9 @@ void TabletInvoker::LookupTabletCb(
   // We should retry the RPC regardless of the outcome of the lookup, as
   // leader election doesn't depend on the existence of a master at all.
   // Unless we know that this status is persistent.
-  // For instance if tablet was deleted, we would always receive "Not found".
+  // For instance if tablet was deleted, we would always receive "Deleted".
   if (!result.ok() &&
-      (result.status().IsNotFound() ||
+      (result.status().IsNotFound() || result.status().IsDeleted() ||
        ClientError(result.status()) == ClientErrorCode::kTablePartitionListIsStale)) {
     command_->Finished(result.status());
     return;

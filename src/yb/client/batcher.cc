@@ -95,7 +95,7 @@ DEFINE_test_flag(double, simulate_tablet_lookup_does_not_match_partition_key_pro
                  "range of the resolved tablet's partition.");
 DEFINE_test_flag(bool, fail_batcher_rpc, false, "Fail batcher RPCs for testing purposes.");
 
-DEFINE_RUNTIME_PREVIEW_bool(ysql_enable_write_pipelining, false,
+DEFINE_RUNTIME_bool(ysql_enable_write_pipelining, true,
     "Enable pipelining of write statements within a transaction. When enabled, multiple read and "
     "write statements in a transaction are executed concurrently, reducing overall latency.");
 

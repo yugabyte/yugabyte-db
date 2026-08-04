@@ -79,7 +79,7 @@ public class RestoreManagerYb extends DevopsBase {
         Collection<NodeDetails> nodesInCluster = universe.getNodesInCluster(cluster.uuid);
         for (NodeDetails nodeInCluster : nodesInCluster) {
           UUID providerUUID = cluster.getProviderUUIDForNode(nodeInCluster);
-          String nodeAccessKeyCode = userIntent.getAccessKeyCodeForProvider(providerUUID);
+          String nodeAccessKeyCode = cluster.userIntent.getAccessKeyCodeForProvider(providerUUID);
           AccessKey accessKeyForNode = AccessKey.getOrBadRequest(providerUUID, nodeAccessKeyCode);
           if (nodeInCluster.cloudInfo.private_ip != null
               && !nodeInCluster.cloudInfo.private_ip.equals("null")) {

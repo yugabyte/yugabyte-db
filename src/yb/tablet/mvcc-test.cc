@@ -105,17 +105,17 @@ TEST_F(MvccTest, SafeHybridTimeToReadAt) {
     .lease = time,
   };
   clock_->Update(AddLogical(ht_lease.lease, kDelta));
-  ASSERT_EQ(ht_lease.lease, manager_.SafeTime(ht_lease));
+  ASSERT_EQ(ht_lease.lease, ASSERT_RESULT(manager_.SafeTime(ht_lease)));
 
   HybridTime ht1 = clock_->Now();
   manager_.AddFollowerPending(ht1, OpId(1, 1));
-  ASSERT_EQ(ht1.Decremented(), manager_.SafeTime(FixedHybridTimeLease()));
+  ASSERT_EQ(ht1.Decremented(), ASSERT_RESULT(manager_.SafeTime(FixedHybridTimeLease())));
 
   HybridTime ht2 = manager_.AddLeaderPending(OpId(1, 2));
-  ASSERT_EQ(ht1.Decremented(), manager_.SafeTime(FixedHybridTimeLease()));
+  ASSERT_EQ(ht1.Decremented(), ASSERT_RESULT(manager_.SafeTime(FixedHybridTimeLease())));
 
   manager_.Replicated(ht1, OpId(1, 1));
-  ASSERT_EQ(ht2.Decremented(), manager_.SafeTime(FixedHybridTimeLease()));
+  ASSERT_EQ(ht2.Decremented(), ASSERT_RESULT(manager_.SafeTime(FixedHybridTimeLease())));
 
   manager_.Replicated(ht2, OpId(1, 2));
   time = clock_->Now();
@@ -123,7 +123,7 @@ TEST_F(MvccTest, SafeHybridTimeToReadAt) {
     .time = time,
     .lease = time,
   };
-  ASSERT_EQ(time, manager_.SafeTime(ht_lease));
+  ASSERT_EQ(time, ASSERT_RESULT(manager_.SafeTime(ht_lease)));
 
   manager_.TEST_DumpTrace(&mvcc_op_trace_stream);
   const auto mvcc_trace = mvcc_op_trace_stream.str();
@@ -143,7 +143,7 @@ TEST_F(MvccTest, Abort) {
   size_t end = hts.size();
   for (size_t i = 0; i < hts.size(); ++i) {
     if (i & 1) {
-      ASSERT_EQ(hts[begin].Decremented(), manager_.SafeTime(FixedHybridTimeLease()));
+      ASSERT_EQ(hts[begin].Decremented(), ASSERT_RESULT(manager_.SafeTime(FixedHybridTimeLease())));
       manager_.Replicated(hts[begin], OpId(1, begin));
       ++begin;
     } else {
@@ -152,10 +152,10 @@ TEST_F(MvccTest, Abort) {
     }
   }
   auto now = clock_->Now();
-  ASSERT_EQ(now, manager_.SafeTime({
+  ASSERT_EQ(now, ASSERT_RESULT(manager_.SafeTime({
     .time = now,
     .lease = now,
-  }));
+  })));
 }
 
 void MvccTest::RunRandomizedTest(bool use_ht_lease) {
@@ -206,11 +206,10 @@ void MvccTest::RunRandomizedTest(bool use_ht_lease) {
   // This thread will keep getting the safe time in the background.
   std::thread safetime_query_thread([this, &stopped, &ht_lease_provider, &is_leader]() {
     while (!stopped.load(std::memory_order_acquire)) {
-      if (is_leader.load(std::memory_order_acquire)) {
-        manager_.SafeTime(HybridTime::kMin, CoarseTimePoint::max(), ht_lease_provider());
-      } else {
-        manager_.SafeTimeForFollower(HybridTime::kMin, CoarseTimePoint::max());
-      }
+      // The result is exercised only to create contention with the mutating thread.
+      [[maybe_unused]] auto result = is_leader.load(std::memory_order_acquire)
+          ? manager_.SafeTime(HybridTime::kMin, CoarseTimePoint::max(), ht_lease_provider())
+          : manager_.SafeTimeForFollower(HybridTime::kMin, CoarseTimePoint::max());
       std::this_thread::yield();
     }
   });
@@ -275,13 +274,13 @@ void MvccTest::RunRandomizedTest(bool use_ht_lease) {
     HybridTime safe_time;
     if (alive.empty()) {
       auto time_before = clock_->Now();
-      safe_time = manager_.SafeTime(ht_lease_provider());
+      safe_time = ASSERT_RESULT(manager_.SafeTime(ht_lease_provider()));
       auto time_after = clock_->Now();
       ASSERT_GE(safe_time.ToUint64(), time_before.ToUint64());
       ASSERT_LE(safe_time.ToUint64(), time_after.ToUint64());
     } else {
       auto min = queue.begin()->first;
-      safe_time = manager_.SafeTime(ht_lease_provider());
+      safe_time = ASSERT_RESULT(manager_.SafeTime(ht_lease_provider()));
       ASSERT_EQ(min.Decremented(), safe_time);
     }
     if (use_ht_lease) {
@@ -338,12 +337,14 @@ TEST_F(MvccTest, WaitForSafeTime) {
   HybridTime ht2 = manager_.AddLeaderPending(OpId(1, 2));
   std::atomic<bool> t1_done(false);
   std::thread t1([this, ht2, &t1_done] {
-    manager_.SafeTime(ht2.Decremented(), CoarseTimePoint::max(), FixedHybridTimeLease());
+    [[maybe_unused]] auto result =
+        manager_.SafeTime(ht2.Decremented(), CoarseTimePoint::max(), FixedHybridTimeLease());
     t1_done = true;
   });
   std::atomic<bool> t2_done(false);
   std::thread t2([this, ht2, &t2_done] {
-    manager_.SafeTime(AddLogical(ht2, 1), CoarseTimePoint::max(), FixedHybridTimeLease());
+    [[maybe_unused]] auto result =
+        manager_.SafeTime(AddLogical(ht2, 1), CoarseTimePoint::max(), FixedHybridTimeLease());
     t2_done = true;
   });
   std::this_thread::sleep_for(100ms);
@@ -364,7 +365,7 @@ TEST_F(MvccTest, WaitForSafeTime) {
   t2.join();
 
   HybridTime ht3 = manager_.AddLeaderPending(OpId(1, 3));
-  ASSERT_FALSE(manager_.SafeTime(ht3, CoarseMonoClock::now() + 100ms, FixedHybridTimeLease()));
+  ASSERT_FALSE(manager_.SafeTime(ht3, CoarseMonoClock::now() + 100ms, FixedHybridTimeLease()).ok());
 }
 
 } // namespace tablet

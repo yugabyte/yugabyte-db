@@ -27,6 +27,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -167,7 +168,9 @@ TEST_F(CreateTableLimitTestRF1, DeadTServer) {
   ASSERT_OK(conn.Execute("DROP TABLE t"));
   auto* new_tserver = cluster_->tablet_server(1);
   ASSERT_OK(new_tserver->Pause());
-  SleepFor(MonoDelta::FromMilliseconds(4000));
+  // Wait until the master marks the paused tserver dead before probing the limit; a fixed
+  // sleep races with the unresponsive-timeout + catalog-manager sweep on slower builds.
+  ASSERT_OK(cluster_->WaitForMasterToMarkTSDead(1));
   ASSERT_OK(IsTabletLimitErrorStatus(conn.Execute(final_table_ddl)));
   ASSERT_OK(new_tserver->Resume());
 }

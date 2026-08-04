@@ -28,7 +28,7 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Singleton
 @Slf4j
@@ -63,7 +63,7 @@ public class SetUniverseKey {
   }
 
   private void setKeyInMaster(Universe u, HostAndPort masterAddr, byte[] keyRef, byte[] keyVal) {
-    try (YBClient client = ybService.getUniverseClient(u)) {
+    try (YBClientApi client = ybService.getUniverseClient(u)) {
       String dbKeyId = EncryptionAtRestUtil.getKmsHistory(u.getUniverseUUID(), keyRef).dbKeyId;
       if (!client.hasUniverseKeyInMemory(dbKeyId, masterAddr)) {
         client.addUniverseKeys(ImmutableMap.of(dbKeyId, keyVal), masterAddr);

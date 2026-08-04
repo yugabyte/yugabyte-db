@@ -16,6 +16,7 @@ import {
   initialCreateUniverseFormState,
   StepsRef
 } from '@app/redesign/features-v2/universe/create-universe/CreateUniverseContext';
+import { usePersistStepFormValues } from '@app/redesign/features-v2/universe/create-universe/helpers/persistStepFormValues';
 import { ProxyAdvancedProps } from '@app/redesign/features-v2/universe/create-universe/steps/advanced-settings/dtos';
 import { ProxySettingsValidationSchema } from '@app/redesign/features-v2/universe/create-universe/steps/advanced-settings/ProxySettingsValidationSchema';
 
@@ -38,6 +39,8 @@ export const ProxySettings = forwardRef<StepsRef>((_, forwardRef) => {
     reValidateMode: 'onChange',
     criteriaMode: 'all'
   });
+
+  usePersistStepFormValues(methods.watch, methods.getValues, saveProxySettings);
 
   const {
     formState: { errors, isSubmitted },
@@ -63,17 +66,15 @@ export const ProxySettings = forwardRef<StepsRef>((_, forwardRef) => {
     () => ({
       onNext: () => {
         setShowErrorsAfterSubmit(true);
-        return methods.handleSubmit((data) => {
-          saveProxySettings(data);
+        return methods.handleSubmit(() => {
           moveToNextPage();
         })();
       },
       onPrev: () => {
-        saveProxySettings(methods.getValues());
         moveToPreviousPage();
       }
     }),
-    [methods, saveProxySettings, moveToNextPage, moveToPreviousPage]
+    [methods, moveToNextPage, moveToPreviousPage]
   );
 
   return (

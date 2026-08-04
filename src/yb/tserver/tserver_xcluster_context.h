@@ -20,6 +20,7 @@
 #include "yb/common/common_types.pb.h"  // gcc needs for std::unordered_map XClusterNamespaceInfoPB
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/pg_types.h"
+#include "yb/gutil/stl_util.h"
 #include "yb/tserver/tserver_xcluster_context_if.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
 #include "yb/util/status_fwd.h"

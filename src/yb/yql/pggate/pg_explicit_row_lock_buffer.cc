@@ -21,6 +21,8 @@
 #include "yb/common/transaction_error.h"
 
 
+#include "yb/util/status_format.h"
+
 #include "yb/yql/pggate/util/ybc_util.h"
 
 namespace yb::pggate {

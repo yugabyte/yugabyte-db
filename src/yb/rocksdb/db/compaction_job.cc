@@ -71,6 +71,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/stats/iostats_context_imp.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/sync_point.h"

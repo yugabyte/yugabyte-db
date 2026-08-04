@@ -17,6 +17,48 @@ What follows are the release notes for the YugabyteDB Voyager v1 release series.
 
 Voyager releases (starting with v2025.5.2) use the numbering format `YYYY.M.N`, where `YYYY` is the release year, `M` is the month, and `N` is the number of the release in that month.
 
+## Source database support changes
+
+| Source | Migration type | Status | Effective date |
+| :----- | :------------- | :----- | :------------- |
+| Oracle | [Live migration](../migrate/live-migrate/), including<br>[fall-forward](../migrate/live-fall-forward/) and [fall-back](../migrate/live-fall-back/) | Not supported | - |
+| Oracle | [Offline migration](../migrate/migrate-steps/) | Deprecated | Support ends October 13, 2026 |
+| MySQL | [Offline migration](../migrate/migrate-steps/) | Deprecated | Support ends October 13, 2026 |
+
+Oracle and MySQL [offline migration](../migrate/migrate-steps/) was deprecated on July 13, 2026. PostgreSQL migrations are unaffected.
+
+Contact {{% support-general %}} to discuss alternative tools and migration approaches.
+
+## v2026.7.2 - July 22, 2026
+
+### Enhancements
+
+- Enhanced Live migration (CDC). Resolved unique-key NULL-NULL conflict handling accurately depending on the  NULLS DISTINCT / NULLS NOT DISTINCT property, using unique-index information read from the target database. This unblocks complex data patterns and speeds up the CDC phase.
+
+- Resuming import data file for Amazon S3 files now seeks directly to the last byte offset instead of re-reading and discarding previously imported lines, making resumption faster.
+
+- CLI help and configuration templates now warn that disabling `run-guardrails-checks` is unsafe because it skips critical pre-migration validations.
+
+## v2026.7.1 - July 7, 2026
+
+{{< note title="Important: Breaking change" >}}
+
+This release includes breaking changes for Voyager migrations. Migrations started with earlier Voyager versions cannot be continued with this version. To proceed, either continue the migration using the same Voyager version you started with, or start a new migration using v2026.7.1.
+
+{{< /note >}}
+
+### Enhancements
+
+- Added `--target-db-type` CLI flag to select the target database engine for offline and basic live migrations from PostgreSQL.
+- Added a guardrail that fails fast with a clear error when a `start-clean` import is attempted after the relevant queue segments have already been archived.
+
+### Bug fixes
+
+- Fixed an issue where unsupported query constructs were not detected during migration assessment when run with `--run-guardrails-checks=false`, even though [pg_stat_statements](../../launch-and-manage/monitor-and-alert/query-tuning/pg-stat-statements/) was installed and enabled.
+- Fixed unique-key conflict detection for multi-column unique indexes during live migration.
+- Fixed live migration reporting false unique-key conflicts for tables using the table CDC partitioning strategy.
+- Fixed a validation issue where `--use-partition-root` incorrectly evaluated the target engine instead of the source database, ensuring non-PostgreSQL sources are properly rejected.
+
 ## v2026.6.2 - June 24, 2026
 
 ### Enhancements

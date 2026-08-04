@@ -40,6 +40,7 @@
 
 DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(pg_client_use_shared_memory);
 DECLARE_bool(report_ysql_ddl_txn_status_to_master);
 DECLARE_bool(ysql_ddl_transaction_wait_for_ddl_verification);
@@ -362,16 +363,34 @@ TEST_F(PgObjectLocksTestRF1Deadlock, YB_DISABLE_TEST_IN_SANITIZERS(TestDeadlockS
     RETURN_NOT_OK(conn1.Execute("LOCK TABLE test IN ACCESS EXCLUSIVE MODE"));
     return Status::OK();
   });
+  // The deadlock detector aborts exactly one of the two lock requests. The aborted transaction,
+  // however, retains the locks it acquired in earlier statements (e.g. conn1's ACCESS SHARE) until
+  // it is rolled back, matching PostgreSQL semantics where a failed statement leaves the
+  // transaction aborted but holding its locks. Hence the surviving request cannot make progress
+  // until the aborted transaction is rolled back. Roll back each transaction as soon as its request
+  // aborts so the survivor is unblocked.
+  std::optional<Status> s1, s2;
   ASSERT_OK(WaitFor(
       [&]() {
-        return status_future_1.wait_for(0s) == std::future_status::ready &&
-               status_future_2.wait_for(0s) == std::future_status::ready;
+        if (!s1 && status_future_1.wait_for(0s) == std::future_status::ready) {
+          s1 = status_future_1.get();
+          if (!s1->ok()) {
+            EXPECT_OK(conn2.RollbackTransaction());
+          }
+        }
+        if (!s2 && status_future_2.wait_for(0s) == std::future_status::ready) {
+          s2 = status_future_2.get();
+          if (!s2->ok()) {
+            EXPECT_OK(conn1.RollbackTransaction());
+          }
+        }
+        return s1.has_value() && s2.has_value();
       },
-      20s * kTimeMultiplier, "Timed out waiting for status futures to complete"));
-  // One of the tweo connections should have been aborted due to deadlock.
-  ASSERT_TRUE(status_future_1.get().ok() ^ status_future_2.get().ok());
-  ASSERT_OK(conn1.RollbackTransaction());
-  ASSERT_OK(conn2.RollbackTransaction());
+      60s * kTimeMultiplier, "Timed out waiting for status futures to complete"));
+  // One of the two connections should have been aborted due to deadlock.
+  ASSERT_TRUE(s1->ok() ^ s2->ok());
+  // Roll back the surviving transaction; the aborted one was already rolled back above.
+  ASSERT_OK(s1->ok() ? conn2.RollbackTransaction() : conn1.RollbackTransaction());
 }
 
 class PgObjectLocksTestRF1SessionExpiry : public PgObjectLocksTestRF1 {
@@ -554,6 +573,13 @@ class PgObjectLocksTest : public LibPqTestBase {
         yb::Format("libpq_utils=1,ts_local_lock_manager=2,$0", FLAGS_vmodule);
     opts->extra_tserver_flags.emplace_back(
         yb::Format("--enable_object_locking_for_table_locks=$0", EnableTableLocks()));
+    // Concurrent DDL requires object locking, so when object locking is disabled, disable
+    // concurrent DDL too; otherwise the cross-flag validator would FATAL if concurrent DDL defaults
+    // on. When object locking is enabled, leave concurrent DDL at its default.
+    if (!EnableTableLocks()) {
+      opts->extra_tserver_flags.emplace_back("--ysql_enable_concurrent_ddl=false");
+      AppendFlagToAllowedPreviewFlagsCsv(opts->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    }
     opts->extra_tserver_flags.emplace_back(
         yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", EnableTransactionalDdl()));
     opts->extra_tserver_flags.emplace_back("--enable_ysql_operation_lease=true");
@@ -572,11 +598,15 @@ class PgObjectLocksTest : public LibPqTestBase {
 
     opts->extra_master_flags.emplace_back("--enable_ysql_operation_lease=true");
     opts->extra_master_flags.emplace_back(
-        Format("--master_ysql_operation_lease_ttl_ms=$0", kDefaultMasterYSQLLeaseTTLMilli));
+        Format("--master_ysql_operation_lease_ttl_ms=$0", MasterYSQLLeaseTTLMilli()));
   }
 
   int GetNumTabletServers() const override {
     return 3;
+  }
+
+  virtual uint64_t MasterYSQLLeaseTTLMilli() const {
+    return kDefaultMasterYSQLLeaseTTLMilli;
   }
 
   virtual bool EnableTableLocks() const {
@@ -765,6 +795,13 @@ TEST_P(PgObjectLocksTestAbortTxnsInMixedMode, TestDDLAbortsTxnsInMixedMode) {
   // precedence over value set by GetParam()
   ts1->mutable_flags()->push_back(yb::Format(
       "--enable_object_locking_for_table_locks=$0", ts1_should_use_table_locks ? "true" : "false"));
+  // When object locking is disabled on the restarted TServer, disable concurrent DDL too;
+  // otherwise the cross-flag validator would FATAL if concurrent DDL defaults on. When object
+  // locking is enabled, leave concurrent DDL at its default.
+  if (!ts1_should_use_table_locks) {
+    ts1->mutable_flags()->push_back("--ysql_enable_concurrent_ddl=false");
+    AppendFlagToAllowedPreviewFlagsCsv(*ts1->mutable_flags(), "ysql_enable_concurrent_ddl");
+  }
   ASSERT_OK(ts1->Restart(ExternalMiniClusterOptions::kDefaultStartCqlProxy));
   ASSERT_OK(log_waiter.WaitFor(MonoDelta::FromSeconds(kTimeMultiplier * 10)));
 
@@ -925,7 +962,16 @@ TEST_F(PgObjectLocksTest, ConcurrentAlterSelect) {
   testConcurrentAlterSelect(false);
 }
 
-TEST_F(PgObjectLocksTest, BackfillIndexSanityTest) {
+// Uses a longer YSQL operation lease TTL. On oversubscribed hosts a transient stall of the tserver
+// lease refresher can otherwise expire the lease and kill an in-flight PG backend mid-statement.
+class PgObjectLocksTestLongLease : public PgObjectLocksTest {
+ protected:
+  uint64_t MasterYSQLLeaseTTLMilli() const override {
+    return 20 * 1000;
+  }
+};
+
+TEST_F_EX(PgObjectLocksTest, BackfillIndexSanityTest, PgObjectLocksTestLongLease) {
   const auto ts1_idx = 1;
   const auto ts2_idx = 2;
   auto* ts1 = cluster_->tablet_server(ts1_idx);

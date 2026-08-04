@@ -516,7 +516,7 @@ TEST_P(XClusterOutboundReplicationGroupParameterized, Repair) {
   ASSERT_NOK_STR_CONTAINS(
       XClusterClient().RepairOutboundXClusterReplicationGroupAddTable(
           kReplicationGroupId, "BadId", new_stream_id),
-      "Table with identifier BadId not found");
+      "Table with id BadId does not exist");
 
   ASSERT_NOK_STR_CONTAINS(
       XClusterClient().RepairOutboundXClusterReplicationGroupAddTable(

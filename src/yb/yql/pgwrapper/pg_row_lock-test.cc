@@ -228,18 +228,6 @@ TEST_F(PgRowLockTest, YB_DISABLE_TEST_IN_SANITIZERS(DeleteBeforeExplicitRowLock)
   });
 }
 
-TEST_F(PgRowLockTest, RowLockWithoutTransaction) {
-  RunTestTwice([this]() {
-    auto conn = ASSERT_RESULT(Connect());
-
-    auto status = conn.Execute(
-        "SELECT relname FROM pg_catalog.pg_class WHERE relname NOT LIKE 'pg%' FOR SHARE");
-    ASSERT_NOK(status);
-    ASSERT_STR_CONTAINS(status.message().ToBuffer(),
-                        "Read request with row mark types must be part of a transaction");
-  });
-}
-
 TEST_F(PgRowLockTest, SelectForKeyShareWithRestart) {
   RunTestTwice([this]() {
     const auto table = "foo";
@@ -278,7 +266,9 @@ class PgRowLockTestDisableObjectLock : public PgRowLockTest {
  protected:
   void SetUp() override {
     // Test verifies "<lock mode> not supported yet" errors when object locking is disabled.
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = false;
     PgRowLockTest::SetUp();
   }
 };
@@ -305,6 +295,25 @@ TEST_F_EX(PgRowLockTest, ObjectLocksNotSupported, PgRowLockTestDisableObjectLock
     VerifyAcquireTableLockNotSupport("SHARE UPDATE EXCLUSIVE");
 
     ASSERT_OK(conn.Execute("DROP TABLE test"));
+  });
+}
+
+// This checks that a row-mark SELECT on a catalog table outside an explicit transaction is
+// rejected with "must be part of a transaction". That holds only when concurrent DDL is disabled:
+// without it, catalog reads use the non-transactional catalog session, so the row-mark read has no
+// transaction attached and the error is raised. With concurrent DDL enabled, catalog reads are
+// routed through the transactional session (see YBCIsLegacyModeForCatalogOps), so the read carries
+// a transaction, the row mark is accepted, and the statement succeeds instead of erroring. Hence
+// this case runs with concurrent DDL (and object locking) disabled.
+TEST_F_EX(PgRowLockTest, RowLockWithoutTransaction, PgRowLockTestDisableObjectLock) {
+  RunTestTwice([this]() {
+    auto conn = ASSERT_RESULT(Connect());
+
+    auto status = conn.Execute(
+        "SELECT relname FROM pg_catalog.pg_class WHERE relname NOT LIKE 'pg%' FOR SHARE");
+    ASSERT_NOK(status);
+    ASSERT_STR_CONTAINS(status.message().ToBuffer(),
+                        "Read request with row mark types must be part of a transaction");
   });
 }
 

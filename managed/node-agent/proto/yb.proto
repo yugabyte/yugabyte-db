@@ -178,6 +178,12 @@ message InstallOtelCollectorInput {
     uint32 ysqlAuditLogRetentionDays = 11;
     // Days to keep gzipped YCQL audit log archives on the node. 0 = disabled.
     uint32 ycqlAuditLogRetentionDays = 12;
+    // When true, skip the heavy otel-collector install steps (package
+    // upload/untar, service unit placement) and only rewrite the audit-log
+    // cleanup env file + refresh the on-node zip_purge_yb_logs.sh script.
+    // Used to propagate audit-log setting changes even when otel-collector
+    // is not being (re)installed.
+    bool refreshScriptOnly = 13;
 }
 
 message InstallOtelCollectorOutput {

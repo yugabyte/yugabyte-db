@@ -23,12 +23,7 @@ properties:
     type: string
   backup_type:
     description: Table type for the backup.
-    type: string
-    enum:
-      - YQL_TABLE_TYPE
-      - REDIS_TABLE_TYPE
-      - PGSQL_TABLE_TYPE
-      - TRANSACTION_STATUS_TABLE_TYPE
+    $ref: "./TableType.yaml"
   category:
     description: Backup implementation category.
     type: string

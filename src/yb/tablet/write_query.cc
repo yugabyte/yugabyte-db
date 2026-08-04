@@ -54,6 +54,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 #include "yb/util/flags.h"
@@ -125,6 +126,9 @@ void SetupKeyValueBatch(const tserver::WriteRequestMsg& client_request, LWWriteP
   // But in CDCServiceTest we have ql write batch with external time.
   if (client_request.has_external_hybrid_time()) {
     out_request->set_external_hybrid_time(client_request.external_hybrid_time());
+  }
+  if (client_request.has_xcluster_target_applied()) {
+    out_request->set_xcluster_target_applied(client_request.xcluster_target_applied());
   }
 }
 

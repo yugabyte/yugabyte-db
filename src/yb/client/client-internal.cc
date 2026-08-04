@@ -80,6 +80,8 @@
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/server/clock.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -2037,7 +2039,8 @@ class GetCDCStreamRpc : public ClientMasterRpc<GetCDCStreamRequestPB, GetCDCStre
       const xrepl::StreamId& stream_id,
       ObjectId* object_id,
       std::unordered_map<std::string, std::string>* options,
-      CoarseTimePoint deadline);
+      CoarseTimePoint deadline,
+      bool* xcluster_use_target_applied_filter);
 
   std::string ToString() const override;
 
@@ -2051,6 +2054,7 @@ class GetCDCStreamRpc : public ClientMasterRpc<GetCDCStreamRequestPB, GetCDCStre
   xrepl::StreamId stream_id_;
   ObjectId* object_id_;
   std::unordered_map<std::string, std::string>* options_;
+  bool* xcluster_use_target_applied_filter_;
 };
 
 GetCDCStreamRpc::GetCDCStreamRpc(
@@ -2059,12 +2063,14 @@ GetCDCStreamRpc::GetCDCStreamRpc(
     const xrepl::StreamId& stream_id,
     TableId* object_id,
     std::unordered_map<std::string, std::string>* options,
-    CoarseTimePoint deadline)
+    CoarseTimePoint deadline,
+    bool* xcluster_use_target_applied_filter)
     : ClientMasterRpc(client, deadline),
       user_cb_(std::move(user_cb)),
       stream_id_(stream_id),
       object_id_(DCHECK_NOTNULL(object_id)),
-      options_(DCHECK_NOTNULL(options)) {
+      options_(DCHECK_NOTNULL(options)),
+      xcluster_use_target_applied_filter_(xcluster_use_target_applied_filter) {
   req_.set_stream_id(stream_id_.ToString());
 }
 
@@ -2095,6 +2101,10 @@ void GetCDCStreamRpc::ProcessResponse(const Status& status) {
     options_->reserve(resp_.stream().options_size());
     for (const auto& option : resp_.stream().options()) {
       options_->emplace(option.key(), option.value());
+    }
+
+    if (xcluster_use_target_applied_filter_) {
+      *xcluster_use_target_applied_filter_ = resp_.stream().xcluster_use_target_applied_filter();
     }
   }
   user_cb_(status);
@@ -2723,14 +2733,16 @@ void YBClient::Data::GetCDCStream(
     std::shared_ptr<ObjectId> object_id,
     std::shared_ptr<std::unordered_map<std::string, std::string>> options,
     CoarseTimePoint deadline,
-    StdStatusCallback callback) {
+    StdStatusCallback callback,
+    std::shared_ptr<bool> xcluster_use_target_applied_filter) {
   auto rpc = StartRpc<internal::GetCDCStreamRpc>(
       client,
       callback,
       stream_id,
       object_id.get(),
       options.get(),
-      deadline);
+      deadline,
+      xcluster_use_target_applied_filter.get());
 }
 
 void YBClient::Data::DeleteNotServingTablet(

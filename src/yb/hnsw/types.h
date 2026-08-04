@@ -15,6 +15,7 @@
 
 #include "yb/hnsw/hnsw_fwd.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/tostring.h"
 
 #include "yb/vector_index/vector_index_fwd.h"

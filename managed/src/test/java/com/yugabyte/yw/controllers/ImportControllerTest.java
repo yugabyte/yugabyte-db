@@ -49,7 +49,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ListTabletServersResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import org.yb.util.ServerInfo;
 import play.libs.Json;
 import play.mvc.Result;
@@ -60,7 +60,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
   private Customer customer;
   private Users user;
   private String authToken;
-  private YBClient mockClient;
+  private YBClientApi mockClient;
   private ListTabletServersResponse mockResponse;
 
   @Before
@@ -68,7 +68,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     authToken = user.createAuthToken();
-    mockClient = mock(YBClient.class);
+    mockClient = mock(YBClientApi.class);
     mockResponse = mock(ListTabletServersResponse.class);
     when(mockYBClient.getUniverseClient(any())).thenReturn(mockClient);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);

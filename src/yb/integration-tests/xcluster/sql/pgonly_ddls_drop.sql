@@ -70,7 +70,7 @@ DROP FOREIGN TABLE foreign_table_name;
 DROP SERVER foreign_server;
 
 -- DROP Foreign Data Wrapper
-DROP FOREIGN DATA WRAPPER postgres_fdw;
+DROP FOREIGN DATA WRAPPER dummy_fdw;
 
 --------------Text Search DDLs --------------------------
 DROP TEXT SEARCH CONFIGURATION simple_config;

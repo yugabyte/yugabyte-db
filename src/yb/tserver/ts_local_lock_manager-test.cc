@@ -40,6 +40,7 @@
 #include "yb/util/tsan_util.h"
 
 DECLARE_bool(enable_object_locking_for_table_locks);
+DECLARE_bool(ysql_enable_concurrent_ddl);
 DECLARE_bool(ysql_yb_ddl_transaction_block_enabled);
 DECLARE_bool(TEST_assert_olm_empty_locks_map);
 DECLARE_bool(TEST_olm_skip_scheduling_waiter_resumption);
@@ -62,6 +63,7 @@ using LockStateMap = std::unordered_map<ObjectLockPrefix, LockState>;
 
 auto kTxn1 = ObjectLockOwner{TransactionId::GenerateRandom(), 1};
 auto kTxn2 = ObjectLockOwner{TransactionId::GenerateRandom(), 1};
+auto kTxn3 = ObjectLockOwner{TransactionId::GenerateRandom(), 1};
 
 constexpr auto kDatabase1 = 1;
 constexpr auto kDatabase2 = 2;
@@ -84,8 +86,9 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
     StartTabletServer();
     auto& server = *mini_server_->server();
     lm_ = CHECK_NOTNULL(server.ts_local_lock_manager()).get();
-    BeforeSharedMemorySetup();
+    LockManagerBootstrap();
     lm_->TEST_MarkBootstrapped();
+    BeforeSharedMemorySetup();
     // Skip shared mem negotiation since there is no pg supervisor managing conections,
     // and hence the negotiation callback never happens.
     ASSERT_OK(server.SkipSharedMemoryNegotiation());
@@ -93,6 +96,8 @@ class TSLocalLockManagerTest : public TabletServerTestBase {
     shared_manager_ = server.ObjectLockSharedStateManager();
     lock_owner_registry_ = &shared_manager_->registry();
   }
+
+  virtual void LockManagerBootstrap() {}
 
   virtual void BeforeSharedMemorySetup() {}
 
@@ -833,7 +838,7 @@ TEST_F(TSLocalLockManagerTest, TestConflictsWithBgTxnAreIgnored) {
 
 class TSLocalLockManagerBootstrappedLocksTest : public TSLocalLockManagerTest {
  public:
-  void BeforeSharedMemorySetup() override {
+  void LockManagerBootstrap() override {
     DdlLockEntriesPB entries;
     auto* lock_request = entries.mutable_lock_entries()->Add();
     lock_request->set_txn_id(kTxn1.txn_id.data(), kTxn1.txn_id.size());
@@ -864,6 +869,33 @@ TEST_F(TSLocalLockManagerBootstrappedLocksTest, TestSimple) {
   ASSERT_FALSE(ASSERT_RESULT(LockRelationPgFastpath(
       txn2.tag(), kTxn2.subtxn_id, kDatabase1, kObject1,
       ObjectLockFastpathLockType::kRowExclusive)));
+}
+
+class TSLocalLockManagerLockBeforeSharedMemorySetupTest : public TSLocalLockManagerTest {
+ protected:
+  void BeforeSharedMemorySetup() override {
+    ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, TableLockType::ACCESS_SHARE));
+    ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject1, TableLockType::EXCLUSIVE));
+    ASSERT_OK(LockRelation(kTxn1, kDatabase1, kObject2, TableLockType::ACCESS_SHARE));
+    ASSERT_OK(LockRelation(kTxn2, kDatabase1, kObject2, TableLockType::EXCLUSIVE));
+    ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+  }
+};
+
+TEST_F_EX(TSLocalLockManager, TestLockBeforeSharedMemorySetup,
+          TSLocalLockManagerLockBeforeSharedMemorySetupTest) {
+  auto txn3 = lock_owner_registry_->Register(kTxn3.txn_id, TabletId());
+  ASSERT_TRUE(ASSERT_RESULT(LockRelationPgFastpath(
+      txn3.tag(), kTxn3.subtxn_id, kDatabase1, kObject1,
+      ObjectLockFastpathLockType::kRowExclusive)));
+  ASSERT_FALSE(ASSERT_RESULT(LockRelationPgFastpath(
+      txn3.tag(), kTxn3.subtxn_id, kDatabase1, kObject2,
+      ObjectLockFastpathLockType::kRowExclusive)));
+  ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+  ASSERT_TRUE(ASSERT_RESULT(LockRelationPgFastpath(
+      txn3.tag(), kTxn3.subtxn_id, kDatabase1, kObject2,
+      ObjectLockFastpathLockType::kRowExclusive)));
+  ASSERT_OK(ReleaseLocksForOwner(kTxn3));
 }
 
 } // namespace yb::tserver

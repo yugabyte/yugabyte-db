@@ -69,6 +69,9 @@ YB_DEFINE_HANDLE_TYPE(PgGlobalViewRead);
 // Handle to a distributed trace span context.
 YB_DEFINE_HANDLE_TYPE(OtelSpanContext);
 
+// Handle to a live distributed-trace span for a single executor plan node.
+YB_DEFINE_HANDLE_TYPE(OtelNodeSpan);
+
 // Represents STATUS_* definitions from src/postgres/src/include/c.h.
 #define YBC_STATUS_OK     (0)
 #define YBC_STATUS_ERROR  (-1)
@@ -210,7 +213,9 @@ typedef enum {
 typedef enum {
   kLowerPriorityRange,
   kHigherPriorityRange,
-  kHighestPriority
+  kHighestPriority,
+  // Pre-empted by any conflicting transaction, whichever priority range it belongs to.
+  kLowestPriority
 } YbcTxnPriorityRequirement;
 
 // Single key column value for YBCGetTabletForKey (used by yb_get_tablet_for_key).
@@ -733,6 +738,7 @@ typedef struct {
   YbcPgRowMessage* rows;
   bool needs_publication_table_list_refresh;
   uint64_t publication_refresh_time;
+  bool explicit_alter_publication_detected;
 } YbcPgChangeRecordBatch;
 
 typedef struct {
@@ -892,6 +898,8 @@ typedef struct {
   const char** replicas;
   size_t replicas_count;
   bool is_hash_partitioned;
+  const char* tablet_state;
+  YbcPgOid pg_table_oid;
 } YbcPgGlobalTabletsDescriptor;
 
 typedef struct {

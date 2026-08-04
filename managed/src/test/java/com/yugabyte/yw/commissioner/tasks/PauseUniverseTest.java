@@ -200,6 +200,33 @@ public class PauseUniverseTest extends CommissionerBaseTest {
   }
 
   @Test
+  public void testPauseUniverseBlockedWhenSomeNodesNotLive() {
+    setupUniverse(false);
+    PauseUniverse.Params taskParams = new PauseUniverse.Params();
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+
+    // Change node states to InstanceStopped
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        universe -> {
+          UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+          for (NodeDetails node : details.nodeDetailsSet) {
+            node.state = NodeDetails.NodeState.InstanceStopped;
+          }
+          universe.setUniverseDetails(details);
+        });
+
+    // Assert that submitting the task now throws the expected exception
+    PlatformServiceException thrown =
+        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
+
+    assertThat(
+        thrown.getMessage(),
+        containsString("Pause Universe task requires all nodes to be in a live state"));
+  }
+
+  @Test
   public void testPauseUniverseRetries() {
     setupUniverse(false);
     PauseUniverse.Params taskParams = new PauseUniverse.Params();

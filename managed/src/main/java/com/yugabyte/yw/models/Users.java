@@ -219,6 +219,10 @@ public class Users extends Model {
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
   private Boolean newUniverseUiEnabled = true;
 
+  @ApiModelProperty(value = "YbaApi Internal. Whether the new UI tour was shown to particular user")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.31.0.0")
+  private Boolean newUniverseUiTourCompleted;
+
   public static final Finder<UUID, Users> find = new Finder<UUID, Users>(Users.class) {};
 
   @Deprecated

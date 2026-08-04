@@ -397,8 +397,11 @@ void TSDescriptor::UpdateMetrics(const TServerMetricsPB& metrics) {
   ts_metrics_.uptime_seconds = metrics.uptime_seconds();
   ts_metrics_.path_metrics.clear();
   for (const auto& path_metric : metrics.path_metrics()) {
-    ts_metrics_.path_metrics[path_metric.path_id()] =
-        { path_metric.used_space(), path_metric.total_space() };
+    ts_metrics_.path_metrics[path_metric.path_id()] = {
+        path_metric.used_space(),
+        path_metric.total_space(),
+        path_metric.has_storage_tier() ? path_metric.storage_tier() : std::string(),
+    };
   }
   ts_metrics_.disable_tablet_split_if_default_ttl = metrics.disable_tablet_split_if_default_ttl();
 }
@@ -418,6 +421,9 @@ void TSDescriptor::GetMetrics(TServerMetricsPB* metrics) {
     new_path_metric->set_path_id(path_metric.first);
     new_path_metric->set_used_space(path_metric.second.used_space);
     new_path_metric->set_total_space(path_metric.second.total_space);
+    if (!path_metric.second.storage_tier.empty()) {
+      new_path_metric->set_storage_tier(path_metric.second.storage_tier);
+    }
   }
   metrics->set_disable_tablet_split_if_default_ttl(ts_metrics_.disable_tablet_split_if_default_ttl);
 }
@@ -511,11 +517,13 @@ bool TSDescriptor::IsReadOnlyTS(const ReplicationInfoPB& replication_info) const
 
 std::optional<TSDescriptor::WriteLock> TSDescriptor::MaybeUpdateLiveness(MonoTime time) {
   auto proto_lock = LockForWrite();
-  SharedLock<decltype(mutex_)> transient_lock(mutex_);
+  std::lock_guard<decltype(mutex_)> transient_lock(mutex_);
   if (proto_lock->pb.state() == SysTabletServerEntryPB::LIVE && last_heartbeat_ &&
       time.GetDeltaSince(last_heartbeat_).ToMilliseconds() >
           FLAGS_tserver_unresponsive_timeout_ms) {
     proto_lock.mutable_data()->pb.set_state(SysTabletServerEntryPB::UNRESPONSIVE);
+    // Force a full tablet report on recovery.
+    set_has_tablet_report_unlocked(false);
     const auto& addr = DesiredHostPort(proto_lock->pb.registration(), local_master_cloud_info_);
     LOG(WARNING) << "Marking tserver " << permanent_uuid()
                  << " (" << addr.host() << ":" << addr.port() << ")"

@@ -70,6 +70,21 @@ public class TestBackendSyncReset extends BaseYsqlConnMgr {
     return pool.get("idle_physical_connections").getAsInt();
   }
 
+  // Polls /connections until the pool reports exactly `expected` idle and no active physical
+  // connections, i.e. the backend has finished its reset and been detached. Callers must first wait
+  // out the stats staleness window, else a snapshot predating the event of interest can match.
+  private void waitForSettledPool(int expected) throws Exception {
+    long deadline = System.currentTimeMillis() + 60_000;
+    while (System.currentTimeMillis() < deadline) {
+      JsonObject pool = getPool(DB, USER);
+      if (pool != null && pool.get("active_physical_connections").getAsInt() == 0
+          && pool.get("idle_physical_connections").getAsInt() == expected) {
+        return;
+      }
+      Thread.sleep(STATS_UPDATE_INTERVAL * 1000);
+    }
+  }
+
   // This test verifies that backends are not left in an inconsistent state in case a client
   // disconnects when a long running query is in progress while employing the Extended Query
   // Protocol.
@@ -144,7 +159,14 @@ public class TestBackendSyncReset extends BaseYsqlConnMgr {
       exec.shutdownNow();
     }
 
-    Thread.sleep(Math.max(2 * TIMEOUT, 2 * STATS_UPDATE_INTERVAL));
+    // The backend is only released back to the pool once conn mgr's wait timeout expires and the
+    // in-flight query is cancelled, and the /connections stats are refreshed only on the conn mgr
+    // cron tick, so a snapshot taken right after the abort can still describe the pre-abort state,
+    // when the backend was idle between queries. Wait out that stale window, then poll: the server
+    // stays counted as active until the reset completes and it is detached. A backend that really
+    // was closed never comes back idle, so the assertion below still fails.
+    Thread.sleep(2 * STATS_UPDATE_INTERVAL * 1000);
+    waitForSettledPool(1);
 
     assertEquals("Txn backend should not have been closed during reset phase", 1,
         getIdleBackends(USER, "yugabyte"));
@@ -166,7 +188,12 @@ public class TestBackendSyncReset extends BaseYsqlConnMgr {
           backendPid[0], secondPid);
     }
 
-    Thread.sleep(2 * STATS_UPDATE_INTERVAL);
+    // STATS_UPDATE_INTERVAL is expressed in seconds, and the /connections webserver stats are only
+    // refreshed on the connection manager's cron tick (once per ysql_conn_mgr_stats_interval). Wait
+    // for at least a couple of such ticks so the settled idle-backend count is observed rather than
+    // a stale snapshot taken while conn2 was still active.
+    Thread.sleep(2 * STATS_UPDATE_INTERVAL * 1000);
+    waitForSettledPool(1);
 
     assertEquals("No extra txn backends should have been made for a new connection", 1,
         getIdleBackends(USER, "yugabyte"));

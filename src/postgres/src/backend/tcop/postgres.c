@@ -103,6 +103,7 @@
 #include "yb/yql/pggate/ybc_dist_trace.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb_dist_trace.h"
 #include "yb_tcmalloc_utils.h"
 #include "yb_ysql_conn_mgr_helper.h"
 #include <arpa/inet.h>
@@ -764,6 +765,7 @@ yb_skip_read_committed_internal_savepoint(CommandTag command_tag)
 
 	bool		skip = (command_tag == CMDTAG_SET ||
 						command_tag == CMDTAG_BEGIN ||
+						command_tag == CMDTAG_START_TRANSACTION ||
 						command_tag == CMDTAG_RELEASE ||
 						command_tag == CMDTAG_SAVEPOINT);
 
@@ -1709,6 +1711,7 @@ exec_simple_query(const char *query_string)
 	if (save_log_statement_stats)
 		ShowUsage("QUERY STATISTICS");
 
+	YbDistTraceEndOpenNodeSpans();
 	YB_DIST_TRACE_END_SPAN();
 	TRACE_POSTGRESQL_QUERY_DONE(query_string);
 
@@ -2763,6 +2766,7 @@ exec_execute_message(const char *portal_name, long max_rows)
 	if (save_log_statement_stats)
 		ShowUsage("EXECUTE MESSAGE STATISTICS");
 
+	YbDistTraceEndOpenNodeSpans();
 	YB_DIST_TRACE_END_SPAN(); /* ext.execute */
 
 	debug_query_string = NULL;
@@ -5535,16 +5539,24 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 
 	if (!retry_data)
 	{
+		const char *retry_err = ("query layer retry isn't possible because "
+								 "the retry data is missing");
+
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)
-			elog(LOG, "query layer retry isn't possible, retry data is missing");
+			elog(LOG, "%s", retry_err);
 		return false;
 	}
 
 	/* can only restart SELECT queries */
 	if (!retry_data->query_string)
 	{
+		const char *retry_err = ("query layer retry isn't possible because "
+								 "the query string is missing");
+
+		edata->message = psprintf("%s (%s)", edata->message, retry_err);
 		if (yb_debug_log_internal_restarts)
-			elog(LOG, "query layer retry isn't possible, query string is missing");
+			elog(LOG, "%s", retry_err);
 		return false;
 	}
 
@@ -5559,14 +5571,31 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 		List	   *parsetree_list = yb_parse_query_silently(retry_data->query_string);
 
 		if (list_length(parsetree_list) == 0)
+		{
+			const char *retry_err = ("query layer retry isn't possible because "
+									 "the EXECUTE command could not be parsed");
+
+			edata->message = psprintf("%s (%s)", edata->message, retry_err);
+			if (yb_debug_log_internal_restarts)
+				elog(LOG, "%s", retry_err);
 			return false;
+		}
 		ExecuteStmt *execute_stmt = (ExecuteStmt *) linitial_node(RawStmt,
 																  parsetree_list)->stmt;
 		PreparedStatement *prepared_stmt = FetchPreparedStatement(execute_stmt->name,
 																  false /* throwError */ );
 
 		if (prepared_stmt == NULL)
+		{
+			const char *retry_err = ("query layer retry isn't possible because "
+									 "the prepared statement for the EXECUTE "
+									 "command could not be found");
+
+			edata->message = psprintf("%s (%s)", edata->message, retry_err);
+			if (yb_debug_log_internal_restarts)
+				elog(LOG, "%s", retry_err);
 			return false;
+		}
 		command_tag = prepared_stmt->plansource->commandTag;
 	}
 
@@ -5618,10 +5647,13 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 
 		if (!IsYBReadCommitted() && !opted_in)
 		{
+			const char *retry_err = psprintf("query layer retry isn't possible because "
+											 "retry of %s has not been validated.",
+											 GetCommandTagName(command_tag));
+
+			edata->message = psprintf("%s (%s)", edata->message, retry_err);
 			if (yb_debug_log_internal_restarts)
-				elog(LOG, "query layer retry isn't possible: retry of %s "
-					 "outside READ COMMITTED has not been validated",
-					 GetCommandTagName(command_tag));
+				elog(LOG, "%s", retry_err);
 			return false;
 		}
 
@@ -5648,10 +5680,13 @@ yb_is_retry_possible(ErrorData *edata, int attempt,
 
 		if (!rc_carveout && !opted_in)
 		{
+			const char *retry_err = psprintf("query layer retry isn't possible because "
+											 "retry of %s has not been validated.",
+											 GetCommandTagName(command_tag));
+
+			edata->message = psprintf("%s (%s)", edata->message, retry_err);
 			if (yb_debug_log_internal_restarts)
-				elog(LOG, "query layer retry isn't possible: %s is not in "
-					 "the default retriable set",
-					 GetCommandTagName(command_tag));
+				elog(LOG, "%s", retry_err);
 			return false;
 		}
 	}
@@ -5802,6 +5837,19 @@ yb_clear_portal_before_restart(Portal portal)
 		MemoryContextDelete(portal->holdContext);
 		portal->holdContext = NULL;
 	}
+
+	/*
+	 * Release child memory contexts (e.g. executor state) from the
+	 * previous execution attempt.  The portal's own portalContext is
+	 * preserved so that bound parameters survive the restart, but the
+	 * children hold executor state that will be recreated by PortalStart
+	 * during re-execution.  Without this, each transparent transaction
+	 * restart leaks the old EState and its YB-side objects (PgDml,
+	 * PgDocOp, DocResultStream, RefCntBuffers), causing multi-GB memory
+	 * bloat on large-table UPDATEs that hit repeated read-restart
+	 * conflicts.
+	 */
+	MemoryContextDeleteChildren(portal->portalContext);
 
 	/*
 	 * Fully detach portal from transaction to keep it alive in case of
@@ -7676,6 +7724,7 @@ PostgresMain(const char *dbname, const char *username)
 					char	   *host = MyProcPort->remote_host;
 					const char *authn_id = MyProcPort->authn_id;
 					sa_family_t conn_type = MyProcPort->raddr.addr.ss_family;
+					int			conn_salen = MyProcPort->raddr.salen;
 					List	   *guc_options = MyProcPort->guc_options;
 					char	   *cmdline_options = MyProcPort->cmdline_options;
 
@@ -7695,9 +7744,12 @@ PostgresMain(const char *dbname, const char *username)
 					/*
 					 * HARD Code connection type between client and
 					 * ysql_conn_mgr to AF_INET (only supported) for
-					 * authentication
+					 * authentication. Also set salen: as physical
+					 * connection is a AF_UNIX, also salen is set for
+					 * ipv4 address.
 					 */
 					MyProcPort->raddr.addr.ss_family = AF_INET;
+					MyProcPort->raddr.salen = sizeof(struct sockaddr_in);
 
 					/* Update the `remote_host` */
 					struct sockaddr_in *ip_address_1;
@@ -7773,6 +7825,7 @@ PostgresMain(const char *dbname, const char *username)
 					MyProcPort->database_name = db_name;
 					MyProcPort->remote_host = host;
 					MyProcPort->raddr.addr.ss_family = conn_type;
+					MyProcPort->raddr.salen = conn_salen;
 					MyProcPort->guc_options = guc_options;
 					MyProcPort->cmdline_options = cmdline_options;
 					inet_pton(AF_INET, MyProcPort->remote_host,

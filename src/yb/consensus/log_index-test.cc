@@ -36,6 +36,7 @@
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/opid_util.h"
 
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 
 namespace yb {

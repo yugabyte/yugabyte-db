@@ -1199,7 +1199,7 @@ public class DrConfigController extends AuthenticatedController {
               safetimeEpochSeconds);
       ArrayList<MetricQueryResponse.Entry> queryResult =
           this.metricQueryHelper.queryDirect(promQuery);
-      log.debug("Response to query {} is {}", promQuery, queryResult);
+      log.trace("Response to query {} is {}", promQuery, queryResult);
       if (queryResult.size() != 1) {
         log.error(
             "Could not get the estimatedDataLoss: Prometheus did not return only one entry:"

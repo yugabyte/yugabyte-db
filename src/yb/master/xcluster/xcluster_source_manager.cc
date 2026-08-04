@@ -42,6 +42,7 @@
 
 #include "yb/util/is_operation_done_result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 
 DEFINE_RUNTIME_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
     "When set, it enables automatic tablet splitting for tables that are part of an "
@@ -55,6 +56,7 @@ DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_bool(TEST_disable_cdc_state_insert_on_setup);
 DECLARE_uint32(ysql_oid_cache_prefetch_size);
 DECLARE_uint32(xcluster_ysql_statement_timeout_sec);
+DECLARE_bool(xcluster_enable_target_applied_filter);
 
 using namespace std::placeholders;
 
@@ -252,7 +254,7 @@ XClusterSourceManager::InitOutboundReplicationGroup(
                    xcluster_manager->IsNamespaceInAutomaticModeTarget(namespace_id);
           },
       .create_xcluster_streams_func =
-          std::bind(&XClusterSourceManager::CreateStreamsForDbScoped, this, _1, _2),
+          std::bind(&XClusterSourceManager::CreateStreamsForDbScoped, this, _1, _2, _3),
       .checkpoint_xcluster_streams_func =
           std::bind(&XClusterSourceManager::CheckpointXClusterStreams, this, _1, _2, _3, _4, _5),
       .delete_cdc_stream_func = [&catalog_manager = catalog_manager_](
@@ -344,21 +346,6 @@ XClusterSourceManager::GetPostTabletCreateTasks(
   }
 
   return tasks;
-}
-
-std::optional<uint32> XClusterSourceManager::GetDefaultWalRetentionSec(
-    const NamespaceId& namespace_id) const {
-  if (namespace_id == kSystemNamespaceId) {
-    return std::nullopt;
-  }
-
-  for (const auto& outbound_replication_group : GetAllOutboundGroups()) {
-    if (outbound_replication_group->HasNamespace(namespace_id)) {
-      return FLAGS_cdc_wal_retention_time_secs;
-    }
-  }
-
-  return std::nullopt;
 }
 
 Status XClusterSourceManager::CreateOutboundReplicationGroup(
@@ -547,9 +534,10 @@ class XClusterCreateStreamContextImpl : public XClusterCreateStreamsContext {
 
 Result<std::unique_ptr<XClusterCreateStreamsContext>>
 XClusterSourceManager::CreateStreamsForDbScoped(
-    const std::vector<TableId>& table_ids, const LeaderEpoch& epoch) {
+    const std::vector<TableId>& table_ids, const LeaderEpoch& epoch, bool automatic_ddl_mode) {
   return CreateStreamsInternal(
-      table_ids, SysCDCStreamEntryPB::INITIATED, cdc::StreamModeTransactional::kTrue, epoch);
+      table_ids, SysCDCStreamEntryPB::INITIATED, cdc::StreamModeTransactional::kTrue, epoch,
+      automatic_ddl_mode);
 }
 
 Result<xrepl::StreamId> XClusterSourceManager::CreateNonTxnStreamForNewTable(
@@ -564,7 +552,8 @@ Result<xrepl::StreamId> XClusterSourceManager::CreateNonTxnStreamForNewTable(
 
 Result<std::unique_ptr<XClusterCreateStreamsContext>> XClusterSourceManager::CreateStreamsInternal(
     const std::vector<TableId>& table_ids, SysCDCStreamEntryPB::State state,
-    cdc::StreamModeTransactional transactional, const LeaderEpoch& epoch) {
+    cdc::StreamModeTransactional transactional, const LeaderEpoch& epoch,
+    bool automatic_ddl_mode) {
   SCHECK(
       state == SysCDCStreamEntryPB::ACTIVE || state == SysCDCStreamEntryPB::INITIATED,
       InvalidArgument, "Stream state must be either ACTIVE or INITIATED");
@@ -572,6 +561,11 @@ Result<std::unique_ptr<XClusterCreateStreamsContext>> XClusterSourceManager::Cre
   RETURN_NOT_OK(catalog_manager_.CreateCdcStateTableIfNotFound(epoch));
 
   auto create_context = std::make_unique<XClusterCreateStreamContextImpl>(catalog_manager_, *this);
+
+  // The target-applied filter is captured immutably per stream at creation.
+  // Bi-directional mode keeps the legacy external_hybrid_time filter for loop-prevention.
+  const bool eligible_for_use_target_applied_filter =
+      automatic_ddl_mode && FLAGS_xcluster_enable_target_applied_filter;
 
   for (const auto& table_id : table_ids) {
     auto stripped_table_id = xcluster::StripSequencesDataAliasIfPresent(table_id);
@@ -590,6 +584,12 @@ Result<std::unique_ptr<XClusterCreateStreamsContext>> XClusterSourceManager::Cre
     // We use a static set of options for all xCluster streams.
     *metadata.mutable_options() = client::GetXClusterStreamOptions();
     metadata.set_state(state);
+
+    if (eligible_for_use_target_applied_filter) {
+      metadata.set_xcluster_use_target_applied_filter(true);
+      VLOG(1) << "Stamping xcluster_use_target_applied_filter=true on stream " << stream->StreamId()
+              << " for table " << stripped_table_id;
+    }
 
     RecordOutboundStream(stream, table_id);
 
@@ -1019,8 +1019,8 @@ Result<xrepl::StreamId> XClusterSourceManager::CreateNewXClusterStreamForTable(
   RETURN_NOT_OK(catalog_manager_.BackfillMetadataForXRepl(table_info, epoch));
 
   const auto state = initial_state ? *initial_state : SysCDCStreamEntryPB::ACTIVE;
-  auto create_context =
-      VERIFY_RESULT(CreateStreamsInternal({table_id}, state, transactional, epoch));
+  auto create_context = VERIFY_RESULT(CreateStreamsInternal(
+      {table_id}, state, transactional, epoch, /*automatic_ddl_mode=*/false));
   RSTATUS_DCHECK_EQ(
       create_context->streams_.size(), 1, IllegalState,
       "Unexpected Expected number of streams created");
@@ -1215,11 +1215,11 @@ Status XClusterSourceManager::MarkIndexBackfillCompleted(
     index_lock.Commit();
   }
 
-  // Checkpoint xCluster streams of indexes after the backfill completes. The backfilled data is not
-  // replicated, and the target cluster performs its own backfill, so we can skip streaming changes
-  // before the backfill completion.
-  // For BiDirectional indexes we create the index on both sides at the same time, and add them to
-  // replication before backfill completes, so we cannot perform this optimization.
+  // Checkpoint xCluster streams of indexes after the backfill so the target's local backfill is
+  // not duplicated by replicated WAL entries. We skip this for:
+  //   - BiDirectional indexes: backfill happens before replication is set up.
+  //   - xcluster_use_target_applied_filter streams: the target relies on replicated backfill writes
+  //     instead of running its own local backfill
 
   std::vector<std::pair<TableId, xrepl::StreamId>> table_streams;
   {
@@ -1228,6 +1228,12 @@ Status XClusterSourceManager::MarkIndexBackfillCompleted(
       if (tables_to_stream_map_.contains(index_id) &&
           !master_.xcluster_manager()->IsTableBiDirectionallyReplicated(index_id)) {
         for (const auto& stream : tables_to_stream_map_.at(index_id)) {
+          if (stream->LockForRead()->pb.xcluster_use_target_applied_filter()) {
+            LOG(INFO) << "Skipping past-backfill checkpoint of xCluster stream "
+                      << stream->StreamId() << " of index " << index_id
+                      << " because backfill writes are replicated to the target";
+            continue;
+          }
           LOG(INFO) << "Checkpointing xCluster stream " << stream->StreamId() << " of index "
                     << index_id << " to its end of WAL";
           table_streams.emplace_back(index_id, stream->StreamId());

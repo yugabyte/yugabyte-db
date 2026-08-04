@@ -11,7 +11,10 @@ import api.v2.mappers.ClusterMapper;
 import api.v2.mappers.UniverseDefinitionTaskParamsMapper;
 import api.v2.mappers.UniverseResourceDetailsMapper;
 import api.v2.mappers.UniverseRespMapper;
+import api.v2.mappers.UserIntentMapper;
 import api.v2.models.AttachUniverseSpec;
+import api.v2.models.CheckResizeOptionsResp;
+import api.v2.models.CheckResizeOptionsSpec;
 import api.v2.models.ClusterAddSpec;
 import api.v2.models.ClusterEditSpec;
 import api.v2.models.ClusterSpec;
@@ -26,6 +29,7 @@ import api.v2.models.FileCollectionSummary;
 import api.v2.models.NodeFileCollectionResult;
 import api.v2.models.NodeScriptResult;
 import api.v2.models.NodeSelection;
+import api.v2.models.ResizeUpdateOption;
 import api.v2.models.RunScriptRequest;
 import api.v2.models.RunScriptResponse;
 import api.v2.models.ScriptOptions;
@@ -48,6 +52,7 @@ import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.OperatorImportUniverse;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
@@ -62,6 +67,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
+import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -79,6 +85,8 @@ import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntentOverrides;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.AttachDetachSpec;
 import com.yugabyte.yw.models.AttachDetachSpec.PlatformPaths;
@@ -130,20 +138,54 @@ import play.mvc.Http.Request;
 
 @Slf4j
 public class UniverseManagementHandler extends ApiControllerUtils {
-  @Inject private RuntimeConfGetter confGetter;
-  @Inject private ReleaseManager releaseManager;
-  @Inject private SwamperHelper swamperHelper;
-  @Inject private ConfigHelper configHelper;
-  @Inject private UniverseCRUDHandler universeCRUDHandler;
-  @Inject private UniverseInfoHandler universeInfoHandler;
-  @Inject private Commissioner commissioner;
-  @Inject private YsqlQueryExecutor ysqlQueryExecutor;
-  @Inject private NodeScriptRunner nodeScriptRunner;
-  @Inject private NodeFileCollector nodeFileCollector;
-  @Inject private FileCollectionDownloader fileCollectionDownloader;
-  @Inject private LocalhostAccessChecker localhostChecker;
-  @Inject private RoleBindingUtil roleBindingUtil;
-  @Inject private KubernetesOverridesHandler kubernetesOverridesHandler;
+  private final RuntimeConfGetter confGetter;
+  private final ReleaseManager releaseManager;
+  private final SwamperHelper swamperHelper;
+  private final ConfigHelper configHelper;
+  private final UniverseCRUDHandler universeCRUDHandler;
+  private final UniverseInfoHandler universeInfoHandler;
+  private final Commissioner commissioner;
+  private final YsqlQueryExecutor ysqlQueryExecutor;
+  private final NodeScriptRunner nodeScriptRunner;
+  private final NodeFileCollector nodeFileCollector;
+  private final FileCollectionDownloader fileCollectionDownloader;
+  private final LocalhostAccessChecker localhostChecker;
+  private final RoleBindingUtil roleBindingUtil;
+  private final KubernetesOverridesHandler kubernetesOverridesHandler;
+
+  @Inject
+  public UniverseManagementHandler(
+      AuditService auditService,
+      RuntimeConfGetter confGetter,
+      ReleaseManager releaseManager,
+      SwamperHelper swamperHelper,
+      ConfigHelper configHelper,
+      UniverseCRUDHandler universeCRUDHandler,
+      UniverseInfoHandler universeInfoHandler,
+      Commissioner commissioner,
+      YsqlQueryExecutor ysqlQueryExecutor,
+      NodeScriptRunner nodeScriptRunner,
+      NodeFileCollector nodeFileCollector,
+      FileCollectionDownloader fileCollectionDownloader,
+      LocalhostAccessChecker localhostChecker,
+      RoleBindingUtil roleBindingUtil,
+      KubernetesOverridesHandler kubernetesOverridesHandler) {
+    super(auditService);
+    this.confGetter = confGetter;
+    this.releaseManager = releaseManager;
+    this.swamperHelper = swamperHelper;
+    this.configHelper = configHelper;
+    this.universeCRUDHandler = universeCRUDHandler;
+    this.universeInfoHandler = universeInfoHandler;
+    this.commissioner = commissioner;
+    this.ysqlQueryExecutor = ysqlQueryExecutor;
+    this.nodeScriptRunner = nodeScriptRunner;
+    this.nodeFileCollector = nodeFileCollector;
+    this.fileCollectionDownloader = fileCollectionDownloader;
+    this.localhostChecker = localhostChecker;
+    this.roleBindingUtil = roleBindingUtil;
+    this.kubernetesOverridesHandler = kubernetesOverridesHandler;
+  }
 
   private static final String RELEASES_PATH = "yb.releases.path";
 
@@ -273,6 +315,7 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     boolean isNewUI = isNewUI();
     Customer customer = Customer.getOrBadRequest(cUUID);
     Universe dbUniverse = Universe.getOrBadRequest(uniUUID);
+    JsonNode dbUniverseJson = Json.toJson(dbUniverse);
     UniverseCRUDHandler.checkInstanceTypeConsistency(dbUniverse);
     log.info("Edit Universe with v2 spec: {}", prettyPrint(universeEditSpec));
     // inherit RR cluster properties from primary cluster in given edit spec
@@ -302,6 +345,12 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     UniverseConfigureTaskParams v1Params =
         UniverseDefinitionTaskParamsMapper.INSTANCE.toUniverseConfigureTaskParams(
             v1DefnParams, request);
+    for (Cluster cluster : v1Params.clusters) {
+      // Since in V2 API is based on partial updates,
+      // we cannot detect the case when these fields are removed (during dedicated mode switch)
+      // Keeping these fields will lead to error in validation.
+      clearMasterFieldsIfNotDedicated(cluster.userIntent);
+    }
     log.debug("Edit Universe translated to v1 spec: {}", prettyPrint(v1Params));
 
     // edit universe with v1 spec
@@ -346,6 +395,16 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         CustomerTask.TaskType.Update,
         dbUniverse.getName(),
         CustomerTaskManager.getCustomTaskName(CustomerTask.TaskType.Update, v1Params, null));
+    // Additional audit call so that old UI can show changes for edit operation.
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.Universe,
+            dbUniverse.getUniverseUUID().toString(),
+            Audit.ActionType.Update,
+            Json.toJson(v1Params),
+            taskUUID,
+            dbUniverseJson);
     return new YBATask().resourceUuid(uniUUID).taskUuid(taskUUID);
   }
 
@@ -362,10 +421,19 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     v1Params.currentClusterType = ClusterType.ASYNC;
     // to construct the new v1 cluster, start with a copy of primary cluster
     Cluster primaryCluster = dbUniverse.getUniverseDetails().getPrimaryCluster();
-    Cluster newReadReplica = new Cluster(ClusterType.ASYNC, primaryCluster.userIntent);
+    Cluster newReadReplica = new Cluster(ClusterType.ASYNC, primaryCluster.userIntent.clone());
     // overwrite the copy of primary cluster with user provided spec for read replica
     newReadReplica.setUuid(UUID.randomUUID());
     newReadReplica = ClusterMapper.INSTANCE.overwriteClusterAddSpec(clusterAddSpec, newReadReplica);
+    // Intent is cloned from primary. Omitted dedicated_nodes must default to false (schema),
+    // not inherit dedicated mode from the primary cluster.
+    if (clusterAddSpec.getDedicatedNodes() == null
+        && (clusterAddSpec.getNodeSpec() == null
+            || clusterAddSpec.getNodeSpec().getDedicatedNodes() == null)) {
+      newReadReplica.userIntent.dedicatedNodes = false;
+    }
+    // Copied from a dedicated primary; clear master fields for non-dedicated RR.
+    clearMasterFieldsIfNotDedicated(newReadReplica.userIntent);
     // prepare the v1Params with only the read replica cluster in the payload
     v1Params.clusters.clear();
     v1Params.clusters.add(newReadReplica);
@@ -382,6 +450,19 @@ public class UniverseManagementHandler extends ApiControllerUtils {
     // start the add cluster task
     UUID taskUUID = universeCRUDHandler.createCluster(customer, dbUniverse, v1Params);
     return new YBATask().resourceUuid(newReadReplica.uuid).taskUuid(taskUUID);
+  }
+
+  // Drop master settings cloned from a dedicated primary onto a non-dedicated cluster.
+  private static void clearMasterFieldsIfNotDedicated(UserIntent userIntent) {
+    if (userIntent == null || userIntent.dedicatedNodes) {
+      return;
+    }
+    userIntent.masterInstanceType = null;
+    userIntent.masterDeviceInfo = null;
+    UserIntentOverrides overrides = userIntent.getUserIntentOverrides();
+    if (overrides != null && overrides.getPerProcess() != null) {
+      overrides.getPerProcess().remove(ServerType.MASTER);
+    }
   }
 
   public YBATask deleteReadReplicaCluster(
@@ -1486,5 +1567,54 @@ public class UniverseManagementHandler extends ApiControllerUtils {
         }
       }
     }
+  }
+
+  public CheckResizeOptionsResp checkResizeOptions(
+      UUID cUUID, UUID uniUUID, CheckResizeOptionsSpec spec) {
+    Customer customer = Customer.getOrBadRequest(cUUID);
+    UniverseDefinitionTaskParams taskParams =
+        Universe.getOrBadRequest(uniUUID, customer).getUniverseDetails();
+
+    Cluster cluster = taskParams.getClusterByUuid(spec.getClusterUuid());
+    if (cluster == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format("Cluster with UUID '%s' does not exist.", spec.getClusterUuid()));
+    }
+    if (CollectionUtils.isNotEmpty(spec.getProviderNodesSpecs())) {
+      if (!cluster.userIntent.isMulticloudSupport()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST, "provider_nodes_specs is only supported for multicloud clusters");
+      }
+      UserIntentMapper.INSTANCE.applyPerProviderResizeNodesSpecsToUserIntent(
+          spec.getProviderNodesSpecs(), cluster.userIntent);
+    } else if (spec.getNodeSpec() != null) {
+      UserIntentMapper.INSTANCE.fillUserIntentFromClusterNodeSpec(
+          spec.getNodeSpec(), cluster.userIntent);
+    }
+    Universe dbUniverse = Universe.getOrBadRequest(uniUUID, customer);
+
+    PlacementInfoUtil.updateUniverseDefinitionV2(
+        dbUniverse,
+        taskParams,
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions =
+        UniverseCRUDHandler.getUpdateOptions(
+            taskParams, UniverseConfigureTaskParams.ClusterOperationType.EDIT, cluster, dbUniverse);
+    log.info(
+        "Check resize options for universe {} cluster {}: {}",
+        uniUUID,
+        spec.getClusterUuid(),
+        updateOptions);
+    List<ResizeUpdateOption> res = new ArrayList<>();
+    for (UniverseDefinitionTaskParams.UpdateOptions updateOption : updateOptions) {
+      try {
+        res.add(ResizeUpdateOption.valueOf(updateOption.name()));
+      } catch (Exception ignored) {
+        log.error("Incorrect option: " + updateOption);
+      }
+    }
+    return new CheckResizeOptionsResp().options(res);
   }
 }

@@ -13,6 +13,7 @@
  */
 package org.yb.minicluster;
 
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.net.HostAndPort;
 import org.slf4j.Logger;
@@ -27,6 +28,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -41,6 +43,19 @@ public class MiniYBDaemon {
 
   // This corresponds to regular termination of yb-master and yb-tserver with SIGTERM.
   private static final int EXPECTED_EXIT_CODE = 143;
+
+  // Exit codes (128 + fatal signal number) that mean the daemon crashed, as opposed to exiting
+  // cleanly (0), being shut down with SIGTERM (143), or being force-killed by the harness with
+  // SIGKILL (137). A C++ crash (a failed CHECK/DCHECK or LOG(FATAL) raising SIGABRT, or a
+  // SIGSEGV) happens in the daemon process, not the JVM, so it does not fail the Java test on
+  // its own the way an in-process C++ abort does -- we detect it here from the exit code.
+  private static final Set<Integer> CRASH_EXIT_CODES = ImmutableSet.of(
+      128 + 4,   // SIGILL
+      128 + 6,   // SIGABRT (glog CHECK/DCHECK failure, LOG(FATAL), abort()).
+      128 + 7,   // SIGBUS on Linux.
+      128 + 8,   // SIGFPE
+      128 + 10,  // SIGBUS on macOS.
+      128 + 11); // SIGSEGV
 
   private static final String INVALID_PID_STR = "<error_getting_pid>";
 
@@ -147,6 +162,10 @@ public class MiniYBDaemon {
     private void handleTermination(int exitCode) throws IOException {
       LOG.info("Process " + processDescription() + " exited with code " + exitCode + " " +
                (terminatedNormally() ? "(normal termination)" : "(abnormal termination)"));
+      if (CRASH_EXIT_CODES.contains(exitCode)) {
+        LOG.error("Process " + processDescription() + " crashed with exit code " + exitCode +
+                  " (fatal signal " + (exitCode - 128) + "). This will fail the test.");
+      }
       if (exitCode == 0) {
         return;
       }
@@ -329,6 +348,24 @@ public class MiniYBDaemon {
   public void waitForServerStartLogMessage(long deadlineMs) throws InterruptedException {
     logListener.waitForServerStartingLogLine(deadlineMs);
     LOG.info("Saw an 'RPC server started' message from " + this);
+  }
+
+  /**
+   * If the daemon process has already terminated, verifies that it did not crash (die from a
+   * fatal signal such as SIGABRT raised by a failed CHECK / LOG(FATAL), or SIGSEGV). Throws an
+   * AssertionError if it did, so that a C++ crash fails the enclosing test. No-op while the
+   * process is still running.
+   */
+  public void checkForCrash() {
+    if (process.isAlive()) {
+      return;
+    }
+    int exitCode = process.exitValue();
+    if (CRASH_EXIT_CODES.contains(exitCode)) {
+      throw new AssertionError(
+          this + " crashed with exit code " + exitCode + " (fatal signal " + (exitCode - 128) +
+          "); see the daemon log above for the reason (e.g. a 'Check failed:' message).");
+    }
   }
 
   public void terminate() throws Exception {

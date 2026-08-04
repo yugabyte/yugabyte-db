@@ -19,6 +19,7 @@
 #include <functional>
 #include <limits>
 #include <mutex>
+#include <span>
 #include <string>
 #include <tuple>
 

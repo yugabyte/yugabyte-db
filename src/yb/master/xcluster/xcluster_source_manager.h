@@ -49,8 +49,6 @@ class XClusterSourceManager {
 
   void CleanupStreamFromMaps(const CDCStreamInfo& stream);
 
-  std::optional<uint32> GetDefaultWalRetentionSec(const NamespaceId& namespace_id) const;
-
   void PopulateTabletDeleteRetainerInfoForTabletDrop(
       const TabletInfo& tablet_info, TabletDeleteRetainerInfo& delete_retainer) const
       EXCLUDES(tables_to_stream_map_mutex_);
@@ -208,13 +206,14 @@ class XClusterSourceManager {
       EXCLUDES(outbound_replication_group_map_mutex_);
 
   Result<std::unique_ptr<XClusterCreateStreamsContext>> CreateStreamsForDbScoped(
-      const std::vector<TableId>& table_ids, const LeaderEpoch& epoch);
+      const std::vector<TableId>& table_ids, const LeaderEpoch& epoch, bool automatic_ddl_mode);
   Result<xrepl::StreamId> CreateNonTxnStreamForNewTable(
       const TableId& table_id, const LeaderEpoch& epoch, StdStatusCallback callback);
 
   Result<std::unique_ptr<XClusterCreateStreamsContext>> CreateStreamsInternal(
       const std::vector<TableId>& table_ids, SysCDCStreamEntryPB::State state,
-      cdc::StreamModeTransactional transactional, const LeaderEpoch& epoch);
+      cdc::StreamModeTransactional transactional, const LeaderEpoch& epoch,
+      bool automatic_ddl_mode);
 
   // Checkpoint the xCluster stream to the given location. Invokes callback with true if bootstrap
   // is required, and false is bootstrap is not required.

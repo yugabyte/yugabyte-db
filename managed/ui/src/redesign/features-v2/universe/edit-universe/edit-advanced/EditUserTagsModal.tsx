@@ -42,7 +42,7 @@ export const EditUserTagsModal = ({ open, onClose }: EditUserTagModalProps) => {
   const userTags = transformInstanceTags(primaryCluster?.instance_tags || {});
   const defaultValues = {
     instanceTags:
-      userTags.length >= 0
+      userTags.length > 0
         ? userTags
         : [
             { name: '', value: '' },
@@ -96,7 +96,7 @@ export const EditUserTagsModal = ({ open, onClose }: EditUserTagModalProps) => {
       cancelLabel={t('cancel', { keyPrefix: 'common' })}
       titleSeparator
       size="md"
-      dialogContentProps={{ sx: { padding: '16px !important' } }}
+      dialogContentProps={{ sx: { padding: '8px 16px !important' } }}
       overrideHeight={'fit-content'}
       onSubmit={handleFormSubmit}
     >

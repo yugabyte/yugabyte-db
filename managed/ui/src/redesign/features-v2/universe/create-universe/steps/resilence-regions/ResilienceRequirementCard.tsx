@@ -1,4 +1,4 @@
-import { FC, useMemo, useRef, useState } from 'react';
+import { FC, useContext, useMemo, useRef, useState } from 'react';
 import { keyframes } from '@mui/material/styles';
 import { mui, YBTag } from '@yugabyte-ui-library/core';
 import { useTranslation } from 'react-i18next';
@@ -13,6 +13,8 @@ import {
 import Wrench from '@app/redesign/assets/wrench2.svg';
 import QuestionIcon from '@app/redesign/assets/question_circled.svg?img';
 import { ReplicationFactorInfoModal } from '../nodes-availability';
+import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
+import { CloudType } from '@app/redesign/helpers/dtos';
 
 const { Box, styled, Typography, Divider } = mui;
 
@@ -66,7 +68,11 @@ function requirementTagSlotSignature(
   return `${serializeRequirementTag(tag)}|${faultToleranceType}|${tagListLength}`;
 }
 
-function tagLabel(tag: GuidedRequirementTag, t: (k: string, o?: Record<string, unknown>) => string) {
+function tagLabel(
+  tag: GuidedRequirementTag,
+  t: (k: string, o?: Record<string, unknown>) => string,
+  isK8s: boolean
+) {
   switch (tag.kind) {
     case 'regions':
       return t('requirementTagRegions', {
@@ -85,7 +91,7 @@ function tagLabel(tag: GuidedRequirementTag, t: (k: string, o?: Record<string, u
     case 'nodes_minimum':
       return t('requirementTagNodesMinimum', {
         count: tag.count,
-        entity: pluralize(t('wordNode'), tag.count)
+        entity: pluralize(t(isK8s ? 'wordPod' : 'wordNode'), tag.count)
       });
     default:
       return '';
@@ -108,6 +114,12 @@ export const ResilienceRequirementCard: FC<ResilienceRequirementCardProps> = ({
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.resilienceAndRegions.guidedMode'
   });
+  const [{ generalSettings }] = (useContext(
+    CreateUniverseContext
+  ) as unknown) as CreateUniverseContextMethods;
+  const isK8s =
+    generalSettings?.cloud === CloudType.kubernetes ||
+    generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
   const [showReplicationFactorInfoModal, setShowReplicationFactorInfoModal] = useState(false);
   const prevTagSignaturesRef = useRef<string[] | null>(null);
   const tagPlayCountRef = useRef<number[]>([]);
@@ -121,7 +133,11 @@ export const ResilienceRequirementCard: FC<ResilienceRequirementCardProps> = ({
     if (placementStep === 'resilience') {
       return t('selectedResilienceRequires');
     }
-    const titleSpec = getNodesStepRequirementCardTitleSpec(faultToleranceType, resilienceFactor);
+    const titleSpec = getNodesStepRequirementCardTitleSpec(
+      faultToleranceType,
+      resilienceFactor,
+      isK8s
+    );
     if (!titleSpec) {
       return t('selectedResilienceRequires');
     }
@@ -129,7 +145,7 @@ export const ResilienceRequirementCard: FC<ResilienceRequirementCardProps> = ({
       count: titleSpec.count,
       entity: pluralize(t(titleSpec.entityWordKey), titleSpec.count)
     });
-  }, [placementStep, faultToleranceType, resilienceFactor, t]);
+  }, [placementStep, faultToleranceType, resilienceFactor, isK8s, t]);
 
   const tagSignatures = summary.tags.map((tag) =>
     requirementTagSlotSignature(tag, faultToleranceType, summary.tags.length)
@@ -178,7 +194,7 @@ export const ResilienceRequirementCard: FC<ResilienceRequirementCardProps> = ({
                       : tagBaseSx
                   }
                 >
-                  {tagLabel(tag, t)}
+                  {tagLabel(tag, t, isK8s)}
                 </YBTag>
               );
             })}

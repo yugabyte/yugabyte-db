@@ -2,8 +2,8 @@
 -- YSQL database dump
 --
 
--- Dumped from database version 15.2-YB-2.23.1.0-b0
--- Dumped by ysql_dump version 15.2-YB-2.23.1.0-b0
+-- Dumped from database version 15.12-YB-2.31.0.0-b0
+-- Dumped by ysql_dump version 15.12-YB-2.31.0.0-b0
 
 SET yb_binary_restore = true;
 SET yb_ignore_pg_class_oids = false;
@@ -70,7 +70,7 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16391'::pg_catalog.oid
 CREATE TABLE public.t2 (
     col integer
 )
-WITH (colocation_id='20001');
+WITH (colocation_id='20001', yb_presplit='');
 
 
 \if :use_roles
@@ -98,7 +98,7 @@ SELECT pg_catalog.binary_upgrade_set_next_heap_relfilenode('16415'::pg_catalog.o
 -- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid
 SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16402'::pg_catalog.oid);
 CREATE MATERIALIZED VIEW public.mv1
-WITH (colocation_id='20003') AS
+WITH (colocation_id='20003', yb_presplit='') AS
  SELECT t2.col
    FROM public.t2;
 
@@ -130,7 +130,7 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16387'::pg_catalog.oid
 CREATE TABLE public.t1 (
     col integer
 )
-WITH (colocation_id='20001');
+WITH (colocation_id='20001', yb_presplit='');
 
 
 \if :use_roles
@@ -160,7 +160,7 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16387'::pg_catalog.oid
 CREATE TABLE public.t3 (
     col integer
 )
-WITH (colocation_id='20002');
+WITH (colocation_id='20002', yb_presplit='');
 
 
 \if :use_roles
@@ -193,7 +193,7 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_default(true);
 CREATE TABLE public.t4 (
     col integer
 )
-WITH (colocation_id='20001');
+WITH (colocation_id='20001', yb_presplit='');
 
 
 \if :use_roles
@@ -223,7 +223,7 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16402'::pg_catalog.oid
 CREATE TABLE public.t5 (
     col integer
 )
-WITH (colocation_id='20001');
+WITH (colocation_id='20001', yb_presplit='');
 
 
 \if :use_roles
@@ -253,7 +253,7 @@ SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('16391'::pg_catalog.oid
 CREATE TABLE public.t6 (
     col integer
 )
-WITH (colocation_id='20002');
+WITH (colocation_id='20002', yb_presplit='');
 
 
 \if :use_roles
@@ -292,7 +292,7 @@ CREATE TABLE public.t7 (
     d integer NOT NULL,
     CONSTRAINT t7_pkey PRIMARY KEY(d ASC)
 )
-WITH (colocation_id='20003');
+WITH (colocation_id='20003', yb_presplit='');
 
 
 \if :use_roles
@@ -651,3 +651,4 @@ END $$;
 --
 -- YSQL database dump complete
 --
+

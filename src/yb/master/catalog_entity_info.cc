@@ -52,6 +52,7 @@
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_error.h"
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/xcluster/master_xcluster_util.h"
 #include "yb/master/xcluster_rpc_tasks.h"
@@ -198,6 +199,9 @@ TabletInfo::TabletInfo(const TableInfoPtr& table, TabletId tablet_id)
       table_(table),
       last_update_time_(MonoTime::Now()),
       last_time_with_valid_leader_(last_update_time_) {
+  if (tablet_id_ == kSysCatalogTabletId) {
+    mutable_metadata()->SetExcludeFromHeldTabletWriteLockCount();
+  }
 }
 
 TabletInfo::~TabletInfo() = default;
@@ -909,6 +913,15 @@ Status TableInfo::SetIsBackfilling() {
   return Status::OK();
 }
 
+bool TableInfo::TrySetPostTabletCreateTasksScheduled() {
+  bool expected = false;
+  return post_tablet_create_tasks_scheduled_.compare_exchange_strong(expected, true);
+}
+
+void TableInfo::ClearPostTabletCreateTasksScheduled() {
+  post_tablet_create_tasks_scheduled_.store(false);
+}
+
 void TableInfo::SetCreateTableErrorStatus(const Status& status) {
   VLOG_WITH_FUNC(1) << status;
   std::lock_guard l(lock_);
@@ -1106,6 +1119,15 @@ bool TableInfo::IsSequencesSystemTable(const ReadLock& lock) const {
   return *table_oid == kPgSequencesDataTableOid;
 }
 
+bool TableInfo::ShouldLookupPgSchemaName() const {
+  return ShouldLookupPgSchemaName(LockForRead());
+}
+
+bool TableInfo::ShouldLookupPgSchemaName(const ReadLock& lock) const {
+  return lock->table_type() == PGSQL_TABLE_TYPE && !is_system() &&
+         !IsColocationParentTable() && !IsSequencesSystemTable(lock);
+}
+
 bool TableInfo::IsXClusterDDLReplicationDDLQueueTable() const {
   return LockForRead()->IsXClusterDDLReplicationDDLQueueTable();
 }
@@ -1200,11 +1222,31 @@ TransactionId TableInfo::EraseDdlTxnForRollbackToSubTxnWaitingForSchemaVersion(
   std::lock_guard l(lock_);
   TransactionId txn;
 
-  auto itr = ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.find(schema_version);
-  if (itr != ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.end()) {
-    txn = itr->second;
-    ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.erase(itr);
+  auto upper_bound_iter =
+      ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.upper_bound(schema_version);
+  // Note that a single rollback to sub-transaction operation can involve more than one schema
+  // version bump on a table.
+  // For example:
+  //   BEGIN;
+  //   SAVEPOINT a;
+  //   ALTER TABLE test ADD COLUMN c int;
+  //   CREATE INDEX test_idx on test(b);
+  //   ROLLBACK TO a;
+  // The rollback operation will bump up the schema version of `test` twice. Therefore, the same
+  // transaction can be waiting for multiple schema versions. Similar to the comments mentioned in
+  // EraseDdlTxnsWaitingForSchemaVersion, it is possible that the TServers respond back with the
+  // latest schema version. Therefore, we delete all entries for schema versions less than the
+  // reported schema version. They all must belong to the same transaction though since we only
+  // allow one rollback to sub-transaction operation on a table at a given time.
+  for (auto it = ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.begin();
+       it != upper_bound_iter; ++it) {
+    DCHECK(txn.IsNil() || txn == it->second)
+        << Format("Multiple transactions waiting for schema version $0: $1 and $2",
+                  schema_version, txn, it->second);
+    txn = it->second;
   }
+  ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.erase(
+    ddl_txns_for_subtxn_rollback_waiting_for_schema_version_.begin(), upper_bound_iter);
   return txn;
 }
 

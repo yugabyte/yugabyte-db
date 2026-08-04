@@ -37,7 +37,7 @@ grpcio-tools==1.76.0
 Jinja2==3.1.6
 MarkupSafe==2.0.1
 msrestazure
-oci==2.176.0
+oci==2.181.1
 paramiko==3.4.0
 protobuf==6.33.5
 psycopg2

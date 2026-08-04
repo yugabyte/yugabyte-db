@@ -107,6 +107,9 @@ message WriteRequestPB {
   optional bool use_async_write = 26;
 
   optional uint32 xrepl_origin_id = 27;
+
+  // See SysCDCStreamEntryPB.xcluster_use_target_applied_filter.
+  optional bool xcluster_target_applied = 28;
 }
 
 message WriteResponsePB {

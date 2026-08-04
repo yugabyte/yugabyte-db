@@ -17,6 +17,7 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/catalog_manager_util.h"
 #include "yb/tools/yb-admin_client.h"
+#include "yb/tools/yb-admin_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/test_thread_holder.h"
@@ -278,6 +279,39 @@ TEST_F(
   };
   ASSERT_OK(cluster_admin_client_->CreateNamespaceSnapshot(
       database, 0 /* retention_duration_hours */));
+}
+
+namespace {
+
+master::ListTabletServersResponsePB::Entry MakeTabletServerEntry(
+    const std::string& uuid, const std::string& host, uint16_t port, bool alive) {
+  master::ListTabletServersResponsePB::Entry entry;
+  entry.mutable_instance_id()->set_permanent_uuid(uuid);
+  HostPortToPB(
+      HostPort(host, port),
+      entry.mutable_registration()->mutable_common()->add_private_rpc_addresses());
+  entry.set_alive(alive);
+  return entry;
+}
+
+}  // namespace
+
+TEST(ListTabletServerSortTest, AliveBeforeDeadThenHost) {
+  google::protobuf::RepeatedPtrField<master::ListTabletServersResponsePB::Entry> servers;
+  *servers.Add() = MakeTabletServerEntry("uuid-dead-10", "10.0.0.10", 9100, false);
+  *servers.Add() = MakeTabletServerEntry("uuid-alive-30-b", "10.0.0.30", 9100, true);
+  *servers.Add() = MakeTabletServerEntry("uuid-alive-30-a", "10.0.0.30", 9100, true);
+  *servers.Add() = MakeTabletServerEntry("uuid-dead-20", "10.0.0.20", 9100, false);
+  *servers.Add() = MakeTabletServerEntry("uuid-alive-15", "10.0.0.15", 9100, true);
+
+  SortListTabletServerEntries(servers);
+
+  ASSERT_EQ(5, servers.size());
+  EXPECT_EQ("uuid-alive-15", servers.Get(0).instance_id().permanent_uuid());
+  EXPECT_EQ("uuid-alive-30-a", servers.Get(1).instance_id().permanent_uuid());
+  EXPECT_EQ("uuid-alive-30-b", servers.Get(2).instance_id().permanent_uuid());
+  EXPECT_EQ("uuid-dead-10", servers.Get(3).instance_id().permanent_uuid());
+  EXPECT_EQ("uuid-dead-20", servers.Get(4).instance_id().permanent_uuid());
 }
 
 }  // namespace tools

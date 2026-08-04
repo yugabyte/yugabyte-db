@@ -119,6 +119,8 @@ public class TestPgExplainAnalyzeScans extends BasePgExplainAnalyzeTest {
       .build();
 
     try (Statement stmt = connection.createStatement()) {
+      // Parallel execution does not account for the yb_fetch_*_limit params.
+      stmt.execute("SET max_parallel_workers_per_gather = 0");
       ExplainAnalyzeUtils.setRowAndSizeLimit(stmt, normalRowLimit, normalSizeLimit);
       ExplainAnalyzeUtils.testExplain(stmt, query, requestChecker);
 

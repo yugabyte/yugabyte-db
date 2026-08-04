@@ -379,7 +379,6 @@ pgstat_bestart(void)
 	/* YB: Increment the total connections counter */
 	if (lbeentry.st_procpid > 0 &&
 		(lbeentry.st_backendType == B_BACKEND ||
-		 lbeentry.st_backendType == YB_AUTO_ANALYZE_BACKEND ||
 		 lbeentry.st_backendType == YB_YSQL_CONN_MGR ||
 		 lbeentry.st_backendType == YB_YSQL_CONN_MGR_CTRL ||
 		 YbIsInternalConnBackendType(lbeentry.st_backendType)))
@@ -404,7 +403,6 @@ pgstat_bestart(void)
 	if (lbeentry.st_backendType == B_BACKEND
 		|| lbeentry.st_backendType == B_WAL_SENDER
 		|| lbeentry.st_backendType == B_BG_WORKER
-		|| lbeentry.st_backendType == YB_AUTO_ANALYZE_BACKEND
 		|| lbeentry.st_backendType == YB_YSQL_CONN_MGR
 		|| lbeentry.st_backendType == YB_YSQL_CONN_MGR_WAL_SENDER
 		|| lbeentry.st_backendType == YB_YSQL_CONN_MGR_CTRL
@@ -756,6 +754,44 @@ pgstat_report_appname(const char *appname)
 
 	memcpy((char *) beentry->st_appname, appname, len);
 	beentry->st_appname[len] = '\0';
+
+	PGSTAT_END_WRITE_ACTIVITY(beentry);
+}
+
+/* ----------
+ * yb_pgstat_set_ycm_client_info() -
+ *
+ *	Update the shared-memory PgBackendStatus entry with the logical-client
+ *	connection details that YSQL Connection Manager forwarded via the internal
+ *	yb_conn_mgr_client_* GUCs.
+ *
+ *	Called from the GUC assign hooks whenever any of the three CM client GUCs
+ *	changes.  Each hook passes only the field it owns; pass NULL to leave a
+ *	field unchanged.  Passing addr="" / port pointing to -1 / hostname=""
+ *	explicitly clears the respective field.
+ * ----------
+ */
+void
+yb_pgstat_set_ycm_client_info(const char *addr, const int *port,
+						   const char *hostname)
+{
+	volatile PgBackendStatus *beentry = MyBEEntry;
+
+	if (!beentry)
+		return;
+
+	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
+
+	if (addr != NULL)
+		strlcpy((char *) beentry->yb_st_cm_client_addr,
+				addr,
+				sizeof(beentry->yb_st_cm_client_addr));
+	if (port != NULL)
+		beentry->yb_st_cm_client_port = *port;
+	if (hostname != NULL)
+		strlcpy((char *) beentry->yb_st_cm_client_hostname,
+				hostname,
+				sizeof(beentry->yb_st_cm_client_hostname));
 
 	PGSTAT_END_WRITE_ACTIVITY(beentry);
 }

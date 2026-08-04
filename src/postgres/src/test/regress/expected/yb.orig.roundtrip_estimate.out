@@ -2,11 +2,19 @@
 -- DEPENDENCY: yb.orig.roundtrip_estimate_setup
 \c roundtrip_test
 delete from queries;
+-- QID categories:
+--   1xxxx: contiguous key ranges
+--   2xxxx: Seq Scan + wide key range + storage/local filters
+--   3xxxx: sparse IN-list key probes
+--   4xxxx: clustered IN-list key probes
+--   5xxxx: seeknext-style contiguous index ranges
+--   6xxxx: narrow ybctid-projecting PK Index Scan width probes
+--   7xxxx: serial-only cardinality-estimate consistency cases
 -- generate colocation x scan kind x index cond range combinations
 insert into queries (qid, query)
 with relations(rel, qidrel) as (
-    values ('ce.r',  10000),
-           ('ce.rC', 20000)
+    values ('ce.r',  0),
+           ('ce.rC', 1000)
 ),
 ranges(qidbase, predicate) as (
     values (100, '##COL## = 1'),
@@ -17,10 +25,13 @@ ranges(qidbase, predicate) as (
 scans(qidoff, target, predicol) as (
     values (1, '*',  'pk'),  -- Index Scan using PK index
            (2, 'v',  'b'),   -- Index Scan using non-PK index
-           (3, 'b',  'b')    -- Index Only Scan on non-PK index
+           (3, 'b',  'b'),   -- Index Only Scan on non-PK index
+           -- request ybctid.  returning ybctid from IOS unsupported.
+           (4, 'ybctid, *',  'pk'),  -- Index Scan using PK index
+           (5, 'ybctid, v',  'b')    -- Index Scan using non-PK index
 )
 select
-    r.qidrel + rng.qidbase + s.qidoff as qid,
+    10000 + r.qidrel + rng.qidbase + s.qidoff as qid,
     'select ' || s.target || ' from ' || r.rel || ' where ' ||
     replace(rng.predicate, '##COL##', s.predicol) as query
 from relations r, ranges rng, scans s;
@@ -28,65 +39,85 @@ from relations r, ranges rng, scans s;
 -- (index cond, +storage [index] filter, +storage table filter, +local filter)
 insert into queries (qid, query)
 with relations(rel, qidrel) as (
-    values ('ce.r',  10000),
-           ('ce.rC', 20000)
+    values ('ce.r',  0),
+           ('ce.rC', 1000)
 ),
 filter_combos(qidbase, qidoff, target, predicol, extra) as (
+    -- Seq Scan
+    values (000, 1, '*', null, null),
+           (000, 2, 'ybctid, *', null, null),
     -- PK Index Scan: + storage filter, + local filter
-    values (500, 1, '*', 'pk', 'pk % 100 <= 33'),
-           (500, 2, '*', 'pk', 'pk % 100 <= 33 and non_pushable(pk) <= 5000'),
+           (100, 1, '*', 'pk', 'pk % 100 <= 33'),
+           (100, 2, '*', 'pk', 'pk % 100 <= 33 and non_pushable(pk) <= 5000'),
     -- non-PK Index Scan: + storage index filter, + storage table filter,
     --                    + local filter
-           (600, 1, 'v', 'b',  'b % 100 <= 33'),
-           (600, 2, 'v', 'b',  'b % 100 <= 33 and e % 100 <= 33'),
-           (600, 3, 'v', 'b',  'b % 100 <= 33 and e % 100 <= 33 and non_pushable(e) <= 5000'),
+           (200, 1, 'v', 'b',  'b % 100 <= 33'),
+           (200, 2, 'v', 'b',  'b % 100 <= 33 and e % 100 <= 33'),
+           (200, 3, 'v', 'b',  'b % 100 <= 33 and e % 100 <= 33 and non_pushable(e) <= 5000'),
     -- Index Only Scan: + storage filter, + local filter
-           (700, 1, 'b', 'b',  'b % 100 <= 33'),
-           (700, 2, 'b', 'b',  'b % 100 <= 33 and non_pushable(b) <= 5000')
+           (300, 1, 'b', 'b',  'b % 100 <= 33'),
+           (300, 2, 'b', 'b',  'b % 100 <= 33 and non_pushable(b) <= 5000')
 )
 select
-    r.qidrel + fc.qidbase + fc.qidoff as qid,
+    20000 + r.qidrel + fc.qidbase + fc.qidoff as qid,
     'select ' || fc.target || ' from ' || r.rel
-    || ' where ' || fc.predicol || ' between 1 and 5000'
-    || ' and ' || fc.extra as query
+    || case when fc.predicol is null then '' else
+        ' where ' || fc.predicol || ' between 1 and 5000'
+        || ' and ' || fc.extra end as query
 from relations r, filter_combos fc;
--- generate colocation x scan kind, single predicate with a 15-item IN list
+-- IN-list queries with sparse, non-contiguous first-key matches.
 insert into queries (qid, query)
 with relations(rel, qidrel) as (
-    values ('ce.r',  10000),
-           ('ce.rC', 20000)
+    values ('ce.r',  0),
+           ('ce.rC', 1000)
 ),
 in_list(qidoff, target, predicol, items) as (
     values (1, '*', 'pk',
-            '100, 500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345'),
+            '1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345'),
            (2, 'v', 'b',
-            '100, 500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345'),
+            '1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345'),
            (3, 'b', 'b',
-            '100, 500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345')
+            '1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345')
 )
 select
-    r.qidrel + 900 + il.qidoff as qid,
+    30000 + r.qidrel + il.qidoff as qid,
     'select ' || il.target || ' from ' || r.rel
     || ' where ' || il.predicol || ' in (' || il.items || ')' as query
 from relations r, in_list il;
--- queries from yb.orig.cardinality_estimate_consistency (single index scan
--- variants; the OR / bitmap combinations are not included here)
+-- IN-list queries with tightly clustered first-key matches (single scan page).
+insert into queries (qid, query)
+with relations(rel, qidrel) as (
+    values ('ce.r',  0),
+           ('ce.rC', 1000)
+),
+in_list(qidoff, target, predicol, items) as (
+    values (1, '*', 'pk', '1, 2, 3, 4, 5, 6, 7, 8'),
+           (2, 'v', 'b',  '1, 2, 3, 4, 5, 6, 7, 8'),
+           (3, 'b', 'b', '1, 2, 3, 4, 5, 6, 7, 8')
+)
+select
+    40000 + r.qidrel + il.qidoff as qid,
+    'select ' || il.target || ' from ' || r.rel
+    || ' where ' || il.predicol || ' in (' || il.items || ')' as query
+from relations r, in_list il;
+-- queries from yb.orig.cardinality_estimate_consistency (single index scan only).
 insert into queries values
-    (31001, $$select pk from ce.r where pk <= 500$$),
-    (31002, $$select pk from ce.r where pk <= 500 and pk % 100 <= 33$$),
-    (31003, $$select pk from ce.r where pk <= 500 and pk % 100 <= 33 and non_pushable(pk) <= 500$$),
-    (31004, $$select pk from ce.r where b <= 500$$),
-    (31005, $$select pk from ce.r where b <= 500 and b % 100 <= 33$$),
-    (31006, $$select pk from ce.r where b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500$$),
-    (31007, $$select b from ce.r where b <= 500$$),
-    (31008, $$select b from ce.r where b <= 500 and b % 100 <= 33$$),
-    (31009, $$select b from ce.r where b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500$$);
--- queries from yb.orig.seeknext_estimate (colocation x index/index-only
--- x forward/backward scan combinations)
+    (60001, $$select ybctid, a from ce.r where pk <= 1000$$),
+    (61001, $$select ybctid, a from ce.rC where pk <= 1000$$),
+    (70001, $$select pk from ce.r where pk <= 500$$),
+    (70002, $$select pk from ce.r where pk <= 500 and pk % 100 <= 33$$),
+    (70003, $$select pk from ce.r where pk <= 500 and pk % 100 <= 33 and non_pushable(pk) <= 500$$),
+    (70004, $$select pk from ce.r where b <= 500$$),
+    (70005, $$select pk from ce.r where b <= 500 and b % 100 <= 33$$),
+    (70006, $$select pk from ce.r where b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500$$),
+    (70007, $$select b from ce.r where b <= 500$$),
+    (70008, $$select b from ce.r where b <= 500 and b % 100 <= 33$$),
+    (70009, $$select b from ce.r where b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500$$);
+-- queries from yb.orig.seeknext_estimate (colocation x index/IOS x fwd/back).
 insert into queries (qid, query)
 with colocations(colo, qidcolo) as (
-    values ('',  50000),
-           ('C', 60000)
+    values ('',  0),
+           ('C', 5000)
 ),
 columns(col_id, col) as (
     values (1, 'pk'), (2, 'f1'), (3, 'f2'), (4, 'f3'), (5, 'f4'), (6, 'f5'),
@@ -100,7 +131,8 @@ scans(qidbase, is_only_scan, is_backward) as (
            (4000, true,  true)   -- backward index only scan
 )
 select
-    s.qidbase + c_colo.qidcolo + row_number() over (partition by c_colo.colo, s.qidbase order by c.col_id) as qid,
+    50000 + s.qidbase + c_colo.qidcolo
+        + row_number() over (partition by c_colo.colo, s.qidbase order by c.col_id) as qid,
     'select ' ||
     case when s.is_only_scan then c.col else 'v, ' || c.col end ||
     ' from sn.r' || c_colo.colo ||
@@ -119,61 +151,78 @@ set yb_enable_bitmapscan = off;
 set enable_sort = off;
 set max_parallel_workers_per_gather = 0;
 select * from queries order by qid;
-  qid  |                                                            query                                                             
--------+------------------------------------------------------------------------------------------------------------------------------
+  qid  |                                                           query                                                            
+-------+----------------------------------------------------------------------------------------------------------------------------
  10101 | select * from ce.r where pk = 1
  10102 | select v from ce.r where b = 1
  10103 | select b from ce.r where b = 1
+ 10104 | select ybctid, * from ce.r where pk = 1
+ 10105 | select ybctid, v from ce.r where b = 1
  10201 | select * from ce.r where pk between 1 and 100
  10202 | select v from ce.r where b between 1 and 100
  10203 | select b from ce.r where b between 1 and 100
+ 10204 | select ybctid, * from ce.r where pk between 1 and 100
+ 10205 | select ybctid, v from ce.r where b between 1 and 100
  10301 | select * from ce.r where pk between 1 and 5000
  10302 | select v from ce.r where b between 1 and 5000
  10303 | select b from ce.r where b between 1 and 5000
+ 10304 | select ybctid, * from ce.r where pk between 1 and 5000
+ 10305 | select ybctid, v from ce.r where b between 1 and 5000
  10401 | select * from ce.r where pk between 1 and 12345
  10402 | select v from ce.r where b between 1 and 12345
  10403 | select b from ce.r where b between 1 and 12345
- 10501 | select * from ce.r where pk between 1 and 5000 and pk % 100 <= 33
- 10502 | select * from ce.r where pk between 1 and 5000 and pk % 100 <= 33 and non_pushable(pk) <= 5000
- 10601 | select v from ce.r where b between 1 and 5000 and b % 100 <= 33
- 10602 | select v from ce.r where b between 1 and 5000 and b % 100 <= 33 and e % 100 <= 33
- 10603 | select v from ce.r where b between 1 and 5000 and b % 100 <= 33 and e % 100 <= 33 and non_pushable(e) <= 5000
- 10701 | select b from ce.r where b between 1 and 5000 and b % 100 <= 33
- 10702 | select b from ce.r where b between 1 and 5000 and b % 100 <= 33 and non_pushable(b) <= 5000
- 10901 | select * from ce.r where pk in (100, 500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345)
- 10902 | select v from ce.r where b in (100, 500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345)
- 10903 | select b from ce.r where b in (100, 500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345)
- 20101 | select * from ce.rC where pk = 1
- 20102 | select v from ce.rC where b = 1
- 20103 | select b from ce.rC where b = 1
- 20201 | select * from ce.rC where pk between 1 and 100
- 20202 | select v from ce.rC where b between 1 and 100
- 20203 | select b from ce.rC where b between 1 and 100
- 20301 | select * from ce.rC where pk between 1 and 5000
- 20302 | select v from ce.rC where b between 1 and 5000
- 20303 | select b from ce.rC where b between 1 and 5000
- 20401 | select * from ce.rC where pk between 1 and 12345
- 20402 | select v from ce.rC where b between 1 and 12345
- 20403 | select b from ce.rC where b between 1 and 12345
- 20501 | select * from ce.rC where pk between 1 and 5000 and pk % 100 <= 33
- 20502 | select * from ce.rC where pk between 1 and 5000 and pk % 100 <= 33 and non_pushable(pk) <= 5000
- 20601 | select v from ce.rC where b between 1 and 5000 and b % 100 <= 33
- 20602 | select v from ce.rC where b between 1 and 5000 and b % 100 <= 33 and e % 100 <= 33
- 20603 | select v from ce.rC where b between 1 and 5000 and b % 100 <= 33 and e % 100 <= 33 and non_pushable(e) <= 5000
- 20701 | select b from ce.rC where b between 1 and 5000 and b % 100 <= 33
- 20702 | select b from ce.rC where b between 1 and 5000 and b % 100 <= 33 and non_pushable(b) <= 5000
- 20901 | select * from ce.rC where pk in (100, 500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345)
- 20902 | select v from ce.rC where b in (100, 500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345)
- 20903 | select b from ce.rC where b in (100, 500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345)
- 31001 | select pk from ce.r where pk <= 500
- 31002 | select pk from ce.r where pk <= 500 and pk % 100 <= 33
- 31003 | select pk from ce.r where pk <= 500 and pk % 100 <= 33 and non_pushable(pk) <= 500
- 31004 | select pk from ce.r where b <= 500
- 31005 | select pk from ce.r where b <= 500 and b % 100 <= 33
- 31006 | select pk from ce.r where b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500
- 31007 | select b from ce.r where b <= 500
- 31008 | select b from ce.r where b <= 500 and b % 100 <= 33
- 31009 | select b from ce.r where b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500
+ 10404 | select ybctid, * from ce.r where pk between 1 and 12345
+ 10405 | select ybctid, v from ce.r where b between 1 and 12345
+ 11101 | select * from ce.rC where pk = 1
+ 11102 | select v from ce.rC where b = 1
+ 11103 | select b from ce.rC where b = 1
+ 11104 | select ybctid, * from ce.rC where pk = 1
+ 11105 | select ybctid, v from ce.rC where b = 1
+ 11201 | select * from ce.rC where pk between 1 and 100
+ 11202 | select v from ce.rC where b between 1 and 100
+ 11203 | select b from ce.rC where b between 1 and 100
+ 11204 | select ybctid, * from ce.rC where pk between 1 and 100
+ 11205 | select ybctid, v from ce.rC where b between 1 and 100
+ 11301 | select * from ce.rC where pk between 1 and 5000
+ 11302 | select v from ce.rC where b between 1 and 5000
+ 11303 | select b from ce.rC where b between 1 and 5000
+ 11304 | select ybctid, * from ce.rC where pk between 1 and 5000
+ 11305 | select ybctid, v from ce.rC where b between 1 and 5000
+ 11401 | select * from ce.rC where pk between 1 and 12345
+ 11402 | select v from ce.rC where b between 1 and 12345
+ 11403 | select b from ce.rC where b between 1 and 12345
+ 11404 | select ybctid, * from ce.rC where pk between 1 and 12345
+ 11405 | select ybctid, v from ce.rC where b between 1 and 12345
+ 20001 | select * from ce.r
+ 20002 | select ybctid, * from ce.r
+ 20101 | select * from ce.r where pk between 1 and 5000 and pk % 100 <= 33
+ 20102 | select * from ce.r where pk between 1 and 5000 and pk % 100 <= 33 and non_pushable(pk) <= 5000
+ 20201 | select v from ce.r where b between 1 and 5000 and b % 100 <= 33
+ 20202 | select v from ce.r where b between 1 and 5000 and b % 100 <= 33 and e % 100 <= 33
+ 20203 | select v from ce.r where b between 1 and 5000 and b % 100 <= 33 and e % 100 <= 33 and non_pushable(e) <= 5000
+ 20301 | select b from ce.r where b between 1 and 5000 and b % 100 <= 33
+ 20302 | select b from ce.r where b between 1 and 5000 and b % 100 <= 33 and non_pushable(b) <= 5000
+ 21001 | select * from ce.rC
+ 21002 | select ybctid, * from ce.rC
+ 21101 | select * from ce.rC where pk between 1 and 5000 and pk % 100 <= 33
+ 21102 | select * from ce.rC where pk between 1 and 5000 and pk % 100 <= 33 and non_pushable(pk) <= 5000
+ 21201 | select v from ce.rC where b between 1 and 5000 and b % 100 <= 33
+ 21202 | select v from ce.rC where b between 1 and 5000 and b % 100 <= 33 and e % 100 <= 33
+ 21203 | select v from ce.rC where b between 1 and 5000 and b % 100 <= 33 and e % 100 <= 33 and non_pushable(e) <= 5000
+ 21301 | select b from ce.rC where b between 1 and 5000 and b % 100 <= 33
+ 21302 | select b from ce.rC where b between 1 and 5000 and b % 100 <= 33 and non_pushable(b) <= 5000
+ 30001 | select * from ce.r where pk in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345)
+ 30002 | select v from ce.r where b in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345)
+ 30003 | select b from ce.r where b in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345)
+ 31001 | select * from ce.rC where pk in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345)
+ 31002 | select v from ce.rC where b in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345)
+ 31003 | select b from ce.rC where b in (1, 100, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 11000, 12000, 12345)
+ 40001 | select * from ce.r where pk in (1, 2, 3, 4, 5, 6, 7, 8)
+ 40002 | select v from ce.r where b in (1, 2, 3, 4, 5, 6, 7, 8)
+ 40003 | select b from ce.r where b in (1, 2, 3, 4, 5, 6, 7, 8)
+ 41001 | select * from ce.rC where pk in (1, 2, 3, 4, 5, 6, 7, 8)
+ 41002 | select v from ce.rC where b in (1, 2, 3, 4, 5, 6, 7, 8)
+ 41003 | select b from ce.rC where b in (1, 2, 3, 4, 5, 6, 7, 8)
  51001 | select v, pk from sn.r where pk = 1
  51002 | select v, f1 from sn.r where f1 = 1
  51003 | select v, f2 from sn.r where f2 = 1
@@ -224,80 +273,387 @@ select * from queries order by qid;
  54010 | select skw1 from sn.r where skw1 <= 1 order by skw1 desc
  54011 | select skw2 from sn.r where skw2 <= 1 order by skw2 desc
  54012 | select skw3 from sn.r where skw3 <= 1 order by skw3 desc
- 61001 | select v, pk from sn.rC where pk = 1
- 61002 | select v, f1 from sn.rC where f1 = 1
- 61003 | select v, f2 from sn.rC where f2 = 1
- 61004 | select v, f3 from sn.rC where f3 = 1
- 61005 | select v, f4 from sn.rC where f4 = 1
- 61006 | select v, f5 from sn.rC where f5 = 1
- 61007 | select v, f10 from sn.rC where f10 = 1
- 61008 | select v, f100 from sn.rC where f100 = 1
- 61009 | select v, f1000 from sn.rC where f1000 = 1
- 61010 | select v, dv1 from sn.rC where dv1 = 1
- 61011 | select v, skw1 from sn.rC where skw1 = 1
- 61012 | select v, skw2 from sn.rC where skw2 = 1
- 61013 | select v, skw3 from sn.rC where skw3 = 1
- 62001 | select f1 from sn.rC where f1 = 1
- 62002 | select f2 from sn.rC where f2 = 1
- 62003 | select f3 from sn.rC where f3 = 1
- 62004 | select f4 from sn.rC where f4 = 1
- 62005 | select f5 from sn.rC where f5 = 1
- 62006 | select f10 from sn.rC where f10 = 1
- 62007 | select f100 from sn.rC where f100 = 1
- 62008 | select f1000 from sn.rC where f1000 = 1
- 62009 | select dv1 from sn.rC where dv1 = 1
- 62010 | select skw1 from sn.rC where skw1 = 1
- 62011 | select skw2 from sn.rC where skw2 = 1
- 62012 | select skw3 from sn.rC where skw3 = 1
- 63001 | select v, pk from sn.rC where pk <= 1 order by pk desc
- 63002 | select v, f1 from sn.rC where f1 <= 1 order by f1 desc
- 63003 | select v, f2 from sn.rC where f2 <= 1 order by f2 desc
- 63004 | select v, f3 from sn.rC where f3 <= 1 order by f3 desc
- 63005 | select v, f4 from sn.rC where f4 <= 1 order by f4 desc
- 63006 | select v, f5 from sn.rC where f5 <= 1 order by f5 desc
- 63007 | select v, f10 from sn.rC where f10 <= 1 order by f10 desc
- 63008 | select v, f100 from sn.rC where f100 <= 1 order by f100 desc
- 63009 | select v, f1000 from sn.rC where f1000 <= 1 order by f1000 desc
- 63010 | select v, dv1 from sn.rC where dv1 <= 1 order by dv1 desc
- 63011 | select v, skw1 from sn.rC where skw1 <= 1 order by skw1 desc
- 63012 | select v, skw2 from sn.rC where skw2 <= 1 order by skw2 desc
- 63013 | select v, skw3 from sn.rC where skw3 <= 1 order by skw3 desc
- 64001 | select f1 from sn.rC where f1 <= 1 order by f1 desc
- 64002 | select f2 from sn.rC where f2 <= 1 order by f2 desc
- 64003 | select f3 from sn.rC where f3 <= 1 order by f3 desc
- 64004 | select f4 from sn.rC where f4 <= 1 order by f4 desc
- 64005 | select f5 from sn.rC where f5 <= 1 order by f5 desc
- 64006 | select f10 from sn.rC where f10 <= 1 order by f10 desc
- 64007 | select f100 from sn.rC where f100 <= 1 order by f100 desc
- 64008 | select f1000 from sn.rC where f1000 <= 1 order by f1000 desc
- 64009 | select dv1 from sn.rC where dv1 <= 1 order by dv1 desc
- 64010 | select skw1 from sn.rC where skw1 <= 1 order by skw1 desc
- 64011 | select skw2 from sn.rC where skw2 <= 1 order by skw2 desc
- 64012 | select skw3 from sn.rC where skw3 <= 1 order by skw3 desc
-(153 rows)
+ 56001 | select v, pk from sn.rC where pk = 1
+ 56002 | select v, f1 from sn.rC where f1 = 1
+ 56003 | select v, f2 from sn.rC where f2 = 1
+ 56004 | select v, f3 from sn.rC where f3 = 1
+ 56005 | select v, f4 from sn.rC where f4 = 1
+ 56006 | select v, f5 from sn.rC where f5 = 1
+ 56007 | select v, f10 from sn.rC where f10 = 1
+ 56008 | select v, f100 from sn.rC where f100 = 1
+ 56009 | select v, f1000 from sn.rC where f1000 = 1
+ 56010 | select v, dv1 from sn.rC where dv1 = 1
+ 56011 | select v, skw1 from sn.rC where skw1 = 1
+ 56012 | select v, skw2 from sn.rC where skw2 = 1
+ 56013 | select v, skw3 from sn.rC where skw3 = 1
+ 57001 | select f1 from sn.rC where f1 = 1
+ 57002 | select f2 from sn.rC where f2 = 1
+ 57003 | select f3 from sn.rC where f3 = 1
+ 57004 | select f4 from sn.rC where f4 = 1
+ 57005 | select f5 from sn.rC where f5 = 1
+ 57006 | select f10 from sn.rC where f10 = 1
+ 57007 | select f100 from sn.rC where f100 = 1
+ 57008 | select f1000 from sn.rC where f1000 = 1
+ 57009 | select dv1 from sn.rC where dv1 = 1
+ 57010 | select skw1 from sn.rC where skw1 = 1
+ 57011 | select skw2 from sn.rC where skw2 = 1
+ 57012 | select skw3 from sn.rC where skw3 = 1
+ 58001 | select v, pk from sn.rC where pk <= 1 order by pk desc
+ 58002 | select v, f1 from sn.rC where f1 <= 1 order by f1 desc
+ 58003 | select v, f2 from sn.rC where f2 <= 1 order by f2 desc
+ 58004 | select v, f3 from sn.rC where f3 <= 1 order by f3 desc
+ 58005 | select v, f4 from sn.rC where f4 <= 1 order by f4 desc
+ 58006 | select v, f5 from sn.rC where f5 <= 1 order by f5 desc
+ 58007 | select v, f10 from sn.rC where f10 <= 1 order by f10 desc
+ 58008 | select v, f100 from sn.rC where f100 <= 1 order by f100 desc
+ 58009 | select v, f1000 from sn.rC where f1000 <= 1 order by f1000 desc
+ 58010 | select v, dv1 from sn.rC where dv1 <= 1 order by dv1 desc
+ 58011 | select v, skw1 from sn.rC where skw1 <= 1 order by skw1 desc
+ 58012 | select v, skw2 from sn.rC where skw2 <= 1 order by skw2 desc
+ 58013 | select v, skw3 from sn.rC where skw3 <= 1 order by skw3 desc
+ 59001 | select f1 from sn.rC where f1 <= 1 order by f1 desc
+ 59002 | select f2 from sn.rC where f2 <= 1 order by f2 desc
+ 59003 | select f3 from sn.rC where f3 <= 1 order by f3 desc
+ 59004 | select f4 from sn.rC where f4 <= 1 order by f4 desc
+ 59005 | select f5 from sn.rC where f5 <= 1 order by f5 desc
+ 59006 | select f10 from sn.rC where f10 <= 1 order by f10 desc
+ 59007 | select f100 from sn.rC where f100 <= 1 order by f100 desc
+ 59008 | select f1000 from sn.rC where f1000 <= 1 order by f1000 desc
+ 59009 | select dv1 from sn.rC where dv1 <= 1 order by dv1 desc
+ 59010 | select skw1 from sn.rC where skw1 <= 1 order by skw1 desc
+ 59011 | select skw2 from sn.rC where skw2 <= 1 order by skw2 desc
+ 59012 | select skw3 from sn.rC where skw3 <= 1 order by skw3 desc
+ 60001 | select ybctid, a from ce.r where pk <= 1000
+ 61001 | select ybctid, a from ce.rC where pk <= 1000
+ 70001 | select pk from ce.r where pk <= 500
+ 70002 | select pk from ce.r where pk <= 500 and pk % 100 <= 33
+ 70003 | select pk from ce.r where pk <= 500 and pk % 100 <= 33 and non_pushable(pk) <= 500
+ 70004 | select pk from ce.r where b <= 500
+ 70005 | select pk from ce.r where b <= 500 and b % 100 <= 33
+ 70006 | select pk from ce.r where b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500
+ 70007 | select b from ce.r where b <= 500
+ 70008 | select b from ce.r where b <= 500 and b % 100 <= 33
+ 70009 | select b from ce.r where b <= 500 and b % 100 <= 33 and non_pushable(b) <= 500
+(181 rows)
 
 update explain_query_options set with_analyze = false;
--- should not return any row.  mismatches indicate non-index scan nodes.
-select q.qid, q.query, x.qid, x.nid, "Node Type", "Index Name", "Index Cond"
-from queries q full join check_roundtrip_estimates x on x.qid = q.qid
-where x.qid is null or q.qid is null
-order by coalesce(q.qid, x.qid), x.nid;
- qid | query | qid | nid | Node Type | Index Name | Index Cond 
------+-------+-----+-----+-----------+------------+------------
-(0 rows)
+-- verify scan node types: first variant saves baseline; later variants assert symmetric diff is empty.
+create temp table baseline_scan_nodes as
+select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
+       "Index Name", "Index Cond", "Storage Index Filter",
+       "Storage Filter", "Filter"
+from queries q full join check_roundtrip_estimates x on x.qid = q.qid;
+select * from baseline_scan_nodes order by qid, nid;
+  qid  | nid |        Node Type         |  Index Name  |                                               Index Cond                                               | Storage Index Filter |   Storage Filter   |                Filter                
+-------+-----+--------------------------+--------------+--------------------------------------------------------------------------------------------------------+----------------------+--------------------+--------------------------------------
+ 10101 |   1 | Index Scan               | r_pkey       | (pk = 1)                                                                                               |                      |                    | 
+ 10102 |   1 | Index Scan               | r_b_idx      | (b = 1)                                                                                                |                      |                    | 
+ 10103 |   1 | Index Only Scan          | r_b_idx      | (b = 1)                                                                                                |                      |                    | 
+ 10104 |   1 | Index Scan               | r_pkey       | (pk = 1)                                                                                               |                      |                    | 
+ 10105 |   1 | Index Scan               | r_b_idx      | (b = 1)                                                                                                |                      |                    | 
+ 10201 |   1 | Index Scan               | r_pkey       | ((pk >= 1) AND (pk <= 100))                                                                            |                      |                    | 
+ 10202 |   1 | Index Scan               | r_b_idx      | ((b >= 1) AND (b <= 100))                                                                              |                      |                    | 
+ 10203 |   1 | Index Only Scan          | r_b_idx      | ((b >= 1) AND (b <= 100))                                                                              |                      |                    | 
+ 10204 |   1 | Index Scan               | r_pkey       | ((pk >= 1) AND (pk <= 100))                                                                            |                      |                    | 
+ 10205 |   1 | Index Scan               | r_b_idx      | ((b >= 1) AND (b <= 100))                                                                              |                      |                    | 
+ 10301 |   1 | Index Scan               | r_pkey       | ((pk >= 1) AND (pk <= 5000))                                                                           |                      |                    | 
+ 10302 |   1 | Index Scan               | r_b_idx      | ((b >= 1) AND (b <= 5000))                                                                             |                      |                    | 
+ 10303 |   1 | Index Only Scan          | r_b_idx      | ((b >= 1) AND (b <= 5000))                                                                             |                      |                    | 
+ 10304 |   1 | Index Scan               | r_pkey       | ((pk >= 1) AND (pk <= 5000))                                                                           |                      |                    | 
+ 10305 |   1 | Index Scan               | r_b_idx      | ((b >= 1) AND (b <= 5000))                                                                             |                      |                    | 
+ 10401 |   1 | Index Scan               | r_pkey       | ((pk >= 1) AND (pk <= 12345))                                                                          |                      |                    | 
+ 10402 |   1 | Index Scan               | r_b_idx      | ((b >= 1) AND (b <= 12345))                                                                            |                      |                    | 
+ 10403 |   1 | Index Only Scan          | r_b_idx      | ((b >= 1) AND (b <= 12345))                                                                            |                      |                    | 
+ 10404 |   1 | Index Scan               | r_pkey       | ((pk >= 1) AND (pk <= 12345))                                                                          |                      |                    | 
+ 10405 |   1 | Index Scan               | r_b_idx      | ((b >= 1) AND (b <= 12345))                                                                            |                      |                    | 
+ 11101 |   1 | Index Scan               | rc_pkey      | (pk = 1)                                                                                               |                      |                    | 
+ 11102 |   1 | Index Scan               | rc_b_idx     | (b = 1)                                                                                                |                      |                    | 
+ 11103 |   1 | Index Only Scan          | rc_b_idx     | (b = 1)                                                                                                |                      |                    | 
+ 11104 |   1 | Index Scan               | rc_pkey      | (pk = 1)                                                                                               |                      |                    | 
+ 11105 |   1 | Index Scan               | rc_b_idx     | (b = 1)                                                                                                |                      |                    | 
+ 11201 |   1 | Index Scan               | rc_pkey      | ((pk >= 1) AND (pk <= 100))                                                                            |                      |                    | 
+ 11202 |   1 | Index Scan               | rc_b_idx     | ((b >= 1) AND (b <= 100))                                                                              |                      |                    | 
+ 11203 |   1 | Index Only Scan          | rc_b_idx     | ((b >= 1) AND (b <= 100))                                                                              |                      |                    | 
+ 11204 |   1 | Index Scan               | rc_pkey      | ((pk >= 1) AND (pk <= 100))                                                                            |                      |                    | 
+ 11205 |   1 | Index Scan               | rc_b_idx     | ((b >= 1) AND (b <= 100))                                                                              |                      |                    | 
+ 11301 |   1 | Index Scan               | rc_pkey      | ((pk >= 1) AND (pk <= 5000))                                                                           |                      |                    | 
+ 11302 |   1 | Index Scan               | rc_b_idx     | ((b >= 1) AND (b <= 5000))                                                                             |                      |                    | 
+ 11303 |   1 | Index Only Scan          | rc_b_idx     | ((b >= 1) AND (b <= 5000))                                                                             |                      |                    | 
+ 11304 |   1 | Index Scan               | rc_pkey      | ((pk >= 1) AND (pk <= 5000))                                                                           |                      |                    | 
+ 11305 |   1 | Index Scan               | rc_b_idx     | ((b >= 1) AND (b <= 5000))                                                                             |                      |                    | 
+ 11401 |   1 | Index Scan               | rc_pkey      | ((pk >= 1) AND (pk <= 12345))                                                                          |                      |                    | 
+ 11402 |   1 | Index Scan               | rc_b_idx     | ((b >= 1) AND (b <= 12345))                                                                            |                      |                    | 
+ 11403 |   1 | Index Only Scan          | rc_b_idx     | ((b >= 1) AND (b <= 12345))                                                                            |                      |                    | 
+ 11404 |   1 | Index Scan               | rc_pkey      | ((pk >= 1) AND (pk <= 12345))                                                                          |                      |                    | 
+ 11405 |   1 | Index Scan               | rc_b_idx     | ((b >= 1) AND (b <= 12345))                                                                            |                      |                    | 
+ 20001 |   1 | Seq Scan                 |              |                                                                                                        |                      |                    | 
+ 20002 |   1 | Seq Scan                 |              |                                                                                                        |                      |                    | 
+ 20101 |   1 | Index Scan               | r_pkey       | ((pk >= 1) AND (pk <= 5000))                                                                           |                      | ((pk % 100) <= 33) | 
+ 20102 |   1 | Index Scan               | r_pkey       | ((pk >= 1) AND (pk <= 5000))                                                                           |                      | ((pk % 100) <= 33) | (non_pushable((pk)::bigint) <= 5000)
+ 20201 |   1 | Index Scan               | r_b_idx      | ((b >= 1) AND (b <= 5000))                                                                             | ((b % 100) <= 33)    |                    | 
+ 20202 |   1 | Index Scan               | r_b_idx      | ((b >= 1) AND (b <= 5000))                                                                             | ((b % 100) <= 33)    | ((e % 100) <= 33)  | 
+ 20203 |   1 | Index Scan               | r_b_idx      | ((b >= 1) AND (b <= 5000))                                                                             | ((b % 100) <= 33)    | ((e % 100) <= 33)  | (non_pushable((e)::bigint) <= 5000)
+ 20301 |   1 | Index Only Scan          | r_b_idx      | ((b >= 1) AND (b <= 5000))                                                                             |                      | ((b % 100) <= 33)  | 
+ 20302 |   1 | Index Only Scan          | r_b_idx      | ((b >= 1) AND (b <= 5000))                                                                             |                      | ((b % 100) <= 33)  | (non_pushable((b)::bigint) <= 5000)
+ 21001 |   1 | Seq Scan                 |              |                                                                                                        |                      |                    | 
+ 21002 |   1 | Seq Scan                 |              |                                                                                                        |                      |                    | 
+ 21101 |   1 | Index Scan               | rc_pkey      | ((pk >= 1) AND (pk <= 5000))                                                                           |                      | ((pk % 100) <= 33) | 
+ 21102 |   1 | Index Scan               | rc_pkey      | ((pk >= 1) AND (pk <= 5000))                                                                           |                      | ((pk % 100) <= 33) | (non_pushable((pk)::bigint) <= 5000)
+ 21201 |   1 | Index Scan               | rc_b_idx     | ((b >= 1) AND (b <= 5000))                                                                             | ((b % 100) <= 33)    |                    | 
+ 21202 |   1 | Index Scan               | rc_b_idx     | ((b >= 1) AND (b <= 5000))                                                                             | ((b % 100) <= 33)    | ((e % 100) <= 33)  | 
+ 21203 |   1 | Index Scan               | rc_b_idx     | ((b >= 1) AND (b <= 5000))                                                                             | ((b % 100) <= 33)    | ((e % 100) <= 33)  | (non_pushable((e)::bigint) <= 5000)
+ 21301 |   1 | Index Only Scan          | rc_b_idx     | ((b >= 1) AND (b <= 5000))                                                                             |                      | ((b % 100) <= 33)  | 
+ 21302 |   1 | Index Only Scan          | rc_b_idx     | ((b >= 1) AND (b <= 5000))                                                                             |                      | ((b % 100) <= 33)  | (non_pushable((b)::bigint) <= 5000)
+ 30001 |   1 | Index Scan               | r_pkey       | (pk = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[])) |                      |                    | 
+ 30002 |   1 | Index Scan               | r_b_idx      | (b = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[]))  |                      |                    | 
+ 30003 |   1 | Index Only Scan          | r_b_idx      | (b = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[]))  |                      |                    | 
+ 31001 |   1 | Index Scan               | rc_pkey      | (pk = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[])) |                      |                    | 
+ 31002 |   1 | Index Scan               | rc_b_idx     | (b = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[]))  |                      |                    | 
+ 31003 |   1 | Index Only Scan          | rc_b_idx     | (b = ANY ('{1,100,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000,12000,12345}'::integer[]))  |                      |                    | 
+ 40001 |   1 | Index Scan               | r_pkey       | (pk = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                            |                      |                    | 
+ 40002 |   1 | Index Scan               | r_b_idx      | (b = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                             |                      |                    | 
+ 40003 |   1 | Index Only Scan          | r_b_idx      | (b = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                             |                      |                    | 
+ 41001 |   1 | Index Scan               | rc_pkey      | (pk = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                            |                      |                    | 
+ 41002 |   1 | Index Scan               | rc_b_idx     | (b = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                             |                      |                    | 
+ 41003 |   1 | Index Only Scan          | rc_b_idx     | (b = ANY ('{1,2,3,4,5,6,7,8}'::integer[]))                                                             |                      |                    | 
+ 51001 |   1 | Index Scan               | r_pkey       | (pk = 1)                                                                                               |                      |                    | 
+ 51002 |   1 | Index Scan               | r_f1_idx     | (f1 = 1)                                                                                               |                      |                    | 
+ 51003 |   1 | Index Scan               | r_f2_idx     | (f2 = 1)                                                                                               |                      |                    | 
+ 51004 |   1 | Index Scan               | r_f3_idx     | (f3 = 1)                                                                                               |                      |                    | 
+ 51005 |   1 | Index Scan               | r_f4_idx     | (f4 = 1)                                                                                               |                      |                    | 
+ 51006 |   1 | Index Scan               | r_f5_idx     | (f5 = 1)                                                                                               |                      |                    | 
+ 51007 |   1 | Index Scan               | r_f10_idx    | (f10 = 1)                                                                                              |                      |                    | 
+ 51008 |   1 | Index Scan               | r_f100_idx   | (f100 = 1)                                                                                             |                      |                    | 
+ 51009 |   1 | Index Scan               | r_f1000_idx  | (f1000 = 1)                                                                                            |                      |                    | 
+ 51010 |   1 | Index Scan               | r_dv1_idx    | (dv1 = 1)                                                                                              |                      |                    | 
+ 51011 |   1 | Index Scan               | r_skw1_idx   | (skw1 = 1)                                                                                             |                      |                    | 
+ 51012 |   1 | Index Scan               | r_skw2_idx   | (skw2 = 1)                                                                                             |                      |                    | 
+ 51013 |   1 | Index Scan               | r_skw3_idx   | (skw3 = 1)                                                                                             |                      |                    | 
+ 52001 |   1 | Index Only Scan          | r_f1_idx     | (f1 = 1)                                                                                               |                      |                    | 
+ 52002 |   1 | Index Only Scan          | r_f2_idx     | (f2 = 1)                                                                                               |                      |                    | 
+ 52003 |   1 | Index Only Scan          | r_f3_idx     | (f3 = 1)                                                                                               |                      |                    | 
+ 52004 |   1 | Index Only Scan          | r_f4_idx     | (f4 = 1)                                                                                               |                      |                    | 
+ 52005 |   1 | Index Only Scan          | r_f5_idx     | (f5 = 1)                                                                                               |                      |                    | 
+ 52006 |   1 | Index Only Scan          | r_f10_idx    | (f10 = 1)                                                                                              |                      |                    | 
+ 52007 |   1 | Index Only Scan          | r_f100_idx   | (f100 = 1)                                                                                             |                      |                    | 
+ 52008 |   1 | Index Only Scan          | r_f1000_idx  | (f1000 = 1)                                                                                            |                      |                    | 
+ 52009 |   1 | Index Only Scan          | r_dv1_idx    | (dv1 = 1)                                                                                              |                      |                    | 
+ 52010 |   1 | Index Only Scan          | r_skw1_idx   | (skw1 = 1)                                                                                             |                      |                    | 
+ 52011 |   1 | Index Only Scan          | r_skw2_idx   | (skw2 = 1)                                                                                             |                      |                    | 
+ 52012 |   1 | Index Only Scan          | r_skw3_idx   | (skw3 = 1)                                                                                             |                      |                    | 
+ 53001 |   1 | Index Scan Backward      | r_pkey       | (pk <= 1)                                                                                              |                      |                    | 
+ 53002 |   1 | Index Scan Backward      | r_f1_idx     | (f1 <= 1)                                                                                              |                      |                    | 
+ 53003 |   1 | Index Scan Backward      | r_f2_idx     | (f2 <= 1)                                                                                              |                      |                    | 
+ 53004 |   1 | Index Scan Backward      | r_f3_idx     | (f3 <= 1)                                                                                              |                      |                    | 
+ 53005 |   1 | Index Scan Backward      | r_f4_idx     | (f4 <= 1)                                                                                              |                      |                    | 
+ 53006 |   1 | Index Scan Backward      | r_f5_idx     | (f5 <= 1)                                                                                              |                      |                    | 
+ 53007 |   1 | Index Scan Backward      | r_f10_idx    | (f10 <= 1)                                                                                             |                      |                    | 
+ 53008 |   1 | Index Scan Backward      | r_f100_idx   | (f100 <= 1)                                                                                            |                      |                    | 
+ 53009 |   1 | Index Scan Backward      | r_f1000_idx  | (f1000 <= 1)                                                                                           |                      |                    | 
+ 53010 |   1 | Index Scan Backward      | r_dv1_idx    | (dv1 <= 1)                                                                                             |                      |                    | 
+ 53011 |   1 | Index Scan Backward      | r_skw1_idx   | (skw1 <= 1)                                                                                            |                      |                    | 
+ 53012 |   1 | Index Scan Backward      | r_skw2_idx   | (skw2 <= 1)                                                                                            |                      |                    | 
+ 53013 |   1 | Index Scan Backward      | r_skw3_idx   | (skw3 <= 1)                                                                                            |                      |                    | 
+ 54001 |   1 | Index Only Scan Backward | r_f1_idx     | (f1 <= 1)                                                                                              |                      |                    | 
+ 54002 |   1 | Index Only Scan Backward | r_f2_idx     | (f2 <= 1)                                                                                              |                      |                    | 
+ 54003 |   1 | Index Only Scan Backward | r_f3_idx     | (f3 <= 1)                                                                                              |                      |                    | 
+ 54004 |   1 | Index Only Scan Backward | r_f4_idx     | (f4 <= 1)                                                                                              |                      |                    | 
+ 54005 |   1 | Index Only Scan Backward | r_f5_idx     | (f5 <= 1)                                                                                              |                      |                    | 
+ 54006 |   1 | Index Only Scan Backward | r_f10_idx    | (f10 <= 1)                                                                                             |                      |                    | 
+ 54007 |   1 | Index Only Scan Backward | r_f100_idx   | (f100 <= 1)                                                                                            |                      |                    | 
+ 54008 |   1 | Index Only Scan Backward | r_f1000_idx  | (f1000 <= 1)                                                                                           |                      |                    | 
+ 54009 |   1 | Index Only Scan Backward | r_dv1_idx    | (dv1 <= 1)                                                                                             |                      |                    | 
+ 54010 |   1 | Index Only Scan Backward | r_skw1_idx   | (skw1 <= 1)                                                                                            |                      |                    | 
+ 54011 |   1 | Index Only Scan Backward | r_skw2_idx   | (skw2 <= 1)                                                                                            |                      |                    | 
+ 54012 |   1 | Index Only Scan Backward | r_skw3_idx   | (skw3 <= 1)                                                                                            |                      |                    | 
+ 56001 |   1 | Index Scan               | rc_pkey      | (pk = 1)                                                                                               |                      |                    | 
+ 56002 |   1 | Index Scan               | rc_f1_idx    | (f1 = 1)                                                                                               |                      |                    | 
+ 56003 |   1 | Index Scan               | rc_f2_idx    | (f2 = 1)                                                                                               |                      |                    | 
+ 56004 |   1 | Index Scan               | rc_f3_idx    | (f3 = 1)                                                                                               |                      |                    | 
+ 56005 |   1 | Index Scan               | rc_f4_idx    | (f4 = 1)                                                                                               |                      |                    | 
+ 56006 |   1 | Index Scan               | rc_f5_idx    | (f5 = 1)                                                                                               |                      |                    | 
+ 56007 |   1 | Index Scan               | rc_f10_idx   | (f10 = 1)                                                                                              |                      |                    | 
+ 56008 |   1 | Index Scan               | rc_f100_idx  | (f100 = 1)                                                                                             |                      |                    | 
+ 56009 |   1 | Index Scan               | rc_f1000_idx | (f1000 = 1)                                                                                            |                      |                    | 
+ 56010 |   1 | Index Scan               | rc_dv1_idx   | (dv1 = 1)                                                                                              |                      |                    | 
+ 56011 |   1 | Index Scan               | rc_skw1_idx  | (skw1 = 1)                                                                                             |                      |                    | 
+ 56012 |   1 | Index Scan               | rc_skw2_idx  | (skw2 = 1)                                                                                             |                      |                    | 
+ 56013 |   1 | Index Scan               | rc_skw3_idx  | (skw3 = 1)                                                                                             |                      |                    | 
+ 57001 |   1 | Index Only Scan          | rc_f1_idx    | (f1 = 1)                                                                                               |                      |                    | 
+ 57002 |   1 | Index Only Scan          | rc_f2_idx    | (f2 = 1)                                                                                               |                      |                    | 
+ 57003 |   1 | Index Only Scan          | rc_f3_idx    | (f3 = 1)                                                                                               |                      |                    | 
+ 57004 |   1 | Index Only Scan          | rc_f4_idx    | (f4 = 1)                                                                                               |                      |                    | 
+ 57005 |   1 | Index Only Scan          | rc_f5_idx    | (f5 = 1)                                                                                               |                      |                    | 
+ 57006 |   1 | Index Only Scan          | rc_f10_idx   | (f10 = 1)                                                                                              |                      |                    | 
+ 57007 |   1 | Index Only Scan          | rc_f100_idx  | (f100 = 1)                                                                                             |                      |                    | 
+ 57008 |   1 | Index Only Scan          | rc_f1000_idx | (f1000 = 1)                                                                                            |                      |                    | 
+ 57009 |   1 | Index Only Scan          | rc_dv1_idx   | (dv1 = 1)                                                                                              |                      |                    | 
+ 57010 |   1 | Index Only Scan          | rc_skw1_idx  | (skw1 = 1)                                                                                             |                      |                    | 
+ 57011 |   1 | Index Only Scan          | rc_skw2_idx  | (skw2 = 1)                                                                                             |                      |                    | 
+ 57012 |   1 | Index Only Scan          | rc_skw3_idx  | (skw3 = 1)                                                                                             |                      |                    | 
+ 58001 |   1 | Index Scan Backward      | rc_pkey      | (pk <= 1)                                                                                              |                      |                    | 
+ 58002 |   1 | Index Scan Backward      | rc_f1_idx    | (f1 <= 1)                                                                                              |                      |                    | 
+ 58003 |   1 | Index Scan Backward      | rc_f2_idx    | (f2 <= 1)                                                                                              |                      |                    | 
+ 58004 |   1 | Index Scan Backward      | rc_f3_idx    | (f3 <= 1)                                                                                              |                      |                    | 
+ 58005 |   1 | Index Scan Backward      | rc_f4_idx    | (f4 <= 1)                                                                                              |                      |                    | 
+ 58006 |   1 | Index Scan Backward      | rc_f5_idx    | (f5 <= 1)                                                                                              |                      |                    | 
+ 58007 |   1 | Index Scan Backward      | rc_f10_idx   | (f10 <= 1)                                                                                             |                      |                    | 
+ 58008 |   1 | Index Scan Backward      | rc_f100_idx  | (f100 <= 1)                                                                                            |                      |                    | 
+ 58009 |   1 | Index Scan Backward      | rc_f1000_idx | (f1000 <= 1)                                                                                           |                      |                    | 
+ 58010 |   1 | Index Scan Backward      | rc_dv1_idx   | (dv1 <= 1)                                                                                             |                      |                    | 
+ 58011 |   1 | Index Scan Backward      | rc_skw1_idx  | (skw1 <= 1)                                                                                            |                      |                    | 
+ 58012 |   1 | Index Scan Backward      | rc_skw2_idx  | (skw2 <= 1)                                                                                            |                      |                    | 
+ 58013 |   1 | Index Scan Backward      | rc_skw3_idx  | (skw3 <= 1)                                                                                            |                      |                    | 
+ 59001 |   1 | Index Only Scan Backward | rc_f1_idx    | (f1 <= 1)                                                                                              |                      |                    | 
+ 59002 |   1 | Index Only Scan Backward | rc_f2_idx    | (f2 <= 1)                                                                                              |                      |                    | 
+ 59003 |   1 | Index Only Scan Backward | rc_f3_idx    | (f3 <= 1)                                                                                              |                      |                    | 
+ 59004 |   1 | Index Only Scan Backward | rc_f4_idx    | (f4 <= 1)                                                                                              |                      |                    | 
+ 59005 |   1 | Index Only Scan Backward | rc_f5_idx    | (f5 <= 1)                                                                                              |                      |                    | 
+ 59006 |   1 | Index Only Scan Backward | rc_f10_idx   | (f10 <= 1)                                                                                             |                      |                    | 
+ 59007 |   1 | Index Only Scan Backward | rc_f100_idx  | (f100 <= 1)                                                                                            |                      |                    | 
+ 59008 |   1 | Index Only Scan Backward | rc_f1000_idx | (f1000 <= 1)                                                                                           |                      |                    | 
+ 59009 |   1 | Index Only Scan Backward | rc_dv1_idx   | (dv1 <= 1)                                                                                             |                      |                    | 
+ 59010 |   1 | Index Only Scan Backward | rc_skw1_idx  | (skw1 <= 1)                                                                                            |                      |                    | 
+ 59011 |   1 | Index Only Scan Backward | rc_skw2_idx  | (skw2 <= 1)                                                                                            |                      |                    | 
+ 59012 |   1 | Index Only Scan Backward | rc_skw3_idx  | (skw3 <= 1)                                                                                            |                      |                    | 
+ 60001 |   1 | Index Scan               | r_pkey       | (pk <= 1000)                                                                                           |                      |                    | 
+ 61001 |   1 | Index Scan               | rc_pkey      | (pk <= 1000)                                                                                           |                      |                    | 
+ 70001 |   1 | Index Scan               | r_pkey       | (pk <= 500)                                                                                            |                      |                    | 
+ 70002 |   1 | Index Scan               | r_pkey       | (pk <= 500)                                                                                            |                      | ((pk % 100) <= 33) | 
+ 70003 |   1 | Index Scan               | r_pkey       | (pk <= 500)                                                                                            |                      | ((pk % 100) <= 33) | (non_pushable((pk)::bigint) <= 500)
+ 70004 |   1 | Index Scan               | r_b_idx      | (b <= 500)                                                                                             |                      |                    | 
+ 70005 |   1 | Index Scan               | r_b_idx      | (b <= 500)                                                                                             | ((b % 100) <= 33)    |                    | 
+ 70006 |   1 | Index Scan               | r_b_idx      | (b <= 500)                                                                                             | ((b % 100) <= 33)    |                    | (non_pushable((b)::bigint) <= 500)
+ 70007 |   1 | Index Only Scan          | r_b_idx      | (b <= 500)                                                                                             |                      |                    | 
+ 70008 |   1 | Index Only Scan          | r_b_idx      | (b <= 500)                                                                                             |                      | ((b % 100) <= 33)  | 
+ 70009 |   1 | Index Only Scan          | r_b_idx      | (b <= 500)                                                                                             |                      | ((b % 100) <= 33)  | (non_pushable((b)::bigint) <= 500)
+(181 rows)
 
 update explain_query_options set with_analyze = true;
--- should not return any row.  surface the per-field counts on failure so
--- that both totals mismatches and field-layout mismatches are diagnosable.
+-- should not return any row; columns surface per-field counts on failure.
 select qid, nid, "Node Type", "Index Name", scan_kind, is_colocated,
        "Estimated Table Roundtrips" est_t, "Estimated Index Roundtrips" est_i,
        "Storage Table Read Requests" act_t, "Storage Index Read Requests" act_i,
        "Estimated Roundtrips" est, "Actual Roundtrips" act,
+       "Planned Loops" plan_loops, "Actual Loops" act_loops,
+       "Estimated Total Roundtrips" est_total, "Actual Total Roundtrips" act_total,
        "Total Estimates", "Field Layout"
 from check_roundtrip_estimates
 where "Total Estimates" <> 'passed' or "Field Layout" <> 'passed'
 order by qid, nid;
- qid | nid | Node Type | Index Name | scan_kind | is_colocated | est_t | est_i | act_t | act_i | est | act | Total Estimates | Field Layout 
------+-----+-----------+------------+-----------+--------------+-------+-------+-------+-------+-----+-----+-----------------+--------------
+ qid | nid | Node Type | Index Name | scan_kind | is_colocated | est_t | est_i | act_t | act_i | est | act | plan_loops | act_loops | est_total | act_total | Total Estimates | Field Layout 
+-----+-----+-----------+------------+-----------+--------------+-------+-------+-------+-------+-----+-----+------------+-----------+-----------+-----------+-----------------+--------------
 (0 rows)
 
+-- Fetch limit variant: row-count pagination
+set yb_fetch_size_limit = 0;
+set yb_fetch_row_limit = 128;
+update explain_query_options set with_analyze = false;
+(table baseline_scan_nodes
+ except all
+ select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
+        "Index Name", "Index Cond", "Storage Index Filter",
+        "Storage Filter", "Filter"
+ from queries q full join check_roundtrip_estimates x on x.qid = q.qid)
+union all
+(select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
+        "Index Name", "Index Cond", "Storage Index Filter",
+        "Storage Filter", "Filter"
+ from queries q full join check_roundtrip_estimates x on x.qid = q.qid
+ except all
+ table baseline_scan_nodes);
+ qid | nid | Node Type | Index Name | Index Cond | Storage Index Filter | Storage Filter | Filter 
+-----+-----+-----------+------------+------------+----------------------+----------------+--------
+(0 rows)
+
+update explain_query_options set with_analyze = true;
+-- should not return any row; columns surface per-field counts on failure.
+select qid, nid, "Node Type", "Index Name", scan_kind, is_colocated,
+       "Estimated Table Roundtrips" est_t, "Estimated Index Roundtrips" est_i,
+       "Storage Table Read Requests" act_t, "Storage Index Read Requests" act_i,
+       "Estimated Roundtrips" est, "Actual Roundtrips" act,
+       "Planned Loops" plan_loops, "Actual Loops" act_loops,
+       "Estimated Total Roundtrips" est_total, "Actual Total Roundtrips" act_total,
+       "Total Estimates", "Field Layout"
+from check_roundtrip_estimates
+where "Total Estimates" <> 'passed' or "Field Layout" <> 'passed'
+order by qid, nid;
+ qid | nid | Node Type | Index Name | scan_kind | is_colocated | est_t | est_i | act_t | act_i | est | act | plan_loops | act_loops | est_total | act_total | Total Estimates | Field Layout 
+-----+-----+-----------+------------+-----------+--------------+-------+-------+-------+-------+-----+-----+------------+-----------+-----------+-----------+-----------------+--------------
+(0 rows)
+
+-- Fetch limit variant: byte-size pagination
+set yb_fetch_size_limit = '8kB';
+set yb_fetch_row_limit = 0;
+update explain_query_options set with_analyze = false;
+(table baseline_scan_nodes
+ except all
+ select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
+        "Index Name", "Index Cond", "Storage Index Filter",
+        "Storage Filter", "Filter"
+ from queries q full join check_roundtrip_estimates x on x.qid = q.qid)
+union all
+(select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
+        "Index Name", "Index Cond", "Storage Index Filter",
+        "Storage Filter", "Filter"
+ from queries q full join check_roundtrip_estimates x on x.qid = q.qid
+ except all
+ table baseline_scan_nodes);
+ qid | nid | Node Type | Index Name | Index Cond | Storage Index Filter | Storage Filter | Filter 
+-----+-----+-----------+------------+------------+----------------------+----------------+--------
+(0 rows)
+
+update explain_query_options set with_analyze = true;
+-- should not return any row; columns surface per-field counts on failure.
+select qid, nid, "Node Type", "Index Name", scan_kind, is_colocated,
+       "Estimated Table Roundtrips" est_t, "Estimated Index Roundtrips" est_i,
+       "Storage Table Read Requests" act_t, "Storage Index Read Requests" act_i,
+       "Estimated Roundtrips" est, "Actual Roundtrips" act,
+       "Planned Loops" plan_loops, "Actual Loops" act_loops,
+       "Estimated Total Roundtrips" est_total, "Actual Total Roundtrips" act_total,
+       "Total Estimates", "Field Layout"
+from check_roundtrip_estimates
+where "Total Estimates" <> 'passed' or "Field Layout" <> 'passed'
+order by qid, nid;
+ qid | nid | Node Type | Index Name | scan_kind | is_colocated | est_t | est_i | act_t | act_i | est | act | plan_loops | act_loops | est_total | act_total | Total Estimates | Field Layout 
+-----+-----+-----------+------------+-----------+--------------+-------+-------+-------+-------+-----+-----+------------+-----------+-----------+-----------+-----------------+--------------
+(0 rows)
+
+-- Fetch limit variant: unlimited
+set yb_fetch_size_limit = 0;
+set yb_fetch_row_limit = 0;
+update explain_query_options set with_analyze = false;
+(table baseline_scan_nodes
+ except all
+ select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
+        "Index Name", "Index Cond", "Storage Index Filter",
+        "Storage Filter", "Filter"
+ from queries q full join check_roundtrip_estimates x on x.qid = q.qid)
+union all
+(select coalesce(q.qid, x.qid) qid, x.nid, "Node Type",
+        "Index Name", "Index Cond", "Storage Index Filter",
+        "Storage Filter", "Filter"
+ from queries q full join check_roundtrip_estimates x on x.qid = q.qid
+ except all
+ table baseline_scan_nodes);
+ qid | nid | Node Type | Index Name | Index Cond | Storage Index Filter | Storage Filter | Filter 
+-----+-----+-----------+------------+------------+----------------------+----------------+--------
+(0 rows)
+
+update explain_query_options set with_analyze = true;
+-- should not return any row; columns surface per-field counts on failure.
+select qid, nid, "Node Type", "Index Name", scan_kind, is_colocated,
+       "Estimated Table Roundtrips" est_t, "Estimated Index Roundtrips" est_i,
+       "Storage Table Read Requests" act_t, "Storage Index Read Requests" act_i,
+       "Estimated Roundtrips" est, "Actual Roundtrips" act,
+       "Planned Loops" plan_loops, "Actual Loops" act_loops,
+       "Estimated Total Roundtrips" est_total, "Actual Total Roundtrips" act_total,
+       "Total Estimates", "Field Layout"
+from check_roundtrip_estimates
+where "Total Estimates" <> 'passed' or "Field Layout" <> 'passed'
+order by qid, nid;
+ qid | nid | Node Type | Index Name | scan_kind | is_colocated | est_t | est_i | act_t | act_i | est | act | plan_loops | act_loops | est_total | act_total | Total Estimates | Field Layout 
+-----+-----+-----------+------------+-----------+--------------+-------+-------+-------+-------+-----+-----+------------+-----------+-----------+-----------+-----------------+--------------
+(0 rows)
+
+drop table baseline_scan_nodes;

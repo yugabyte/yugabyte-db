@@ -73,20 +73,7 @@ constexpr uint64_t kDisabledCounterMask = ~kOpCounterMask;
 
 }
 
-// Return pending operations counter value only.
-uint64_t RWOperationCounter::GetOpCounter() const {
-  return Get() & kOpCounterMask;
-}
-
-uint64_t RWOperationCounter::TEST_GetDisableCount() const {
-  return Get() >> kOpCounterBits;
-}
-
-bool RWOperationCounter::TEST_IsStopped() const {
-  return Get() & kStopDelta;
-}
-
-uint64_t RWOperationCounter::Update(uint64_t delta) {
+uint64_t RWOperationCounterLock::Update(uint64_t delta) {
   uint64_t result = counters_.fetch_add(delta, std::memory_order::acq_rel) + delta;
   VLOG(2) << "[" << this << "] Update(" << static_cast<int64_t>(delta) << "), result = " << result;
   LOG_IF(DFATAL, (result & (kStopDelta >> 1u)) != 0) << "Disable counter underflow: " << result;
@@ -95,37 +82,23 @@ uint64_t RWOperationCounter::Update(uint64_t delta) {
   return result;
 }
 
-RWOperationCounter::IncrementResult RWOperationCounter::WaitMutexAndIncrement(
-    CoarseTimePoint deadline) {
-  if (deadline == CoarseTimePoint()) {
-    deadline = CoarseMonoClock::now() + 10ms * kTimeMultiplier;
-  } else if (deadline == CoarseTimePoint::min()) {
-    return IncrementResult::kFailed;
-  }
-  for (;;) {
-    std::unique_lock<decltype(disable_)> lock(disable_, deadline);
-    if (!lock.owns_lock()) {
-      return IncrementResult::kFailed;
-    }
-
-    if (Increment()) {
-      return IncrementResult::kSuccess;
-    }
-
-    if (counters_.load(std::memory_order_acquire) & kStopDelta) {
-      return IncrementResult::kStopped;
-    }
-  }
+bool RWOperationCounterLock::Stopped() const {
+  return (counters_.load(std::memory_order_acquire) & kStopDelta) != 0;
 }
 
-void RWOperationCounter::Enable(Unlock unlock, Stop was_stop) {
-  Update(-(was_stop ? kStopDelta : kDisabledDelta));
-  if (unlock) {
-    UnlockExclusiveOpMutex();
-  }
+uint64_t RWOperationCounterLock::GetOpCounter() const {
+  return Get() & kOpCounterMask;
 }
 
-bool RWOperationCounter::Increment() {
+uint64_t RWOperationCounterLock::TEST_GetDisableCount() const {
+  return Get() >> kOpCounterBits;
+}
+
+bool RWOperationCounterLock::TEST_IsStopped() const {
+  return Get() & kStopDelta;
+}
+
+bool RWOperationCounterLock::Increment() {
   if (Update(1) & kDisabledCounterMask) {
     Update(-1);
     return false;
@@ -134,25 +107,103 @@ bool RWOperationCounter::Increment() {
   return true;
 }
 
+void RWOperationCounterLock::Decrement() {
+  Update(-1);
+}
+
+bool RWOperationCounterLock::Lock(const CoarseTimePoint& deadline) {
+  std::unique_lock<std::mutex> lock(mutex_);
+  if (!condition_variable_.wait_until(lock, deadline, [this] { return !is_locked_; })) {
+    return false;
+  }
+  is_locked_ = true;
+  return true;
+}
+
+void RWOperationCounterLock::unlock() {
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    is_locked_ = false;
+  }
+  condition_variable_.notify_all();
+}
+
+uint64_t RWOperationCounterLock::Disable(Stop stop) {
+  uint64_t result = Update(stop ? kStopDelta : kDisabledDelta);
+  if (stop) {
+    // Wake operations waiting in WaitMutexAndIncrement so they observe the stop bit and bail out
+    // with kStopped, instead of blocking on the exclusive lock until this (terminal) pause is
+    // released. See issue #32211.
+    std::lock_guard<std::mutex> lock(mutex_);
+    condition_variable_.notify_all();
+  }
+  return result;
+}
+
+void RWOperationCounterLock::Enable(Unlock unlock, Stop was_stop) {
+  Update(-(was_stop ? kStopDelta : kDisabledDelta));
+  if (unlock) {
+    this->unlock();
+  }
+}
+
+RWOperationCounterLock::IncrementResult RWOperationCounterLock::WaitMutexAndIncrement(
+    CoarseTimePoint deadline) {
+  if (deadline == CoarseTimePoint()) {
+    deadline = CoarseMonoClock::now() + 10ms * kTimeMultiplier;
+  } else if (deadline == CoarseTimePoint::min()) {
+    return IncrementResult::kFailed;
+  }
+  for (;;) {
+    {
+      // Acquire the exclusive lock, but bail out with kStopped if the resource is (or becomes)
+      // stopped. DisableAndWaitForOps keeps this lock held for the entire lifetime of a stop pause
+      // (until the storages are destroyed), so without the stop-aware wait an operation with a
+      // distant deadline would block on the lock for the whole shutdown -- wedging the RPC worker
+      // whose threadpool the shutdown later joins. See issue #32211.
+      std::unique_lock<std::mutex> lock(mutex_);
+      if (!condition_variable_.wait_until(
+              lock, deadline, [this] { return !is_locked_ || Stopped(); })) {
+        return Stopped() ? IncrementResult::kStopped : IncrementResult::kFailed;
+      }
+      if (Stopped()) {
+        return IncrementResult::kStopped;
+      }
+      is_locked_ = true;
+    }
+
+    const bool incremented = Increment();
+    unlock();
+    if (incremented) {
+      return IncrementResult::kSuccess;
+    }
+
+    if (Stopped()) {
+      return IncrementResult::kStopped;
+    }
+    // A non-stop disable slipped in between the lock and the increment; retry.
+  }
+}
+
 Status RWOperationCounter::DisableAndWaitForOps(const CoarseTimePoint& deadline, Stop stop) {
   LongOperationTracker long_operation_tracker(__func__, 1s);
 
   const auto start_time = CoarseMonoClock::now();
-  std::unique_lock<decltype(disable_)> lock(disable_, deadline);
-  if (!lock.owns_lock()) {
+  if (!lock_.Lock(deadline)) {
     return STATUS(TimedOut, "Timed out waiting to disable the resource exclusively");
   }
 
-  const uint64_t previous_value = Update(stop ? kStopDelta : kDisabledDelta);
+  const uint64_t previous_value = lock_.Disable(stop);
   LOG_IF(DFATAL, stop && (previous_value & kStopDelta) == 0) << "Counter already stopped";
 
   auto status = WaitForOpsToFinish(start_time, deadline);
   if (!status.ok()) {
-    Enable(Unlock::kFalse, stop);
+    // We hold the exclusive lock; remove the just-added disable/stop bit and release it.
+    lock_.Enable(Unlock::kTrue, stop);
     return status;
   }
 
-  lock.release();
+  // Keep the exclusive lock held; it is released later via Enable / UnlockExclusiveOpMutex.
   return Status::OK();
 }
 

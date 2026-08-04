@@ -16,6 +16,7 @@ import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -63,7 +64,8 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.client.YBClient;
+import org.yb.client.ValidateFlagValueResponse;
+import org.yb.client.YBClientApi;
 import play.Environment;
 
 @Singleton
@@ -546,12 +548,17 @@ public class GFlagsValidation {
     Map<String, GFlagDetails> allGFlagsMap =
         extractGFlags(version, serverType.name(), false).stream()
             .collect(Collectors.toMap(flagDetails -> flagDetails.name, Function.identity()));
+    Set<String> undefokGFlags = GFlagsUtil.extractUndefokFlags(flags);
     for (Map.Entry<String, String> entry : flags.entrySet()) {
       String flag = entry.getKey();
-      if (!allGFlagsMap.containsKey(flag)) {
+      if (!undefokGFlags.contains(flag) && !allGFlagsMap.containsKey(flag)) {
         throw new PlatformServiceException(BAD_REQUEST, flag + " is not present in metadata.");
       }
       GFlagDetails flagDetail = allGFlagsMap.get(flag);
+      // flag details can be null for undefok flags
+      if (undefokGFlags.contains(flag) && flagDetail == null) {
+        continue;
+      }
       if (isAutoFlag(flagDetail) && !flagDetail.initial.equals(entry.getValue())) {
         filteredList.put(entry.getKey(), entry.getValue());
       }
@@ -717,29 +724,37 @@ public class GFlagsValidation {
     }
   }
 
-  public Map<String, String> validateGFlags(
-      YBClient client, Map<String, String> mergedGFlags, ServerType serverType) {
-    Map<String, String> serverGFlagsValidationErrors = new HashMap<String, String>();
-    for (Map.Entry<String, String> entry : mergedGFlags.entrySet()) {
-      String flagName = entry.getKey();
-      String flagValue = entry.getValue();
-      try {
-        client.validateFlagValue(flagName, flagValue);
-        // Success: no exception means valid flag.
-      } catch (Exception e) {
-        serverGFlagsValidationErrors.put(
-            flagName,
-            "On server type: "
-                + serverType.toString()
-                + ", Error validating flag "
-                + flagName
-                + " with value: "
-                + flagValue
-                + " "
-                + e);
-      }
+  /**
+   * Validates all flags in a single batch RPC sent directly to the given server process.
+   *
+   * <p>This method never throws on validation failures, errors are returned in the map. An
+   * exception is only thrown for RPC-level failures (e.g. the server is unreachable).
+   *
+   * @param client an open YBClient
+   * @param hp host and port of the target server - tserver (9100) or master (7100)
+   * @param flags all flags to validate
+   * @param serverType used only for labelling errors in the returned map
+   * @return map of flag name -> error message; empty map means all flags passed
+   */
+  public Map<String, String> validateGFlagsViaRpc(
+      YBClientApi client, HostAndPort hp, Map<String, String> flags, ServerType serverType)
+      throws Exception {
+    ValidateFlagValueResponse response = client.validateFlagValues(hp, flags);
+    if (!response.hasErrors()) {
+      return new HashMap<>();
     }
-    return serverGFlagsValidationErrors;
+    Map<String, String> errors = new HashMap<>();
+    for (Map.Entry<String, String> entry : response.getErrors().entrySet()) {
+      errors.put(
+          entry.getKey(),
+          "On server type: "
+              + serverType.toString()
+              + ", Error validating flag "
+              + entry.getKey()
+              + ": "
+              + entry.getValue());
+    }
+    return errors;
   }
 
   /** Structure to capture GFlags metadata from xml file. */
@@ -809,11 +824,12 @@ public class GFlagsValidation {
       sb.append(", clusterUuid=").append(clusterUuid);
 
       if (masterGFlagsErrors != null && !masterGFlagsErrors.isEmpty()) {
-        sb.append(", masterGFlagsErrors=").append(masterGFlagsErrors);
+        sb.append(", masterGFlagsErrors=").append(masterGFlagsErrors.toString().replace("\n", " "));
       }
 
       if (tserverGFlagsErrors != null && !tserverGFlagsErrors.isEmpty()) {
-        sb.append(", tserverGFlagsErrors=").append(tserverGFlagsErrors);
+        sb.append(", tserverGFlagsErrors=")
+            .append(tserverGFlagsErrors.toString().replace("\n", " "));
       }
 
       sb.append("}");

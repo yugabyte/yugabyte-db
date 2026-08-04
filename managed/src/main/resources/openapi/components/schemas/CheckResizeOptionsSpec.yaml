@@ -1,0 +1,21 @@
+title: CheckResizeOptionsSpec
+description: |
+  Request to check which resize-related operations are available for a cluster.
+  Part of CheckResizeOptionsReq.
+type: object
+required:
+  - cluster_uuid
+properties:
+  cluster_uuid:
+    description: Cluster UUID to evaluate.
+    type: string
+    format: uuid
+  node_spec:
+    description: 'Deprecated: use provider_nodes_specs for multicloud clusters. Proposed node settings for a single-provider cluster.'
+    $ref: "./ClusterNodeSpec.yaml"
+    deprecated: true
+  provider_nodes_specs:
+    description: Proposed node settings per provider for multicloud clusters.
+    type: array
+    items:
+      $ref: "./PerProviderResizeNodesSpec.yaml"

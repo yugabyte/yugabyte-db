@@ -16,6 +16,7 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_macros.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
@@ -250,6 +251,49 @@ TEST_F(ColocatedTablesWithTablespacesTest, ColocatedIndexWithTablespaceTest) {
   AssertLocation("t1", "colodb", placement_rack1);
   AssertLocation("i1", "colodb", placement_rack2);
   AssertLocation("i2", "colodb", placement_rack3);
+}
+
+// The default tablegroup / parent colocated table / colocated tablet of a colocated database is
+// created lazily when the first table that is stored in it is created. When creating tables in
+// other tablespaces, even within a colocated database, they should not trigger default colocated
+// tablet creation because they will be placed on a different tablet, not the default tablet. This
+// test ensures the default colocated tablet is not created when creating a vector index on a table
+// in an alternate tablespace inside a colocated database.
+//
+// This is important because an empty, default colocated tablet in a colocated database can break
+// restores of that database.
+TEST_F(ColocatedTablesWithTablespacesTest, ColocatedVectorIndexWithTablespaceTest) {
+  auto conn = ASSERT_RESULT(CreateColocatedDB("colodb"));
+  CreateTablespacesWithOneReplica(&conn, "tsp1", 1);
+
+  ASSERT_OK(conn.Execute("CREATE EXTENSION vector"));
+
+  // Colocated table in a non-default tablespace -> colocation_<tsp1_oid> tablegroup.
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t1 (id INT PRIMARY KEY, embedding vector(3)) TABLESPACE tsp1"));
+  // Vector index without an explicit TABLESPACE clause: it must inherit t1's
+  // tablegroup rather than falling back to the default tablegroup.
+  ASSERT_OK(conn.Execute(
+      "CREATE INDEX vidx ON t1 USING ybhnsw (embedding vector_l2_ops)"));
+
+  auto get_tablegroup_name = [](PGConn& conn, std::string_view table_name) -> Result<std::string> {
+    return conn.FetchRow<std::string>(Format(
+        "SELECT grpname FROM pg_yb_tablegroup WHERE oid = "
+        "(SELECT tablegroup_oid FROM yb_table_properties('$0'::regclass))",
+        table_name));
+  };
+  auto t1_tablegroup = ASSERT_RESULT(get_tablegroup_name(conn, "t1"));
+  auto vidx_tablegroup = ASSERT_RESULT(get_tablegroup_name(conn, "vidx"));
+
+  // The indexed table is in a tablespace-derived tablegroup.
+  ASSERT_TRUE(t1_tablegroup.starts_with("colocation_")) << t1_tablegroup;
+  // The vector index shares the indexed table's tablegroup, and is not
+  // placed in the default tablegroup.
+  ASSERT_EQ(vidx_tablegroup, t1_tablegroup);
+
+  // No spurious empty default colocation tablegroup was created by the vector
+  // index: t1's tablegroup is the only one.
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT count(*) FROM pg_yb_tablegroup")), 1);
 }
 
 TEST_F(ColocatedTablesWithTablespacesTest, ColocatedPartitionedTableWithTablespaceTest) {
@@ -674,11 +718,28 @@ TEST_F(ColocationConcurrencyTest, TxnsOnSeparateTables) {
 
     // Insert 50 rows in t1 on a separate thread.
     std::thread insert_thread([&conn2, &done, &counter] {
-      ASSERT_OK(conn2.Execute("BEGIN"));
+      // The previous iteration's TRUNCATE TABLE t2 is a table rewrite that drops the old DocDB
+      // relfilenode and creates a new one. conn2 may still have the old relfilenode cached, so its
+      // first INSERT can fail with OBJECT_NOT_FOUND until conn2's catalog refreshes via heartbeat.
+      // Restart the transaction until the inserts land, resetting counter each attempt since
+      // ROLLBACK discards the inserts of the aborted transaction.
       while (!done) {
-        ASSERT_OK(conn2.ExecuteFormat("INSERT INTO t2 values ($0)", ++counter));
+        ASSERT_OK(conn2.Execute("BEGIN"));
+        counter = 0;
+        Status s;
+        while (!done) {
+          s = conn2.ExecuteFormat("INSERT INTO t2 values ($0)", counter + 1);
+          if (!s.ok()) {
+            break;
+          }
+          ++counter;
+        }
+        if (s.ok()) {
+          ASSERT_OK(conn2.Execute("COMMIT"));
+          return;
+        }
+        ASSERT_OK(conn2.Execute("ROLLBACK"));
       }
-      ASSERT_OK(conn2.Execute("COMMIT"));
     });
 
     ASSERT_OK(conn1.Execute("BEGIN"));

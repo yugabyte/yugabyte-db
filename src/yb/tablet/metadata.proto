@@ -134,6 +134,17 @@ message KvStoreInfoPB {
   // The value of post_split_compaction_file_number_upper_bound is set to 0 when post-split
   // compaction is done for all the files in the selected subset.
   optional uint64 post_split_compaction_file_number_upper_bound = 11;
+
+  // Tiered-storage directory pins for this KV-store.
+  repeated TierPathPB tier_paths = 12;
+}
+
+// Tiered-storage directory pin: maps a RocksDB path_id to an absolute directory on
+// this node.
+message TierPathPB {
+  optional uint32 path_id = 1;  // index into RocksDB DBOptions::db_paths
+  optional string tier    = 2;  // storage tier label matching --fs_data_dirs / tablespace
+  optional string path    = 3;  // absolute directory (disk) on this node
 }
 
 // The super-block keeps track of the Raft group.

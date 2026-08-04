@@ -7,8 +7,6 @@ menu:
     identifier: advanced-features-inheritance
     parent: advanced-features
     weight: 900
-tags:
-  feature: tech-preview
 type: docs
 ---
 
@@ -94,8 +92,6 @@ UPDATE ONLY accounts SET balance = balance + 100 WHERE account_id = 1;
 3. For certain schema changes, the `ONLY` keyword can be used to restrict the schema change to just the parent table. For example, `ALTER TABLE ONLY accounts DROP COLUMN profit` drops the column from the parent table alone while leaving it on the child tables.
 
 ## Limitations
-
-Table inheritance is {{<tags/feature/tp idea="2158">}} - report any problems using issue {{<issue 27949>}}.
 
 - Dropping or adding a column to a parent fails when "local" column on child table exists. (Issue {{<issue 26094>}})
 - Crash while obtaining a row lock on a parent inheritance table with a child file_fdw table. (Issue {{<issue 27105>}})

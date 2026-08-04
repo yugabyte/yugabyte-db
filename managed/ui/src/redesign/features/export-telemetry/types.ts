@@ -12,6 +12,11 @@ export enum TelemetryProviderType {
   OTLP = 'OTLP'
 }
 
+export interface HeaderKeyValue {
+  key: string;
+  value: string;
+}
+
 export interface ExportLogFormFields {
   name: string;
   config: {
@@ -49,7 +54,10 @@ export interface ExportLogFormFields {
     metricsEndpoint?: string;
     compression?: string;
     timeoutSeconds?: number;
+    /** API / collector payload shape */
     headers?: Record<string, string>;
+    /** Form-only key/value rows for editing headers */
+    headerItems?: HeaderKeyValue[];
   };
 }
 

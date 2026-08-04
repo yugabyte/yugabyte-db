@@ -63,6 +63,7 @@
 #include "yb/master/table_index.h"
 #include "yb/rocksdb/rocksdb_fwd.h"
 
+#include "yb/util/async_task_util.h"
 #include "yb/util/debug/lock_debug.h"
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/locks.h"
@@ -80,6 +81,7 @@ class AsyncTaskThrottlerBase;
 class Counter;
 class DynamicAsyncTaskThrottler;
 class IsOperationDoneResult;
+struct ReadHybridTime;
 class Schema;
 class ScopedRWOperation;
 class ThreadPool;
@@ -142,6 +144,7 @@ struct PgTypeInfo;
 class ScopedLeaderSharedLock;
 struct SysCatalogLoadingState;
 struct TabletDeleteRetainerInfo;
+class AlterTableBatchTracker;
 class RestoreSysCatalogState;
 class YsqlInitDBAndMajorUpgradeHandler;
 class YsqlManager;
@@ -485,6 +488,20 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
                     AlterTableResponsePB* resp,
                     rpc::RpcContext* rpc,
                     const LeaderEpoch& epoch);
+
+  // Variant of AlterTable that additionally forwards a batch tracker to the per-tablet
+  // AsyncAlterTable tasks produced by the request. The tracker is only attached when the
+  // request carries cdc_sdk_stream_id (i.e. originates from CreateCDCStream ->
+  // SetAllCDCSDKRetentionBarriers). Public AlterTable above delegates to this with a null
+  // tracker. We use a separate name (rather than overloading AlterTable) because the
+  // macro-generated MasterDdl dispatch resolves &CatalogManager::AlterTable and would be
+  // confused by any other signature on that symbol.
+  Status AlterTableWithBatchTracker(
+      const AlterTableRequestPB* req,
+      AlterTableResponsePB* resp,
+      rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch,
+      std::shared_ptr<AlterTableBatchTracker> cdc_alter_batch_tracker);
 
   Status UpdateSysCatalogWithNewSchema(
     const scoped_refptr<TableInfo>& table,
@@ -944,6 +961,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Return TableInfos according to specified mode.
   virtual std::vector<TableInfoPtr> GetTables(
       GetTablesMode mode, PrimaryTablesOnly = PrimaryTablesOnly::kFalse) override;
+
+  // Return one TabletInfoPtr per physical tablet. Colocated tables that share a
+  // tablet are represented by a single entry.
+  TabletInfos GetTablets();
 
   // Return all the available NamespaceInfo. The flag 'includeOnlyRunningNamespaces' determines
   // whether to retrieve all Namespaces irrespective of their state or just 'RUNNING' namespaces.
@@ -1539,6 +1560,15 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB* resp,
       rpc::RpcContext* rpc);
 
+  // This is used to backfill legacy gRPC streams (having no slot_name and plugin_name) which were
+  // created before promotion of FLAGS_cdc_pg_create_grpc_stream. Such streams are given a slot
+  // name, plugin name, and logical replication stream's analogous slot entry in cdc_state table.
+  Status BackfillLegacyGrpcStreams(const LeaderEpoch& epoch);
+
+  // Backfills the plugin name (to yboutput) for internal LISTEN/NOTIFY notifications streams that
+  // were created with an empty plugin name.
+  Status BackfillNotificationsStreamsPluginName(const LeaderEpoch& epoch);
+
   Status DisableDynamicTableAdditionOnCDCSDKStream(
       const DisableDynamicTableAdditionOnCDCSDKStreamRequestPB* req,
       DisableDynamicTableAdditionOnCDCSDKStreamResponsePB* resp, rpc::RpcContext* rpc);
@@ -1646,6 +1676,12 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // streamed. This is the single place to register such tables: when a new feature/extension
   // introduces a table that CDCSDK must exclude, add a check for it here.
   bool IsInternalTableToBeExcludedFromCDCSDKStream(const TableInfo::ReadLock& lock) const;
+
+  // Returns true if the given CDCSDK stream is an internal LISTEN/NOTIFY notifications stream.
+  bool IsNotificationSlotStream(const CDCStreamInfo& stream) const REQUIRES_SHARED(mutex_);
+
+  // Returns true if the given CDCSDK stream is a logical replication stream.
+  bool IsCdcLogicalReplicationStream(const CDCStreamInfo& stream) const REQUIRES_SHARED(mutex_);
 
   // This method compares all tables in the namespace to all the tables added to a CDCSDK stream,
   // to find tables which are not yet processed by the CDCSDK streams.
@@ -2189,11 +2225,14 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // to be in INDEX_PERM_READ_WRITE_AND_DELETE state.
   Status SendAlterTableRequest(const scoped_refptr<TableInfo>& table,
                                const LeaderEpoch& epoch,
-                               const AlterTableRequestPB* req = nullptr);
+                               const AlterTableRequestPB* req = nullptr,
+                               std::shared_ptr<AlterTableBatchTracker>
+                                   cdc_alter_batch_tracker = nullptr);
 
   Status SendAlterTableRequestInternal(
       const scoped_refptr<TableInfo>& table, const TransactionId& txn_id, const LeaderEpoch& epoch,
-      const AlterTableRequestPB* req = nullptr);
+      const AlterTableRequestPB* req = nullptr,
+      std::shared_ptr<AlterTableBatchTracker> cdc_alter_batch_tracker = nullptr);
 
   // Starts the background task to send the SplitTablet RPC to the leader for the specified tablet.
   Status SendSplitTabletRequest(
@@ -2377,7 +2416,7 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Is this table part of xCluster or CDCSDK?
   bool IsTablePartOfXRepl(const TableId& table_id) const REQUIRES_SHARED(mutex_);
 
-  bool IsTablePartOfCDCSDK(const TableId& table_id, bool require_replication_slot = false) const
+  bool IsTablePartOfCDCSDK(const TableId& table_id, bool require_logical_replication = false) const
       REQUIRES_SHARED(mutex_);
 
   // Returns true, if there exists atleast one stream which uses pub refresh mechanism (detected by
@@ -2757,6 +2796,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // pg catalog tables.
   Result<std::shared_ptr<TablespaceIdToReplicationInfoMap>> GetYsqlTablespaceInfo();
 
+  // Look up pg schema name from PG catalog for a YSQL table. Returns nullopt when lookup should
+  // be skipped (e.g. system_postgres.sequences_data) or fails.
+  std::optional<std::string> LookupPgSchemaNameForTable(
+      const TableInfo& table, const ReadHybridTime& read_time) const;
+
   // Return the table->tablespace mapping by reading the pg catalog tables.
   Result<std::shared_ptr<TableToTablespaceIdMap>> GetYsqlTableToTablespaceMap(
       const TablespaceIdToReplicationInfoMap& tablespace_info) EXCLUDES(mutex_);
@@ -2782,6 +2826,16 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // Returns an AsyncDeleteReplica task throttler for the given tserver uuid.
   AsyncTaskThrottlerBase* GetDeleteReplicaTaskThrottler(const std::string& ts_uuid)
       EXCLUDES(delete_replica_task_throttler_per_ts_mutex_);
+
+  // Returns the throttler used to bound concurrent AsyncAlterTable RPCs fired by the
+  // CreateCDCStream -> SetAllCDCSDKRetentionBarriers path. Returns nullptr when the gflag
+  // max_concurrent_cdc_sdk_alter_table_rpcs is 0 (throttling disabled).
+  AsyncTaskThrottlerBase* GetCDCStreamAlterTableThrottler();
+
+  // Computes the effective in-flight cap for CDC stream AlterTable RPCs given the two
+  // gflags: max_concurrent_cdc_sdk_alter_table_rpcs (global) and
+  // max_concurrent_cdc_sdk_alter_table_rpcs_per_tserver.
+  uint64_t GetCDCStreamAlterTableRpcLimit();
 
   // Helper function for BuildLocationsForTablet to handle the special case of a system tablet.
   Status BuildLocationsForSystemTablet(
@@ -3034,18 +3088,30 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       const std::optional<const NamespaceId>& namespace_id, CreateCDCStreamResponsePB* resp,
       const LeaderEpoch& epoch, rpc::RpcContext* rpc);
 
-  Status PopulateCDCStateTable(const xrepl::StreamId& stream_id,
-                               const std::vector<TableId>& table_ids,
-                               bool has_consistent_snapshot_option,
-                               bool consistent_snapshot_option_use,
-                               uint64_t consistent_snapshot_time,
-                               uint64_t stream_creation_time,
-                               bool has_replication_slot_name);
+  Status PopulateCDCStateTable(
+      const xrepl::StreamId& stream_id, const std::vector<TableId>& table_ids,
+      bool has_consistent_snapshot_option, bool consistent_snapshot_option_use,
+      uint64_t consistent_snapshot_time, uint64_t stream_creation_time, bool create_slot_entry);
 
   Status SetAllCDCSDKRetentionBarriers(
       const CreateCDCStreamRequestPB& req, rpc::RpcContext* rpc, const LeaderEpoch& epoch,
       const std::vector<TableId>& table_ids, const xrepl::StreamId& stream_id,
       const bool has_consistent_snapshot_option, bool require_history_cutoff);
+
+  // Helper for SetAllCDCSDKRetentionBarriers: flushes one accumulated batch of TableInfo
+  // entries by pre-counting tablets, building an AlterTableBatchTracker, dispatching one
+  // AlterTable per table with the tracker, waiting for all per-tablet AsyncAlterTable RPCs
+  // to reach a terminal state, and (optionally) sleeping for
+  // cdcsdk_retention_barrier_alter_table_dispatch_delay_ms before returning. Clears
+  // current_batch on success. Propagates the first error from either an AlterTable call or
+  // from the tracker's wait. Extracted as a named function (rather than a lambda) so log
+  // lines and stack traces carry an explicit symbol when triaging issues.
+  Status FlushCDCSDKRetentionBarrierBatch(
+      std::vector<scoped_refptr<TableInfo>>* current_batch,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch,
+      const xrepl::StreamId& stream_id,
+      bool has_consistent_snapshot_option, bool require_history_cutoff,
+      CoarseTimePoint deadline);
 
   Status SetAllInitialCDCSDKRetentionBarriersOnCatalogTable(
       const TableInfoPtr& table, const xrepl::StreamId& stream_id);
@@ -3316,6 +3382,10 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
     // Indicates whether the transaction is committed or aborted or unknown.
     TxnState txn_state;
 
+    // Status tablet of the transaction. Required when re-triggering verification from a failed
+    // state.
+    TabletId txn_status_tablet;
+
     // Indicates the verification state of the DDL transaction.
     YsqlDdlVerificationState state;
 
@@ -3362,6 +3432,11 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   // AsyncDeletaReplica tasks per destination.
   std::unordered_map<std::string, std::unique_ptr<DynamicAsyncTaskThrottler>>
     delete_replica_task_throttler_per_ts_ GUARDED_BY(delete_replica_task_throttler_per_ts_mutex_);
+
+  // Single global throttler bounding concurrent AsyncAlterTable RPCs from the CDC stream
+  // creation path. Limit is read dynamically from FLAGS_max_concurrent_cdc_sdk_alter_table_rpcs.
+  // See GetCDCStreamAlterTableThrottler().
+  DynamicAsyncTaskThrottler cdc_stream_alter_table_throttler_;
 
   // mutex on should_send_universe_key_registry_mutex_.
   mutable simple_spinlock should_send_universe_key_registry_mutex_;

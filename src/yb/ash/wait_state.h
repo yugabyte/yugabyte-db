@@ -19,8 +19,6 @@
 
 #include "yb/ash/ash_fwd.h"
 
-#include "yb/common/common.messages.h"
-#include "yb/common/common.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/wire_protocol.h"
 
@@ -29,6 +27,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/uuid.h"
 
 DECLARE_bool(ysql_yb_enable_ash);
@@ -69,6 +68,10 @@ DECLARE_bool(ysql_yb_enable_ash);
 
 namespace yb {
 class Trace;
+
+// Avoid pulling in the (very heavy) common.messages.h / common.pb.h chains.
+class AshMetadataPB;
+class LWAshMetadataPB;
 }  // namespace yb
 namespace yb::ash {
 
@@ -124,7 +127,8 @@ YB_DEFINE_TYPED_ENUM(Class, uint8_t,
     (kConsensus)
     (kTabletWait)
     (kRocksDB)
-    (kCommon));
+    (kCommon)
+    (kVectorIndex));
 
 // This is YB equivalent of wait events from pgstat.h, the term wait event and wait state
 // is used interchangeably in the code. The uint32_t values of all the wait events across PG
@@ -221,6 +225,9 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     ((kYBClient_WaitingOnDocDB, YB_ASH_MAKE_EVENT(Client)))
     (kYBClient_LookingUpTablet)
     (kYBClient_WaitingOnMaster)
+
+    // Wait states related to the vector index
+    ((kVectorIndex_Search, YB_ASH_MAKE_EVENT(VectorIndex)))
 );
 
 // We also want to track background operations such as, log-append
@@ -394,21 +401,10 @@ struct AshMetadata {
     }
   }
 
-  void RootRequestIdToPB(AshMetadataPB* pb) const {
-    pb->set_root_request_id(root_request_id.data(), root_request_id.size());
-  }
-
-  void RootRequestIdToPB(LWAshMetadataPB* pb) const {
-    pb->dup_root_request_id(root_request_id.AsSlice());
-  }
-
-  void TopLevelNodeIdToPB(AshMetadataPB* pb) const {
-    pb->set_top_level_node_id(top_level_node_id.data(), top_level_node_id.size());
-  }
-
-  void TopLevelNodeIdToPB(LWAshMetadataPB* pb) const {
-    pb->dup_top_level_node_id(top_level_node_id.AsSlice());
-  }
+  void RootRequestIdToPB(AshMetadataPB* pb) const;
+  void RootRequestIdToPB(LWAshMetadataPB* pb) const;
+  void TopLevelNodeIdToPB(AshMetadataPB* pb) const;
+  void TopLevelNodeIdToPB(LWAshMetadataPB* pb) const;
 
   template <class PB>
   void ToPB(PB* pb) const {

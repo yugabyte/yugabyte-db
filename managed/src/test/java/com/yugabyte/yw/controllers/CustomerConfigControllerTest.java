@@ -21,7 +21,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.nullable;
-import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
@@ -77,9 +77,16 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
             app.injector().instanceOf(RuntimeConfGetter.class),
             mockAWSUtil,
             mockAZUtil,
-            mockGCPUtil));
-    doCallRealMethod().when(mockAWSUtil).getRegionLocationsMap(any());
-    doCallRealMethod()
+            mockGCPUtil,
+            mockOCIUtil));
+    // These AWS-util stubs are only exercised by the S3 create/edit validation tests. Under the
+    // shared embedded-Postgres infra, test execution ordering can leave them unused by any method
+    // in
+    // a given run, which trips MockitoJUnitRunner's strict-stub check. They are defensive setUp
+    // stubs, so declare them lenient (functional assertions are unaffected).
+    lenient().doCallRealMethod().when(mockAWSUtil).getRegionLocationsMap(any());
+    lenient()
+        .doCallRealMethod()
         .when(mockAWSUtil)
         .getCloudLocationInfo(nullable(String.class), any(), nullable(String.class));
   }

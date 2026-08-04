@@ -26,32 +26,40 @@
 -- execution-time ordering.
 --
 -- The output is COLLAPSED to one row per query, with two method orderings:
---   cost_rank  the four labels ordered by the planner's (total cost, startup
---              cost) -- the order CBO would prefer (cheapest first).
---   rt_rank    the four labels ordered by the deterministic work that dominates
---              that query's run time: read_reqs for the probe-bound joins
---              (#30580, #30565), rows_scanned for the scan-bound LIMIT joins
---              (#30738) -- i.e. fastest first.  (Noted per section.)
--- The cost columns (startup_cost, total_cost) list their four values in
--- cost_rank order (lined up with the cost_rank labels); the execution-work
--- columns (read_reqs, rows_scanned, seeks, nexts, table_reads, index_reads)
--- list theirs in rt_rank order (lined up with the rt_rank labels, fastest
--- first).  When cost_rank and rt_rank list the methods in a different order,
--- the cost model is mis-ranking the plans -- the whole point of these tests.
+--   cost_rank  labels ordered by the planner's (total cost, startup cost) --
+--              the order CBO would prefer (cheapest first).
+--   rt_rank    labels ordered by the work that dominates the query's run time
+--              (fastest first): read_reqs for the probe-bound joins (#30580,
+--              #30565), rows_scanned for the scan-bound LIMIT joins (#30738).
+--              The choice reflects the golden-generation environment (single
+--              node, sub-ms round trips); on a real network round trips
+--              weigh far more relative to rows.
+-- (read_reqs, rows_scanned) is sufficient to rank run time here; seeks and
+-- nexts are printed for information only.  On these freshly loaded,
+-- insert-only tables nexts is rows_scanned plus a few per request (no
+-- tombstones to skip), and seeks amount to a few per request plus one per
+-- batched key -- each ~1000x cheaper than a round trip, never enough to
+-- reorder methods separated on the ranked metrics.  No query does seek- or
+-- next-heavy work against few scanned rows (e.g. DISTINCT skip-scans, or
+-- scans over deleted rows), which is what would break this.
+-- Labels tied on a ranking's keys are joined with '=' (e.g. 'BNL=NL MJ HJ');
+-- keys compare exactly, so any real movement breaks a tie visibly.
+-- Cost columns list their values in cost_rank order, work columns in
+-- rt_rank order.  cost_rank != rt_rank means the cost model mis-ranks the
+-- plans -- the point of these tests.  Costs are masked to one '#' per
+-- integer digit to pin each plan's magnitude and the ranking without
+-- churning the golden on small cost moves.
 --
--- Cost columns (startup_cost, total_cost) are masked to one '#' per integer
--- digit (fraction dropped): this shows each plan's relative magnitude and the
--- ranking while keeping the golden stable across the small cost-model changes
--- that the fixes for these bugs will produce.
+-- The tests document known BNL cost-model defects (#30580 is fixed; #30565
+-- and #30738 remain open, so their numbers are expected to move):
 --
--- The tests EXPOSE three known BNL cost-model defects.  They document today's
--- (buggy) numbers; the costs are expected to move once the fixes land.
---
---   #30580  BNL cost too high vs MJ/HJ/NL when the inner key is unique or the
---           join is a semi/anti join.  The per-batch inner tuples are counted
---           without dividing by the batch size, so BNL is costed far above HJ
---           and MJ (cost_rank 3) even though it does the least work and is the
---           fastest plan (rt_rank 1).
+--   #30580  (fixed) The semi/anti/inner-unique ntuples overcount (a missing
+--           "/ batch_size") costed BNL far above HJ/MJ although it does the
+--           least work; cost_rank now agrees with rt_rank (BNL first).  The
+--           fix also surfaces a 1-outer subtlety: when the single outer row
+--           is estimated unmatched (match fraction < 0.5, the "a" semi/anti
+--           1-outer rows), NL is costed strictly below BNL while every work
+--           metric ties, seeks and nexts included.
 --
 --   #30565  BNL omits the cost of skipping the leading all-empty batches from
 --           its startup cost.  With the outer sorted on a non-unique indexed
@@ -113,6 +121,39 @@ base(qid, descr, tmpl) as (
         'select s.id from ce.s s where s.z <= 1024 and exists (select 1 from @R@ r where r.c = s.v::bpchar and r.e <= 600) order by s.v'),
     (109, '30580 c  anti',
         'select s.id from ce.s s where s.z <= 1024 and not exists (select 1 from @R@ r where r.c = s.v::bpchar and r.e <= 600) order by s.v'),
+    -- 1-outer: a single outer row, both estimated and actual, via an equality
+    -- on a unique indexed column (see the #30580 report comment).  The outer
+    -- restriction is never on the join key itself -- that would derive a
+    -- constant inner equality and replace the batched clause.  s.x = s.id =
+    -- 1000 selects the same row either way; its match r row (pk = b = 1000)
+    -- passes r.e <= 600.
+    (111, '30580 pk inner 1-outer',
+        'select s.id from ce.s s join @R@ r on r.pk = s.id where s.x = 1000 and r.e <= 600 order by s.id'),
+    (112, '30580 pk semi 1-outer',
+        'select s.id from ce.s s where s.x = 1000 and exists (select 1 from @R@ r where r.pk = s.id and r.e <= 600) order by s.id'),
+    (113, '30580 pk anti 1-outer',
+        'select s.id from ce.s s where s.x = 1000 and not exists (select 1 from @R@ r where r.pk = s.id and r.e <= 600) order by s.id'),
+    (114, '30580 b  inner 1-outer',
+        'select s.id from ce.s s join @R@ r on r.b = s.x where s.id = 1000 and r.e <= 600 order by s.x'),
+    (115, '30580 b  semi 1-outer',
+        'select s.id from ce.s s where s.id = 1000 and exists (select 1 from @R@ r where r.b = s.x and r.e <= 600) order by s.x'),
+    (116, '30580 b  anti 1-outer',
+        'select s.id from ce.s s where s.id = 1000 and not exists (select 1 from @R@ r where r.b = s.x and r.e <= 600) order by s.x'),
+    (117, '30580 c  inner 1-outer',
+        'select s.id from ce.s s join @R@ r on r.c = s.v::bpchar where s.x = 1000 and r.e <= 600 order by s.v'),
+    (118, '30580 c  semi 1-outer',
+        'select s.id from ce.s s where s.x = 1000 and exists (select 1 from @R@ r where r.c = s.v::bpchar and r.e <= 600) order by s.v'),
+    (119, '30580 c  anti 1-outer',
+        'select s.id from ce.s s where s.x = 1000 and not exists (select 1 from @R@ r where r.c = s.v::bpchar and r.e <= 600) order by s.v'),
+    -- 1-outer on the non-unique key a: r.a spans 3886..5120, so a = s.y has
+    -- match fraction ~ 1235/5120 (< 0.5) and y = 1000 itself has no match
+    -- (the semi returns nothing, the anti returns the row).
+    (121, '30580 a  inner 1-outer',
+        'select s.id from ce.s s join @R@ r on r.a = s.y where s.x = 1000 and r.e <= 600 order by s.y'),
+    (122, '30580 a  semi 1-outer',
+        'select s.id from ce.s s where s.x = 1000 and exists (select 1 from @R@ r where r.a = s.y and r.e <= 600) order by s.id'),
+    (123, '30580 a  anti 1-outer',
+        'select s.id from ce.s s where s.x = 1000 and not exists (select 1 from @R@ r where r.a = s.y and r.e <= 600) order by s.id'),
     -- #30565: outer ce.s scanned by the non-unique indexed column y FORWARD
     -- (ascending -- no backward index scan), joined to the non-unique inner key
     -- r.a (values 3886..5120, the top of s.y's range).  Rows with y < 3886
@@ -195,16 +236,25 @@ set yb_bnl_batch_size = 1024;
 select current_setting('yb_bnl_batch_size') as yb_bnl_batch_size;
 
 ------------------------------------------------------------------------------
--- #30580: BNL is costed well above HJ and MJ (cost_rank 3, below only NL) on
--- every unique / semi / anti case, yet it does the least work and is the
--- fastest plan (rt_rank 1).  The lone exception is "c inner", where the
--- non-unique index hides the column's uniqueness so BNL is costed normally.
+-- #30580 (fixed): the ntuples overcount used to cost BNL above HJ and MJ
+-- (cost_rank 3) on every unique / semi / anti case despite BNL doing the
+-- least work; cost_rank now agrees with rt_rank (BNL first).  "c inner" was
+-- the unaffected control: the non-unique index hides the column's
+-- uniqueness, so no semi/anti/unique costing applies.
 --
--- These probe-bound plans are dominated by DocDB read requests (network round
--- trips), so rt_rank ranks by read_reqs (then rows_scanned).  BNL point-probes
--- ~100 keys in one batched request; MJ/HJ scan a wide range / all of the inner;
--- NL pays one request per outer row.  The ranking matches measured wall-clock.
--- A correct cost model would rank BNL near HJ/MJ by cost too.
+-- These probe-bound plans are dominated by round trips, so rt_rank ranks by
+-- read_reqs (then rows_scanned): BNL point-probes a whole batch per request,
+-- MJ/HJ scan a wide swath / all of the inner, NL pays one request per outer
+-- row.
+--
+-- The 1-outer rows pin the degenerate single-key probe, where BNL and NL do
+-- identical work (every metric ties, seeks and nexts included).  pk/b/c:
+-- the costs also tie (their true difference is below EXPLAIN's 2-decimal
+-- precision; which side wins unhinted plan choice is invisible here since
+-- all methods are hint-pinned).  "a" semi/anti: the single row is estimated
+-- unmatched (match fraction < 0.5), so NL's unmatched-probe discount prices
+-- it strictly below BNL -- an NL-first cost_rank against a tied rt_rank.
+-- The "a" inner join is the control: no semi/anti machinery, so it ties.
 ------------------------------------------------------------------------------
 with m as (
     select qid, descr, label, total_cost, actual_rows,
@@ -216,8 +266,10 @@ with m as (
     where qid % 1000 between 101 and 199
 )
 select qid, descr,
-       string_agg(label, ' ' order by cost_rank, label)                          cost_rank,
-       string_agg(label, ' ' order by rt_rank, label)                            rt_rank,
+       rank_labels(array_agg(label order by cost_rank, label),
+                   array_agg(cost_rank order by cost_rank, label))               cost_rank,
+       rank_labels(array_agg(label order by rt_rank, label),
+                   array_agg(rt_rank order by rt_rank, label))                   rt_rank,
        string_agg(cost_mask(total_cost), ' ' order by cost_rank, label)          total_cost,
        string_agg(round(read_reqs)::bigint::text, ' ' order by rt_rank, label)   read_reqs,
        string_agg(round(rows_scanned)::bigint::text, ' ' order by rt_rank, label) rows_scanned,
@@ -254,8 +306,10 @@ with m as (
     where qid % 1000 between 201 and 299
 )
 select qid, descr,
-       string_agg(label, ' ' order by cost_rank, label)                          cost_rank,
-       string_agg(label, ' ' order by rt_rank, label)                            rt_rank,
+       rank_labels(array_agg(label order by cost_rank, label),
+                   array_agg(cost_rank order by cost_rank, label))               cost_rank,
+       rank_labels(array_agg(label order by rt_rank, label),
+                   array_agg(rt_rank order by rt_rank, label))                   rt_rank,
        string_agg(cost_mask(startup_cost), ' ' order by cost_rank, label)        startup_cost,
        string_agg(cost_mask(total_cost), ' ' order by cost_rank, label)          total_cost,
        string_agg(round(read_reqs)::bigint::text, ' ' order by rt_rank, label)   read_reqs,
@@ -289,8 +343,10 @@ with m as (
     where qid % 1000 between 301 and 399
 )
 select qid, descr,
-       string_agg(label, ' ' order by cost_rank, label)                          cost_rank,
-       string_agg(label, ' ' order by rt_rank, label)                            rt_rank,
+       rank_labels(array_agg(label order by cost_rank, label),
+                   array_agg(cost_rank order by cost_rank, label))               cost_rank,
+       rank_labels(array_agg(label order by rt_rank, label),
+                   array_agg(rt_rank order by rt_rank, label))                   rt_rank,
        string_agg(cost_mask(startup_cost), ' ' order by cost_rank, label)        startup_cost,
        string_agg(cost_mask(total_cost), ' ' order by cost_rank, label)          total_cost,
        string_agg(round(read_reqs)::bigint::text, ' ' order by rt_rank, label)   read_reqs,
@@ -322,8 +378,10 @@ with m as (
     where qid % 1000 between 101 and 199
 )
 select qid, descr,
-       string_agg(label, ' ' order by cost_rank, label)                          cost_rank,
-       string_agg(label, ' ' order by rt_rank, label)                            rt_rank,
+       rank_labels(array_agg(label order by cost_rank, label),
+                   array_agg(cost_rank order by cost_rank, label))               cost_rank,
+       rank_labels(array_agg(label order by rt_rank, label),
+                   array_agg(rt_rank order by rt_rank, label))                   rt_rank,
        string_agg(cost_mask(total_cost), ' ' order by cost_rank, label)          total_cost,
        string_agg(round(read_reqs)::bigint::text, ' ' order by rt_rank, label)   read_reqs,
        string_agg(round(rows_scanned)::bigint::text, ' ' order by rt_rank, label) rows_scanned,
@@ -346,8 +404,10 @@ with m as (
     where qid % 1000 between 201 and 299
 )
 select qid, descr,
-       string_agg(label, ' ' order by cost_rank, label)                          cost_rank,
-       string_agg(label, ' ' order by rt_rank, label)                            rt_rank,
+       rank_labels(array_agg(label order by cost_rank, label),
+                   array_agg(cost_rank order by cost_rank, label))               cost_rank,
+       rank_labels(array_agg(label order by rt_rank, label),
+                   array_agg(rt_rank order by rt_rank, label))                   rt_rank,
        string_agg(cost_mask(startup_cost), ' ' order by cost_rank, label)        startup_cost,
        string_agg(cost_mask(total_cost), ' ' order by cost_rank, label)          total_cost,
        string_agg(round(read_reqs)::bigint::text, ' ' order by rt_rank, label)   read_reqs,
@@ -370,8 +430,10 @@ with m as (
     where qid % 1000 between 301 and 399
 )
 select qid, descr,
-       string_agg(label, ' ' order by cost_rank, label)                          cost_rank,
-       string_agg(label, ' ' order by rt_rank, label)                            rt_rank,
+       rank_labels(array_agg(label order by cost_rank, label),
+                   array_agg(cost_rank order by cost_rank, label))               cost_rank,
+       rank_labels(array_agg(label order by rt_rank, label),
+                   array_agg(rt_rank order by rt_rank, label))                   rt_rank,
        string_agg(cost_mask(startup_cost), ' ' order by cost_rank, label)        startup_cost,
        string_agg(cost_mask(total_cost), ' ' order by cost_rank, label)          total_cost,
        string_agg(round(read_reqs)::bigint::text, ' ' order by rt_rank, label)   read_reqs,

@@ -1645,7 +1645,10 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
       majority_replicated.leader_lease_expiration = LeaderLeaseExpirationWatermark();
       majority_replicated.ht_lease_expiration = HybridTimeLeaseExpirationWatermark();
       majority_replicated.num_sst_files = NumSSTFilesWatermark();
-      if (peer->last_received == queue_state_.last_applied_op_id) {
+      // Report the peer only once it has received every appended op, not just every applied op.
+      // Async writes are acked at append, so this peer needs to have received all of those ops.
+      // Without async writes, acks happen at commit, which the last appended op also covers.
+      if (peer->last_received >= queue_state_.last_appended) {
         majority_replicated.peer_got_all_ops = peer->uuid;
       }
     }

@@ -18,6 +18,7 @@ test: md5
 test: sha1
 test: pgp-pubkey-decrypt
 test: pgp-pubkey-encrypt
+test: pgp-pubkey-session
 test: pgp-info
 test: pgp-encrypt
 test: pgp-decrypt

@@ -155,7 +155,7 @@ public class DeleteCapacityReservation extends ServerSubTaskBase {
                           .getZonedReservation()
                           .forEach(
                               (zoneId, reservation) -> {
-                                if (zoneReservation.getReservationName() != null) {
+                                if (reservation.getReservationName() != null) {
                                   log.debug(
                                       "Deleting reservation {} with {} vms",
                                       reservation.getReservationName(),

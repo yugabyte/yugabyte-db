@@ -130,7 +130,8 @@ size_t ObjectLockSharedStateManager::ConsumeAndAcquireExclusiveLockIntents(
     shared = shared_.load(std::memory_order_acquire);
     if (!shared) {
       for (const auto* key_and_intent : lock_entries) {
-        pre_setup_locks_[key_and_intent->key] += IntentTypeSetAdd(key_and_intent->intent_types);
+        pre_setup_locks_[key_and_intent->key] +=
+            LockStateToSharedWriteLockState(IntentTypeSetAdd(key_and_intent->intent_types));
       }
       return 0uz;
     }
@@ -151,7 +152,8 @@ void ObjectLockSharedStateManager::ReleaseExclusiveLockIntent(
     std::lock_guard lock(setup_mutex_);
     shared = shared_.load(std::memory_order_acquire);
     if (!shared) {
-      pre_setup_locks_[object_id] -= lock_state;
+      SharedWriteLockStateRelease(
+          pre_setup_locks_[object_id], LockStateToSharedWriteLockState(lock_state));
       return;
     }
   }

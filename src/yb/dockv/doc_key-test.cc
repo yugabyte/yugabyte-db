@@ -25,6 +25,7 @@
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/decimal.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"

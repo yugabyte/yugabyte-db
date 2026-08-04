@@ -8,7 +8,10 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.WSClientRefresher;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.PACollectorExt;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PACollector;
 import com.yugabyte.yw.models.helpers.BundleDetails.PrometheusMetricsFormat;
 import java.io.File;
@@ -33,16 +36,24 @@ public class PerfAdvisorClient {
   public static final String WS_CLIENT_KEY = "yb.pa.ws";
   public static final String TP_API_TOKEN_HEADER = "X-AUTH-TP-API-TOKEN";
   private final WSClientRefresher wsClientRefresher;
+  private final RuntimeConfGetter confGetter;
 
   @Inject
-  public PerfAdvisorClient(WSClientRefresher wsClientRefresher) {
+  public PerfAdvisorClient(WSClientRefresher wsClientRefresher, RuntimeConfGetter confGetter) {
     this.wsClientRefresher = wsClientRefresher;
+    this.confGetter = confGetter;
   }
 
   public CustomerMetadata putCustomerMetadata(PACollector collector) {
     String customerMetadataUrl =
         collector.getPaUrl() + "/api/customer/" + collector.getCustomerUUID() + "/metadata";
     try {
+      // collection_enabled is derived from local HA state at PUT time - never persisted on
+      // PACollector. For non-embedded collectors HA does not apply, so collection is always
+      // enabled from YBA's point of view (the operator can still pause collection through
+      // the PA UI). For embedded collectors we disable collection when the local YBA is an
+      // HA follower.
+      boolean collectionEnabled = !(collector.isEmbedded() && HighAvailabilityConfig.isFollower());
       CustomerMetadata customerMetadata =
           new CustomerMetadata()
               .setId(collector.getCustomerUUID())
@@ -51,7 +62,10 @@ public class PerfAdvisorClient {
               .setMetricsUsername(collector.getMetricsUsername())
               .setMetricsPassword(collector.getMetricsPassword())
               .setMetricsScrapePeriodSec(collector.getMetricsScrapePeriodSecs())
-              .setApiToken(collector.getApiToken());
+              .setApiToken(collector.getApiToken())
+              .setProxyMode(
+                  confGetter.getGlobalConf(GlobalConfKeys.paEmbeddedUiReverseProxyEnabled))
+              .setCollectionEnabled(collectionEnabled);
       JsonNode result =
           getApiHelper()
               .putRequest(
@@ -296,6 +310,23 @@ public class PerfAdvisorClient {
     String metricsUsername;
     String metricsPassword;
     long metricsScrapePeriodSec;
+
+    /**
+     * When true, PA Collector should accept the pre-shared {@code X-AUTH-TP-API-TOKEN} service
+     * token as full user-request authentication and skip re-validating any {@code X-AUTH-TOKEN}
+     * against YBA. YBA has already authenticated the user and enforced RBAC before proxying the
+     * request. See {@code yb.pa.embedded_ui.reverse_proxy.enabled} and {@link
+     * com.yugabyte.yw.controllers.PAProxyController}.
+     */
+    boolean proxyMode;
+
+    /**
+     * When false, PA skips scraping, anomaly detection, and task-runner tasks against this
+     * customer's universes. YBA sets this to false when the local YBA is an HA follower (embedded
+     * collectors only) and back to true after promotion. Operators can also toggle it via the PA UI
+     * to pause collection for a specific customer.
+     */
+    boolean collectionEnabled;
   }
 
   @Data

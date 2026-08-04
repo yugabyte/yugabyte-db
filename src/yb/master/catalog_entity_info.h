@@ -152,11 +152,14 @@ struct TabletReplicaDriveInfo {
   uint64 uncompressed_sst_file_size = 0;
   bool may_have_orphaned_post_split_data = true;
   uint64 total_size = 0;
+  uint64 vector_index_size = 0;
+  bool has_active_vector_index_backfill = false;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(
         sst_files_size, wal_files_size, uncompressed_sst_file_size,
-        may_have_orphaned_post_split_data, total_size);
+        may_have_orphaned_post_split_data, total_size, vector_index_size,
+        has_active_vector_index_backfill);
   }
 };
 
@@ -859,6 +862,15 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // (dirty copy is modified) and yet to be persisted.
   Result<bool> AreAllTabletsRunning(const std::set<TabletId>& new_running_tablets = {});
 
+  // Atomically claims the right to schedule the post tablet create task set for this table.
+  // Returns true only for the first caller, and subsequent callers get false until
+  // ClearPostTabletCreateTasksScheduled() is called.
+  bool TrySetPostTabletCreateTasksScheduled();
+
+  // Clears the post tablet create tasks scheduled atomic, allowing the next caller to
+  // schedule the post tablet create task.
+  void ClearPostTabletCreateTasksScheduled();
+
   // Returns true if the table is backfilling an index.
   bool IsBackfilling() const {
     SharedLock l(lock_);
@@ -924,6 +936,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool IsSecondaryTable() const;
   bool IsSequencesSystemTable() const;
   bool IsSequencesSystemTable(const ReadLock& lock) const;
+  // YSQL tables backed by PG catalog have a pg schema name. DocDB-only tables such as
+  // system_postgres.sequences_data are excluded.
+  bool ShouldLookupPgSchemaName() const;
+  bool ShouldLookupPgSchemaName(const ReadLock& lock) const;
   bool IsXClusterDDLReplicationDDLQueueTable() const;
   bool IsXClusterDDLReplicationReplicatedDDLsTable() const;
   bool IsXClusterDDLReplicationTable() const {
@@ -1016,6 +1032,9 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // In memory state set during backfill to prevent multiple backfill jobs.
   bool is_backfilling_ = false;
+
+  // In-memory guard ensuring the post-tablet-create task set is scheduled at most once per table.
+  std::atomic<bool> post_tablet_create_tasks_scheduled_{false};
 
   TransactionId exclude_aborting_transaction_id_ GUARDED_BY(lock_) {TransactionId::Nil()};
 
@@ -1724,3 +1743,41 @@ void SetupTabletInfo(
     SysTabletsEntryPB::State state);
 
 } // namespace yb::master
+
+namespace yb {
+
+// CowObject hooks specialized for the table/tablet COW objects to enforce the table<->tablet
+// commit-order rule (#10304); see cow_object.h. The tablet maintains the per-thread
+// held-tablet-write-lock count; the table asserts none are held when it commits.
+template <>
+inline void CowObject<master::PersistentTabletInfo>::PostStartMutation() {
+  if (!exclude_from_held_tablet_count_) {
+    ++MutableHeldTabletWriteLockCount();
+  }
+}
+template <>
+inline void CowObject<master::PersistentTabletInfo>::PostAbortMutation() {
+  if (!exclude_from_held_tablet_count_) {
+    --MutableHeldTabletWriteLockCount();
+  }
+}
+template <>
+inline void CowObject<master::PersistentTabletInfo>::PostCommitMutation() {
+  if (!exclude_from_held_tablet_count_) {
+    --MutableHeldTabletWriteLockCount();
+  }
+}
+template <>
+inline void CowObject<master::PersistentTableInfo>::PreCommitMutation() {
+  bool holding_tablet_write_locks = MutableHeldTabletWriteLockCount() != 0;
+  bool assert_suppressed = MutableTableCommitAssertSuppressionDepth() != 0;
+  if (holding_tablet_write_locks && !assert_suppressed) {
+    LOG(DFATAL)
+        << "Committing a table COW object while holding "
+        << MutableHeldTabletWriteLockCount()
+        << " tablet write lock(s): potential ProcessTabletReportBatch deadlock (#10304). "
+        << "Commit/release all tablet write locks before committing the table.";
+  }
+}
+
+}  // namespace yb

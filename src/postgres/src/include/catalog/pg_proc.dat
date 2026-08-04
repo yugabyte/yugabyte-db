@@ -12246,9 +12246,9 @@
   proname => 'yb_get_tablet_metadata', prorows => '100',
   proretset => 't', provolatile => 'v', proparallel => 'r',
   prorettype => 'record', proargtypes => '',
-  proallargtypes => '{text,text,text,text,text,int4,int4,text,_text}',
-  proargnames => '{tablet_id,object_uuid,namespace,object_name,type,start_hash_code,end_hash_code,leader,replicas}',
-  proargmodes => '{o,o,o,o,o,o,o,o,o}',
+  proallargtypes => '{text,text,oid,text,text,text,int4,int4,text,_text,text,text,json,text}',
+  proargnames => '{tablet_id,object_uuid,oid,namespace,object_name,type,start_hash_code,end_hash_code,leader,replicas,start_range,end_range,tablet_attrs,tablet_state}',
+  proargmodes => '{o,o,o,o,o,o,o,o,o,o,o,o,o,o}',
   prosrc => 'yb_get_tablet_metadata'},
 
 { oid => '8101', descr => 'Get the UUID of the local tserver',

@@ -46,10 +46,14 @@
 #include <sys/sysinfo.h>
 #endif
 
+#include <algorithm>
+
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/malloc.h"
+#include "yb/util/status_format.h"
 #include "yb/util/thread_restrictions.h"
 
 using std::string;

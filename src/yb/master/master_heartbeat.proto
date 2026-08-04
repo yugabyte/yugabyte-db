@@ -110,6 +110,10 @@ message TabletDriveStorageMetadataPB {
   optional uint64 uncompressed_sst_file_size = 4;
   optional bool may_have_orphaned_post_split_data = 5 [default = true];
   optional uint64 total_size = 6;
+  optional uint64 vector_index_size = 7;
+  // Whether a vector index backfill is currently in progress on this tablet. The tablet must not be
+  // split while a backfill is running (see GH#32321).
+  optional bool has_active_vector_index_backfill = 8;
 }
 
 message TabletLeaderMetricsPB {
@@ -338,6 +342,11 @@ message TSHeartbeatResponsePB {
   optional XClusterHeartbeatInfo xcluster_heartbeat_info = 30;
 
   optional ReplicationInfoPB cluster_replication_info = 31;
+
+  // UUIDs of tservers that are currently leader-blacklisted and with no active leaders
+  // as per master's view. Tservers use this to proactively mark replicas hosted by
+  // these tservers as followers in their meta-cache.
+  repeated string leader_blacklisted_tservers_with_no_leaders = 32;
 }
 
 service MasterHeartbeat {

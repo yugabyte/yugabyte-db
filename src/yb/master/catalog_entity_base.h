@@ -19,6 +19,9 @@
 #include "yb/master/master_types.pb.h"
 #include "yb/server/monitored_task.h"
 #include "yb/util/cow_object.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb::master {
 
@@ -85,6 +88,22 @@ class MetadataCowWrapper {
   ReadLock LockForRead() const { return ReadLock(&metadata()); }
 
   WriteLock LockForWrite() { return WriteLock(mutable_metadata()); }
+
+  Result<ReadLock> TryLockForRead(CoarseTimePoint deadline) const {
+    ReadLock lock(&metadata(), deadline);
+    if (!lock.locked()) {
+      return STATUS_FORMAT(TimedOut, "Timed out acquiring read lock on $0", ToString());
+    }
+    return lock;
+  }
+
+  Result<WriteLock> TryLockForWrite(CoarseTimePoint deadline) {
+    WriteLock lock(mutable_metadata(), deadline);
+    if (!lock.locked()) {
+      return STATUS_FORMAT(TimedOut, "Timed out acquiring write lock on $0", ToString());
+    }
+    return lock;
+  }
 
   const auto& old_pb() const { return metadata_.state().pb; }
 

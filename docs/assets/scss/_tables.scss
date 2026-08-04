@@ -2,7 +2,7 @@ main {
   .td-content {
     .table-responsive {
       padding: 1px;
-      box-shadow: 0 0 0 1px #e9eef2;
+      box-shadow: inset 0 0 0 1px #e9eef2;
       border-radius: 8px;
       overflow: auto;
       scrollbar-width: thin;
@@ -63,7 +63,7 @@ main {
     }
 
     table {
-      box-shadow: 0 0 0 1px #e9eef2;
+      box-shadow: inset 0 0 0 1px #e9eef2;
       border-radius: 6px;
       padding: 0;
       display: table;

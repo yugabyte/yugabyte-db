@@ -1,7 +1,7 @@
 service_name="clockbound.service"
 
 # Get the status of clockbound service
-status=$(systemctl show -p ActiveState "$service_name" | grep ActiveState | awk -F= '{print $2}')
+status=$(systemctl show -p ActiveState --value "$service_name" | tr -d '[:space:]')
 if [ "$status" = "active" ]; then
     echo "\"$service_name\" is active"
     add_result "Service Status Check" "PASS" "$service_name is active"

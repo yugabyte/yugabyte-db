@@ -17,9 +17,13 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
 
+#include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/flags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_log.h"
 #include "yb/util/tcmalloc_impl_util.h"
 
 #if YB_GPERFTOOLS_TCMALLOC

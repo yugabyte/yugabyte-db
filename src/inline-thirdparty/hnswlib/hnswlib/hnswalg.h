@@ -1451,30 +1451,37 @@ class HierarchicalNSW : public AlgorithmInterface<dist_t, label_t> {
         return params;
     }
 
+    // Average per-vector heap cost for the configured index parameters, used to convert between a
+    // byte budget and a vector count in both directions.
+    static size_t bytesPerVectorEstimate(size_t M, size_t maxM0, size_t data_size) {
+        size_t size_links_level0 = maxM0 * sizeof(tableint) + sizeof(linklistsizeint);
+        size_t size_data_per_element = size_links_level0 + data_size + sizeof(label_t);
+        size_t size_links_per_element = M * sizeof(tableint) + sizeof(linklistsizeint);
+
+        // Search context cost per max_element: one vl_type entry in the visited_list_pool_
+        size_t per_element_search_context_bytes = sizeof(vl_type);
+
+        double expected_extra_levels = M > 1 ? 1.0 / std::log(static_cast<double>(M)) : 0.0;
+
+        return PER_ELEMENT_BOOKKEEPING_BYTES +
+            per_element_search_context_bytes +
+            PER_INSERTED_LABEL_LOOKUP_BYTES +
+            size_data_per_element +
+            static_cast<size_t>(expected_extra_levels * size_links_per_element);
+    }
+
     // Estimation of vectors that can fit within a given byte limit.
     // Calculates based on the configured index parameters.
     static size_t estimateNumVectorsForBytes(size_t bytes_limit, size_t M, size_t maxM0, size_t data_size) {
         if (bytes_limit == 0) {
             return 0;
         }
+        return bytes_limit / bytesPerVectorEstimate(M, maxM0, data_size);
+    }
 
-        size_t size_links_level0 = maxM0 * sizeof(tableint) + sizeof(linklistsizeint);
-        size_t size_data_per_element = size_links_level0 + data_size + sizeof(label_t);
-        size_t size_links_per_element = M * sizeof(tableint) + sizeof(linklistsizeint);
-
-        // Search context cost per max_element: one vl_type entry in the visited_list_pool_
-        size_t per_element_search_context_bytes = sizeof(vl_type); 
-
-        double expected_extra_levels = M > 1 ? 1.0 / std::log(static_cast<double>(M)) : 0.0;
-
-        size_t bytes_per_vector =
-            PER_ELEMENT_BOOKKEEPING_BYTES +
-            per_element_search_context_bytes +
-            PER_INSERTED_LABEL_LOOKUP_BYTES +
-            size_data_per_element +
-            static_cast<size_t>(expected_extra_levels * size_links_per_element);
-
-        return bytes_limit / bytes_per_vector;
+    // Inverse of estimateNumVectorsForBytes: the byte budget required to hold num_vectors.
+    static size_t estimateBytesForNumVectors(size_t num_vectors, size_t M, size_t maxM0, size_t data_size) {
+        return num_vectors * bytesPerVectorEstimate(M, maxM0, data_size);
     }
 
     size_t indexDataBytes() const {

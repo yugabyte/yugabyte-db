@@ -74,7 +74,7 @@ public class RegionTest extends FakeDBApplication {
     try {
       Region.create(defaultProvider, "region-1", "region 1", "default-image");
     } catch (Exception e) {
-      assertThat(e.getMessage(), containsString("Unique index or primary key violation:"));
+      assertThat(e.getMessage(), containsString("duplicate key value violates unique constraint"));
     }
   }
 

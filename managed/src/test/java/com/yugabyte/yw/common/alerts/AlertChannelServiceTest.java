@@ -278,15 +278,13 @@ public class AlertChannelServiceTest extends FakeDBApplication {
 
   @Test
   @Parameters({
-    "null, key, errorJson: {\"params.apiKey\":[\"must not be null\"]}",
-    "key, null, errorJson: {\"params.routingKey\":[\"must not be null\"]}",
-    "key1, key2, null",
+    "null, errorJson: {\"params.routingKey\":[\"must not be null\"]}",
+    "key, null",
   })
   // @formatter:on
   public void testPagerDutyParamsValidate(
-      @Nullable String apiKey, @Nullable String routingKey, @Nullable String expectedError) {
+      @Nullable String routingKey, @Nullable String expectedError) {
     AlertChannelPagerDutyParams params = new AlertChannelPagerDutyParams();
-    params.setApiKey(apiKey);
     params.setRoutingKey(routingKey);
 
     AlertChannel channel =

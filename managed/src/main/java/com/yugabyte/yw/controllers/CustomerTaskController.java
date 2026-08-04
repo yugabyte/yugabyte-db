@@ -281,7 +281,7 @@ public class CustomerTaskController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation =
             @Resource(
-                path = "details.universeUUID",
+                path = "taskParams.universeUUID",
                 sourceType = SourceType.DB,
                 dbClass = TaskInfo.class,
                 identifier = "tasks",
@@ -319,7 +319,7 @@ public class CustomerTaskController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation =
             @Resource(
-                path = "details.universeUUID",
+                path = "taskParams.universeUUID",
                 sourceType = SourceType.DB,
                 dbClass = TaskInfo.class,
                 identifier = "tasks",
@@ -357,7 +357,7 @@ public class CustomerTaskController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation =
             @Resource(
-                path = "details.universeUUID",
+                path = "taskParams.universeUUID",
                 sourceType = SourceType.DB,
                 dbClass = TaskInfo.class,
                 identifier = "tasks",

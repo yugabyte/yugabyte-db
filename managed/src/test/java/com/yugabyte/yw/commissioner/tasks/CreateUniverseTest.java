@@ -102,11 +102,14 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForServer, // wait for postgres
           TaskType.WaitForTServerHeartBeats,
           TaskType.SwamperTargetsFileUpdate,
-          TaskType.CreateAlertDefinitions,
           TaskType.CreateTable,
           TaskType.UpdateConsistencyCheck,
           TaskType.ChangeAdminPassword,
-          TaskType.UniverseUpdateSucceeded);
+          TaskType.UniverseUpdateSucceeded,
+          // CreateAlertDefinitions now runs AFTER UniverseUpdateSucceeded so alert definitions
+          // are only produced for universes whose initial creation actually succeeded (the
+          // preceding subtask flips creationSucceeded=true which the alert service gates on).
+          TaskType.CreateAlertDefinitions);
 
   private static final List<TaskType> UNIVERSE_CREATE_TASK_RETRY_SEQUENCE =
       ImmutableList.of(
@@ -128,11 +131,12 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForServer, // wait for postgres
           TaskType.WaitForTServerHeartBeats,
           TaskType.SwamperTargetsFileUpdate,
-          TaskType.CreateAlertDefinitions,
           TaskType.CreateTable,
           TaskType.UpdateConsistencyCheck,
           TaskType.ChangeAdminPassword,
-          TaskType.UniverseUpdateSucceeded);
+          TaskType.UniverseUpdateSucceeded,
+          // See note above about CreateAlertDefinitions ordering.
+          TaskType.CreateAlertDefinitions);
 
   private void assertTaskSequence(
       List<TaskType> sequence, Map<Integer, List<TaskInfo>> subTasksByPosition) {
@@ -172,6 +176,7 @@ public class CreateUniverseTest extends UniverseModifyBaseTest {
           .thenReturn(mockServerReadyResponse);
       mockClockSyncResponse(mockNodeUniverseManager);
       mockLocaleCheckResponse(mockNodeUniverseManager);
+      mockDbNodePortConnectivityResponse(mockNodeUniverseManager);
     } catch (Exception e) {
       fail();
     }

@@ -47,8 +47,11 @@ public class BasePgListenNotifyTest extends BasePgSQLTest {
   }
 
   /**
-   * Waits for the {@code yb_system} database and the
-   * {@code pg_yb_notifications} table to exist.
+   * Waits for the {@code yb_system} bootstrap to complete: the database, the
+   * {@code pg_yb_notifications} table and its publication must all exist.
+   * The publication is created by the last bootstrap statement, so waiting for it guarantees that
+   * the bootstrap DDLs no longer bump the yb_system catalog version concurrently with the caller's
+   * own DDLs, which are not retryable.
    */
   public static void waitForNotificationsTableReady(
       Connection defaultConn, ConnectionBuilder connBuilder) throws Exception {
@@ -64,6 +67,9 @@ public class BasePgListenNotifyTest extends BasePgSQLTest {
               + " WHERE relname = 'pg_yb_notifications'"
               + " AND relkind = 'r'"
               + " AND relnamespace = 2200"
+              + ") AND EXISTS ("
+              + "SELECT 1 FROM pg_publication"
+              + " WHERE pubname = 'pg_yb_notifications_publication'"
               + ") THEN 1 ELSE 0 END");
     } finally {
       ybSystemConn.close();
@@ -91,7 +97,14 @@ public class BasePgListenNotifyTest extends BasePgSQLTest {
     PGConnection pgConn = connection.unwrap(PGConnection.class);
     boolean found = false;
     try (Statement stmt = connection.createStatement()) {
-      for (int attempt = 0; attempt < 75 && !found; attempt++) {
+      /**
+       * Poll for notifications for upto 1 minute. In most case it should arrive in
+       * under a second. The exception to this when the poller retsarts
+       * (testPollerRestartDoesNotRedeliverNotifications). When a poller restarts, it
+       * takes upto pg_client_session_expiration_ms (defaults to 1 min) to acquire the
+       * slot, which is necessary to fetch new notifications.
+       */
+      for (int attempt = 0; attempt < 350 && !found; attempt++) {
         stmt.execute("SELECT 1");
         PGNotification[] notifications = pgConn.getNotifications();
         if (notifications != null) {
@@ -131,6 +144,8 @@ public class BasePgListenNotifyTest extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     addListenNotifyFlags(flagMap);
+    flagMap.put("allowed_preview_flags_csv", "ysql_yb_enable_replication_slot_exclusive_lock");
+    flagMap.put("ysql_yb_enable_replication_slot_exclusive_lock", "true");
     return flagMap;
   }
 

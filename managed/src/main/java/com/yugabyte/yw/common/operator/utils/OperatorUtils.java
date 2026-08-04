@@ -23,6 +23,9 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
+import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
 import com.yugabyte.yw.common.operator.ResourceTracker;
@@ -102,6 +105,8 @@ import io.yugabyte.operator.v1alpha1.BackupScheduleSpec;
 import io.yugabyte.operator.v1alpha1.BackupSpec;
 import io.yugabyte.operator.v1alpha1.BackupStatus;
 import io.yugabyte.operator.v1alpha1.DrConfig;
+import io.yugabyte.operator.v1alpha1.KMSConfig;
+import io.yugabyte.operator.v1alpha1.KMSConfigStatus;
 import io.yugabyte.operator.v1alpha1.PitrConfig;
 import io.yugabyte.operator.v1alpha1.PitrRestore;
 import io.yugabyte.operator.v1alpha1.Release;
@@ -150,7 +155,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.CommonTypes.TableType;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 import play.libs.Json;
 
 @Slf4j
@@ -283,6 +288,43 @@ public class OperatorUtils {
           .get();
     } catch (Exception e) {
       throw new Exception("Unable to fetch YBUniverse " + name.name, e);
+    }
+  }
+
+  /**
+   * Resolves a KMSConfig CR (by name, in the given namespace) to its YBA config UUID. Throws when
+   * the config CR is missing, not yet Ready/InUse, or has no resolved config UUID, so the caller
+   * can surface a clear error rather than proceeding without a valid KMS config.
+   *
+   * @param kmsConfigCrName the KMSConfig CR name
+   * @param namespace the namespace to look it up in
+   * @return the resolved YBA KMS config UUID
+   */
+  public UUID resolveReadyKmsConfigUuid(String kmsConfigCrName, String namespace) throws Exception {
+    try (final KubernetesClient kubernetesClient =
+        kubernetesClientFactory.getKubernetesClientWithConfig(getK8sClientConfig())) {
+      KMSConfig kmsConfigCr =
+          kubernetesClient
+              .resources(KMSConfig.class)
+              .inNamespace(namespace)
+              .withName(kmsConfigCrName)
+              .get();
+      if (kmsConfigCr == null) {
+        throw new Exception("KMS config CR '" + kmsConfigCrName + "' not found");
+      }
+      KMSConfigStatus status = kmsConfigCr.getStatus();
+      String state = status == null ? null : status.getState();
+      String resourceUUID = status == null ? null : status.getResourceUUID();
+      // Ready or InUse both mean the config exists in YBA with a valid UUID.
+      if (!"Ready".equals(state) && !"InUse".equals(state)) {
+        throw new Exception(
+            "KMS config CR '" + kmsConfigCrName + "' is not ready (state: " + state + ")");
+      }
+      if (StringUtils.isBlank(resourceUUID)) {
+        throw new Exception(
+            "KMS config CR '" + kmsConfigCrName + "' has no resolved config UUID yet");
+      }
+      return UUID.fromString(resourceUUID);
     }
   }
 
@@ -849,7 +891,7 @@ public class OperatorUtils {
     return masterDeviceInfo;
   }
 
-  public DeviceInfo defaultMasterDeviceInfo() {
+  public static DeviceInfo defaultMasterDeviceInfo() {
     DeviceInfo masterDeviceInfo = new DeviceInfo();
     masterDeviceInfo.volumeSize = 50;
     masterDeviceInfo.numVolumes = 1;
@@ -974,6 +1016,8 @@ public class OperatorUtils {
     log.trace("Toggle Immutable YBC mismatch: {}", mismatch);
     mismatch = mismatch || shouldRotateCerts(u, ybUniverse, cust.getUuid());
     log.trace("certificate mismatch: {}", mismatch);
+    mismatch = mismatch || shouldToggleTls(currentUserIntent, ybUniverse);
+    log.trace("tls parameters mismatch: {}", mismatch);
     return mismatch;
   }
 
@@ -1173,6 +1217,23 @@ public class OperatorUtils {
 
     // Check if the certificate UUID differs from the current one
     return !specRootCACert.getUuid().equals(currentRootCA);
+  }
+
+  /*--- TLS toggle helper methods ---*/
+
+  /**
+   * Checks if the encryption-in-transit settings in the spec differ from the universe, requiring a
+   * TLS toggle operation.
+   *
+   * @param currentUserIntent the current primary cluster user intent
+   * @param ybUniverse the YBUniverse spec
+   * @return true if node-to-node or client-to-node encryption settings have changed
+   */
+  public boolean shouldToggleTls(UserIntent currentUserIntent, YBUniverse ybUniverse) {
+    return currentUserIntent.enableNodeToNodeEncrypt
+            != ybUniverse.getSpec().getEnableNodeToNodeEncrypt()
+        || currentUserIntent.enableClientToNodeEncrypt
+            != ybUniverse.getSpec().getEnableClientToNodeEncrypt();
   }
 
   /*--- Backup and Scheduled backup helper methods ---*/
@@ -1694,7 +1755,7 @@ public class OperatorUtils {
     String drConfigName = crParams.get("name").asText();
 
     TableType tableType = TableType.PGSQL_TABLE_TYPE;
-    YBClient client = ybService.getUniverseClient(sourceUniverse);
+    YBClientApi client = ybService.getUniverseClient(sourceUniverse);
     Map<String, String> namespaceNameNamespaceIdMap =
         UniverseTaskBase.getKeyspaceNameKeyspaceIdMap(client, tableType);
     JsonNode databasesNode = crParams.get("databases");
@@ -1752,7 +1813,7 @@ public class OperatorUtils {
       throw new Exception("No universe found with name " + crSourceUniverseName);
     }
     TableType tableType = TableType.PGSQL_TABLE_TYPE;
-    YBClient client = ybService.getUniverseClient(sourceUniverse);
+    YBClientApi client = ybService.getUniverseClient(sourceUniverse);
     Map<String, String> namespaceNameNamespaceIdMap =
         UniverseTaskBase.getKeyspaceNameKeyspaceIdMap(client, tableType);
     JsonNode databasesNode = ((ObjectNode) crParams).get("databases");
@@ -2352,6 +2413,167 @@ public class OperatorUtils {
     return updatePitrConfigParams;
   }
 
+  /** Returns the backend {@link KeyProvider} for the given KMSConfig custom resource. */
+  public KeyProvider getKMSConfigProvider(KMSConfig kmsConfig) {
+    ObjectNode spec = objectMapper.valueToTree(kmsConfig.getSpec());
+    JsonNode providerNode = spec.get("provider");
+    if (providerNode == null || providerNode.isNull()) {
+      throw new RuntimeException("KMS config provider is not set");
+    }
+    return KeyProvider.valueOf(providerNode.asText());
+  }
+
+  /**
+   * Builds the KMS provider auth-config form data from the KMSConfig CR spec, resolving any
+   * referenced Kubernetes Secrets. The returned ObjectNode contains the KMS config {@code name}
+   * plus the provider-specific auth-config fields expected by the backend EncryptionAtRest services
+   * (the same shape the REST API accepts as the request body).
+   *
+   * <p>HASHICORP (Vault) is implemented with TOKEN and APPROLE auth, and AZU with a service
+   * principal or managed identity; every other provider throws {@link
+   * UnsupportedOperationException} as an explicit placeholder for future support.
+   */
+  public ObjectNode getKMSConfigFormDataFromCr(KMSConfig kmsConfig) {
+    ObjectNode spec = objectMapper.valueToTree(kmsConfig.getSpec());
+    KeyProvider provider = getKMSConfigProvider(kmsConfig);
+    String resourceNamespace = kmsConfig.getMetadata().getNamespace();
+    ObjectNode formData = Json.newObject();
+    formData.put("name", spec.get("name").asText());
+    switch (provider) {
+      case HASHICORP:
+        buildHashicorpAuthConfig(formData, spec.get("vault"), resourceNamespace);
+        break;
+      case AZU:
+        buildAzureAuthConfig(formData, spec.get("azure"), resourceNamespace);
+        break;
+      default:
+        throw new UnsupportedOperationException(
+            String.format(
+                "%s KMS is not yet supported via the Kubernetes operator", provider.name()));
+    }
+    return formData;
+  }
+
+  private void buildAzureAuthConfig(ObjectNode formData, JsonNode azure, String resourceNamespace) {
+    if (azure == null || azure.isNull()) {
+      throw new RuntimeException("azure configuration is required for AZU KMS");
+    }
+    formData.put(AzuKmsAuthConfigField.CLIENT_ID.fieldName, azure.get("clientID").asText());
+    formData.put(AzuKmsAuthConfigField.TENANT_ID.fieldName, azure.get("tenantID").asText());
+    formData.put(AzuKmsAuthConfigField.AZU_VAULT_URL.fieldName, azure.get("keyVaultURL").asText());
+    formData.put(AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName, azure.get("keyName").asText());
+    formData.put(
+        AzuKmsAuthConfigField.AZU_KEY_ALGORITHM.fieldName,
+        getTextOrDefault(azure, "keyAlgorithm", "RSA"));
+    formData.put(
+        AzuKmsAuthConfigField.AZU_KEY_SIZE.fieldName, getIntOrDefault(azure, "keySize", 2048));
+
+    // A managed identity authenticates through DefaultAzureCredential and omits the client secret;
+    // a service principal requires it. clientID and tenantID are required in both cases.
+    boolean useManagedIdentity =
+        azure.hasNonNull("useManagedIdentity") && azure.get("useManagedIdentity").asBoolean();
+    if (!useManagedIdentity) {
+      JsonNode clientSecretSecret = azure.get("clientSecretSecret");
+      if (clientSecretSecret == null || clientSecretSecret.isNull()) {
+        throw new RuntimeException(
+            "clientSecretSecret is required for AZU KMS unless useManagedIdentity is true");
+      }
+      formData.put(
+          AzuKmsAuthConfigField.CLIENT_SECRET.fieldName,
+          resolveSecretRef(clientSecretSecret, resourceNamespace));
+    }
+  }
+
+  private static int getIntOrDefault(JsonNode node, String field, int defaultValue) {
+    JsonNode value = node.get(field);
+    if (value == null || value.isNull()) {
+      return defaultValue;
+    }
+    return value.asInt();
+  }
+
+  private void buildHashicorpAuthConfig(
+      ObjectNode formData, JsonNode vault, String resourceNamespace) {
+    if (vault == null || vault.isNull()) {
+      throw new RuntimeException("vault configuration is required for HASHICORP KMS");
+    }
+    formData.put(HashicorpVaultConfigParams.HC_VAULT_ADDRESS, vault.get("address").asText());
+    formData.put(
+        HashicorpVaultConfigParams.HC_VAULT_KEY_NAME,
+        getTextOrDefault(vault, "keyName", "key_yugabyte"));
+    formData.put(
+        HashicorpVaultConfigParams.HC_VAULT_ENGINE,
+        getTextOrDefault(vault, "secretEngine", "transit"));
+
+    String mountPath = getTextOrDefault(vault, "mountPath", "transit/");
+
+    String authType = getTextOrDefault(vault, "authType", null);
+    if ("TOKEN".equals(authType)) {
+      JsonNode tokenSecret = vault.get("tokenSecret");
+      if (tokenSecret == null || tokenSecret.isNull()) {
+        throw new RuntimeException("tokenSecret is required for HASHICORP KMS with TOKEN auth");
+      }
+      formData.put(
+          HashicorpVaultConfigParams.HC_VAULT_TOKEN,
+          resolveSecretRef(tokenSecret, resourceNamespace));
+    } else if ("APPROLE".equals(authType)) {
+      JsonNode appRole = vault.get("appRole");
+      if (appRole == null || appRole.isNull()) {
+        throw new RuntimeException("appRole is required for HASHICORP KMS with APPROLE auth");
+      }
+      formData.put(HashicorpVaultConfigParams.HC_VAULT_ROLE_ID, appRole.get("roleID").asText());
+      JsonNode secretIdSecret = appRole.get("secretIdSecret");
+      if (secretIdSecret == null || secretIdSecret.isNull()) {
+        throw new RuntimeException(
+            "secretIdSecret is required for HASHICORP KMS with APPROLE auth");
+      }
+      formData.put(
+          HashicorpVaultConfigParams.HC_VAULT_SECRET_ID,
+          resolveSecretRef(secretIdSecret, resourceNamespace));
+
+      // authNamespace is only meaningful for APPROLE auth. The backend expects the transit mount
+      // path to be namespace-qualified (it strips the auth-namespace prefix before use), so the CR
+      // takes a mountPath relative to the Vault namespace and we prefix it here.
+      String authNamespace = getTextOrDefault(vault, "authNamespace", null);
+      if (authNamespace != null) {
+        formData.put(HashicorpVaultConfigParams.HC_VAULT_AUTH_NAMESPACE, authNamespace);
+        String prefix = authNamespace.endsWith("/") ? authNamespace : authNamespace + "/";
+        if (!mountPath.startsWith(prefix)) {
+          mountPath = prefix + mountPath;
+        }
+      }
+    } else {
+      throw new UnsupportedOperationException(
+          "Unsupported auth type for HASHICORP KMS via the Kubernetes operator: " + authType);
+    }
+
+    formData.put(HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH, mountPath);
+  }
+
+  /**
+   * Resolves a {name, namespace, key} Secret reference from the CR to the secret's string value.
+   */
+  private String resolveSecretRef(JsonNode secretRef, String defaultNamespace) {
+    String name = secretRef.get("name").asText();
+    String key = secretRef.get("key").asText();
+    String namespace =
+        secretRef.hasNonNull("namespace") ? secretRef.get("namespace").asText() : defaultNamespace;
+    String value = parseSecretForKey(getSecret(name, namespace), key);
+    if (value == null) {
+      throw new RuntimeException(
+          String.format("Could not resolve key '%s' from secret '%s'", key, name));
+    }
+    return value;
+  }
+
+  private static String getTextOrDefault(JsonNode node, String field, String defaultValue) {
+    JsonNode value = node.get(field);
+    if (value == null || value.isNull()) {
+      return defaultValue;
+    }
+    return value.asText();
+  }
+
   public boolean requiresDrConfigDatabaseUpdate(DrConfig drConfig, XClusterConfig xClusterConfig) {
     try {
       if (xClusterConfig == null) {
@@ -2383,7 +2605,7 @@ public class OperatorUtils {
       // Resolve spec database names to IDs
       Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
       TableType tableType = TableType.PGSQL_TABLE_TYPE;
-      YBClient client = ybService.getUniverseClient(sourceUniverse);
+      YBClientApi client = ybService.getUniverseClient(sourceUniverse);
       Map<String, String> namespaceNameToIdMap =
           UniverseTaskBase.getKeyspaceNameKeyspaceIdMap(client, tableType);
 
@@ -2486,7 +2708,7 @@ public class OperatorUtils {
 
     // Resolve database names to IDs
     TableType tableType = TableType.PGSQL_TABLE_TYPE;
-    YBClient client = ybService.getUniverseClient(sourceUniverse);
+    YBClientApi client = ybService.getUniverseClient(sourceUniverse);
     Map<String, String> namespaceNameNamespaceIdMap =
         UniverseTaskBase.getKeyspaceNameKeyspaceIdMap(client, tableType);
 

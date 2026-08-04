@@ -323,24 +323,34 @@ class PollerTest {
 
   @Test
   @SuppressWarnings("unchecked")
-  void run_postThrowsApiException_propagates() throws Exception {
-    QueuedHttpRequestData pendingItem =
-        new QueuedHttpRequestData().id(UUID.randomUUID()).method("GET").uri("http://localhost/ok");
-    stubPending(List.of(pendingItem));
-    HttpResponse<String> httpResponse = mock(HttpResponse.class);
-    when(httpResponse.statusCode()).thenReturn(200);
-    when(httpResponse.body()).thenReturn("x");
-    when(httpResponse.uri()).thenReturn(URI.create(pendingItem.getUri()));
-    when(httpResponse.headers()).thenReturn(mock(HttpHeaders.class));
-    when(httpClient.send(any(HttpRequest.class), any())).thenAnswer(invocation -> httpResponse);
+  void run_postFailsForOne_logsAndContinuesBatch() throws Exception {
+    UUID idA = UUID.fromString("77777777-7777-7777-7777-777777777777");
+    UUID idB = UUID.fromString("88888888-8888-8888-8888-888888888888");
+    QueuedHttpRequestData a =
+        new QueuedHttpRequestData().id(idA).method("GET").uri("http://localhost/a");
+    QueuedHttpRequestData b =
+        new QueuedHttpRequestData().id(idB).method("GET").uri("http://localhost/b");
+    stubPending(List.of(a, b));
+    when(httpClient.send(any(HttpRequest.class), any()))
+        .thenAnswer(
+            invocation -> {
+              HttpResponse<String> httpResponse = mock(HttpResponse.class);
+              when(httpResponse.statusCode()).thenReturn(200);
+              when(httpResponse.body()).thenReturn("ok");
+              when(httpResponse.uri()).thenReturn(URI.create("http://localhost/x"));
+              when(httpResponse.headers()).thenReturn(mock(HttpHeaders.class));
+              return httpResponse;
+            });
 
-    ApiException postFail = new ApiException("post failed", 400, Map.of(), "");
-    doThrow(postFail)
-        .when(requestApi)
-        .postQueuedHttpRequestResponse(
-            any(UUID.class), any(PostQueuedHttpRequestResponseRequestSpec.class));
+    // Posting the first response fails (e.g. 413); it must not abort the batch or crash run().
+    ApiException postFail = new ApiException("Payload Too Large", 413, Map.of(), "");
+    doThrow(postFail).when(requestApi).postQueuedHttpRequestResponse(eq(idA), any());
 
-    assertThrows(ApiException.class, poller::run);
+    poller.run();
+
+    // Both posts are attempted; the second still succeeds despite the first failing.
+    verify(requestApi).postQueuedHttpRequestResponse(eq(idA), any());
+    verify(requestApi).postQueuedHttpRequestResponse(eq(idB), any());
   }
 
   private void stubPending(List<QueuedHttpRequestData> data) throws ApiException {

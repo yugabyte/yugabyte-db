@@ -124,7 +124,8 @@ class ObjectLockSharedStateManager {
   // bootstrap. If these are not released before shared memory is set up, they must be transferred
   // to shared memory before PG has a chance to use the fastpath. We track them here until setup
   // time.
-  std::unordered_map<ObjectLockPrefix, LockState> pre_setup_locks_ GUARDED_BY(setup_mutex_);
+  std::unordered_map<ObjectLockPrefix, SharedWriteLockState> pre_setup_locks_
+      GUARDED_BY(setup_mutex_);
 };
 
 } // namespace yb::docdb

@@ -46,6 +46,7 @@
 #include "yb/client/error.h"
 #include "yb/client/client_error.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/namespace_info.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"

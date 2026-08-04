@@ -13,10 +13,10 @@ block_indexing = true
 | :--------- | :------ | :------------ | :----------- |
 | **Drivers** | | | |
 | YugabyteDB JDBC Smart Driver<br/>[Recommended] | [{{< version-driver-java >}}](https://mvnrepository.com/artifact/com.yugabyte/jdbc-yugabytedb/{{< version-driver-java >}}) | Full | [CRUD](/stable/develop/drivers-orms/java/yugabyte-jdbc/) |
-| YugabyteDB R2DBC Smart Driver | [1.1.0-yb-1-ea](https://mvnrepository.com/artifact/com.yugabyte/r2dbc-postgresql) | Full | [CRUD](/stable/develop/drivers-orms/java/yb-r2dbc/) |
-| PostgreSQL JDBC Driver  | [42.3.4](https://mvnrepository.com/artifact/org.postgresql/postgresql/42.3.4) | Full | [CRUD](/stable/develop/drivers-orms/java/postgres-jdbc/) |
+| YugabyteDB R2DBC Smart Driver | [1.1.0-yb-2](https://mvnrepository.com/artifact/com.yugabyte/r2dbc-postgresql) | Full | [CRUD](/stable/develop/drivers-orms/java/yb-r2dbc/) |
+| PostgreSQL JDBC Driver  | [42.7.3](https://mvnrepository.com/artifact/org.postgresql/postgresql/42.7.3) | Full | [CRUD](/stable/develop/drivers-orms/java/postgres-jdbc/) |
 | Vert.x Pg Client       | [4.3.2](https://mvnrepository.com/artifact/io.vertx/vertx-core/4.3.2) | Full | [CRUD](/stable/develop/drivers-orms/java/ysql-vertx-pg-client/) |
-| YugabyteDB Java Driver for YCQL | [3.10.3-yb-2](https://mvnrepository.com/artifact/com.yugabyte/cassandra-driver-core/3.10.3-yb-2) | Full | [CRUD](/stable/develop/drivers-orms/java/ycql/) |
+| YugabyteDB Java Driver for YCQL | [3.10.3-yb-3](https://mvnrepository.com/artifact/com.yugabyte/cassandra-driver-core/3.10.3-yb-3) | Full | [CRUD](/stable/develop/drivers-orms/java/ycql/) |
 | YugabyteDB Java Driver for YCQL | [4.15.0-yb-1](https://mvnrepository.com/artifact/com.yugabyte/java-driver-core/4.15.0-yb-1) | Full | [CRUD](/stable/develop/drivers-orms/java/ycql-4.x/) |
 | **ORMs** | | | |
 | Ebean                   | 13.23.0 | Full | [CRUD](/stable/develop/drivers-orms/java/ebean/) |
@@ -34,10 +34,10 @@ block_indexing = true
 |            | Version | Support Level | Example apps |
 | :--------- | :------ | :------------ | :----------- |
 | **Drivers** | | | |
-| YugabyteDB PGX Smart Driver<br/>[Recommended] | [v4](https://pkg.go.dev/github.com/yugabyte/pgx/) | Full | [CRUD](/stable/develop/drivers-orms/go/yb-pgx/) |
-| PGX Driver | [v4](https://pkg.go.dev/github.com/jackc/pgx/) | Full | [CRUD](/stable/develop/drivers-orms/go/pgx/) |
+| YugabyteDB PGX Smart Driver<br/>[Recommended] | [v5](https://pkg.go.dev/github.com/yugabyte/pgx/v5) | Full | [CRUD](/stable/develop/drivers-orms/go/yb-pgx/) |
+| PGX Driver | [v5](https://pkg.go.dev/github.com/jackc/pgx/v5) | Full | [CRUD](/stable/develop/drivers-orms/go/pgx/) |
 | PQ Driver  | [v1.10.2](https://github.com/lib/pq/releases/tag/v1.10.2/) | Full | [CRUD](/stable/develop/drivers-orms/go/pq/) |
-| YugabyteDB Go Driver for YCQL | [3.16.3](https://github.com/yugabyte/gocql) | Full | [CRUD](/stable/develop/drivers-orms/go/ycql/) |
+| YugabyteDB Go Driver for YCQL | [v1.6.0-yb-1](https://github.com/yugabyte/gocql) | Full | [CRUD](/stable/develop/drivers-orms/go/ycql/) |
 | **ORMs** | | | |
 | GORM       | [1.9.16](https://github.com/go-gorm/gorm) | Full | [CRUD](/stable/develop/drivers-orms/go/gorm/) |
 | PG         | [10](https://github.com/go-pg/pg) | Full | [CRUD](/stable/develop/drivers-orms/go/pg/) |
@@ -49,14 +49,14 @@ block_indexing = true
 |            | Version | Support Level | Example apps |
 | :--------- | :------ | :------------ | :----------- |
 | **Drivers** | | | |
-| YugabyteDB Psycopg 2 Smart Driver<br/>[Recommended] | [2.9.3](https://github.com/yugabyte/psycopg2)<br>[Binary](https://pypi.org/project/psycopg2-yugabytedb-binary/#files) |Full | [CRUD](/stable/develop/drivers-orms/python/yugabyte-psycopg2/) |
+| YugabyteDB Psycopg 2 Smart Driver<br/>[Recommended] | [2.9.3.5](https://pypi.org/project/psycopg2-yugabytedb-binary/#files) |Full | [CRUD](/stable/develop/drivers-orms/python/yugabyte-psycopg2/) |
 | YugabyteDB Psycopg 3 Smart Driver | [3.3.4.1](https://pypi.org/project/psycopg-yugabytedb/) | Full | [CRUD](/stable/develop/drivers-orms/python/yugabyte-psycopg3/) |
 | PostgreSQL Psycopg 2 Driver | [2.9.3](https://github.com/psycopg/psycopg2) | Full | [CRUD](/stable/develop/drivers-orms/python/postgres-psycopg2/) |
-| PostgreSQL Psycopg 3 Driver | [3.2.9](https://github.com/psycopg/psycopg) | Full | [CRUD](/stable/develop/drivers-orms/python/postgres-psycopg3/) |
+| PostgreSQL Psycopg 3 Driver | [3.3.4](https://github.com/psycopg/psycopg) | Full | [CRUD](/stable/develop/drivers-orms/python/postgres-psycopg3/) |
 | aiopg      | 1.4          | Full | [Hello World](/stable/develop/drivers-orms/python/aiopg/) |
-| YugabyteDB Python Driver for YCQL | [3.25.0](https://github.com/yugabyte/cassandra-python-driver/tree/master) | Full | [CRUD](/stable/develop/drivers-orms/python/ycql/) |
+| YugabyteDB Python Driver for YCQL | [3.29.1.1](https://github.com/yugabyte/cassandra-python-driver/tree/master) | Full | [CRUD](/stable/develop/drivers-orms/python/ycql/) |
 | **ORMs** | | | |
-| Django     | 2.2 or later | Full | [CRUD](/stable/develop/drivers-orms/python/django/) |
+| Django     | 3.1.6 or later | Full | [CRUD](/stable/develop/drivers-orms/python/django/) |
 | SQLAlchemy | 2.0          | Full | [CRUD](/stable/develop/drivers-orms/python/sqlalchemy/) |
 
   {{% /tab %}}
@@ -66,12 +66,12 @@ block_indexing = true
 |            | Version | Support Level | Example apps |
 | :--------- | :------ | :------------ | :----------- |
 | **Drivers** | | | |
-| YugabyteDB node-postgres Smart Driver<br/>[Recommended] | [8.7.3-yb-1](https://github.com/yugabyte/node-postgres) | Full | [CRUD](/stable/develop/drivers-orms/nodejs/yugabyte-node-driver/) |
+| YugabyteDB node-postgres Smart Driver<br/>[Recommended] | [8.7.3-yb-11](https://github.com/yugabyte/node-postgres) | Full | [CRUD](/stable/develop/drivers-orms/nodejs/yugabyte-node-driver/) |
 | PostgreSQL node-postgres Driver | [8.7.3](https://www.npmjs.com/package/pg) | Full | [CRUD](/stable/develop/drivers-orms/nodejs/postgres-node-driver/) |
 | YugabyteDB Node.js Driver for YCQL | [4.0.0](https://github.com/yugabyte/cassandra-nodejs-driver) | Full | [CRUD](/stable/develop/drivers-orms/nodejs/ycql/) |
 | **ORMs** | | | |
 | Sequelize | 6.6.5  | Full | [CRUD](/stable/develop/drivers-orms/nodejs/sequelize/) |
-| Prisma    | 3.14   | Full | [CRUD](/stable/develop/drivers-orms/nodejs/prisma/) |
+| Prisma    | 5.4.2 or later   | Full | [CRUD](/stable/develop/drivers-orms/nodejs/prisma/) |
 | TypeORM   | 0.3.21 | Full | [CRUD](/stable/develop/drivers-orms/nodejs/typeorm/) |
 
   {{% /tab %}}
@@ -100,7 +100,7 @@ block_indexing = true
 | Driver     | Version | Support Level | Example apps |
 | :--------- | :------ | :------------ | :----------- |
 | libpqxx C++ Driver             | | Full | [CRUD](/stable/develop/drivers-orms/cpp/ysql/) |
-| YugabyteDB C++ Driver for YCQL | [2.9.0-yb-10](https://github.com/yugabyte/cassandra-cpp-driver/releases) | Full | [CRUD](/stable/develop/drivers-orms/cpp/ycql/) |
+| YugabyteDB C++ Driver for YCQL | [2.9.0-yb-12](https://github.com/yugabyte/cassandra-cpp-driver/releases) | Full | [CRUD](/stable/develop/drivers-orms/cpp/ycql/) |
 
   {{% /tab %}}
 
@@ -110,7 +110,7 @@ block_indexing = true
 | :--------- | :------ | :------------ | :----------- |
 | **Drivers** | | | |
 | YugabyteDB C# Smart Driver for YSQL | [9.0.2.2](https://www.nuget.org/packages/NpgsqlYugabyteDB/) | Full | [CRUD](/stable/develop/drivers-orms/csharp/ysql/) |
-| PostgreSQL Npgsql Driver            | [6.0.3](https://www.nuget.org/packages/Npgsql/6.0.3) | Full | [CRUD](/stable/develop/drivers-orms/csharp/postgres-npgsql/) |
+| PostgreSQL Npgsql Driver            | [9.0.2](https://www.nuget.org/packages/Npgsql/9.0.2) | Full | [CRUD](/stable/develop/drivers-orms/csharp/postgres-npgsql/) |
 | YugabyteDB C# Driver for YCQL       | [3.6.0](https://github.com/yugabyte/cassandra-csharp-driver/releases/tag/3.6.0) | Full | [CRUD](/stable/develop/drivers-orms/csharp/ycql/) |
 | **ORM** | | | |
 | Entity Framework                    | 6.0.2  | Full | [CRUD](/stable/develop/drivers-orms/csharp/entityframework/) |
@@ -123,7 +123,7 @@ block_indexing = true
 | :---------- | :------ | :------------ | :----------- |
 | **Drivers** | | | |
 | YugabyteDB ruby-pg Smart Driver | [0.7](https://github.com/yugabyte/ruby-pg) | Full | [CRUD](/stable/develop/drivers-orms/ruby/yb-ruby-pg/) |
-| Pg Gem Driver                   | [1.5.4](https://github.com/ged/ruby-pg) | Full | [CRUD](/stable/develop/drivers-orms/ruby/ruby-pg/) |
+| Pg Gem Driver                   | [1.5.6](https://github.com/ged/ruby-pg) | Full | [CRUD](/stable/develop/drivers-orms/ruby/ruby-pg/) |
 | YugabyteDB Ruby Driver for YCQL | [3.2.3.2](https://github.com/yugabyte/cassandra-ruby-driver) | Full | [CRUD](/stable/develop/drivers-orms/ruby/ycql/) |
 | **ORM**     | | | |
 | Active Record                   | 7.0.4 | Full | [CRUD](/stable/develop/drivers-orms/ruby/activerecord/) |
@@ -135,7 +135,7 @@ block_indexing = true
 | ORM        | Version | Support Level | Example apps |
 | :--------- | :------ | :------------ | :----------- |
 | **Driver** | | | |
-| Rust-postgres Driver | v0.19.7-yb-1-beta.3 <br/> v0.7.10-yb-1-beta | Full | [CRUD](/stable/develop/drivers-orms/rust/yb-rust-postgres/) |
+| Rust-postgres Driver | v0.19.7-yb-1-beta.4 <br/> v0.7.10-yb-1-beta.4 | Full | [CRUD](/stable/develop/drivers-orms/rust/yb-rust-postgres/) |
 | **ORM**    | | | |
 | Diesel     | 1.42    | Full          | [CRUD](/stable/develop/drivers-orms/rust/diesel/) |
 

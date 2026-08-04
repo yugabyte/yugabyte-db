@@ -24,6 +24,7 @@
 #include "yb/util/format.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 using std::string;
 using std::vector;

@@ -361,24 +361,26 @@ SELECT c, count(*) FROM pctest1 WHERE c > 40 GROUP BY c;
 -- Joins
 -- Nest loop
 /*+
+  Set(yb_parallel_range_size 2048)
   Set(enable_mergejoin off) Set(enable_hashjoin off)
   Set(yb_bnl_batch_size 1) Set(enable_material off)
 */
 EXPLAIN (costs off)
 SELECT pctest1.* FROM pctest1, pctest2
   WHERE pctest1.a = pctest2.b and pctest1.a % 10 = 0;
-                           QUERY PLAN                           
-----------------------------------------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  Gather
    Workers Planned: 2
    ->  Nested Loop
-         ->  Parallel Index Scan using pctest1_a_idx on pctest1
-               Storage Index Filter: ((a % 10) = 0)
+         ->  Parallel Seq Scan on pctest1
+               Storage Filter: ((a % 10) = 0)
          ->  Index Only Scan using pctest2_b_idx on pctest2
                Index Cond: (b = pctest1.a)
 (7 rows)
 
 /*+
+  Set(yb_parallel_range_size 2048)
   Set(enable_mergejoin off) Set(enable_hashjoin off)
   Set(yb_bnl_batch_size 1) Set(enable_material off)
 */
@@ -386,26 +388,26 @@ SELECT pctest1.* FROM pctest1, pctest2
   WHERE pctest1.a = pctest2.b and pctest1.a % 10 = 0;
   k   | a  |  b  | c  |     d     
 ------+----+-----+----+-----------
- 1000 |  0 | 333 |  0 | Value1000
- 1000 |  0 | 333 |  0 | Value1000
- 1000 |  0 | 333 |  0 | Value1000
- 1000 |  0 | 333 |  0 | Value1000
-  990 | 10 | 330 | 40 | Value990
-  990 | 10 | 330 | 40 | Value990
-  990 | 10 | 330 | 40 | Value990
-  990 | 10 | 330 | 40 | Value990
-  990 | 10 | 330 | 40 | Value990
-  980 | 20 | 326 | 30 | Value980
-  980 | 20 | 326 | 30 | Value980
-  980 | 20 | 326 | 30 | Value980
-  980 | 20 | 326 | 30 | Value980
-  980 | 20 | 326 | 30 | Value980
-  970 | 30 | 323 | 20 | Value970
-  970 | 30 | 323 | 20 | Value970
-  970 | 30 | 323 | 20 | Value970
-  970 | 30 | 323 | 20 | Value970
-  970 | 30 | 323 | 20 | Value970
   960 | 40 | 320 | 10 | Value960
+  970 | 30 | 323 | 20 | Value970
+  970 | 30 | 323 | 20 | Value970
+  970 | 30 | 323 | 20 | Value970
+  970 | 30 | 323 | 20 | Value970
+  970 | 30 | 323 | 20 | Value970
+  980 | 20 | 326 | 30 | Value980
+  980 | 20 | 326 | 30 | Value980
+  980 | 20 | 326 | 30 | Value980
+  980 | 20 | 326 | 30 | Value980
+  980 | 20 | 326 | 30 | Value980
+  990 | 10 | 330 | 40 | Value990
+  990 | 10 | 330 | 40 | Value990
+  990 | 10 | 330 | 40 | Value990
+  990 | 10 | 330 | 40 | Value990
+  990 | 10 | 330 | 40 | Value990
+ 1000 |  0 | 333 |  0 | Value1000
+ 1000 |  0 | 333 |  0 | Value1000
+ 1000 |  0 | 333 |  0 | Value1000
+ 1000 |  0 | 333 |  0 | Value1000
 (20 rows)
 
 EXPLAIN (costs off)
@@ -447,7 +449,7 @@ SELECT pctest1.k, pctest2.k FROM pctest1 JOIN pctest2 USING (a, c);
    Workers Planned: 2
    ->  Parallel Hash Join
          Hash Cond: ((pctest1.a = pctest2.a) AND (pctest1.c = pctest2.c))
-         ->  Parallel Index Scan using pctest1_c_idx on pctest1
+         ->  Parallel Seq Scan on pctest1
          ->  Parallel Hash
                ->  Parallel Seq Scan on pctest2
 (7 rows)
@@ -457,12 +459,12 @@ SELECT pctest1.k, pctest2.k FROM pctest1 JOIN pctest2 USING (a, c);
   k  |  k  
 -----+-----
  600 | 200
- 650 | 150
- 700 | 100
- 750 |  50
  605 | 195
+ 650 | 150
  655 | 145
+ 700 | 100
  705 |  95
+ 750 |  50
  755 |  45
 (8 rows)
 
@@ -499,7 +501,10 @@ SELECT pctest1.*, pctest2.k FROM pctest1, pctest2
 
 reset enable_hashjoin;
 -- Subquery
-/*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
+/*+
+  HashJoin(pctest1 pctest2)
+  Set(yb_test_force_parallel force)
+*/
 EXPLAIN (costs off)
 SELECT x, d FROM
   (SELECT pctest1.* FROM pctest1, pctest2
@@ -515,14 +520,17 @@ SELECT x, d FROM
                Workers Planned: 2
                ->  Parallel Hash Join
                      Hash Cond: ((pctest1.k = pctest2.k) AND (pctest1.c = pctest2.c))
-                     ->  Parallel Seq Scan on pctest1
+                     ->  Parallel Index Scan using pctest1_pkey on pctest1
                      ->  Parallel Hash
                            ->  Parallel Index Scan using pctest2_pkey on pctest2
          ->  Hash
                ->  Values Scan on "*VALUES*"
 (13 rows)
 
-/*+ Parallel(pctest1 2 hard) Parallel(pctest2 2 hard) */
+/*+
+  HashJoin(pctest1 pctest2)
+  Set(yb_test_force_parallel force)
+*/
 SELECT x, d FROM
   (SELECT pctest1.* FROM pctest1, pctest2
      WHERE pctest1.k = pctest2.k AND pctest1.c = pctest2.c) ss RIGHT JOIN
@@ -537,6 +545,7 @@ SELECT x, d FROM
 (5 rows)
 
 /*+
+  Set(yb_test_force_parallel force)
   Parallel(pctest1 2 hard) Parallel(pctest2 2 hard)
   Parallel(pctest3 2 hard) Parallel(pctest4 2 hard)
  */
@@ -560,16 +569,17 @@ SELECT * FROM
                Workers Planned: 2
                ->  Parallel Hash Join
                      Hash Cond: (pctest4.c = pctest1.b)
-                     ->  Parallel Seq Scan on pctest2 pctest4
+                     ->  Parallel Index Scan using pctest2_pkey on pctest2 pctest4
                      ->  Parallel Hash
                            ->  Parallel Hash Join
                                  Hash Cond: ((pctest1.k = pctest2.k) AND (pctest1.c = pctest2.c))
-                                 ->  Parallel Seq Scan on pctest1
+                                 ->  Parallel Index Scan using pctest1_pkey on pctest1
                                  ->  Parallel Hash
                                        ->  Parallel Index Scan using pctest2_pkey on pctest2
 (19 rows)
 
 /*+
+  Set(yb_test_force_parallel force)
   Parallel(pctest1 2 hard) Parallel(pctest2 2 hard)
   Parallel(pctest3 2 hard) Parallel(pctest4 2 hard)
  */
@@ -1036,8 +1046,8 @@ SELECT pctest1.* FROM pctest1, pctest2
    Join Filter: (pctest1.a = pctest2.b)
    ->  Gather
          Workers Planned: 2
-         ->  Parallel Index Scan using pctest1_a_idx on pctest1
-               Storage Index Filter: ((a % 10) = 0)
+         ->  Parallel Seq Scan on pctest1
+               Storage Filter: ((a % 10) = 0)
    ->  Gather
          Workers Planned: 2
          ->  Parallel Index Only Scan using pctest2_b_idx on pctest2
@@ -1052,26 +1062,26 @@ SELECT pctest1.* FROM pctest1, pctest2
   WHERE pctest1.a = pctest2.b and pctest1.a % 10 = 0;
   k   | a  |  b  | c  |     d     
 ------+----+-----+----+-----------
- 1000 |  0 | 333 |  0 | Value1000
- 1000 |  0 | 333 |  0 | Value1000
- 1000 |  0 | 333 |  0 | Value1000
- 1000 |  0 | 333 |  0 | Value1000
-  990 | 10 | 330 | 40 | Value990
-  990 | 10 | 330 | 40 | Value990
-  990 | 10 | 330 | 40 | Value990
-  990 | 10 | 330 | 40 | Value990
-  990 | 10 | 330 | 40 | Value990
-  980 | 20 | 326 | 30 | Value980
-  980 | 20 | 326 | 30 | Value980
-  980 | 20 | 326 | 30 | Value980
-  980 | 20 | 326 | 30 | Value980
-  980 | 20 | 326 | 30 | Value980
-  970 | 30 | 323 | 20 | Value970
-  970 | 30 | 323 | 20 | Value970
-  970 | 30 | 323 | 20 | Value970
-  970 | 30 | 323 | 20 | Value970
-  970 | 30 | 323 | 20 | Value970
   960 | 40 | 320 | 10 | Value960
+  970 | 30 | 323 | 20 | Value970
+  970 | 30 | 323 | 20 | Value970
+  970 | 30 | 323 | 20 | Value970
+  970 | 30 | 323 | 20 | Value970
+  970 | 30 | 323 | 20 | Value970
+  980 | 20 | 326 | 30 | Value980
+  980 | 20 | 326 | 30 | Value980
+  980 | 20 | 326 | 30 | Value980
+  980 | 20 | 326 | 30 | Value980
+  980 | 20 | 326 | 30 | Value980
+  990 | 10 | 330 | 40 | Value990
+  990 | 10 | 330 | 40 | Value990
+  990 | 10 | 330 | 40 | Value990
+  990 | 10 | 330 | 40 | Value990
+  990 | 10 | 330 | 40 | Value990
+ 1000 |  0 | 333 |  0 | Value1000
+ 1000 |  0 | 333 |  0 | Value1000
+ 1000 |  0 | 333 |  0 | Value1000
+ 1000 |  0 | 333 |  0 | Value1000
 (20 rows)
 
 EXPLAIN (costs off)
@@ -1254,7 +1264,7 @@ SELECT * FROM
 (6 rows)
 
 -- index only scan with aggregates pushdown such that #atts being pushed down > #atts in relation
-/*+ Parallel(pctest3 3 hard) */
+/*+ IndexOnlyScan(pctest3) Parallel(pctest3 3 hard) */
 EXPLAIN (costs off) SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
@@ -1267,7 +1277,7 @@ EXPLAIN (costs off) SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
                      Partial Aggregate: true
 (7 rows)
 
-/*+ Parallel(pctest3 3 hard) */
+/*+ IndexOnlyScan(pctest3) Parallel(pctest3 3 hard) */
 SELECT count(*), max(a), min(a) FROM pctest3 WHERE a > 123;
  count | max  | min 
 -------+------+-----

@@ -24,12 +24,16 @@
 
 #include "yb/ann_methods/yb_hnsw_wrapper.h"
 
+#include "yb/hnsw/hnsw_block_cache.h"
+
 #include "yb/gutil/casts.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 #include "yb/ann_methods/index_memory_consumption.h"
 
@@ -227,6 +231,14 @@ class HnswlibIndex :
         /* random_seed= */ 100,              // Default value from hnswalg.h
         /* allow_replace_deleted= */ false,  // Default value from hnswalg.h
         /* ef= */ 128);
+    // Reserve block cache space for this chunk's full footprint so the index is accounted within
+    // the block cache budget (#32357): the cache evicts other blocks instead of letting the index
+    // grow total memory consumption past the limits.
+    this->ReserveBlockCacheSpace(
+        block_cache_ ? &block_cache_->cache() : nullptr,
+        HNSWImpl::estimateBytesForNumVectors(
+            num_vectors, options_.num_neighbors_per_vertex, options_.num_neighbors_per_vertex_base,
+            options_.dimensions * sizeof(Scalar)));
     return Status::OK();
   }
 

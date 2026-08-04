@@ -15,6 +15,7 @@ import time
 import requests
 
 from ybops.common.exceptions import YBOpsRuntimeError, YBOpsRecoverableError
+from ybops.cloud.common.utils import request_retry_decorator
 from ybops.utils import DNS_RECORD_SET_TTL, MIN_MEM_SIZE_GB, MIN_NUM_CORES
 from ybops.utils.ssh import format_rsa_key, validated_key_file
 from threading import Thread
@@ -48,6 +49,7 @@ OCI_FINGERPRINT_ENV = "OCI_FINGERPRINT"
 OCI_PRIVATE_KEY_CONTENT_ENV = "OCI_PRIVATE_KEY_CONTENT"
 OCI_REGION_ENV = "OCI_REGION"
 OCI_COMPARTMENT_ID_ENV = "OCI_COMPARTMENT_ID"
+OCI_AUTH_TYPE_ENV = "OCI_AUTH_TYPE"
 
 OCI_VOLUME_TYPE_STANDARD = "standard"
 OCI_VOLUME_TYPE_HIGH_PERFORMANCE = "high_performance"
@@ -71,8 +73,19 @@ YUGABYTE_SG_PREFIX = "yugabyte-sl-{}"
 DEFAULT_BOOT_VOLUME_SIZE_GB = 50
 MIN_BOOT_VOLUME_SIZE_GB = 50
 
+AARCH64_ARCHITECTURES = ("aarch64", "arm64")
+
 # Max length of a single DNS label per RFC 1035.
 MAX_DNS_LABEL_LENGTH = 63
+
+
+def oci_instance_action_conflict_handler(e):
+    """OCI returns 409 when instance_action is called during background modification."""
+    return isinstance(e, oci.exceptions.ServiceError) and e.status == 409
+
+
+def oci_instance_action_conflict_retry(fn):
+    return request_retry_decorator(fn, oci_instance_action_conflict_handler)
 
 
 def sanitize_dns_label(name, max_length=MAX_DNS_LABEL_LENGTH):
@@ -96,12 +109,23 @@ def sanitize_dns_label(name, max_length=MAX_DNS_LABEL_LENGTH):
     return label[:max_length].rstrip("-") or None
 
 
+def uses_instance_principal():
+    return os.environ.get(OCI_AUTH_TYPE_ENV, "").upper() == "INSTANCE_PRINCIPAL"
+
+
 def get_oci_config():
+    region = os.environ.get(OCI_REGION_ENV)
+
+    if uses_instance_principal():
+        if not region:
+            raise YBOpsRuntimeError(
+                "OCI_REGION is required when using instance principal authentication.")
+        return {"region": region}
+
     tenancy_id = os.environ.get(OCI_TENANCY_ID_ENV)
     user_id = os.environ.get(OCI_USER_ID_ENV)
     fingerprint = os.environ.get(OCI_FINGERPRINT_ENV)
     private_key_content = os.environ.get(OCI_PRIVATE_KEY_CONTENT_ENV)
-    region = os.environ.get(OCI_REGION_ENV)
 
     if tenancy_id and user_id and fingerprint and private_key_content and region:
         config = {
@@ -124,8 +148,8 @@ def get_oci_config():
         "OCI configuration not found. Set environment variables "
         "(OCI_TENANCY_ID, OCI_USER_ID, OCI_FINGERPRINT, "
         "OCI_PRIVATE_KEY_CONTENT, "
-        "OCI_REGION, OCI_COMPARTMENT_ID) or ensure running on OCI instance "
-        "with instance principal.")
+        "OCI_REGION, OCI_COMPARTMENT_ID) or set OCI_AUTH_TYPE=INSTANCE_PRINCIPAL "
+        "when running on an OCI instance with instance principal.")
 
 
 def get_compartment_id():
@@ -153,6 +177,12 @@ class OciCloudAdmin:
             self._config = get_oci_config()
         return self._config
 
+    def _build_client(self, client_class):
+        if uses_instance_principal():
+            signer = oci.auth.signers.InstancePrincipalsSecurityTokenSigner()
+            return client_class(self.config, signer=signer)
+        return client_class(self.config)
+
     @property
     def compartment_id(self):
         if self._compartment_id is None:
@@ -162,25 +192,25 @@ class OciCloudAdmin:
     @property
     def compute_client(self):
         if self._compute_client is None:
-            self._compute_client = ComputeClient(self.config)
+            self._compute_client = self._build_client(ComputeClient)
         return self._compute_client
 
     @property
     def network_client(self):
         if self._network_client is None:
-            self._network_client = VirtualNetworkClient(self.config)
+            self._network_client = self._build_client(VirtualNetworkClient)
         return self._network_client
 
     @property
     def blockstorage_client(self):
         if self._blockstorage_client is None:
-            self._blockstorage_client = BlockstorageClient(self.config)
+            self._blockstorage_client = self._build_client(BlockstorageClient)
         return self._blockstorage_client
 
     @property
     def identity_client(self):
         if self._identity_client is None:
-            self._identity_client = IdentityClient(self.config)
+            self._identity_client = self._build_client(IdentityClient)
         return self._identity_client
 
     def set_region(self, region):
@@ -266,6 +296,27 @@ class OciCloudAdmin:
             shape=shape
         )
         return images.data
+
+    def get_app_catalog_image(self, region, listing_id, resource_version=None):
+        """Resolve a region-independent PIC listing to the region-specific image OCID."""
+        self.set_region(region)
+        if resource_version:
+            # A pinned version can be fetched directly, no need to list all versions.
+            try:
+                version = self.compute_client.get_app_catalog_listing_resource_version(
+                    listing_id, resource_version).data
+            except oci.exceptions.ServiceError as e:
+                if e.status == 404:
+                    return None
+                raise
+            return version.listing_resource_id
+        # No pinned version: list versions and pick the most recently published.
+        versions = self.compute_client.list_app_catalog_listing_resource_versions(
+            listing_id).data
+        if not versions:
+            return None
+        match = max(versions, key=lambda v: v.time_published)
+        return match.listing_resource_id
 
     def get_image(self, image_id):
         return self.compute_client.get_image(image_id).data
@@ -502,13 +553,7 @@ class OciCloudAdmin:
             self.set_region(region)
 
         comp_id = compartment_id or self.compartment_id
-        if get_all:
-            instances = self.compute_client.list_instances(comp_id)
-        else:
-            instances = self.compute_client.list_instances(
-                comp_id,
-                lifecycle_state=OCI_INSTANCE_RUNNING
-            )
+        instances = self.compute_client.list_instances(comp_id)
 
         results = []
         subnet_cache = {}
@@ -548,7 +593,7 @@ class OciCloudAdmin:
                 "public_ip": public_ip,
                 "private_ip": private_ip,
                 "private_dns": private_dns,
-                "region": instance.region,
+                "region": region or instance.region,
                 "zone": instance.availability_domain,
                 "instance_type": instance.shape,
                 "server_type": inst_tags.get("yb-server-type", "unknown"),
@@ -615,8 +660,12 @@ class OciCloudAdmin:
         self.compute_client.instance_action(instance_id, "STOP")
         return self._wait_for_instance_state(instance_id, OCI_INSTANCE_STOPPED)
 
+    @oci_instance_action_conflict_retry
+    def _invoke_instance_action(self, instance_id, action):
+        self.compute_client.instance_action(instance_id, action)
+
     def start_instance(self, instance_id):
-        self.compute_client.instance_action(instance_id, "START")
+        self._invoke_instance_action(instance_id, "START")
         return self._wait_for_instance_state(instance_id, OCI_INSTANCE_RUNNING)
 
     def reboot_instance(self, instance_id):
@@ -636,6 +685,10 @@ class OciCloudAdmin:
             shape_config=shape_config
         )
         self.compute_client.update_instance(instance_id, update_details)
+        return self._wait_for_instance_state(
+            instance_id,
+            OCI_INSTANCE_STOPPED,
+            ready_check=lambda instance: instance.shape == new_shape)
 
     def create_volume(self, availability_domain, size_in_gbs, display_name=None,
                       volume_type=OCI_VOLUME_TYPE_BALANCED, vpus_per_gb=None, tags=None):
@@ -731,13 +784,15 @@ class OciCloudAdmin:
         return ""
 
     def _wait_for_instance_state(
-            self, instance_id, target_state, timeout=600, allow_not_found=False):
+            self, instance_id, target_state, timeout=600, allow_not_found=False,
+            ready_check=None):
         start_time = time.time()
         while time.time() - start_time < timeout:
             try:
                 instance = self.compute_client.get_instance(instance_id).data
                 if instance.lifecycle_state == target_state:
-                    return instance
+                    if ready_check is None or ready_check(instance):
+                        return instance
                 if instance.lifecycle_state == OCI_INSTANCE_TERMINATED:
                     if allow_not_found:
                         return None
@@ -749,7 +804,8 @@ class OciCloudAdmin:
                 raise
             time.sleep(10)
         raise YBOpsRuntimeError(
-            "Timeout waiting for instance {} to reach state {}".format(instance_id, target_state))
+            "Timeout waiting for instance {} to reach state {}".format(
+                instance_id, target_state))
 
     def _wait_for_volume_state(self, volume_id, target_state, timeout=300):
         start_time = time.time()

@@ -528,6 +528,22 @@ public class HealthChecker {
         !shouldSendStatusUpdate && alertingData != null && alertingData.reportOnlyErrors;
 
     c.getUniverses().stream()
+        .filter(
+            u -> {
+              // Skip universes that were never successfully brought up. Running health checks on
+              // them just produces noisy failures and misleading alerts for something that never
+              // reached a healthy baseline. The UI surfaces a "Universe creation failed" state
+              // for these so operators still see the problem. Null details are handled downstream
+              // in checkSingleUniverse (which reports a failure metric), so let them through here.
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              if (details != null && !details.creationSucceeded) {
+                log.debug(
+                    "Skipping universe {} - universe creation has never successfully completed",
+                    u.getName());
+                return false;
+              }
+              return true;
+            })
         .map(
             u -> {
               String destinations = getAlertDestinations(u, c);
@@ -1215,7 +1231,10 @@ public class HealthChecker {
       commandToRun.add("--cronbased");
     }
 
-    if (!nodeInfo.isK8s()) {
+    // Only run the YNP version skew check when the global runtime config is enabled. When it is
+    // disabled, we skip passing the YBA YNP version so the node health script reports no skew and
+    // the YNP_VERSION_SKEW alert does not fire.
+    if (!nodeInfo.isK8s() && confGetter.getGlobalConf(GlobalConfKeys.enableYnpVersionCheck)) {
       Object ynpVersion =
           configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata).get("ynp_version");
       if (ynpVersion != null) {

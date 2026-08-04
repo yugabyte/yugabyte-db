@@ -4,6 +4,7 @@ package api.v2.mappers;
 
 import api.v2.models.BackupSpec;
 import api.v2.models.BackupState;
+import api.v2.models.TableType;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.StorageConfigType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
@@ -11,7 +12,6 @@ import org.mapstruct.Mapper;
 import org.mapstruct.ReportingPolicy;
 import org.mapstruct.ValueMapping;
 import org.mapstruct.ValueMappings;
-import org.yb.CommonTypes.TableType;
 
 /** Explicit v1-to-v2 backup enum mappings with compile-time exhaustiveness checks. */
 @Mapper(unmappedSourcePolicy = ReportingPolicy.ERROR)
@@ -25,7 +25,7 @@ public interface BackupEnumMapper {
         target = "TRANSACTION_STATUS_TABLE_TYPE",
         source = "TRANSACTION_STATUS_TABLE_TYPE")
   })
-  BackupSpec.BackupTypeEnum toBackupTypeEnum(TableType tableType);
+  TableType toTableType(org.yb.CommonTypes.TableType tableType);
 
   @ValueMappings({
     @ValueMapping(target = "BACKUP_SCRIPT", source = "YB_BACKUP_SCRIPT"),

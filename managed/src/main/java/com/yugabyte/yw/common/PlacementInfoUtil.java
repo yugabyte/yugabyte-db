@@ -346,8 +346,8 @@ public class PlacementInfoUtil {
         customerId,
         placementUuid,
         clusterOpType,
-        false,
-        !CollectionUtils.isEmpty(taskParams.getPrimaryCluster().getPartitions()));
+        false /* allowGeoPartitioning */,
+        !CollectionUtils.isEmpty(taskParams.getPrimaryCluster().getPartitions()) /* isNewUI */);
   }
 
   static void updateUniverseDefinition(
@@ -378,10 +378,9 @@ public class PlacementInfoUtil {
         isNewUI);
   }
 
-  private static void updateUniverseDefinitionV2(
+  public static void updateUniverseDefinitionV2(
       Universe universe,
       UniverseDefinitionTaskParams taskParams,
-      Long customerId,
       UUID placementUuid,
       ClusterOperationType clusterOpType) {
     LOG.info("Start update universe definition V2. ");
@@ -457,7 +456,7 @@ public class PlacementInfoUtil {
     validateAndInitParams(customerId, taskParams, cluster, clusterOpType, universe);
 
     if (isNewUI) {
-      updateUniverseDefinitionV2(universe, taskParams, customerId, placementUuid, clusterOpType);
+      updateUniverseDefinitionV2(universe, taskParams, placementUuid, clusterOpType);
       return;
     } else if (cluster.isGeoPartitioned()) {
       throw new PlatformServiceException(
@@ -1094,6 +1093,7 @@ public class PlacementInfoUtil {
     Cluster oldCluster;
 
     validatePartitions(cluster);
+    Util.fillIntentFromProviderSpecifications(cluster.userIntent);
     if (clusterOpType == ClusterOperationType.EDIT) {
       if (universe == null) {
         throw new IllegalArgumentException(
@@ -1149,9 +1149,21 @@ public class PlacementInfoUtil {
     return dedicatedInNodes != cluster.userIntent.dedicatedNodes;
   }
 
-  private static boolean checkReplicasDistributionIsCorrect(
+  /**
+   * Validates that replicas are placed correctly: 1) Each zone has replicas (unless it is old
+   * geo-partitioning case) 2) Number of replicas in AZ doesn't exceed the number of nodes 3) Total
+   * sum of all replicas is equal to RF (unless it is special case RF3 2AZ)
+   *
+   * @param placementInfo Placement to check
+   * @param rf Total replication factor for placement
+   * @param defaultRegionUUID Default region UUID (old geo-partitioning flow)
+   * @param throwInIncorrect Whether to throw an exception in case of incorrect distribution.
+   * @return whether the distribution is correct
+   */
+  public static boolean checkReplicasDistributionIsCorrect(
       PlacementInfo placementInfo, int rf, UUID defaultRegionUUID, boolean throwInIncorrect) {
     AtomicInteger zoneCount = new AtomicInteger();
+    AtomicInteger zonesWithExcessiveNodes = new AtomicInteger();
     Set<String> zeroZones = new HashSet<>();
     Set<String> incorrectlyPlacedReplicas = new HashSet<>();
     AtomicInteger totalReplicas = new AtomicInteger();
@@ -1166,7 +1178,7 @@ public class PlacementInfoUtil {
                 String message = "Cannot have negative number of replicas: " + az.replicationFactor;
                 LOG.error(message);
                 if (throwInIncorrect) {
-                  throw new IllegalArgumentException(message);
+                  throw new IllegalStateException(message);
                 } else {
                   result.set(false);
                 }
@@ -1181,16 +1193,21 @@ public class PlacementInfoUtil {
                         + az.name;
                 LOG.error(message);
                 if (throwInIncorrect) {
-                  throw new IllegalArgumentException(message);
+                  throw new IllegalStateException(message);
                 } else {
                   result.set(false);
                 }
               }
               if (az.replicationFactor == 0) {
-                zeroZones.add(az.name);
+                if (defaultRegionUUID == null) {
+                  zeroZones.add(az.name);
+                }
               } else if (defaultRegionUUID != null
                   && !azInfo.region.uuid.equals(defaultRegionUUID)) {
                 incorrectlyPlacedReplicas.add(az.name);
+              }
+              if (az.replicationFactor > 0 && az.numNodesInAZ > az.replicationFactor) {
+                zonesWithExcessiveNodes.incrementAndGet();
               }
               totalReplicas.addAndGet(az.replicationFactor);
             });
@@ -1209,7 +1226,10 @@ public class PlacementInfoUtil {
       }
       return false;
     }
-    if (rf == 3 && zoneCount.get() == 2 && totalReplicas.get() == 2) {
+    if (rf == 3
+        && zoneCount.get() == 2
+        && totalReplicas.get() == 2
+        && zonesWithExcessiveNodes.get() == 2) {
       LOG.debug("Special case when RF=3 and number of zones=2, allowing 1-1 distribution");
       return true;
     }
@@ -1228,8 +1248,9 @@ public class PlacementInfoUtil {
       if (throwInIncorrect) {
         throw new IllegalStateException(message);
       }
+      return false;
     }
-    return totalReplicas.get() == rf;
+    return true;
   }
 
   /**
@@ -1310,7 +1331,9 @@ public class PlacementInfoUtil {
         placedReplicas++;
       }
     }
-    if (rf == 3 && sortedAZs.size() == 2 && placedReplicas == 2) {
+    int zonesWithExcessiveNodes =
+        (int) sortedAZs.stream().filter(az -> az.numNodesInAZ > az.replicationFactor).count();
+    if (rf == 3 && sortedAZs.size() == 2 && placedReplicas == 2 && zonesWithExcessiveNodes == 2) {
       LOG.debug("Special case when RF=3 and number of zones= 2, using 1-1 distribution");
       return;
     }
@@ -2000,7 +2023,7 @@ public class PlacementInfoUtil {
       for (Iterator<PlacementRegion> regionIter = cloud.regionList.iterator();
           regionIter.hasNext(); ) {
         PlacementRegion region = regionIter.next();
-        if (!intentRegions.contains(region.uuid)) {
+        if (intentRegions != null && !intentRegions.contains(region.uuid)) {
           regionIter.remove();
         }
       }
@@ -2039,7 +2062,8 @@ public class PlacementInfoUtil {
 
   /**
    * Check to confirm the following after each configure call: - node AZs and placement AZs match. -
-   * instance type of all nodes matches. - each nodes has a unique name.
+   * instance type of all nodes matches. - each node has a unique name. Replicas are placed
+   * correctly.
    *
    * @param cluster The cluster whose placement is checked.
    * @param nodes The nodes in this cluster.
@@ -2052,6 +2076,23 @@ public class PlacementInfoUtil {
       String msg = "Nodes are in different AZs compared to placement";
       LOG.error("{}. PlacementAZ={}, nodesAZ={}", msg, placementAZToNodeMap, nodesAZToNodeMap);
       throw new IllegalStateException(msg);
+    }
+    if (cluster.isGeoPartitioned()) {
+      for (UniverseDefinitionTaskParams.PartitionInfo partition : cluster.getPartitions()) {
+        if (partition.isDefaultPartition()) {
+          checkReplicasDistributionIsCorrect(
+              partition.getPlacement(),
+              partition.getReplicationFactor(),
+              null,
+              true /* throwIfIncorrect */);
+        }
+      }
+    } else {
+      checkReplicasDistributionIsCorrect(
+          placementInfo,
+          cluster.userIntent.replicationFactor,
+          getDefaultRegion(cluster),
+          true /* throwIfIncorrect */);
     }
     if (cluster.userIntent.providerType == CloudType.kubernetes) {
       return;
@@ -2263,7 +2304,7 @@ public class PlacementInfoUtil {
     return result;
   }
 
-  public static NodeDetails createToBeAddedNode(NodeDetails templateNode) {
+  public static NodeDetails createToBeAddedNode(Universe universe, NodeDetails templateNode) {
     NodeDetails newNode = new NodeDetails();
     newNode.cloudInfo = new CloudSpecificInfo();
     newNode.ybPrebuiltAmi = templateNode.ybPrebuiltAmi;
@@ -2272,10 +2313,28 @@ public class PlacementInfoUtil {
 
     newNode.disksAreMountedByUUID = true;
     newNode.isMaster = templateNode.isMaster;
+    newNode.isTserver = templateNode.isTserver;
+
+    if (!newNode.isMaster && !newNode.isTserver) {
+      Cluster cluster = universe.getCluster(templateNode.placementUuid);
+      if (cluster == null) {
+        throw new IllegalStateException(
+            "Cluster for " + templateNode.nodeName + " node is not found");
+      }
+      if (templateNode.dedicatedTo != null && cluster.userIntent.dedicatedNodes) {
+        if (templateNode.dedicatedTo == ServerType.TSERVER) {
+          newNode.isTserver = true;
+        } else if (templateNode.dedicatedTo == ServerType.MASTER) {
+          newNode.isMaster = true;
+        }
+      } else {
+        newNode.isTserver = true;
+      }
+    }
     if (newNode.isMaster) {
       newNode.masterState = NodeDetails.MasterState.ToStart;
     }
-    newNode.isTserver = templateNode.isTserver;
+
     newNode.state = ToBeAdded;
 
     if (templateNode.cloudInfo == null) {

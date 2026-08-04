@@ -24,10 +24,12 @@
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/docdb_pgapi.h"
+#include "yb/docdb/docdb_pgapi_private.h"
 
 #include "yb/dockv/reader_projection.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/status_log.h"
 
 #include "yb/yql/pggate/pg_value.h"
 

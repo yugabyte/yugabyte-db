@@ -1767,7 +1767,7 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
 
   auto const tablet_peer_result = server_->tablet_manager()->CreateNewTablet(
       table_info, req->tablet_id(), partition, req->config(), req->colocated(), snapshot_schedules,
-      hosted_services);
+      hosted_services, req->target_storage_tier());
   if (PREDICT_FALSE(!tablet_peer_result.ok())) {
     status = tablet_peer_result.status();
     auto is_already_present = status.IsAlreadyPresent();
@@ -2395,9 +2395,8 @@ void TabletServiceAdminImpl::EnableDbConns(
 Status TabletServiceAdminImpl::DoEnableDbConns(
     const EnableDbConnsRequestPB* req, EnableDbConnsResponsePB* resp) {
   const std::string script = Format(
-      "SET yb_non_ddl_txn_for_sys_tables_allowed = true;\n"
-      "UPDATE pg_database SET datallowconn = true WHERE datname = $0",
-      pgwrapper::PqEscapeLiteral(req->target_db_name()));
+      "ALTER DATABASE $0 ALLOW_CONNECTIONS true",
+      pgwrapper::PqEscapeIdentifier(req->target_db_name()));
 
   auto local_hostport = VERIFY_RESULT(GetLocalPgHostPort());
   YsqlshRunner ysqlsh_runner =
@@ -2514,11 +2513,8 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   // TODO(jason): come up with a more efficient connection reuse method for tserver-postgres
   // communication.  As of D19621, connections are spawned each request for YSQL upgrade, index
   // backfill, and this.  Creating the connection has a startup cost.
-  auto res = pgwrapper::CreateInternalPGConnBuilder(
-                 server_->pgsql_proxy_bind_address(), "template1",
-                 pgwrapper::PGConnSettings::kDefaultUser,
-                 server_->GetSharedMemoryPostgresAuthKey(), modified_deadline)
-                 .Connect();
+  auto res = server_->CreateInternalPGConn(
+      "template1", kDefaultInternalPgUser, /*simple_query_protocol=*/false, modified_deadline);
   if (!res.ok()) {
     LOG_WITH_PREFIX_AND_FUNC(WARNING) << "failed to connect to local postgres: " << res.status();
     SetupErrorAndRespond(resp->mutable_error(), res.status(), &context);

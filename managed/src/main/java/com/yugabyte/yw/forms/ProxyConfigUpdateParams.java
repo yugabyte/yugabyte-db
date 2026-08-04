@@ -5,6 +5,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.ProxyConfig;
 import java.util.Map;
@@ -20,6 +21,7 @@ public class ProxyConfigUpdateParams extends UpgradeTaskParams {
     super.verifyParams(universe, isFirstTry);
     boolean changed = false;
     for (Cluster cluster : this.clusters) {
+      Util.validateSpecificationsIfPresent(cluster.userIntent.providerSpecifications, true);
       cluster.validateProxyConfig(cluster.userIntent, universe.getNodesInCluster(cluster.uuid));
       UserIntent curIntent = universe.getCluster(cluster.uuid).userIntent;
       UserIntent newIntent = cluster.userIntent;

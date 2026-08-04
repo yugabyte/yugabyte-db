@@ -674,6 +674,18 @@ class AwsCloud(AbstractCloud):
                 if instance.state['Name'] != 'stopping':
                     instance.stop()
                 instance.wait_until_stopped()
+
+            current_reservation = instance.capacity_reservation_specification
+            preference = current_reservation["CapacityReservationPreference"]
+            if preference == 'capacity-reservations-only':
+                # Removing reference to capacity reservation before stopping.
+                ec2_client = boto3.client('ec2', region_name=host_info["region"])
+                ec2_client.modify_instance_capacity_reservation_attributes(
+                    InstanceId=host_info["id"],
+                    CapacityReservationSpecification={
+                        'CapacityReservationPreference': 'open'
+                    }
+                )
         except ClientError as e:
             logging.error(e)
             raise YBOpsRuntimeError("Failed to stop instance {}: {}".format(host_info["id"], e))

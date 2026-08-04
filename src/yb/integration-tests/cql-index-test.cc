@@ -310,7 +310,7 @@ TEST_F(CqlIndexTest, WriteQueryStuckAndUpdateOnSameKey) {
   ASSERT_NOK(session.ExecuteQuery("INSERT INTO t(id, s) values(-1, 'test');"));
   // Validate that the stuck WriteQuery object block the followup update on same key
   // due to batch lock fail.
-  FLAGS_client_read_write_timeout_ms =
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) =
       narrow_cast<uint32_t>(kCassandraTimeOut.ToMilliseconds());
   int64_t failed_batch_lock = GetFailedBatchLockNum(cluster_.get());
   ASSERT_NOK(session.ExecuteQuery("UPDATE t SET s = 'txn' WHERE id = -1;"));

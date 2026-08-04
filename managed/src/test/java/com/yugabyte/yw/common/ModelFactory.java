@@ -351,6 +351,11 @@ public class ModelFactory {
       params.nodeDetailsSet.add(node2);
     }
     params.upsertPrimaryCluster(userIntent, null, pi);
+    // Test universes stand in for fully created universes; keep the default behavior of health
+    // checks and alert definitions covering them by pretending creation succeeded. Tests that
+    // specifically want to exercise the "creation failed" behavior can override this on the
+    // returned universe.
+    params.creationSucceeded = true;
     return Universe.create(params, customerId);
   }
 
@@ -386,6 +391,8 @@ public class ModelFactory {
     params.setYbcInstalled(enableYbc);
     params.nodePrefix = Util.getNodePrefix(customerId, universeName);
     params.upsertPrimaryCluster(userIntent, null, pi);
+    // Same rationale as createUniverse(): test universes stand in for fully created universes.
+    params.creationSucceeded = true;
     Universe u = Universe.create(params, customerId);
     Map<String, String> config = new HashMap<>();
     config.put(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString());
@@ -513,6 +520,48 @@ public class ModelFactory {
                 + " \"data\":"
                 + " {\"BACKUP_LOCATION\": \"https://foo.blob.core.windows.net/azurecontainer\","
                 + " \"AZURE_STORAGE_SAS_TOKEN\": \"AZ-TOKEN\"}}");
+    return CustomerConfig.createWithFormData(customer.getUuid(), formData);
+  }
+
+  public static CustomerConfig createOCIStorageConfig(
+      Customer customer, String configName, String backupLocation) {
+    JsonNode formData =
+        Json.parse(
+            "{\"configName\": \""
+                + configName
+                + "\", \"name\": \"OCI\","
+                + " \"type\": \"STORAGE\", \"data\": {"
+                + "\"BACKUP_LOCATION\": \""
+                + backupLocation
+                + "\","
+                + " \"OCI_REGION\": \"us-sanjose-1\","
+                + " \"OCI_NAMESPACE\": \"test-namespace\","
+                + " \"USE_OCI_IAM\": true}}");
+    return CustomerConfig.createWithFormData(customer.getUuid(), formData);
+  }
+
+  public static CustomerConfig createOCIStorageConfigWithS3Compat(
+      Customer customer, String configName) {
+    return createOCIStorageConfigWithS3Compat(customer, configName, "s3://test-bucket/prefix");
+  }
+
+  public static CustomerConfig createOCIStorageConfigWithS3Compat(
+      Customer customer, String configName, String backupLocation) {
+    JsonNode formData =
+        Json.parse(
+            "{\"configName\": \""
+                + configName
+                + "\", \"name\": \"OCI\","
+                + " \"type\": \"STORAGE\", \"data\": {"
+                + "\"BACKUP_LOCATION\": \""
+                + backupLocation
+                + "\","
+                + " \"OCI_S3_ACCESS_KEY_ID\": \"test-access-key\","
+                + " \"OCI_S3_SECRET_ACCESS_KEY\": \"test-secret-key\","
+                + " \"OCI_REGION\": \"us-sanjose-1\","
+                + " \"OCI_S3_HOST_BASE\":"
+                + " \"test-namespace.compat.objectstorage.us-sanjose-1.oraclecloud.com\","
+                + " \"USE_OCI_IAM\": false}}");
     return CustomerConfig.createWithFormData(customer.getUuid(), formData);
   }
 

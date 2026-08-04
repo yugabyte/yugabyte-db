@@ -177,6 +177,11 @@ public class SessionControllerTest {
     clients.setUrlResolver(new DefaultUrlResolver(true));
     final Config config = new Config(clients);
     config.setHttpActionAdapter(new PlatformHttpActionAdapter());
+    // This test does not extend PlatformGuiceApplicationBaseTest, so reset the shared embedded
+    // Postgres to a clean, freshly-migrated state before building the application (the base class
+    // does this in its @Before for the tests that extend it).
+    TestPostgres.ensureStarted();
+    TestPostgres.resetDatabase();
     app =
         new GuiceApplicationBuilder()
             .disable(GuiceModule.class)

@@ -9,27 +9,26 @@
  */
 
 import { FC } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useTranslation, Trans } from 'react-i18next';
 import { useFormContext, Controller } from 'react-hook-form';
 import { mui, YBInput } from '@yugabyte-ui-library/core';
 import { OtherAdvancedProps } from '../../steps/advanced-settings/dtos';
-import { YSQLFormSpec, YCQLFormSpec } from '../../steps/database-settings/dtos';
 import { getAccessiblePorts } from '../../utils/createUniversePayload';
 import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
 
 //icons
 import NextLineIcon from '../../../../../assets/next-line.svg';
-import InfoIcon from '../../../../../assets/info-new.svg';
+// import InfoIcon from '../../../../../assets/approved/info-new.svg';
 
 const { Box, styled, Typography } = mui;
 
 const MAX_PORT = 65535;
 interface DeploymentPortsProps {
-  disabled: boolean;
   providerCode: string;
-  ysql: YSQLFormSpec;
-  ycql: YCQLFormSpec;
+  ysql: boolean;
+  ycql: boolean;
   enableConnectionPooling?: boolean;
+  isEditMode?: boolean;
 }
 
 const PortContainer = styled(Box)(({ theme }) => ({
@@ -63,11 +62,11 @@ const StyledLabelIcon = styled(Box)(({ theme }) => ({
 }));
 
 export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
-  disabled,
   ysql,
   ycql,
   providerCode,
-  enableConnectionPooling
+  enableConnectionPooling,
+  isEditMode
 }) => {
   const { control } = useFormContext<OtherAdvancedProps>();
   const { t } = useTranslation('translation', {
@@ -75,11 +74,12 @@ export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
   });
 
   const PORT_GROUPS = getAccessiblePorts(
-    ysql.enable,
-    ycql.enable,
+    ysql,
+    ycql,
     providerCode,
     enableConnectionPooling,
-    t
+    t,
+    isEditMode
   );
 
   return (
@@ -91,9 +91,14 @@ export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
             <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '24px' }}>
               <NextLineIcon />
               <Box
-                sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '16px' }}
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'flex-start',
+                  gap: '16px'
+                }}
               >
-                {pg.PORTS_LIST.map((item) => (
+                {pg.PORTS_LIST.map((item: any) => (
                   <Controller
                     name={item.id}
                     render={({ field: { value, onChange } }) => {
@@ -104,10 +109,22 @@ export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
                           label={
                             <StyledLabelIcon>
                               <span>{t(item.id)}</span>
-                              <InfoIcon />
+                              {/* <InfoIcon /> */}
                             </StyledLabelIcon>
                           }
-                          helperText={'Default ' + Number(DEFAULT_COMMUNICATION_PORTS[item.id])}
+                          helperText={
+                            <>
+                              {'Default ' + Number(DEFAULT_COMMUNICATION_PORTS[item.id])}{' '}
+                              {item?.helperText ? (
+                                <>
+                                  <br />
+                                  <Trans i18nKey={`${item.id}Helper`} t={t} />
+                                </>
+                              ) : (
+                                <></>
+                              )}
+                            </>
+                          }
                           dataTestId={`deployment-ports-field-${item.id}`}
                           onBlur={(event) => {
                             let port =
@@ -117,6 +134,7 @@ export const DeploymentPortsField: FC<DeploymentPortsProps> = ({
                             onChange(port);
                           }}
                           defaultValue={DEFAULT_COMMUNICATION_PORTS[item.id]}
+                          disabled={item.disabled}
                           // trimWhitespace={false}
                         />
                       );

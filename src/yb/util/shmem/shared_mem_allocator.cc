@@ -28,6 +28,7 @@
 #include "yb/util/cast.h"
 #include "yb/util/crash_point.h"
 #include "yb/util/errno.h"
+#include "yb/util/format.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/logging.h"
 #include "yb/util/math_util.h"

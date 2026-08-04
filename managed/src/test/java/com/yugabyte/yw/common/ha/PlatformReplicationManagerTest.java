@@ -41,6 +41,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.operator.OperatorResourceRestorer;
+import com.yugabyte.yw.common.pa.EmbeddedCollectorInitializer;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.NodeAgent;
@@ -86,6 +87,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
 
   @Mock OperatorResourceRestorer mockOperatorResourceRestorer;
 
+  @Mock EmbeddedCollectorInitializer mockEmbeddedCollectorInitializer;
+
   private static final String STORAGE_PATH = "yb.storage.path";
   private static final String PG_DUMP_PATH = "/tmp/pg_dump";
   private static final String PG_RESTORE_PATH = "/tmp/pg_restore";
@@ -108,7 +111,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
                 mockPrometheusConfigHelper,
                 mockConfigHelper,
                 runtimeConfGetter,
-                mockOperatorResourceRestorer));
+                mockOperatorResourceRestorer,
+                mockEmbeddedCollectorInitializer));
   }
 
   private void setupConfig(
@@ -152,8 +156,9 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       expectedCommandArgs.add("create");
       expectedCommandArgs.add("--exclude_prometheus");
       expectedCommandArgs.add("--exclude_releases");
-      expectedCommandArgs.add("--exclude_pa_database");
+      // HA sync backup includes PA "configuration" tables via --include_pa_config_only so
       expectedCommandArgs.add("--exclude_pa_files");
+      expectedCommandArgs.add("--include_pa_config_only");
       expectedCommandArgs.add("--disable_version_check");
       if (isYbaInstaller) {
         expectedCommandArgs.add("--pg_dump_path");
@@ -237,6 +242,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
         .thenReturn(new ShellResponse());
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
     when(runtimeConfGetter.getStaticConf()).thenReturn(mockConfig);
+    when(mockConfig.getString("yb.pa.url")).thenReturn("http://localhost:9000");
     when(runtimeConfGetter.getGlobalConf(eq(GlobalConfKeys.disablePlatformHARestoreTransaction)))
         .thenReturn(false);
     doCallRealMethod()
@@ -251,7 +257,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
             mockPrometheusConfigHelper,
             mockConfigHelper,
             runtimeConfGetter,
-            mockOperatorResourceRestorer);
+            mockOperatorResourceRestorer,
+            mockEmbeddedCollectorInitializer);
 
     List<String> expectedCommandArgs =
         getExpectedPlatformBackupCommandArgs(
@@ -307,7 +314,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
                   mockPrometheusConfigHelper,
                   mockConfigHelper,
                   runtimeConfGetter,
-                  mockOperatorResourceRestorer));
+                  mockOperatorResourceRestorer,
+                  mockEmbeddedCollectorInitializer));
 
       List<File> backups = backupManager.listBackups(testUrl);
       assertEquals(3, backups.size());

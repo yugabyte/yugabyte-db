@@ -9,7 +9,6 @@ plugins {
 }
 
 group = "com.yugabyte"
-version = "0.0.1-SNAPSHOT"
 description = "API proxy for BYOC"
 
 configurations {

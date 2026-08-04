@@ -34,6 +34,8 @@
 #include "yb/util/shmem/interprocess_semaphore.h"
 #include "yb/util/shmem/shared_mem_segment.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/uuid.h"
@@ -435,7 +437,10 @@ std::byte* SharedExchange::Obtain(size_t required_size) {
 }
 
 Status SharedExchange::SendRequest() {
-  return header_.SendRequest(failed_previous_request_, last_size_);
+  RETURN_NOT_OK(header_.SendRequest(failed_previous_request_, last_size_));
+  failed_previous_request_ = false;
+  return Status::OK();
+
 }
 
 bool SharedExchange::ResponseReady() {

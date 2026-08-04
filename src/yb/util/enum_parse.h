@@ -24,6 +24,7 @@
 
 #include "yb/util/enums.h"
 #include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 

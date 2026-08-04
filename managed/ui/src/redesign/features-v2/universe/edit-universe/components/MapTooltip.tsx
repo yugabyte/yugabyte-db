@@ -8,8 +8,8 @@ import { RegionsAndNodesFormType } from '../../geo-partition/add/AddGeoPartition
 import { isDefinedNotNull } from '@app/utils/ObjectUtils';
 import { ClusterSpecClusterType, PlacementAZ } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import './MapTooltip.css';
-import pluralize from 'pluralize';
 import { AZ_NOT_PREFERRED, AZ_PREFFERED_HIGHEST_RANK } from '../../create-universe/helpers/constants';
+import { isKubernetesUniverse, useEditUniverseContext } from '../EditUniverseUtils';
 
 const { styled, Typography, Divider } = mui;
 
@@ -68,10 +68,11 @@ const StyledDivider = styled(Divider)(({ theme }) => ({
   height: '1px'
 }));
 
-const RegionList: FC<{ regions: RegionsAndNodesFormType['regions']; t: TFunction }> = ({
-  regions,
-  t
-}) => {
+const RegionList: FC<{
+  regions: RegionsAndNodesFormType['regions'];
+  t: TFunction;
+  isK8s: boolean;
+}> = ({ regions, t, isK8s }) => {
   return (
     <>
       {regions?.map((region) => {
@@ -96,7 +97,9 @@ const RegionList: FC<{ regions: RegionsAndNodesFormType['regions']; t: TFunction
                   {zone.name}
                 </Typography>
                 <StyledNodeCount>
-                  {pluralize(t('totalNodes', { total: (zone as PlacementAZ).num_nodes_in_az ?? AZ_NOT_PREFERRED }), (zone as PlacementAZ).num_nodes_in_az ?? 0)}
+                  {t(isK8s ? 'totalPods' : 'totalNodes', {
+                    total: (zone as PlacementAZ).num_nodes_in_az ?? 0
+                  })}
                 </StyledNodeCount>
                 {isDefinedNotNull(zone.leader_preference) && zone.leader_preference! > AZ_NOT_PREFERRED && (
                   <YBSmartStatus
@@ -125,6 +128,8 @@ export const MapRegionTooltip: FC<MapRegionTooltipProps> = ({ regions, partition
   const regionsByType = groupBy(regions, 'clusterType');
 
   const { t } = useTranslation('translation', { keyPrefix: 'editUniverse' });
+  const { universeData } = useEditUniverseContext();
+  const isK8s = isKubernetesUniverse(universeData!);
   return (
     <StyledTooltipContainer>
       {partitionName && (
@@ -136,9 +141,17 @@ export const MapRegionTooltip: FC<MapRegionTooltipProps> = ({ regions, partition
       <StyledHeader>
         {regions[0]?.name} ({regions[0]?.code})
       </StyledHeader>
-      <RegionList regions={regionsByType[ClusterSpecClusterType.PRIMARY] ?? []} t={t} />
+      <RegionList
+        regions={regionsByType[ClusterSpecClusterType.PRIMARY] ?? []}
+        t={t}
+        isK8s={isK8s}
+      />
       {regionsByType[ClusterSpecClusterType.ASYNC] && <StyledDivider />}
-      <RegionList regions={regionsByType[ClusterSpecClusterType.ASYNC] ?? []} t={t} />
+      <RegionList
+        regions={regionsByType[ClusterSpecClusterType.ASYNC] ?? []}
+        t={t}
+        isK8s={isK8s}
+      />
     </StyledTooltipContainer>
   );
 };

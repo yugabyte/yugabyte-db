@@ -16,7 +16,11 @@ properties:
       $ref: "./ClusterEditSpec.yaml"
     maxItems: 16
     minItems: 1
+  networking_spec:
+    $ref: "./UniverseNetworkingSpec.yaml"
   expected_universe_version:
     description: Expected universe version. Set to -1 to ignore version checking.
     type: integer
     format: int32
+  universe_settings:
+    $ref: "./UniverseSettings.yaml"

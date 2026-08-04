@@ -19,7 +19,10 @@
 
 #include "yb/server/hybrid_clock.h"
 
+#include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/format.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"

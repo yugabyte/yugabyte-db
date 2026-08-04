@@ -17,7 +17,7 @@ import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.YBTestRunner;
-import org.yb.util.BuildTypeUtil;
+import org.yb.util.RequiresReleaseBuild;
 
 /**
  * Runs the pg_regress test suite on YB code.
@@ -34,17 +34,21 @@ public class TestPgRegressParallelPlans extends BasePgRegressTest {
     Map<String, String> flags = super.getTServerFlags();
     // TODO(#26734): Enable transactional DDL (& table locks) once savepoint for DDLs are supported.
     flags.put("ysql_yb_ddl_transaction_block_enabled", "false");
+    // Concurrent DDL requires object locking, so keep the two flags consistent.
     flags.put("enable_object_locking_for_table_locks", "false");
+    flags.put("ysql_enable_concurrent_ddl", "false");
+    flags.merge("allowed_preview_flags_csv", "ysql_enable_concurrent_ddl",
+        (e, a) -> e + "," + a);
     // (Auto-Analyze #28057) Query plans change after enabling auto analyze.
     flags.put("ysql_enable_auto_analyze", "false");
     flags.put("yb_enable_read_committed_isolation", "false");
     return flags;
   }
 
+  // Complex parallel query plans may timeout on slow builds
   @Test
+  @RequiresReleaseBuild
   public void schedule() throws Exception {
-    if (!BuildTypeUtil.isSanitizerBuild()) {
-      runPgRegressTest("yb_parallel_plans_schedule");
-    }
+    runPgRegressTest("yb_parallel_plans_schedule");
   }
 }

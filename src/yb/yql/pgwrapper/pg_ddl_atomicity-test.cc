@@ -40,6 +40,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_thread_holder.h"
@@ -82,6 +83,14 @@ class PgDdlAtomicityTest : public PgDdlAtomicityTestBase {
         Format("--ysql_yb_ddl_transaction_block_enabled=$0", TransactionalDdlEnabled()));
     options->extra_tserver_flags.push_back(
         Format("--enable_object_locking_for_table_locks=$0", TableLocksEnabled()));
+    // Concurrent DDL requires object locking, so when object locking is disabled, disable
+    // concurrent DDL too; otherwise the cross-flag validator would FATAL if concurrent DDL defaults
+    // on. When object locking is enabled, leave concurrent DDL at its default.
+    if (!TableLocksEnabled()) {
+      options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
+      AppendFlagToAllowedPreviewFlagsCsv(
+          options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    }
 
   }
 
@@ -1031,6 +1040,14 @@ class PgDdlAtomicitySanityTestWithTableLocks : public PgDdlAtomicitySanityTest,
     PgDdlAtomicitySanityTest::UpdateMiniClusterOptions(options);
     options->extra_tserver_flags.push_back(
         yb::Format("--enable_object_locking_for_table_locks=$0", TableLocksEnabled()));
+    // Concurrent DDL requires object locking, so when object locking is disabled, disable
+    // concurrent DDL too; otherwise the cross-flag validator would FATAL if concurrent DDL defaults
+    // on. When object locking is enabled, leave concurrent DDL at its default.
+    if (!TableLocksEnabled()) {
+      options->extra_tserver_flags.push_back("--ysql_enable_concurrent_ddl=false");
+      AppendFlagToAllowedPreviewFlagsCsv(
+          options->extra_tserver_flags, "ysql_enable_concurrent_ddl");
+    }
     options->extra_tserver_flags.push_back(
         yb::Format("--ysql_yb_ddl_transaction_block_enabled=$0", TableLocksEnabled()));
   }
@@ -1654,6 +1671,23 @@ TEST_P(PgLibPqTableRewrite,
     ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "false"));
   }
   ASSERT_OK(WaitForDroppedTablesCleanup());
+
+  // Because rollback was paused, the failed DDLs returned before master reverted the DocDB
+  // metadata on the surviving tables. Those reverts are AlterTables that bump the tablet schema
+  // version and may run after the orphan drops, so a read can hit a retryable "schema version
+  // mismatch" (40001). Wait until reads stop seeing it.
+  for (const auto& table_name : {kTable, kTable2}) {
+    ASSERT_OK(LoggedWaitFor([&conn, &table_name]() -> Result<bool> {
+      const auto res = conn.FetchRows<int32_t, int32_t>(Format("SELECT * FROM $0", table_name));
+      if (res.ok()) {
+        return true;
+      }
+      if (IsRetryable(res.status())) {
+        return false;
+      }
+      return res.status();
+    }, MonoDelta::FromSeconds(60), Format("Wait for $0 schema version to converge", table_name)));
+  }
 
   // Verify the data.
   ASSERT_OK(conn.ExecuteFormat(

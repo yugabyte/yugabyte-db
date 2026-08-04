@@ -65,10 +65,12 @@ for key in "${!limits[@]}"; do
     check_ulimit "$key_name" "${limits[$key]}"
 done
 
-# Determine the PLATFORM_ID
+# Determine the PLATFORM_ID e.g platform:el8
 platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"' || echo "unknown")
+# Extract the EL version from the platform_id e.g 8
+platform_el_version=$(echo "$platform_id" | grep -oP '(?<=platform:el)\d+(?=\D|$)' || echo "0")
 
-if [[ "$platform_id" == "platform:el8" ]] || [[ "$platform_id" == "platform:el9" ]]; then
+if [[ "$platform_el_version" -ge 8 ]]; then
     # Verify DefaultLimitNOFILE in systemd configuration files
     verify_systemd_conf /etc/systemd/system.conf "DefaultLimitNOFILE={{ fd_limit }}"
     verify_systemd_conf /etc/systemd/user.conf "DefaultLimitNOFILE={{ fd_limit }}"
@@ -100,16 +102,18 @@ else
         (expected: $kernel_core_pattern)"
 fi
 
-platform_id=$(grep -oP '(?<=^PLATFORM_ID=).+' /etc/os-release | tr -d '"' || echo "unknown")
-if [[ "$platform_id" == "platform:el8" ]]; then
-    # Check if selinux module can be imported
-    /usr/bin/python3 -c "import selinux" 2>/dev/null
-    if [ $? -eq 0 ]; then
-        echo "libselinux bindings are correctly working for the system's default Python."
-        add_result "python libselinux check" "PASS" ""
-    else
-        echo "libselinux bindings are NOT installed or working for the system's default Python."
-        add_result "python libselinux check" "FAIL" "cannot import selinux in system python3"
+if [[ "$platform_el_version" -ge 8 ]]; then
+    se_linux_status=$(getenforce 2>/dev/null || echo "Disabled")
+    if [[ "${se_linux_status}" == "Enforcing" ]]; then
+        echo "SELinux is used, checking if selinux module can be imported"
+        /usr/bin/python3 -c "import selinux" 2>/dev/null
+        if [ $? -eq 0 ]; then
+            echo "libselinux bindings are correctly working for the system's default Python."
+            add_result "python libselinux check" "PASS" ""
+        else
+            echo "libselinux bindings are NOT installed or working for the system's default Python."
+            add_result "python libselinux check" "FAIL" "cannot import selinux in system python3"
+        fi
     fi
 fi
 

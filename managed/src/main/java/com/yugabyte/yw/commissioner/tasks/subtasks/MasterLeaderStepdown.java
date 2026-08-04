@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.LeaderStepDownResponse;
-import org.yb.client.YBClient;
+import org.yb.client.YBClientApi;
 
 @Slf4j
 public class MasterLeaderStepdown extends UniverseTaskBase {
@@ -54,7 +54,7 @@ public class MasterLeaderStepdown extends UniverseTaskBase {
     // Get the master addresses.
     Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
 
-    try (YBClient client = ybService.getUniverseClient(universe)) {
+    try (YBClientApi client = ybService.getUniverseClient(universe)) {
       String masterLeaderUUID = client.getLeaderMasterUUID();
       boolean result =
           doWithConstTimeout(
