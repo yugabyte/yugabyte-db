@@ -52,6 +52,10 @@ void TEST_SetOtelCollectorEndpoint(const std::string& endpoint);
 
 trace::SpanContext GetTraceparentSpanContext(const char* traceparent);
 
+// Serializes the active span into a W3C traceparent string via the global propagator (inverse of
+// GetTraceparentSpanContext); hands the context to another process. Empty when disabled/no context.
+std::string GetActiveTraceparent();
+
 // The active span's context, or nullopt if there is no active span.
 std::optional<trace::SpanContext> GetActiveSpanContext();
 
