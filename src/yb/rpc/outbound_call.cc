@@ -379,6 +379,33 @@ Status OutboundCall::SetRequestParam(
     metadata_size += 1; // add tag size of RequestHeader::kMetadataFieldNumber
   }
 
+  // Distributed-trace context: extract the outbound span's SpanContext (if any) and pre-compute the
+  // serialized size of the TraceContextPB submessage so it can be folded into the header length.
+  size_t trace_context_size = 0;
+  size_t trace_context_message_size = 0;
+  uint32_t version_and_flags = 0;
+  opentelemetry::trace::TraceId trace_id;
+  opentelemetry::trace::SpanId span_id;
+  if (otel_span_) {
+    auto span_context = otel_span_->GetContext();
+    if (span_context.IsValid()) {
+      trace_id = span_context.trace_id();
+      span_id = span_context.span_id();
+      auto trace_flags = span_context.trace_flags();
+      // TraceContextPB submessage layout:
+      // - trace_id_hi: 1 byte tag + 8 bytes fixed64
+      // - trace_id_lo: 1 byte tag + 8 bytes fixed64
+      // - span_id:     1 byte tag + 8 bytes fixed64
+      // - version_and_flags: 1 byte tag + varint (size depends on the combined value)
+      constexpr uint32_t kVersion = 0;
+      version_and_flags = (kVersion << 8) | trace_flags.flags();
+      size_t version_and_flags_varint_size = Output::VarintSize32(version_and_flags);
+      trace_context_message_size = 3 * 9 + 1 + version_and_flags_varint_size;
+      trace_context_size =
+          1 + Output::VarintSize64(trace_context_message_size) + trace_context_message_size;
+    }
+  }
+
   auto use_crc = FLAGS_rpc_enable_crc;
   size_t header_pb_len = 1 + call_id_size + // int32 call_id = 1
                          serialized_remote_method.size() + // RemoteMethodPB remote_method = 2
@@ -387,6 +414,7 @@ Status OutboundCall::SetRequestParam(
   if (pool_tag) {
     header_pb_len += 1 + Output::VarintSize64(pool_tag); // uint64 pool_tag = 7
   }
+  header_pb_len += trace_context_size; // TraceContext trace_context = 8
   if (use_crc) {
     header_pb_len += 1 + sizeof(uint32_t); // fixed32 crc = 15
   }
@@ -436,6 +464,33 @@ Status OutboundCall::SetRequestParam(
   if (pool_tag) {
     dst = CodedOutputStream::WriteTagToArray(RequestHeader::kPoolTagFieldNumber << 3, dst);
     dst = Output::WriteVarint64ToArray(pool_tag, dst);
+  }
+
+  if (trace_context_size > 0) {
+    // Write the TraceContextPB submessage. Field numbers match yb.rpc.TraceContextPB in
+    // rpc_header.proto.
+    // The 16-byte trace id splits into two big-endian 64-bit halves; the span id is one big-endian
+    // 64-bit.
+    dst = Output::WriteTagToArray(
+        (RequestHeader::kTraceContextFieldNumber << 3) | WireFormatLite::WIRETYPE_LENGTH_DELIMITED,
+        dst);
+    dst = Output::WriteVarint32ToArray(narrow_cast<uint32_t>(trace_context_message_size), dst);
+
+    dst = Output::WriteTagToArray(
+        (TraceContextPB::kTraceIdHiFieldNumber << 3) | WireFormatLite::WIRETYPE_FIXED64, dst);
+    dst = Output::WriteLittleEndian64ToArray(BigEndian::Load64(trace_id.Id().data()), dst);
+
+    dst = Output::WriteTagToArray(
+        (TraceContextPB::kTraceIdLoFieldNumber << 3) | WireFormatLite::WIRETYPE_FIXED64, dst);
+    dst = Output::WriteLittleEndian64ToArray(BigEndian::Load64(trace_id.Id().data() + 8), dst);
+
+    dst = Output::WriteTagToArray(
+        (TraceContextPB::kSpanIdFieldNumber << 3) | WireFormatLite::WIRETYPE_FIXED64, dst);
+    dst = Output::WriteLittleEndian64ToArray(BigEndian::Load64(span_id.Id().data()), dst);
+
+    dst = Output::WriteTagToArray(
+        (TraceContextPB::kVersionAndFlagsFieldNumber << 3) | WireFormatLite::WIRETYPE_VARINT, dst);
+    dst = Output::WriteVarint32ToArray(version_and_flags, dst);
   }
 
   // CRC should be at the end of header, otherwise adjust CRC filling logic below.
