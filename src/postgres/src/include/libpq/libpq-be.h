@@ -188,6 +188,13 @@ typedef struct Port
 	bool		yb_is_ssl_enabled_in_logical_conn;
 
 	/*
+	 * YB: W3C traceparent from the "yb_dist_traceparent" startup-packet param
+	 * (set by the tserver). Root span for backend init; read in InitPostgres.
+	 * NULL when absent.
+	 */
+	char	   *yb_dist_traceparent;
+
+	/*
 	 * Authenticated identity.  The meaning of this identifier is dependent on
 	 * hba->auth_method; it is the identity (if any) that the user presented
 	 * during the authentication cycle, before they were assigned a database
