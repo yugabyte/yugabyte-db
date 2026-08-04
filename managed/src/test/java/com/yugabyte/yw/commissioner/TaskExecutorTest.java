@@ -583,13 +583,24 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
 
   @Test
   public void testRunnableTaskCallstack() {
-    ITask task = mockTaskCommon(false);
-    RunnableTask taskRunner = taskExecutor.createRunnableTask(task, null);
-    String[] callstack = taskRunner.getCreatorCallstack();
-    assertThat(
-        callstack[0],
-        containsString("com.yugabyte.yw.commissioner.TaskExecutor.createRunnableTask"));
-    assertThat(callstack.length, lessThanOrEqualTo(16));
+    // The creator callstack is only captured when DEBUG is enabled for the TaskExecutor logger
+    // (see TaskExecutor.RunnableTask); logback-test.xml pins that logger to WARN to cut noise, so
+    // enable DEBUG just for this test and restore it afterwards.
+    ch.qos.logback.classic.Logger taskExecutorLogger =
+        (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(TaskExecutor.class);
+    ch.qos.logback.classic.Level previousLevel = taskExecutorLogger.getLevel();
+    taskExecutorLogger.setLevel(ch.qos.logback.classic.Level.DEBUG);
+    try {
+      ITask task = mockTaskCommon(false);
+      RunnableTask taskRunner = taskExecutor.createRunnableTask(task, null);
+      String[] callstack = taskRunner.getCreatorCallstack();
+      assertThat(
+          callstack[0],
+          containsString("com.yugabyte.yw.commissioner.TaskExecutor.createRunnableTask"));
+      assertThat(callstack.length, lessThanOrEqualTo(16));
+    } finally {
+      taskExecutorLogger.setLevel(previousLevel);
+    }
   }
 
   @Test

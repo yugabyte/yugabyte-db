@@ -76,6 +76,13 @@ import play.inject.guice.GuiceApplicationBuilder;
 @RunWith(MockitoJUnitRunner.class)
 public class CreateBackupTest extends CommissionerBaseTest {
 
+  // Verified safe to reuse the application across this class' methods (green strict-stubs + green
+  // assertions) despite the strict MockitoJUnitRunner. See reuseAppDespiteStrictMockito().
+  @Override
+  protected boolean reuseAppDespiteStrictMockito() {
+    return true;
+  }
+
   private Universe defaultUniverse;
   private CustomerConfig storageConfig;
   private Users defaultUser;

@@ -62,6 +62,8 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
@@ -87,6 +89,26 @@ public class NodeAgentClientTest extends FakeDBApplication {
   private NodeAgentImplBase mockServiceImpl;
   private RuntimeConfGetter mockConfGetter;
   private volatile AsyncTaskData asyncTaskData;
+
+  // Use an isolated storage path so node-agent certs written on disk during register() cannot be
+  // clobbered by other test classes sharing the same forked JVM (all default to yb.storage.path
+  // "/tmp", so they would otherwise share /tmp/node-agent/certs).
+  private final Path isolatedStorageDir = createIsolatedStorageDir();
+
+  private static Path createIsolatedStorageDir() {
+    try {
+      return Files.createTempDirectory("na-client-test-");
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  @Override
+  protected play.Application provideApplication() {
+    Map<String, Object> additionalConfiguration = new HashMap<>();
+    additionalConfiguration.put("yb.storage.path", isolatedStorageDir.toString());
+    return provideApplication(additionalConfiguration);
+  }
 
   // Graceful shutdown of the registered servers and their channels after the tests.
   @Rule public final GrpcCleanupRule grpcCleanup = new GrpcCleanupRule();

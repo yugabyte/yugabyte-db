@@ -12,6 +12,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
@@ -80,7 +81,10 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.nodeAgentPollerInterval)))
         .thenReturn(Duration.ofSeconds(3));
-    when(mockFileHelperService.createTempFile(anyString(), anyString()))
+    // Defensive setUp stub only exercised by a subset of the tests; declared lenient so
+    // MockitoJUnitRunner's strict-stub check does not fail on runs whose ordering leaves it unused.
+    lenient()
+        .when(mockFileHelperService.createTempFile(anyString(), anyString()))
         .thenReturn(Paths.get("/tmp/tmpfile.sh"));
     certificateHelper = new CertificateHelper(mockConfGetter);
     nodeAgentManager =

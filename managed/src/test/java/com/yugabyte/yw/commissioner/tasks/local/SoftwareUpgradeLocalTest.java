@@ -54,15 +54,11 @@ public class SoftwareUpgradeLocalTest extends LocalProviderUniverseTestBase {
     addRelease(PG_11_DB_VERSION, PG_11_DB_VERSION_URL);
     addRelease(PG_15_DB_VERSION, PG_15_DB_VERSION_URL);
     localNodeManager.addVersionBinPath(
-        OLD_VERSION_WITH_ROLLBACK,
-        baseDir + "/yugabyte/yugabyte-" + OLD_VERSION_WITH_ROLLBACK + "/bin");
-    localNodeManager.addVersionBinPath(
-        OLD_DB_VERSION, baseDir + "/yugabyte/yugabyte-" + OLD_DB_VERSION + "/bin");
+        OLD_VERSION_WITH_ROLLBACK, deriveYBBinPath(OLD_VERSION_WITH_ROLLBACK));
+    localNodeManager.addVersionBinPath(OLD_DB_VERSION, deriveYBBinPath(OLD_DB_VERSION));
 
-    localNodeManager.addVersionBinPath(
-        PG_15_DB_VERSION, baseDir + "/yugabyte/yugabyte-" + PG_15_DB_VERSION + "/bin");
-    localNodeManager.addVersionBinPath(
-        PG_11_DB_VERSION, baseDir + "/yugabyte/yugabyte-" + PG_11_DB_VERSION + "/bin");
+    localNodeManager.addVersionBinPath(PG_15_DB_VERSION, deriveYBBinPath(PG_15_DB_VERSION));
+    localNodeManager.addVersionBinPath(PG_11_DB_VERSION, deriveYBBinPath(PG_11_DB_VERSION));
 
     runtimeConfService.setKey(
         customer.getUuid(),

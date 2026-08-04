@@ -120,11 +120,34 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public Application provideApplication(
       Function<GuiceApplicationBuilder, GuiceApplicationBuilder> overrides) {
     GuiceApplicationBuilder guiceApplicationBuilder =
-        new GuiceApplicationBuilder().disable(GuiceModule.class);
+        new GuiceApplicationBuilder().disable(GuiceModule.class).configure(testDatabase());
+    // Apply caller-provided overrides AFTER the default test database config so a caller can point
+    // the application at a different database (e.g. an isolated one for a secondary YBA instance).
     guiceApplicationBuilder = overrides.apply(guiceApplicationBuilder);
+    return applyMockOverrides(guiceApplicationBuilder).build();
+  }
+
+  /**
+   * Builds a throwaway application whose only purpose is to migrate the shared embedded Postgres
+   * {@code yba_template} database exactly once (see {@link TestPostgres}). It is wired identically
+   * to a normal test application (same mock overrides) but takes an explicit database config
+   * instead of {@link TestHelper#testDatabase()} - crucially avoiding the reentrancy where
+   * testDatabase() calls back into {@link TestPostgres#ensureStarted()} while it is still
+   * initializing. Some migrations run through Ebean's default server (e.g. {@code
+   * R__Sync_System_Roles}), so the template must be migrated by a real application (Ebean's default
+   * server pointed at the template) rather than by a standalone flyway run.
+   */
+  public static Application buildMigrationApp(Map<String, Object> dbConfig) {
+    FakeDBApplication fake = new FakeDBApplication();
+    GuiceApplicationBuilder builder =
+        new GuiceApplicationBuilder().disable(GuiceModule.class).configure(dbConfig);
+    return fake.applyMockOverrides(builder).build();
+  }
+
+  private GuiceApplicationBuilder applyMockOverrides(
+      GuiceApplicationBuilder guiceApplicationBuilder) {
     return configureApplication(
             guiceApplicationBuilder
-                .configure(testDatabase())
                 .overrides(bind(ApiHelper.class).toInstance(mockApiHelper))
                 .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
                 .overrides(bind(TaskQueue.class).toInstance(mockTaskQueue))
@@ -180,8 +203,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
         .overrides(bind(FileHelperService.class).toInstance(mockFileHelperService))
         .overrides(bind(XClusterScheduler.class).toInstance(mockXClusterScheduler))
         .overrides(bind(SoftwareUpgradeHelper.class).toInstance(mockSoftwareUpgradeHelper))
-        .overrides(bind(YsqlQueryExecutor.class).toInstance(mockYsqlQueryExecutor))
-        .build();
+        .overrides(bind(YsqlQueryExecutor.class).toInstance(mockYsqlQueryExecutor));
   }
 
   protected boolean isSwaggerEnabled() {
