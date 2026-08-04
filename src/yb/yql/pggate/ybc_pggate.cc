@@ -29,6 +29,8 @@
 #include "yb/client/tablet_server.h"
 
 #include "yb/common/common_flags.h"
+#include "yb/common/colocated_util.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/common/jsonb.h"
 #include "yb/common/pg_types.h"
@@ -1293,6 +1295,19 @@ YbcStatus YBCPgGetTableDiskSize(YbcPgOid table_relfilenode_oid,
      *size = value.table_size;
      *num_missing_tablets = value.num_missing_tablets;
   });
+}
+
+YbcStatus YBCPgGetTablegroupDiskSize(YbcPgOid tablegroup_oid,
+                                     YbcPgOid database_oid,
+                                     bool is_database_colocated,
+                                     int64_t *size,
+                                     int32_t *num_missing_tablets) {
+  return ExtractValueFromResult(
+      pgapi->GetTablegroupDiskSize(database_oid, tablegroup_oid, is_database_colocated),
+      [size, num_missing_tablets](auto value) {
+        *size = value.table_size;
+        *num_missing_tablets = value.num_missing_tablets;
+      });
 }
 
 // Index Operations -------------------------------------------------------------------------------
@@ -3170,7 +3185,13 @@ YbcStatus YBCTabletsMetadata(YbcPgGlobalTabletsDescriptor** tablets, size_t* cou
             ? YBCPAllocStdString(tablet_metadata.tablet_state())
             : nullptr,
         .pg_table_oid = tablet_metadata.has_pg_table_oid() ? tablet_metadata.pg_table_oid()
-                                                           : kPgInvalidOid
+                                                           : kPgInvalidOid,
+        .has_disk_size = tablet_metadata.has_sst_files_disk_size() ||
+                         tablet_metadata.has_wal_files_disk_size(),
+        .sst_files_disk_size = tablet_metadata.sst_files_disk_size(),
+        .wal_files_disk_size = tablet_metadata.wal_files_disk_size(),
+        .uncompressed_sst_files_disk_size = tablet_metadata.uncompressed_sst_files_disk_size(),
+        .vector_index_disk_size = tablet_metadata.vector_index_disk_size()
       };
       ++dest;
     }
