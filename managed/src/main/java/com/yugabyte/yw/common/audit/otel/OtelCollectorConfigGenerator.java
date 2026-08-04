@@ -1022,33 +1022,37 @@ public class OtelCollectorConfigGenerator {
   private List<OtelCollectorConfigFormat.MetricRelabelConfig> createYugabyteMetricRelabelConfigs() {
     List<OtelCollectorConfigFormat.MetricRelabelConfig> configs = new ArrayList<>();
 
-    // Add yugabyte metric relabel configs
+    // Add yugabyte metric relabel configs.
+    // Capture-group references must be written as "$$N", not "$N". The otel collector expands
+    // "$N" as an environment variable while loading the config, which resolves to an empty
+    // string, and Prometheus then drops any label whose replacement expanded to empty. Writing
+    // "$$N" makes the collector emit a literal "$N" for the Prometheus relabeller.
     configs.add(
-        createMetricRelabelConfig(ImmutableList.of("__name__"), "(.*)", "saved_name", "$1"));
+        createMetricRelabelConfig(ImmutableList.of("__name__"), "(.*)", "saved_name", "$$1"));
     configs.add(
         createMetricRelabelConfig(
             ImmutableList.of("__name__"),
             "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(.*)",
             "server_type",
-            "$1"));
+            "$$1"));
     configs.add(
         createMetricRelabelConfig(
             ImmutableList.of("__name__"),
             "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(.*)",
             "service_type",
-            "$2"));
+            "$$2"));
     configs.add(
         createMetricRelabelConfig(
             ImmutableList.of("__name__"),
             "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)?",
             "service_method",
-            "$3"));
+            "$$3"));
     configs.add(
         createMetricRelabelConfig(
             ImmutableList.of("__name__"),
             "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)?",
             "__name__",
-            "rpc_latency$4"));
+            "rpc_latency$$4"));
 
     return configs;
   }
@@ -1206,7 +1210,7 @@ public class OtelCollectorConfigGenerator {
         createMetricRelabelConfig(
             ImmutableList.of("__name__"), "node_boot_time", "__name__", "node_boot_time_seconds"));
     configs.add(
-        createMetricRelabelConfig(ImmutableList.of("__name__"), "(.*)", "saved_name", "$1"));
+        createMetricRelabelConfig(ImmutableList.of("__name__"), "(.*)", "saved_name", "$$1"));
 
     return configs;
   }
