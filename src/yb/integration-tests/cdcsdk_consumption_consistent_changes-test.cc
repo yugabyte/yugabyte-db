@@ -5600,5 +5600,51 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestAbortedTxnDoesntMoveCheckpoin
   ASSERT_GT(data.op_id, row.op_id);
 }
 
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestNoLossWithInvalidConsistentStreamSafeTime) {
+  // Disabling the implicit dynamic table addition in this test to make the outcome of each
+  // GetConsistentChanges call deterministic.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_implicit_dynamic_tables_logical_replication) =
+      false;
+
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* cdc_populate_safepoint_record */));
+
+  // Create two single tablet tables.
+  auto table_1 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "table_1"));
+  auto table_2 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "table_2"));
+
+  // Create a replication slot.
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+
+  ASSERT_OK(InitVirtualWAL(stream_id, {table_1.table_id(), table_2.table_id()}));
+
+  // This GetConsistentChanges call would bring in safepoint records from both the tablets. One of
+  // the safepoint will be popped and its tablet queue will be emptied resulting in the end of this
+  // GetConsistentChanges call.
+  auto change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records().size(), 0);
+
+  // The next GetConsistentChanges call with TEST_cdc_make_consistent_stream_safe_time_invalid would
+  // return a safepoint record with invalid safe time without the fix for #32847. With the fix, the
+  // underlying GetChanges call would be a No op, i.e it will not move the opid / cdcsdk_safe_time.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_make_consistent_stream_safe_time_invalid) = true;
+  change_resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+  ASSERT_EQ(change_resp.cdc_sdk_proto_records().size(), 0);
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("INSERT INTO table_1 values (1,1)"));
+  ASSERT_OK(conn.Execute("INSERT INTO table_2 values (2,2)"));
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  // The next GetConsistentChanges calls without TEST_cdc_make_consistent_stream_safe_time_invalid
+  // should stream the above txn fully without missing records.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_cdc_make_consistent_stream_safe_time_invalid) = false;
+  ASSERT_OK(GetAllPendingTxnsFromVirtualWAL(
+      stream_id, {table_1.table_id(), table_2.table_id()}, 2 /* expected_dml_records */,
+      false /* init_virtual_wal */));
+}
+
 }  // namespace cdc
 }  // namespace yb
