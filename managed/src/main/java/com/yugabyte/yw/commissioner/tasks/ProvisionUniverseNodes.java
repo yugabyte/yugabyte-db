@@ -181,7 +181,7 @@ public class ProvisionUniverseNodes extends UpgradeTaskBase {
             createYNPProvisioningTask(
                     universe,
                     singleNode,
-                    p -> {
+                    (n, p) -> {
                       p.isSoftwarePresent = true;
                       p.isDataPresent = true;
                     })

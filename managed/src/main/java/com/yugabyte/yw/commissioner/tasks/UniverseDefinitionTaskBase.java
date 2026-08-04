@@ -2372,7 +2372,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public SubTaskGroup createYNPProvisioningTask(
       Universe universe,
       Collection<NodeDetails> nodes,
-      Consumer<YNPProvisioning.Params> paramsCustomizer) {
+      BiConsumer<NodeDetails, YNPProvisioning.Params> paramsCustomizer) {
     Function<NodeDetails, Provider> providerGetter = Util.getProviderGetter(universe);
     SubTaskGroup subTaskGroup =
         createSubTaskGroup(YNPProvisioning.class.getSimpleName(), SubTaskGroupType.Provisioning);
@@ -2403,7 +2403,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             params.sshUser = n.sshUserOverride;
           }
           params.userIntent = userIntent;
-          paramsCustomizer.accept(params);
+          paramsCustomizer.accept(n, params);
           YNPProvisioning task = createTask(YNPProvisioning.class);
           task.initialize(params);
           subTaskGroup.addSubTask(task);
@@ -2524,7 +2524,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                     !shouldInstallDbSoftware(
                         universe, params.ignoreUseCustomImageConfig, params.vmUpgradeTaskType);
                 createYNPProvisioningTask(
-                        universe, filteredNodes, p -> p.isYbPrebuiltImage = isYbPrebuiltImage)
+                        universe, filteredNodes, (n, p) -> p.isYbPrebuiltImage = isYbPrebuiltImage)
                     .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               }
               createInstallNodeAgentTasks(universe, filteredNodes)
