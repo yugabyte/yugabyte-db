@@ -13,7 +13,7 @@
 use pgrx::prelude::*;
 use serde::{Deserialize, Serialize};
 
-::pgrx::pg_module_magic!();
+pgrx::pg_module_magic!(name, version);
 
 #[derive(PostgresType, Serialize, Deserialize)]
 pub struct MyType(pub(crate) String);

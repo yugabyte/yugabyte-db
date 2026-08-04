@@ -45,8 +45,8 @@ impl<T: Toasty> Deref for Toast<T> {
 impl<T: Toasty> DerefMut for Toast<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         match self {
-            Toast::Stale(ref mut t) => t,
-            Toast::Fresh(ref mut t) => t,
+            Toast::Stale(t) => t,
+            Toast::Fresh(t) => t,
         }
     }
 }

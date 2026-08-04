@@ -12,16 +12,17 @@
 
 use core::ffi::CStr;
 use std::any::Any;
+use std::borrow::Cow;
 use std::cell::Cell;
 use std::fmt::{Display, Formatter};
 use std::hint::unreachable_unchecked;
 use std::panic::{
-    catch_unwind, panic_any, resume_unwind, AssertUnwindSafe, Location, PanicHookInfo, UnwindSafe,
+    AssertUnwindSafe, Location, PanicHookInfo, UnwindSafe, catch_unwind, panic_any, resume_unwind,
 };
 
 use crate::elog::PgLogLevel;
 use crate::errcodes::PgSqlErrorCode;
-use crate::{pfree, AsPgCStr, MemoryContextSwitchTo};
+use crate::{AsPgCStr, MemoryContextSwitchTo, pfree};
 
 /// Indicates that something can be reported as a Postgres ERROR, if that's what it might represent.
 pub trait ErrorReportable {
@@ -50,7 +51,7 @@ where
                 any.downcast::<ErrorReport>().unwrap().report(PgLogLevel::ERROR);
                 unreachable!();
             } else {
-                ereport!(ERROR, PgSqlErrorCode::ERRCODE_DATA_EXCEPTION, &format!("{e}"));
+                ereport!(ERROR, PgSqlErrorCode::ERRCODE_DATA_EXCEPTION, format!("{e}"));
             }
         })
     }
@@ -90,10 +91,10 @@ impl Display for ErrorReportLocation {
             }
         }
 
-        if let Some(backtrace) = &self.backtrace {
-            if backtrace.status() == std::backtrace::BacktraceStatus::Captured {
-                write!(f, "\n{backtrace}")?;
-            }
+        if let Some(backtrace) = &self.backtrace
+            && backtrace.status() == std::backtrace::BacktraceStatus::Captured
+        {
+            write!(f, "\n{backtrace}")?;
         }
 
         Ok(())
@@ -123,9 +124,10 @@ impl From<&PanicHookInfo<'_>> for ErrorReportLocation {
 #[derive(Debug)]
 pub struct ErrorReport {
     pub(crate) sqlerrcode: PgSqlErrorCode,
-    pub(crate) message: String,
+    pub(crate) message: Cow<'static, str>,
     pub(crate) hint: Option<String>,
     pub(crate) detail: Option<String>,
+    pub(crate) domain: Option<String>,
     pub(crate) location: ErrorReportLocation,
 }
 
@@ -206,6 +208,11 @@ impl ErrorReportWithLevel {
         self.inner.hint()
     }
 
+    /// Returns the domain of this error report, if set
+    pub fn domain(&self) -> Option<&str> {
+        self.inner.domain()
+    }
+
     /// Returns the name of the source file that generated this error report
     pub fn file(&self) -> &str {
         &self.inner.location.file
@@ -239,7 +246,7 @@ impl ErrorReport {
     ///
     /// Embedded "file:line:col" location information is taken from the caller's location
     #[track_caller]
-    pub fn new<S: Into<String>>(
+    pub fn new<S: Into<Cow<'static, str>>>(
         sqlerrcode: PgSqlErrorCode,
         message: S,
         funcname: &'static str,
@@ -247,19 +254,33 @@ impl ErrorReport {
         let mut location: ErrorReportLocation = Location::caller().into();
         location.funcname = Some(funcname.to_string());
 
-        Self { sqlerrcode, message: message.into(), hint: None, detail: None, location }
+        Self {
+            sqlerrcode,
+            message: message.into(),
+            hint: None,
+            detail: None,
+            domain: None,
+            location,
+        }
     }
 
     /// Create an [ErrorReport] which can be raised via Rust's [std::panic::panic_any()] or as
     /// a specific Postgres "ereport()` level via [ErrorReport::unwrap_or_report(self, PgLogLevel)].
     ///
     /// For internal use only
-    fn with_location<S: Into<String>>(
+    fn with_location<S: Into<Cow<'static, str>>>(
         sqlerrcode: PgSqlErrorCode,
         message: S,
         location: ErrorReportLocation,
     ) -> Self {
-        Self { sqlerrcode, message: message.into(), hint: None, detail: None, location }
+        Self {
+            sqlerrcode,
+            message: message.into(),
+            hint: None,
+            detail: None,
+            domain: None,
+            location,
+        }
     }
 
     /// Set the `detail` property, whose default is `None`
@@ -271,6 +292,16 @@ impl ErrorReport {
     /// Set the `hint` property, whose default is `None`
     pub fn set_hint<S: Into<String>>(mut self, hint: S) -> Self {
         self.hint = Some(hint.into());
+        self
+    }
+
+    /// Set the `domain` property for message translation/internationalization, whose default is `None`.
+    ///
+    /// This corresponds to the `domain` argument in Postgres' `ereport_domain` C macro.
+    /// When set, the domain is passed to `errstart()` to indicate the gettext text domain
+    /// for message translation.
+    pub fn set_domain<S: Into<String>>(mut self, domain: S) -> Self {
+        self.domain = Some(domain.into());
         self
     }
 
@@ -287,6 +318,11 @@ impl ErrorReport {
     /// Returns the hint message of this error report
     pub fn hint(&self) -> Option<&str> {
         self.hint.as_deref()
+    }
+
+    /// Returns the domain of this error report, if set
+    pub fn domain(&self) -> Option<&str> {
+        self.domain.as_deref()
     }
 
     /// Report this [ErrorReport], which will ultimately be reported by Postgres at the specified [PgLogLevel]
@@ -308,17 +344,20 @@ pub fn register_pg_guard_panic_hook() {
 
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info: _| {
-        if is_os_main_thread() == Some(true) {
-            // if this is the main thread, swallow the panic message and use postgres' error-reporting mechanism.
-            PANIC_LOCATION.with(|thread_local| {
-                thread_local.replace({
-                    let mut info: ErrorReportLocation = info.into();
-                    info.backtrace = Some(std::backtrace::Backtrace::capture());
-                    Some(info)
-                })
-            });
-        } else {
-            // if this isn't the main thread, we don't know which connection to associate the panic with.
+        // Always capture the backtrace into PANIC_LOCATION so that
+        // downcast_panic_payload can attach it to CaughtError::PostgresError.
+        // This is a thread-local, so it's harmless on non-main threads.
+        PANIC_LOCATION.with(|thread_local| {
+            thread_local.replace({
+                let mut info: ErrorReportLocation = info.into();
+                info.backtrace = Some(std::backtrace::Backtrace::capture());
+                Some(info)
+            })
+        });
+
+        if is_os_main_thread() == Some(false) {
+            // definitely not the main thread -- we don't know which connection
+            // to associate the panic with, so also call the default hook
             default_hook(info)
         }
     }))
@@ -351,7 +390,6 @@ impl CaughtError {
 #[derive(Debug)]
 enum GuardAction<R> {
     Return(R),
-    ReThrow,
     Report(ErrorReportWithLevel),
 }
 
@@ -393,16 +431,6 @@ where
 {
     match unsafe { run_guarded(AssertUnwindSafe(f)) } {
         GuardAction::Return(r) => r,
-        GuardAction::ReThrow => {
-            #[cfg_attr(target_os = "windows", link(name = "postgres"))]
-            extern "C-unwind" {
-                fn pg_re_throw() -> !;
-            }
-            unsafe {
-                crate::YbCurrentMemoryContext = crate::ErrorContext;
-                pg_re_throw()
-            }
-        }
         GuardAction::Report(ereport) => {
             do_ereport(ereport);
             unreachable!("pgrx reported a CaughtError that wasn't raised at ERROR or above");
@@ -419,10 +447,11 @@ where
     match catch_unwind(f) {
         Ok(v) => GuardAction::Return(v),
         Err(e) => match downcast_panic_payload(e) {
-            CaughtError::PostgresError(_) => {
-                // Return to the caller to rethrow -- we can't do it here
-                // since we this function's has non-POF frames.
-                GuardAction::ReThrow
+            CaughtError::PostgresError(ereport) => {
+                // Postgres raised this error via longjmp, which pg_guard_ffi_boundary caught
+                // and converted into a Rust panic.  downcast_panic_payload already attached the
+                // Rust backtrace from the panic hook, so just report it through do_ereport.
+                GuardAction::Report(ereport)
             }
             CaughtError::ErrorReport(ereport) | CaughtError::RustPanic { ereport, .. } => {
                 GuardAction::Report(ereport)
@@ -435,7 +464,20 @@ where
 pub(crate) fn downcast_panic_payload(e: Box<dyn Any + Send>) -> CaughtError {
     if e.downcast_ref::<CaughtError>().is_some() {
         // caught a previously caught CaughtError that is being rethrown
-        *e.downcast::<CaughtError>().unwrap()
+        let mut caught = *e.downcast::<CaughtError>().unwrap();
+
+        // For PostgresErrors (originating from a pg_sys FFI longjmp caught by
+        // pg_guard_ffi_boundary), the panic hook captured a Rust backtrace into
+        // PANIC_LOCATION.  Attach it now so callers (PgTryBuilder, run_guarded,
+        // etc.) can include it in the ERROR's DETAIL line.
+        if let CaughtError::PostgresError(ref mut ereport) = caught {
+            if ereport.inner.location.backtrace.is_none() {
+                let panic_location = take_panic_location();
+                ereport.inner.location.backtrace = panic_location.backtrace;
+            }
+        }
+
+        caught
     } else if e.downcast_ref::<ErrorReportWithLevel>().is_some() {
         // someone called `panic_any(ErrorReportWithLevel)`
         CaughtError::ErrorReport(*e.downcast().unwrap())
@@ -452,7 +494,7 @@ pub(crate) fn downcast_panic_payload(e: Box<dyn Any + Send>) -> CaughtError {
                 level: PgLogLevel::ERROR,
                 inner: ErrorReport::with_location(
                     PgSqlErrorCode::ERRCODE_INTERNAL_ERROR,
-                    *message,
+                    message.to_string(),
                     take_panic_location(),
                 ),
             },
@@ -465,7 +507,7 @@ pub(crate) fn downcast_panic_payload(e: Box<dyn Any + Send>) -> CaughtError {
                 level: PgLogLevel::ERROR,
                 inner: ErrorReport::with_location(
                     PgSqlErrorCode::ERRCODE_INTERNAL_ERROR,
-                    message,
+                    message.clone(),
                     take_panic_location(),
                 ),
             },
@@ -497,7 +539,7 @@ pub(crate) fn downcast_panic_payload(e: Box<dyn Any + Send>) -> CaughtError {
 /// trying to roll their own error handling.
 fn do_ereport(ereport: ErrorReportWithLevel) {
     const PERCENT_S: &CStr = c"%s";
-    const DOMAIN: *const ::std::os::raw::c_char = std::ptr::null_mut();
+    const DEFAULT_DOMAIN: *const ::std::os::raw::c_char = std::ptr::null_mut();
 
     // the following code is definitely thread-unsafe -- not-the-main-thread can't be creating Postgres
     // ereports.  Our secret `extern "C"` definitions aren't wrapped by #[pg_guard] so we need to
@@ -510,7 +552,7 @@ fn do_ereport(ereport: ErrorReportWithLevel) {
     //
 
     #[cfg_attr(target_os = "windows", link(name = "postgres"))]
-    extern "C-unwind" {
+    unsafe extern "C-unwind" {
         fn errcode(sqlerrcode: ::std::os::raw::c_int) -> ::std::os::raw::c_int;
         fn errmsg(fmt: *const ::std::os::raw::c_char, ...) -> ::std::os::raw::c_int;
         fn errdetail(fmt: *const ::std::os::raw::c_char, ...) -> ::std::os::raw::c_int;
@@ -520,7 +562,7 @@ fn do_ereport(ereport: ErrorReportWithLevel) {
 
     // we only allocate file, lineno and funcname if `errstart` returns true
     #[cfg_attr(target_os = "windows", link(name = "postgres"))]
-    extern "C-unwind" {
+    unsafe extern "C-unwind" {
         fn errstart(elevel: ::std::os::raw::c_int, domain: *const ::std::os::raw::c_char) -> bool;
         fn errfinish(
             filename: *const ::std::os::raw::c_char,
@@ -530,8 +572,15 @@ fn do_ereport(ereport: ErrorReportWithLevel) {
     }
 
     let level = ereport.level();
+
+    // Use the domain from the ErrorReport if one was set, otherwise use the null default
+    let domain_cstring = ereport.inner.domain.as_ref().map(|d| {
+        std::ffi::CString::new(d.as_str()).expect("domain must not contain interior NUL bytes")
+    });
+    let domain_ptr = domain_cstring.as_ref().map_or(DEFAULT_DOMAIN, |c| c.as_ptr());
+
     unsafe {
-        if errstart(level as _, DOMAIN) {
+        if errstart(level as _, domain_ptr) {
             let sqlerrcode = ereport.sql_error_code();
             let message = ereport.message().as_pg_cstr();
             let detail = ereport.detail_with_backtrace().as_pg_cstr();
@@ -575,6 +624,9 @@ fn do_ereport(ereport: ErrorReportWithLevel) {
                 pfree(context.cast());
             }
 
+            if level >= PgLogLevel::ERROR {
+                crate::submodules::thread_check::active_thread::clear();
+            }
             errfinish(file, lineno as _, funcname);
 
             if level >= PgLogLevel::ERROR {

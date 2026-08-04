@@ -27,10 +27,13 @@
 extern crate bitflags;
 extern crate alloc;
 
-use once_cell::sync::Lazy;
+use std::sync::LazyLock as Lazy;
 // expose our various derive macros
 pub use pgrx_macros;
 pub use pgrx_macros::*;
+#[doc(inline)]
+pub use pgrx_sql_entity_graph::metadata::impl_sql_translatable;
+pub use pgrx_sql_entity_graph::pgrx_resolved_type;
 
 /// The PGRX prelude includes necessary imports to make extensions work.
 pub mod prelude;
@@ -41,6 +44,7 @@ pub mod atomics;
 pub mod bgworkers;
 pub mod callbacks;
 pub mod callconv;
+pub mod datetime;
 pub mod datum;
 pub mod enum_helper;
 pub mod fcinfo;
@@ -48,9 +52,6 @@ pub mod ffi;
 pub mod fn_call;
 pub mod guc;
 pub mod heap_tuple;
-#[cfg(feature = "cshim")]
-#[allow(deprecated)]
-pub mod hooks;
 pub mod htup;
 pub mod inoutfuncs;
 pub mod itemptr;
@@ -65,6 +66,7 @@ pub mod misc;
 pub mod namespace;
 pub mod nodes;
 pub mod nullable;
+pub mod palloc;
 pub mod pg_catalog;
 pub mod pgbox;
 pub mod rel;
@@ -88,15 +90,12 @@ pub use aggregate::*;
 pub use atomics::*;
 pub use callbacks::*;
 pub use datum::{
-    numeric, AnyArray, AnyElement, AnyNumeric, Array, FromDatum, Inet, Internal, IntoDatum, Json,
-    JsonB, Numeric, Range, Uuid, VariadicArray,
+    AnyArray, AnyElement, AnyNumeric, Array, FromDatum, Inet, Internal, IntoDatum, Json, JsonB,
+    Numeric, Range, Uuid, VariadicArray, numeric,
 };
 pub use enum_helper::*;
 pub use fcinfo::*;
 pub use guc::*;
-#[cfg(feature = "cshim")]
-#[allow(deprecated)]
-pub use hooks::*;
 pub use htup::*;
 pub use inoutfuncs::*;
 #[cfg(feature = "cshim")]
@@ -120,17 +119,18 @@ pub use xid::*;
 pub mod pg_sys;
 
 // and re-export these
+pub use pg_sys::PgBuiltInOids;
 pub use pg_sys::elog::PgLogLevel;
 pub use pg_sys::errcodes::PgSqlErrorCode;
 pub use pg_sys::oids::PgOid;
 pub use pg_sys::panic::pgrx_extern_c_guard;
 pub use pg_sys::pg_try::PgTryBuilder;
 pub use pg_sys::utils::name_data_to_str;
-pub use pg_sys::PgBuiltInOids;
 pub use pg_sys::{
-    check_for_interrupts, debug1, debug2, debug3, debug4, debug5, ereport, error, function_name,
-    info, log, notice, warning, FATAL, PANIC,
+    FATAL, PANIC, check_for_interrupts, debug1, debug2, debug3, debug4, debug5, ereport,
+    ereport_domain, error, function_name, info, log, notice, warning,
 };
+
 #[doc(hidden)]
 pub use pgrx_sql_entity_graph;
 
@@ -145,7 +145,7 @@ mod seal {
 //
 // Unless the compiling user explicitly told us that they're aware of this via `--features unsafe-postgres`.
 #[cfg(all(
-    any(feature = "pg15", feature = "pg16", feature = "pg17"),
+    any(feature = "pg15", feature = "pg16", feature = "pg17", feature = "pg18"),
     not(feature = "unsafe-postgres")
 ))]
 const _: () = {
@@ -175,23 +175,15 @@ const _: () = {
 /// <div class="example-wrap" style="display:inline-block">
 /// <pre class="ignore" style="white-space:normal;font:inherit;">
 ///
-/// **Note**: Every [`pgrx`][crate] extension **must** have this macro called at top level (usually `src/lib.rs`) to be valid.
+/// **Note**: Every [`pgrx`][crate] extension **must** have this macro called at top level (usually `src/lib.rs`) to be valid. You can use `pg_module_magic!()`, `pg_module_magic!(name, version)` or `pg_module_magic!(name = c"custom_name", version = c"1.0.0")`
 ///
 /// </pre></div>
 ///
 /// This calls [`pg_magic_func!()`](pg_magic_func).
 #[macro_export]
 macro_rules! pg_module_magic {
-    () => {
-        $crate::pg_magic_func!();
-
-        // A marker function which must exist in the root of the extension for proper linking by the
-        // "pgrx_embed" binary during `cargo-pgrx schema` generation.
-        #[inline(never)] /* we don't want DCE to remove this as it *could* cause the compiler to decide to not link to us */
-        #[doc(hidden)]
-        pub fn __pgrx_marker() {
-            // noop
-        }
+    ($($key:ident $(= $value:expr)?),*) => {
+        $crate::pg_magic_func!($($key $(= $value)?),*);
     };
 }
 
@@ -229,20 +221,34 @@ macro_rules! pg_module_magic {
 /// [Dynamic Loading]: https://www.postgresql.org/docs/current/xfunc-c.html#XFUNC-C-DYNLOAD
 #[macro_export]
 macro_rules! pg_magic_func {
-    () => {
-        #[no_mangle]
+    ($($key:ident $(= $value: expr)?),*) => {
+        ::pgrx::pgrx_sql_entity_graph::__pgrx_schema_entry!(
+            __PGRX_SCHEMA_SECTION_SENTINEL,
+            ::pgrx::pgrx_sql_entity_graph::section::SECTION_SENTINEL_ENTRY_LEN,
+            ::pgrx::pgrx_sql_entity_graph::section::schema_section_sentinel_entry()
+        );
+
+        #[unsafe(no_mangle)]
         #[allow(non_snake_case, unexpected_cfgs)]
         #[doc(hidden)]
-        pub extern "C-unwind" fn Pg_magic_func() -> &'static ::pgrx::pg_sys::Pg_magic_struct {
-            static MY_MAGIC: ::pgrx::pg_sys::Pg_magic_struct = ::pgrx::pg_sys::Pg_magic_struct {
-                len: ::core::mem::size_of::<::pgrx::pg_sys::Pg_magic_struct>() as i32,
-                version: ::pgrx::pg_sys::PG_VERSION_NUM as i32 / 100,
-                funcmaxargs: ::pgrx::pg_sys::FUNC_MAX_ARGS as i32,
-                indexmaxkeys: ::pgrx::pg_sys::INDEX_MAX_KEYS as i32,
-                namedatalen: ::pgrx::pg_sys::NAMEDATALEN as i32,
-                float8byval: cfg!(target_pointer_width = "64") as i32,
-                #[cfg(any(feature = "pg15", feature = "pg16", feature = "pg17"))]
-                abi_extra: {
+        pub extern "C" fn Pg_magic_func() -> &'static ::pgrx::pg_sys::Pg_magic_struct {
+            #[repr(transparent)]
+            struct AssertSync<T>(T);
+            unsafe impl<T> Sync for AssertSync<T> {}
+
+            // since Postgres calls this first, register our panic handler now
+            // so we don't unwind into C / Postgres
+            ::pgrx::pg_sys::panic::register_pg_guard_panic_hook();
+
+            static MY_MAGIC: AssertSync<::pgrx::pg_sys::Pg_magic_struct> = {
+                let len = ::core::mem::size_of::<::pgrx::pg_sys::Pg_magic_struct>() as i32;
+                let version = ::pgrx::pg_sys::PG_VERSION_NUM as i32 / 100;
+                let funcmaxargs = ::pgrx::pg_sys::FUNC_MAX_ARGS as i32;
+                let indexmaxkeys = ::pgrx::pg_sys::INDEX_MAX_KEYS as i32;
+                let namedatalen = ::pgrx::pg_sys::NAMEDATALEN as i32;
+                let float8byval = cfg!(target_pointer_width = "64") as i32;
+                #[cfg(not(any(feature = "pg13", feature = "pg14")))]
+                let abi_extra = {
                     // we'll use what the bindings tell us, but if it ain't "PostgreSQL" then we'll
                     // raise a compilation error unless the `unsafe-postgres` feature is set
                     let magic = ::pgrx::pg_sys::FMGR_ABI_EXTRA.to_bytes_with_nul();
@@ -253,15 +259,100 @@ macro_rules! pg_magic_func {
                         i += 1;
                     }
                     abi
-                },
+                };
+                let mut magic = ::pgrx::pg_sys::Pg_magic_struct {
+                    len,
+                    #[cfg(not(feature = "pg18"))]
+                    version,
+                    #[cfg(not(feature = "pg18"))]
+                    funcmaxargs,
+                    #[cfg(not(feature = "pg18"))]
+                    indexmaxkeys,
+                    #[cfg(not(feature = "pg18"))]
+                    namedatalen,
+                    #[cfg(not(feature = "pg18"))]
+                    float8byval,
+                    #[cfg(any(feature = "pg15", feature = "pg16", feature = "pg17"))]
+                    abi_extra,
+                    #[cfg(feature = "pg18")]
+                    abi_fields: ::pgrx::pg_sys::Pg_abi_values {
+                        version,
+                        funcmaxargs,
+                        indexmaxkeys,
+                        namedatalen,
+                        float8byval,
+                        abi_extra,
+                    },
+                    #[cfg(feature = "pg18")]
+                    name: ::core::ptr::null(),
+                    #[cfg(feature = "pg18")]
+                    version: ::core::ptr::null(),
+                };
+                #[allow(unused_macros)]
+                macro_rules! field_update {
+                    (name) => {
+                        field_update!(name = {
+                            const RAW: &str = env!("CARGO_PKG_NAME");
+                            const BUFFER: [u8; RAW.len() + 1] = {
+                                let mut buffer = [0u8; RAW.len() + 1];
+                                let mut i = 0_usize;
+                                while i < RAW.len() {
+                                    buffer[i] = RAW.as_bytes()[i];
+                                    i += 1;
+                                }
+                                buffer
+                            };
+                            const STR: &::core::ffi::CStr =
+                                if let Ok(s) = ::core::ffi::CStr::from_bytes_with_nul(&BUFFER) {
+                                    s
+                                } else {
+                                    panic!("there are null characters in CARGO_PKG_NAME")
+                                };
+                            const { STR }
+                        });
+                    };
+                    (version) => {
+                        field_update!(name = {
+                            const RAW: &str = env!("CARGO_PKG_VERSION");
+                            const BUFFER: [u8; RAW.len() + 1] = {
+                                let mut buffer = [0u8; RAW.len() + 1];
+                                let mut i = 0_usize;
+                                while i < RAW.len() {
+                                    buffer[i] = RAW.as_bytes()[i];
+                                    i += 1;
+                                }
+                                buffer
+                            };
+                            const STR: &::core::ffi::CStr =
+                                if let Ok(s) = ::core::ffi::CStr::from_bytes_with_nul(&BUFFER) {
+                                    s
+                                } else {
+                                panic!("there are null characters in CARGO_CRATE_VERSION")
+                             };
+                            const { STR }
+                        });
+                    };
+                    (name = $name:expr) => {
+                        let name: &'static ::core::ffi::CStr = $name;
+                        #[cfg(feature = "pg18")]
+                        {
+                            magic.name = ::core::ffi::CStr::as_ptr($name);
+                        }
+                    };
+                    (version = $version:expr) => {
+                        let version: &'static ::core::ffi::CStr = $version;
+                        #[cfg(feature = "pg18")]
+                        {
+                            magic.version = ::core::ffi::CStr::as_ptr($version);
+                        }
+                    };
+                }
+                $(field_update!($key $(= $value)?);)*
+                AssertSync(magic)
             };
 
-            // since Postgres calls this first, register our panic handler now
-            // so we don't unwind into C / Postgres
-            ::pgrx::pg_sys::panic::register_pg_guard_panic_hook();
-
             // return the magic
-            &MY_MAGIC
+            &MY_MAGIC.0
         }
     };
 }
@@ -295,25 +386,4 @@ pub(crate) enum Utf8Compat {
     Maybe,
     /// An "extended ASCII" encoding, so we're fine if we only touch ASCII
     Ascii,
-}
-
-/// Entry point for cargo-pgrx's schema generation so that PGRX's framework can
-/// generate SQL for its types and functions and topographically sort them into
-/// an order Postgres will accept. Typically written by the `cargo pgrx new`
-/// template, so you probably don't need to worry about this.
-#[macro_export]
-macro_rules! pgrx_embed {
-    () => {
-        mod pgrx_embed {
-            #![allow(unexpected_cfgs)]
-
-            #[cfg(not(pgrx_embed))]
-            pub fn main() {
-                panic!("PGRX_EMBED was not set.");
-            }
-            #[cfg(pgrx_embed)]
-            include!(env!("PGRX_EMBED"));
-        }
-        pub use pgrx_embed::main;
-    };
 }
