@@ -622,6 +622,42 @@ class OtlpHttpCollector {
     return downstream_span;
   }
 
+  // Waits for a span from child_service in trace_id whose query text starts with
+  // child_query_prefix and whose parent is a span from parent_service with an op name starting
+  // with parent_op_prefix. Returns the child span.
+  Result<Span> WaitForCrossServiceChildSpan(
+      std::string_view trace_id, std::string_view parent_service,
+      std::string_view parent_op_prefix, std::string_view child_service,
+      std::string_view child_query_prefix) const EXCLUDES(mutex_) {
+    Span child_span;
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          std::lock_guard lock(mutex_);
+          auto it = traces_.find(std::string(trace_id));
+          if (it == traces_.end()) return false;
+          const auto& spans = it->second.spans;
+          for (const auto& child : spans) {
+            if (child.service_name != child_service || child.parent_span_id.empty() ||
+                !child.query_text.starts_with(child_query_prefix)) {
+              continue;
+            }
+            for (const auto& parent : spans) {
+              if (parent.service_name == parent_service &&
+                  parent.op_name.starts_with(parent_op_prefix) &&
+                  parent.span_id == child.parent_span_id) {
+                child_span = child;
+                return true;
+              }
+            }
+          }
+          return false;
+        },
+        kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+        Format("Span on '$0' for '$1*' parented by a '$2' span '$3*' in trace '$4'",
+               child_service, child_query_prefix, parent_service, parent_op_prefix, trace_id)));
+    return child_span;
+  }
+
  private:
   void HandleTraceRequest(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
     if (req.request_method != "POST") {
@@ -2048,6 +2084,26 @@ TEST_F(DistTraceTest, TestApplyTaskCarriesTraceContextToMaster) {
   ASSERT_OK(collector_.WaitForLocalHopToRemoteSpan(
       tp.trace_id, "rpc yb.tserver.TabletServerService.UpdateTransaction",
       "Master" /* downstream_service */));
+}
+
+// Runs a CREATE INDEX under a known traceparent and asserts the trace contains the BACKFILL INDEX
+// statement run by the internal PG connection the tserver opens for the backfill, parented under
+// the tserver's BackfillIndex span.
+TEST_F(DistTraceTest, TestBackfillBackendJoinsQueryTrace) {
+  ASSERT_OK(CreateTable("backfill_trace_test", 10));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  ASSERT_OK(conn_->Execute("CREATE INDEX backfill_trace_test_idx ON backfill_trace_test (val)"));
+
+  auto backend_span = ASSERT_RESULT(collector_.WaitForCrossServiceChildSpan(
+      tp.trace_id, "TabletServer" /* parent_service */,
+      "rpc yb.tserver.TabletServerAdminService.BackfillIndex" /* parent_op_prefix */,
+      "ysql" /* child_service */, "BACKFILL INDEX " /* child_query_prefix */));
+
+  ASSERT_EQ(backend_span.trace_id, tp.trace_id);
+  ASSERT_EQ(backend_span.op_name, "query");
 }
 
 TEST_F(DistTraceRpcTest, TestOtelInternalMessagesAreLogged) {
