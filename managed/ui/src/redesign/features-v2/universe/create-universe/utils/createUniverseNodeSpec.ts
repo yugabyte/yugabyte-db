@@ -120,6 +120,14 @@ export const getNodeSpec = (formContext: createUniverseFormProps): ClusterNodeSp
         k8sSpec.instance_type = instanceSettings.instanceType;
       }
     }
+    const masterDeviceInfo = instanceSettings.keepMasterTserverSame
+      ? instanceSettings.deviceInfo
+      : instanceSettings.masterDeviceInfo ?? instanceSettings.deviceInfo;
+    if (masterDeviceInfo) {
+      k8sSpec.master = {
+        storage_spec: buildStorageSpecFromDeviceInfo(masterDeviceInfo, ebsEnc, ebsKms)
+      };
+    }
     return k8sSpec;
   }
   if (instanceSettings.keepMasterTserverSame) {
