@@ -355,6 +355,14 @@ static const internalPQconninfoOption PQconninfoOptions[] = {
 		"YB-Internal-Conn-Kind", "", 32,
 	offsetof(struct pg_conn, yb_internal_conn_kind)},
 
+	/*
+	 * W3C traceparent set on any connection that carries a trace context, used
+	 * as the root span for backend init and queries.
+	 */
+	{"yb_dist_traceparent", NULL, NULL, NULL,
+		"YB-Dist-Traceparent", "", 64,
+	offsetof(struct pg_conn, yb_dist_traceparent)},
+
 	/* Terminating entry --- MUST BE LAST */
 	{NULL, NULL, NULL, NULL,
 	NULL, NULL, 0}
@@ -4193,6 +4201,8 @@ freePGconn(PGconn *conn)
 		free(conn->target_session_attrs);
 	if (conn->yb_internal_conn_kind)
 		free(conn->yb_internal_conn_kind);
+	if (conn->yb_dist_traceparent)
+		free(conn->yb_dist_traceparent);
 	termPQExpBuffer(&conn->errorMessage);
 	termPQExpBuffer(&conn->workBuffer);
 
