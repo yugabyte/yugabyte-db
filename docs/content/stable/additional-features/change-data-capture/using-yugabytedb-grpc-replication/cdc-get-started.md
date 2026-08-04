@@ -21,7 +21,9 @@ To set up YugabyteDB for use with the YugabyteDB gRPC connector, do the followin
 
 - Create a database stream ID.
 
-    Before you use the YugabyteDB connector to retrieve data change events from YugabyteDB, create a CDC stream. Prefer creating and managing the stream through the PostgreSQL replication-slot interface (see [Create a gRPC CDC stream](#create-a-grpc-cdc-stream)). You can still create a stream with the [yb-admin](../../../../admin/yb-admin/#create-change-data-stream) `create_change_data_stream` command, but that method is deprecated.
+    Before you use the YugabyteDB connector to retrieve data change events from YugabyteDB, create a CDC stream. Prefer creating and managing the stream through the PostgreSQL replication-slot interface (see [Create a gRPC CDC stream](#create-a-grpc-cdc-stream))(v2026.1.1.0 and later).
+
+    You can still create a stream with the [yb-admin](../../../../admin/yb-admin/#create-change-data-stream) `create_change_data_stream` command, but that method is deprecated.
 
     Note that CDC currently only supports YSQL tables.
 
@@ -37,7 +39,7 @@ To set up YugabyteDB for use with the YugabyteDB gRPC connector, do the followin
 
 ## Create a gRPC CDC stream
 
-{{<tags/feature/ea idea="2762">}}Starting in v2026.1.2.0, you can create, list, and drop gRPC CDC streams using the standard PostgreSQL replication-slot interface by specifying the special output plugin `yb_grpc`. The stream is still consumed by the YugabyteDB gRPC connector; only the lifecycle (create, list, drop) uses familiar PostgreSQL tooling.
+{{<tags/feature/ea idea="2762">}}Starting in v2026.1.1.0, you can create, list, and drop gRPC CDC streams using the standard PostgreSQL replication-slot interface by specifying the special output plugin `yb_grpc`. The stream is still consumed by the YugabyteDB gRPC connector; only the lifecycle (create, list, drop) uses familiar PostgreSQL tooling.
 
 This capability is enabled automatically after you finalize a cluster upgrade to a supporting version. Creating a gRPC stream via PostgreSQL syntax is rejected until upgrade finalization completes.
 
