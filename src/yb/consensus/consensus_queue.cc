@@ -69,6 +69,7 @@
 #include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/tostring.h"
 #include "yb/util/url-coding.h"
 
@@ -1089,15 +1090,14 @@ Result<const PeerMessageQueue::TrackedPeer*> PeerMessageQueue::FindClosestPeerFo
 
 Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
                                                           StartRemoteBootstrapRequestPB* req) {
-  TrackedPeer* peer = nullptr;
-  const TrackedPeer* rbs_source = nullptr;
+  std::optional<TrackedPeer> rbs_source;
   int64_t current_term;
   OpId pending_config_op_id;
   {
     LockGuard lock(queue_lock_);
     DCHECK_EQ(queue_state_.state, State::kQueueOpen);
     DCHECK_NE(uuid, local_peer_uuid_);
-    peer = FindPtrOrNull(peers_map_, uuid);
+    TrackedPeer* peer = FindPtrOrNull(peers_map_, uuid);
     if (PREDICT_FALSE(peer == nullptr || queue_state_.mode == Mode::NON_LEADER)) {
       return STATUS(NotFound, "Peer not tracked or queue not in leader mode.");
     }
@@ -1119,8 +1119,9 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
         peer->failed_bootstrap_attempts_from_non_leader >=
             FLAGS_max_remote_bootstrap_attempts_from_non_leader;
 
-    rbs_source = rbs_from_leader_only ? local_peer_
-                                      : VERIFY_RESULT(FindClosestPeerForBootstrap(peer));
+    const TrackedPeer* rbs_source_ptr =
+        rbs_from_leader_only ? local_peer_ : VERIFY_RESULT(FindClosestPeerForBootstrap(peer));
+    rbs_source.emplace(*rbs_source_ptr);
     current_term = queue_state_.current_term;
     pending_config_op_id = queue_state_.pending_config_op_id;
 
@@ -1135,6 +1136,8 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
           << "Expected rbs source to be in same zone as new peer";
     }
   }
+
+  TEST_SYNC_POINT("PeerMessageQueue::GetRemoteBootstrapRequestForPeer:AfterQueueLockReleased");
 
   req->Clear();
   req->set_dest_uuid(uuid);
@@ -1155,7 +1158,7 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
     pending_config_op_id.ToPB(req->mutable_pending_config_op_id());
   }
 
-  if (rbs_source->uuid != local_peer_->uuid) {
+  if (rbs_source->uuid != local_peer_uuid_) {
     // rbs source is not the leader, hence set the leader info.
     req->set_is_served_by_tablet_leader(false);
     req->set_tablet_leader_peer_uuid(uuid);

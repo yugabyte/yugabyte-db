@@ -49,6 +49,7 @@
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/util/metrics.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
@@ -56,6 +57,7 @@
 using std::string;
 
 DECLARE_bool(enable_data_block_fsync);
+DECLARE_bool(remote_bootstrap_from_leader_only);
 DECLARE_uint64(consensus_max_batch_size_bytes);
 
 METRIC_DECLARE_entity(tablet);
@@ -1022,6 +1024,97 @@ TEST_F(ConsensusQueueTest, TestTriggerRemoteBootstrapIfTabletNotFound) {
   ASSERT_EQ(kLeaderUuid, rb_req.bootstrap_source_peer_uuid());
   ASSERT_EQ(FakeRaftPeerPB(kLeaderUuid).last_known_private_addr()[0].ShortDebugString(),
             rb_req.bootstrap_source_private_addr()[0].ShortDebugString());
+}
+
+TEST_F(ConsensusQueueTest, TestRemoteBootstrapSourceUntrackedAfterQueueLockRelease) {
+  // Let a follower serve the bootstrap; otherwise the leader is always the source.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_remote_bootstrap_from_leader_only) = false;
+
+  constexpr auto kRbsSourceUuid = "peer-2";
+  constexpr auto kZone = "zone-1";
+
+  // Put both peers in one zone, so peer-2 is closer to peer-1 than the leader is.
+  auto peer_pb = [kZone](const std::string& uuid) {
+    RaftPeerPB peer_pb;
+    peer_pb.set_permanent_uuid(uuid);
+    auto* cloud_info = peer_pb.mutable_cloud_info();
+    cloud_info->set_placement_cloud("cloud-1");
+    cloud_info->set_placement_region("region-1");
+    cloud_info->set_placement_zone(kZone);
+    auto* addr = peer_pb.mutable_last_known_private_addr()->Add();
+    addr->set_host(uuid + ".fake-domain-for-tests");
+    addr->set_port(0);
+    return peer_pb;
+  };
+
+  queue_->Init(OpId::Min());
+  queue_->SetLeaderMode(
+      OpId::Min(), OpId::Min().term, OpId::Min(), OpId(), BuildRaftConfigPBForTests(3));
+  AppendReplicateMessagesToQueue(queue_.get(), clock_, 1, kNumMessages);
+
+  queue_->TrackPeer(peer_pb(kPeerUuid));
+  queue_->TrackPeer(peer_pb(kRbsSourceUuid));
+
+  ThreadSafeArena arena;
+  LWConsensusRequestPB request(&arena);
+  LWReplicateMsgsHolder refs;
+  bool needs_remote_bootstrap;
+
+  // Have peer-2 reply successfully, so it is caught up and can serve a remote bootstrap.
+  {
+    LWConsensusResponsePB response(&arena);
+    response.ref_responder_uuid(kRbsSourceUuid);
+    ASSERT_OK(queue_->RequestForPeer(kRbsSourceUuid, &request, &refs, &needs_remote_bootstrap));
+    ASSERT_FALSE(needs_remote_bootstrap);
+    SetLastReceivedAndLastCommitted(&response, MakeOpIdForIndex(kNumMessages));
+    queue_->ResponseFromPeer(kRbsSourceUuid, response);
+    request.Clear();
+    refs.Reset();
+  }
+  // Check the source qualifies before relying on it being picked.
+  const auto rbs_source = queue_->GetTrackedPeerForTests(kRbsSourceUuid);
+  ASSERT_TRUE(rbs_source.is_last_exchange_successful);
+  ASSERT_EQ(PeerMemberType::VOTER, rbs_source.member_type);
+  ASSERT_EQ(MakeOpIdForIndex(kNumMessages), rbs_source.last_received);
+
+  // Have peer-1 reply that it has no tablet, so the leader marks it for remote bootstrap.
+  {
+    LWConsensusResponsePB response(&arena);
+    response.ref_responder_uuid(kPeerUuid);
+    ASSERT_OK(queue_->RequestForPeer(kPeerUuid, &request, &refs, &needs_remote_bootstrap));
+    ASSERT_FALSE(needs_remote_bootstrap);
+    response.mutable_error()->set_code(tserver::TabletServerErrorPB::TABLET_NOT_FOUND);
+    StatusToPB(STATUS(NotFound, "No such tablet"), response.mutable_error()->mutable_status());
+    ASSERT_TRUE(queue_->ResponseFromPeer(kPeerUuid, response));
+    request.Clear();
+    refs.Reset();
+  }
+  ASSERT_OK(queue_->RequestForPeer(kPeerUuid, &request, &refs, &needs_remote_bootstrap));
+  ASSERT_TRUE(needs_remote_bootstrap);
+
+  // Delete peer-2 right after the queue lock is released, before its fields are read.
+  auto* sync_point = SyncPoint::GetInstance();
+  sync_point->SetCallBack(
+      "PeerMessageQueue::GetRemoteBootstrapRequestForPeer:AfterQueueLockReleased",
+      [this](void*) { queue_->UntrackPeer(kRbsSourceUuid); });
+  sync_point->EnableProcessing();
+  auto se = ScopeExit([sync_point] {
+    sync_point->DisableProcessing();
+    sync_point->ClearAllCallBacks();
+  });
+
+  StartRemoteBootstrapRequestPB rb_req;
+  ASSERT_OK(queue_->GetRemoteBootstrapRequestForPeer(kPeerUuid, &rb_req));
+
+  // Without the fix these read the freed TrackedPeer.
+  ASSERT_TRUE(rb_req.IsInitialized()) << rb_req.ShortDebugString();
+  ASSERT_EQ(kTestTablet, rb_req.tablet_id());
+  ASSERT_EQ(kRbsSourceUuid, rb_req.bootstrap_source_peer_uuid());
+  ASSERT_FALSE(rb_req.is_served_by_tablet_leader());
+  ASSERT_EQ(1, rb_req.bootstrap_source_private_addr().size());
+  ASSERT_EQ(peer_pb(kRbsSourceUuid).last_known_private_addr()[0].ShortDebugString(),
+            rb_req.bootstrap_source_private_addr()[0].ShortDebugString());
+  ASSERT_EQ(kZone, rb_req.bootstrap_source_cloud_info().placement_zone());
 }
 
 // Tests that TestReadReplicatedMessagesForCDC() only reads messages until the last known
