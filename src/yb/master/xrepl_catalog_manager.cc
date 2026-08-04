@@ -100,11 +100,7 @@ DEFINE_test_flag(bool, hang_wait_replication_drain, false,
 DEFINE_RUNTIME_AUTO_bool(cdc_enable_postgres_replica_identity, kLocalPersisted, false, true,
     "Enable new record types in CDC streams");
 
-DEFINE_RUNTIME_bool(enable_backfilling_cdc_stream_with_replication_slot, false,
-    "When enabled, allows adding a replication slot name to an existing CDC stream via the yb-admin"
-    " ysql_backfill_change_data_stream_with_replication_slot command."
-    "Intended to be used for making CDC streams created before replication slot support work with"
-    " the replication slot commands.");
+DEPRECATE_FLAG(bool, enable_backfilling_cdc_stream_with_replication_slot, "08_2026");
 
 DEFINE_test_flag(bool, xcluster_fail_setup_stream_update, false, "Fail UpdateCDCStream RPC call");
 
@@ -3380,8 +3376,6 @@ Result<std::vector<CDCStreamInfoPtr>> CatalogManager::FindXReplStreamsMarkedForD
 Status CatalogManager::GetDroppedTablesFromCDCSDKStream(
     const std::unordered_set<TableId>& table_ids, std::set<TabletId>* tablets_with_streams,
     std::set<TableId>* dropped_tables) {
-  TEST_SYNC_POINT("GetDroppedTablesFromCDCSDKStream::Entered");
-  TEST_SYNC_POINT("GetDroppedTablesFromCDCSDKStream::BeforeFindTableById");
   for (const auto& table_id : table_ids) {
     TabletInfos tablets;
     auto table_result = FindTableById(table_id);
@@ -5295,118 +5289,6 @@ Status CatalogManager::WaitForReplicationDrain(
   return Status::OK();
 }
 
-PgReplicaIdentity GetReplicaIdentityFromRecordType(std::string record_type_name) {
-  cdc::CDCRecordType record_type = cdc::CDCRecordType::CHANGE;
-  CDCRecordType_Parse(record_type_name, &record_type);
-  switch (record_type) {
-    case cdc::CDCRecordType::ALL: FALLTHROUGH_INTENDED;
-    case cdc::CDCRecordType::PG_FULL: return PgReplicaIdentity::FULL;
-    case cdc::CDCRecordType::PG_DEFAULT: return PgReplicaIdentity::DEFAULT;
-    case cdc::CDCRecordType::PG_NOTHING: return PgReplicaIdentity::NOTHING;
-    case cdc::CDCRecordType::PG_CHANGE_OLD_NEW: FALLTHROUGH_INTENDED;
-    case cdc::CDCRecordType::FULL_ROW_NEW_IMAGE: FALLTHROUGH_INTENDED;
-    case cdc::CDCRecordType::MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES:
-      LOG(WARNING) << "The record type of the older stream does not have a corresponding replica "
-                      "identity. Going forward with replica identity CHANGE.";
-      FALLTHROUGH_INTENDED;
-    case cdc::CDCRecordType::CHANGE: return PgReplicaIdentity::CHANGE;
-    // This case should never be reached.
-    default: return PgReplicaIdentity::CHANGE;
-  }
-}
-
-Status CatalogManager::YsqlBackfillReplicationSlotNameToCDCSDKStream(
-    const YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB* req,
-    YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB* resp,
-    rpc::RpcContext* rpc) {
-  LOG(INFO) << "Servicing YsqlBackfillReplicationSlotNameToCDCSDKStream request from "
-            << RequestorString(rpc) << ": " << req->ShortDebugString();
-
-  if (!FLAGS_ysql_yb_enable_replication_commands ||
-      !FLAGS_ysql_yb_enable_replica_identity ||
-      !FLAGS_enable_backfilling_cdc_stream_with_replication_slot) {
-    RETURN_INVALID_REQUEST_STATUS("Backfilling replication slot name is disabled");
-  }
-
-  if (!req->has_stream_id() || !req->has_cdcsdk_ysql_replication_slot_name()) {
-    RETURN_INVALID_REQUEST_STATUS(
-        "Both CDC Stream ID and Replication slot name must be provided");
-  }
-
-  RETURN_NOT_OK(ReplicationSlotValidateName(req->cdcsdk_ysql_replication_slot_name()));
-
-  auto replication_slot_name = ReplicationSlotName(req->cdcsdk_ysql_replication_slot_name());
-  auto stream_id = VERIFY_RESULT(xrepl::StreamId::FromString(req->stream_id()));
-
-  CDCStreamInfoPtr stream;
-  {
-    SharedLock lock(mutex_);
-    stream = FindPtrOrNull(cdc_stream_map_, stream_id);
-  }
-
-  if (stream == nullptr || stream->LockForRead()->is_deleting()) {
-    return STATUS(
-        NotFound, "Could not find CDC stream", MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
-  }
-
-  auto namespace_id = stream->LockForRead()->namespace_id();
-  auto ns = VERIFY_RESULT(FindNamespaceById(namespace_id));
-
-  if (ns->database_type() != YQLDatabase::YQL_DATABASE_PGSQL) {
-    RETURN_INVALID_REQUEST_STATUS(
-        "Only CDCSDK streams created on PGSQL namespaces can have a replication slot name");
-  }
-
-  if (!stream->GetCdcsdkYsqlReplicationSlotName().empty()) {
-    RETURN_INVALID_REQUEST_STATUS(
-        "Cannot update the replication slot name of a CDCSDK stream");
-  }
-
-  LOG_WITH_FUNC(INFO) << "Valid request. Updating the replication slot name";
-  TEST_SYNC_POINT("YsqlBackfillReplicationSlotNameToCDCSDKStream::BeforeAcquireMutex");
-  {
-    LockGuard lock(mutex_);
-    TEST_SYNC_POINT("YsqlBackfillReplicationSlotNameToCDCSDKStream::AcquiredMutex");
-
-    if (cdcsdk_replication_slots_to_stream_map_.contains(replication_slot_name)) {
-      return STATUS(
-          AlreadyPresent, "A CDC stream with the replication slot name already exists",
-          MasterError(MasterErrorPB::OBJECT_ALREADY_PRESENT));
-    }
-
-    auto stream_lock = stream->LockForWrite();
-    auto& pb = stream_lock.mutable_data()->pb;
-
-    pb.set_cdcsdk_ysql_replication_slot_name(req->cdcsdk_ysql_replication_slot_name());
-    cdcsdk_replication_slots_to_stream_map_.insert_or_assign(replication_slot_name, stream_id);
-
-    PgReplicaIdentity replica_identity;
-    bool has_record_type =  false;
-    for (const auto& option : pb.options()) {
-      if (option.key() == cdc::kRecordType) {
-        // Check if record type is a valid replica identity, if not assign replica
-        // identity CHANGE.
-        replica_identity = GetReplicaIdentityFromRecordType(option.value());
-        has_record_type = true;
-        break;
-      }
-    }
-    // This should never happen.
-    RSTATUS_DCHECK(
-        has_record_type, NotFound, Format("Option record_type not present in stream $0"),
-        stream_id);
-    for(auto table_id : pb.table_id()) {
-       pb.mutable_replica_identity_map()->insert({table_id, replica_identity});
-    }
-
-    // TODO(#22249): Set the plugin name for streams upgraded from older clusters.
-
-    stream_lock.Commit();
-  }
-
-  return Status::OK();
-}
-
 Status CatalogManager::BackfillLegacyGrpcStreams(const LeaderEpoch& epoch) {
   if (!FLAGS_cdc_pg_create_grpc_stream) {
     return Status::OK();
@@ -5776,30 +5658,6 @@ CatalogManager::GetAllXClusterUniverseReplicationInfos() {
   }
 
   return result;
-}
-
-// Validate that the given replication slot name is valid.
-// This function is a duplicate of the ReplicationSlotValidateName function from
-// src/postgres/src/backend/replication/slot.c
-Status CatalogManager::ReplicationSlotValidateName(const std::string& replication_slot_name) {
-  if (replication_slot_name.empty()) {
-    RETURN_INVALID_REQUEST_STATUS("Replication slot name cannot be empty");
-  }
-
-  // The 64 comes from the NAMEDATALEN constant in YSQL.
-  if (replication_slot_name.size() >= 64) {
-    RETURN_INVALID_REQUEST_STATUS("Replication slot name length must be < 64");
-  }
-
-  for (auto c : replication_slot_name) {
-    if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || (c == '_'))) {
-      RETURN_INVALID_REQUEST_STATUS(
-          "Replication slot names may only contain lower case letters, numbers, and the underscore "
-          "character.");
-    }
-  }
-
-  return Status::OK();
 }
 
 Status CatalogManager::TEST_CDCSDKFailCreateStreamRequestIfNeeded(const std::string& sync_point) {

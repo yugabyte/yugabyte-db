@@ -632,15 +632,6 @@ message XClusterReportNewAutoFlagConfigVersionResponsePB {
   optional MasterErrorPB error = 1;
 }
 
-message YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB {
-  optional bytes stream_id = 1;
-  optional string cdcsdk_ysql_replication_slot_name = 2;
-}
-
-message YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB {
-  optional MasterErrorPB error = 1;
-}
-
 message XClusterCreateOutboundReplicationGroupRequestPB {
   required string replication_group_id = 1;
   repeated string namespace_ids = 2;
@@ -993,11 +984,6 @@ service MasterReplication {
   rpc XClusterReportNewAutoFlagConfigVersion(
       XClusterReportNewAutoFlagConfigVersionRequestPB)
       returns (XClusterReportNewAutoFlagConfigVersionResponsePB);
-
-  // Backfill a replication slot name to an existing CDCSDK stream.
-  rpc YsqlBackfillReplicationSlotNameToCDCSDKStream(
-      YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB)
-      returns (YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB);
 
   // xClusterOutboundReplicationGroup RPCs.
   rpc XClusterCreateOutboundReplicationGroup(

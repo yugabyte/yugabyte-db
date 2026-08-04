@@ -446,9 +446,6 @@ class ClusterAdminClient {
 
   Status GetCDCDBStreamInfo(const std::string& db_stream_id);
 
-  Status YsqlBackfillReplicationSlotNameToCDCSDKStream(
-      const std::string& stream_id, const std::string& replication_slot_name);
-
   Status DisableDynamicTableAdditionOnCDCSDKStream(const std::string& stream_id);
 
   Status RemoveUserTableFromCDCSDKStream(const std::string& stream_id, const std::string& table_id);

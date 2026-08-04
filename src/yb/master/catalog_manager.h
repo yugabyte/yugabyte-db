@@ -1554,11 +1554,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
   Status UpdateCDCStream(
       const UpdateCDCStreamRequestPB* req, UpdateCDCStreamResponsePB* resp, rpc::RpcContext* rpc);
 
-  Status YsqlBackfillReplicationSlotNameToCDCSDKStream(
-      const YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB* req,
-      YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB* resp,
-      rpc::RpcContext* rpc);
-
   // This is used to backfill legacy gRPC streams (having no slot_name and plugin_name) which were
   // created before promotion of FLAGS_cdc_pg_create_grpc_stream. Such streams are given a slot
   // name, plugin name, and logical replication stream's analogous slot entry in cdc_state table.
@@ -3122,8 +3117,6 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
 
   Status SetAllInitialCDCSDKRetentionBarriersOnCatalogTable(
       const TableInfoPtr& table, const xrepl::StreamId& stream_id);
-
-  Status ReplicationSlotValidateName(const std::string& replication_slot_name);
 
   Status TEST_CDCSDKFailCreateStreamRequestIfNeeded(const std::string& sync_point);
 

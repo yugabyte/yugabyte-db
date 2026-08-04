@@ -47,7 +47,6 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (GetTableSchemaFromSysCatalog)
     (ChangeXClusterRole)
     (BootstrapProducer)
-    (YsqlBackfillReplicationSlotNameToCDCSDKStream)
     (DisableDynamicTableAdditionOnCDCSDKStream)
     (RemoveUserTableFromCDCSDKStream)
     (ValidateAndSyncCDCStateEntriesForCDCSDKStream)
