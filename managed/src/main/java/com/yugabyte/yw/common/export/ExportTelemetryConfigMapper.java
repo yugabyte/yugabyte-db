@@ -6,7 +6,6 @@ import api.v2.models.AuditLogsTelemetrySpec;
 import api.v2.models.ExportTelemetryUpgradeOptions;
 import api.v2.models.MetricsTelemetrySpec;
 import api.v2.models.QueryLogsTelemetrySpec;
-import api.v2.models.TelemetryExporterEntry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
@@ -29,7 +28,7 @@ import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import org.apache.commons.collections4.CollectionUtils;
 
-/** Manual conversion from generated API request. */
+/** Manual conversion between generated v2 API types and internal telemetry configs. */
 public class ExportTelemetryConfigMapper {
 
   private static final ObjectMapper MAPPER =
@@ -162,71 +161,106 @@ public class ExportTelemetryConfigMapper {
   }
 
   private static List<UniverseLogsExporterConfig> toUniverseLogsExporterConfigsFromGenerated(
-      @Nullable List<TelemetryExporterEntry> list) {
-    if (list == null) return Collections.emptyList();
-    return list.stream()
-        .filter(e -> e.getExporterUuid() != null)
-        .map(ExportTelemetryConfigMapper::toUniverseLogsExporterConfigFromGenerated)
-        .collect(Collectors.toList());
-  }
-
-  private static UniverseLogsExporterConfig toUniverseLogsExporterConfigFromGenerated(
-      TelemetryExporterEntry e) {
-    UniverseLogsExporterConfig c = new UniverseLogsExporterConfig();
-    c.setExporterUuid(e.getExporterUuid());
-    c.setAdditionalTags(
-        e.getAdditionalTags() != null ? e.getAdditionalTags() : Collections.emptyMap());
-    return c;
+      @Nullable List<api.v2.models.UniverseLogsExporterConfig> list) {
+    return convertList(list, UniverseLogsExporterConfig.class);
   }
 
   private static List<UniverseQueryLogsExporterConfig>
-      toUniverseQueryLogsExporterConfigsFromGenerated(@Nullable List<TelemetryExporterEntry> list) {
-    if (list == null) return Collections.emptyList();
-    return list.stream()
-        .filter(e -> e.getExporterUuid() != null)
-        .map(ExportTelemetryConfigMapper::toUniverseQueryLogsExporterConfigFromGenerated)
-        .collect(Collectors.toList());
-  }
-
-  private static UniverseQueryLogsExporterConfig toUniverseQueryLogsExporterConfigFromGenerated(
-      TelemetryExporterEntry e) {
-    UniverseQueryLogsExporterConfig c = new UniverseQueryLogsExporterConfig();
-    c.setExporterUuid(e.getExporterUuid());
-    c.setAdditionalTags(
-        e.getAdditionalTags() != null ? e.getAdditionalTags() : Collections.emptyMap());
-    if (e.getSendBatchMaxSize() != null) c.setSendBatchMaxSize(e.getSendBatchMaxSize());
-    if (e.getSendBatchSize() != null) c.setSendBatchSize(e.getSendBatchSize());
-    if (e.getSendBatchTimeoutSeconds() != null)
-      c.setSendBatchTimeoutSeconds(e.getSendBatchTimeoutSeconds());
-    if (e.getMemoryLimitMib() != null) c.setMemoryLimitMib(e.getMemoryLimitMib());
-    if (e.getMemoryLimitCheckIntervalSeconds() != null)
-      c.setMemoryLimitCheckIntervalSeconds(e.getMemoryLimitCheckIntervalSeconds());
-    return c;
+      toUniverseQueryLogsExporterConfigsFromGenerated(
+          @Nullable List<api.v2.models.UniverseQueryLogsExporterConfig> list) {
+    return convertList(list, UniverseQueryLogsExporterConfig.class);
   }
 
   private static List<UniverseMetricsExporterConfig> toUniverseMetricsExporterConfigsFromGenerated(
-      @Nullable List<TelemetryExporterEntry> list) {
-    if (list == null) return Collections.emptyList();
-    return list.stream()
-        .filter(e -> e.getExporterUuid() != null)
-        .map(ExportTelemetryConfigMapper::toUniverseMetricsExporterConfigFromGenerated)
-        .collect(Collectors.toList());
+      @Nullable List<api.v2.models.UniverseMetricsExporterConfig> list) {
+    return convertList(list, UniverseMetricsExporterConfig.class);
   }
 
-  private static UniverseMetricsExporterConfig toUniverseMetricsExporterConfigFromGenerated(
-      TelemetryExporterEntry e) {
-    UniverseMetricsExporterConfig c = new UniverseMetricsExporterConfig();
-    c.setExporterUuid(e.getExporterUuid());
-    c.setAdditionalTags(
-        e.getAdditionalTags() != null ? e.getAdditionalTags() : Collections.emptyMap());
-    if (e.getSendBatchMaxSize() != null) c.setSendBatchMaxSize(e.getSendBatchMaxSize());
-    if (e.getSendBatchSize() != null) c.setSendBatchSize(e.getSendBatchSize());
-    if (e.getSendBatchTimeoutSeconds() != null)
-      c.setSendBatchTimeoutSeconds(e.getSendBatchTimeoutSeconds());
-    if (e.getMetricsPrefix() != null) c.setMetricsPrefix(e.getMetricsPrefix());
-    if (e.getMemoryLimitMib() != null) c.setMemoryLimitMib(e.getMemoryLimitMib());
-    if (e.getMemoryLimitCheckIntervalSeconds() != null)
-      c.setMemoryLimitCheckIntervalSeconds(e.getMemoryLimitCheckIntervalSeconds());
-    return c;
+  // --- Conversion from internal types to generated api.v2.models types ---
+
+  /**
+   * Build a generated TelemetryConfig from the universe's currently applied configs (any of which
+   * may be null to indicate that section is disabled).
+   */
+  public static api.v2.models.TelemetryConfig toGenerated(
+      @Nullable AuditLogConfig auditLogConfig,
+      @Nullable QueryLogConfig queryLogConfig,
+      @Nullable MetricsExportConfig metricsExportConfig) {
+    return new api.v2.models.TelemetryConfig()
+        .auditLogs(toAuditLogsSpecFromInternal(auditLogConfig))
+        .queryLogs(toQueryLogsSpecFromInternal(queryLogConfig))
+        .metrics(toMetricsSpecFromInternal(metricsExportConfig));
+  }
+
+  @Nullable
+  private static AuditLogsTelemetrySpec toAuditLogsSpecFromInternal(
+      @Nullable AuditLogConfig config) {
+    if (config == null) {
+      return null;
+    }
+    AuditLogsTelemetrySpec spec = new AuditLogsTelemetrySpec();
+    spec.setYsqlAuditConfig(
+        MAPPER.convertValue(config.getYsqlAuditConfig(), api.v2.models.YSQLAuditConfig.class));
+    spec.setYcqlAuditConfig(
+        MAPPER.convertValue(config.getYcqlAuditConfig(), api.v2.models.YCQLAuditConfig.class));
+    spec.setExporters(
+        convertList(
+            config.getUniverseLogsExporterConfig(),
+            api.v2.models.UniverseLogsExporterConfig.class));
+    return spec;
+  }
+
+  @Nullable
+  private static QueryLogsTelemetrySpec toQueryLogsSpecFromInternal(
+      @Nullable QueryLogConfig config) {
+    if (config == null) {
+      return null;
+    }
+    QueryLogsTelemetrySpec spec = new QueryLogsTelemetrySpec();
+    spec.setYsqlQueryLogConfig(
+        MAPPER.convertValue(
+            config.getYsqlQueryLogConfig(), api.v2.models.YSQLQueryLogConfig.class));
+    spec.setExporters(
+        convertList(
+            config.getUniverseLogsExporterConfig(),
+            api.v2.models.UniverseQueryLogsExporterConfig.class));
+    return spec;
+  }
+
+  @Nullable
+  private static MetricsTelemetrySpec toMetricsSpecFromInternal(
+      @Nullable MetricsExportConfig config) {
+    if (config == null) {
+      return null;
+    }
+    MetricsTelemetrySpec spec = new MetricsTelemetrySpec();
+    spec.setScrapeIntervalSeconds(config.getScrapeIntervalSeconds());
+    spec.setScrapeTimeoutSeconds(config.getScrapeTimeoutSeconds());
+    if (config.getCollectionLevel() != null) {
+      spec.setCollectionLevel(
+          MetricsTelemetrySpec.CollectionLevelEnum.fromValue(
+              config.getCollectionLevel().toString()));
+    }
+    if (config.getScrapeConfigTargets() != null) {
+      spec.setScrapeConfigTargets(
+          config.getScrapeConfigTargets().stream()
+              .map(t -> api.v2.models.ScrapeConfigTargetType.fromValue(t.toString()))
+              .collect(Collectors.toList()));
+    }
+    spec.setExporters(
+        convertList(
+            config.getUniverseMetricsExporterConfig(),
+            api.v2.models.UniverseMetricsExporterConfig.class));
+    return spec;
+  }
+
+  // The generated per-type exporter schemas (UniverseLogsExporterConfig etc.) share field names
+  // with their internal counterparts, so Jackson converts each element directly in either
+  // direction.
+  private static <I, O> List<O> convertList(@Nullable List<I> list, Class<O> outClass) {
+    if (list == null) {
+      return Collections.emptyList();
+    }
+    return list.stream().map(c -> MAPPER.convertValue(c, outClass)).collect(Collectors.toList());
   }
 }
