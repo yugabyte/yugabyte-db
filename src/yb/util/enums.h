@@ -86,6 +86,7 @@ class AllEnumItemsIterable {
 //   string for invalid values.
 // - A stream output operator for MyEnum using the above ToString function.
 // - A ToCString() function converting an enum value to a C string, or nullptr for invalid values.
+// - An operator| combining enum values into an EnumBitSet: MyEnum::kFoo | MyEnum::kBar.
 
 #define YB_ENUM_ITEM_NAME(elem) \
     BOOST_PP_IF(BOOST_PP_IS_BEGIN_PARENS(elem), BOOST_PP_TUPLE_ELEM(2, 0, elem), elem)
@@ -162,6 +163,15 @@ class AllEnumItemsIterable {
   } \
   inline __attribute__((unused)) auto List(enum_name*) { \
     return ::yb::AllEnumItemsIterable<enum_name>(); \
+  } \
+  /* Combines enum values into an EnumBitSet: MyEnum::kFoo | MyEnum::kBar. Defined as a */ \
+  /* template so that a hand-written non-template operator| for the same enum, e.g. for a */ \
+  /* bitmask-valued enum, is neither redeclared nor outranked. */ \
+  template <class EnumBitSetOperandType> \
+  requires std::is_same_v<EnumBitSetOperandType, enum_name> \
+  inline __attribute__((unused)) ::yb::EnumBitSet<enum_name> operator|( \
+      EnumBitSetOperandType lhs, enum_name rhs) { \
+    return ::yb::EnumBitSet<enum_name>({lhs, rhs}); \
   } \
   /**/
 
@@ -308,6 +318,11 @@ class EnumBitSet {
 
   EnumBitSet() = default;
   explicit EnumBitSet(uint64_t value) : impl_(value) {}
+
+  // Intentionally implicit, so a single enum value converts to a set of one.
+  EnumBitSet(Enum value) { // NOLINT
+    impl_.set(std::to_underlying(value));
+  }
 
   explicit EnumBitSet(const std::initializer_list<Enum>& inp) {
     for (auto i : inp) {

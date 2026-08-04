@@ -525,6 +525,11 @@ Status DocRowwiseIterator::InitIterator(
 
   DCHECK(!db_iter_) << "InitIterator should be called only once";
 
+  IntentAwareIteratorFlags flags;
+  flags.Set(IntentAwareIteratorFlag::kFastBackwardScan, use_fast_backward_scan_);
+  flags.Set(
+      IntentAwareIteratorFlag::kAvoidUselessNextInsteadOfSeek,
+      avoid_useless_next_instead_of_seek.get());
   db_iter_ = CreateIntentAwareIterator(
       doc_db_,
       bloom_filter,
@@ -533,8 +538,7 @@ Status DocRowwiseIterator::InitIterator(
       read_operation_data_,
       file_filter,
       nullptr /* iterate_upper_bound */,
-      FastBackwardScan{use_fast_backward_scan_},
-      avoid_useless_next_instead_of_seek);
+      flags);
   InitResult();
 
   const auto scan_choices_has_upperbound =
