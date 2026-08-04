@@ -32,6 +32,26 @@ You can configure AWS S3 and S3-compatible storage as your backup target.
 
 - To validate connections to your S3 storage using custom self-signed or CA certificates, add the certificates to the YugabyteDB Anywhere Trust Store. Refer to [Add certificates to your trust store](../../security/enable-encryption-in-transit/trust-store/).
 
+### Choose an S3 authentication method
+
+When you create an S3 backup configuration, choose how YugabyteDB Anywhere and the universe authenticate to the bucket. Enable **IAM Role** for either IAM path, or leave it disabled and provide static credentials.
+
+**Recommended default:** For production universes on AWS (including EKS with IRSA), use universe node IAM roles. Use static **Access Key** and **Access Secret** credentials for evaluation setups, or when neither the YBA host nor the universe nodes can assume IAM roles. Treat YBA instance IAM as legacy, and keep it only for existing configurations that already depend on it.
+
+| Option | When to use | Prerequisites | Trade-offs |
+| :--- | :--- | :--- | :--- |
+| Universe node IAM role {{<tags/feature/ea>}} | Production backups on AWS VMs or Kubernetes (EKS IRSA). Recommended for new deployments. | Attach IAM roles (or annotated Kubernetes service accounts) with the [required S3 IAM permissions](#required-s3-iam-permissions) to each universe node or database pod.<br>Set the **Use S3 IAM roles attached to DB node for Backup/Restore** [Universe Configuration option](../../administer-yugabyte-platform/manage-runtime-config/) to true. Enable **IAM Role** on the storage configuration. For EKS setup, see [EKS service account](../../create-deployments/create-universe-multi-zone-kubernetes/#eks-service-account). | YB Controller on each node authenticates to S3 directly, so backups scale with cluster size. Requires a universe-level runtime configuration change. Preferred path going forward. |
+| YBA instance IAM role (Legacy) {{<tags/feature/ga>}} | Existing setups that already use the IAM role attached to the YugabyteDB Anywhere VM or pod. | Attach an IAM role with the [required S3 IAM permissions](#required-s3-iam-permissions) to the YugabyteDB Anywhere host. Enable **IAM Role**. <br>Leave **Use S3 IAM roles attached to DB node for Backup/Restore** at the default (`false`). | YBA fetches temporary credentials from its own instance role and passes them to database nodes. This path does not scale well for large backups and is not recommended for new deployments. |
+| Access Key and Access Secret {{<tags/feature/ga>}} | Evaluation and proof-of-concept setups; environments where neither YBA nor universe nodes have IAM roles (including many S3-compatible targets). | An IAM user (or equivalent) with the [required S3 IAM permissions](#required-s3-iam-permissions). Leave **IAM Role** disabled and enter **Access Key** and **Access Secret**. | Simplest path to a first successful backup. Credentials are stored in YBA and must be rotated manually. Prefer IAM for production when available. |
+
+#### Examples
+
+- **First backup / evaluation.** Leave **IAM Role** disabled. Enter an AWS access key and secret for a user that can read and write the backup bucket.
+- **New production AWS or EKS universe.** Attach instance profiles (or IRSA service accounts) to the database nodes, set **Use S3 IAM roles attached to DB node for Backup/Restore** (`yb.backup.s3.use_db_nodes_iam_role_for_backup`) to true for the universe, then enable **IAM Role** on the storage configuration.
+- **Existing YBA-role configuration.** Keep **IAM Role** enabled and leave `yb.backup.s3.use_db_nodes_iam_role_for_backup` at `false` until you can migrate nodes to their own IAM roles.
+
+For cloud permission setup details, refer to [Permissions to back up and restore](../../prepare/cloud-permissions/cloud-permissions-storage/).
+
 ### Create an AWS backup configuration
 
 To configure S3 storage, do the following:
@@ -44,19 +64,21 @@ To configure S3 storage, do the following:
 
 1. Use the **Configuration Name** field to provide a meaningful name for your storage configuration.
 
-1. Enable **IAM Role** to use the YugabyteDB Anywhere instance's Identity Access Management (IAM) role or universe node IAM role for the S3 backup. See [Required S3 IAM permissions](#required-s3-iam-permissions).
+1. Choose authentication using the guidance in [Choose an S3 authentication method](#choose-an-s3-authentication-method):
 
-    To enable universe node IAM roles to access storage in S3, set the **Use S3 IAM roles attached to DB node for Backup/Restore** Universe Configuration option (config key `yb.backup.s3.use_db_nodes_iam_role_for_backup`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
+    - To use IAM (universe node IAM role or legacy YBA instance IAM role), enable **IAM Role**.
 
-1. If **IAM Role** is disabled, enter values for the **Access Key** and **Access Secret** fields.
+        For universe node IAM roles, also set the **Use S3 IAM roles attached to DB node for Backup/Restore** Universe Configuration option (config key `yb.backup.s3.use_db_nodes_iam_role_for_backup`) to true. Refer to [Manage runtime configuration settings](../../administer-yugabyte-platform/manage-runtime-config/).
 
-    For information on AWS access keys, see [Manage access keys for IAM users](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html).
+    - To use static credentials, leave **IAM Role** disabled and enter values for the **Access Key** and **Access Secret** fields.
+
+        For information on AWS access keys, see [Manage access keys for IAM users](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html).
 
 1. In the **S3 Bucket** field, enter the bucket name in the format `s3://bucket_name`, or `https://storage_vendor/s3-bucket-name` for S3-compatible storage.
 
 1. In the **S3 Bucket Host Base** field, enter the HTTP host header (endpoint URL) of the AWS S3 or S3-compatible storage, in the form `s3.amazonaws.com` or `my.storage.com`.
 
-1. If you are using S3-compatible storage, set the **S3 Path Style Access** option to true. (The option is only available if the **enablePathStyleAccess** feature is enabled.)
+1. If you are using S3-compatible storage, set the **S3 Path Style Access** option to true. (The option is only available after you enable the **Enable Path Access Style for Amazon S3** Global Runtime Configuration option, config key `yb.ui.feature_flags.enable_path_style_access`.)
 
 1. Click **Save**.
 
