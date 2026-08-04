@@ -75,6 +75,9 @@
 #include "storage/subsystems.h"
 #include "utils/injection_point.h"
 
+/* YB includes */
+#include "pg_yb_utils.h"
+
 /*
  * Struct for controlling the logical decoding status.
  *
@@ -302,7 +305,12 @@ abort_logical_decoding_activation(int code, Datum arg)
 void
 EnsureLogicalDecodingEnabled(void)
 {
-	Assert(MyReplicationSlot);
+	/*
+	 * YB manages replication slots and logical decoding through its own CDC
+	 * infrastructure, not PostgreSQL's in-memory replication slots, so
+	 * MyReplicationSlot is not set here.
+	 */
+	Assert(IsYugaByteEnabled() || MyReplicationSlot);
 	Assert(wal_level >= WAL_LEVEL_REPLICA);
 
 	/* Logical decoding is always enabled */
@@ -551,6 +559,14 @@ void
 UpdateLogicalDecodingStatusEndOfRecovery(void)
 {
 	bool		new_status = false;
+
+	/*
+	 * YB manages logical decoding through its own CDC infrastructure and does
+	 * not use PostgreSQL's dynamic logical-decoding status or ProcSignalBarrier
+	 * machinery, so there is nothing to update at end of recovery.
+	 */
+	if (IsYugaByteEnabled())
+		return;
 
 	Assert(RecoveryInProgress());
 
