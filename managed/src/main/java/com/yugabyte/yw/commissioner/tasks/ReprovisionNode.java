@@ -111,7 +111,7 @@ public class ReprovisionNode extends UniverseDefinitionTaskBase {
         createSetupYNPTask(universe, nodeCollection)
             .setSubTaskGroupType(SubTaskGroupType.Provisioning);
         if (!useAnsibleProvisioning) {
-          createYNPProvisioningTask(universe, nodeCollection, false /*isYBPrebuiltImage*/)
+          createYNPProvisioningTask(universe, nodeCollection, (n, p) -> p.isDataPresent = true)
               .setSubTaskGroupType(SubTaskGroupType.Provisioning);
         }
       }
