@@ -199,6 +199,22 @@ TEST_F(PgTableSizeTest, ColocatedTableSize) {
 
   ASSERT_OK(VerifyInvalidTableSize(cluster_.get(), &test_conn, "T", kTable));
   ASSERT_OK(VerifyInvalidTableSize(cluster_.get(), &test_conn, "I", kIndex));
+
+  // Colocation parent size is available via yb_tablegroup_size and tablet_attrs.
+  auto tg_size = ASSERT_RESULT(test_conn.FetchRow<int64_t>(
+      "SELECT yb_tablegroup_size(oid) FROM pg_yb_tablegroup WHERE grpname = 'default'"));
+  ASSERT_GT(tg_size, 0);
+
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return test_conn.FetchRow<bool>(Format(
+        "SELECT EXISTS ("
+        "  SELECT 1 FROM yb_tablet_metadata "
+        "  WHERE db_name = current_database() "
+        "    AND relname LIKE '%%.colocation.parent.tablename' "
+        "    AND tablet_attrs IS NOT NULL "
+        "    AND (tablet_attrs->>'total_bytes')::bigint = $0)",
+        tg_size));
+  }, 30s, "Wait for colocated parent tablet_attrs to match yb_tablegroup_size"));
 }
 
 TEST_F(PgTableSizeTest, SimpleTableSize) {

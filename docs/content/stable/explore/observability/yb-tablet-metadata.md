@@ -39,7 +39,7 @@ The following table describes the columns of the `yb_tablet_metadata` view.
 | replicas | text[] | A list of replica IP addresses and port (includes leader) associated with the tablet. |
 | start_range | text | Starting range key (inclusive) for the tablet. (NULL for hash-sharded tables.) |
 | end_range | text | Ending range key (exclusive) for the tablet. (NULL for hash-sharded tables.) |
-| tablet_attrs | json | Reserved for future use. Currently empty. |
+| tablet_attrs | json | Leader-replica disk size fields when available: `sst_bytes`, `wal_bytes`, `uncompressed_sst_bytes`, `total_bytes` (SST+WAL), and optionally `vector_index_bytes`. NULL when sizes are unavailable or the row is privilege-masked. |
 | tablet_state | text | Current state of the tablet. <br>Possible tablet states are `PREPARING`, `CREATING`, `RUNNING`, `REPLACED`, or `DELETED`. |
 
 The `relname`, `start_range`, and `end_range` columns are masked for unprivileged users (shown as `<insufficient privilege>`). Only superusers or users with the `yb_db_admin` role can see the entire unmasked view.
