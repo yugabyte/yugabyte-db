@@ -11,7 +11,7 @@ import {
   ReviewItem
 } from '../../../create-universe/steps/review-summary/ReviewAndSummaryComponent';
 
-import { ClusterType, Region } from '@app/redesign/helpers/dtos';
+import { CloudType, ClusterType, Region } from '@app/redesign/helpers/dtos';
 
 import GeoPartitionBreadCrumb from '../GeoPartitionBreadCrumbs';
 
@@ -24,6 +24,8 @@ import {
 } from '../AddGeoPartitionUtils';
 import { YBLoadingCircleIcon } from '@app/components/common/indicators';
 import PinIcon from '@app/redesign/assets/pin.svg';
+import { getReadReplicaExitRoute } from '../../../read-replica/readReplicaUtils';
+import { EditUniverseTabs } from '../../../edit-universe/EditUniverseContext';
 
 const { Box } = mui;
 
@@ -34,6 +36,9 @@ export const GeoPartitionReviewAndSummary = () => {
   const { geoPartitions, universeData } = addGeoPartitionContext;
   const regions: Region[] = geoPartitions.map((gp) => gp.resilience!.regions).flat();
   const { t } = useTranslation('translation', { keyPrefix: 'geoPartition.reviewAndSummary' });
+  const { t: tSteps } = useTranslation('translation', { keyPrefix: 'geoPartition.steps' });
+  const isK8s =
+    universeData?.spec?.clusters?.[0]?.placement_spec?.cloud_list?.[0]?.code === CloudType.kubernetes;
   const { moveToPreviousPage } = useGeoPartitionNavigation();
 
   const geoPartitionData = prepareAddGeoPartitionPayload(addGeoPartitionContext);
@@ -65,14 +70,14 @@ export const GeoPartitionReviewAndSummary = () => {
     name: geoPartitions[i].name,
     attributes: [
       {
-        name: 'Nodes',
+        name: t(isK8s ? 'pods' : 'nodes'),
         value: geoPartitionData[i]?.placement
           ? String(sumNumNodesInClusterPartitionPlacement(geoPartitionData[i]))
           : '-'
       },
-      { name: 'Cores', value: costs[i]?.data?.num_cores ?? '-' },
-      { name: 'Total Memory', value: costs[i]?.data?.mem_size_gb ?? '-' },
-      { name: 'Total Storage', value: costs[i]?.data?.volume_size_gb ?? '-' }
+      { name: t('cores'), value: costs[i]?.data?.num_cores ?? '-' },
+      { name: t('totalMemory'), value: costs[i]?.data?.mem_size_gb ?? '-' },
+      { name: t('totalStorage'), value: costs[i]?.data?.volume_size_gb ?? '-' }
     ],
     dailyCost: costs[i]?.data?.price_per_hour
       ? ((costs[i]?.data?.price_per_hour ?? 0) * 24).toFixed(2)
@@ -99,22 +104,35 @@ export const GeoPartitionReviewAndSummary = () => {
     const primaryCluster = universeData.spec.clusters.find(
       (c) => c.cluster_type === ClusterType.PRIMARY
     );
-    if (!primaryCluster) return;
+    if (!primaryCluster?.uuid) return;
+
+    // When converting a non-geo-partitioned universe to a geo-partitioned one, payload[0] is the
+    // modified default partition that replaces the existing default. Otherwise we are appending
+    // brand new partitions to an already geo-partitioned cluster and must keep the existing ones.
+    const { isNewGeoPartition } = addGeoPartitionContext;
+    const partitionsSpec = isNewGeoPartition
+      ? payload
+      : [...(primaryCluster.partitions_spec ?? []), ...payload];
 
     editUniverse.mutate(
       {
         uniUUID: universeData!.info!.universe_uuid!,
         data: {
-          clusters: universeData!.spec!.clusters.map((cluster) => ({
-            uuid: cluster!.uuid!,
-            partitions_spec: [...(primaryCluster.partitions_spec ?? []), ...payload]
-          })),
-          expected_universe_version: -1
+          expected_universe_version: -1,
+          clusters: [
+            {
+              uuid: primaryCluster.uuid,
+              partitions_spec: partitionsSpec
+            }
+          ]
         }
       },
       {
         onSuccess: () => {
-          window.location.href = `/universes/${universeData!.info!.universe_uuid}`;
+          window.location.href = getReadReplicaExitRoute(
+            universeData!.info!.universe_uuid,
+            EditUniverseTabs.PLACEMENT
+          );
         },
         onError: (error) => {
           toast.error((error.response?.data as any).error || error.message);
@@ -126,7 +144,10 @@ export const GeoPartitionReviewAndSummary = () => {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <div style={{ padding: '24px 24px 0 0' }}>
-        <GeoPartitionBreadCrumb groupTitle={<>{'Review'}</>} subTitle={<>Summary and Cost</>} />
+        <GeoPartitionBreadCrumb
+          groupTitle={<>{tSteps('review')}</>}
+          subTitle={<>{tSteps('summaryAndCost')}</>}
+        />
       </div>
       <ReviewAndSummaryComponent
         regions={regions}

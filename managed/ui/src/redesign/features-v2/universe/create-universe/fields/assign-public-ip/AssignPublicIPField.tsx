@@ -1,5 +1,6 @@
 import { FC, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { isUndefined } from 'lodash';
 import { useFormContext } from 'react-hook-form';
 import { mui, YBCheckboxField } from '@yugabyte-ui-library/core';
 import { FieldContainer } from '../../components/DefaultComponents';
@@ -25,15 +26,17 @@ export const StyledSubText = styled(Typography)(({ theme }) => ({
 }));
 
 export const AssignPublicIPField: FC<PublicIPFieldProps> = ({ disabled, providerCode }) => {
-  const { control, setValue } = useFormContext<SecuritySettingsProps>();
+  const { control, setValue, getValues } = useFormContext<SecuritySettingsProps>();
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.securitySettings.publicIPField'
   });
 
   useEffect(() => {
-    providerCode === CloudType.azu
-      ? setValue(ASSIGN_PUBLIC_IP_FIELD, false)
-      : setValue(ASSIGN_PUBLIC_IP_FIELD, true);
+    if (isUndefined(getValues(ASSIGN_PUBLIC_IP_FIELD))) {
+      providerCode === CloudType.azu
+        ? setValue(ASSIGN_PUBLIC_IP_FIELD, false)
+        : setValue(ASSIGN_PUBLIC_IP_FIELD, true);
+    }
   }, [providerCode]);
 
   return (

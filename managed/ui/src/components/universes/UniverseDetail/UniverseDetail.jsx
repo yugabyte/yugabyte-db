@@ -1,6 +1,6 @@
 // Copyright (c) YugabyteDB, Inc.
 
-import { Component } from 'react';
+import { Component, createRef } from 'react';
 import { Link, withRouter, browserHistory } from 'react-router';
 import { Grid, DropdownButton, MenuItem, Tab, Alert } from 'react-bootstrap';
 import Measure from 'react-measure';
@@ -58,6 +58,8 @@ import { EditPGCompatibilityModal } from '../../../redesign/features/universe/un
 import { EditConnectionPoolModal } from '../../../redesign/features/universe/universe-actions/edit-connection-pool/EditConnectionPoolModal';
 import { EditGflagsModal } from '../../../redesign/features/universe/universe-actions/edit-gflags/EditGflags';
 import { EditUniverse } from '@app/redesign/features-v2/universe/edit-universe';
+import { EditUniverseTabs } from '@app/redesign/features-v2/universe/edit-universe/EditUniverseContext';
+import { getEditUniverseSettingsRoute } from '@app/redesign/features-v2/universe/edit-universe/editUniverseTabUtils';
 import { UpgradeLinuxVersionModal } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/UpgradeLinuxVersionModal';
 import { DBUpgradeModal as LegacyDbUpgradeModal } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/DBUpgradeModal';
 import { DbUpgradeModal } from '@app/redesign/features/universe/universe-actions/software-upgrade/DbUpgradeModal';
@@ -85,7 +87,16 @@ import {
 } from '../../../redesign/helpers/constants';
 import { AppName } from '@app/redesign/helpers/dtos';
 import { isActionFrozen } from '../../../redesign/helpers/utils';
-import { isV2CreateEditUniverseEnabled } from '@app/redesign/features-v2/universe/create-universe/CreateUniverseUtils';
+import {
+  subscribeOnboardingNewExperienceChange,
+  isOnboardingNewExperienceEnabled,
+  isUniverseRevampExperienceEnabled
+} from '@app/redesign/features-v2/onboarding/universe-revamp/helper-methods';
+import { SettingsTabTitleWithPopover } from '@app/redesign/features-v2/onboarding/universe-revamp/popovers/DetailSettingsPopover';
+import {
+  BeforeProceedWithNewModal,
+  BEFORE_PROCEED_WITH_NEW_MODAL_DISMISS_KEY
+} from '@app/redesign/features-v2/onboarding/universe-revamp/modals/BeforeProceedWithNewModal';
 import {
   getCurrentVersion,
   isVersionPGSupported,
@@ -141,11 +152,15 @@ class UniverseDetail extends Component {
 
     this.showUpgradeMarker = this.showUpgradeMarker.bind(this);
     this.onEditUniverseButtonClick = this.onEditUniverseButtonClick.bind(this);
+    this.settingsTabPopoverRef = createRef();
     this.state = {
       dimensions: {},
       showAlert: false,
       actionsDropdownOpen: false,
-      refetchedUniverseDetails: false
+      refetchedUniverseDetails: false,
+      showBeforeProceedModal:
+        localStorage.getItem(BEFORE_PROCEED_WITH_NEW_MODAL_DISMISS_KEY) !== 'true',
+      isOnboardingExperienceEnabled: isOnboardingNewExperienceEnabled()
     };
   }
 
@@ -154,7 +169,12 @@ class UniverseDetail extends Component {
     return clusters.some((cluster) => cluster.clusterType === 'ASYNC');
   };
 
+  handleOnboardingExperienceChange = (enabled) => {
+    this.setState({ isOnboardingExperienceEnabled: enabled });
+  };
+
   componentWillUnmount() {
+    this.unsubscribeOnboardingExperience?.();
     this.props.resetUniverseInfo();
     this.props.resetTablesList();
   }
@@ -175,6 +195,9 @@ class UniverseDetail extends Component {
 
   componentDidMount() {
     this.props.fetchPerfAdvisorList();
+    this.unsubscribeOnboardingExperience = subscribeOnboardingNewExperienceChange(
+      this.handleOnboardingExperienceChange
+    );
     const {
       customer: { currentCustomer }
     } = this.props;
@@ -571,7 +594,11 @@ class UniverseDetail extends Component {
         (config) => config.key === RuntimeConfigKey.ENABLE_NON_RESTART_GFLAG_UPGRADE_OPTION
       )?.value === 'true';
 
-    const isV2EditUniverseUIEnabled = isV2CreateEditUniverseEnabled(runtimeConfigs?.data);
+    const isV2EditUniverseUIEnabled = isUniverseRevampExperienceEnabled(
+      runtimeConfigs?.data,
+      currentUser?.data?.role,
+      this.state.isOnboardingExperienceEnabled
+    );
 
     if (
       getPromiseState(currentUniverse).isLoading() ||
@@ -701,7 +728,12 @@ class UniverseDetail extends Component {
       : 'overview';
     // Check if the pathname contains "performance" to determine if we should show the performance tab
     const isPerfAdvisorPath = location?.pathname?.includes(PERF_ADVISOR_PATH);
-    const activeTab = isPerfAdvisorPath ? PERF_ADVISOR_PATH : tab || defaultTab;
+    const isSettingsPath = location?.pathname?.includes('/settings');
+    const activeTab = isPerfAdvisorPath
+      ? PERF_ADVISOR_PATH
+      : isSettingsPath || tab === 'settings'
+        ? 'settings'
+        : tab || defaultTab;
     const tabElements = [
       //common tabs for every universe
       ...[
@@ -931,7 +963,14 @@ class UniverseDetail extends Component {
               <Tab.Pane
                 eventKey="settings"
                 key="settings-tab"
-                tabtitle="Settings"
+                tabtitle={<SettingsTabTitleWithPopover ref={this.settingsTabPopoverRef} />}
+                onBeforeSelect={() => {
+                  // Block Settings navigation until the tip is dismissed.
+                  if (this.settingsTabPopoverRef.current?.tryIntercept()) {
+                    return false;
+                  }
+                  return true;
+                }}
                 mountOnEnter={true}
                 unmountOnExit={true}
               >
@@ -1175,6 +1214,7 @@ class UniverseDetail extends Component {
                   )}
                   {!isReadOnlyUniverse &&
                     !universePaused &&
+                    !isV2EditUniverseUIEnabled &&
                     isNotHidden(
                       currentCustomer.data.features,
                       'universes.details.overview.editUniverse'
@@ -1209,6 +1249,94 @@ class UniverseDetail extends Component {
                           </span>
                         </YBTooltip>
                       </RbacValidator>
+                    )}
+                  {!isReadOnlyUniverse &&
+                    !universePaused &&
+                    isV2EditUniverseUIEnabled &&
+                    isNotHidden(
+                      currentCustomer.data.features,
+                      'universes.details.overview.editUniverse'
+                    ) && (
+                      <>
+                        <MenuItem divider />
+                        <RbacValidator
+                          isControl
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                          }}
+                        >
+                          <YBTooltip
+                            title={
+                              hasAsymmetricPrimaryCluster &&
+                              !(isKubernetesUniverse && enableAzOverridesK8s)
+                                ? 'Editing asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
+                                : ''
+                            }
+                            placement="left"
+                          >
+                            <span>
+                              <YBMenuItem
+                                to={getEditUniverseSettingsRoute(uuid, EditUniverseTabs.PLACEMENT)}
+                                availability={getFeatureState(
+                                  currentCustomer.data.features,
+                                  'universes.details.overview.editUniverse'
+                                )}
+                                disabled={isEditUniverseDisabled}
+                                className="no-border-bottom"
+                              >
+                                <YBLabelWithIcon
+                                  icon="fa fa-pencil"
+                                  className="menu-item-subtext-container"
+                                >
+                                  Edit Universe Placement
+                                  <span className="menu-item-subtext">
+                                    Regions, Availability Zones, and Nodes
+                                  </span>
+                                </YBLabelWithIcon>
+                              </YBMenuItem>
+                            </span>
+                          </YBTooltip>
+                        </RbacValidator>
+                        <RbacValidator
+                          isControl
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+                          }}
+                        >
+                          <YBTooltip
+                            title={
+                              hasAsymmetricPrimaryCluster &&
+                              !(isKubernetesUniverse && enableAzOverridesK8s)
+                                ? 'Editing asymmetric clusters is not supported from the UI. Please use the YBA API to edit instead.'
+                                : ''
+                            }
+                            placement="left"
+                          >
+                            <span>
+                              <YBMenuItem
+                                to={getEditUniverseSettingsRoute(uuid, EditUniverseTabs.HARDWARE)}
+                                availability={getFeatureState(
+                                  currentCustomer.data.features,
+                                  'universes.details.overview.editUniverse'
+                                )}
+                                disabled={isEditUniverseDisabled}
+                                className="no-border-bottom"
+                              >
+                                <YBLabelWithIcon
+                                  icon="fa fa-pencil"
+                                  className="menu-item-subtext-container"
+                                >
+                                  Edit Hardware
+                                  <span className="menu-item-subtext">Instances and storage</span>
+                                </YBLabelWithIcon>
+                              </YBMenuItem>
+                            </span>
+                          </YBTooltip>
+                        </RbacValidator>
+                        <MenuItem divider />
+                      </>
                     )}
                   {!universePaused && !this.isRRFlagsEnabled() && (
                     <RbacValidator
@@ -1414,18 +1542,6 @@ class UniverseDetail extends Component {
                     )}
 
                   <MenuItem divider />
-
-                  {/* TODO:
-                  1. For now, we're enabling the Pause Universe for providerType one of
-                  'aws', 'gcp' or 'azu' only. This functionality needs to be enabled for
-                  all the cloud providers and once that's done this condition needs
-                  to be removed.
-                  2. One more condition needs to be added which specifies the
-                  current status of the universe. */}
-
-                  {/*
-                  Read-only users should not be given the rights to "Pause Universe"
-                  */}
 
                   {isPausableUniverse(currentUniverse?.data) &&
                     (featureFlags.test['pausedUniverse'] ||
@@ -2071,11 +2187,22 @@ class UniverseDetail extends Component {
             activeTab={activeTab}
             routePrefix={`/universes/${currentUniverse.data.universeUUID}/`}
             id={'universe-tab-panel'}
-            className={'universe-detail'}
+            className={`universe-detail${
+              activeTab === 'settings' ? ' universe-detail-settings' : ''
+            }`}
           >
             {[...tabElements, <div title={actionMenuButtons} />]}
           </YBTabsWithLinksPanel>
         </Measure>
+        {isV2EditUniverseUIEnabled && (
+          <BeforeProceedWithNewModal
+            open={this.state.showBeforeProceedModal}
+            onClose={() => {
+              localStorage.setItem(BEFORE_PROCEED_WITH_NEW_MODAL_DISMISS_KEY, 'true');
+              this.setState({ showBeforeProceedModal: false });
+            }}
+          />
+        )}
       </Grid>
     );
   }

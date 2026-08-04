@@ -1,17 +1,36 @@
 import { useContext } from 'react';
 import { EditPlacementContext, EditPlacementContextMethods } from './EditPlacementContext';
-import { ClusterSpecClusterType, Universe } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
-import { Region } from '@app/redesign/helpers/dtos';
-import { ResilienceAndRegionsProps } from '../../create-universe/steps/resilence-regions/dtos';
 import {
-  extractGeoPartitionsFromUniverse,
+  ClusterSpec,
+  ClusterSpecClusterType,
+  Universe,
+  ClusterPartitionSpec,
+  ClusterPlacementSpec
+} from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { Region } from '@app/redesign/helpers/dtos';
+import { ResilienceAndRegionsProps, ResilienceFormMode } from '../../create-universe/steps/resilence-regions/dtos';
+import { NodeAvailabilityProps } from '../../create-universe/steps/nodes-availability/dtos';
+import { InstanceSettingProps } from '../../create-universe/steps/hardware-settings/dtos';
+import {
+  getAZCount,
+  getEffectiveReplicationFactorForResilience,
+  getNodeCount,
+  getPlacementRegions,
+  isCurrentConfigSupportedByGuidedMode,
+  toExpertResilienceForDefaults
+} from '../../create-universe/CreateUniverseUtils';
+import {
   getExistingGeoPartitions
 } from '../../geo-partition/add/AddGeoPartitionUtils';
 import {
   countRegionsAzsAndNodes,
   getClusterByType,
+  getK8sResourceSpecFromNodeSpec,
+  getNodeAvailabilityDefaultsFromClusterPlacement,
+  isKubernetesCluster,
   mapUniversePayloadToResilienceAndRegionsProps
 } from '../EditUniverseUtils';
+import { isDefinedNotNull } from '@yugabytedb/perf-advisor-ui';
 
 export const useGetEditPlacementContext = (): EditPlacementContextMethods => {
   const context = useContext(EditPlacementContext);
@@ -28,24 +47,341 @@ export const getResilienceAndRegionsProps = (
 ): ResilienceAndRegionsProps => {
   const hasGeoPartitions = getExistingGeoPartitions(universeData!).length > 0;
   const primaryCluster = getClusterByType(universeData, ClusterSpecClusterType.PRIMARY);
+  const resilienceFormMode = getUniverseCreationMode(universeData);
+  let resilience: ResilienceAndRegionsProps;
+  let clusterReplicationFactor = 1;
+
   if (hasGeoPartitions) {
     const selectedPartition = primaryCluster?.partitions_spec?.find(
       (partition) => partition.uuid === selectedPartitionUUID
     );
-    const stats = countRegionsAzsAndNodes(selectedPartition!.placement!);
-    const props = mapUniversePayloadToResilienceAndRegionsProps(
+    if (!selectedPartition?.placement) {
+      throw new Error('Selected partition placement data is missing');
+    }
+    const effectiveReplicationFactor =
+      selectedPartition.replication_factor ?? primaryCluster?.replication_factor ?? 1;
+    clusterReplicationFactor = effectiveReplicationFactor;
+    const stats = countRegionsAzsAndNodes(selectedPartition.placement);
+    resilience = mapUniversePayloadToResilienceAndRegionsProps(
       providerRegions!,
       stats,
-      selectedPartition!
+      {
+        ...selectedPartition,
+        replication_factor: effectiveReplicationFactor
+      }
     );
 
-    const geoPartitions = extractGeoPartitionsFromUniverse(universeData, providerRegions);
-    props['regions'] = [
-      geoPartitions.regions.find((region) => region.partitionUUID === selectedPartitionUUID)!
-    ];
-    return props;
   } else {
+    clusterReplicationFactor = primaryCluster?.replication_factor ?? 1;
     const stats = countRegionsAzsAndNodes(primaryCluster!.placement_spec!);
-    return mapUniversePayloadToResilienceAndRegionsProps(providerRegions!, stats, primaryCluster!);
+    resilience = mapUniversePayloadToResilienceAndRegionsProps(providerRegions!, stats, primaryCluster!);
+    
   }
+
+  // Expert form uses raw RF and AZ/REGION FT — not guided NODE_LEVEL collapse.
+  if (resilienceFormMode === ResilienceFormMode.EXPERT_MODE) {
+    return {
+      ...toExpertResilienceForDefaults(resilience),
+      resilienceFactor: clusterReplicationFactor
+    };
+  }
+
+  return {
+    ...resilience,
+    resilienceFormMode
+  };
 };
+
+/** Defaults for edit-placement nodes step (honors dedicated nodes and geo partition/default partition placement). */
+export const getNodesAvailabilityDefaultsForEditPlacement = (
+  universeData: Universe,
+  selectedPartitionUUID?: string
+): NodeAvailabilityProps => {
+  const primaryCluster = getClusterByType(universeData, ClusterSpecClusterType.PRIMARY);
+  if (!primaryCluster) {
+    throw new Error('Primary cluster is missing');
+  }
+
+  const partitionUuidForGeo =
+    selectedPartitionUUID ??
+    primaryCluster.partitions_spec?.find((p) => p.default_partition)?.uuid ??
+    primaryCluster.partitions_spec?.[0]?.uuid;
+
+  const selectedPartition = partitionUuidForGeo
+    ? primaryCluster.partitions_spec?.find((p) => p.uuid === partitionUuidForGeo)
+    : undefined;
+
+  const placementForDefaults = selectedPartition?.placement ?? primaryCluster.placement_spec;
+  if (!placementForDefaults) {
+    throw new Error('Primary cluster placement data is missing');
+  }
+
+  const defaults = getNodeAvailabilityDefaultsFromClusterPlacement(
+    primaryCluster,
+    placementForDefaults,
+    selectedPartition?.replication_factor
+  );
+
+  return defaults;
+};
+
+/** Re-seed universe placement when ResilienceAndRegions clears nodes to {}. */
+export function resolveEditPlacementNodesOnSave(
+  incoming: NodeAvailabilityProps | undefined,
+  universeDefaults: NodeAvailabilityProps
+): NodeAvailabilityProps {
+  if (!incoming || getAZCount(incoming.availabilityZones ?? {}) === 0) {
+    return universeDefaults;
+  }
+  return incoming;
+}
+
+const buildPlacementSpecFromRegionList = (
+  existingPlacementSpec: ClusterPlacementSpec,
+  regionList: ReturnType<typeof getPlacementRegions>
+): ClusterPlacementSpec => {
+  const cloud = existingPlacementSpec?.cloud_list?.[0];
+  if (!cloud) {
+    throw new Error('Cloud placement is missing in cluster placement spec');
+  }
+
+  return {
+    cloud_list: [
+      {
+        ...cloud,
+        default_region: regionList[0]?.uuid ?? cloud.default_region,
+        region_list: regionList
+      }
+    ]
+  };
+};
+
+export const buildPrimaryPlacementEditPayload = (
+  universeData: Universe,
+  resilience: ResilienceAndRegionsProps,
+  nodesAndAvailability?: NodeAvailabilityProps
+) => {
+  const primaryCluster = getClusterByType(universeData, ClusterSpecClusterType.PRIMARY);
+  if (!primaryCluster?.placement_spec || !primaryCluster.uuid) {
+    throw new Error('Primary cluster placement data is missing');
+  }
+
+  const regionList = getPlacementRegions(
+    resilience,
+    nodesAndAvailability?.availabilityZones,
+    nodesAndAvailability
+  );
+
+  return {
+    clusterUUID: primaryCluster.uuid,
+    placementSpec: buildPlacementSpecFromRegionList(primaryCluster.placement_spec, regionList)
+  };
+};
+
+export const buildGeoPartitionPlacementEditPayload = (
+  universeData: Universe,
+  selectedPartitionUUID: string,
+  resilience: ResilienceAndRegionsProps,
+  nodesAndAvailability?: NodeAvailabilityProps
+) => {
+  const primaryCluster = getClusterByType(universeData, ClusterSpecClusterType.PRIMARY);
+  if (!primaryCluster?.uuid || !primaryCluster.partitions_spec?.length) {
+    throw new Error('Primary cluster partitions are missing');
+  }
+
+  const selectedPartition = primaryCluster.partitions_spec.find(
+    (partition) => partition.uuid === selectedPartitionUUID
+  );
+  if (!selectedPartition?.placement) {
+    throw new Error('Selected partition placement data is missing');
+  }
+
+  const regionList = getPlacementRegions(
+    resilience,
+    nodesAndAvailability?.availabilityZones,
+    nodesAndAvailability
+  );
+  const updatedPlacement = buildPlacementSpecFromRegionList(selectedPartition.placement, regionList);
+  const effectiveReplicationFactor = getEffectiveReplicationFactorForResilience(
+    resilience,
+    nodesAndAvailability
+  );
+
+  const partitionsSpec: ClusterPartitionSpec[] = primaryCluster.partitions_spec.map((partition) =>
+    partition.uuid === selectedPartitionUUID
+      ? {
+          ...partition,
+          replication_factor: effectiveReplicationFactor,
+          placement: updatedPlacement
+        }
+      : partition
+  );
+
+  return {
+    clusterUUID: primaryCluster.uuid,
+    partitionsSpec
+  };
+};
+
+export type MasterAllocationEditMutationCluster = {
+  uuid: string;
+  num_nodes: number;
+  node_spec: NonNullable<ClusterSpec['node_spec']> & { dedicated_nodes?: boolean };
+  placement_spec?: ClusterPlacementSpec;
+  partitions_spec?: ClusterPartitionSpec[];
+};
+
+const toClusterStorageSpec = (
+  currentStorageSpec: NonNullable<ClusterSpec['node_spec']>['storage_spec'] | undefined,
+  deviceInfo: InstanceSettingProps['deviceInfo'] | undefined
+) => ({
+  ...currentStorageSpec,
+  volume_size: deviceInfo?.volumeSize ?? currentStorageSpec?.volume_size,
+  num_volumes: deviceInfo?.numVolumes ?? currentStorageSpec?.num_volumes,
+  disk_iops: deviceInfo?.diskIops ?? currentStorageSpec?.disk_iops,
+  throughput: deviceInfo?.throughput ?? currentStorageSpec?.throughput,
+  storage_class: deviceInfo?.storageClass ?? currentStorageSpec?.storage_class,
+  storage_type: deviceInfo?.storageType ?? currentStorageSpec?.storage_type,
+  mount_points: deviceInfo?.mountPoints ?? currentStorageSpec?.mount_points
+});
+
+const toK8sResourceSpec = (resourceSpec: InstanceSettingProps['tserverK8SNodeResourceSpec']) =>
+  resourceSpec
+    ? {
+        cpu_core_count: resourceSpec.cpuCoreCount,
+        memory_gib: resourceSpec.memoryGib
+      }
+    : undefined;
+
+/** Edit-universe cluster fragment for master allocation (placement + dedicated_nodes + num_nodes). */
+export const buildMasterAllocationEditPayload = (
+  universeData: Universe,
+  providerRegions: Region[],
+  nodesAndAvailability: NodeAvailabilityProps,
+  selectedPartitionUUID?: string,
+  instanceSettings?: InstanceSettingProps | null
+): MasterAllocationEditMutationCluster => {
+  const primaryCluster = getClusterByType(universeData, ClusterSpecClusterType.PRIMARY);
+  if (!primaryCluster?.uuid) {
+    throw new Error('Primary cluster is missing');
+  }
+
+  const num_nodes = getNodeCount(nodesAndAvailability.availabilityZones);
+  const node_spec = {
+    ...(primaryCluster.node_spec ?? {}),
+    dedicated_nodes: nodesAndAvailability.useDedicatedNodes
+  } as MasterAllocationEditMutationCluster['node_spec'];
+  const isK8s = isKubernetesCluster(primaryCluster);
+
+  if (instanceSettings) {
+    const tserverInstanceType = instanceSettings.instanceType ?? node_spec.instance_type;
+    const tserverStorageSpec = toClusterStorageSpec(node_spec.storage_spec, instanceSettings.deviceInfo);
+
+    node_spec.instance_type = tserverInstanceType;
+    node_spec.storage_spec = tserverStorageSpec;
+
+    if (isK8s) {
+      const currentTserverK8s = getK8sResourceSpecFromNodeSpec(primaryCluster.node_spec, 'tserver');
+      const currentMasterK8s =
+        getK8sResourceSpecFromNodeSpec(primaryCluster.node_spec, 'master') ?? currentTserverK8s;
+      const nextTserverK8s = instanceSettings.tserverK8SNodeResourceSpec ?? currentTserverK8s;
+      const nextMasterK8s = instanceSettings.keepMasterTserverSame
+        ? nextTserverK8s
+        : instanceSettings.masterK8SNodeResourceSpec ?? currentMasterK8s ?? nextTserverK8s;
+
+      const tserverK8s = toK8sResourceSpec(nextTserverK8s);
+      const masterK8s = toK8sResourceSpec(
+        nextMasterK8s
+      );
+      if (tserverK8s) {
+        node_spec.k8s_tserver_resource_spec = tserverK8s;
+      }
+      if (masterK8s) {
+        node_spec.k8s_master_resource_spec = masterK8s;
+      }
+    }
+
+    if (nodesAndAvailability.useDedicatedNodes) {
+      node_spec.tserver = {
+        ...(node_spec.tserver ?? {}),
+        instance_type: tserverInstanceType,
+        storage_spec: tserverStorageSpec
+      };
+
+      const masterInstanceType = instanceSettings.masterInstanceType ?? tserverInstanceType;
+      const masterStorageSpec = toClusterStorageSpec(
+        node_spec.master?.storage_spec ?? tserverStorageSpec,
+        instanceSettings.masterDeviceInfo ?? instanceSettings.deviceInfo
+      );
+
+      node_spec.master = {
+        ...(node_spec.master ?? {}),
+        instance_type: masterInstanceType,
+        storage_spec: masterStorageSpec
+      };
+    }
+  }
+
+  const partitionUuidForGeo =
+    selectedPartitionUUID ??
+    primaryCluster.partitions_spec?.find((p) => p.default_partition)?.uuid ??
+    primaryCluster.partitions_spec?.[0]?.uuid;
+
+  if (primaryCluster.partitions_spec?.length && partitionUuidForGeo) {
+    const selectedPartition = primaryCluster.partitions_spec.find(
+      (p) => p.uuid === partitionUuidForGeo
+    );
+    if (!selectedPartition?.placement) {
+      throw new Error('Selected partition placement data is missing');
+    }
+    const stats = countRegionsAzsAndNodes(selectedPartition.placement);
+    const resilience = mapUniversePayloadToResilienceAndRegionsProps(
+      providerRegions,
+      stats,
+      selectedPartition
+    );
+    const { clusterUUID, partitionsSpec } = buildGeoPartitionPlacementEditPayload(
+      universeData,
+      partitionUuidForGeo,
+      resilience,
+      nodesAndAvailability
+    );
+    return {
+      uuid: clusterUUID,
+      num_nodes,
+      node_spec,
+      partitions_spec: partitionsSpec
+    };
+  }
+
+  if (!primaryCluster.placement_spec) {
+    throw new Error('Primary cluster placement data is missing');
+  }
+  const stats = countRegionsAzsAndNodes(primaryCluster.placement_spec);
+  const resilience = mapUniversePayloadToResilienceAndRegionsProps(
+    providerRegions,
+    stats,
+    primaryCluster
+  );
+  const { clusterUUID, placementSpec } = buildPrimaryPlacementEditPayload(
+    universeData,
+    resilience,
+    nodesAndAvailability
+  );
+
+  return {
+    uuid: clusterUUID,
+    num_nodes,
+    node_spec,
+    placement_spec: placementSpec
+  };
+};
+
+export const getUniverseCreationMode = (universeData: Universe): ResilienceFormMode => {
+  return isDefinedNotNull(universeData.spec?.universe_settings?.expert_mode) ? 
+  universeData.spec?.universe_settings?.expert_mode ? 
+  ResilienceFormMode.EXPERT_MODE : ResilienceFormMode.GUIDED : 
+  ResilienceFormMode.EXPERT_MODE; 
+};
+
+export { isCurrentConfigSupportedByGuidedMode };

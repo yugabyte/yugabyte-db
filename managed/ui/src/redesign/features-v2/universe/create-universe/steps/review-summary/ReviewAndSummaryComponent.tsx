@@ -34,6 +34,12 @@ interface ReviewAndSummaryComponentProps {
   reviewItems: ReviewItem[];
   totalDailyCost: string;
   totalMonthlyCost: string;
+  /** i18n key prefix for table headers and footer (e.g. createUniverseV2.reviewAndSummary). */
+  summaryTranslationKeyPrefix?: string;
+  /** Map legend label; defaults to "Region" for create-universe / geo flows. */
+  mapLegendLabel?: string;
+  /** Optional test id for the map container. */
+  mapsDataTestId?: string;
 }
 
 const StyledPanel = styled('div')(({ theme }) => ({
@@ -102,9 +108,12 @@ export const ReviewAndSummaryComponent: FC<ReviewAndSummaryComponentProps> = ({
   regions,
   reviewItems,
   totalDailyCost,
-  totalMonthlyCost
+  totalMonthlyCost,
+  summaryTranslationKeyPrefix = 'createUniverseV2.reviewAndSummary',
+  mapLegendLabel = 'Region',
+  mapsDataTestId = 'yb-maps-review-and-summary'
 }) => {
-  const { t } = useTranslation('translation', { keyPrefix: 'createUniverseV2.reviewAndSummary' });
+  const { t } = useTranslation('translation', { keyPrefix: summaryTranslationKeyPrefix });
   const icon = useGetMapIcons({ type: MarkerType.REGION_SELECTED });
 
   return (
@@ -114,8 +123,8 @@ export const ReviewAndSummaryComponent: FC<ReviewAndSummaryComponentProps> = ({
           <thead>
             <tr>
               <StyledHead>&nbsp;</StyledHead>
-              <StyledHead>Daily</StyledHead>
-              <StyledHead>Monthly</StyledHead>
+              <StyledHead>{t('daily')}</StyledHead>
+              <StyledHead>{t('monthly')}</StyledHead>
             </tr>
           </thead>
           <tbody>
@@ -164,7 +173,7 @@ export const ReviewAndSummaryComponent: FC<ReviewAndSummaryComponentProps> = ({
         </StyledTable>
       </StyledPanel>
       <YBMaps
-        dataTestId="yb-maps-review-and-summary"
+        dataTestId={mapsDataTestId}
         mapHeight={360}
         coordinates={[
           [0, 0],
@@ -191,7 +200,7 @@ export const ReviewAndSummaryComponent: FC<ReviewAndSummaryComponentProps> = ({
           }) as any
         }
         <MapLegend
-          mapLegendItems={[<MapLegendItem icon={<>{icon.normal}</>} label={'Region'} />]}
+          mapLegendItems={[<MapLegendItem key="legend" icon={<>{icon.normal}</>} label={mapLegendLabel} />]}
         />
       </YBMaps>
     </StyledRoot>

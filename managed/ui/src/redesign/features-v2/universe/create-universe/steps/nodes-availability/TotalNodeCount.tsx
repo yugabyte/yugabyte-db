@@ -1,12 +1,11 @@
+import { useContext } from 'react';
 import { mui } from '@yugabyte-ui-library/core';
 import { useFormContext } from 'react-hook-form';
 import { NodeAvailabilityProps } from './dtos';
 import { getNodeCount } from '../../CreateUniverseUtils';
 import { useTranslation } from 'react-i18next';
-import { useContext } from 'react';
 import { CreateUniverseContext, CreateUniverseContextMethods } from '../../CreateUniverseContext';
-import { ResilienceFormMode } from '../resilence-regions/dtos';
-import { REPLICATION_FACTOR } from '../../fields/FieldNames';
+import { CloudType } from '@app/redesign/helpers/dtos';
 
 const { styled } = mui;
 
@@ -28,23 +27,25 @@ export const TotalNodeCount = () => {
   const { t } = useTranslation('translation', {
     keyPrefix: 'createUniverseV2.nodesAndAvailability.guidedMode'
   });
-
-  const [{ resilienceAndRegionsSettings }] = (useContext(
+  const [{ generalSettings }] = (useContext(
     CreateUniverseContext
   ) as unknown) as CreateUniverseContextMethods;
+  const isK8s =
+    generalSettings?.cloud === CloudType.kubernetes ||
+    generalSettings?.providerConfiguration?.code === CloudType.kubernetes;
 
   const { watch } = useFormContext<NodeAvailabilityProps>();
   const az = watch('availabilityZones');
   const useDedicatedNodes = watch('useDedicatedNodes');
-  const replicationFactor = watch(REPLICATION_FACTOR);
   const totalNodeCount = getNodeCount(az);
-  const totalNodesLabel = useDedicatedNodes ? t('totalNodesTserver') : t('totalNodes');
+  const totalNodesLabel = useDedicatedNodes
+    ? t(isK8s ? 'totalPodsTserver' : 'totalNodesTserver')
+    : t(isK8s ? 'totalPods' : 'totalNodes');
 
   return (
     <NodesCount>
       <span>{totalNodesLabel}</span>
       {totalNodeCount}
-      {useDedicatedNodes && <span style={{ marginLeft: '8px' }}>{replicationFactor}</span>}
     </NodesCount>
   );
 };

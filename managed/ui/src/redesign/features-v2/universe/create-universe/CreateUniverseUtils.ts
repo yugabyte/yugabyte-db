@@ -4,19 +4,35 @@ export {
   getGuidedNodesStepReplicationFactor,
   getEffectiveReplicationFactorForResilience,
   canSelectMultipleRegions,
-  computeResilienceTypeFromProvider
+  computeResilienceTypeFromProvider,
+  isCurrentConfigSupportedByGuidedMode
 } from './utils/resilienceReplication';
-export type { ExpertNodesStepDefaultPlacement } from './utils/placementAndAvailability';
+export type {
+  DedicatedTserverMasterCounts,
+  ExpertNodesStepDefaultPlacement
+} from './utils/placementAndAvailability';
 export {
   getNodeCount,
   getNodeCountNeeded,
+  getDedicatedTserverMasterCounts,
   assignRegionsAZNodeByReplicationFactor,
   reduceExpertNodeCountsToAtMostRf,
   getExpertNodesStepDefaultPlacement,
+  toExpertResilienceForDefaults,
+  getExpertAvailabilityZonesOrEmpty,
   getPlacementRegions,
-  getAZCount
+  getAZCount,
+  distributeReplicationFactorAcrossAzs
 } from './utils/placementAndAvailability';
 export { inferResilience, getInferredOutageCount } from './utils/inferResilience';
-export { getCreateEITPayload, mapCreateUniversePayload } from './utils/createUniversePayload';
-export { effectiveUseDedicatedNodes, getNodeSpec } from './utils/createUniverseNodeSpec';
+export {
+  getCreateEITPayload,
+  mapCreateUniversePayload,
+  mapGFlags
+} from './utils/createUniversePayload';
+export {
+  buildStorageSpecFromDeviceInfo,
+  effectiveUseDedicatedNodes,
+  getNodeSpec
+} from './utils/createUniverseNodeSpec';
 export { isV2CreateEditUniverseEnabled } from './utils/createUniverseRuntime';

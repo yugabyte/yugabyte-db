@@ -2,6 +2,7 @@ import * as Yup from 'yup';
 import { values } from 'lodash';
 import { ValidationArgs, ValidationMetrics } from './common';
 import { inferResilience } from '../../../CreateUniverseUtils';
+import { validateOnPremFreeNodesPerAz } from './onPrem';
 
 type ExpertValidationArgs = ValidationArgs & {
   metrics: ValidationMetrics;
@@ -12,6 +13,7 @@ export function validateExpertRules({
   availabilityZones,
   path,
   createError,
+  onPremContext,
   resilienceAndRegionsProps,
   replicationFactor,
   metrics
@@ -78,6 +80,17 @@ export function validateExpertRules({
     );
     return fieldErrors;
   }
+
+  fieldErrors.push(
+    ...validateOnPremFreeNodesPerAz({
+      availabilityZones,
+      path,
+      createError,
+      onPremContext,
+      resilienceAndRegionsProps
+    })
+  );
+
   return fieldErrors;
 }
 
