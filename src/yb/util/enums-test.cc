@@ -54,4 +54,24 @@ TEST_F(EnumsTest, FromStream) {
   ASSERT_TRUE(invalid_input1.fail());
 }
 
+TEST_F(EnumsTest, BitSet) {
+  // A single value converts implicitly.
+  EnumBitSet<TestEnum> single = TestEnum::kItem2;
+  ASSERT_TRUE(single.Test(TestEnum::kItem2));
+  ASSERT_FALSE(single.Test(TestEnum::kElement1));
+  ASSERT_FALSE(single.Test(TestEnum::kWidget3));
+
+  // Values combine into a set via the generated operator|, including chaining.
+  auto pair = TestEnum::kElement1 | TestEnum::kWidget3;
+  static_assert(std::is_same_v<decltype(pair), EnumBitSet<TestEnum>>);
+  ASSERT_TRUE(pair.Test(TestEnum::kElement1));
+  ASSERT_FALSE(pair.Test(TestEnum::kItem2));
+  ASSERT_TRUE(pair.Test(TestEnum::kWidget3));
+
+  auto all = TestEnum::kElement1 | TestEnum::kItem2 | TestEnum::kWidget3;
+  ASSERT_TRUE(all.Test(TestEnum::kElement1));
+  ASSERT_TRUE(all.Test(TestEnum::kItem2));
+  ASSERT_TRUE(all.Test(TestEnum::kWidget3));
+}
+
 }  // namespace yb

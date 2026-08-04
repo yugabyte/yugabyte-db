@@ -858,10 +858,18 @@ Result<docdb::IntentAwareIteratorWithBounds> TabletVectorIndexes::CreateVectorMe
   RETURN_NOT_OK(tablet().GetSafeTimeReadOperationData(read_ht, read_operation_data));
   read_operation_data.statistics = statistics;
 
+  // Reverse mappings are not intent tracked: a concurrent DELETE writes its tombstone at intent
+  // apply time, potentially in the middle of a vector index search. Fast next skips sequence
+  // number filtering and could expose such a tombstone to ybctid resolution while the search
+  // filter saw the live mapping, failing the search with "Vector not found". kNoFastNext keeps
+  // all reads on the iterator's creation-time snapshot; row visibility is still decided by the
+  // intent-aware fetch of the returned ybctids.
   // TODO(vector_index): do we need to specify bloom filter options?
   auto iter = docdb::CreateIntentAwareIterator(
       tablet().doc_db().FromRegularUnbounded(), docdb::BloomFilterOptions::Inactive(),
-      rocksdb::kDefaultQueryId, TransactionOperationContext{}, read_operation_data);
+      rocksdb::kDefaultQueryId, TransactionOperationContext{}, read_operation_data,
+      /* file_filter = */ nullptr, /* iterate_upper_bound = */ nullptr,
+      docdb::IntentAwareIteratorFlag::kNoFastNext);
   auto bounds = std::make_unique<docdb::IntentAwareIteratorBoundsScope>(
       Slice{&dockv::KeyEntryTypeAsChar::kVectorIndexMetadata, 1}, Slice{upper_bound}, iter.get()
   );
