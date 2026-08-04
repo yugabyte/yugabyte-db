@@ -111,6 +111,11 @@ DEFINE_RUNTIME_bool(cdc_enable_savepoint_rollback_filtering, true,
                     "from receiving data that was never actually committed. This flag is only "
                     "used for YSQL tables.");
 
+DEFINE_test_flag(bool, cdc_make_consistent_stream_safe_time_invalid, false,
+                 "When set to true, GetConsistentStreamSafeTime will always return invalid value. "
+                 "This simulates the scenario when a GetChanges call is being served during tablet "
+                 "shutdown.");
+
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_yb_enable_replica_identity);
 
@@ -2312,37 +2317,36 @@ bool CanUpdateCheckpointOpId(
   return update_checkpoint;
 }
 
-Result<uint64_t> GetConsistentStreamSafeTime(
+Result<HybridTime> GetConsistentStreamSafeTime(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const tablet::TabletPtr& tablet_ptr,
     const HybridTime& leader_safe_time, const int64_t& safe_hybrid_time_req,
     const CoarseTimePoint& deadline, bool* txn_load_in_progress) {
-  HybridTime consistent_stream_safe_time = tablet_ptr->GetMinStartHTRunningTxnsForCDCProducer();
-  // GetMinStartHTRunningTxnsForCDCProducer returns kInvalid when loading of transactions is not yet
-  // complete.
-  if (!consistent_stream_safe_time.is_valid()) {
-    *txn_load_in_progress = true;
-    return HybridTime::kInitial.ToUint64();
+  if (FLAGS_TEST_cdc_make_consistent_stream_safe_time_invalid) {
+    return HybridTime::kInvalid;
   }
 
-  // GetMinStartHTRunningTxnsForCDCProducer returns kMax when there are no running transactions. In
-  // this case use leader_safe_time,
-  consistent_stream_safe_time = consistent_stream_safe_time == HybridTime::kMax
-                                    ? leader_safe_time
-                                    : consistent_stream_safe_time;
-
+  HybridTime consistent_stream_safe_time = tablet_ptr->GetMinStartHTRunningTxnsForCDCProducer();
   VLOG_WITH_FUNC(3) << "Getting consistent_stream_safe_time. consistent_stream_safe_time: "
                     << consistent_stream_safe_time.ToUint64()
                     << ", safe_hybrid_time_req: " << safe_hybrid_time_req
                     << ", leader_safe_time: " << leader_safe_time.ToUint64()
                     << ", tablet_id: " << tablet_peer->tablet_id();
 
+  // GetMinStartHTRunningTxnsForCDCProducer returns kInvalid when loading of transactions is not yet
+  // complete.
   if (!consistent_stream_safe_time.is_valid()) {
-    VLOG_WITH_FUNC(3) << "We'll use the leader_safe_time as the consistent_stream_safe_time, since "
-                         "GetMinStartHTRunningTxnsForCDCProducer returned an invalid "
-                         "value";
-    return leader_safe_time.ToUint64();
-  } else if (
-      (safe_hybrid_time_req > 0 &&
+    *txn_load_in_progress = true;
+    return HybridTime::kInitial;
+  }
+
+  // GetMinStartHTRunningTxnsForCDCProducer returns kMax when there are no running transactions. In
+  // this case use leader_safe_time. Otherwise, take the min of consistent_stream_safe_time and
+  // leader_safe_time.
+  consistent_stream_safe_time = consistent_stream_safe_time == HybridTime::kMax
+                                    ? leader_safe_time
+                                    : std::min(consistent_stream_safe_time, leader_safe_time);
+
+  if ((safe_hybrid_time_req > 0 &&
        consistent_stream_safe_time.ToUint64() < (uint64_t)safe_hybrid_time_req) ||
       (int64_t)leader_safe_time.GetPhysicalValueMillis() -
               (int64_t)consistent_stream_safe_time.GetPhysicalValueMillis() >
@@ -2356,15 +2360,15 @@ Result<uint64_t> GetConsistentStreamSafeTime(
     RETURN_NOT_OK(
         tablet_ptr->transaction_participant()->ResolveIntents(leader_safe_time, deadline));
 
-    return leader_safe_time.ToUint64();
+    return leader_safe_time;
   }
 
   return safe_hybrid_time_req > 0
              // It is possible for us to receive a transaction with begin time lower than
              // a previously fetched leader_safe_time. So, we need a max of safe time from
              // request and consistent_stream_safe_time here.
-             ? std::max(consistent_stream_safe_time.ToUint64(), (uint64_t)safe_hybrid_time_req)
-             : consistent_stream_safe_time.ToUint64();
+             ? std::max(consistent_stream_safe_time, HybridTime((uint64_t)safe_hybrid_time_req))
+             : consistent_stream_safe_time;
 }
 
 void SetSafetimeFromRequestIfInvalid(
@@ -2626,15 +2630,22 @@ Status GetChangesForCDCSDK(
        wait_for_wal_update = false, txn_load_in_progress = false;
 
   auto tablet_ptr = VERIFY_RESULT(tablet_peer->shared_tablet_safe());
-  auto leader_safe_time = tablet_ptr->SafeTime();
-  if (!leader_safe_time.ok()) {
+  auto leader_safe_time_result = tablet_ptr->SafeTime();
+  HybridTime leader_safe_time;
+  if (!leader_safe_time_result.ok()) {
     YB_LOG_EVERY_N_SECS(WARNING, 10)
-        << "Could not compute safe time: " << leader_safe_time.status();
+        << "Could not compute safe time: " << leader_safe_time_result.status();
     leader_safe_time = HybridTime::kInvalid;
+  } else {
+    leader_safe_time = *leader_safe_time_result;
   }
-  uint64_t consistent_stream_safe_time = VERIFY_RESULT(GetConsistentStreamSafeTime(
-      tablet_peer, tablet_ptr, leader_safe_time.get(), safe_hybrid_time_req, deadline,
+  HybridTime consistent_stream_safe_hybrid_time = VERIFY_RESULT(GetConsistentStreamSafeTime(
+      tablet_peer, tablet_ptr, leader_safe_time, safe_hybrid_time_req, deadline,
       &txn_load_in_progress));
+  if (!consistent_stream_safe_hybrid_time.is_valid()) {
+    wait_for_wal_update = true;
+  }
+  uint64_t consistent_stream_safe_time = consistent_stream_safe_hybrid_time.ToUint64();
   OpId historical_max_op_id = tablet_ptr->transaction_participant()
                                   ? tablet_ptr->transaction_participant()->GetHistoricalMaxOpId()
                                   : OpId::Invalid();
@@ -2775,9 +2786,13 @@ Status GetChangesForCDCSDK(
     do {
       size_t next_checkpoint_index = 0;
 
-      consistent_stream_safe_time = VERIFY_RESULT(GetConsistentStreamSafeTime(
-          tablet_peer, tablet_ptr, leader_safe_time.get(), safe_hybrid_time_req, deadline,
+      consistent_stream_safe_hybrid_time = VERIFY_RESULT(GetConsistentStreamSafeTime(
+          tablet_peer, tablet_ptr, leader_safe_time, safe_hybrid_time_req, deadline,
           &txn_load_in_progress));
+      if (!consistent_stream_safe_hybrid_time.is_valid()) {
+        wait_for_wal_update = true;
+      }
+      consistent_stream_safe_time = consistent_stream_safe_hybrid_time.ToUint64();
 
       if (txn_load_in_progress) {
         LOG(INFO) << "Loading of transactions is in progress for tablet: " << tablet_id
@@ -3186,7 +3201,7 @@ Status GetChangesForCDCSDK(
   auto safe_time = (wait_for_wal_update || txn_load_in_progress)
                        ? computed_safe_hybrid_time_req
                        : GetCDCSDKSafeTimeForTarget(
-                             leader_safe_time.get(), safe_hybrid_time_resp, have_more_messages,
+                             leader_safe_time, safe_hybrid_time_resp, have_more_messages,
                              consistent_stream_safe_time, snapshot_operation);
 
   if (!snapshot_operation && !CheckResponseSafeTimeCorrectness(
@@ -3197,7 +3212,7 @@ Status GetChangesForCDCSDK(
                  << last_read_wal_op_record_time
                  << ", req_safe_time: " << computed_safe_hybrid_time_req
                  << ", consistent stream safe time: " << HybridTime(consistent_stream_safe_time)
-                 << ", leader safe time: " << leader_safe_time.get()
+                 << ", leader safe time: " << leader_safe_time
                  << ", is_entire_wal_read: " << is_entire_wal_read;
   }
   resp->set_safe_hybrid_time(safe_time.ToUint64());

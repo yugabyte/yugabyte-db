@@ -146,6 +146,7 @@ DECLARE_string(TEST_cdc_tablet_id_to_stall_state_table_updates);
 DECLARE_bool(TEST_cdc_fail_before_setting_barrier);
 DECLARE_string(ysql_yb_default_replica_identity);
 DECLARE_bool(TEST_cdcsdk_disable_stream_drop_during_db_drop);
+DECLARE_bool(TEST_cdc_make_consistent_stream_safe_time_invalid);
 
 namespace yb {
 
