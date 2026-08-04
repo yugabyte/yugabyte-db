@@ -1,0 +1,71 @@
+-- This test cannot be run in a single transaction
+-- This test must be run on a database named 'contrib_regression'
+CREATE EXTENSION IF NOT EXISTS anon CASCADE;
+-- INIT
+SET anon.maskschema TO 'foo';
+SELECT anon.start_dynamic_masking();
+ start_dynamic_masking 
+-----------------------
+ t
+(1 row)
+
+CREATE ROLE skynet LOGIN PASSWORD 'x';
+SECURITY LABEL FOR anon ON ROLE skynet IS 'MASKED';
+SELECT anon.mask_update();
+ mask_update 
+-------------
+ t
+(1 row)
+
+-- search_path must be 'foo,public'
+\! PGPASSWORD=x psql contrib_regression -U skynet -c 'SHOW search_path;'
+ search_path 
+-------------
+ foo, public
+(1 row)
+
+CREATE ROLE hal LOGIN PASSWORD 'x';
+SECURITY LABEL FOR anon ON ROLE hal IS 'MASKED';
+SELECT anon.mask_update();
+ mask_update 
+-------------
+ t
+(1 row)
+
+-- search_path must be 'foo,public'
+\! PGPASSWORD=x psql contrib_regression -U hal -c 'SHOW search_path;'
+ search_path 
+-------------
+ foo, public
+(1 row)
+
+-- STOP
+SELECT anon.stop_dynamic_masking();
+NOTICE:  The previous priviledges of 'skynet' are not restored. You need to grant them manually.
+NOTICE:  The previous priviledges of 'hal' are not restored. You need to grant them manually.
+ stop_dynamic_masking 
+----------------------
+ t
+(1 row)
+
+-- REMOVE MASKS
+SELECT anon.remove_masks_for_all_roles();
+ remove_masks_for_all_roles 
+----------------------------
+ t
+(1 row)
+
+SELECT COUNT(*)=0 FROM anon.pg_masked_roles WHERE hasmask;
+ ?column? 
+----------
+ t
+(1 row)
+
+--  CLEAN
+DROP EXTENSION anon CASCADE;
+REASSIGN OWNED BY skynet TO postgres;
+DROP OWNED BY skynet CASCADE;
+DROP ROLE skynet;
+REASSIGN OWNED BY hal TO postgres;
+DROP OWNED BY hal CASCADE;
+DROP ROLE hal;

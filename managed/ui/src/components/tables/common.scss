@@ -1,0 +1,55 @@
+@use '../../_style/colors.scss';
+
+.table-type-logo {
+  width: 30px;
+  height: 30px;
+}
+.backup-frequency-control {
+  position: relative;
+
+  & > span {
+    position: absolute;
+    display: inline;
+    left: 50%;
+    top: 33px;
+    margin-left: -6px;
+  }
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    margin: 0;
+  }
+
+  .separating-text {
+    padding-bottom: 10px;
+  }
+
+  .cron-description {
+    margin: 5px 0 15px;
+  }
+}
+.config {
+  .select-nested__group-heading {
+    font-size: 13px;
+  }
+  .select-nested__group-heading {
+    font-size: 13px;
+  }
+
+  .select-nested__group {
+    padding-top: 0;
+    .select-nested__option {
+      cursor: pointer;
+      padding: 5px 5px 5px 25px;
+      background: #fff;
+      &:hover{
+        background-color : colors.$YB_GRAY_HOVER
+      }
+    }
+    .select-nested__option--is-selected{
+      color : colors.$YB_ORANGE
+    }
+  }
+}

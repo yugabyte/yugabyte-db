@@ -1,0 +1,292 @@
+#
+# Overall Design:
+#   There are two Kubernetes StatefulSets in this yaml file - yb-master and yb-tserver. Each of
+#   these has the following:
+#    - a headless service to expose a DNS entry for discovery
+#    - a service to expose end-points to the outside world
+#    - the stateful set itself
+#    - a load-balancer service to view the universe dashboard UI
+#
+# Using YB with k8s
+#    - Create cluster    : kubectl apply -f yugabyte-statefulset.yaml
+#    - List the pods     : kubectl get pods
+#    - Run ycqlsh         : kubectl exec -it yb-tserver-0 /home/yugabyte/bin/ycqlsh
+#    - Run Redis cli     : kubectl exec -it yb-tserver-0 /home/yugabyte/bin/redis-cli
+#    - Run psql          : kubectl exec -it yb-tserver-0 /home/yugabyte/bin/ysqlsh --
+#                             -U postgres -d postgres -h yb-tserver-0 -p 5433
+#    - Connect to the ui : kubectl port-forward yb-master-0 7000
+#                          You can now view the UI at http://localhost:7000
+#    - Destroy cluster   : kubectl delete -f yugabyte-statefulset.yaml
+#    - Delete PVCs       : kubectl delete pvc -l app=yb-tserver && kubectl delete pvc -l app=yb-master
+
+apiVersion: v1
+kind: Service
+metadata:
+  # This is a "headless" service for the yb-master which exists to allow discovery of the set of
+  # member pods (masters). The CNAME of this service points to SRV records - one for each Pod that
+  # is Running and Ready). Read more in the Kubernetes docs:
+  # https://kubernetes.io/docs/tutorials/stateful-application/basic-stateful-set/
+  name: yb-masters
+  labels:
+    app: yb-master
+spec:
+  clusterIP: None
+  ports:
+  - name: ui
+    port: 7000
+  - name: rpc-port
+    port: 7100
+  selector:
+    app: yb-master
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: yb-master-ui
+  labels:
+    app: yb-master
+spec:
+  ports:
+  - name: ui
+    port: 7000
+  selector:
+    app: yb-master
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: yb-master
+  labels:
+    app: yb-master
+spec:
+  serviceName: yb-masters
+  podManagementPolicy: "Parallel"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: yb-master
+  template:
+    metadata:
+      labels:
+        app: yb-master
+    spec:
+      affinity:
+        # Set the anti-affinity selector scope to YB masters.
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - yb-master
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: yb-master
+        image: yugabytedb/yugabyte:latest
+        imagePullPolicy: Always
+        env:
+        - name: GET_HOSTS_FROM
+          value: dns
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        command:
+          - "/home/yugabyte/bin/yb-master"
+          - "--fs_data_dirs=/mnt/data0"
+          - "--rpc_bind_addresses=$(POD_NAME).yb-masters.$(NAMESPACE).svc.cluster.local:7100"
+          - "--server_broadcast_addresses=$(POD_NAME).yb-masters.$(NAMESPACE).svc.cluster.local:7100"
+          - "--use_private_ip=never"
+          - "--master_addresses=yb-master-0.yb-masters.$(NAMESPACE).svc.cluster.local:7100"
+          # To disable YugaByte SQL API functionality, set the
+          # "enable_ysql" flag to false. Flag supported after 2.0.
+          - "--enable_ysql=true"
+          - "--replication_factor=1"
+          - "--logtostderr"
+        ports:
+        - containerPort: 7000
+          name: master-ui
+        - containerPort: 7100
+          name: master-rpc
+#        readinessProbe:
+#          tcpSocket:
+#            port: 7100
+#          initialDelaySeconds: 5
+#          periodSeconds: 10
+#        livenessProbe:
+#          tcpSocket:
+#            port: 7100
+#          initialDelaySeconds: 15
+#          periodSeconds: 10
+
+        # These volume mounts are persistent. They are like inline claims,
+        # but not exactly because the names need to match exactly one of
+        # the stateful pod volumes.
+        volumeMounts:
+        - name: datadir
+          mountPath: /mnt/data0
+  updateStrategy:
+    type: RollingUpdate
+  # These are converted to volume claims by the controller
+  # and mounted at the paths mentioned above.
+  # do not use these in production until ssd GCEPersistentDisk or other ssd pd
+  volumeClaimTemplates:
+  - metadata:
+      name: datadir
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 10Gi
+      storageClassName: standard
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  # This is a "headless" service for the yb-tserver which exists to allow discovery of the set of
+  # member pods (tservers).
+  name: yb-tservers
+  labels:
+    app: yb-tserver
+spec:
+  clusterIP: None
+  ports:
+  - name: ui
+    port: 9000
+  - name: rpc-port
+    port: 9100
+  - name: cassandra
+    port: 9042
+  - name: redis
+    port: 6379
+  - name: postgres
+    port: 5433
+  selector:
+    app: yb-tserver
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: yb-db-service
+  labels:
+    app: yb-tserver
+spec:
+  ports:
+  - name: ui
+    port: 9000
+  - name: cassandra
+    port: 9042
+  - name: redis
+    port: 6379
+  - name: postgres
+    port: 5433
+  selector:
+    app: yb-tserver
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: yb-tserver
+  labels:
+    app: yb-tserver
+spec:
+  serviceName: yb-tservers
+  podManagementPolicy: "Parallel"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: yb-tserver
+  template:
+    metadata:
+      labels:
+        app: yb-tserver
+    spec:
+      affinity:
+        # Set the anti-affinity selector scope to YB tservers here.
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - yb-tserver
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: yb-tserver
+        image: yugabytedb/yugabyte:latest
+        imagePullPolicy: Always
+        env:
+          - name: GET_HOSTS_FROM
+            value: dns
+          - name: POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+        command:
+          - "/home/yugabyte/bin/yb-tserver"
+          - "--fs_data_dirs=/mnt/data0"
+          - "--rpc_bind_addresses=$(POD_NAME).yb-tservers.$(NAMESPACE).svc.cluster.local:9100"
+          - "--server_broadcast_addresses=$(POD_NAME).yb-tservers.$(NAMESPACE).svc.cluster.local:9100"
+          # To disable YugaByte SQL API functionality, set the enable_ysql flag to false
+          # and comment out the pgsql_proxy_bind_address flag
+          - "--enable_ysql=true"
+          - "--pgsql_proxy_bind_address=$(POD_IP):5433"
+          - "--use_private_ip=never"
+          - "--tserver_master_addrs=yb-master-0.yb-masters.$(NAMESPACE).svc.cluster.local:7100"
+          - "--logtostderr"
+        ports:
+        - containerPort: 9000
+          name: tserver-ui
+        - containerPort: 9100
+          name: tserver-rpc
+        - containerPort: 9042
+          name: cassandra
+        - containerPort: 6379
+          name: redis
+        - containerPort: 5433
+          name: postgres
+        # These volume mounts are persistent. They are like inline claims,
+        # but not exactly because the names need to match exactly one of
+        # the stateful pod volumes.
+        volumeMounts:
+        - name: datadir
+          mountPath: /mnt/data0
+  updateStrategy:
+    type: RollingUpdate
+  # These are converted to volume claims by the controller
+  # and mounted at the paths mentioned above.
+  # do not use these in production until ssd GCEPersistentDisk or other ssd pd
+  volumeClaimTemplates:
+  - metadata:
+      name: datadir
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 10Gi
+      storageClassName: standard

@@ -1,0 +1,320 @@
+<!--
+doc/src/sgml/ref/alter_publication.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-alterpublication">
+ <indexterm zone="sql-alterpublication">
+  <primary>ALTER PUBLICATION</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER PUBLICATION</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER PUBLICATION</refname>
+  <refpurpose>change the definition of a publication</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER PUBLICATION <replaceable class="parameter">name</replaceable> ADD <replaceable class="parameter">publication_object</replaceable> [, ...]
+ALTER PUBLICATION <replaceable class="parameter">name</replaceable> DROP <replaceable class="parameter">publication_drop_object</replaceable> [, ...]
+ALTER PUBLICATION <replaceable class="parameter">name</replaceable> SET { <replaceable class="parameter">publication_object</replaceable> [, ...] | <replaceable class="parameter">publication_all_object</replaceable> [, ... ] }
+ALTER PUBLICATION <replaceable class="parameter">name</replaceable> SET ( <replaceable class="parameter">publication_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] )
+ALTER PUBLICATION <replaceable class="parameter">name</replaceable> OWNER TO { <replaceable>new_owner</replaceable> | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
+ALTER PUBLICATION <replaceable class="parameter">name</replaceable> RENAME TO <replaceable>new_name</replaceable>
+
+<phrase>where <replaceable class="parameter">publication_object</replaceable> is one of:</phrase>
+
+    TABLE <replaceable class="parameter">table_and_columns</replaceable> [, ... ]
+    TABLES IN SCHEMA { <replaceable class="parameter">schema_name</replaceable> | CURRENT_SCHEMA } [, ... ]
+
+<phrase>and <replaceable class="parameter">publication_all_object</replaceable> is one of:</phrase>
+
+    ALL TABLES [ EXCEPT ( <replaceable class="parameter">except_table_object</replaceable> [, ... ] ) ]
+    ALL SEQUENCES
+
+<phrase>and <replaceable class="parameter">publication_drop_object</replaceable> is one of:</phrase>
+
+    TABLE <replaceable class="parameter">table_object</replaceable> [, ... ]
+    TABLES IN SCHEMA { <replaceable class="parameter">schema_name</replaceable> | CURRENT_SCHEMA } [, ... ]
+
+<phrase>and <replaceable class="parameter">table_and_columns</replaceable> is:</phrase>
+
+    <replaceable class="parameter">table_object</replaceable> [ ( <replaceable class="parameter">column_name</replaceable> [, ... ] ) ] [ WHERE ( <replaceable class="parameter">expression</replaceable> ) ]
+
+<phrase>and <replaceable class="parameter">except_table_object</replaceable> is:</phrase>
+
+    TABLE <replaceable class="parameter">table_object</replaceable> [, ... ]
+
+<phrase>and <replaceable class="parameter">table_object</replaceable> is:</phrase>
+
+   [ ONLY ] <replaceable class="parameter">table_name</replaceable> [ * ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   The command <command>ALTER PUBLICATION</command> can change the attributes
+   of a publication.
+  </para>
+
+  <para>
+   The first two variants modify which tables/schemas are part of the
+   publication. The <literal>ADD</literal> and <literal>DROP</literal> clauses
+   will add and remove one or more tables/schemas from the publication.
+  </para>
+
+  <para>
+   The third variant either modifies the included tables/schemas
+   or marks the publication as <literal>FOR ALL SEQUENCES</literal> or
+   <literal>FOR ALL TABLES</literal>, optionally using
+   <literal>EXCEPT</literal> to exclude specific tables. The
+   <literal>SET ALL TABLES</literal> clause can transform an empty publication,
+   or one defined for <literal>ALL SEQUENCES</literal> (or both
+   <literal>ALL TABLES</literal> and <literal>ALL SEQUENCES</literal>), into
+   a publication defined for ALL TABLES. Likewise,
+   <literal>SET ALL SEQUENCES</literal> can convert an empty publication, or
+   one defined for <literal>ALL TABLES</literal> (or both
+   <literal>ALL TABLES</literal> and <literal>ALL SEQUENCES</literal>), into a
+   publication defined for <literal>ALL SEQUENCES</literal>. In addition,
+   <literal>SET ALL TABLES</literal> can be used to update the tables specified
+   in the <literal>EXCEPT</literal> clause of a
+   <literal>FOR ALL TABLES</literal> publication. If <literal>EXCEPT</literal>
+   is specified with a list of tables, the existing exclusion list is replaced
+   with the specified tables. If <literal>EXCEPT</literal> is omitted, the
+   existing exclusion list is cleared. The <literal>SET</literal> clause, when
+   used with a publication defined with <literal>FOR TABLE</literal> or
+   <literal>FOR TABLES IN SCHEMA</literal>, replaces the list of tables/schemas
+   in the publication with the specified list; the existing tables or schemas
+   that were present in the publication will be removed.
+  </para>
+
+  <para>
+   Note that adding tables/except tables/schemas to a publication that is
+   already subscribed to will require an
+   <link linkend="sql-altersubscription-params-refresh-publication">
+   <literal>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</literal></link> action
+   on the subscribing side in order to become effective. Likewise altering a
+   publication to set <literal>ALL TABLES</literal> or to set or unset
+   <literal>ALL SEQUENCES</literal> also requires the subscriber to refresh the
+   publication. Note also that <literal>DROP TABLES IN SCHEMA</literal> will
+   not drop any schema tables that were specified using
+   <link linkend="sql-createpublication-params-for-table"><literal>FOR TABLE</literal></link>/
+   <literal>ADD TABLE</literal>.
+  </para>
+
+  <para>
+   The fourth variant of this command listed in the synopsis can change
+   all of the publication properties specified in
+   <xref linkend="sql-createpublication"/>.  Properties not mentioned in the
+   command retain their previous settings.
+  </para>
+
+  <para>
+   The remaining variants change the owner and the name of the publication.
+  </para>
+
+  <para>
+   You must own the publication to use <command>ALTER PUBLICATION</command>.
+   Adding a table to a publication additionally requires owning that table.
+   The <literal>ADD TABLES IN SCHEMA</literal>,
+   <literal>SET TABLES IN SCHEMA</literal>, <literal>SET ALL TABLES</literal>,
+   and <literal>SET ALL SEQUENCES</literal> to a publication requires the
+   invoking user to be a superuser.
+   To alter the owner, you must be able to <literal>SET ROLE</literal> to the
+   new owning role, and that role must have <literal>CREATE</literal>
+   privilege on the database.
+   Also, the new owner of a
+   <link linkend="sql-createpublication-params-for-tables-in-schema"><literal>FOR TABLES IN SCHEMA</literal></link>
+   or <link linkend="sql-createpublication-params-for-all-tables"><literal>FOR ALL TABLES</literal></link>
+   or <link linkend="sql-createpublication-params-for-all-sequences"><literal>FOR ALL SEQUENCES</literal></link>
+   publication must be a superuser. However, a superuser can
+   change the ownership of a publication regardless of these restrictions.
+  </para>
+
+  <para>
+   Adding/Setting any schema when the publication also publishes a table with a
+   column list, and vice versa is not supported.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name of an existing publication whose definition is to be altered.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">table_name</replaceable></term>
+    <listitem>
+     <para>
+      Name of an existing table.  If <literal>ONLY</literal> is specified before the
+      table name, only that table is affected.  If <literal>ONLY</literal> is not
+      specified, the table and all its descendant tables (if any) are
+      affected.  Optionally, <literal>*</literal> can be specified after the table
+      name to explicitly indicate that descendant tables are included.
+     </para>
+
+     <para>
+      Optionally, a column list can be specified.  See <xref
+      linkend="sql-createpublication"/> for details. Note that a subscription
+      having several publications in which the same table has been published
+      with different column lists is not supported. See
+      <xref linkend="logical-replication-col-list-combining"/> for details of
+      potential problems when altering column lists.
+     </para>
+
+     <para>
+      If the optional <literal>WHERE</literal> clause is specified, rows for
+      which the <replaceable class="parameter">expression</replaceable>
+      evaluates to false or null will not be published. Note that parentheses
+      are required around the expression. The
+      <replaceable class="parameter">expression</replaceable> is evaluated with
+      the role used for the replication connection.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">schema_name</replaceable></term>
+    <listitem>
+     <para>
+      Name of an existing schema.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET ( <replaceable class="parameter">publication_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] )</literal></term>
+    <listitem>
+     <para>
+      This clause alters publication parameters originally set by
+      <xref linkend="sql-createpublication"/>.  See there for more information.
+      This clause is not applicable to sequences.
+     </para>
+     <caution>
+      <para>
+       Altering the <literal>publish_via_partition_root</literal> parameter can
+       lead to data loss or duplication at the subscriber because it changes
+       the identity and schema of the published tables. Note this happens only
+       when a partition root table is specified as the replication target.
+      </para>
+      <para>
+       This problem can be avoided by refraining from modifying partition leaf
+       tables after the <command>ALTER PUBLICATION ... SET</command> until the
+       <link linkend="sql-altersubscription"><command>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</command></link>
+       is executed and by only refreshing using the <literal>copy_data = off</literal>
+       option.
+      </para>
+     </caution>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_owner</replaceable></term>
+    <listitem>
+     <para>
+      The user name of the new owner of the publication.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_name</replaceable></term>
+    <listitem>
+     <para>
+      The new name for the publication.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Change the publication to publish only deletes and updates:
+<programlisting>
+ALTER PUBLICATION noinsert SET (publish = 'update, delete');
+</programlisting>
+  </para>
+
+  <para>
+   Add some tables to the publication:
+<programlisting>
+ALTER PUBLICATION mypublication ADD TABLE users (user_id, firstname), departments;
+</programlisting></para>
+
+  <para>
+   Change the set of columns published for a table:
+<programlisting>
+ALTER PUBLICATION mypublication SET TABLE users (user_id, firstname, lastname), TABLE departments;
+</programlisting></para>
+
+  <para>
+   Replace the table list in the publication's EXCEPT clause:
+<programlisting>
+ALTER PUBLICATION mypublication SET ALL TABLES EXCEPT (TABLE users, departments);
+</programlisting></para>
+
+  <para>
+   Reset the publication to be a FOR ALL TABLES publication with no excluded
+   tables:
+<programlisting>
+ALTER PUBLICATION mypublication SET ALL TABLES;
+</programlisting></para>
+
+  <para>
+   Add schemas <structname>marketing</structname> and
+   <structname>sales</structname> to the publication
+   <structname>sales_publication</structname>:
+<programlisting>
+ALTER PUBLICATION sales_publication ADD TABLES IN SCHEMA marketing, sales;
+</programlisting>
+  </para>
+
+  <para>
+   Add tables <structname>users</structname>,
+   <structname>departments</structname> and schema
+   <structname>production</structname> to the publication
+   <structname>production_publication</structname>:
+<programlisting>
+ALTER PUBLICATION production_publication ADD TABLE users, departments, TABLES IN SCHEMA production;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>ALTER PUBLICATION</command> is a <productname>PostgreSQL</productname>
+   extension.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createpublication"/></member>
+   <member><xref linkend="sql-droppublication"/></member>
+   <member><xref linkend="sql-createsubscription"/></member>
+   <member><xref linkend="sql-altersubscription"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

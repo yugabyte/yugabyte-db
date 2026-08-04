@@ -1,0 +1,112 @@
+<!--
+doc/src/sgml/ref/abort.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-abort">
+ <indexterm zone="sql-abort">
+  <primary>ABORT</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ABORT</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ABORT</refname>
+  <refpurpose>abort the current transaction</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ABORT [ WORK | TRANSACTION ] [ AND [ NO ] CHAIN ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>ABORT</command> rolls back the current transaction and causes
+   all the updates made by the transaction to be discarded.
+   This command is identical
+   in behavior to the standard <acronym>SQL</acronym> command
+   <link linkend="sql-rollback"><command>ROLLBACK</command></link>,
+   and is present only for historical reasons.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>WORK</literal></term>
+    <term><literal>TRANSACTION</literal></term>
+    <listitem>
+     <para>
+      Optional key words. They have no effect.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>AND CHAIN</literal></term>
+    <listitem>
+     <para>
+      If <literal>AND CHAIN</literal> is specified, a new transaction is
+      immediately started with the same transaction characteristics (see <link
+      linkend="sql-set-transaction"><command>SET TRANSACTION</command></link>) as the just finished one.  Otherwise,
+      no new transaction is started.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   Use <link linkend="sql-commit"><command>COMMIT</command></link> to
+   successfully terminate a transaction.
+  </para>
+
+  <para>
+   Issuing <command>ABORT</command> outside of a transaction block
+   emits a warning and otherwise has no effect.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   To abort all changes:
+<programlisting>
+ABORT;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   This command is a <productname>PostgreSQL</productname> extension
+   present for historical reasons. <command>ROLLBACK</command> is the
+   equivalent standard SQL command.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-begin"/></member>
+   <member><xref linkend="sql-commit"/></member>
+   <member><xref linkend="sql-rollback"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

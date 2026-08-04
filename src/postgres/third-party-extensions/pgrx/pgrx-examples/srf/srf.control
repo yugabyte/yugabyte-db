@@ -1,0 +1,6 @@
+comment = 'srf:  Created by pgrx'
+default_version = '@CARGO_VERSION@'
+module_pathname = '$libdir/srf'
+relocatable = false
+superuser = false
+schema = srf

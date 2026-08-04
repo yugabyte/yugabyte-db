@@ -1,0 +1,97 @@
+#LICENSE Portions Copyright 2019-2021 ZomboDB, LLC.
+#LICENSE
+#LICENSE Portions Copyright 2021-2023 Technology Concepts & Design, Inc.
+#LICENSE
+#LICENSE Portions Copyright 2023-2023 PgCentral Foundation, Inc. <contact@pgcentral.org>
+#LICENSE
+#LICENSE All rights reserved.
+#LICENSE
+#LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
+
+[package]
+name = "pgrx-tests"
+version = "0.14.1"
+authors = ["PgCentral Foundation, Inc. <contact@pgcentral.org>"]
+license = "MIT"
+description = "Test framework for 'pgrx'-based Postgres extensions"
+homepage = "https://github.com/pgcentralfoundation/pgrx/"
+repository = "https://github.com/pgcentralfoundation/pgrx/"
+documentation = "https://docs.rs/pgrx-tests"
+readme = "README.md"
+edition = "2021"
+include = ["src/**/*", "README.md", "!**/tests/**/*"]
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[[bin]]
+name = "pgrx_embed_pgrx-tests"
+path = "./src/bin/pgrx_embed.rs"
+
+[features]
+default = ["proptest"]
+pg13 = ["pgrx/pg13"]
+pg14 = ["pgrx/pg14"]
+pg15 = ["pgrx/pg15"]
+pg16 = ["pgrx/pg16"]
+pg17 = ["pgrx/pg17"]
+pg_test = []
+proptest = ["dep:proptest"]
+cshim = ["pgrx/cshim"]
+no-schema-generation = [
+    "pgrx/no-schema-generation",
+    "pgrx-macros/no-schema-generation",
+]
+nightly = ["pgrx/nightly"]
+
+[package.metadata.docs.rs]
+features = ["pg14", "proptest"]
+no-default-features = true
+targets = ["x86_64-unknown-linux-gnu"]
+# Enable `#[cfg(docsrs)]` (https://docs.rs/about/builds#cross-compiling)
+rustc-args = ["--cfg", "docsrs"]
+rustdoc-args = ["--cfg", "docsrs"]
+
+[dependencies]
+pgrx-macros.workspace = true
+pgrx-pg-config.workspace = true
+
+clap-cargo.workspace = true
+eyre.workspace = true
+libc.workspace = true
+owo-colors.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+shlex.workspace = true
+thiserror.workspace = true
+
+paste = "1"
+postgres = "0.19.10"
+proptest = { version = "1", optional = true }
+tempfile = "3.19.1"
+sysinfo = "0.34.2"
+rand = "0.9.0"
+
+[dependencies.pgrx] # Not unified in workspace due to default-features key
+path = "../pgrx"
+default-features = false
+version = "=0.14.1"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+winapi = { version = "0.3.9", features = [
+    "securitybaseapi",
+    "minwinbase",
+    "namedpipeapi",
+    "winbase",
+    "winerror",
+    "winnt",
+] }
+
+[dev-dependencies]
+eyre.workspace = true # testing functions that return `eyre::Result`
+trybuild = "1"
+
+[lints]
+rust.unused-lifetimes = "deny"
+clippy.used-underscore-binding = "deny"

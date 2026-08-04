@@ -1,0 +1,81 @@
+{
+    "aliasColors": {},
+    "bars": false,
+    "collapsed": false,
+    "dashLength": 10,
+    "dashes": false,
+    "datasource": "$datasource",
+    "fieldConfig": {
+      "defaults": {
+        "custom": {}
+      },
+      "overrides": []
+    },
+    "fill": 1,
+    "fillGradient": 0,
+    "hiddenSeries": false,
+    "legend": {
+      "alignAsTable": true,
+      "avg": false,
+      "current": true,
+      "max": true,
+      "min": false,
+      "show": true,
+      "total": false,
+      "values": true
+    },
+    "lines": true,
+    "linewidth": 1,
+    "nullPointMode": "null",
+    "options": {
+      "dataLinks": []
+    },
+    "percentage": false,
+    "pointradius": 2,
+    "points": false,
+    "renderer": "flot",
+    "repeat": null,
+    "repeatDirection": "v",
+    "seriesOverrides": [],
+    "spaceLength": 10,
+    "stack": false,
+    "steppedLine": false,
+    "thresholds": [],
+    "timeFrom": null,
+    "timeRegions": [],
+    "timeShift": null,
+    "tooltip": {
+      "shared": true,
+      "sort": 0,
+      "value_type": "individual"
+    },
+    "type": "graph",
+    "xaxis": {
+      "buckets": null,
+      "mode": "time",
+      "name": null,
+      "show": true,
+      "values": []
+    },
+    "yaxes": [
+      {
+        "label": null,
+        "logBase": 1,
+        "max": null,
+        "min": null,
+        "show": true
+      },
+      {
+        "format": "short",
+        "label": null,
+        "logBase": 1,
+        "max": null,
+        "min": null,
+        "show": false
+      }
+    ],
+    "yaxis": {
+      "align": false,
+      "alignLevel": null
+    }
+  }

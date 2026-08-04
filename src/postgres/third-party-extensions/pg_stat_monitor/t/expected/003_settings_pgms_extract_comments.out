@@ -1,0 +1,54 @@
+CREATE EXTENSION pg_stat_monitor;
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name = 'pg_stat_monitor.pgsm_extract_comments';
+                 name                  | setting | unit | context | vartype |       source       | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+---------------------------------------+---------+------+---------+---------+--------------------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_extract_comments | on      |      | user    | bool    | configuration file |         |         |          | off      | on        | f
+(1 row)
+
+SELECT 1 AS num /* First comment */, 'John' AS Name /* Second comment*/;
+ num | name 
+-----+------
+   1 | John
+(1 row)
+
+SELECT query, comments FROM pg_stat_monitor ORDER BY query COLLATE "C";
+                                                                                            query                                                                                             |                 comments                 
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+------------------------------------------
+ SELECT 1 AS num /* First comment */, 'John' AS Name /* Second comment*/                                                                                                                      | /* First comment */, /* Second comment*/
+ SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name = 'pg_stat_monitor.pgsm_extract_comments' | 
+ SELECT pg_stat_monitor_reset()                                                                                                                                                               | 
+(3 rows)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name = 'pg_stat_monitor.pgsm_extract_comments';
+                 name                  | setting | unit | context | vartype |       source       | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+---------------------------------------+---------+------+---------+---------+--------------------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_extract_comments | off     |      | user    | bool    | configuration file |         |         |          | off      | off       | f
+(1 row)
+
+SELECT 1 AS num /* First comment */, 'John' AS Name /* Second comment*/;
+ num | name 
+-----+------
+   1 | John
+(1 row)
+
+SELECT query, comments FROM pg_stat_monitor ORDER BY query COLLATE "C";
+                                                                                            query                                                                                             | comments 
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+----------
+ SELECT 1 AS num /* First comment */, 'John' AS Name /* Second comment*/                                                                                                                      | 
+ SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name = 'pg_stat_monitor.pgsm_extract_comments' | 
+ SELECT pg_stat_monitor_reset()                                                                                                                                                               | 
+(3 rows)
+
+DROP EXTENSION pg_stat_monitor;

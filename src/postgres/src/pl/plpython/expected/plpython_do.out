@@ -1,0 +1,8 @@
+DO $$ plpy.notice("This is plpython3u.") $$ LANGUAGE plpython3u;
+NOTICE:  This is plpython3u.
+DO $$ raise Exception("error test") $$ LANGUAGE plpython3u;
+ERROR:  Exception: error test
+CONTEXT:  Traceback (most recent call last):
+  PL/Python anonymous code block, line 1, in <module>
+    raise Exception("error test") 
+PL/Python anonymous code block

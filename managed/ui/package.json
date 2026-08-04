@@ -1,0 +1,218 @@
+{
+  "name": "YB-Customer",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "lint": "eslint --ext .js,.jsx,.ts,.tsx src/",
+    "prettier": "prettier --write src/redesign/**/*",
+    "cleanup": "rimraf build && rimraf ../src/main/public",
+    "fetch-map": "mkdir -p build/static && curl 'http://s3-us-west-2.amazonaws.com/map.yugabyte.com/map/yb_map.tar.gz' | tar -zx -C build/static",
+    "test": "vitest",
+    "test:ci": "vitest run",
+    "test:watch": "vitest watch",
+    "build-core": "./build-core.sh",
+    "build": "npm run cleanup && CI=false npm run build-core",
+    "build:ci": "NODE_OPTIONS=--max-old-space-size=8192 CI=true npm run build-core",
+    "build-and-copy": "npm run build:ci && ncp build ../src/main/public",
+    "analyze": "source-map-explorer 'build/static/js/*.js'",
+    "start": "vite",
+    "preview": "vite preview",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build -s public",
+    "generateV2JSApiClient": "[ -f ../src/main/resources/openapi.yaml ] && orval --config ./v2Api.config.ts"
+  },
+  "engines": {
+    "node": ">=22.18",
+    "npm": ">=10"
+  },
+  "overrides": {
+    "react-bootstrap-table": {
+      "react": "17.0.2",
+      "react-dom": "17.0.2"
+    },
+    "react-fa": {
+      "react": "17.0.2",
+      "react-dom": "17.0.2"
+    },
+    "react-leaflet": {
+      "react": "17.0.2",
+      "react-dom": "17.0.2"
+    },
+    "react-mousetrap": {
+      "react": "17.0.2",
+      "react-dom": "17.0.2"
+    },
+    "@storybook/react-vite": {
+      "vite": "6.4.1"
+    },
+    "react-router": {
+      "react": "17.0.2",
+      "react-dom": "17.0.2"
+    },
+    "redux-form": {
+      "react": "17.0.2",
+      "react-dom": "17.0.2"
+    },
+    "@yugabytedb/perf-advisor-ui": {
+      "@yugabyte-ui-library/core": "2.0.27"
+    }
+  },
+  "prettier": {
+    "printWidth": 100,
+    "singleQuote": true,
+    "trailingComma": "none"
+  },
+  "devDependencies": {
+    "@storybook/react": "10.2.13",
+    "@storybook/react-vite": "10.2.13",
+    "@testing-library/dom": "8.20.1",
+    "@testing-library/jest-dom": "5.17.0",
+    "@testing-library/react": "12.1.5",
+    "@testing-library/user-event": "^14.5.2",
+    "@types/js-yaml": "4.0.5",
+    "@types/plotly.js": "2.35.3",
+    "@types/prismjs": "1.26.0",
+    "@types/react-beautiful-dnd": "13.1.3",
+    "@types/uuid": "9.0.0",
+    "@typescript-eslint/eslint-plugin": "6.21.0",
+    "@typescript-eslint/parser": "6.21.0",
+    "@vitejs/plugin-react": "4.3.4",
+    "@vitest/ui": "4.0.18",
+    "eslint": "8.57.1",
+    "eslint-config-prettier": "8.3.0",
+    "eslint-plugin-import": "2.32.0",
+    "eslint-plugin-react": "7.37.5",
+    "eslint-plugin-react-hooks": "5.1.0",
+    "eslint-plugin-storybook": "10.2.13",
+    "events": "^3.3.0",
+    "jsdom": "27.4.0",
+    "msw": "2.12.10",
+    "msw-storybook-addon": "2.0.6",
+    "ncp": "2.0.0",
+    "orval": "6.4.1",
+    "prettier": "3.8.1",
+    "rimraf": "2.7.1",
+    "sass": "1.52.1",
+    "source-map-explorer": "2.5.0",
+    "storybook": "10.2.13",
+    "vite": "6.4.1",
+    "vite-plugin-dynamic-import": "1.4.1",
+    "vite-plugin-svgr": "4.3.0",
+    "vitest": "4.0.18"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "2.9.10",
+    "@material-ui/core": "4.12.3",
+    "@material-ui/icons": "4.11.2",
+    "@material-ui/lab": "4.0.0-alpha.58",
+    "@types/lodash": "4.14.159",
+    "@types/pluralize": "0.0.29",
+    "@types/react": "17.0.4",
+    "@types/react-bootstrap": "0.32.23",
+    "@types/react-bootstrap-table": "4.3.8",
+    "@types/react-dom": "17.0.3",
+    "@types/react-redux": "7.1.16",
+    "@types/react-router": "3.0.24",
+    "@types/react-router-dom": "5.3.3",
+    "@types/react-select": "3.0.19",
+    "@types/redux-form": "8.3.1",
+    "@types/yup": "0.29.11",
+    "@yugabyte-ui-library/core": "2.0.27",
+    "@yugabytedb/perf-advisor-ui": "1.0.96",
+    "ace-builds": "1.4.12",
+    "axios": "0.21.3",
+    "bootstrap": "3.4.1",
+    "canvg": "4.0.2",
+    "clsx": "1.1.1",
+    "copy-to-clipboard": "3.3.1",
+    "cronstrue": "1.94.0",
+    "enumify": "1.0.4",
+    "esbuild": "^0.25.1",
+    "formik": "1.5.8",
+    "highlight.js": "9.18.2",
+    "i18next": "^21.6.16",
+    "intl": "1.2.5",
+    "js-cookie": "2.2.1",
+    "js-yaml": "4.1.0",
+    "jspdf": "2.5.1",
+    "leaflet": "^1.0.2",
+    "leaflet.markercluster": "1.4.1",
+    "lodash": "4.17.21",
+    "moment": "2.26.0",
+    "moment-precise-range-plugin": "1.3.0",
+    "moment-timezone": "0.5.43",
+    "plotly.js-dist": "2.35.3",
+    "pluralize": "8.0.0",
+    "prismjs": "1.29.0",
+    "progressbar.js": "1.1.0",
+    "prop-types": "15.7.2",
+    "rc-time-picker": "3.7.3",
+    "react": "17.0.2",
+    "react-ace": "9.4.4",
+    "react-beautiful-dnd": "13.1.1",
+    "react-bootstrap": "0.33.1",
+    "react-bootstrap-multiselect": "2.4.1",
+    "react-bootstrap-table": "4.3.1",
+    "react-day-picker": "7.4.10",
+    "react-dom": "17.0.2",
+    "react-dropzone": "14.2.3",
+    "react-dropzone3": "npm:react-dropzone@3.13.4",
+    "react-fa": "5.0.0",
+    "react-hook-form": "7.53.0",
+    "react-i18next": "11.18.6",
+    "react-infinite-scroll-component": "6.1.0",
+    "react-leaflet": "^1.9.1",
+    "react-measure": "1.4.7",
+    "react-mousetrap": "0.1.1",
+    "react-numeric-input": "2.2.3",
+    "react-query": "3.32.1",
+    "react-redux": "7.2.6",
+    "react-router": "3.2.6",
+    "react-router-bootstrap": "0.23.3",
+    "react-router-dom": "5.3.3",
+    "react-select": "3.2.0",
+    "react-toastify": "7.0.3",
+    "react-toggle": "4.1.2",
+    "react-use": "17.2.4",
+    "react-widgets": "4.5.0",
+    "react-widgets-moment": "4.0.28",
+    "recharts": "2.1.6",
+    "redux": "4.0.5",
+    "redux-form": "8.3.6",
+    "redux-promise": "0.5.3",
+    "slate": "0.91.4",
+    "slate-history": "0.86.0",
+    "slate-hyperscript": "0.77.0",
+    "slate-react": "0.91.10",
+    "typescript": "4.9.3",
+    "typy": "3.3.0",
+    "unique-names-generator": "4.7.1",
+    "vis-timeline": "7.7.3",
+    "yup": "0.30.0"
+  },
+  "browserslist": [
+    ">0.2%",
+    "not dead",
+    "not op_mini all"
+  ],
+  "eslintConfig": {
+    "overrides": [
+      {
+        "files": [
+          "**/*.stories.*"
+        ],
+        "rules": {
+          "import/no-anonymous-default-export": "off"
+        }
+      }
+    ]
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.55.1"
+  },
+  "msw": {
+    "workerDirectory": [
+      "public"
+    ]
+  }
+}

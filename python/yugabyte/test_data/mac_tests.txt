@@ -1,0 +1,26 @@
+# On macOS, we only run tests listed in this file.
+
+# YCQL basic tests
+tests-integration-tests/cql-test:::CqlTest.ConcurrentDeleteRowAndUpdateColumn
+tests-integration-tests/cql-test:::CqlTest.ManyColumns
+tests-integration-tests/cql-tablet-split-test:::CqlTabletSplitTest.SecondaryIndex
+tests-integration-tests/cql-tablet-split-test:::CqlTabletSplitTest.BatchTimeseries
+
+# YSQL basic tests
+tests-pgwrapper/pg_wrapper-test:::PgWrapperTestSecure.TestConnectionTLS
+tests-pgwrapper/pg_wrapper-test:::PgWrapperTestAuthSecure.TestConnectionAuthTLS
+
+# XCluster tests
+tests-integration-tests/xcluster-test:::XClusterTestParams/XClusterTest.SetupUniverseReplicationMultipleTables/0
+tests-integration-tests/xcluster_ysql-test:::XClusterYsqlTest.ReplicationWithBasicDDL
+
+# CDC tests
+tests-integration-tests/cdcsdk_ysql-test:::CDCSDKYsqlTest.GetChangesWithRF3
+tests-integration-tests/cdcsdk_ysql-test:::CDCSDKYsqlTest.MultiColumnUpdateFollowedByUpdateSameRow
+tests-integration-tests/cdcsdk_ysql-test:::CDCSDKYsqlTest.SingleShardDeleteWithAutoCommit
+
+# Java tests
+org.yb.pgsql.TestPasswordAuth#testDefaultPasswordEncryptionIsSCRAM
+org.yb.pgsql.TestPasswordAuth#testPasswordAuthLogin
+org.yb.pgsql.TestPgIndex#testConcurrentInsert
+org.yb.pgsql.TestPgIndex#testCreateTableWithDuplicateIndexes

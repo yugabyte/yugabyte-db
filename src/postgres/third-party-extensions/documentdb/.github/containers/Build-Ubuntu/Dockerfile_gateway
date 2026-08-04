@@ -1,0 +1,160 @@
+# ----------- Prebuild Stage -----------
+ARG BASE_IMAGE=ubuntu:22.04
+ARG DEBIAN_FRONTEND=noninteractive
+ARG POSTGRES_VERSION=16
+# REQUIRED: Path (relative to build context) to the pre-built DocumentDB .deb package.
+# Must be provided via --build-arg DEB_PACKAGE_REL_PATH=path/to/package.deb at docker build time.
+# No default is intentionally set to avoid accidentally picking a stale or wrong package.
+ARG DEB_PACKAGE_REL_PATH
+
+FROM ${BASE_IMAGE} AS prebuild
+ARG DEBIAN_FRONTEND
+ARG POSTGRES_VERSION
+ARG DEB_PACKAGE_REL_PATH
+# Fail fast if caller did not pass the required deb path build arg.
+RUN [ -n "${DEB_PACKAGE_REL_PATH}" ] || (echo "ERROR: DEB_PACKAGE_REL_PATH build-arg is required. Example: --build-arg DEB_PACKAGE_REL_PATH=packaging/packages/ubuntu22.04-postgresql-16-documentdb_1.0.0_amd64.deb" >&2; exit 1)
+
+# Base tools + locale (single layer)
+RUN apt-get update; \
+    apt-get install -y --no-install-recommends \
+        wget \
+        gnupg2 \
+        lsb-release \
+        ca-certificates \
+        locales \
+        sudo; \
+    echo "en_US.UTF-8 UTF-8" > /etc/locale.gen; \
+    locale-gen; \
+    rm -rf /var/lib/apt/lists/*
+
+# Minimal locale env (others inherit)
+ENV LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+
+# Add PostgreSQL upstream repo (modern keyring usage) + install extensions
+RUN install -d -m 0755 /etc/apt/keyrings; \
+    wget -qO /etc/apt/keyrings/pgdg.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc; \
+    echo "deb [signed-by=/etc/apt/keyrings/pgdg.asc] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main ${POSTGRES_VERSION}" \
+        > /etc/apt/sources.list.d/pgdg.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        postgresql-${POSTGRES_VERSION} \
+        postgresql-${POSTGRES_VERSION}-cron \
+        postgresql-${POSTGRES_VERSION}-pgvector \
+        postgresql-${POSTGRES_VERSION}-postgis-3 \
+        postgresql-${POSTGRES_VERSION}-rum \
+    ; \
+    rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /tmp/install_setup
+COPY ${DEB_PACKAGE_REL_PATH} /tmp/install_setup/
+RUN dpkg -i /tmp/install_setup/$(basename "$DEB_PACKAGE_REL_PATH")
+
+RUN useradd -ms /bin/bash documentdb -G sudo
+RUN echo "%sudo ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers.d/no-pass-ask
+
+# ----------- Gateway Build Stage -----------
+FROM prebuild AS stage
+ARG BASE_IMAGE
+
+# Install dependencies (conditionally add software-properties-common unless base is debian:trixie-slim)
+RUN apt-get update; \
+    PKGS="jq curl sudo git make build-essential openssl pkg-config libssl-dev"; \
+    if [ "${BASE_IMAGE}" != "debian:trixie-slim" ]; then \
+        PKGS="$PKGS software-properties-common"; \
+    else \
+        echo "Skipping software-properties-common for base ${BASE_IMAGE}"; \
+    fi; \
+    apt-get install -y --no-install-recommends $PKGS; \
+    rm -rf /var/lib/apt/lists/*
+
+USER documentdb
+WORKDIR /home/documentdb/code
+
+COPY . /home/documentdb/code
+
+RUN /home/documentdb/code/scripts/install_llvm.sh
+
+# Install rustup (which includes rustc and cargo) in user directory
+ENV RUSTUP_HOME=/home/documentdb/code/.rustup
+ENV CARGO_HOME=/home/documentdb/code/.cargo
+RUN mkdir -p $RUSTUP_HOME && mkdir -p $CARGO_HOME
+ENV PATH=$PATH:$CARGO_HOME/bin
+
+RUN /home/documentdb/code/scripts/install_rustup.sh --install-toolchain
+
+RUN sudo chown -R documentdb:documentdb /home/documentdb/code
+
+WORKDIR /home/documentdb/code/pg_documentdb_gw
+
+RUN CARGO_MANIFEST_DIR=/home/documentdb/code/pg_documentdb_gw cargo build --profile=release-with-symbols
+
+# ----------- Final Gateway Image -----------
+FROM prebuild AS final
+ARG POSTGRES_VERSION
+
+RUN sudo groupmod -g 103 postgres && sudo usermod -u 105 -g 103 postgres
+RUN sudo apt-get update && \
+    sudo apt-get install -y --no-install-recommends \
+    jq openssl lsof wget gnupg netcat-openbsd && \
+    sudo apt-get upgrade -y && \
+    sudo rm -rf /var/lib/apt/lists/*
+
+RUN wget -qO- https://www.mongodb.org/static/pgp/server-8.0.asc | sudo tee /etc/apt/trusted.gpg.d/server-8.0.asc && \
+    echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/debian bookworm/mongodb-org/8.0 main" | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list && \
+    sudo apt-get update && \
+    sudo apt-get install -y mongodb-mongosh && \
+    sudo apt-get clean && \
+    sudo rm -rf /var/lib/apt/lists/*
+
+ENV LANGUAGE=en_US.UTF-8 \
+    TERM=xterm-256color
+
+ENV CERT_PATH="" \
+    KEY_FILE="" \
+    DATA_PATH="/data" \
+    DOCUMENTDB_PORT="10260" \
+    ENABLE_TELEMETRY="false" \
+    LOG_LEVEL="info" \
+    USERNAME="default_user" \
+    CREATE_USER="true" \
+    START_POSTGRESQL="true" \
+    POSTGRESQL_PORT="9712" \
+    OWNER="documentdb" \
+    PG_VERSION_USED="${POSTGRES_VERSION}" \
+    ALLOW_EXTERNAL_CONNECTIONS="false" \
+    INIT_DATA="true" \
+    INIT_DATA_PATH="/init_doc_db.d" \
+    PATH=/usr/lib/postgresql/${POSTGRES_VERSION}/bin:$PATH
+
+RUN sudo mkdir /home/documentdb/gateway
+
+# Create /var/run/postgresql directory with proper permissions
+RUN sudo mkdir -p /var/run/postgresql && \
+    sudo chown -R documentdb:documentdb /var/run/postgresql && \
+    sudo chmod 755 /var/run/postgresql
+    
+COPY --from=stage /home/documentdb/code/pg_documentdb_gw/target/release-with-symbols/documentdb_gateway \
+                  /home/documentdb/gateway/pg_documentdb_gw/target/release-with-symbols/documentdb_gateway
+COPY --from=stage /home/documentdb/code/pg_documentdb_gw/SetupConfiguration.json /home/documentdb/gateway/pg_documentdb_gw/SetupConfiguration.json
+COPY --from=stage /home/documentdb/code/scripts/start_oss_server.sh /home/documentdb/gateway/scripts/start_oss_server.sh
+COPY --from=stage /home/documentdb/code/scripts/build_and_start_gateway.sh /home/documentdb/gateway/scripts/build_and_start_gateway.sh
+COPY --from=stage /home/documentdb/code/scripts/emulator_entrypoint.sh /home/documentdb/gateway/scripts/emulator_entrypoint.sh
+COPY --from=stage /home/documentdb/code/scripts/utils.sh /home/documentdb/gateway/scripts/utils.sh
+COPY --from=stage /home/documentdb/code/scripts/setup_psqlrc.sh /home/documentdb/gateway/scripts/setup_psqlrc.sh
+# Copy initialization scripts
+COPY --from=stage /home/documentdb/code/scripts/init_documentdb_data.sh /home/documentdb/gateway/scripts/init_documentdb_data.sh
+
+# Copy sample data for built-in initialization
+COPY --from=stage /home/documentdb/code/sample-data /home/documentdb/gateway/sample-data
+
+# Create default initialization directory for user-provided scripts
+RUN sudo mkdir -p /init_doc_db.d
+
+USER documentdb
+RUN sudo chown -R documentdb:documentdb /home/documentdb/gateway
+
+# Make initialization script executable
+RUN sudo chmod +x /home/documentdb/gateway/scripts/init_documentdb_data.sh
+
+WORKDIR /home/documentdb/gateway/scripts
+ENTRYPOINT ["/bin/bash", "-c", "/home/documentdb/gateway/scripts/emulator_entrypoint.sh \"$@\"", "--"]

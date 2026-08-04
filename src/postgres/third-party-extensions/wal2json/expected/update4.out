@@ -1,0 +1,107 @@
+\set VERBOSITY terse
+-- predictability
+SET synchronous_commit = on;
+SET extra_float_digits = 0;
+DROP TABLE IF EXISTS table_with_unique;
+CREATE TABLE table_with_unique (
+a	smallserial,
+b	smallint,
+c	int,
+d	bigint,
+e	numeric(5,3) not null,
+f	real not null,
+g	double precision not null,
+h	char(10),
+i	varchar(30),
+j	text,
+k	bit varying(20),
+l	timestamp,
+m	date,
+n	boolean not null,
+o	json,
+p	tsvector,
+UNIQUE(g, n)
+);
+-- INSERT
+INSERT INTO table_with_unique (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p) VALUES(1, 2, 3, 3.54, 876.563452345, 1.23, 'teste', 'testando', 'um texto longo', B'001110010101010', '2013-11-02 17:30:52', '2013-02-04', false, '{ "a": 123 }', 'Old Old Parr'::tsvector);
+INSERT INTO table_with_unique (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p) VALUES(4, 5, 6, 3.54, 876.563452345, 4.56, 'teste', 'testando', 'um texto longo', B'001110010101010', '2013-11-02 17:30:52', '2013-02-04', true, '{ "a": 123 }', 'Old Old Parr'::tsvector);
+SELECT 'init' FROM pg_create_logical_replication_slot('regression_slot', 'wal2json');
+ ?column? 
+----------
+ init
+(1 row)
+
+-- UPDATE: REPLICA IDENTITY USING INDEX
+ALTER TABLE table_with_unique REPLICA IDENTITY USING INDEX table_with_unique_g_n_key;
+-- FIXME não apresenta valor correto de g
+UPDATE table_with_unique SET c = -c WHERE b = 1;
+UPDATE table_with_unique SET g = -g WHERE n = true;
+ALTER TABLE table_with_unique REPLICA IDENTITY DEFAULT;
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '1', 'pretty-print', '1', 'include-typmod', '0');
+                                                                                                              data                                                                                                              
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {                                                                                                                                                                                                                             +
+         "change": [                                                                                                                                                                                                           +
+         ]                                                                                                                                                                                                                     +
+ }
+ {                                                                                                                                                                                                                             +
+         "change": [                                                                                                                                                                                                           +
+                 {                                                                                                                                                                                                             +
+                         "kind": "update",                                                                                                                                                                                     +
+                         "schema": "public",                                                                                                                                                                                   +
+                         "table": "table_with_unique",                                                                                                                                                                         +
+                         "columnnames": ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p"],                                                                                                      +
+                         "columntypes": ["int2", "int2", "int4", "int8", "numeric", "float4", "float8", "bpchar", "varchar", "text", "varbit", "timestamp", "date", "bool", "json", "tsvector"],                               +
+                         "columnvalues": [1, 1, -2, 3, 3.540, 876.563, 1.23, "teste     ", "testando", "um texto longo", "001110010101010", "Sat Nov 02 17:30:52 2013", "02-04-2013", false, "{ \"a\": 123 }", "'Old' 'Parr'"],+
+                         "oldkeys": {                                                                                                                                                                                          +
+                                 "keynames": ["g", "n"],                                                                                                                                                                       +
+                                 "keytypes": ["float8", "bool"],                                                                                                                                                               +
+                                 "keyvalues": [1.23, false]                                                                                                                                                                    +
+                         }                                                                                                                                                                                                     +
+                 }                                                                                                                                                                                                             +
+         ]                                                                                                                                                                                                                     +
+ }
+ {                                                                                                                                                                                                                             +
+         "change": [                                                                                                                                                                                                           +
+                 {                                                                                                                                                                                                             +
+                         "kind": "update",                                                                                                                                                                                     +
+                         "schema": "public",                                                                                                                                                                                   +
+                         "table": "table_with_unique",                                                                                                                                                                         +
+                         "columnnames": ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p"],                                                                                                      +
+                         "columntypes": ["int2", "int2", "int4", "int8", "numeric", "float4", "float8", "bpchar", "varchar", "text", "varbit", "timestamp", "date", "bool", "json", "tsvector"],                               +
+                         "columnvalues": [2, 4, 5, 6, 3.540, 876.563, -4.56, "teste     ", "testando", "um texto longo", "001110010101010", "Sat Nov 02 17:30:52 2013", "02-04-2013", true, "{ \"a\": 123 }", "'Old' 'Parr'"], +
+                         "oldkeys": {                                                                                                                                                                                          +
+                                 "keynames": ["g", "n"],                                                                                                                                                                       +
+                                 "keytypes": ["float8", "bool"],                                                                                                                                                               +
+                                 "keyvalues": [4.56, true]                                                                                                                                                                     +
+                         }                                                                                                                                                                                                     +
+                 }                                                                                                                                                                                                             +
+         ]                                                                                                                                                                                                                     +
+ }
+ {                                                                                                                                                                                                                             +
+         "change": [                                                                                                                                                                                                           +
+         ]                                                                                                                                                                                                                     +
+ }
+(4 rows)
+
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '2');
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      data                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"U","schema":"public","table":"table_with_unique","columns":[{"name":"a","type":"smallint","value":1},{"name":"b","type":"smallint","value":1},{"name":"c","type":"integer","value":-2},{"name":"d","type":"bigint","value":3},{"name":"e","type":"numeric(5,3)","value":3.540},{"name":"f","type":"real","value":876.563},{"name":"g","type":"double precision","value":1.23},{"name":"h","type":"character(10)","value":"teste     "},{"name":"i","type":"character varying(30)","value":"testando"},{"name":"j","type":"text","value":"um texto longo"},{"name":"k","type":"bit varying(20)","value":"001110010101010"},{"name":"l","type":"timestamp without time zone","value":"Sat Nov 02 17:30:52 2013"},{"name":"m","type":"date","value":"02-04-2013"},{"name":"n","type":"boolean","value":false},{"name":"o","type":"json","value":"{ \"a\": 123 }"},{"name":"p","type":"tsvector","value":"'Old' 'Parr'"}],"identity":[{"name":"g","type":"double precision","value":1.23},{"name":"n","type":"boolean","value":false}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"U","schema":"public","table":"table_with_unique","columns":[{"name":"a","type":"smallint","value":2},{"name":"b","type":"smallint","value":4},{"name":"c","type":"integer","value":5},{"name":"d","type":"bigint","value":6},{"name":"e","type":"numeric(5,3)","value":3.540},{"name":"f","type":"real","value":876.563},{"name":"g","type":"double precision","value":-4.56},{"name":"h","type":"character(10)","value":"teste     "},{"name":"i","type":"character varying(30)","value":"testando"},{"name":"j","type":"text","value":"um texto longo"},{"name":"k","type":"bit varying(20)","value":"001110010101010"},{"name":"l","type":"timestamp without time zone","value":"Sat Nov 02 17:30:52 2013"},{"name":"m","type":"date","value":"02-04-2013"},{"name":"n","type":"boolean","value":true},{"name":"o","type":"json","value":"{ \"a\": 123 }"},{"name":"p","type":"tsvector","value":"'Old' 'Parr'"}],"identity":[{"name":"g","type":"double precision","value":4.56},{"name":"n","type":"boolean","value":true}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+(10 rows)
+
+SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
+ ?column? 
+----------
+ stop
+(1 row)
+

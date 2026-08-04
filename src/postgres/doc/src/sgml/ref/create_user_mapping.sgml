@@ -1,0 +1,132 @@
+<!--
+doc/src/sgml/ref/create_user_mapping.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-createusermapping">
+ <indexterm zone="sql-createusermapping">
+  <primary>CREATE USER MAPPING</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>CREATE USER MAPPING</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>CREATE USER MAPPING</refname>
+  <refpurpose>define a new mapping of a user to a foreign server</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+CREATE USER MAPPING [ IF NOT EXISTS ] FOR { <replaceable class="parameter">user_name</replaceable> | USER | CURRENT_ROLE | CURRENT_USER | PUBLIC }
+    SERVER <replaceable class="parameter">server_name</replaceable>
+    [ OPTIONS ( <replaceable class="parameter">option</replaceable> '<replaceable class="parameter">value</replaceable>' [ , ... ] ) ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>CREATE USER MAPPING</command> defines a mapping of a user
+   to a foreign server.  A user mapping typically encapsulates
+   connection information that a foreign-data wrapper uses together
+   with the information encapsulated by a foreign server to access an
+   external data resource.
+  </para>
+
+  <para>
+   The owner of a foreign server can create user mappings for that
+   server for any user.  Also, a user can create a user mapping for
+   their own user name if <literal>USAGE</literal> privilege on the server has
+   been granted to the user.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+  <varlistentry>
+    <term><literal>IF NOT EXISTS</literal></term>
+    <listitem>
+     <para>
+      Do not throw an error if a mapping of the given user to the given foreign
+      server already exists. A notice is issued in this case.  Note that there
+      is no guarantee that the existing user mapping is anything like the one
+      that would have been created.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">user_name</replaceable></term>
+    <listitem>
+     <para>
+      The name of an existing user that is mapped to foreign server.
+      <literal>CURRENT_ROLE</literal>, <literal>CURRENT_USER</literal>, and <literal>USER</literal> match the name of
+      the current user.  When <literal>PUBLIC</literal> is specified, a
+      so-called public mapping is created that is used when no
+      user-specific mapping is applicable.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">server_name</replaceable></term>
+    <listitem>
+     <para>
+      The name of an existing server for which the user mapping is
+      to be created.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>OPTIONS ( <replaceable class="parameter">option</replaceable> '<replaceable class="parameter">value</replaceable>' [, ... ] )</literal></term>
+    <listitem>
+     <para>
+      This clause specifies the options of the user mapping.  The
+      options typically define the actual user name and password of
+      the mapping.  Option names must be unique.  The allowed option
+      names and values are specific to the server's foreign-data wrapper.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Create a user mapping for user <literal>bob</literal>, server <literal>foo</literal>:
+<programlisting>
+CREATE USER MAPPING FOR bob SERVER foo OPTIONS (user 'bob', password 'secret');
+</programlisting></para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>CREATE USER MAPPING</command> conforms to ISO/IEC 9075-9 (SQL/MED).
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-alterusermapping"/></member>
+   <member><xref linkend="sql-dropusermapping"/></member>
+   <member><xref linkend="sql-createforeigndatawrapper"/></member>
+   <member><xref linkend="sql-createserver"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

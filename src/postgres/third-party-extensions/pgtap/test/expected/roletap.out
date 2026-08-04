@@ -1,0 +1,41 @@
+\unset ECHO
+1..39
+ok 1 - has_role(current role) should pass
+ok 2 - has_role(current role) should have the proper description
+ok 3 - has_role(current role) should have the proper diagnostics
+ok 4 - has_role(current role, desc) should pass
+ok 5 - has_role(current role, desc) should have the proper description
+ok 6 - has_role(current role, desc) should have the proper diagnostics
+ok 7 - has_role(nonexistent role) should fail
+ok 8 - has_role(nonexistent role) should have the proper description
+ok 9 - has_role(nonexistent role) should have the proper diagnostics
+ok 10 - has_role(nonexistent role, desc) should fail
+ok 11 - has_role(nonexistent role, desc) should have the proper description
+ok 12 - has_role(nonexistent role, desc) should have the proper diagnostics
+ok 13 - hasnt_role(current role) should fail
+ok 14 - hasnt_role(current role) should have the proper description
+ok 15 - hasnt_role(current role) should have the proper diagnostics
+ok 16 - hasnt_role(current role, desc) should fail
+ok 17 - hasnt_role(current role, desc) should have the proper description
+ok 18 - hasnt_role(current role, desc) should have the proper diagnostics
+ok 19 - hasnt_role(nonexistent role) should pass
+ok 20 - hasnt_role(nonexistent role) should have the proper description
+ok 21 - hasnt_role(nonexistent role) should have the proper diagnostics
+ok 22 - hasnt_role(nonexistent role, desc) should pass
+ok 23 - hasnt_role(nonexistent role, desc) should have the proper description
+ok 24 - hasnt_role(nonexistent role, desc) should have the proper diagnostics
+ok 25 - roles_are(roles, desc) should pass
+ok 26 - roles_are(roles, desc) should have the proper description
+ok 27 - roles_are(roles, desc) should have the proper diagnostics
+ok 28 - roles_are(roles) should pass
+ok 29 - roles_are(roles) should have the proper description
+ok 30 - roles_are(roles) should have the proper diagnostics
+ok 31 - roles_are(roles, desc) missing should fail
+ok 32 - roles_are(roles, desc) missing should have the proper description
+ok 33 - roles_are(roles, desc) missing should have the proper diagnostics
+ok 34 - roles_are(roles, desc) extras should fail
+ok 35 - roles_are(roles, desc) extras should have the proper description
+ok 36 - roles_are(roles, desc) extras should have the proper diagnostics
+ok 37 - roles_are(roles, desc) missing and extras should fail
+ok 38 - roles_are(roles, desc) missing and extras should have the proper description
+ok 39 - roles_are(roles, desc) missing and extras should have the proper diagnostics

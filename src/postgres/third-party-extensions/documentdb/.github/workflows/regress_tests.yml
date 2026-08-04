@@ -1,0 +1,83 @@
+name: DocumentDB sql tests
+run-name: ${{ github.event.pull_request.title || '' }}
+concurrency:
+  group: sql-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'main'
+    paths-ignore:
+      - 'docs/**'
+      - '.devcontainer/**'
+      - '*.md'
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    paths-ignore:
+      - 'docs/**'
+      - '.devcontainer/**'
+      - '*.md'
+
+jobs:
+  DocumentDB-unit-tests:
+    runs-on: ${{ matrix.runner }}
+    name: SQL tests on ${{ matrix.arch }} with PG${{ matrix.pg_version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - pg_version: 15
+            arch: amd64
+            runner: ubuntu-22.04
+          - pg_version: 16
+            arch: arm64
+            runner: ubuntu-22.04-arm
+          - pg_version: 17
+            arch: amd64
+            runner: ubuntu-22.04
+          - pg_version: 18
+            arch: arm64
+            runner: ubuntu-22.04-arm
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Build and Install DocumentDB
+      run: |
+        chmod +x ./scripts/build_documentdb_with_scripts.sh
+        ./scripts/build_documentdb_with_scripts.sh --pg-version ${{ matrix.pg_version }} --citus-version 12
+
+    - name: Export pg_config PATH
+      run: |
+        echo "/usr/lib/postgresql/${{ matrix.pg_version }}/bin" >> $GITHUB_PATH
+
+    - name: Run Tests
+      run: |
+        which pg_config    
+        export LC_ALL=en_US.UTF-8
+        export LANGUAGE=en_US
+        export LC_COLLATE=en_US.UTF-8
+        export LC_CTYPE=en_US.UTF-8
+        if [ "${{ matrix.pg_version }}" -eq 18 ]; then
+          make check-no-distributed
+        else
+          make check
+        fi
+
+    - name: Citus Indent
+      run: |
+        citus_indent --check || (echo ""; echo "citus_indent failed, refer to CONTRIBUTING.md on how to use citus_indent"; exit 1)
+
+    - name: Validate sanity of files
+      run: |
+        ./scripts/validate_extension_file_state.sh
+
+    - name: Upload Log Files
+      if: always() 
+      uses: actions/upload-artifact@v4
+      with:
+        name: logs_${{ matrix.arch }}_PG${{ matrix.pg_version }}
+        overwrite: true
+        path: "**/*.log"

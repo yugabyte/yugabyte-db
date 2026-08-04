@@ -1,0 +1,40 @@
+\unset ECHO
+1..38
+ok 1 - cmp_ok( int, =, int ) should pass
+ok 2 - cmp_ok( int, =, int ) should have the proper description
+ok 3 - cmp_ok( int, =, int ) should have the proper diagnostics
+ok 4 - cmp_ok( int, <>, int ) should pass
+ok 5 - cmp_ok( int, <>, int ) should have the proper description
+ok 6 - cmp_ok( int, <>, int ) should have the proper diagnostics
+ok 7 - cmp_ok( polygon, ~=, polygon ) should pass
+ok 8 - cmp_ok( polygon, ~=, polygon ) should have the proper description
+ok 9 - cmp_ok( int[], =, int[] ) should pass
+ok 10 - cmp_ok( int[], =, int[] ) should have the proper description
+ok 11 - cmp_ok( int[], =, int[] ) should have the proper diagnostics
+ok 12 - cmp_ok( inet[], =, inet[] ) should pass
+ok 13 - cmp_ok( inet[], =, inet[] ) should have the proper description
+ok 14 - cmp_ok( inet[], =, inet[] ) should have the proper diagnostics
+ok 15 - cmp_ok() fail should fail
+ok 16 - cmp_ok() fail should have the proper description
+ok 17 - cmp_ok() fail should have the proper diagnostics
+ok 18 - cmp_ok() NULL fail should fail
+ok 19 - cmp_ok() NULL fail should have the proper description
+ok 20 - cmp_ok() NULL fail should have the proper diagnostics
+ok 21 - isa_ok("", text, desc) should pass
+ok 22 - isa_ok("", text, desc) should have the proper description
+ok 23 - isa_ok("", text, desc) should have the proper diagnostics
+ok 24 - isa_ok("", text, desc) should pass
+ok 25 - isa_ok("", text, desc) should have the proper description
+ok 26 - isa_ok("", text, desc) should have the proper diagnostics
+ok 27 - isa_ok(false, boolean) should pass
+ok 28 - isa_ok(false, boolean) should have the proper description
+ok 29 - isa_ok(false, boolean) should have the proper diagnostics
+ok 30 - isa_ok(NULL, boolean) should pass
+ok 31 - isa_ok(NULL, boolean) should have the proper description
+ok 32 - isa_ok(NULL, boolean) should have the proper diagnostics
+ok 33 - isa_ok(ARRAY, boolean[]) should pass
+ok 34 - isa_ok(ARRAY, boolean[]) should have the proper description
+ok 35 - isa_ok(ARRAY, boolean[]) should have the proper diagnostics
+ok 36 - isa_ok(bool, int[]) should fail
+ok 37 - isa_ok(bool, int[]) should have the proper description
+ok 38 - isa_ok(bool, int[]) should have the proper diagnostics

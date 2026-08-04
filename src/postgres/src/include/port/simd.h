@@ -1,0 +1,603 @@
+/*-------------------------------------------------------------------------
+ *
+ * simd.h
+ *	  Support for platform-specific vector operations.
+ *
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, Regents of the University of California
+ *
+ * src/include/port/simd.h
+ *
+ * NOTES
+ * - VectorN in this file refers to a register where the element operands
+ * are N bits wide. The vector width is platform-specific, so users that care
+ * about that will need to inspect "sizeof(VectorN)".
+ *
+ *-------------------------------------------------------------------------
+ */
+#ifndef SIMD_H
+#define SIMD_H
+
+#if defined(USE_SSE2)
+/*
+ * We use emmintrin.h rather than the comprehensive header immintrin.h in
+ * order to exclude extensions beyond SSE2. This is because MSVC, at least,
+ * will allow the use of intrinsics that haven't been enabled at compile
+ * time.
+ */
+#include <emmintrin.h>
+typedef __m128i Vector8;
+typedef __m128i Vector32;
+
+#elif defined(USE_NEON)
+#include <arm_neon.h>
+typedef uint8x16_t Vector8;
+typedef uint32x4_t Vector32;
+
+#else
+/*
+ * If no SIMD instructions are available, we can in some cases emulate vector
+ * operations using bitwise operations on unsigned integers.  Note that many
+ * of the functions in this file presently do not have non-SIMD
+ * implementations.  In particular, none of the functions involving Vector32
+ * are implemented without SIMD since it's likely not worthwhile to represent
+ * two 32-bit integers using a uint64.
+ */
+#define USE_NO_SIMD
+typedef uint64 Vector8;
+#endif
+
+/* load/store operations */
+static inline void vector8_load(Vector8 *v, const uint8 *s);
+#ifndef USE_NO_SIMD
+static inline void vector32_load(Vector32 *v, const uint32 *s);
+#endif
+
+/* assignment operations */
+static inline Vector8 vector8_broadcast(const uint8 c);
+#ifndef USE_NO_SIMD
+static inline Vector32 vector32_broadcast(const uint32 c);
+#endif
+
+/* element-wise comparisons to a scalar */
+static inline bool vector8_has(const Vector8 v, const uint8 c);
+static inline bool vector8_has_zero(const Vector8 v);
+static inline bool vector8_has_le(const Vector8 v, const uint8 c);
+static inline bool vector8_is_highbit_set(const Vector8 v);
+#ifndef USE_NO_SIMD
+static inline bool vector32_is_highbit_set(const Vector32 v);
+static inline uint32 vector8_highbit_mask(const Vector8 v);
+#endif
+
+/* arithmetic operations */
+static inline Vector8 vector8_or(const Vector8 v1, const Vector8 v2);
+#ifndef USE_NO_SIMD
+static inline Vector32 vector32_or(const Vector32 v1, const Vector32 v2);
+#endif
+
+/*
+ * comparisons between vectors
+ *
+ * Note: These return a vector rather than boolean, which is why we don't
+ * have non-SIMD implementations.
+ */
+#ifndef USE_NO_SIMD
+static inline Vector8 vector8_eq(const Vector8 v1, const Vector8 v2);
+static inline Vector8 vector8_min(const Vector8 v1, const Vector8 v2);
+static inline Vector32 vector32_eq(const Vector32 v1, const Vector32 v2);
+#endif
+
+/*
+ * Load a chunk of memory into the given vector.
+ */
+static inline void
+vector8_load(Vector8 *v, const uint8 *s)
+{
+#if defined(USE_SSE2)
+	*v = _mm_loadu_si128((const __m128i *) s);
+#elif defined(USE_NEON)
+	*v = vld1q_u8(s);
+#else
+	memcpy(v, s, sizeof(Vector8));
+#endif
+}
+
+#ifndef USE_NO_SIMD
+static inline void
+vector32_load(Vector32 *v, const uint32 *s)
+{
+#ifdef USE_SSE2
+	*v = _mm_loadu_si128((const __m128i *) s);
+#elif defined(USE_NEON)
+	*v = vld1q_u32(s);
+#endif
+}
+#endif							/* ! USE_NO_SIMD */
+
+/*
+ * Store a vector into the given memory address.
+ */
+#ifndef USE_NO_SIMD
+static inline void
+vector8_store(uint8 *s, Vector8 v)
+{
+#ifdef USE_SSE2
+	_mm_storeu_si128((Vector8 *) s, v);
+#elif defined(USE_NEON)
+	vst1q_u8(s, v);
+#endif
+}
+#endif							/* ! USE_NO_SIMD */
+
+/*
+ * Create a vector with all elements set to the same value.
+ */
+static inline Vector8
+vector8_broadcast(const uint8 c)
+{
+#if defined(USE_SSE2)
+	return _mm_set1_epi8(c);
+#elif defined(USE_NEON)
+	return vdupq_n_u8(c);
+#else
+	return ~UINT64CONST(0) / 0xFF * c;
+#endif
+}
+
+#ifndef USE_NO_SIMD
+static inline Vector32
+vector32_broadcast(const uint32 c)
+{
+#ifdef USE_SSE2
+	return _mm_set1_epi32(c);
+#elif defined(USE_NEON)
+	return vdupq_n_u32(c);
+#endif
+}
+#endif							/* ! USE_NO_SIMD */
+
+/*
+ * Return true if any elements in the vector are equal to the given scalar.
+ */
+static inline bool
+vector8_has(const Vector8 v, const uint8 c)
+{
+	bool		result;
+
+	/* pre-compute the result for assert checking */
+#ifdef USE_ASSERT_CHECKING
+	bool		assert_result = false;
+
+	for (Size i = 0; i < sizeof(Vector8); i++)
+	{
+		if (((const uint8 *) &v)[i] == c)
+		{
+			assert_result = true;
+			break;
+		}
+	}
+#endif							/* USE_ASSERT_CHECKING */
+
+#if defined(USE_NO_SIMD)
+	/* any bytes in v equal to c will evaluate to zero via XOR */
+	result = vector8_has_zero(v ^ vector8_broadcast(c));
+#else
+	result = vector8_is_highbit_set(vector8_eq(v, vector8_broadcast(c)));
+#endif
+
+	Assert(assert_result == result);
+	return result;
+}
+
+/*
+ * Convenience function equivalent to vector8_has(v, 0)
+ */
+static inline bool
+vector8_has_zero(const Vector8 v)
+{
+#if defined(USE_NO_SIMD)
+	/*
+	 * We cannot call vector8_has() here, because that would lead to a
+	 * circular definition.
+	 */
+	return vector8_has_le(v, 0);
+#else
+	return vector8_has(v, 0);
+#endif
+}
+
+/*
+ * Return true if any elements in the vector are less than or equal to the
+ * given scalar.
+ */
+static inline bool
+vector8_has_le(const Vector8 v, const uint8 c)
+{
+	bool		result = false;
+#ifdef USE_SSE2
+	Vector8		umin;
+	Vector8		cmpe;
+#endif
+
+	/* pre-compute the result for assert checking */
+#ifdef USE_ASSERT_CHECKING
+	bool		assert_result = false;
+
+	for (Size i = 0; i < sizeof(Vector8); i++)
+	{
+		if (((const uint8 *) &v)[i] <= c)
+		{
+			assert_result = true;
+			break;
+		}
+	}
+#endif							/* USE_ASSERT_CHECKING */
+
+#if defined(USE_NO_SIMD)
+
+	/*
+	 * To find bytes <= c, we can use bitwise operations to find bytes < c+1,
+	 * but it only works if c+1 <= 128 and if the highest bit in v is not set.
+	 * Adapted from
+	 * https://graphics.stanford.edu/~seander/bithacks.html#HasLessInWord
+	 */
+	if ((int64) v >= 0 && c < 0x80)
+		result = (v - vector8_broadcast(c + 1)) & ~v & vector8_broadcast(0x80);
+	else
+	{
+		/* one byte at a time */
+		for (Size i = 0; i < sizeof(Vector8); i++)
+		{
+			if (((const uint8 *) &v)[i] <= c)
+			{
+				result = true;
+				break;
+			}
+		}
+	}
+#elif defined(USE_SSE2)
+	umin = vector8_min(v, vector8_broadcast(c));
+	cmpe = vector8_eq(umin, v);
+	result = vector8_is_highbit_set(cmpe);
+#elif defined(USE_NEON)
+	result = vminvq_u8(v) <= c;
+#endif
+
+	Assert(assert_result == result);
+	return result;
+}
+
+/*
+ * Returns true if any elements in the vector are greater than or equal to the
+ * given scalar.
+ */
+#ifndef USE_NO_SIMD
+static inline bool
+vector8_has_ge(const Vector8 v, const uint8 c)
+{
+#ifdef USE_SSE2
+	Vector8		umax = _mm_max_epu8(v, vector8_broadcast(c));
+	Vector8		cmpe = vector8_eq(umax, v);
+
+	return vector8_is_highbit_set(cmpe);
+#elif defined(USE_NEON)
+	return vmaxvq_u8(v) >= c;
+#endif
+}
+#endif							/* ! USE_NO_SIMD */
+
+/*
+ * Return true if the high bit of any element is set
+ */
+static inline bool
+vector8_is_highbit_set(const Vector8 v)
+{
+#ifdef USE_SSE2
+	return _mm_movemask_epi8(v) != 0;
+#elif defined(USE_NEON)
+	return vmaxvq_u8(v) > 0x7F;
+#else
+	return v & vector8_broadcast(0x80);
+#endif
+}
+
+/*
+ * Exactly like vector8_is_highbit_set except for the input type, so it
+ * looks at each byte separately.
+ *
+ * XXX x86 uses the same underlying type for 8-bit, 16-bit, and 32-bit
+ * integer elements, but Arm does not, hence the need for a separate
+ * function. We could instead adopt the behavior of Arm's vmaxvq_u32(), i.e.
+ * check each 32-bit element, but that would require an additional mask
+ * operation on x86.
+ */
+#ifndef USE_NO_SIMD
+static inline bool
+vector32_is_highbit_set(const Vector32 v)
+{
+#if defined(USE_NEON)
+	return vector8_is_highbit_set((Vector8) v);
+#else
+	return vector8_is_highbit_set(v);
+#endif
+}
+#endif							/* ! USE_NO_SIMD */
+
+/*
+ * Return a bitmask formed from the high-bit of each element.
+ */
+#ifndef USE_NO_SIMD
+static inline uint32
+vector8_highbit_mask(const Vector8 v)
+{
+#ifdef USE_SSE2
+	return (uint32) _mm_movemask_epi8(v);
+#elif defined(USE_NEON)
+	/*
+	 * Note: It would be faster to use vget_lane_u64 and vshrn_n_u16, but that
+	 * returns a uint64, making it inconvenient to combine mask values from
+	 * multiple vectors.
+	 */
+	static const uint8 mask[16] = {
+		1 << 0, 1 << 1, 1 << 2, 1 << 3,
+		1 << 4, 1 << 5, 1 << 6, 1 << 7,
+		1 << 0, 1 << 1, 1 << 2, 1 << 3,
+		1 << 4, 1 << 5, 1 << 6, 1 << 7,
+	};
+
+	uint8x16_t	masked = vandq_u8(vld1q_u8(mask), (uint8x16_t) vshrq_n_s8((int8x16_t) v, 7));
+	uint8x16_t	maskedhi = vextq_u8(masked, masked, 8);
+
+	return (uint32) vaddvq_u16((uint16x8_t) vzip1q_u8(masked, maskedhi));
+#endif
+}
+#endif							/* ! USE_NO_SIMD */
+
+/*
+ * Return the bitwise OR of the inputs
+ */
+static inline Vector8
+vector8_or(const Vector8 v1, const Vector8 v2)
+{
+#ifdef USE_SSE2
+	return _mm_or_si128(v1, v2);
+#elif defined(USE_NEON)
+	return vorrq_u8(v1, v2);
+#else
+	return v1 | v2;
+#endif
+}
+
+#ifndef USE_NO_SIMD
+static inline Vector32
+vector32_or(const Vector32 v1, const Vector32 v2)
+{
+#ifdef USE_SSE2
+	return _mm_or_si128(v1, v2);
+#elif defined(USE_NEON)
+	return vorrq_u32(v1, v2);
+#endif
+}
+#endif							/* ! USE_NO_SIMD */
+
+/*
+ * Return the bitwise AND of the inputs.
+ */
+#ifndef USE_NO_SIMD
+static inline Vector8
+vector8_and(const Vector8 v1, const Vector8 v2)
+{
+#ifdef USE_SSE2
+	return _mm_and_si128(v1, v2);
+#elif defined(USE_NEON)
+	return vandq_u8(v1, v2);
+#endif
+}
+#endif							/* ! USE_NO_SIMD */
+
+/*
+ * Return the result of adding the respective elements of the input vectors.
+ */
+#ifndef USE_NO_SIMD
+static inline Vector8
+vector8_add(const Vector8 v1, const Vector8 v2)
+{
+#ifdef USE_SSE2
+	return _mm_add_epi8(v1, v2);
+#elif defined(USE_NEON)
+	return vaddq_u8(v1, v2);
+#endif
+}
+#endif							/* ! USE_NO_SIMD */
+
+/*
+ * Return the result of subtracting the respective elements of the input
+ * vectors using signed saturation (i.e., if the operation would yield a value
+ * less than -128, -128 is returned instead).  For more information on
+ * saturation arithmetic, see
+ * https://en.wikipedia.org/wiki/Saturation_arithmetic
+ */
+#ifndef USE_NO_SIMD
+static inline Vector8
+vector8_issub(const Vector8 v1, const Vector8 v2)
+{
+#ifdef USE_SSE2
+	return _mm_subs_epi8(v1, v2);
+#elif defined(USE_NEON)
+	return (Vector8) vqsubq_s8((int8x16_t) v1, (int8x16_t) v2);
+#endif
+}
+#endif							/* ! USE_NO_SIMD */
+
+/*
+ * Return a vector with all bits set in each lane where the corresponding
+ * lanes in the inputs are equal.
+ */
+#ifndef USE_NO_SIMD
+static inline Vector8
+vector8_eq(const Vector8 v1, const Vector8 v2)
+{
+#ifdef USE_SSE2
+	return _mm_cmpeq_epi8(v1, v2);
+#elif defined(USE_NEON)
+	return vceqq_u8(v1, v2);
+#endif
+}
+#endif							/* ! USE_NO_SIMD */
+
+#ifndef USE_NO_SIMD
+static inline Vector32
+vector32_eq(const Vector32 v1, const Vector32 v2)
+{
+#ifdef USE_SSE2
+	return _mm_cmpeq_epi32(v1, v2);
+#elif defined(USE_NEON)
+	return vceqq_u32(v1, v2);
+#endif
+}
+#endif							/* ! USE_NO_SIMD */
+
+/*
+ * Return a vector with all bits set for each lane of v1 that is greater than
+ * the corresponding lane of v2.  NB: The comparison treats the elements as
+ * signed.
+ */
+#ifndef USE_NO_SIMD
+static inline Vector8
+vector8_gt(const Vector8 v1, const Vector8 v2)
+{
+#ifdef USE_SSE2
+	return _mm_cmpgt_epi8(v1, v2);
+#elif defined(USE_NEON)
+	return vcgtq_s8((int8x16_t) v1, (int8x16_t) v2);
+#endif
+}
+#endif							/* ! USE_NO_SIMD */
+
+/*
+ * Given two vectors, return a vector with the minimum element of each.
+ */
+#ifndef USE_NO_SIMD
+static inline Vector8
+vector8_min(const Vector8 v1, const Vector8 v2)
+{
+#ifdef USE_SSE2
+	return _mm_min_epu8(v1, v2);
+#elif defined(USE_NEON)
+	return vminq_u8(v1, v2);
+#endif
+}
+#endif							/* ! USE_NO_SIMD */
+
+/*
+ * Interleave elements of low halves (e.g., for SSE2, bits 0-63) of given
+ * vectors.  Bytes 0, 2, 4, etc. use v1, and bytes 1, 3, 5, etc. use v2.
+ */
+#ifndef USE_NO_SIMD
+static inline Vector8
+vector8_interleave_low(const Vector8 v1, const Vector8 v2)
+{
+#ifdef USE_SSE2
+	return _mm_unpacklo_epi8(v1, v2);
+#elif defined(USE_NEON)
+	return vzip1q_u8(v1, v2);
+#endif
+}
+#endif							/* ! USE_NO_SIMD */
+
+/*
+ * Interleave elements of high halves (e.g., for SSE2, bits 64-127) of given
+ * vectors.  Bytes 0, 2, 4, etc. use v1, and bytes 1, 3, 5, etc. use v2.
+ */
+#ifndef USE_NO_SIMD
+static inline Vector8
+vector8_interleave_high(const Vector8 v1, const Vector8 v2)
+{
+#ifdef USE_SSE2
+	return _mm_unpackhi_epi8(v1, v2);
+#elif defined(USE_NEON)
+	return vzip2q_u8(v1, v2);
+#endif
+}
+#endif							/* ! USE_NO_SIMD */
+
+/*
+ * Pack 16-bit elements in the given vectors into a single vector of 8-bit
+ * elements.  The first half of the return vector (e.g., for SSE2, bits 0-63)
+ * uses v1, and the second half (e.g., for SSE2, bits 64-127) uses v2.
+ *
+ * NB: The upper 8-bits of each 16-bit element must be zeros, else this will
+ * produce different results on different architectures.
+ */
+#ifndef USE_NO_SIMD
+static inline Vector8
+vector8_pack_16(const Vector8 v1, const Vector8 v2)
+{
+	Vector8		mask PG_USED_FOR_ASSERTS_ONLY;
+
+	mask = vector8_interleave_low(vector8_broadcast(0), vector8_broadcast(0xff));
+	Assert(!vector8_has_ge(vector8_and(v1, mask), 1));
+	Assert(!vector8_has_ge(vector8_and(v2, mask), 1));
+#ifdef USE_SSE2
+	return _mm_packus_epi16(v1, v2);
+#elif defined(USE_NEON)
+	return vuzp1q_u8(v1, v2);
+#endif
+}
+#endif							/* ! USE_NO_SIMD */
+
+/*
+ * Unsigned shift left of each 32-bit element in the vector by "i" bits.
+ *
+ * XXX AArch64 requires an integer literal, so we have to list all expected
+ * values of "i" from all callers in a switch statement.  If you add a new
+ * caller, be sure your expected values of "i" are handled.
+ */
+#ifndef USE_NO_SIMD
+static inline Vector8
+vector8_shift_left(const Vector8 v1, int i)
+{
+#ifdef USE_SSE2
+	return _mm_slli_epi32(v1, i);
+#elif defined(USE_NEON)
+	switch (i)
+	{
+		case 4:
+			return (Vector8) vshlq_n_u32((Vector32) v1, 4);
+		default:
+			Assert(false);
+			return vector8_broadcast(0);
+	}
+#endif
+}
+#endif							/* ! USE_NO_SIMD */
+
+/*
+ * Unsigned shift right of each 32-bit element in the vector by "i" bits.
+ *
+ * XXX AArch64 requires an integer literal, so we have to list all expected
+ * values of "i" from all callers in a switch statement.  If you add a new
+ * caller, be sure your expected values of "i" are handled.
+ */
+#ifndef USE_NO_SIMD
+static inline Vector8
+vector8_shift_right(const Vector8 v1, int i)
+{
+#ifdef USE_SSE2
+	return _mm_srli_epi32(v1, i);
+#elif defined(USE_NEON)
+	switch (i)
+	{
+		case 4:
+			return (Vector8) vshrq_n_u32((Vector32) v1, 4);
+		case 8:
+			return (Vector8) vshrq_n_u32((Vector32) v1, 8);
+		default:
+			Assert(false);
+			return vector8_broadcast(0);
+	}
+#endif
+}
+#endif							/* ! USE_NO_SIMD */
+
+#endif							/* SIMD_H */

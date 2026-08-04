@@ -1,0 +1,46 @@
+CREATE EXTENSION pg_stat_monitor;
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+SELECT 1/0;   -- divide by zero
+ERROR:  division by zero
+SELECT * FROM unknown; -- unknown table
+ERROR:  relation "unknown" does not exist
+LINE 1: SELECT * FROM unknown;
+                      ^
+ELECET * FROM unknown; -- syntax error
+ERROR:  syntax error at or near "ELECET"
+LINE 1: ELECET * FROM unknown;
+        ^
+do $$
+BEGIN
+RAISE WARNING 'warning message';
+END $$;
+WARNING:  warning message
+SELECT query, elevel, sqlcode, message FROM pg_stat_monitor ORDER BY query COLLATE "C",elevel;
+              query               | elevel | sqlcode |              message              
+----------------------------------+--------+---------+-----------------------------------
+ ELECET * FROM unknown;           |     20 | 42601   | syntax error at or near "ELECET"
+ SELECT * FROM unknown;           |     20 | 42P01   | relation "unknown" does not exist
+ SELECT 1/0;                      |     20 | 22012   | division by zero
+ SELECT pg_stat_monitor_reset()   |      0 |         | 
+ do $$                           +|      0 |         | 
+ BEGIN                           +|        |         | 
+ RAISE WARNING 'warning message';+|        |         | 
+ END $$                           |        |         | 
+ do $$                           +|     19 | 01000   | warning message
+ BEGIN                           +|        |         | 
+ RAISE WARNING 'warning message';+|        |         | 
+ END $$;                          |        |         | 
+(6 rows)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+DROP EXTENSION pg_stat_monitor;

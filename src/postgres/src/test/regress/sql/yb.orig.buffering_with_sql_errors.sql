@@ -1,0 +1,539 @@
+--
+-- Tests to ensure that YSQL buffering (i.e., logic in pg_operation_buffer.cc and
+-- related files) doesn't break any semantics of error handling in functions
+-- and procedures.
+--
+-- *****************************************************************************
+-- * Exception handling in PLPGSQL
+-- *****************************************************************************
+--
+-- PLPGSQL exception blocks allow a user to execute a block of statements such
+-- that if an error occurs, the changes to the database are undone/ reverted and
+-- user-specified error-handling is invoked.
+--
+-- The changes to the database are undone as follows - an internal savepoint is
+-- registered before any code in the exception block is executed. If any error
+-- occurs, it is caught and the savepoint is rolled back and released. This
+-- helps revert any modifications to the database.
+--
+-- However, there are some statements which don't modify the database, but have
+-- other side-effects. These are not undone even if an exception occurs. A
+-- simple example of this is the "return next;" statement in plpgsql. Once data
+-- is sent to the user it can't be undone.
+-- *****************************************************************************
+--
+-- *****************************************************************************
+-- * YSQL Buffering
+-- *****************************************************************************
+-- YSQL buffers operations to tserver (writes specifically) unless it hits some
+-- condition that forces it to flush the buffer and wait for the response. Some
+-- conditions that force waiting for a buffer response are - completion of a txn,
+-- completion of an exception handling block in plpgsql, a read operation, or a
+-- write to a key which already has a buffered write.
+--
+-- With buffering, execution can move on to later statements unless a flush and
+-- response wait is required based on the conditions above. For example - with
+-- autocommit mode off, writes for a statement (like INSERT/UPDATE) are not
+-- flushed until required. Instead, they are buffered. This is okay because,
+-- even before flushing, we would know the number of inserts/updates to be done
+-- and return that number to the user client (as "INSERT x"). If an error occurs
+-- in the rpc, it will anyway be caught in some later flush, but before the txn
+-- commits.
+--
+-- Allowing execution to move on to later statements without waiting for the
+-- actual work to be done on the tablet servers helps improve performance by
+-- buffering and reduce latency.
+-- *****************************************************************************
+--
+--
+-- As seen in gh issue #12184, incorrect behaviour is observed with YSQL
+-- buffering when an exception that occurs due to some statement's rpcs is seen
+-- after a later statement which has non-reversible side-effect(s) has also been
+-- executed. Buffered operations should be flushed and waited for before
+-- executing any statements with non-reversible side effects in the same
+-- transaction. The following tests ensure this for the various cases.
+--
+-- 1(a) PL/pgsql: ensure statements with non-reversible side effects (i.e., non
+--      transactional work) are not executed if an ealier statement caused an
+--      exception.
+--
+-- (this test case is one of Bryn's example in Github issue #12184)
+--
+-- TODO: The constraint_name is not populated for unique constraint violations in stacked
+-- diagnostics. This is being tracked by github issue #13501
+SET yb_speculatively_execute_pl_statements TO true;
+drop function if exists f(text) cascade;
+drop table if exists t cascade;
+create table t(k serial primary key, v varchar(5) not null);
+create unique index t_v_unq on t(v);
+insert into t(v) values ('dog'), ('cat'), ('frog');
+
+create function f(new_v in text)
+  returns table(z text)
+  security definer
+  language plpgsql
+as $body$
+declare
+  sqlstate_    text not null := '';
+  constraint_  text not null := '';
+  msg          text not null := '';
+begin
+  z := 'Inserting "'||new_v||'"'; return next;
+  begin
+    insert into t(v) values (new_v);
+    z := 'No exception'; return next;
+  exception
+    when others then
+      get stacked diagnostics
+        sqlstate_ = returned_sqlstate,
+        constraint_ = constraint_name,
+        msg = message_text;
+      if sqlstate_ = '23505' then
+        z := 'unique_violation'; return next;
+        z := 'constraint: '||constraint_; return next;
+        z := 'message:    '||msg; return next;
+      else
+        z := 'others'; return next;
+        z := 'sqlstate:   '||sqlstate_; return next;
+        z := 'message:    '||msg; return next;
+    end if;
+  end;
+end;
+$body$;
+
+select z from f('ant');
+select z from f('dog');
+select z from f('elephant');
+
+-- 1(b) PL/pgsql: another example from Bryn in Github issue #12184. This one has
+--      a for loop within the exception block.
+
+drop table if exists t cascade;
+create table t(k serial primary key, v varchar(3) not null unique);
+
+drop function if exists f(boolean);
+create function f(bug in boolean)
+  returns table(z text)
+  language plpgsql
+as $body$
+declare
+  n int  not null := 0;
+begin
+  z := ''; return next;
+  begin
+    for i in 1..3 loop
+      n := n + 1;
+      z := n::text;
+      return next;
+      insert into t(v) values(z);
+    end loop;
+  exception
+    when others then null;
+  end;
+
+  z := ''; return next;
+  begin
+    for i in 1..3 loop
+      n := n + 1;
+      z := case
+             when      bug  and (i = 2) then '1'
+             when (not bug) and (i = 2) then 'abcd'
+             else                             n::text
+           end;
+      return next;
+      insert into t(v) values(z);
+    end loop;
+  exception
+    when string_data_right_truncation then
+      z := 'string_data_right_truncation handled';
+      return next;
+    when unique_violation then
+      z := 'unique_violation handled';
+      return next;
+  end;
+
+  z := ''; return next;
+  begin
+    for i in 1..3 loop
+      n := n + 1;
+      z := n::text;
+      return next;
+      insert into t(v) values(z);
+    end loop;
+  exception
+    when others then null;
+  end;
+end;
+$body$;
+
+select z from f(bug=>false);
+select v from t order by k;
+truncate t;
+select z from f(bug=>true);
+select v from t order by k;
+
+-- 1(c) PL/pgsql: the statement that does non-reversible side effects (i.e.,
+--      non-transactional work) is in a nested function.
+
+drop table if exists t cascade;
+create table t(k serial primary key, v varchar(500) not null unique);
+insert into t(v) values ('dog');
+create or replace function f_inner_that_handles_exception(new_v in text)
+  returns table(z text)
+  language plpgsql
+as $body$
+declare
+  sqlstate_    text not null := '';
+  constraint_  text not null := '';
+  msg          text not null := '';
+begin
+  begin
+    z := 'return next was executed after insert, this was not expected';
+    insert into t(v) values (new_v);
+    return next;
+  exception
+    when unique_violation then
+      get stacked diagnostics
+        sqlstate_ = returned_sqlstate,
+        constraint_ = constraint_name,
+        msg = message_text;
+      z := 'unique_violation in f_inner_that_handles_exception constraint: ' || constraint_ || ' sqlstate: ' || sqlstate_ || ' message: '|| msg;
+      return next;
+    when others then
+      raise;
+  end;
+end;
+$body$;
+
+create or replace function f_inner_that_passes_exception(new_v in text)
+  returns table(z text)
+  language plpgsql
+as $body$
+begin
+    insert into t(v) values (new_v);
+end;
+$body$;
+
+create or replace function f_outer()
+  returns table(z text)
+  language plpgsql
+as $body$
+declare
+  sqlstate_    text not null := '';
+  constraint_  text not null := '';
+  msg          text not null := '';
+begin
+  begin -- (1) ensure that the statement after "insert" in the inner function is not executed
+    insert into t(v) select f_inner_that_handles_exception('dog');
+    z := 'No exception'; return next;
+  exception
+    when others then
+      raise;
+  end;
+  begin -- (2) similar to (1), the inner function handles the exception an returns the same string. But that will should lead to another unique index violation in the below INSERT.
+    insert into t(v) select f_inner_that_handles_exception('dog');
+    z := 'No exception'; return next;
+  exception
+    when unique_violation then
+      get stacked diagnostics
+        sqlstate_ = returned_sqlstate,
+        constraint_ = constraint_name,
+        msg = message_text;
+      z := 'unique_violation in f_outer constraint: ' || constraint_ || ' sqlstate: ' || sqlstate_ || ' message: '|| msg;
+      return next;
+    when others then
+      raise;
+  end;
+  begin -- (3) ensure that the statement after below "insert" is not executed since inner function passes on the exception
+    insert into t(v) select f_inner_that_passes_exception('dog');
+    z := 'No exception'; return next;
+  exception
+    when unique_violation then
+      get stacked diagnostics
+        sqlstate_ = returned_sqlstate,
+        constraint_ = constraint_name,
+        msg = message_text;
+      z := 'unique_violation in f_outer constraint: ' || constraint_ || ' sqlstate: ' || sqlstate_ || ' message: '|| msg;
+      return next;
+    when others then
+      raise;
+  end;
+end;
+$body$;
+
+select f_outer();
+select * from t;
+
+-- 2. SQL functions: ensure statements with non-reversible side effects (i.e.,
+--    non transactional work) are not executed if an earlier statement caused an
+--    exception.
+
+prepare dummy_query as select * from t;
+
+create or replace function f(new_v in text)
+  returns table(z text)
+  language sql
+as $body$
+  insert into t(v) values ('dog');
+  deallocate dummy_query;
+  select v from t;
+$body$;
+
+select f('dog');
+execute dummy_query; -- this should find the prepared statement and run fine
+
+-- 3. Miscellaneous test cases from #6429. Just ensures that a function ends
+--    silently when expected to, if a raised exception is ignored in the
+--    handler.
+
+drop table if exists t cascade;
+create table t(k int primary key, v int not null);
+create unique index t_v_unq on t(v);
+insert into t(k, v) values (1, 1);
+
+insert into t(k, v) values (2, 1);
+
+do $body$
+begin
+  insert into t(k, v) values (2, 1);
+exception
+  when unique_violation then null;
+end;
+$body$;
+
+do $body$
+begin
+  insert into t(k, v) values (2, 1);
+  assert false, 'Logic error. "unique_violation" not caught.';
+exception
+  when unique_violation then null;
+end;
+$body$;
+
+-- 4. Miscellaneous test cases from #8326.
+
+drop table if exists t;
+create table t(k varchar(3) primary key);
+insert into t(k) values('dog');
+
+do $body$
+begin
+  insert into t(k) values('frog');
+exception when others then
+  raise info 'exception caught';
+end;
+$body$;
+
+do $body$
+begin
+  raise unique_violation;
+exception when others then
+  raise info 'exception caught';
+end;
+$body$;
+
+do $body$
+begin
+  insert into t(k) values('dog');
+exception when others then
+  raise info 'exception caught';
+end;
+$body$;
+
+--
+-- Test to validate that PL/pgSQL function triggers can be executed without
+-- additional flushes.
+--
+CREATE TABLE t_test (k INT PRIMARY KEY, v INT);
+CREATE TABLE t_audit (k INT);
+
+CREATE OR REPLACE FUNCTION sample_trigger() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+	vtext VARCHAR;
+BEGIN
+	-- Perform a READ that does not require a storage lookup.
+	SELECT current_setting('client_encoding', TRUE) INTO vtext;
+
+	-- Perform a WRITE that also does not require a storage lookup.
+	INSERT INTO t_audit VALUES (NEW.k);
+	RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trigger_bi BEFORE INSERT ON t_test FOR EACH ROW EXECUTE FUNCTION sample_trigger();
+
+BEGIN ISOLATION LEVEL READ COMMITTED;
+-- The query below must be executed in a single flush.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (11, 11), (12, 12);
+COMMIT;
+
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+-- The query below must be executed in a single flush.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (1, 1), (2, 2);
+COMMIT;
+
+BEGIN ISOLATION LEVEL SERIALIZABLE;
+-- The query below must be executed in a single flush.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (3, 3), (4, 4);
+COMMIT;
+
+DROP TRIGGER trigger_bi ON t_test;
+CREATE TRIGGER trigger_ai AFTER INSERT ON t_test FOR EACH ROW EXECUTE FUNCTION sample_trigger();
+
+BEGIN ISOLATION LEVEL READ COMMITTED;
+-- The query below must be executed in a single flush.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (13, 13), (14, 14);
+COMMIT;
+
+BEGIN ISOLATION LEVEL REPEATABLE READ;
+-- The query below must be executed in a single flush.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (5, 5), (6, 6);
+COMMIT;
+
+BEGIN ISOLATION LEVEL SERIALIZABLE;
+-- The query below must be executed in a single flush.
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (7, 7), (8, 8);
+COMMIT;
+
+SELECT * FROM t_test ORDER BY k;
+
+CREATE TEMP TABLE t_temp (k INT, v INT);
+CREATE TABLE t_other (k INT, v INT);
+TRUNCATE t_test;
+TRUNCATE t_audit;
+
+--
+-- Test to validate flushing logic in PL/pgSQL functions
+--
+
+-- Multiple writes (to the same and different tables) should be batched.
+CREATE OR REPLACE FUNCTION sample_trigger() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+	INSERT INTO t_audit VALUES (NEW.k);
+	INSERT INTO t_temp VALUES (NEW.k, NEW.v);
+	INSERT INTO t_audit VALUES (NEW.k + 100), (NEW.k + 101);
+	INSERT INTO t_other VALUES (NEW.k, NEW.v);
+	RETURN NEW;
+END; $$;
+
+-- Write to the table once to get any catalog lookups out of the way.
+INSERT INTO t_test VALUES (100, 100);
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (21, 21), (22, 22);
+
+-- SELECTs should not interfere with the buffering logic as long as they do not
+-- require a storage lookup.
+CREATE OR REPLACE FUNCTION sample_trigger() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+	vtext VARCHAR;
+	vint INT;
+BEGIN
+	INSERT INTO t_audit VALUES (NEW.k);
+	SELECT current_setting('client_encoding', TRUE) INTO vtext;
+	INSERT INTO t_audit VALUES (NEW.k + 100), (NEW.k + 101);
+	SELECT SUM(k) + SUM(v) FROM t_temp WHERE k > 10 INTO vint;
+	INSERT INTO t_other VALUES (NEW.k, NEW.v);
+	RETURN NEW;
+END; $$;
+
+INSERT INTO t_test VALUES (101, 101);
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (23, 23), (24, 24);
+
+-- Conditional statements should automatically trigger a flush irrespective of
+-- the condition.
+CREATE OR REPLACE FUNCTION sample_trigger() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+	INSERT INTO t_audit VALUES (NEW.k);
+	IF TRUE THEN
+		INSERT INTO t_temp VALUES (NEW.k, NEW.v);
+	ELSE
+		INSERT INTO t_temp VALUES (NEW.k + 100, NEW.v + 100);
+	END IF;
+	INSERT INTO t_other VALUES (NEW.k, NEW.v);
+	RETURN NEW;
+END; $$;
+
+INSERT INTO t_test VALUES (102, 102);
+-- The query below should incur flushes with the following contents:
+-- 1. t_test: (25, 25), (26, 26)
+--    t_audit: (25)
+-- 2. t_temp: (25, 25)
+--    t_other: (25, 25)
+--    t_audit: (26)
+-- 3. t_temp: (26, 26)
+--    t_other: (26, 26)
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (25, 25), (26, 26);
+
+CREATE OR REPLACE FUNCTION sample_trigger() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+	INSERT INTO t_audit VALUES (NEW.k);
+	FOR i IN 1..2 LOOP
+		INSERT INTO t_temp VALUES (NEW.k, NEW.v);
+	END LOOP;
+	INSERT INTO t_other VALUES (NEW.k, NEW.v);
+	RETURN NEW;
+END; $$;
+
+INSERT INTO t_test VALUES (103, 103);
+-- The query below should incur flushes with the following contents:
+-- 1. t_test: (27, 27), (28, 28)
+--    t_audit: (27)
+-- 2. t_temp: (27, 27)
+--    t_temp: (27, 27)
+--    t_other: (27, 27)
+--    t_audit: (28)
+-- 3. t_temp: (28, 28)
+--    t_temp: (28, 28)
+--    t_other: (28, 28)
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (27, 27), (28, 28);
+
+-- Similarly statements executed in an exception block should also
+-- automatically trigger a flush.
+CREATE OR REPLACE FUNCTION sample_trigger() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+	vint INT;
+BEGIN
+	BEGIN
+		INSERT INTO t_audit VALUES (NEW.k);
+		SELECT 1 / 0 INTO vint; -- This will raise an exception.
+	EXCEPTION
+		WHEN division_by_zero THEN
+			INSERT INTO t_audit VALUES (NEW.k + 100);
+			INSERT INTO t_other VALUES (NEW.k, NEW.v);
+			INSERT INTO t_temp VALUES (NEW.k + 100, NEW.v + 100);
+	END;
+	RETURN NEW;
+END; $$;
+
+INSERT INTO t_test VALUES (104, 104);
+-- The query below should incur flushes with the following contents:
+-- 1. t_test: (29, 29), (30, 30)
+-- 2. t_audit: (29)
+-- 3. t_audit: (129)
+--    t_other: (29, 29)
+--    t_temp: (129, 129)
+-- 4. t_audit: (30)
+-- 5. t_audit: (130)
+--    t_other: (30, 30)
+--    t_temp: (130, 130)
+
+EXPLAIN (ANALYZE, DIST, COSTS OFF) INSERT INTO t_test VALUES (29, 29), (30, 30);
+
+SELECT * FROM t_test ORDER BY k;
+SELECT * FROM t_other ORDER BY k;
+SELECT * FROM t_temp ORDER BY k;
+SELECT * FROM t_audit ORDER BY k;
+
+RESET yb_speculatively_execute_pl_statements;
+
+-- GH-28101: Test that a user of yb_db_admin role can set the speculative execution flags
+SET SESSION ROLE yb_db_admin;
+SET yb_speculatively_execute_pl_statements TO true;
+SET yb_whitelist_extra_statements_for_pl_speculative_execution TO true;
+
+SET SESSION ROLE yb_extension;
+SET yb_speculatively_execute_pl_statements TO true;
+SET yb_whitelist_extra_statements_for_pl_speculative_execution TO true;
+

@@ -1,0 +1,32 @@
+baseurl = 'https://docs.yugabyte.com'
+languageCode = 'en-us'
+title = 'YugabyteDB Docs'
+# Highlighting config (Pygments)
+pygmentsCodefences = true
+pygmentsStyle = 'pygments'
+resourceDir = 'docs/resources'
+
+[languages]
+  [languages.en]
+    languageCode = 'en-US'
+    languageDirection = 'ltr'
+    languageName = 'English'
+    weight = 1
+
+enableGitInfo = true
+
+[frontmatter]
+  date = [ "lastmod", ":default" ]
+# lastmod = [ ":git", ":default" ]
+
+[params]
+  regenerateDiagrams = false
+
+[markup.goldmark.parser.attribute]
+  block = true
+
+[security]
+  [security.funcs]
+    getenv = [
+      'RUDDERSTACK_API_KEY'
+    ]

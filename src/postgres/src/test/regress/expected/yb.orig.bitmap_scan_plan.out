@@ -1,0 +1,227 @@
+set client_min_messages = 'warning';
+drop database if exists colocateddb;
+create database colocateddb with colocation = on;
+alter database colocateddb set yb_enable_cbo = on;
+alter database colocateddb set yb_enable_bitmapscan = on;
+alter database colocateddb set yb_fetch_row_limit = 0;
+alter database colocateddb set yb_fetch_size_limit = '1MB';
+-- Disable parallelization until bitmap parallel scan is supported
+alter database colocateddb set yb_parallel_range_rows = 0;
+\c colocateddb
+-- Create procedures and functions, store test queries in a table
+-- so we can reuse them in multiple setups.
+create procedure create_tables(modifier text)
+language plpgsql as
+$$
+begin
+  -- Create a table with unique columns and non-unique columns whose values are
+  -- uncorrelated one another.
+  execute
+    'create table r (pk int, a int, b int, c int, d int, v char(666),'||
+    ' primary key (pk asc))' || modifier;
+  create index nonconcurrently r_a on r (a asc);
+  create index nonconcurrently r_b on r (b asc);
+  create index nonconcurrently r_c on r (c asc);
+  create index nonconcurrently r_d on r (d asc);
+
+  -- pk, a: unique
+  -- b, c, d: frequency of each distinct value is exactly the same in each column
+  -- the values in these columns are not correlated one another.
+  insert into r
+    select
+      i * 500 + j,
+      i * 500 + j,
+      (i % 100) + 1,
+      (j % 250) + 1,
+      ((i # x'7FF'::int) % 100) + 1,
+      sha512(('x'||i)::bytea)::bpchar||lpad(sha512((j||'y')::bytea)::bpchar, 536, '#')
+    from
+      generate_series(0, 999) i, generate_series(1, 500) j;
+end;
+$$;
+create function explain(text) returns setof text
+language plpgsql as
+$$
+declare
+    n int := 0;
+    ln text;
+begin
+    return next $1;
+    return next '----------------';
+    for ln in
+        execute format('explain (costs off, summary off) %s', $1)
+    loop
+        return next ln;
+        n := n + 1;
+    end loop;
+    return next format('(%s rows)', n);
+    return next '';
+end;
+$$;
+create table queries (id serial, query text, primary key (id asc));
+insert into queries values
+    (DEFAULT, 'select b, c from r where b = 1 and c in (50, 60, 70, 80, 90, 100)'),
+    (DEFAULT, 'select b, c from r where b <= 500 and c in (50, 60, 70, 80, 90, 100)'),
+    (DEFAULT, 'select b, c from r where b <= 500 and c in (50, 60, 70, 80, 90, 100) and d <= 2'),
+    (DEFAULT, 'select b, c from r where c in (50, 60, 70, 80, 90, 100) or c <= 5');
+\pset footer off
+--
+-- Non-colocated tables
+--
+call create_tables('with (colocation = off)');
+analyze r;
+select explain(query) from queries order by id;
+                                     explain                                      
+----------------------------------------------------------------------------------
+ select b, c from r where b = 1 and c in (50, 60, 70, 80, 90, 100)
+ ----------------
+ Index Scan using r_b on r
+   Index Cond: (b = 1)
+   Storage Filter: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+ (3 rows)
+ 
+ select b, c from r where b <= 500 and c in (50, 60, 70, 80, 90, 100)
+ ----------------
+ Index Scan using r_c on r
+   Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+   Storage Filter: (b <= 500)
+ (3 rows)
+ 
+ select b, c from r where b <= 500 and c in (50, 60, 70, 80, 90, 100) and d <= 2
+ ----------------
+ Index Scan using r_d on r
+   Index Cond: (d <= 2)
+   Storage Filter: ((b <= 500) AND (c = ANY ('{50,60,70,80,90,100}'::integer[])))
+ (3 rows)
+ 
+ select b, c from r where c in (50, 60, 70, 80, 90, 100) or c <= 5
+ ----------------
+ YB Bitmap Table Scan on r
+   ->  BitmapOr
+         ->  Bitmap Index Scan on r_c
+               Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+         ->  Bitmap Index Scan on r_c
+               Index Cond: (c <= 5)
+ (6 rows)
+ 
+
+-- try again with additional index
+create index nonconcurrently i_r_b_acd on r (b asc) include (a, c, d);
+analyze r;
+select explain(query) from queries order by id;
+                                     explain                                      
+----------------------------------------------------------------------------------
+ select b, c from r where b = 1 and c in (50, 60, 70, 80, 90, 100)
+ ----------------
+ Index Only Scan using i_r_b_acd on r
+   Index Cond: (b = 1)
+   Storage Filter: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+ (3 rows)
+ 
+ select b, c from r where b <= 500 and c in (50, 60, 70, 80, 90, 100)
+ ----------------
+ Index Scan using r_c on r
+   Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+   Storage Filter: (b <= 500)
+ (3 rows)
+ 
+ select b, c from r where b <= 500 and c in (50, 60, 70, 80, 90, 100) and d <= 2
+ ----------------
+ Index Scan using r_d on r
+   Index Cond: (d <= 2)
+   Storage Filter: ((b <= 500) AND (c = ANY ('{50,60,70,80,90,100}'::integer[])))
+ (3 rows)
+ 
+ select b, c from r where c in (50, 60, 70, 80, 90, 100) or c <= 5
+ ----------------
+ YB Bitmap Table Scan on r
+   ->  BitmapOr
+         ->  Bitmap Index Scan on r_c
+               Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+         ->  Bitmap Index Scan on r_c
+               Index Cond: (c <= 5)
+ (6 rows)
+ 
+
+--
+-- Colocated tables
+--
+drop table r;
+call create_tables('with (colocation = on)');
+analyze r;
+select explain(query) from queries order by id;
+                                     explain                                      
+----------------------------------------------------------------------------------
+ select b, c from r where b = 1 and c in (50, 60, 70, 80, 90, 100)
+ ----------------
+ Index Scan using r_b on r
+   Index Cond: (b = 1)
+   Storage Filter: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+ (3 rows)
+ 
+ select b, c from r where b <= 500 and c in (50, 60, 70, 80, 90, 100)
+ ----------------
+ Index Scan using r_c on r
+   Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+   Storage Filter: (b <= 500)
+ (3 rows)
+ 
+ select b, c from r where b <= 500 and c in (50, 60, 70, 80, 90, 100) and d <= 2
+ ----------------
+ Index Scan using r_d on r
+   Index Cond: (d <= 2)
+   Storage Filter: ((b <= 500) AND (c = ANY ('{50,60,70,80,90,100}'::integer[])))
+ (3 rows)
+ 
+ select b, c from r where c in (50, 60, 70, 80, 90, 100) or c <= 5
+ ----------------
+ YB Bitmap Table Scan on r
+   ->  BitmapOr
+         ->  Bitmap Index Scan on r_c
+               Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+         ->  Bitmap Index Scan on r_c
+               Index Cond: (c <= 5)
+ (6 rows)
+ 
+
+-- try again with additional index
+create index nonconcurrently i_r_b_acd on r (b asc) include (a, c, d);
+analyze r;
+select explain(query) from queries order by id;
+                                     explain                                      
+----------------------------------------------------------------------------------
+ select b, c from r where b = 1 and c in (50, 60, 70, 80, 90, 100)
+ ----------------
+ Index Only Scan using i_r_b_acd on r
+   Index Cond: (b = 1)
+   Storage Filter: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+ (3 rows)
+ 
+ select b, c from r where b <= 500 and c in (50, 60, 70, 80, 90, 100)
+ ----------------
+ Index Scan using r_c on r
+   Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+   Storage Filter: (b <= 500)
+ (3 rows)
+ 
+ select b, c from r where b <= 500 and c in (50, 60, 70, 80, 90, 100) and d <= 2
+ ----------------
+ Index Scan using r_d on r
+   Index Cond: (d <= 2)
+   Storage Filter: ((b <= 500) AND (c = ANY ('{50,60,70,80,90,100}'::integer[])))
+ (3 rows)
+ 
+ select b, c from r where c in (50, 60, 70, 80, 90, 100) or c <= 5
+ ----------------
+ YB Bitmap Table Scan on r
+   ->  BitmapOr
+         ->  Bitmap Index Scan on r_c
+               Index Cond: (c = ANY ('{50,60,70,80,90,100}'::integer[]))
+         ->  Bitmap Index Scan on r_c
+               Index Cond: (c <= 5)
+ (6 rows)
+ 
+
+\pset footer on
+\c yugabyte
+drop database colocateddb with (force);

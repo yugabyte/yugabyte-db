@@ -1,0 +1,159 @@
+.page-finder .finder-panel {
+  margin: 48px 0;
+  font-family: Inter;
+  display: flex;
+  flex-flow: column;
+  align-items: flex-start;
+}
+
+.page-finder .finder-panel .inner-container {
+  border-radius: 8px;
+  border: 1px solid #E9EEF2;
+  background: #FFF;
+}
+
+.page-finder .finder-panel .head {
+  padding: 9px 16px;
+  border-bottom: 1px solid #E9EEF2;
+}
+
+.page-finder .finder-panel .head p {
+  color: #6D7C88;
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: normal;
+  margin: 0;
+}
+
+.page-finder .finder-panel .head p b {
+  font-weight: 600;
+  color: $yb-font-dark;
+}
+
+.page-finder .finder-panel.vertical .inner-container {
+  max-width: 100%;
+  width: 420px;
+}
+
+.page-finder .finder-panel.vertical .inner-container .head p {
+  line-height: 1.4;
+}
+
+.page-finder .finder-panel .body {
+  padding: 12px 16px;
+  display: flex;
+  gap: 8px 24px;
+}
+
+.page-finder .finder-panel.vertical .inner-container .body {
+  flex-flow: column;
+  align-items: flex-start;
+}
+
+.page-finder .finder-panel .body a {
+  padding: 6px 12px;
+  display: flex;
+  height: 30px;
+  gap: 4px;
+  position: relative;
+}
+
+.page-finder .finder-panel .body a .icon {
+  width: 16px;
+  height: 16px;
+  line-height: 0;
+}
+
+.page-finder .finder-panel .body a .icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.page-finder .finder-panel .body a .title {
+  color: #6D7C88;
+  font-size: 11.5px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: normal;
+  text-decoration-line: underline;
+  text-decoration-style: solid;
+  text-decoration-skip-ink: none;
+  text-decoration-thickness: auto;
+  text-underline-offset: auto;
+  text-underline-position: from-font;
+  white-space: nowrap
+}
+
+.page-finder .finder-panel .body a  .icon svg path {
+  fill: #6D7C88;
+}
+
+.page-finder .finder-panel .body a .icon img {
+  filter: brightness(0) invert(30%);
+}
+
+.page-finder .finder-panel .body a.active ~ .active:hover .icon img,
+.page-finder .finder-panel .body a:hover .icon img {
+  filter: none;
+}
+
+.page-finder .finder-panel .body a.active .icon img {
+  filter: brightness(0) invert(30%);
+}
+
+.page-finder .finder-panel .body a:hover .title {
+  color: $yb-anchor-color;
+}
+
+.page-finder .finder-panel .body a.active {
+  border-radius: 6px;
+  border: 1px solid #E9EEF2;
+  background: #F7F9FB;
+  padding-right: 8px;
+}
+
+.page-finder .finder-panel .body a.active ~ .active {
+  border-radius: 0;
+  border: 0;
+  background: transparent;
+  padding-right: 12px;
+}
+
+.page-finder .finder-panel .body a.active .title {
+  color: $yb-font-gray;
+  font-size: 11.5px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: normal;
+  text-decoration: none;
+}
+.page-finder .finder-panel .body a.active ~ .active:hover .title {
+  color: $yb-anchor-color;
+}
+
+.page-finder .finder-panel .body a.active ~ .active .title {
+  color: #6D7C88;
+  font-size: 11.5px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: normal;
+  text-decoration-line: underline;
+  text-decoration-style: solid;
+  text-decoration-skip-ink: none;
+  text-decoration-thickness: auto;
+  text-underline-offset: auto;
+  text-underline-position: from-font;
+}
+
+.page-finder .finder-panel .body a.active ~ .active .bookmark-icon {
+  display: none;
+}
+
+.page-finder .finder-panel .body .bookmark-icon {
+  width: 12.1px;
+  height: 22.1px;
+  display: inline-block;
+  margin-top: -7px;
+  margin-left: 3.4px;
+}

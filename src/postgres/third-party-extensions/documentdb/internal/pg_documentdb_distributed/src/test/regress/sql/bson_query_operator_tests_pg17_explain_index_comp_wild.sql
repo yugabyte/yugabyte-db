@@ -1,0 +1,1 @@
+\i sql/bson_query_operator_tests_explain_index_comp_wild.sql

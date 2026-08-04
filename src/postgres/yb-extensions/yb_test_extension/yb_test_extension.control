@@ -1,0 +1,4 @@
+# yb_test_extension extension
+default_version = '1.0'
+comment = 'an extension for tesing purposes only'
+module_pathname = '$libdir/yb_test_extension'

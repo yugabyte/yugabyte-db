@@ -1,0 +1,621 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 30000;
+SET documentdb.next_collection_id TO 300;
+SET documentdb.next_collection_index_id TO 300;
+SELECT documentdb_api.drop_collection('db', 'queryoperator');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.create_collection('db', 'queryoperator');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.drop_collection('db', 'queryoperatorIn');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.create_collection('db', 'queryoperatorIn');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.drop_collection('db', 'nullfield');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.create_collection('db', 'nullfield');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.drop_collection('db', 'singlepathindexexists');
+ drop_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+SELECT documentdb_api.create_collection('db', 'singlepathindexexists');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+\i sql/bson_query_operator_tests_insert.sql
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 1, "a" : { "b" : 0 }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 2, "a" : { "b" : 1 }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 3, "a" : { "b" : 2.0 }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 4, "a" : { "b" : "someString" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 5, "a" : { "b" : true }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": "ab_undefined", "a" : { "b" : {"$undefined": true }}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": "ab_null", "a" : { "b" : null }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+/* Insert elements to a root path for single path index $exists */
+SELECT documentdb_api.insert_one('db','singlepathindexexists', '{"_id": 1, "a" : 0}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','singlepathindexexists', '{"_id": 4, "a" : { "b" : "someString" }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','singlepathindexexists', '{"_id": "b", "b" : 1}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','singlepathindexexists', '{"_id": "a", "a": {"$undefined": true }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','singlepathindexexists', '{"_id": "a_null", "a" : null}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+/* insert some documents with a.{some other paths} */
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 6, "a" : 1}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 7, "a" : true}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 8, "a" : [0, 1, 2]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 9, "a" : { "c": 1 }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+/* insert paths with nested objects arrays */
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 10, "a" : { "b" : [ 0, 1, 2 ] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 11, "a" : [ { "b": 0 }, { "b": 1 }, { "b": 3.0 }] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 12, "a" : [ { "b": [-1, 1, 2] }, { "b": [0, 1, 2] }, { "b": [0, 1, 7] }] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 13, "a" : [ { "b": [[-1, 1, 2]] }, { "b": [[0, 1, 2]] }, { "b": [[0, 1, 7]] }] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 14, "a" : { "b" : [ { "1" : [1, 2, 3 ] } ] } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 1, "a" : 1}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 2, "a" : {"$numberDecimal": "1.0"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 3, "a" : {"$numberDouble": "1.0"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 4, "a" : {"$numberLong": "1"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 5, "a" : {"$numberDecimal": "1.0"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 6, "a" : {"$numberDouble": "1.0"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 7, "a" : {"$numberDecimal": "1.000000000000000000000000000000001"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 8, "a" : {"$numberDouble": "1.000000000000001"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 9, "a" : {"$binary": { "base64": "ww==", "subType": "01"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 10, "a" : {"$binary": { "base64": "ww==", "subType": "02"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 11, "a" : {"$binary": { "base64": "zg==", "subType": "01"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 12, "a" : {"$binary": { "base64": "zg==", "subType": "02"}}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 13, "a" : {"$timestamp" : { "t": 1670981326, "i": 1 }}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 14, "a" : {"$date": "2019-01-30T07:30:10.136Z"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 15, "a" : {"$oid": "639926cee6bda3127f153bf1"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 18, "a" : {"$maxKey" : 1}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 19, "a" : {"$minKey" : 1}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 20, "a" : { "$undefined" : true }}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 21, "a" : null}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 22, "a" : {"b":1}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 23, "a" : {"b":2}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 24, "a" : [1,2,3,4,5]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 25, "a" : [1,2,3,4,5,6]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 26, "a" : "Lets Optimize dollar In"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 27, "a" : "Lets Optimize dollar In again"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 28, "a" : NaN}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 29, "a" : [1,2,3,NaN,4]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 30, "a" : Infinity}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 31, "a" : [1,2,3,Infinity,4]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 32, "a" : {"$numberDouble": "0.0000"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 33, "a" : {"$numberDecimal": "0.0"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 34, "a" : {"$numberLong": "0"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 35, "a" : 0}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 36, "a" : {"$numberLong": "9223372036854775807"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 37, "a" : {"$numberLong": "9223372036854775806"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 38, "a" : {"$numberInt": "2147483647"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 39, "a" : {"$numberInt": "2147483646"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 40, "a" : {"$numberInt": "2147483645"}}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperatorIn', '{"_id": 41, "a" : ["abc", "xyz1"]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('db','nullfield', '{"_id": 1, "a" : 1, "b": 1}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('db','nullfield', '{"_id": 2, "a" : 2, "b": null}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('db','nullfield', '{"_id": 3, "a" : 3}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('db','nullfield', '{"_id": 4, "a" : 10, "b": 1}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('db','nullfield', '{"_id": 5, "a" : 20, "b": null}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+SELECT 1 FROM documentdb_api.insert_one('db','nullfield', '{"_id": 6, "a" : 30}');
+ ?column? 
+---------------------------------------------------------------------
+        1
+(1 row)
+
+-- $all with $elemMatch queries
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 16, "a" : [{ "b" : {} }, { "b" : 0 }]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 17, "a" : []}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 18, "a" : [{ "b" : "S", "c": 10, "d" : "X"}, { "b" : "M", "c": 100, "d" : "X"}, { "b" : "L", "c": 100, "d" : "Y"}]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 19, "a" : [{ "b" : "1", "c": 100, "d" : "Y"}, { "b" : "2", "c": 50, "d" : "X"}, { "b" : "3", "c": 100, "d" : "Z"}]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 20, "a" : [{ "b" : "M", "c": 100, "d" : "Y"}]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 21, "a": [{ "b": [ { "c" : 10 }, { "c" : 15 }, {"c" : 18 } ], "d" : [ { "e" : 10 }, { "e" : 15 }, {"e" : 18 } ]}] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 22, "a": [{ "b": [ { "c" : 11 } ], "d" : [ { "e" : 20 }, { "e" : 25 } ]}] }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+/* insert NaN and Infinity */
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 23, "a" : NaN}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 24, "a" : Infinity}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 25, "a" : -Infinity}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','queryoperator', '{"_id": 26, "a" : [NaN, Infinity]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- these queries are negative tests for $size operator
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a.b": { "$size" : -3 }}' ORDER BY object_id;
+ERROR:  Parsing of operator $size failed. A non-negative value was expected in operator $size: -3
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a.b": { "$size" : 3.1 }}' ORDER BY object_id;
+ERROR:  Failed to parse $size. Expected an integer in: $size: 3.1
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a.b": { "$size" : -3.4 }}' ORDER BY object_id;
+ERROR:  Failed to parse $size. Expected an integer in: $size: -3.4
+-- These can't be tested since the extended json syntax treats $type as an extended json operator and not a call to actual $type function.
+-- SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a.b": { "$type" : 123.56 }}' ORDER BY object_id;
+-- SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a.b": { "$type" : [] }}' ORDER BY object_id;
+-- these queries are negative tests for $all operator
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ {"$elemMatch" : {"b" : {"$gt" : 1} } }, 1 ] } }' ORDER BY object_id;
+ERROR:  $all/$elemMatch has to be consistent
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ 1, {"$elemMatch" : {"b" : {"$gt" : 1} } } ] } }' ORDER BY object_id;
+ERROR:  no $ expressions in $all
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ {"$elemMatch" : {"b" : {"$gt" : 1} } }, {"$all" : [0]} ] } }' ORDER BY object_id;
+ERROR:  $all/$elemMatch has to be consistent
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ {"$all" : [0]}, {"$elemMatch" : {"b" : {"$gt" : 1} } } ] } }' ORDER BY object_id;
+ERROR:  no $ expressions in $all
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ {"$elemMatch" : {"b" : {"$gt" : 1} } }, {} ] } }' ORDER BY object_id;
+ERROR:  $all/$elemMatch has to be consistent
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ {}, {"$elemMatch" : {"b" : {"$gt" : 1} } } ] } }' ORDER BY object_id;
+ERROR:  no $ expressions in $all
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ {"$elemMatch" : {"b" : {"$gt" : 1} } }, { "b" : 1 } ] } }' ORDER BY object_id;
+ERROR:  $all/$elemMatch has to be consistent
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ { "b" : 1 }, {"$elemMatch" : {"b" : {"$gt" : 1} } } ] } }' ORDER BY object_id;
+ERROR:  no $ expressions in $all
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ {"$elemMatch" : {"b" : {"$gt" : 1} } }, { "$or" : [ {"b":1} ] } ] } }' ORDER BY object_id;
+ERROR:  $all/$elemMatch has to be consistent
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ { "$or" : [ {"b":1} ] }, {"$elemMatch" : {"b" : {"$gt" : 1} } } ] } }' ORDER BY object_id;
+ERROR:  no $ expressions in $all
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$all" : [ {"$all" : [1] } ] } }' ORDER BY object_id;
+ERROR:  no $ expressions in $all
+-- negative tests for $not operator
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$not" : {} } }';
+ERROR:  Operator $not must not be left empty
+-- negative tests for comp operators with regex
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$ne" : {"$regex" : "hello", "$options" : ""} } }';
+ERROR:  Can't have regex as arg to $ne.
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$gt" : {"$regex" : "hello", "$options" : ""} } }';
+ERROR:  Can't have RegEx as arg to predicate over field 'a'.
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$gte" : {"$regex" : "hello", "$options" : ""} } }';
+ERROR:  Can't have RegEx as arg to predicate over field 'a'.
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$lt" : {"$regex" : "hello", "$options" : ""} } }';
+ERROR:  Can't have RegEx as arg to predicate over field 'a'.
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a"  : {"$lte" : {"$regex" : "hello", "$options" : ""} } }';
+ERROR:  Can't have RegEx as arg to predicate over field 'a'.
+-- type undefined, no-operator
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : {"$undefined" : true } }';
+ERROR:  Comparison with undefined value is not allowed
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : 1, "b" : { "$undefined" : true } }';
+ERROR:  Comparison with undefined value is not allowed
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a.b" : { "$undefined" : true } }';
+ERROR:  Comparison with undefined value is not allowed
+-- type undefined, comparison query operators
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$eq" : { "$undefined" : true } } }';
+ERROR:  Comparison with undefined value is not allowed
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$ne" : { "$undefined" : true } } }';
+ERROR:  Comparison with undefined value is not allowed
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$gt" : { "$undefined" : true } } }';
+ERROR:  Comparison with undefined value is not allowed
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$gte" : { "$undefined" : true } } }';
+ERROR:  Comparison with undefined value is not allowed
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$lt" : { "$undefined" : true } } }';
+ERROR:  Comparison with undefined value is not allowed
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$lte" : { "$undefined" : true } } }';
+ERROR:  Comparison with undefined value is not allowed
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$in" : [ { "$undefined" : true } ] } }';
+ERROR:  InMatchExpression equality cannot be undefined
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$in" : [ { "$undefined" : true }, 2, 3, 4 ] } }';
+ERROR:  InMatchExpression equality cannot be undefined
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$nin" : [ { "$undefined" : true } ] } }';
+ERROR:  InMatchExpression equality cannot be undefined
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$nin" : [ { "$undefined" : true }, 6, 7, 8] } }';
+ERROR:  InMatchExpression equality cannot be undefined
+-- type undefined, array query operators
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$all" : [ { "$undefined" : true } ] } }';
+ERROR:  Comparison with undefined value is not allowed
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{ "a" : { "$all" : [ { "$undefined" : true }, 2 ] } }';
+ERROR:  Comparison with undefined value is not allowed
+--type undefined, bitwise query operators
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{"a": {"$bitsAllClear": {"$undefined": true}}}';
+ERROR:  a takes an Array, a number, or a BinData but received: $bitsAllClear: \{ "$undefined" : true }\
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{"a": {"$bitsAllClear": [1, {"$undefined": true}]}}';
+ERROR:  bit positions must be an integer but got: 1: \{ "$undefined" : true }\
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{"a": {"$bitsAllSet": {"$undefined": true}}}';
+ERROR:  a takes an Array, a number, or a BinData but received: $bitsAllSet: \{ "$undefined" : true }\
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{"a": {"$bitsAllSet":[1, {"$undefined": true}]}}';
+ERROR:  bit positions must be an integer but got: 1: \{ "$undefined" : true }\
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{"a": {"$bitsAnyClear": {"$undefined": true}}}';
+ERROR:  a takes an Array, a number, or a BinData but received: $bitsAnyClear: \{ "$undefined" : true }\
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{"a": {"$bitsAnyClear": [1, {"$undefined": true}]}}';
+ERROR:  bit positions must be an integer but got: 1: \{ "$undefined" : true }\
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{"a": {"$bitsAnySet": {"$undefined": true}}}';
+ERROR:  a takes an Array, a number, or a BinData but received: $bitsAnySet: \{ "$undefined" : true }\
+SELECT object_id, document FROM documentdb_api.collection('db', 'queryoperator') WHERE document @@ '{"a": {"$bitsAnySet": [1, {"$undefined": true}]}}';
+ERROR:  bit positions must be an integer but got: 1: \{ "$undefined" : true }\

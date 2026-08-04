@@ -1,0 +1,11 @@
+# src/test/regress/yb_pg_json_schedule
+#
+####################################################################################################
+# Postgres Testsuites: Porting from PostgreSQL original tests.
+# This suite includes all tests on datatypes that are enabled for YugaByte.
+####################################################################################################
+test: json
+test: yb.port.jsonb
+test: jsonpath
+test: jsonpath_encoding
+test: jsonb_jsonpath

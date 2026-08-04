@@ -1,0 +1,294 @@
+# LANGUAGE message translation file for pg_hint_plan hint list.
+# Copyright (C) 2012-2023, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+# This file is distributed under the same license as the pg_hint_plan
+# package.
+# Julien Rouhaud <rjuju123@gmail.com>, 2023.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: pg_hint_plan \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2023-03-14 16:08+0800\n"
+"PO-Revision-Date: 2023-03-14 16:08+0800\n"
+"Last-Translator: Julien Rouhaud <rjuju123@gmail.com>\n"
+"Language: ja\n"
+"Language-Team: ja <LL@li.org>\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.12.1\n"
+
+#: ../../hint_list.md:1 6826a75a27414e9990a534479c4a4482
+msgid "Hints list"
+msgstr ""
+
+#: ../../hint_list.md:3 1fc39689490345b2815e040c2b2ab53c
+msgid "The available hints are listed below."
+msgstr ""
+
+#: ../../hint_list.md 3850e721446047359135b41a944ea4e8
+msgid "Group"
+msgstr ""
+
+#: ../../hint_list.md 1ac9b172c47e4d089ec9ebc28c355779
+msgid "Format"
+msgstr ""
+
+#: ../../hint_list.md 35177ed3512c4724999eba0ef9e604e0
+msgid "Description"
+msgstr ""
+
+#: ../../hint_list.md bc2fbf2dfd1e49a8993059908e9701d0
+msgid "Scan method"
+msgstr ""
+
+#: ../../hint_list.md b84dd5afa744480784d77295accafb9f
+msgid "`SeqScan(table)`"
+msgstr ""
+
+#: ../../hint_list.md a18c7c868a284056896c4bfbc829ec30
+msgid "Forces sequential scan on the table"
+msgstr ""
+
+#: ../../hint_list.md a5c3241ab5e44d3bb25ef6362263b562
+msgid "`TidScan(table)`"
+msgstr ""
+
+#: ../../hint_list.md b67e10ec9db94f27be0f12927164c851
+msgid "Forces TID scan on the table."
+msgstr ""
+
+#: ../../hint_list.md 1070a5fd6c7e45ffb09ac03337e45ee0
+msgid "`IndexScan(table[ index...])`"
+msgstr ""
+
+#: ../../hint_list.md d15f703751474d1e94c9a431afaadb8e
+msgid "Forces index scan on the table. Restricts to specified indexes if any."
+msgstr ""
+
+#: ../../hint_list.md fb1e016740e24e4baaade27ba72c86e9
+msgid "`IndexOnlyScan(table[ index...])`"
+msgstr ""
+
+#: ../../hint_list.md f330ae106c7b4ebe83b14cf0de418596
+msgid ""
+"Forces index only scan on the table. Rstricts to specfied indexes if any."
+" Index scan may be used if index only scan is not available. Available "
+"for PostgreSQL 9.2 and later."
+msgstr ""
+
+#: ../../hint_list.md 7aee73b3b8394ba2a6355be9055692be
+msgid "`BitmapScan(table[ index...])`"
+msgstr ""
+
+#: ../../hint_list.md 97c55928eb5c4947b7a6f041cbdfe6bf
+msgid "Forces bitmap scan on the table. Restoricts to specfied indexes if any."
+msgstr ""
+
+#: ../../hint_list.md 455613a654a4454facd9175e373dffdf
+msgid ""
+"`IndexScanRegexp(table[ POSIX Regexp...])` `IndexOnlyScanRegexp(table[ "
+"POSIX Regexp...])` `BitmapScanRegexp(table[ POSIX Regexp...])`"
+msgstr ""
+
+#: ../../hint_list.md ab81f5d8fbf0464abae0221a30fc8421
+msgid ""
+"Forces index scan or index only scan (For PostgreSQL 9.2 and later) or "
+"bitmap scan on the table. Restricts to indexes that matches the specified"
+" POSIX regular expression pattern"
+msgstr ""
+
+#: ../../hint_list.md 8a849e3a36274ed9ba3aa45407ca6a0e
+msgid "`NoSeqScan(table)`"
+msgstr ""
+
+#: ../../hint_list.md 0923f491247f4662a0ea96ea7bc19ef4
+msgid "Forces not to do sequential scan on the table."
+msgstr ""
+
+#: ../../hint_list.md 77c4fb82cda444f0872e961a7be49d0e
+msgid "`NoTidScan(table)`"
+msgstr ""
+
+#: ../../hint_list.md 43b2d01b333542adb5159b233d0df5e1
+msgid "Forces not to do TID scan on the table."
+msgstr ""
+
+#: ../../hint_list.md 1005f9a153944428a5b2319371575bb1
+msgid "`NoIndexScan(table)`"
+msgstr ""
+
+#: ../../hint_list.md 18b9fb175463466e886f5fcfc63b563d
+msgid ""
+"Forces not to do index scan and index only scan (For PostgreSQL 9.2 and "
+"later) on the table."
+msgstr ""
+
+#: ../../hint_list.md 974c6f9c42ad4054ac061b3288e96400
+msgid "`NoIndexOnlyScan(table)`"
+msgstr ""
+
+#: ../../hint_list.md e5813914d04341639cca7b78d7a3ea66
+msgid ""
+"Forces not to do index only scan on the table. Available for PostgreSQL "
+"9.2 and later."
+msgstr ""
+
+#: ../../hint_list.md f284289fbdb24df192780e7e2947d558
+msgid "`NoBitmapScan(table)`"
+msgstr ""
+
+#: ../../hint_list.md 9c58860f2d1e4709895eb76a17518042
+msgid "Forces not to do bitmap scan on the table."
+msgstr ""
+
+#: ../../hint_list.md 1c2f50cf66c44f2ba4338cabf86d7df5
+msgid "Join method"
+msgstr ""
+
+#: ../../hint_list.md 1625919155c3499fb7d730073ee91e2c
+msgid "`NestLoop(table table[ table...])`"
+msgstr ""
+
+#: ../../hint_list.md 59071525eed646eaa947ef116f747319
+msgid "Forces nested loop for the joins consist of the specifiled tables."
+msgstr ""
+
+#: ../../hint_list.md f03eb1c535804817a29846a95200ae51
+msgid "`HashJoin(table table[ table...])`"
+msgstr ""
+
+#: ../../hint_list.md e722c467fee74f0aad9bc1e989ce87fb
+msgid "Forces hash join for the joins consist of the specifiled tables."
+msgstr ""
+
+#: ../../hint_list.md 103cea7f7d45481b8a90ee55db38b89a
+msgid "`MergeJoin(table table[ table...])`"
+msgstr ""
+
+#: ../../hint_list.md b12048f124514b6c8e2df838f3441130
+msgid "Forces merge join for the joins consist of the specifiled tables."
+msgstr ""
+
+#: ../../hint_list.md 8aba3c11bea14b43a6e9a971566ff084
+msgid "`NoNestLoop(table table[ table...])`"
+msgstr ""
+
+#: ../../hint_list.md 4f4c020a66e34f819229f34bf54b9c6a
+msgid ""
+"Forces not to do nested loop for the joins consist of the specifiled "
+"tables."
+msgstr ""
+
+#: ../../hint_list.md 30afba8aa0284c3d8ba2d49a07237997
+msgid "`NoHashJoin(table table[ table...])`"
+msgstr ""
+
+#: ../../hint_list.md 3f7446174afe44e9a7db1e7474e96880
+msgid "Forces not to do hash join for the joins consist of the specifiled tables."
+msgstr ""
+
+#: ../../hint_list.md cbbf29b09c93491e88592b1e824309d3
+msgid "`NoMergeJoin(table table[ table...])`"
+msgstr ""
+
+#: ../../hint_list.md bf9dfaf1b83d49558f5876d6bf944cc1
+msgid ""
+"Forces not to do merge join for the joins consist of the specifiled "
+"tables."
+msgstr ""
+
+#: ../../hint_list.md a6629915d2284e75b4f89e68210c807b
+msgid "Join order"
+msgstr ""
+
+#: ../../hint_list.md d607920df5bb482bb35598ec071634ef
+msgid "`Leading(table table[ table...])`"
+msgstr ""
+
+#: ../../hint_list.md 25ef07abfea145c5b14267d009aaebe2
+msgid "Forces join order as specified."
+msgstr ""
+
+#: ../../hint_list.md b2abfb6a6f15418b8e5b032c729a73c6
+msgid "`Leading(<join pair>)`"
+msgstr ""
+
+#: ../../hint_list.md 1b6dac98cd274601bb758404bf9a4284
+msgid ""
+"Forces join order and directions as specified. A join pair is a pair of "
+"tables and/or other join pairs enclosed by parentheses, which can make a "
+"nested structure."
+msgstr ""
+
+#: ../../hint_list.md 67e16007bf42433ea5c86c7bfcb9560e
+msgid "Behavior control on Join"
+msgstr ""
+
+#: ../../hint_list.md 9b6572632cf54a1e9a9fd8304f5c50b7
+msgid "`Memoize(table table[ table...])`"
+msgstr ""
+
+#: ../../hint_list.md b6b29609dca440929612903bd8930a21
+msgid ""
+"Allow the topmost join of a join among the specified tables to memoize "
+"the inner result. (Note that this doesn't enforce.)"
+msgstr ""
+
+#: ../../hint_list.md 4da15decb8164e4b9b324590f095750f
+msgid "`NoMemoize(table table[ table...])`"
+msgstr ""
+
+#: ../../hint_list.md cdbd41f8d73b44f28d7948e0bcf7a85a
+msgid ""
+"Inhibit the topmost join of a join among the specified tables from "
+"memoizing the inner result."
+msgstr ""
+
+#: ../../hint_list.md c9e947e0908f484fb3e7eea580d39315
+msgid "Row number correction"
+msgstr ""
+
+#: ../../hint_list.md 924b2d6031a2468e86dc5ec3d275a4d4
+msgid "`Rows(table table[ table...] correction)`"
+msgstr ""
+
+#: ../../hint_list.md fc7c47885eae4404ad10fcb6e1d24ba5
+msgid ""
+"Corrects row number of a result of the joins consist of the specfied "
+"tables. The available correction methods are absolute (#<n>), addition "
+"(+<n>), subtract (-<n>) and multiplication (*<n>). <n> should be a string"
+" that strtod() can read."
+msgstr ""
+
+#: ../../hint_list.md 5129fba816bf435396f6ca0dbc1ca8f1
+msgid "Parallel query configuration"
+msgstr ""
+
+#: ../../hint_list.md 88ac3b39643b47d49fb0e657da70f3b2
+msgid "`Parallel(table <# of workers> [soft|hard])`"
+msgstr ""
+
+#: ../../hint_list.md 74ad0589d57c402a9c1092c339f98dab
+msgid ""
+"Enforce or inhibit parallel execution of specfied table. <# of workers> "
+"is the desired number of parallel workers, where zero means inhibiting "
+"parallel execution. If the third parameter is soft (default), it just "
+"changes max_parallel_workers_per_gather and leave everything else to "
+"planner. Hard means enforcing the specified number of workers."
+msgstr ""
+
+#: ../../hint_list.md 72eb0de9fe824d75887eb8e906938b5e
+msgid "GUC"
+msgstr ""
+
+#: ../../hint_list.md 629e5a1925fa4be2b1a5f3066d8bb825
+msgid "`Set(GUC-param value)`"
+msgstr ""
+
+#: ../../hint_list.md d839d38ee7d24bd39bf361a2ae93f1ed
+msgid "Set the GUC parameter to the value while planner is running."
+msgstr ""
+

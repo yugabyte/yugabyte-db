@@ -1,0 +1,4 @@
+\unset ECHO
+1..2
+ok 1 - Old version of pgtap correctly installed
+ok 2 - pgtap correctly updated

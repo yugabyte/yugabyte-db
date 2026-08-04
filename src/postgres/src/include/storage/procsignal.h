@@ -1,0 +1,100 @@
+/*-------------------------------------------------------------------------
+ *
+ * procsignal.h
+ *	  Routines for interprocess signaling
+ *
+ *
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, Regents of the University of California
+ *
+ * src/include/storage/procsignal.h
+ *
+ *-------------------------------------------------------------------------
+ */
+#ifndef PROCSIGNAL_H
+#define PROCSIGNAL_H
+
+#include "storage/procnumber.h"
+
+/* YB includes */
+#include "storage/proc.h"
+
+
+/*
+ * Reasons for signaling a Postgres child process (a backend or an auxiliary
+ * process, like checkpointer).  We can cope with concurrent signals for different
+ * reasons.  However, if the same reason is signaled multiple times in quick
+ * succession, the process is likely to observe only one notification of it.
+ * This is okay for the present uses.
+ *
+ * Also, because of race conditions, it's important that all the signals be
+ * defined so that no harm is done if a process mistakenly receives one.
+ */
+typedef enum
+{
+	PROCSIG_CATCHUP_INTERRUPT,	/* sinval catchup interrupt */
+	PROCSIG_NOTIFY_INTERRUPT,	/* listen/notify interrupt */
+	PROCSIG_PARALLEL_MESSAGE,	/* message from cooperating parallel backend */
+	PROCSIG_WALSND_INIT_STOPPING,	/* ask walsenders to prepare for shutdown  */
+	PROCSIG_BARRIER,			/* global barrier interrupt  */
+	PROCSIG_LOG_MEMORY_CONTEXT, /* ask backend to log the memory contexts */
+	YB_PROCSIG_LOG_CATCACHE_STATS,	/* ask backend to log the catcache stats */
+	PROCSIG_LOG_HEAP_SNAPSHOT,	/* ask backend to log the heap snapshot */
+	PROCSIG_LOG_HEAP_SNAPSHOT_PEAK, /* ask backend to log the peak heap
+									 * snapshot */
+	PROCSIG_PARALLEL_APPLY_MESSAGE, /* Message from parallel apply workers */
+	PROCSIG_SLOTSYNC_MESSAGE,	/* ask slot synchronization to stop */
+	PROCSIG_REPACK_MESSAGE,		/* Message from repack worker */
+	PROCSIG_RECOVERY_CONFLICT,	/* backend is blocking recovery, check
+								 * PGPROC->pendingRecoveryConflicts for the
+								 * reason */
+} ProcSignalReason;
+
+#define NUM_PROCSIGNALS (PROCSIG_RECOVERY_CONFLICT + 1)
+
+typedef enum
+{
+	PROCSIGNAL_BARRIER_SMGRRELEASE, /* ask smgr to close files */
+	PROCSIGNAL_BARRIER_UPDATE_XLOG_LOGICAL_INFO,	/* ask to update
+													 * XLogLogicalInfo */
+	PROCSIGNAL_BARRIER_CHECKSUM_OFF,
+	PROCSIGNAL_BARRIER_CHECKSUM_INPROGRESS_ON,
+	PROCSIGNAL_BARRIER_CHECKSUM_INPROGRESS_OFF,
+	PROCSIGNAL_BARRIER_CHECKSUM_ON,
+} ProcSignalBarrierType;
+
+/*
+ * Length of query cancel keys generated.
+ *
+ * Note that the protocol allows for longer keys, or shorter, but this is the
+ * length we actually generate.  Client code, and the server code that handles
+ * incoming cancellation packets from clients, mustn't use this hardcoded
+ * length.
+ */
+#define MAX_CANCEL_KEY_LENGTH  32
+
+/*
+ * prototypes for functions in procsignal.c
+ */
+extern void ProcSignalInit(const uint8 *cancel_key, int cancel_key_len);
+extern int	SendProcSignal(pid_t pid, ProcSignalReason reason,
+						   ProcNumber procNumber);
+extern void SendCancelRequest(int backendPID, const uint8 *cancel_key, int cancel_key_len);
+
+extern uint64 EmitProcSignalBarrier(ProcSignalBarrierType type);
+extern void WaitForProcSignalBarrier(uint64 generation);
+extern void ProcessProcSignalBarrier(void);
+
+extern void procsignal_sigusr1_handler(SIGNAL_ARGS);
+
+/* YB */
+extern void YbCleanupProcSignalStateForProc(PGPROC *proc);
+
+/* ProcSignalHeader is an opaque struct, details known only within procsignal.c */
+typedef struct ProcSignalHeader ProcSignalHeader;
+
+#ifdef EXEC_BACKEND
+extern PGDLLIMPORT ProcSignalHeader *ProcSignal;
+#endif
+
+#endif							/* PROCSIGNAL_H */

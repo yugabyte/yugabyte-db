@@ -1,0 +1,117 @@
+@use '../../../../../_style/colors.scss';
+
+.multi-region-enabled {
+  &.with-border {
+    background: rgba(247, 247, 247, 0.3);
+    border: 1px solid colors.$YB_GRAY_HOVER;
+    width: 1100px;
+  }
+
+  .padding-bottom {
+    margin-bottom: 30px;
+  }
+
+  border-radius: 8px;
+  padding: 16px;
+
+  .multi-region-enabled-fields {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+
+    .form-group {
+      min-width: 280px;
+    }
+
+    .folder {
+      > .div {
+        margin-left: 16px;
+      }
+
+      .form-group {
+        min-width: 180px;
+      }
+    }
+
+    .is-default-bucket {
+      margin-left: 16px;
+      display: inline-flex;
+      align-items: center;
+
+      input {
+        margin: 0 10px 0 0;
+      }
+    }
+
+    .form-item-label {
+      font-weight: 100 !important;
+    }
+
+    .divider {
+      color: #67666c;
+      // margin: 16px 8px 0 8px;
+      width: 2px;
+      height: 22px;
+      top: 30px;
+      position: relative;
+
+      &.lean {
+        transform: rotate(15deg);
+      }
+    }
+
+    .display-flex {
+      display: flex;
+    }
+
+    .remove-field-icon {
+      margin-left: 12px;
+      cursor: pointer;
+      top: 8px;
+      position: relative;
+    }
+  }
+
+  .add-region-link {
+    margin-left: 5px;
+
+    i {
+      font-size: 18px;
+      margin-right: 10px;
+    }
+  }
+
+  .redux-form-select {
+    width: 280px;
+  }
+
+  .field-host-base {
+    width: 300px;
+  }
+
+  .field-bucket {
+    width: 350px;
+  }
+
+  .field-folder {
+    width: 250px;
+  }
+
+  .yb-field-group {
+    padding-bottom: 5px !important;
+  }
+}
+
+.gcs-bucket-label {
+  height: 110px;
+  display: flex;
+  align-items: center;
+}
+
+.no-left-padding {
+  padding: 0 !important;
+}
+
+.field-error {
+  color: colors.$YB_ERROR_TEXT_COLOR;
+}

@@ -1,0 +1,151 @@
+<!--
+doc/src/sgml/ref/release_savepoint.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-release-savepoint">
+ <indexterm zone="sql-release-savepoint">
+  <primary>RELEASE SAVEPOINT</primary>
+ </indexterm>
+
+ <indexterm zone="sql-release-savepoint">
+  <primary>savepoints</primary>
+  <secondary>releasing</secondary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>RELEASE SAVEPOINT</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>RELEASE SAVEPOINT</refname>
+  <refpurpose>release a previously defined savepoint</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+RELEASE [ SAVEPOINT ] <replaceable>savepoint_name</replaceable>
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>RELEASE SAVEPOINT</command> releases the named savepoint and
+   all active savepoints that were created after the named savepoint,
+   and frees their resources.  All changes made since the creation of
+   the savepoint that didn't already get rolled back are merged into
+   the transaction or savepoint that was active when the named savepoint
+   was created.  Changes made after <command>RELEASE SAVEPOINT</command>
+   will also be part of this active transaction or savepoint.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable>savepoint_name</replaceable></term>
+    <listitem>
+     <para>
+      The name of the savepoint to release.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   Specifying a savepoint name that was not previously defined is an error.
+  </para>
+
+  <para>
+   It is not possible to release a savepoint when the transaction is in
+   an aborted state;  to do that, use <xref linkend="sql-rollback-to"/>.
+  </para>
+
+  <para>
+   If multiple savepoints have the same name, only the most recently defined
+   unreleased one is released.  Repeated commands will release progressively
+   older savepoints.
+  </para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   To establish and later release a savepoint:
+<programlisting>
+BEGIN;
+    INSERT INTO table1 VALUES (3);
+    SAVEPOINT my_savepoint;
+    INSERT INTO table1 VALUES (4);
+    RELEASE SAVEPOINT my_savepoint;
+COMMIT;
+</programlisting>
+   The above transaction will insert both 3 and 4.
+  </para>
+
+  <para>
+   A more complex example with multiple nested subtransactions:
+<programlisting>
+BEGIN;
+    INSERT INTO table1 VALUES (1);
+    SAVEPOINT sp1;
+    INSERT INTO table1 VALUES (2);
+    SAVEPOINT sp2;
+    INSERT INTO table1 VALUES (3);
+    RELEASE SAVEPOINT sp2;
+    INSERT INTO table1 VALUES (4))); -- generates an error
+</programlisting>
+   In this example, the application requests the release of the savepoint
+   <literal>sp2</literal>, which inserted 3.  This changes the insert's
+   transaction context to <literal>sp1</literal>.  When the statement
+   attempting to insert value 4 generates an error, the insertion of 2 and
+   4 are lost because they are in the same, now-rolled back savepoint,
+   and value 3 is in the same transaction context.  The application can
+   now only choose one of these two commands, since all other commands
+   will be ignored:
+<programlisting>
+ROLLBACK;
+ROLLBACK TO SAVEPOINT sp1;
+</programlisting>
+   Choosing <command>ROLLBACK</command> will abort everything, including
+   value 1, whereas <command>ROLLBACK TO SAVEPOINT sp1</command> will retain
+   value 1 and allow the transaction to continue.
+  </para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   This command conforms to the <acronym>SQL</acronym> standard.  The standard
+   specifies that the key word <literal>SAVEPOINT</literal> is
+   mandatory, but <productname>PostgreSQL</productname> allows it to
+   be omitted.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-begin"/></member>
+   <member><xref linkend="sql-commit"/></member>
+   <member><xref linkend="sql-rollback"/></member>
+   <member><xref linkend="sql-rollback-to"/></member>
+   <member><xref linkend="sql-savepoint"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

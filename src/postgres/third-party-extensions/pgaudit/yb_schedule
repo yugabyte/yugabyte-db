@@ -1,0 +1,4 @@
+# contrib/pgaudit/yb_schedule
+
+test: yb.port.pgaudit
+test: yb.orig.pgaudit

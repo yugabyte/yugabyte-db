@@ -1,0 +1,10 @@
+# src/test/regress/yb_pg_plpgsql_schedule
+#
+####################################################################################################
+# This includes tests related to PL/pgSQL.
+####################################################################################################
+# Dependency.
+test: yb.port.test_setup
+
+test: yb.port.plpgsql
+test: yb.orig.plpgsql

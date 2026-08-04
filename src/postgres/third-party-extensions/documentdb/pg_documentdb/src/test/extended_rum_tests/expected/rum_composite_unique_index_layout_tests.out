@@ -1,0 +1,204 @@
+SET search_path TO documentdb_api,documentdb_core,documentdb_api_catalog;
+SET documentdb.next_collection_id TO 700;
+SET documentdb.next_collection_index_id TO 700;
+set documentdb.defaultUseCompositeOpClass to on;
+-- first create with unique hash off.
+set documentdb.enableCompositeUniqueHash to off;
+SELECT documentdb_api_internal.create_indexes_non_concurrently('uniquedb', '{ "createIndexes": "uniqueColl", "indexes": [ { "key": { "a": 1 }, "name": "a_1", "unique": true } ]}', TRUE);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('uniquedb', '{ "createIndexes": "uniqueColl", "indexes": [ { "key": { "b": 1, "c": 1 }, "name": "b_c_1", "unique": true } ]}', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+\d documentdb_data.documents_701
+           Table "documentdb_data.documents_701"
+     Column      |  Type  | Collation | Nullable | Default 
+-----------------+--------+-----------+----------+---------
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
+Indexes:
+    "collection_pk_701" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_702" EXCLUDE USING documentdb_extended_rum (document documentdb_extended_rum_catalog.bson_extended_rum_composite_path_ops (pathspec='[ "a" ]', tl='2691') WITH =?=, documentdb_api_internal.generate_unique_shard_document(document, shard_key_value, '{ "a" : { "$numberInt" : "1" } }'::bson, false) documentdb_extended_rum_catalog.bson_extended_rum_unique_shard_path_ops WITH OPERATOR(documentdb_api_internal.=#=))
+    "documents_rum_index_703" EXCLUDE USING documentdb_extended_rum (document documentdb_extended_rum_catalog.bson_extended_rum_composite_path_ops (pathspec='[ "b", "c" ]', tl='2691') WITH =?=, documentdb_api_internal.generate_unique_shard_document(document, shard_key_value, '{ "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" } }'::bson, false) documentdb_extended_rum_catalog.bson_extended_rum_unique_shard_path_ops WITH OPERATOR(documentdb_api_internal.=#=))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '701'::bigint)
+
+SELECT COUNT(documentdb_api.insert_one('uniquedb', 'uniqueColl', bson_build_document('_id'::text, i, 'a'::text, i, 'b'::text, i, 'c'::text, i))) FROM generate_series(1, 10) i;
+ count 
+-------
+    10
+(1 row)
+
+VACUUM (FREEZE ON, INDEX_CLEANUP ON) documentdb_data.documents_701;
+-- now query the layout of both indexes
+SELECT documentdb_api_internal.documentdb_rum_get_meta_page_info(public.get_raw_page('documentdb_data.documents_rum_index_702', 0));
+                             documentdb_rum_get_meta_page_info                             
+-------------------------------------------------------------------------------------------
+ {"entries": 20, "dataPages": 0, "entryPages": 1, "totalPages": 2, "pendingHeapTuples": 0}
+(1 row)
+
+SELECT documentdb_api_internal.documentdb_rum_get_meta_page_info(public.get_raw_page('documentdb_data.documents_rum_index_703', 0));
+                             documentdb_rum_get_meta_page_info                             
+-------------------------------------------------------------------------------------------
+ {"entries": 30, "dataPages": 0, "entryPages": 1, "totalPages": 2, "pendingHeapTuples": 0}
+(1 row)
+
+SELECT i, (entry->>'offset')::int8, (entry->>'attrNumber')::int8, (entry->>'firstEntry') FROM generate_series(1, 1) i JOIN LATERAL (
+    SELECT entry FROM documentdb_api_internal.documentdb_rum_page_get_entries(public.get_raw_page('documentdb_data.documents_rum_index_703', i), 'documentdb_data.documents_rum_index_703'::regclass) entry) right_query ON TRUE
+ORDER BY i, (entry->>'offset')::int8;
+ i | int8 | int8 |               ?column?               
+---+------+------+--------------------------------------
+ 1 |    1 |    1 | \x0411051000010000001105100001000000
+ 1 |    2 |    1 | \x0411051000020000001105100002000000
+ 1 |    3 |    1 | \x0411051000030000001105100003000000
+ 1 |    4 |    1 | \x0411051000040000001105100004000000
+ 1 |    5 |    1 | \x0411051000050000001105100005000000
+ 1 |    6 |    1 | \x0411051000060000001105100006000000
+ 1 |    7 |    1 | \x0411051000070000001105100007000000
+ 1 |    8 |    1 | \x0411051000080000001105100008000000
+ 1 |    9 |    1 | \x0411051000090000001105100009000000
+ 1 |   10 |    1 | \x04110510000a000000110510000a000000
+ 1 |   11 |    2 | bd020000-0000-0000-0072-444152e10077
+ 1 |   12 |    2 | bd020000-0000-0000-02fe-e52b6ecb76dc
+ 1 |   13 |    2 | bd020000-0000-0000-1683-1582472f863a
+ 1 |   14 |    2 | bd020000-0000-0000-371d-7ee7cb40ca19
+ 1 |   15 |    2 | bd020000-0000-0000-5255-5fdfde975e4d
+ 1 |   16 |    2 | bd020000-0000-0000-65d4-f9ceb97f1e1f
+ 1 |   17 |    2 | bd020000-0000-0000-716d-12bee7b15c65
+ 1 |   18 |    2 | bd020000-0000-0000-71e8-f3bd4dcc93b6
+ 1 |   19 |    2 | bd020000-0000-0000-9d0c-6c87acc26896
+ 1 |   20 |    2 | bd020000-0000-0000-aa40-84eed8fd091f
+ 1 |   21 |    2 | bd020000-0000-0000-b9a4-9a2c251a9e4b
+ 1 |   22 |    2 | bd020000-0000-0000-cb2e-e3f83faca08d
+ 1 |   23 |    2 | bd020000-0000-0000-cb4d-acba02ad9cc1
+ 1 |   24 |    2 | bd020000-0000-0000-cf95-42c1fb174c27
+ 1 |   25 |    2 | bd020000-0000-0000-d423-cde56ee07bc7
+ 1 |   26 |    2 | bd020000-0000-0000-da24-9df06bb1fbe5
+ 1 |   27 |    2 | bd020000-0000-0000-f0cb-c4ff5ebce6a9
+ 1 |   28 |    2 | bd020000-0000-0000-f258-4f6cffdd1010
+ 1 |   29 |    2 | bd020000-0000-0000-f3fe-418cec3a386a
+ 1 |   30 |    2 | bd020000-0000-0000-f8fb-246793e49d56
+(30 rows)
+
+SELECT i, (entry->>'offset')::int8, (entry->>'attrNumber')::int8, (entry->>'firstEntry') FROM generate_series(1, 1) i JOIN LATERAL (
+    SELECT entry FROM documentdb_api_internal.documentdb_rum_page_get_entries(public.get_raw_page('documentdb_data.documents_rum_index_702', i), 'documentdb_data.documents_rum_index_702'::regclass) entry) right_query ON TRUE
+ORDER BY i, (entry->>'offset')::int8;
+ i | int8 | int8 |               ?column?               
+---+------+------+--------------------------------------
+ 1 |    1 |    1 | \x05100001000000
+ 1 |    2 |    1 | \x05100002000000
+ 1 |    3 |    1 | \x05100003000000
+ 1 |    4 |    1 | \x05100004000000
+ 1 |    5 |    1 | \x05100005000000
+ 1 |    6 |    1 | \x05100006000000
+ 1 |    7 |    1 | \x05100007000000
+ 1 |    8 |    1 | \x05100008000000
+ 1 |    9 |    1 | \x05100009000000
+ 1 |   10 |    1 | \x0510000a000000
+ 1 |   11 |    2 | bd020000-0000-0000-145a-79e9bc0df537
+ 1 |   12 |    2 | bd020000-0000-0000-44eb-70a0beb673e5
+ 1 |   13 |    2 | bd020000-0000-0000-81f4-5808ea2fe965
+ 1 |   14 |    2 | bd020000-0000-0000-8672-ca8d0c8d9e73
+ 1 |   15 |    2 | bd020000-0000-0000-998d-fedefc3840e5
+ 1 |   16 |    2 | bd020000-0000-0000-bc96-d4e699ce0f05
+ 1 |   17 |    2 | bd020000-0000-0000-d6f8-5be7aee3354e
+ 1 |   18 |    2 | bd020000-0000-0000-d7d4-2a241e37dad7
+ 1 |   19 |    2 | bd020000-0000-0000-da9d-89c0ccacc2b1
+ 1 |   20 |    2 | bd020000-0000-0000-fcee-25356a9a791a
+(20 rows)
+
+-- recheck with composite unique hash
+set documentdb.enableCompositeUniqueHash to on;
+CALL documentdb_api.drop_indexes('uniquedb', '{ "dropIndexes": "uniqueColl", "index": [ "a_1", "b_c_1" ]}');
+                          retval                          
+----------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "3" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('uniquedb', '{ "createIndexes": "uniqueColl", "indexes": [ { "key": { "a": 1 }, "name": "a_1", "unique": true } ]}', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('uniquedb', '{ "createIndexes": "uniqueColl", "indexes": [ { "key": { "b": 1, "c": 1 }, "name": "b_c_1", "unique": true } ]}', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- now query the layout of both indexes
+SELECT documentdb_api_internal.documentdb_rum_get_meta_page_info(public.get_raw_page('documentdb_data.documents_rum_index_704', 0));
+                             documentdb_rum_get_meta_page_info                             
+-------------------------------------------------------------------------------------------
+ {"entries": 20, "dataPages": 0, "entryPages": 1, "totalPages": 2, "pendingHeapTuples": 0}
+(1 row)
+
+SELECT documentdb_api_internal.documentdb_rum_get_meta_page_info(public.get_raw_page('documentdb_data.documents_rum_index_705', 0));
+                             documentdb_rum_get_meta_page_info                             
+-------------------------------------------------------------------------------------------
+ {"entries": 20, "dataPages": 0, "entryPages": 1, "totalPages": 2, "pendingHeapTuples": 0}
+(1 row)
+
+SELECT i, (entry->>'offset')::int8, (entry->>'attrNumber')::int8, (entry->>'firstEntry') FROM generate_series(1, 1) i JOIN LATERAL (
+    SELECT entry FROM documentdb_api_internal.documentdb_rum_page_get_entries(public.get_raw_page('documentdb_data.documents_rum_index_704', i), 'documentdb_data.documents_rum_index_704'::regclass) entry) right_query ON TRUE
+ORDER BY i, (entry->>'offset')::int8;
+ i | int8 | int8 |               ?column?               
+---+------+------+--------------------------------------
+ 1 |    1 |    1 | \x05100001000000
+ 1 |    2 |    1 | \x05100002000000
+ 1 |    3 |    1 | \x05100003000000
+ 1 |    4 |    1 | \x05100004000000
+ 1 |    5 |    1 | \x05100005000000
+ 1 |    6 |    1 | \x05100006000000
+ 1 |    7 |    1 | \x05100007000000
+ 1 |    8 |    1 | \x05100008000000
+ 1 |    9 |    1 | \x05100009000000
+ 1 |   10 |    1 | \x0510000a000000
+ 1 |   11 |    2 | bd020000-0000-0000-2794-56b69bab142f
+ 1 |   12 |    2 | bd020000-0000-0000-649d-3e1ec7248aaf
+ 1 |   13 |    2 | bd020000-0000-0000-691b-b0a3e9813fbd
+ 1 |   14 |    2 | bd020000-0000-0000-7c36-e4f4d92de12e
+ 1 |   15 |    2 | bd020000-0000-0000-9f3f-bafc76c3b04e
+ 1 |   16 |    2 | bd020000-0000-0000-b9a1-41fd8bd8d697
+ 1 |   17 |    2 | bd020000-0000-0000-ba7d-103afb2b7b21
+ 1 |   18 |    2 | bd020000-0000-0000-bd46-6fd6a9a163fb
+ 1 |   19 |    2 | bd020000-0000-0000-df97-0b4b478f1a64
+ 1 |   20 |    2 | bd020000-0000-0000-f702-5fff99029681
+(20 rows)
+
+SELECT i, (entry->>'offset')::int8, (entry->>'attrNumber')::int8, (entry->>'firstEntry') FROM generate_series(1, 1) i JOIN LATERAL (
+    SELECT entry FROM documentdb_api_internal.documentdb_rum_page_get_entries(public.get_raw_page('documentdb_data.documents_rum_index_705', i), 'documentdb_data.documents_rum_index_705'::regclass) entry) right_query ON TRUE
+ORDER BY i, (entry->>'offset')::int8;
+ i | int8 | int8 |               ?column?               
+---+------+------+--------------------------------------
+ 1 |    1 |    1 | \x0411051000010000001105100001000000
+ 1 |    2 |    1 | \x0411051000020000001105100002000000
+ 1 |    3 |    1 | \x0411051000030000001105100003000000
+ 1 |    4 |    1 | \x0411051000040000001105100004000000
+ 1 |    5 |    1 | \x0411051000050000001105100005000000
+ 1 |    6 |    1 | \x0411051000060000001105100006000000
+ 1 |    7 |    1 | \x0411051000070000001105100007000000
+ 1 |    8 |    1 | \x0411051000080000001105100008000000
+ 1 |    9 |    1 | \x0411051000090000001105100009000000
+ 1 |   10 |    1 | \x04110510000a000000110510000a000000
+ 1 |   11 |    2 | bd020000-0000-0000-2391-7aede3ddfa6c
+ 1 |   12 |    2 | bd020000-0000-0000-3ea1-5ee9331f8bbd
+ 1 |   13 |    2 | bd020000-0000-0000-3f0c-637aba0db4f0
+ 1 |   14 |    2 | bd020000-0000-0000-48e7-f95a07ad1354
+ 1 |   15 |    2 | bd020000-0000-0000-6f37-82362deaa1de
+ 1 |   16 |    2 | bd020000-0000-0000-7524-475432998324
+ 1 |   17 |    2 | bd020000-0000-0000-9f7e-38bd422c540f
+ 1 |   18 |    2 | bd020000-0000-0000-c5b6-001db72a47a1
+ 1 |   19 |    2 | bd020000-0000-0000-cc60-b6325fcfe40c
+ 1 |   20 |    2 | bd020000-0000-0000-d595-cd51391053aa
+(20 rows)
+

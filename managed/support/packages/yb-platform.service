@@ -1,0 +1,32 @@
+[Unit]
+Description=Yugabyte Platform
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=yugabyte
+Group=yugabyte
+Type=simple
+
+Environment="PLATFORM_APP_SECRET=REPLACE_PLATFORM_APP_SECRET"
+Environment="DEVOPS_HOME=/opt/yugabyte/devops"
+Environment="METRICS_URL=http://127.0.0.1:9090/api/v1"
+Environment="SWAMPER_TARGET_PATH=/opt/yugabyte/swamper_targets"
+Environment="SWAMPER_RULES_PATH=/opt/yugabyte/swamper_rules"
+Environment="PLATFORM_DB_USER=postgres"
+Environment="PLATFORM_DB_PASSWORD="
+Environment="USE_OAUTH=true"
+Environment="YB_SECURITY_TYPE=OIDC
+Environment="YB_OIDC_CLIENT_ID=<OIDC Client ID>"
+Environment="YB_OIDC_SECRET=<OIDC Secret>"
+Environment="YB_OIDC_DISCOVERY_URI=<OIDC Discovery URI>"
+Environment="YW_URL=<IP of the Platform>"
+Environment="YB_OIDC_SCOPE=openid <any additional scopes>"
+Environment="YB_OIDC_EMAIL_ATTR=<attribute of the email field>"
+Environment="YB_USE_VIRTUAL_ENV=1"
+
+ExecStart=/opt/yugabyte/yugaware/bin/yugaware -Dconfig.file=/opt/yugabyte/platform.conf
+
+
+[Install]
+WantedBy=multi-user.target

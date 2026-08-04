@@ -1,0 +1,21 @@
+- Table name: other_db_test_table
+- Database name: db_apart_from_yugabyte
+- Table information:
+|Table Name                 |Table Groupname |Colocated |
++---------------------------+----------------+----------+
+|public.other_db_test_table |                |false     |
+
+- Columns:
+|Column |Type    |Collation |Nullable |Default |Storage  |Stats Target |Description |
++-------+--------+----------+---------+--------+---------+-------------+------------+
+|id     |integer |          |not null |        |plain    |             |            |
+|value  |text    |          |         |        |extended |             |            |
+
+- Indexes:
+|Name                     |Index Definition                                                                        |Constraint Definition |
++-------------------------+----------------------------------------------------------------------------------------+----------------------+
+|other_db_test_table_pkey |CREATE UNIQUE INDEX other_db_test_table_pkey ON other_db_test_table USING lsm (id HASH) |PRIMARY KEY (id)      |
+
+
+============================================================
+

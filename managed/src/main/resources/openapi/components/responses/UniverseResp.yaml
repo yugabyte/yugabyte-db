@@ -1,0 +1,5 @@
+description: success
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/Universe.yaml"

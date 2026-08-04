@@ -1,0 +1,46 @@
+@use '../../_style/colors.scss';
+
+.features-page {
+  height: 100vh;
+  width: calc(100vw - 138px);
+  background: colors.$YB_WHITE;
+  padding: 24px;
+  margin: 24px;
+
+  .feature-list {
+    display: grid;
+    grid-template-columns: 20% 20% 20% 20%;
+    grid-template-rows: auto;
+    grid-column-gap: 5%;
+
+    @media screen and (min-width: 520px) {
+      grid-template-columns: 45% 45%;
+    }
+
+    @media screen and (min-width: 720px) {
+      grid-template-columns: 28.66% 28.66% 28.66%;
+    }
+
+    @media screen and (min-width: 1024px) {
+      grid-template-columns: 20% 20% 20% 20%;
+    }
+
+    .feature {
+      padding-right: 10px;
+
+      .form-group {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+
+        .form-item-label {
+          padding-right: 16px;
+          padding-bottom: 4px;
+        }
+
+      }
+    }
+  }
+}
+
+

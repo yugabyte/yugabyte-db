@@ -1,0 +1,91 @@
+-- float4 check
+CREATE TABLE float4tmp (a float4);
+\copy float4tmp from 'data/float4.data'
+SET enable_seqscan=on;
+SELECT count(*) FROM float4tmp WHERE a <  -179.0;
+ count 
+-------
+   244
+(1 row)
+
+SELECT count(*) FROM float4tmp WHERE a <= -179.0;
+ count 
+-------
+   245
+(1 row)
+
+SELECT count(*) FROM float4tmp WHERE a  = -179.0;
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM float4tmp WHERE a >= -179.0;
+ count 
+-------
+   303
+(1 row)
+
+SELECT count(*) FROM float4tmp WHERE a >  -179.0;
+ count 
+-------
+   302
+(1 row)
+
+SELECT a, a <-> '-179.0' FROM float4tmp ORDER BY a <-> '-179.0' LIMIT 3;
+     a      | ?column?  
+------------+-----------
+       -179 |         0
+ -189.02386 | 10.023865
+ -158.17741 | 20.822586
+(3 rows)
+
+CREATE INDEX float4idx ON float4tmp USING gist ( a );
+SET enable_seqscan=off;
+SELECT count(*) FROM float4tmp WHERE a <  -179.0::float4;
+ count 
+-------
+   244
+(1 row)
+
+SELECT count(*) FROM float4tmp WHERE a <= -179.0::float4;
+ count 
+-------
+   245
+(1 row)
+
+SELECT count(*) FROM float4tmp WHERE a  = -179.0::float4;
+ count 
+-------
+     1
+(1 row)
+
+SELECT count(*) FROM float4tmp WHERE a >= -179.0::float4;
+ count 
+-------
+   303
+(1 row)
+
+SELECT count(*) FROM float4tmp WHERE a >  -179.0::float4;
+ count 
+-------
+   302
+(1 row)
+
+EXPLAIN (COSTS OFF)
+SELECT a, a <-> '-179.0' FROM float4tmp ORDER BY a <-> '-179.0' LIMIT 3;
+                     QUERY PLAN                     
+----------------------------------------------------
+ Limit
+   ->  Index Only Scan using float4idx on float4tmp
+         Order By: (a <-> '-179'::real)
+(3 rows)
+
+SELECT a, a <-> '-179.0' FROM float4tmp ORDER BY a <-> '-179.0' LIMIT 3;
+     a      | ?column?  
+------------+-----------
+       -179 |         0
+ -189.02386 | 10.023865
+ -158.17741 | 20.822586
+(3 rows)
+

@@ -1,0 +1,80 @@
+yugabyte ALL = (root,yugabyte) NOPASSWD: /bin/chown -R yugabyte?yugabyte /opt/yugabyte, \
+/bin/chown -R yugabyte?yugabyte /home/yugabyte, \
+/bin/chown * /home/yugabyte/bin/yb-server-ctl.sh, \
+/bin/mkdir -p /opt/yugabyte/certs, \
+/bin/rm -rf /opt/yugabyte, \
+/bin/sh -c * /usr/bin/python*, \
+/bin/sh -c * /usr/bin/env python*, \
+/bin/sh -c * /usr/bin/env python *, \
+/bin/sh -c * /usr/bin/python *, \
+/bin/sh -c /usr/bin/env python *, \
+/bin/sh -c * --version, \
+/bin/sh -c * which python2 2> /dev/null || which python3 2> /dev/null, \
+/bin/systemctl daemon-reload, \
+/bin/systemctl disable prometheus, \
+/bin/systemctl disable rh-nginx118-nginx, \
+/bin/systemctl disable yb-platform, \
+/bin/systemctl disble rh-postgresql10-postgresql, \
+/bin/systemctl enable prometheus, \
+/bin/systemctl enable rh-nginx118-nginx, \
+/bin/systemctl enable rh-postgresql10-postgresql, \
+/bin/systemctl enable yb-platform, \
+/bin/systemctl restart prometheus, \
+/bin/systemctl restart rh-nginx118-nginx, \
+/bin/systemctl restart rh-postgresql10-postgresql, \
+/bin/systemctl restart yb-platform, \
+/bin/systemctl start prometheus, \
+/bin/systemctl start rh-nginx118-nginx, \
+/bin/systemctl start rh-postgresql10-postgresql, \
+/bin/systemctl start yb-platform, \
+/bin/systemctl status prometheus, \
+/bin/systemctl status rh-nginx118-nginx, \
+/bin/systemctl status rh-postgresql10-postgresql, \
+/bin/systemctl status yb-platform, \
+/bin/systemctl stop prometheus, \
+/bin/systemctl stop rh-nginx118-nginx, \
+/bin/systemctl stop rh-postgresql10-postgresql, \
+/bin/systemctl stop yb-platform, \
+/sbin/service prometheus start, \
+/sbin/service prometheus status, \
+/sbin/service prometheus stop, \
+/sbin/service rh-nginx118-nginx start, \
+/sbin/service rh-nginx118-nginx status, \
+/sbin/service rh-nginx118-nginx stop, \
+/sbin/service rh-postgresql10-postgresql start, \
+/sbin/service rh-postgresql10-postgresql status, \
+/sbin/service rh-postgresql10-postgresql stop, \
+/sbin/service yb-platform start, \
+/sbin/service yb-platform status, \
+/sbin/service yb-platform stop, \
+/usr/bin/chown * /prometheus*, \
+/usr/bin/cp * /opt/yugabyte*, \
+/usr/bin/cp * /prometheus*, \
+/usr/bin/mv * /opt/yugabyte*, \
+/usr/bin/mv * /prometheus*, \
+/usr/bin/rm * /opt/yugabyte*, \
+/usr/bin/rm * /prometheus*, \
+/bin/sh -c * test -e /usr/local/*, \
+/usr/bin/cp * /usr/local/*, \
+/bin/rm -rf /root/node-agent, \
+/bin/tar -zxf /tmp/node-agent-*/node-agent/release/node-agent.tgz *, \
+/bin/mv -f /tmp/node-agent-*/node-agent /root/node-agent, \
+/bin/chmod +x /root/node-agent/node-agent-installer.sh, \
+/root/node-agent/node-agent-installer.sh *, \
+/bin/chmod 755 /root /root/node-agent, \
+/bin/rm -rf /root/node-agent/node-agent-installer.sh, \
+/usr/bin/pwd, \
+/usr/bin/tee /etc/systemd/system/yb-node-agent.service *, \
+/bin/systemctl stop yb-node-agent, \
+/bin/systemctl disable yb-node-agent, \
+/bin/systemctl enable yb-node-agent, \
+/bin/systemctl restart yb-node-agent, \
+/usr/bin/test -w *, \
+/usr/bin/df -m *, \
+/tmp/node-agent-installer.sh *, \
+/usr/bin/yum install -y policycoreutils-python-utils, \
+/usr/bin/tee /etc/systemd/system/yb-node-agent.service, \
+/usr/sbin/semanage port *, \
+/usr/sbin/semanage fcontext *, \
+/usr/sbin/restorecon -ir *, \
+/bin/sh -c * systemctl daemon-reload

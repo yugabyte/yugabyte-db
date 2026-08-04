@@ -1,0 +1,70 @@
+{{/*
+Syntax:
+  {{< yb-version version="<alias or series>" [format="<format>"] >}}
+
+Aliases:
+  * "preview"
+  * "stable"
+  * Anything else you define in the "alias" field in currentVersions.json
+
+Formats:
+  * OMIT the format entry for the 4-position version ("2.13.0.1")
+  * short: the 3-position version ("2.13.0")
+  * build: the full version and build ("2.13.0.1-b2")
+  * series: the 2-position release series ("v2.13")
+  * displayName: the release series name and preview/stable
+                 ("v2.13 (Preview)", "v2.12 (Stable)")
+*/}}
+
+{{- $version := .Get "version" -}}
+{{- $format := .Get "format" -}}
+
+{{ range .Site.Data.currentVersions.dbVersions }}
+
+  {{- if eq $version "preview" -}}
+    {{- if eq .alias "preview" -}}
+      {{- if eq $format "build" -}}
+        {{ .appVersion }}
+      {{- else if eq $format "short" -}}
+        {{ .versionShort }}
+      {{- else if eq $format "series" -}}
+        {{ .series }}
+      {{- else if eq $format "displayName" -}}
+        {{ .display }}
+      {{- else -}}
+        {{ .version }}
+      {{- end -}}
+    {{- end -}}
+
+  {{- else if eq $version "stable" -}}
+    {{- if eq .alias "stable" -}}
+      {{- if eq $format "build" -}}
+        {{ .appVersion }}
+      {{- else if eq $format "short" -}}
+        {{ .versionShort }}
+      {{- else if eq $format "series" -}}
+        {{ .series }}
+      {{- else if eq $format "displayName" -}}
+        {{ .display }}
+      {{- else -}}
+        {{ .version }}
+      {{- end -}}
+    {{- end -}}
+
+  {{- else -}}
+    {{- if eq $version .series -}}
+      {{- if eq $format "build" -}}
+        {{ .appVersion }}
+      {{- else if eq $format "short" -}}
+        {{ .versionShort }}
+      {{- else if eq $format "series" -}}
+        {{ .series }}
+      {{- else if eq $format "displayName" -}}
+        {{ .display }}
+      {{- else -}}
+        {{ .version }}
+      {{- end -}}
+    {{- end -}}
+  {{- end -}}
+
+{{- end -}}

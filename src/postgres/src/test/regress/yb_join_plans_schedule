@@ -1,0 +1,7 @@
+# src/test/regress/yb_join_plans_schedule
+#
+####################################################################################################
+# This includes tests for Join plans
+####################################################################################################
+test: yb.orig.join_batching_plans
+test: yb.orig.legacy_join_plans

@@ -1,0 +1,10 @@
+title: UniverseOperatorImportReq
+description: |
+  UniverseOperatorImportReq
+
+  Payload to import a universe to the operator. Part of UniverseOperatorImportReq
+type: object
+properties:
+  namespace:
+    description: The namespace in which the universe custom resource will be created in.
+    type: string

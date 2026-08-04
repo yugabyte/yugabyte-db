@@ -1,0 +1,6 @@
+# src/test/regress/yb_pg_stats_import_schedule
+#
+####################################################################################################
+# This testsuite contains testcases pertinent to stats import.
+####################################################################################################
+test: yb.port.stats_import

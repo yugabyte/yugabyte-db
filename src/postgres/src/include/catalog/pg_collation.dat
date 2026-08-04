@@ -1,0 +1,41 @@
+#----------------------------------------------------------------------
+#
+# pg_collation.dat
+#    Initial contents of the pg_collation system catalog.
+#
+# Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
+# Portions Copyright (c) 1994, Regents of the University of California
+#
+# src/include/catalog/pg_collation.dat
+#
+#----------------------------------------------------------------------
+
+[
+
+{ oid => '100', oid_symbol => 'DEFAULT_COLLATION_OID',
+  descr => 'database\'s default collation',
+  collname => 'default', collprovider => 'd', collencoding => '-1' },
+{ oid => '950', oid_symbol => 'C_COLLATION_OID',
+  descr => 'standard C collation',
+  collname => 'C', collprovider => 'c', collencoding => '-1',
+  collcollate => 'C', collctype => 'C' },
+{ oid => '951', descr => 'standard POSIX collation',
+  collname => 'POSIX', collprovider => 'c', collencoding => '-1',
+  collcollate => 'POSIX', collctype => 'POSIX' },
+{ oid => '962', descr => 'sorts by Unicode code point, C character semantics',
+  collname => 'ucs_basic', collprovider => 'b', collencoding => '6',
+  colllocale => 'C', collversion => '1' },
+{ oid => '963',
+  descr => 'sorts using the Unicode Collation Algorithm with default settings',
+  collname => 'unicode', collprovider => 'i', collencoding => '-1',
+  colllocale => 'und' },
+{ oid => '811',
+  descr => 'sorts by Unicode code point; Unicode and POSIX character semantics',
+  collname => 'pg_c_utf8', collprovider => 'b', collencoding => '6',
+  colllocale => 'C.UTF-8', collversion => '1' },
+{ oid => '6411',
+  descr => 'sorts by Unicode code point; Unicode character semantics',
+  collname => 'pg_unicode_fast', collprovider => 'b', collencoding => '6',
+  colllocale => 'PG_UNICODE_FAST', collversion => '1' },
+
+]

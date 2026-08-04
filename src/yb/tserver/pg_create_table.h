@@ -1,0 +1,72 @@
+// Copyright (c) YugabyteDB, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+
+#pragma once
+
+#include "yb/client/client_fwd.h"
+#include "yb/client/schema.h"
+#include "yb/client/yb_table_name.h"
+
+#include "yb/common/common_fwd.h"
+#include "yb/common/constants.h"
+#include "yb/common/pg_types.h"
+#include "yb/dockv/partition.h"
+
+#include "yb/tserver/pg_client.fwd.h"
+
+#include "yb/util/monotime.h"
+#include "yb/util/status_fwd.h"
+
+namespace yb::tserver {
+
+class PgCreateTable {
+ public:
+  explicit PgCreateTable(const PgCreateTableRequestPB& req);
+
+  Status Prepare();
+  Status Exec(
+      client::YBClient* client, const TransactionMetadata* transaction_metadata,
+      uint32_t sub_transaction_id, CoarseTimePoint deadline);
+
+  const PgObjectId& indexed_table_id() const {
+    return indexed_table_id_;
+  }
+
+  void SetXClusterSourceTableId(const PgObjectId& xcluster_source_table_id);
+  void SetXClusterBackfillHybridTime(uint64_t xcluster_backfill_hybrid_time);
+
+  void OverwriteColocationId(const ColocationId& colocation_id);
+
+ private:
+  Status AddColumn(const PgCreateColumnPB& req);
+  void EnsureYBbasectidColumnCreated();
+  Result<std::vector<std::string>> BuildSplitRows(const client::YBSchema& schema);
+
+  size_t PrimaryKeyRangeColumnCount() const;
+
+  const PgCreateTableRequestPB& req_;
+  client::YBTableName table_name_;
+  std::optional<dockv::YBHashSchema> hash_schema_;
+  std::vector<std::string> range_columns_;
+  client::YBSchemaBuilder schema_builder_;
+  PgObjectId indexed_table_id_;
+  bool ybbasectid_added_ = false;
+  PgObjectId xcluster_source_table_id_;
+  uint64_t xcluster_backfill_hybrid_time_ = 0;
+  // If set, will overwrite the colocation id of the table being created.
+  ColocationId overwrite_colocation_id_ = kColocationIdNotSet;
+};
+
+Status CreateSequencesDataTable(client::YBClient* client, CoarseTimePoint deadline);
+
+} // namespace yb::tserver

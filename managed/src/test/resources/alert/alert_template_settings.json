@@ -1,0 +1,9 @@
+{
+  "uuid": "f33e3c9b-75ab-4c30-80ad-cba8564dfef9",
+  "customerUUID": "f33e3c9b-75ab-4c30-80ad-cba85646ea39",
+  "template": "REPLICATION_LAG",
+  "labels": {
+    "foo": "bar",
+    "one": "two"
+  }
+}

@@ -1,0 +1,7 @@
+# yb_xcluster_ddl_replication extension
+
+comment = 'module used to replicate ddls for xcluster replication'
+default_version = '1.0'
+module_pathname = '$libdir/yb_xcluster_ddl_replication'
+relocatable = false
+schema = yb_xcluster_ddl_replication

@@ -1,0 +1,22 @@
+{
+  "linters": {
+    "text": {
+      "type": "text"
+    },
+    "merges": {
+      "type": "merge-conflict"
+    },
+    "phutil-library": {
+      "type": "phutil-library",
+      "include": "(\\.php$)"
+    },
+    "phutil-xhpast": {
+      "type": "phutil-xhpast",
+      "include": "(\\.php$)"
+    },
+    "xhpast": {
+      "type": "xhpast",
+      "include": "(\\.php$)"
+    }
+  }
+}

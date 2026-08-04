@@ -1,0 +1,19 @@
+#----------------------------------------------------------------------
+#
+# pg_yb_logical_client_version.dat
+#    Initial contents of the pg_yb_logical_client_version system catalog.
+#
+# Copyright (c) YugabyteDB, Inc.
+#
+# src/include/catalog/pg_yb_logical_client_version.dat
+#
+#----------------------------------------------------------------------
+
+[
+
+# db_oid = 0 corresponds to InvalidOid and is used to store the coarse-grained
+# logical client version
+
+{ db_oid => '0', current_version => '0' },
+
+]

@@ -1,0 +1,553 @@
+/* src/interfaces/ecpg/preproc/ecpg.addons */
+ECPG: block stmt ClosePortalStmt
+	{
+		if (INFORMIX_MODE)
+		{
+			if (pg_strcasecmp(@1 + strlen("close "), "database") == 0)
+			{
+				if (connection)
+					mmerror(PARSE_ERROR, ET_ERROR, "AT option not allowed in CLOSE DATABASE statement");
+
+				fprintf(base_yyout, "{ ECPGdisconnect(__LINE__, \"CURRENT\");");
+				whenever_action(2);
+				break;
+			}
+		}
+
+		output_statement(@1, 0, ECPGst_normal);
+	}
+ECPG: block stmt DeallocateStmt
+	{
+		output_deallocate_prepare_statement(@1);
+	}
+ECPG: block stmt DeclareCursorStmt
+	{
+		output_simple_statement(@1, (strncmp(@1, "ECPGset_var", strlen("ECPGset_var")) == 0) ? 4 : 0);
+	}
+ECPG: block stmt DiscardStmt
+ECPG: block stmt FetchStmt
+	{ output_statement(@1, 1, ECPGst_normal); }
+ECPG: block stmt DeleteStmt
+ECPG: block stmt InsertStmt
+ECPG: block stmt SelectStmt
+ECPG: block stmt UpdateStmt
+	{ output_statement(@1, 1, ECPGst_prepnormal); }
+ECPG: block stmt ExecuteStmt
+	{
+		check_declared_list($1.name);
+		if ($1.type == NULL || strlen($1.type) == 0)
+			output_statement($1.name, 1, ECPGst_execute);
+		else
+		{
+			if ($1.name[0] != '"')
+				/* case of char_variable */
+				add_variable_to_tail(&argsinsert, find_variable($1.name), &no_indicator);
+			else
+			{
+				/* case of ecpg_ident or CSTRING */
+				char		length[32];
+				char	   *str;
+
+				/* Remove double quotes from name */
+				str = loc_strdup($1.name + 1);
+				str[strlen(str) - 1] = '\0';
+				snprintf(length, sizeof(length), "%zu", strlen(str));
+				add_variable_to_tail(&argsinsert, new_variable(str, ECPGmake_simple_type(ECPGt_const, length, 0), 0), &no_indicator);
+			}
+			output_statement(cat_str(3, "execute", "$0", $1.type), 0, ECPGst_exec_with_exprlist);
+		}
+	}
+ECPG: block stmt PrepareStmt
+	{
+		check_declared_list($1.name);
+		if ($1.type == NULL)
+			output_prepare_statement($1.name, $1.stmt);
+		else if (strlen($1.type) == 0)
+		{
+			char	   *stmt = cat_str(3, "\"", $1.stmt, "\"");
+
+			output_prepare_statement($1.name, stmt);
+		}
+		else
+		{
+			if ($1.name[0] != '"')
+				/* case of char_variable */
+				add_variable_to_tail(&argsinsert, find_variable($1.name), &no_indicator);
+			else
+			{
+				char		length[32];
+				char	   *str;
+
+				/* Remove double quotes from name */
+				str = loc_strdup($1.name + 1);
+				str[strlen(str) - 1] = '\0';
+				snprintf(length, sizeof(length), "%zu", strlen(str));
+				add_variable_to_tail(&argsinsert, new_variable(str, ECPGmake_simple_type(ECPGt_const, length, 0), 0), &no_indicator);
+			}
+			output_statement(cat_str(5, "prepare", "$0", $1.type, "as", $1.stmt), 0, ECPGst_prepare);
+		}
+	}
+ECPG: block stmt TransactionStmt
+	{
+		fprintf(base_yyout, "{ ECPGtrans(__LINE__, %s, \"%s\");", connection ? connection : "NULL", @1);
+		whenever_action(2);
+	}
+ECPG: block toplevel_stmt TransactionStmtLegacy
+	{
+		fprintf(base_yyout, "{ ECPGtrans(__LINE__, %s, \"%s\");", connection ? connection : "NULL", @1);
+		whenever_action(2);
+	}
+ECPG: rule stmt ViewStmt
+	| ECPGAllocateDescr
+	{
+		fprintf(base_yyout, "ECPGallocate_desc(__LINE__, %s);", @1);
+		whenever_action(0);
+	}
+	| ECPGConnect
+	{
+		if (connection)
+			mmerror(PARSE_ERROR, ET_ERROR, "AT option not allowed in CONNECT statement");
+
+		fprintf(base_yyout, "{ ECPGconnect(__LINE__, %d, %s, %d); ", compat, @1, autocommit);
+		reset_variables();
+		whenever_action(2);
+	}
+	| ECPGDeclareStmt
+	{
+		output_simple_statement(@1, 0);
+	}
+	| ECPGCursorStmt
+	{
+		output_simple_statement(@1, (strncmp(@1, "ECPGset_var", strlen("ECPGset_var")) == 0) ? 4 : 0);
+	}
+	| ECPGDeallocateDescr
+	{
+		fprintf(base_yyout, "ECPGdeallocate_desc(__LINE__, %s);", @1);
+		whenever_action(0);
+	}
+	| ECPGDeclare
+	{
+		output_simple_statement(@1, 0);
+	}
+	| ECPGDescribe
+	{
+		check_declared_list($1.stmt_name);
+
+		fprintf(base_yyout, "{ ECPGdescribe(__LINE__, %d, %d, %s, %s,", compat, $1.input, connection ? connection : "NULL", $1.stmt_name);
+		dump_variables(argsresult, 1);
+		argsresult = NULL;
+		fputs("ECPGt_EORT);", base_yyout);
+		fprintf(base_yyout, "}");
+		output_line_number();
+	}
+	| ECPGDisconnect
+	{
+		if (connection)
+			mmerror(PARSE_ERROR, ET_ERROR, "AT option not allowed in DISCONNECT statement");
+
+		fprintf(base_yyout, "{ ECPGdisconnect(__LINE__, %s);",
+				@1 ? @1 : "\"CURRENT\"");
+		whenever_action(2);
+	}
+	| ECPGExecuteImmediateStmt
+	{
+		output_statement(@1, 0, ECPGst_exec_immediate);
+	}
+	| ECPGFree
+	{
+		const char *con = connection ? connection : "NULL";
+
+		if (strcmp(@1, "all") == 0)
+			fprintf(base_yyout, "{ ECPGdeallocate_all(__LINE__, %d, %s);", compat, con);
+		else if (@1[0] == ':')
+			fprintf(base_yyout, "{ ECPGdeallocate(__LINE__, %d, %s, %s);", compat, con, @1 + 1);
+		else
+			fprintf(base_yyout, "{ ECPGdeallocate(__LINE__, %d, %s, \"%s\");", compat, con, @1);
+
+		whenever_action(2);
+	}
+	| ECPGGetDescriptor
+	{
+		lookup_descriptor($1.name, connection);
+		output_get_descr($1.name, $1.str);
+	}
+	| ECPGGetDescriptorHeader
+	{
+		lookup_descriptor(@1, connection);
+		output_get_descr_header(@1);
+	}
+	| ECPGOpen
+	{
+		struct cursor *ptr;
+
+		if ((ptr = add_additional_variables(@1, true)) != NULL)
+		{
+			free(connection);
+			connection = ptr->connection ? mm_strdup(ptr->connection) : NULL;
+			output_statement(ptr->command, 0, ECPGst_normal);
+			ptr->opened = true;
+		}
+	}
+	| ECPGSetAutocommit
+	{
+		fprintf(base_yyout, "{ ECPGsetcommit(__LINE__, \"%s\", %s);", @1, connection ? connection : "NULL");
+		whenever_action(2);
+	}
+	| ECPGSetConnection
+	{
+		if (connection)
+			mmerror(PARSE_ERROR, ET_ERROR, "AT option not allowed in SET CONNECTION statement");
+
+		fprintf(base_yyout, "{ ECPGsetconn(__LINE__, %s);", @1);
+		whenever_action(2);
+	}
+	| ECPGSetDescriptor
+	{
+		lookup_descriptor($1.name, connection);
+		output_set_descr($1.name, $1.str);
+	}
+	| ECPGSetDescriptorHeader
+	{
+		lookup_descriptor(@1, connection);
+		output_set_descr_header(@1);
+	}
+	| ECPGTypedef
+	{
+		if (connection)
+			mmerror(PARSE_ERROR, ET_ERROR, "AT option not allowed in TYPE statement");
+
+		fprintf(base_yyout, "%s", @1);
+		output_line_number();
+	}
+	| ECPGVar
+	{
+		if (connection)
+			mmerror(PARSE_ERROR, ET_ERROR, "AT option not allowed in VAR statement");
+
+		output_simple_statement(@1, 0);
+	}
+	| ECPGWhenever
+	{
+		if (connection)
+			mmerror(PARSE_ERROR, ET_ERROR, "AT option not allowed in WHENEVER statement");
+
+		output_simple_statement(@1, 0);
+	}
+ECPG: block where_or_current_clause WHERE CURRENT_P OF cursor_name
+	{
+		const char *cursor_marker = @4[0] == ':' ? "$0" : @4;
+
+		@$ = cat_str(2, "where current of", cursor_marker);
+	}
+ECPG: addon CopyStmt COPY opt_binary qualified_name opt_column_list copy_from opt_program copy_file_name copy_delimiter opt_with copy_options where_clause
+		if (strcmp(@5, "from") == 0 &&
+			(strcmp(@7, "stdin") == 0 || strcmp(@7, "stdout") == 0))
+			mmerror(PARSE_ERROR, ET_WARNING, "COPY FROM STDIN is not implemented");
+ECPG: addon var_value NumericOnly
+		if (@1[0] == '$')
+			@$ = "$0";
+ECPG: addon fetch_args cursor_name
+		struct cursor *ptr = add_additional_variables(@1, false);
+
+		update_connection(ptr->connection);
+		if (@1[0] == ':')
+			@$ = "$0";
+ECPG: addon fetch_args from_in cursor_name
+		struct cursor *ptr = add_additional_variables(@2, false);
+
+		update_connection(ptr->connection);
+		if (@2[0] == ':')
+			@$ = cat2_str(@1, "$0");
+ECPG: addon fetch_args NEXT opt_from_in cursor_name
+ECPG: addon fetch_args PRIOR opt_from_in cursor_name
+ECPG: addon fetch_args FIRST_P opt_from_in cursor_name
+ECPG: addon fetch_args LAST_P opt_from_in cursor_name
+ECPG: addon fetch_args ALL opt_from_in cursor_name
+		struct cursor *ptr = add_additional_variables(@3, false);
+
+		update_connection(ptr->connection);
+		if (@3[0] == ':')
+			@$ = cat_str(3, @1, @2, "$0");
+ECPG: addon fetch_args SignedIconst opt_from_in cursor_name
+		struct cursor *ptr = add_additional_variables(@3, false);
+		bool	replace = false;
+
+		update_connection(ptr->connection);
+		if (@3[0] == ':')
+		{
+			@3 = "$0";
+			replace = true;
+		}
+		if (@1[0] == '$')
+		{
+			@1 = "$0";
+			replace = true;
+		}
+		if (replace)
+			@$ = cat_str(3, @1, @2, @3);
+ECPG: addon fetch_args FORWARD ALL opt_from_in cursor_name
+ECPG: addon fetch_args BACKWARD ALL opt_from_in cursor_name
+		struct cursor *ptr = add_additional_variables(@4, false);
+
+		update_connection(ptr->connection);
+		if (@4[0] == ':')
+			@$ = cat_str(4, @1, @2, @3, "$0");
+ECPG: addon fetch_args ABSOLUTE_P SignedIconst opt_from_in cursor_name
+ECPG: addon fetch_args RELATIVE_P SignedIconst opt_from_in cursor_name
+ECPG: addon fetch_args FORWARD SignedIconst opt_from_in cursor_name
+ECPG: addon fetch_args BACKWARD SignedIconst opt_from_in cursor_name
+		struct cursor *ptr = add_additional_variables(@4, false);
+		bool	replace = false;
+
+		update_connection(ptr->connection);
+		if (@4[0] == ':')
+		{
+			@4 = "$0";
+			replace = true;
+		}
+		if (@2[0] == '$')
+		{
+			@2 = "$0";
+			replace = true;
+		}
+		if (replace)
+			@$ = cat_str(4, @1, @2, @3, @4);
+ECPG: block cursor_name name
+	| char_civar
+	{
+		char	   *curname = loc_alloc(strlen(@1) + 2);
+
+		sprintf(curname, ":%s", @1);
+		@$ = curname;
+	}
+ECPG: block ExplainableStmt ExecuteStmt
+	{
+		@$ = $1.name;
+	}
+ECPG: block PrepareStmt PREPARE prepared_name prep_type_clause AS PreparableStmt
+	{
+		$$.name = @2;
+		$$.type = @3;
+		$$.stmt = @5;
+	}
+	| PREPARE prepared_name FROM execstring
+	{
+		$$.name = @2;
+		$$.type = NULL;
+		$$.stmt = @4;
+	}
+ECPG: block ExecuteStmt EXECUTE prepared_name execute_param_clause execute_rest
+	{
+		$$.name = @2;
+		$$.type = @3;
+	}
+ECPG: block ExecuteStmt CREATE OptTemp TABLE create_as_target AS EXECUTE prepared_name execute_param_clause opt_with_data execute_rest
+	{
+		$$.name = @$;
+	}
+ECPG: block ExecuteStmt CREATE OptTemp TABLE IF_P NOT EXISTS create_as_target AS EXECUTE prepared_name execute_param_clause opt_with_data execute_rest
+	{
+		$$.name = @$;
+	}
+ECPG: block DeclareCursorStmt DECLARE cursor_name cursor_options CURSOR opt_hold FOR SelectStmt
+	{
+		struct cursor *ptr,
+				   *this;
+		const char *cursor_marker = @2[0] == ':' ? "$0" : @2;
+		char	   *comment,
+				   *c1,
+				   *c2;
+		int			(*strcmp_fn) (const char *, const char *) = ((@2[0] == ':' || @2[0] == '"') ? strcmp : pg_strcasecmp);
+
+		if (INFORMIX_MODE && pg_strcasecmp(@2, "database") == 0)
+			mmfatal(PARSE_ERROR, "\"database\" cannot be used as cursor name in INFORMIX mode");
+
+		for (ptr = cur; ptr != NULL; ptr = ptr->next)
+		{
+			if (strcmp_fn(@2, ptr->name) == 0)
+			{
+				if (@2[0] == ':')
+					mmerror(PARSE_ERROR, ET_ERROR, "using variable \"%s\" in different declare statements is not supported", @2 + 1);
+				else
+					mmerror(PARSE_ERROR, ET_ERROR, "cursor \"%s\" is already defined", @2);
+			}
+		}
+
+		this = (struct cursor *) mm_alloc(sizeof(struct cursor));
+
+		this->next = cur;
+		this->name = mm_strdup(@2);
+		this->function = (current_function ? mm_strdup(current_function) : NULL);
+		this->connection = connection ? mm_strdup(connection) : NULL;
+		this->opened = false;
+		this->command = mm_strdup(cat_str(7, "declare", cursor_marker, @3, "cursor", @5, "for", @7));
+		this->argsinsert = argsinsert;
+		this->argsinsert_oos = NULL;
+		this->argsresult = argsresult;
+		this->argsresult_oos = NULL;
+		argsinsert = argsresult = NULL;
+		cur = this;
+
+		c1 = loc_strdup(this->command);
+		while ((c2 = strstr(c1, "*/")) != NULL)
+		{
+			/* We put this text into a comment, so we better remove [*][/]. */
+			c2[0] = '.';
+			c2[1] = '.';
+		}
+		comment = cat_str(3, "/*", c1, "*/");
+
+		@$ = cat2_str(adjust_outofscope_cursor_vars(this), comment);
+	}
+ECPG: block ClosePortalStmt CLOSE cursor_name
+	{
+		const char *cursor_marker = @2[0] == ':' ? "$0" : @2;
+		struct cursor *ptr = NULL;
+
+		for (ptr = cur; ptr != NULL; ptr = ptr->next)
+		{
+			if (strcmp(@2, ptr->name) == 0)
+			{
+				update_connection(ptr->connection);
+				break;
+			}
+		}
+		@$ = cat2_str("close", cursor_marker);
+	}
+ECPG: block opt_hold
+	{
+		if (compat == ECPG_COMPAT_INFORMIX_SE && autocommit)
+			@$ = "with hold";
+		else
+			@$ = "";
+	}
+ECPG: block into_clause INTO OptTempTableName
+	{
+		FoundInto = 1;
+		@$ = cat2_str("into", @2);
+	}
+	| ecpg_into
+	{
+		@$ = "";
+	}
+ECPG: block Typename SimpleTypename opt_array_bounds
+	{
+		@$ = cat2_str(@1, $2.str);
+	}
+ECPG: block Typename SETOF SimpleTypename opt_array_bounds
+	{
+		@$ = cat_str(3, "setof", @2, $3.str);
+	}
+ECPG: block opt_array_bounds opt_array_bounds '[' ']'
+	{
+		$$.index1 = $1.index1;
+		$$.index2 = $1.index2;
+		if (strcmp($$.index1, "-1") == 0)
+			$$.index1 = "0";
+		else if (strcmp($1.index2, "-1") == 0)
+			$$.index2 = "0";
+		$$.str = cat_str(2, $1.str, "[]");
+	}
+	| opt_array_bounds '[' Iresult ']'
+	{
+		$$.index1 = $1.index1;
+		$$.index2 = $1.index2;
+		if (strcmp($1.index1, "-1") == 0)
+			$$.index1 = @3;
+		else if (strcmp($1.index2, "-1") == 0)
+			$$.index2 = @3;
+		$$.str = cat_str(4, $1.str, "[", @3, "]");
+	}
+ECPG: block opt_array_bounds
+	{
+		$$.index1 = "-1";
+		$$.index2 = "-1";
+		$$.str = "";
+	}
+ECPG: rule AexprConst NULL_P
+	| civar
+	| civarind
+ECPG: block VariableShowStmt SHOW ALL
+	{
+		mmerror(PARSE_ERROR, ET_ERROR, "SHOW ALL is not implemented");
+	}
+ECPG: rule FetchStmt MOVE fetch_args
+	| FETCH fetch_args ecpg_fetch_into
+	| FETCH FORWARD cursor_name opt_ecpg_fetch_into
+	{
+		const char *cursor_marker = @3[0] == ':' ? "$0" : @3;
+		struct cursor *ptr = add_additional_variables(@3, false);
+
+		update_connection(ptr->connection);
+
+		@$ = cat_str(2, "fetch forward", cursor_marker);
+	}
+	| FETCH FORWARD from_in cursor_name opt_ecpg_fetch_into
+	{
+		const char *cursor_marker = @4[0] == ':' ? "$0" : @4;
+		struct cursor *ptr = add_additional_variables(@4, false);
+
+		update_connection(ptr->connection);
+
+		@$ = cat_str(2, "fetch forward from", cursor_marker);
+	}
+	| FETCH BACKWARD cursor_name opt_ecpg_fetch_into
+	{
+		const char *cursor_marker = @3[0] == ':' ? "$0" : @3;
+		struct cursor *ptr = add_additional_variables(@3, false);
+
+		update_connection(ptr->connection);
+
+		@$ = cat_str(2, "fetch backward", cursor_marker);
+	}
+	| FETCH BACKWARD from_in cursor_name opt_ecpg_fetch_into
+	{
+		const char *cursor_marker = @4[0] == ':' ? "$0" : @4;
+		struct cursor *ptr = add_additional_variables(@4, false);
+
+		update_connection(ptr->connection);
+
+		@$ = cat_str(2, "fetch backward from", cursor_marker);
+	}
+	| MOVE FORWARD cursor_name
+	{
+		const char *cursor_marker = @3[0] == ':' ? "$0" : @3;
+		struct cursor *ptr = add_additional_variables(@3, false);
+
+		update_connection(ptr->connection);
+
+		@$ = cat_str(2, "move forward", cursor_marker);
+	}
+	| MOVE FORWARD from_in cursor_name
+	{
+		const char *cursor_marker = @4[0] == ':' ? "$0" : @4;
+		struct cursor *ptr = add_additional_variables(@4, false);
+
+		update_connection(ptr->connection);
+
+		@$ = cat_str(2, "move forward from", cursor_marker);
+	}
+	| MOVE BACKWARD cursor_name
+	{
+		const char *cursor_marker = @3[0] == ':' ? "$0" : @3;
+		struct cursor *ptr = add_additional_variables(@3, false);
+
+		update_connection(ptr->connection);
+
+		@$ = cat_str(2, "move backward", cursor_marker);
+	}
+	| MOVE BACKWARD from_in cursor_name
+	{
+		const char *cursor_marker = @4[0] == ':' ? "$0" : @4;
+		struct cursor *ptr = add_additional_variables(@4, false);
+
+		update_connection(ptr->connection);
+
+		@$ = cat_str(2, "move backward from", cursor_marker);
+	}
+ECPG: block limit_clause LIMIT select_limit_value ',' select_offset_value
+	{
+		mmerror(PARSE_ERROR, ET_WARNING, "no longer supported LIMIT #,# syntax passed to server");
+	}
+ECPG: rule SignedIconst Iconst
+	| civar

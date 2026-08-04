@@ -1,0 +1,19 @@
+error[E0521]: borrowed data escapes outside of function
+ --> tests/compile-fail/postgres-strings-arent-immortal.rs:4:67
+  |
+3 |   #[pg_extern]
+  |   ------------
+  |   |
+  |   lifetime `'fcx` defined here
+  |   in this procedural macro expansion
+4 |   fn split(input: &'static str, pattern: &str) -> Vec<&'static str> {
+  |  ___________________________________________________________________^
+5 | |     input.split_terminator(pattern).collect()
+6 | | }
+  | | ^
+  | | |
+  | | `fcinfo` is a reference that is only valid in the function body
+  | |_`fcinfo` escapes the function body here
+  |   argument requires that `'fcx` must outlive `'static`
+  |
+  = note: this error originates in the attribute macro `pg_extern` (in Nightly builds, run with -Z macro-backtrace for more info)

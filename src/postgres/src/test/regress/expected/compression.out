@@ -1,0 +1,169 @@
+-- Default set of tests for TOAST compression, independent on compression
+-- methods supported by the build.
+CREATE SCHEMA pglz;
+SET search_path TO pglz, public;
+\set HIDE_TOAST_COMPRESSION false
+-- ensure we get stable results regardless of installation's default
+SET default_toast_compression = 'pglz';
+-- test creating table with compression method
+CREATE TABLE cmdata(f1 text COMPRESSION pglz);
+CREATE INDEX idx ON cmdata(f1);
+INSERT INTO cmdata VALUES(repeat('1234567890', 1000));
+\d+ cmdata
+                                         Table "pglz.cmdata"
+ Column | Type | Collation | Nullable | Default | Storage  | Compression | Stats target | Description 
+--------+------+-----------+----------+---------+----------+-------------+--------------+-------------
+ f1     | text |           |          |         | extended | pglz        |              | 
+Indexes:
+    "idx" btree (f1)
+
+-- verify stored compression method in the data
+SELECT pg_column_compression(f1) FROM cmdata;
+ pg_column_compression 
+-----------------------
+ pglz
+(1 row)
+
+-- decompress data slice
+SELECT SUBSTR(f1, 200, 5) FROM cmdata;
+ substr 
+--------
+ 01234
+(1 row)
+
+-- copy with table creation
+SELECT * INTO cmmove1 FROM cmdata;
+\d+ cmmove1
+                                         Table "pglz.cmmove1"
+ Column | Type | Collation | Nullable | Default | Storage  | Compression | Stats target | Description 
+--------+------+-----------+----------+---------+----------+-------------+--------------+-------------
+ f1     | text |           |          |         | extended |             |              | 
+
+SELECT pg_column_compression(f1) FROM cmmove1;
+ pg_column_compression 
+-----------------------
+ pglz
+(1 row)
+
+-- try setting compression for incompressible data type
+CREATE TABLE cmdata2 (f1 int COMPRESSION pglz);
+ERROR:  column data type integer does not support compression
+-- test externally stored compressed data
+CREATE OR REPLACE FUNCTION large_val() RETURNS TEXT LANGUAGE SQL AS
+'select array_agg(fipshash(g::text))::text from generate_series(1, 256) g';
+CREATE TABLE cmdata2 (f1 text COMPRESSION pglz);
+INSERT INTO cmdata2 SELECT large_val() || repeat('a', 4000);
+SELECT pg_column_compression(f1) FROM cmdata2;
+ pg_column_compression 
+-----------------------
+ pglz
+(1 row)
+
+SELECT SUBSTR(f1, 200, 5) FROM cmdata2;
+ substr 
+--------
+ 79026
+(1 row)
+
+DROP TABLE cmdata2;
+--test column type update varlena/non-varlena
+CREATE TABLE cmdata2 (f1 int);
+\d+ cmdata2
+                                          Table "pglz.cmdata2"
+ Column |  Type   | Collation | Nullable | Default | Storage | Compression | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+-------------+--------------+-------------
+ f1     | integer |           |          |         | plain   |             |              | 
+
+ALTER TABLE cmdata2 ALTER COLUMN f1 TYPE varchar;
+\d+ cmdata2
+                                               Table "pglz.cmdata2"
+ Column |       Type        | Collation | Nullable | Default | Storage  | Compression | Stats target | Description 
+--------+-------------------+-----------+----------+---------+----------+-------------+--------------+-------------
+ f1     | character varying |           |          |         | extended |             |              | 
+
+ALTER TABLE cmdata2 ALTER COLUMN f1 TYPE int USING f1::integer;
+\d+ cmdata2
+                                          Table "pglz.cmdata2"
+ Column |  Type   | Collation | Nullable | Default | Storage | Compression | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+-------------+--------------+-------------
+ f1     | integer |           |          |         | plain   |             |              | 
+
+--changing column storage should not impact the compression method
+--but the data should not be compressed
+ALTER TABLE cmdata2 ALTER COLUMN f1 TYPE varchar;
+ALTER TABLE cmdata2 ALTER COLUMN f1 SET COMPRESSION pglz;
+\d+ cmdata2
+                                               Table "pglz.cmdata2"
+ Column |       Type        | Collation | Nullable | Default | Storage  | Compression | Stats target | Description 
+--------+-------------------+-----------+----------+---------+----------+-------------+--------------+-------------
+ f1     | character varying |           |          |         | extended | pglz        |              | 
+
+ALTER TABLE cmdata2 ALTER COLUMN f1 SET STORAGE plain;
+\d+ cmdata2
+                                               Table "pglz.cmdata2"
+ Column |       Type        | Collation | Nullable | Default | Storage | Compression | Stats target | Description 
+--------+-------------------+-----------+----------+---------+---------+-------------+--------------+-------------
+ f1     | character varying |           |          |         | plain   | pglz        |              | 
+
+INSERT INTO cmdata2 VALUES (repeat('123456789', 800));
+SELECT pg_column_compression(f1) FROM cmdata2;
+ pg_column_compression 
+-----------------------
+ 
+(1 row)
+
+-- test compression with inheritance
+CREATE TABLE cmdata3(f1 text);
+CREATE TABLE cminh() INHERITS (cmdata, cmdata3);
+NOTICE:  merging multiple inherited definitions of column "f1"
+-- test default_toast_compression GUC
+-- suppress machine-dependent details
+\set VERBOSITY terse
+SET default_toast_compression = '';
+ERROR:  invalid value for parameter "default_toast_compression": ""
+SET default_toast_compression = 'I do not exist compression';
+ERROR:  invalid value for parameter "default_toast_compression": "I do not exist compression"
+SET default_toast_compression = 'pglz';
+\set VERBOSITY default
+ALTER TABLE cmdata2 ALTER COLUMN f1 SET COMPRESSION default;
+\d+ cmdata2
+                                               Table "pglz.cmdata2"
+ Column |       Type        | Collation | Nullable | Default | Storage | Compression | Stats target | Description 
+--------+-------------------+-----------+----------+---------+---------+-------------+--------------+-------------
+ f1     | character varying |           |          |         | plain   |             |              | 
+
+DROP TABLE cmdata2;
+-- VACUUM FULL does not recompress
+SELECT pg_column_compression(f1) FROM cmdata;
+ pg_column_compression 
+-----------------------
+ pglz
+(1 row)
+
+VACUUM FULL cmdata;
+SELECT pg_column_compression(f1) FROM cmdata;
+ pg_column_compression 
+-----------------------
+ pglz
+(1 row)
+
+-- check data is ok
+SELECT length(f1) FROM cmdata;
+ length 
+--------
+  10000
+(1 row)
+
+SELECT length(f1) FROM cmmove1;
+ length 
+--------
+  10000
+(1 row)
+
+CREATE TABLE badcompresstbl (a text COMPRESSION I_Do_Not_Exist_Compression); -- fails
+ERROR:  invalid compression method "i_do_not_exist_compression"
+CREATE TABLE badcompresstbl (a text);
+ALTER TABLE badcompresstbl ALTER a SET COMPRESSION I_Do_Not_Exist_Compression; -- fails
+ERROR:  invalid compression method "i_do_not_exist_compression"
+DROP TABLE badcompresstbl;
+\set HIDE_TOAST_COMPRESSION true

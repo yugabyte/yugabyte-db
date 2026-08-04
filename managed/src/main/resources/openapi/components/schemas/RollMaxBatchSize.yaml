@@ -1,0 +1,17 @@
+title: RollMaxBatchSize
+description: Suggested number of tservers to roll during upgrade if available.
+type: object
+x-yba-api-visibility: internal
+properties:
+  primary_batch_size:
+    description: Suggested number nodes for primary cluster.
+    type: number
+    format: int32
+    example: 1
+    default: 1
+  read_replica_batch_size:
+    description: Suggested number nodes for readonly cluster.
+    type: number
+    format: int32
+    example: 1
+    default: 1

@@ -1,0 +1,83 @@
+CREATE EXTENSION pg_stat_monitor;
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_track_utility';
+                name                | setting | unit | context | vartype |       source       | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+------------------------------------+---------+------+---------+---------+--------------------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_track_utility | off     |      | user    | bool    | configuration file |         |         |          | on       | off       | f
+(1 row)
+
+CREATE TABLE TBL_0(key text primary key, txt_0 text, value_0 int);
+INSERT INTO TBL_0(key, txt_0, value_0) VALUES('000000', '846930886', 1804289383);
+SELECT key, txt_0, value_0 FROM TBL_0;
+  key   |   txt_0   |  value_0   
+--------+-----------+------------
+ 000000 | 846930886 | 1804289383
+(1 row)
+
+SELECT key, txt_0, value_0 FROM TBL_0;
+  key   |   txt_0   |  value_0   
+--------+-----------+------------
+ 000000 | 846930886 | 1804289383
+(1 row)
+
+UPDATE TBL_0 SET value_0 = 1681692777;
+Analyze TBL_0;
+DROP TABLE TBL_0;
+SELECT datname, substr(query,0,100) AS query, calls FROM pg_stat_monitor ORDER BY datname, query, calls DESC Limit 20;
+ datname  |                                                query                                                | calls 
+----------+-----------------------------------------------------------------------------------------------------+-------
+ postgres | INSERT INTO TBL_0(key, txt_0, value_0) VALUES('000000', '846930886', 1804289383)                    |     1
+ postgres | SELECT key, txt_0, value_0 FROM TBL_0                                                               |     2
+ postgres | SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_v |     1
+ postgres | SELECT pg_stat_monitor_reset()                                                                      |     1
+ postgres | UPDATE TBL_0 SET value_0 = 1681692777                                                               |     1
+(5 rows)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset 
+-----------------------
+ 
+(1 row)
+
+SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_val, pending_restart FROM pg_settings WHERE name='pg_stat_monitor.pgsm_track_utility';
+                name                | setting | unit | context | vartype |       source       | min_val | max_val | enumvals | boot_val | reset_val | pending_restart 
+------------------------------------+---------+------+---------+---------+--------------------+---------+---------+----------+----------+-----------+-----------------
+ pg_stat_monitor.pgsm_track_utility | on      |      | user    | bool    | configuration file |         |         |          | on       | on        | f
+(1 row)
+
+CREATE TABLE TBL_0(key text primary key, txt_0 text, value_0 int);
+INSERT INTO TBL_0(key, txt_0, value_0) VALUES('000000', '846930886', 1804289383);
+SELECT key, txt_0, value_0 FROM TBL_0;
+  key   |   txt_0   |  value_0   
+--------+-----------+------------
+ 000000 | 846930886 | 1804289383
+(1 row)
+
+SELECT key, txt_0, value_0 FROM TBL_0;
+  key   |   txt_0   |  value_0   
+--------+-----------+------------
+ 000000 | 846930886 | 1804289383
+(1 row)
+
+UPDATE TBL_0 SET value_0 = 1681692777;
+Analyze TBL_0;
+DROP TABLE TBL_0;
+SELECT datname, substr(query,0,100) AS query, calls FROM pg_stat_monitor ORDER BY datname, query, calls DESC Limit 20;
+ datname  |                                                query                                                | calls 
+----------+-----------------------------------------------------------------------------------------------------+-------
+ postgres | Analyze TBL_0                                                                                       |     1
+ postgres | CREATE TABLE TBL_0(key text primary key, txt_0 text, value_0 int)                                   |     1
+ postgres | DROP TABLE TBL_0                                                                                    |     1
+ postgres | INSERT INTO TBL_0(key, txt_0, value_0) VALUES('000000', '846930886', 1804289383)                    |     1
+ postgres | SELECT key, txt_0, value_0 FROM TBL_0                                                               |     2
+ postgres | SELECT name, setting, unit, context, vartype, source, min_val, max_val, enumvals, boot_val, reset_v |     1
+ postgres | SELECT pg_stat_monitor_reset()                                                                      |     1
+ postgres | UPDATE TBL_0 SET value_0 = 1681692777                                                               |     1
+(8 rows)
+
+DROP EXTENSION pg_stat_monitor;

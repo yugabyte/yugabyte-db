@@ -1,0 +1,2657 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 6800000;
+SET documentdb.next_collection_id TO 6800;
+SET documentdb.next_collection_index_id TO 6800;
+-- $add operator
+-- Returns expected result
+SELECT * FROM bson_dollar_project('{"a":1, "b": 2}', '{"result": { "$add": [ "$a", "$b", 0 ]}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "3" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"b": 10, "c": 10}}', '{"result": { "$add": [ "$a.b", "$a.c"]}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "20" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$numberDouble": "10.2"}}', '{"result": { "$add": [ "$a", 1]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "11.199999999999999289" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$numberLong": "10"}}', '{"result": { "$add": [ "$a", 1]}}');
+           bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "11" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$date": { "$numberLong" : "0" }}}', '{"result": { "$add": [ "$a", 86400000]}}');
+                     bson_dollar_project                     
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "86400000" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$date": { "$numberLong" : "0" }}}', '{"result": { "$add": [ "$a", 100]}}');
+                  bson_dollar_project                   
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "100" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$date": { "$numberLong" : "0" }}}', '{"result": { "$add": [ "$a", {"$numberDouble": "43200000.56"}]}}');
+                     bson_dollar_project                     
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "43200001" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$date": { "$numberLong" : "0" }}}', '{"result": { "$add": [ "$a", {"$numberDecimal": "1e10"}]}}');
+                      bson_dollar_project                       
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "10000000000" } } }
+(1 row)
+
+-- A single expression is also valid
+SELECT * FROM bson_dollar_project('{"a":{"$numberLong": "10"}}', '{"result": { "$add": "$a"}}');
+           bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "10" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$numberLong": "10"}}', '{"result": { "$add": "$b"}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$numberLong": "10"}}', '{"result": { "$add": NaN}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$numberLong": "10"}}', '{"result": { "$add": null}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+-- Int32 overflow to -> Int64
+SELECT * FROM bson_dollar_project('{"a":2147483646}', '{"result": { "$add": [ "$a", 2]}}');
+               bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "2147483648" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1073741823, "b": 1073741825}', '{"result": { "$add": [ "$a", "$b"]}}');
+               bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "2147483648" } }
+(1 row)
+
+-- Int64 overflow coerce to double
+SELECT * FROM bson_dollar_project('{"a":9223372036854775807}', '{"result": { "$add": [ "$a", 2]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "9223372036854775808.0" } }
+(1 row)
+
+-- Any null should project to null (even if it is a date overflow), non-existent paths return null if there is no date overflow
+SELECT * FROM bson_dollar_project('{"a":null, "b": 2}', '{"result": { "$add": [ "$a", "$b", 0 ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1, "b": 2}', '{"result": { "$add": [ "$a", "$b", null ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1, "b": null}', '{"result": { "$add": [ "$a", "$b", null ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1 }', '{"result": { "$add": [ "$a", "$b" ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1 }', '{"result": { "$add": [ "$a", "$a.b" ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$date": { "$numberLong" : "9223372036854775807" }} }', '{"result": { "$add": [ "$a", 100, 100, null ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$date": { "$numberLong" : "9223372036854775807" }}, "b": null }', '{"result": { "$add": [ "$a", 100, 100, "$b" ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+-- Should return invalid date (INT64_MAX) if there is a decimal128 overflow
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$add": [ {"$date": { "$numberLong" : "0" }}, {"$numberDecimal": "1e5000"}]}}');
+                          bson_dollar_project                           
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "9223372036854775807" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$add": [ {"$date": { "$numberLong" : "0" }}, {"$numberDecimal": "NaN"}]}}');
+                          bson_dollar_project                           
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "9223372036854775807" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$add": [ {"$date": { "$numberLong" : "0" }}, {"$numberDecimal": "Infinity"}]}}');
+                          bson_dollar_project                           
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "9223372036854775807" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$add": [ {"$date": { "$numberLong" : "0" }}, {"$numberDouble": "NaN"}, {"$numberDecimal": "1"}]}}');
+                          bson_dollar_project                           
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "9223372036854775807" } } }
+(1 row)
+
+-- Should round to nearest even for date operations
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$add": [ {"$date": "2019-01-30T07:30:10.136Z"}, {"$numberDouble": "819.4"}]}}');
+                       bson_dollar_project                        
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "1548833410955" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$add": [ {"$date": "2019-01-30T07:30:10.136Z"}, {"$numberDouble": "819.56"}]}}');
+                       bson_dollar_project                        
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "1548833410956" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$add": [ {"$date": "2019-01-30T07:30:10.136Z"}, {"$numberDecimal": "819.4899999"}]}}');
+                       bson_dollar_project                        
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "1548833410955" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$add": [ {"$date": "2019-01-30T07:30:10.136Z"}, {"$numberDecimal": "819.5359123621083"}]}}');
+                       bson_dollar_project                        
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "1548833410956" } } }
+(1 row)
+
+-- Should error with non-numeric or date expressions
+SELECT * FROM bson_dollar_project('{"a":{ }, "b": null}', '{"result": { "$add": [ "$a", 922, 1 ]}}');
+ERROR:  $add can only process numeric or date types, not object
+SELECT * FROM bson_dollar_project('{"a": 1, "b": false}', '{"result": { "$add": [ "$a", "$b", 1 ]}}');
+ERROR:  $add can only process numeric or date types, not bool
+SELECT * FROM bson_dollar_project('{"a": 1, "b": "false"}', '{"result": { "$add": [ "$a", "$b", 1 ]}}');
+ERROR:  $add can only process numeric or date types, not string
+SELECT * FROM bson_dollar_project('{"a": 1, "b": [2, 3]}', '{"result": { "$add": [ "$a", "$b", 1 ]}}');
+ERROR:  $add can only process numeric or date types, not array
+SELECT * FROM bson_dollar_project('{"a":[1,2]}', '{"result": { "$add": [ "$a.0", "$a.1", 0 ]}}');
+ERROR:  $add can only process numeric or date types, not array
+SELECT * FROM bson_dollar_project('{"a":1}', '{"result": { "$add": [ "$a", "string" ]}}');
+ERROR:  $add can only process numeric or date types, not string
+SELECT * FROM bson_dollar_project('{"a":1}', '{"result": { "$add": [ "$a", true ]}}');
+ERROR:  $add can only process numeric or date types, not bool
+SELECT * FROM bson_dollar_project('{"a":1}', '{"result": { "$add": [ "$a", {} ]}}');
+ERROR:  $add can only process numeric or date types, not object
+-- Should error if multiple dates are passed in
+SELECT * FROM bson_dollar_project('{"a":{ "$date": { "$numberLong" : "0" }}, "b": {"$date": { "$numberLong" : "1000" }}}', '{"result": { "$add": [ "$a", "$b" ]}}');
+ERROR:  Only a single date value is permitted within an $add operators expression.
+SELECT * FROM bson_dollar_project('{"a":{ "$date": { "$numberLong" : "0" }}, "b": {"$date": { "$numberLong" : "1000" }}}', '{"result": { "$add": [ 1, 2, "$a", "$b" ]}}');
+ERROR:  Only a single date value is permitted within an $add operators expression.
+SELECT * FROM bson_dollar_project('{"a": 100, "b": {"$date": { "$numberLong" : "1000" }}}', '{"result": { "$add": [ 1, 2, "$a", "$b", {"$date": {"$numberLong": "1000"}} ]}}');
+ERROR:  Only a single date value is permitted within an $add operators expression.
+-- Should error if date overflows
+SELECT * FROM bson_dollar_project('{"a": 100, "b": {"$date": { "$numberLong" : "9223372036854775807" }}}', '{"result": { "$add": [ "$a", "$b" ]}}');
+ERROR:  Date value overflow detected in operator $add
+SELECT * FROM bson_dollar_project('{"a": -100, "b": {"$date": { "$numberLong" : "-9223372036854775807" }}}', '{"result": { "$add": [ "$a", "$b" ]}}');
+ERROR:  Date value overflow detected in operator $add
+SELECT * FROM bson_dollar_project('{"a": -100, "b": {"$date": { "$numberLong" : "-9223372036854775807" }}}', '{"result": { "$add": [ "$a", "$b", "$c" ]}}');
+ERROR:  Date value overflow detected in operator $add
+SELECT * FROM bson_dollar_project('{"a": {"$numberDouble": "100.58"}, "b": {"$date": { "$numberLong" : "0" }}}', '{"result": { "$add": [ "$a", "$b", {"$numberDouble": "9223372036854775800.22"} ]}}');
+ERROR:  Date value overflow detected in operator $add
+SELECT * FROM bson_dollar_project('{"a": {"$numberDouble": "100.58"}, "b": {"$date": { "$numberLong" : "0" }}}', '{"result": { "$add": [ "$a", "$b", NaN ]}}');
+ERROR:  Date value overflow detected in operator $add
+-- $subtract operator
+-- Returns expected result
+SELECT * FROM bson_dollar_project('{"a":1, "b": 2}', '{"result": { "$subtract": [ "$a", "$b" ]}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "-1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"b": 10, "c": 10}}', '{"result": { "$subtract": [ "$a.b", "$a.c"]}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"b": -100, "c": -100}}', '{"result": { "$subtract": [ "$a.b", "$a.c"]}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$numberDouble": "10.2"}}', '{"result": { "$subtract": [ "$a", 1]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "9.1999999999999992895" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$numberDouble": "10.2"}}', '{"result": { "$subtract": [ "$a", {"$numberDecimal": "1232"}]}}');
+                     bson_dollar_project                     
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "-1221.8000000000000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$subtract": [ "$a", {"$numberDecimal": "1232"}]}}');
+              bson_dollar_project              
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "-1231" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$numberDecimal": "102123"}}', '{"result": { "$subtract": [ "$a", {"$numberDecimal": "-1232"}]}}');
+              bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "103355" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$numberLong": "10"}}', '{"result": { "$subtract": [ "$a", -1000]}}');
+            bson_dollar_project            
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "1010" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$date": { "$numberLong" : "0" }}}', '{"result": { "$subtract": [ "$a", 86400000]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "-86400000" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$date": { "$numberLong" : "0" }}}', '{"result": { "$subtract": [ "$a", -86400000]}}');
+                     bson_dollar_project                     
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "86400000" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$date": { "$numberLong" : "0" }}}', '{"result": { "$subtract": [ "$a", {"$numberDouble": "43200000.56"}]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$date" : { "$numberLong" : "-43200000" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$date": { "$numberLong" : "0" }}, "b": {"$date": { "$numberLong" : "86000" }}}', '{"result": { "$subtract": [ "$a", "$b"]}}');
+             bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "-86000" } }
+(1 row)
+
+-- Int32 overflow to -> Int64
+SELECT * FROM bson_dollar_project('{"a":2147483646}', '{"result": { "$subtract": [ "$a", -2]}}');
+               bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "2147483648" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":-1073741825, "b": 1073741825}', '{"result": { "$subtract": [ "$a", "$b"]}}');
+               bson_dollar_project                
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "-2147483650" } }
+(1 row)
+
+-- Int64 overflow coerce to double
+SELECT * FROM bson_dollar_project('{"a":9223372036854775807}', '{"result": { "$subtract": [ "$a", -2]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "9223372036854775808.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":-9223372036854775807}', '{"result": { "$subtract": [ "$a", 2]}}');
+                      bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "-9223372036854775808.0" } }
+(1 row)
+
+-- Null or undefined path should result to null
+SELECT * FROM bson_dollar_project('{"a":null, "b": 2}', '{"result": { "$subtract": [ "$a", "$b" ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1, "b": 2}', '{"result": { "$subtract": [ "$a", null ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1, "b": null}', '{"result": { "$subtract": [ "$b", null ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1 }', '{"result": { "$subtract": [ "$a", "$b" ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1 }', '{"result": { "$subtract": [ "$a", "$a.b" ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$subtract": [ "string", null ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$subtract": [ {"$date":{"$numberLong": "0"}}, null ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+-- Should error if no numbers or dates are passed in
+SELECT * FROM bson_dollar_project('{"a":{ }}', '{"result": { "$subtract": [ "$a", 922 ]}}');
+ERROR:  can't $subtract int from object
+SELECT * FROM bson_dollar_project('{"a": 1, "b": false}', '{"result": { "$subtract": [ "$a", "$b"]}}');
+ERROR:  can't $subtract bool from int
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$subtract": [ "string", 1]}}');
+ERROR:  can't $subtract int from string
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$subtract": [ 1, "string"]}}');
+ERROR:  can't $subtract string from int
+SELECT * FROM bson_dollar_project('{"a":[1,2]}', '{"result": { "$subtract": [ "$a.0", 0 ]}}');
+ERROR:  can't $subtract int from array
+SELECT * FROM bson_dollar_project('{"a":1}', '{"result": { "$subtract": [ "$a", true ]}}');
+ERROR:  can't $subtract bool from int
+SELECT * FROM bson_dollar_project('{"a":1}', '{"result": { "$subtract": [ "$a", {} ]}}');
+ERROR:  can't $subtract object from int
+SELECT * FROM bson_dollar_project('{"a":1}', '{"result": { "$subtract": [ "$a", {} ]}}');
+ERROR:  can't $subtract object from int
+SELECT * FROM bson_dollar_project('{"a":1}', '{"result": { "$subtract": [ "$a", {"$date": {"$numberLong": "2"}}]}}');
+ERROR:  can't $subtract date from int
+SELECT * FROM bson_dollar_project('{"a":{"$date": {"$numberLong": "0"}}}', '{"result": { "$subtract": [ "$a", true]}}');
+ERROR:  can't $subtract bool from date
+-- Should error if wrong number of args is provided
+SELECT * FROM bson_dollar_project('{"a":{ }}', '{"result": { "$subtract": "$a" }}');
+ERROR:  The expression $subtract requires exactly 2 arguments, but 1 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{"a":{ }}', '{"result": { "$subtract": [] }}');
+ERROR:  The expression $subtract requires exactly 2 arguments, but 0 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{"a":{ }}', '{"result": { "$subtract": [{"$subtract": [1, 2, 3]}, 2, 4, 5] }}');
+ERROR:  The expression $subtract requires exactly 2 arguments, but 4 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$subtract": ["$a", 1, 3] }}');
+ERROR:  The expression $subtract requires exactly 2 arguments, but 3 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{"a": 1, "b": 2, "c": "string"}', '{"result": { "$subtract": ["$a", "$b", "$c"] }}');
+ERROR:  The expression $subtract requires exactly 2 arguments, but 3 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{"a": 1, "b": 2, "c": "string"}', '{"result": { "$subtract": ["$a", "$b", "$c", 2, 3, 3, 3, 3] }}');
+ERROR:  The expression $subtract requires exactly 2 arguments, but 8 arguments were actually provided.
+-- $multiply operator
+-- Returns expected result
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$multiply": []}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$multiply": 1}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 2}', '{"result": { "$multiply": "$a"}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "2" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$multiply": { "$numberDouble" : "NaN" }}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 2}', '{"result": { "$multiply": ["$a", { "$numberDouble" : "NaN" }] }}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1, "b": 2}', '{"result": { "$multiply": [ "$a", "$b", 3 ]}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "6" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"b": 10, "c": 10}}', '{"result": { "$multiply": [ "$a.b", "$a.c"]}}');
+           bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "100" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"b": -100, "c": -100}}', '{"result": { "$multiply": [ "$a.b", "$a.c", -1]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "-10000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$numberDouble": "10.2"}}', '{"result": { "$multiply": [ "$a", 1]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "10.199999999999999289" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$numberDouble": "10.2"}}', '{"result": { "$multiply": [ "$a", {"$numberDecimal": "1232"}]}}');
+                     bson_dollar_project                     
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "12566.4000000000000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$multiply": [ "$a", {"$numberDecimal": "1232"}]}}');
+             bson_dollar_project              
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "1232" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$numberDecimal": "102123"}}', '{"result": { "$multiply": [ "$a", {"$numberDecimal": "-1232"}]}}');
+                bson_dollar_project                 
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "-125815536" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$numberLong": "10"}}', '{"result": { "$multiply": [ "$a", -1000]}}');
+             bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "-10000" } }
+(1 row)
+
+-- Int32 overflow to -> Int64
+SELECT * FROM bson_dollar_project('{"a":1073741824}', '{"result": { "$multiply": [ "$a", 2]}}');
+               bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "2147483648" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":-1073741824}', '{"result": { "$multiply": [ "$a", 2, 2]}}');
+               bson_dollar_project                
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "-4294967296" } }
+(1 row)
+
+-- Int64 overflow coerce to double
+SELECT * FROM bson_dollar_project('{"a":9223372036854775807}', '{"result": { "$multiply": [ "$a", 2]}}');
+                      bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "18446744073709551616.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":-9223372036854775807}', '{"result": { "$multiply": [ "$a", 2]}}');
+                      bson_dollar_project                       
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "-18446744073709551616.0" } }
+(1 row)
+
+-- Null or undefined should return null
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$multiply": null}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$multiply": "$a.b"}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":null, "b": 2}', '{"result": { "$multiply": [ "$a", "$b" ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1, "b": 2}', '{"result": { "$multiply": [ "$a", "$b", 3, 100, null ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1 }', '{"result": { "$multiply": [ "$a", "$b" ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1 }', '{"result": { "$multiply": [ "$a", "$a.b" ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+-- Should error if no number is provided
+SELECT * FROM bson_dollar_project('{"a":{ }}', '{"result": { "$multiply": [ "$a", 922 ]}}');
+ERROR:  $multiply works exclusively with numeric data types, not with object
+SELECT * FROM bson_dollar_project('{"a": 1, "b": false}', '{"result": { "$multiply": [ "$a", "$b"]}}');
+ERROR:  $multiply works exclusively with numeric data types, not with bool
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$multiply": [ "string", 1]}}');
+ERROR:  $multiply works exclusively with numeric data types, not with string
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$multiply": [ 1, "string"]}}');
+ERROR:  $multiply works exclusively with numeric data types, not with string
+SELECT * FROM bson_dollar_project('{"a":[1,2]}', '{"result": { "$multiply": [ "$a.0", 2 ]}}');
+ERROR:  $multiply works exclusively with numeric data types, not with array
+SELECT * FROM bson_dollar_project('{"a":1}', '{"result": { "$multiply": [ "$a", true ]}}');
+ERROR:  $multiply works exclusively with numeric data types, not with bool
+SELECT * FROM bson_dollar_project('{"a":1}', '{"result": { "$multiply": [ "$a", {} ]}}');
+ERROR:  $multiply works exclusively with numeric data types, not with object
+SELECT * FROM bson_dollar_project('{"a":{}}', '{"result": { "$multiply": [ "$a", 32 ]}}');
+ERROR:  $multiply works exclusively with numeric data types, not with object
+-- $divide operator
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$divide": [1, 1]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$divide": [3, 2]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.5" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 2}', '{"result": { "$divide": ["$a", 4]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "0.5" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$divide": [{ "$numberDouble" : "NaN" }, 2]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 2}', '{"result": { "$divide": ["$a", { "$numberDouble" : "NaN" }] }}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"b": 10, "c": 10}}', '{"result": { "$divide": [ "$a.b", "$a.c"]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"b": -100, "c": -100}}', '{"result": { "$divide": [ "$a.b", "$a.c"]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$numberDouble": "10.2"}}', '{"result": { "$divide": [ "$a", {"$numberDecimal": "1"}]}}');
+                   bson_dollar_project                    
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "10.2000000000000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$numberDouble": "0.99999999999999"}}', '{"result": { "$divide": [ "$a", {"$numberDecimal": "1"}]}}');
+                    bson_dollar_project                    
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "0.999999999999990" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$numberDouble": "0.99999999999999999"}}', '{"result": { "$divide": [ "$a", {"$numberDecimal": "1"}]}}');
+                   bson_dollar_project                    
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "1.00000000000000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$numberLong": "10"}}', '{"result": { "$divide": [ "$a", 5]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "2.0" } }
+(1 row)
+
+-- Null or undefined should return null
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$divide": [null, 2]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$divide": [null, 0]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$divide": ["str", null]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$divide": ["$a", "$a.b"]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":null, "b": 2}', '{"result": { "$divide": [ "$a", "$b" ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1, "b": 2}', '{"result": { "$divide": [ "$a", null ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1 }', '{"result": { "$divide": [ "$a", "$b" ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1 }', '{"result": { "$divide": [ "$a", "$a.b" ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+-- Divide by zero is not allowed
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$divide": [2, 0]}}');
+ERROR:  $divide by zero is not allowed
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$divide": [2, {"$numberLong": "0"}]}}');
+ERROR:  $divide by zero is not allowed
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$divide": [2, {"$numberDecimal": "0"}]}}');
+ERROR:  $divide by zero is not allowed
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$divide": [2, 0.0]}}');
+ERROR:  $divide by zero is not allowed
+SELECT * FROM bson_dollar_project('{"a": 0.0}', '{"result": { "$divide": [2, "$a"]}}');
+ERROR:  $divide by zero is not allowed
+-- Number or args should be 2
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$divide": {}}}');
+ERROR:  The expression $divide requires exactly 2 arguments, but 1 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$divide": 1}}');
+ERROR:  The expression $divide requires exactly 2 arguments, but 1 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$divide": [1]}}');
+ERROR:  The expression $divide requires exactly 2 arguments, but 1 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$divide": [1, 2, 3, 4, 5, 6]}}');
+ERROR:  The expression $divide requires exactly 2 arguments, but 6 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$divide": [1, 2, 3]}}');
+ERROR:  The expression $divide requires exactly 2 arguments, but 3 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$divide": [{"$divide": [1, 0]}]}}');
+ERROR:  The expression $divide requires exactly 2 arguments, but 1 arguments were actually provided.
+-- Only numbers should be allowed
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$divide": [1, "str"]}}');
+ERROR:  $divide only supports numeric types, not int and string
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$divide": ["str", 1]}}');
+ERROR:  $divide only supports numeric types, not string and int
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$divide": [true, 1]}}');
+ERROR:  $divide only supports numeric types, not bool and int
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$divide": [2, false]}}');
+ERROR:  $divide only supports numeric types, not int and bool
+SELECT * FROM bson_dollar_project('{"a": "str"}', '{"result": { "$divide": [2, "$a"]}}');
+ERROR:  $divide only supports numeric types
+SELECT * FROM bson_dollar_project('{"a": {}}', '{"result": { "$divide": ["$a", 5]}}');
+ERROR:  $divide only supports numeric types
+-- $mod operator : basic 
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$mod": [1, 1]}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$mod": [3, 2]}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 2}', '{"result": { "$mod": ["$a", 4]}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "2" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"b": 10, "c": 10}}', '{"result": { "$mod": [ "$a.b", "$a.c"]}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"b": -100, "c": -100}}', '{"result": { "$mod": [ "$a.b", "$a.c"]}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$numberDouble": "10.2"}}', '{"result": { "$mod": [ "$a", {"$numberDecimal": "1"}]}}');
+                   bson_dollar_project                   
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "0.2000000000000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$numberDouble": "0.99999999999999"}}', '{"result": { "$mod": [ "$a", {"$numberDecimal": "1"}]}}');
+                    bson_dollar_project                    
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "0.999999999999990" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$numberDouble": "0.99999999999999999"}}', '{"result": { "$mod": [ "$a", {"$numberDecimal": "1"}]}}');
+              bson_dollar_project              
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "0E-14" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$numberLong": "10"}}', '{"result": { "$mod": [ "$a", 5]}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$numberLong": "500000000000"}}', '{"result": { "$mod": [ "$a", {"$numberDouble": "450000000000.0"}]}}');
+                 bson_dollar_project                  
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "50000000000.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$numberLong": "500000000000"}}', '{"result": { "$mod": [ "$a", {"$numberLong": "450000000000"}]}}');
+               bson_dollar_project                
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "50000000000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":{"$numberLong": "5"}}', '{"result": { "$mod": [ "$a", {"$numberDouble": "3"}]}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "2" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":5}', '{"result": { "$mod": [ "$a", {"$numberDouble": "3"}]}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "2" } }
+(1 row)
+
+-- $mod operator : Nan and Infinity
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$mod": [{ "$numberDouble" : "NaN" }, 2]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 2}', '{"result": { "$mod": ["$a", { "$numberDouble" : "NaN" }] }}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 2}', '{"result": { "$mod": ["$a", { "$numberDouble" : "Infinity" }] }}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "2.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 2}', '{"result": { "$mod": [{ "$numberDouble" : "NaN" }, { "$numberDouble" : "NaN" }] }}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 2}', '{"result": { "$mod": [{ "$numberDouble" : "Infinity" }, { "$numberDouble" : "Infinity" }] }}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 2}', '{"result": { "$mod": [{ "$numberDouble" : "Nan" }, { "$numberDouble" : "Infinity" }] }}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 2}', '{"result": { "$mod": [{ "$numberDouble" : "Infinity" }, { "$numberDouble" : "NaN" }] }}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 2}', '{"result": { "$mod": [{ "$numberDouble" : "Infinity" }, { "$numberDouble" : "Infinity" }] }}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 2}', '{"result": { "$mod": [{ "$numberDecimal" : "Infinity" }, { "$numberDecimal" : "Infinity" }] }}');
+             bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 2}', '{"result": { "$mod": [{ "$numberDecimal" : "Infinity" }, { "$numberDecimal" : "Nan" }] }}');
+             bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "NaN" } }
+(1 row)
+
+-- Null or undefined should return null
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$mod": [null, 2]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$mod": [null, 0]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$mod": ["str", null]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$mod": ["$a", "$a.b"]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":null, "b": 2}', '{"result": { "$mod": [ "$a", "$b" ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1, "b": 2}', '{"result": { "$mod": [ "$a", null ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1 }', '{"result": { "$mod": [ "$a", "$b" ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a":1 }', '{"result": { "$mod": [ "$a", "$a.b" ]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+-- $mod operator : can't mod by zero
+SELECT * FROM bson_dollar_project('{"a": 2}', '{"result": { "$mod": ["$a", { "$numberDouble" : "0" }] }}');
+ERROR:  Cannot perform $mod with zero
+SELECT * FROM bson_dollar_project('{"a": 2}', '{"result": { "$mod": [{ "$numberDecimal" : "Infinity" }, { "$numberDecimal" : "0" }] }}');
+ERROR:  Cannot perform $mod with zero
+SELECT * FROM bson_dollar_project('{"a": 2}', '{"result": { "$mod": [{ "$numberDecimal" : "Infinity" }, 0] }}');
+ERROR:  Cannot perform $mod with zero
+-- $mod operator : Only numerics allowed
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$mod": [1, "str"]}}');
+ERROR:  $mod operator supports only numeric types, not int and string
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$mod": ["str", 1]}}');
+ERROR:  $mod operator supports only numeric types, not string and int
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$mod": [true, 1]}}');
+ERROR:  $mod operator supports only numeric types, not bool and int
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$mod": [2, false]}}');
+ERROR:  $mod operator supports only numeric types, not int and bool
+SELECT * FROM bson_dollar_project('{"a": "str"}', '{"result": { "$mod": [2, "$a"]}}');
+ERROR:  $mod only supports numeric types
+SELECT * FROM bson_dollar_project('{"a": {}}', '{"result": { "$mod": ["$a", 5]}}');
+ERROR:  $mod only supports numeric types
+-- $mod operator : Return types based on operands types
+--  Any operand Decimal => Result is Decimal 
+--  Any operand Long and the result has no fraction => Result is Long
+--  Everything else => Result is Double
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$mod": [ {"$numberLong": "10"}, {"$numberLong": "-1"}]}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$mod": [ {"$numberLong": "10"}, {"$numberDouble": "1.032"}]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "0.7119999999999997442" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$mod": [ {"$numberLong": "10"}, 21]}}');
+           bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "10" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$mod": [ {"$numberLong": "10"}, {"$numberDecimal": "1.032"}]}}');
+              bson_dollar_project              
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "0.712" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$mod": [ {"$numberDecimal": "10"}, {"$numberDecimal": "1.032"}]}}');
+              bson_dollar_project              
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "0.712" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$mod": [ {"$numberDecimal": "10"}, {"$numberDouble": "1.032"}]}}');
+                   bson_dollar_project                    
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "0.71200000000000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$mod": [ {"$numberDecimal": "10"}, 21]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "10" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$mod": [ {"$numberDouble": "10"}, {"$numberDouble": "1.032"}]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "0.7119999999999997442" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$mod": [ {"$numberDouble": "10"}, {"$numberDouble": "7"}]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "3.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$mod": [ {"$numberDouble": "10"}, 7]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "3.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$mod": [ {"$numberDouble": "10"}, {"$numberLong": "-1"}]}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$mod": [ {"$numberDouble": "10.78"}, {"$numberLong": "-1"}]}}');
+                      bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "0.77999999999999936051" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{"result": { "$mod": [ 89, 7]}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "5" } }
+(1 row)
+
+-- $abs: returns expected value
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$abs": -1}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$abs": 1}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$abs": {"$numberDouble": "-232232.23"}}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "232232.23000000001048" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$abs": {"$numberLong": "-2323232"}}}');
+             bson_dollar_project              
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "2323232" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$abs": {"$numberLong": "-9223372036854775807"}}}');
+                   bson_dollar_project                    
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "9223372036854775807" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$abs": -2147483648}}');
+               bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "2147483648" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$abs": {"$numberDecimal": "-9223372036854775808"}}}');
+                     bson_dollar_project                     
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "9223372036854775808" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$abs": {"$numberDecimal": "NaN"}}}');
+             bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$abs": {"$numberDouble": "NaN"}}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": -2}', '{"result": { "$abs": {"$add": [-2, "$a"]}}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "4" } }
+(1 row)
+
+-- $abs: null/undefined returns null
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$abs": "$a"}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": null}', '{"result": { "$abs": "$a"}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$abs": null}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+-- $abs: can't calculate abs of MIN_INT64
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$abs": {"$numberLong": "-9223372036854775808"}}}');
+ERROR:  Cannot compute $abs for minimum long long value
+-- $abs: supports only numerics
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$abs": "str"}}');
+ERROR:  $abs operator only accepts numeric data types, not string
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$abs": true}}');
+ERROR:  $abs operator only accepts numeric data types, not bool
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$abs": [false]}}');
+ERROR:  $abs operator only accepts numeric data types, not bool
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$abs": [{}]}}');
+ERROR:  $abs operator only accepts numeric data types, not object
+-- $abs: takes exactly 1 arg
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$abs": []}}');
+ERROR:  The expression $abs requires exactly 1 arguments, but 0 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$abs": [1, 2]}}');
+ERROR:  The expression $abs requires exactly 1 arguments, but 2 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$abs": [1, 2, 3, 4]}}');
+ERROR:  The expression $abs requires exactly 1 arguments, but 4 arguments were actually provided.
+-- $ceil: returns expected value
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": -1}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "-1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": 1}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": {"$numberLong": "1"}}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": {"$numberLong": "-1"}}}');
+           bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "-1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": {"$numberDouble": "23064.000001"}}}');
+              bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "23065.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": {"$numberDouble": "-23064.000001"}}}');
+               bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "-23064.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": {"$numberDecimal": "23064.000001"}}}');
+              bson_dollar_project              
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "23065" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": {"$numberDecimal": "-23064.000001"}}}');
+              bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "-23064" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": {"$numberDecimal": "0.000001"}}}');
+            bson_dollar_project            
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": {"$numberDouble": "NaN"}}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": {"$numberDecimal": "NaN"}}}');
+             bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": {"$log": [10, 2]}}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "4.0" } }
+(1 row)
+
+-- $ceil: null/undefined should return null
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": "$a"}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": null}', '{"result": { "$ceil": "$a"}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": null}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+-- $ceil: supports only numerics
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": "str"}}');
+ERROR:  $ceil can only handle numeric data types, not string
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": true}}');
+ERROR:  $ceil can only handle numeric data types, not bool
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": [false]}}');
+ERROR:  $ceil can only handle numeric data types, not bool
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": [{}]}}');
+ERROR:  $ceil can only handle numeric data types, not object
+-- $ceil: takes exactly 1 arg
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": []}}');
+ERROR:  The expression $ceil requires exactly 1 arguments, but 0 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": [1, 2]}}');
+ERROR:  The expression $ceil requires exactly 1 arguments, but 2 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ceil": [1, 2, 3, 4]}}');
+ERROR:  The expression $ceil requires exactly 1 arguments, but 4 arguments were actually provided.
+-- $exp: returns expected result
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$exp": -1}}');
+                      bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "0.36787944117144233402" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$exp": 10}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "22026.465794806717895" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$exp": {"$numberLong": "1"}}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "2.7182818284590450908" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$exp": {"$numberDecimal": "-1"}}}');
+                             bson_dollar_project                              
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "0.3678794411714423215955237701614609" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$exp": {"$numberDecimal": "1"}}}');
+                             bson_dollar_project                             
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "2.718281828459045235360287471352662" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$exp": {"$numberDouble": "NaN"}}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$exp": {"$numberDecimal": "NaN"}}}');
+             bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "NaN" } }
+(1 row)
+
+-- $exp: null/undefined should return null
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$exp": null}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": null}', '{"result": { "$exp": "$a"}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$exp": "$a"}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+-- $exp: input should be numeric 
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$exp": "str"}}');
+ERROR:  The $exp operator can only be used with numeric data types, not string
+SELECT * FROM bson_dollar_project('{"a": true}', '{"result": { "$exp": "$a"}}');
+ERROR:  The $exp operator can only be used with numeric data types, not bool
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$exp": [[]]}}');
+ERROR:  The $exp operator can only be used with numeric data types, not array
+-- $exp: takes exactly 1 arg
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$exp": ["str", 1]}}');
+ERROR:  The expression $exp requires exactly 1 arguments, but 2 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{"a": true}', '{"result": { "$exp": ["$a", 2 ,2, 3]}}');
+ERROR:  The expression $exp requires exactly 1 arguments, but 4 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$exp": []}}');
+ERROR:  The expression $exp requires exactly 1 arguments, but 0 arguments were actually provided.
+-- $floor: returns expected value
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": -1}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "-1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": 1}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": {"$numberLong": "1"}}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": {"$numberLong": "-1"}}}');
+           bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "-1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": {"$numberDouble": "23064.000001"}}}');
+              bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "23064.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": {"$numberDouble": "-23064.000001"}}}');
+               bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "-23065.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": {"$numberDecimal": "23064.000001"}}}');
+              bson_dollar_project              
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "23064" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": {"$numberDecimal": "-23064.000001"}}}');
+              bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "-23065" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": {"$numberDecimal": "0.000001"}}}');
+            bson_dollar_project            
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": {"$numberDouble": "NaN"}}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": {"$numberDecimal": "NaN"}}}');
+             bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": {"$log": [10, 2]}}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "3.0" } }
+(1 row)
+
+-- $floor: null/undefined should return null
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": "$a"}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": null}', '{"result": { "$floor": "$a"}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": null}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+-- $floor: supports only numerics
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": "str"}}');
+ERROR:  Expected numberic type for $floor but found 'string' type
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": true}}');
+ERROR:  Expected numberic type for $floor but found 'bool' type
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": [false]}}');
+ERROR:  Expected numberic type for $floor but found 'bool' type
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": [{}]}}');
+ERROR:  Expected numberic type for $floor but found 'object' type
+-- $floor: takes exactly 1 arg
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": []}}');
+ERROR:  The expression $floor requires exactly 1 arguments, but 0 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": [1, 2]}}');
+ERROR:  The expression $floor requires exactly 1 arguments, but 2 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$floor": [1, 2, 3, 4]}}');
+ERROR:  The expression $floor requires exactly 1 arguments, but 4 arguments were actually provided.
+-- $ln: expected results
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ln": {"$numberDouble": "2.718281828459045"}}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ln": {"$numberDecimal": "2.718281828459045235360287471352662"}}}');
+                             bson_dollar_project                              
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "0.9999999999999999999999999999999998" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ln": {"$numberDouble": "0.0001"}}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "-9.210340371976181828" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ln": {"$numberDecimal": "0.1"}}}');
+                             bson_dollar_project                              
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "-2.302585092994045684017991454684364" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ln": {"$numberLong": "1"}}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "0.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ln": {"$numberDouble": "NaN"}}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ln": {"$numberDecimal": "NaN"}}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"$a": 1}', '{"result": { "$ln": "$a"}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+-- $ln: null/undefined returns null
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ln": null}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ln": "$a"}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"$a": null}', '{"result": { "$ln": "$a"}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+-- $ln: supports only numerics
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ln": "str"}}');
+ERROR:  $ln works exclusively with numeric data types, but received string instead
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ln": true}}');
+ERROR:  $ln works exclusively with numeric data types, but received bool instead
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ln": [false]}}');
+ERROR:  $ln works exclusively with numeric data types, but received bool instead
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ln": [{}]}}');
+ERROR:  $ln works exclusively with numeric data types, but received object instead
+-- $ln: should be positive number greater than 0
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ln": {"$numberDouble": "-2"}}}');
+ERROR:  The argument provided to the $ln operator must be a positive numeric value, but received -2 instead.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ln": {"$numberDecimal": "0"}}}');
+ERROR:  The argument provided to the $ln operator must be a positive numeric value, but received 0 instead.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ln": {"$numberLong": "-1"}}}');
+ERROR:  The argument provided to the $ln operator must be a positive numeric value, but received -1 instead.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ln": -100}}');
+ERROR:  The argument provided to the $ln operator must be a positive numeric value, but received -100 instead.
+-- $ln: takes exactly 1 arg
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ln": []}}');
+ERROR:  The expression $ln requires exactly 1 arguments, but 0 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ln": [1, 2]}}');
+ERROR:  The expression $ln requires exactly 1 arguments, but 2 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$ln": [1, 2, 3, 4]}}');
+ERROR:  The expression $ln requires exactly 1 arguments, but 4 arguments were actually provided.
+-- $log: expected results
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": [10, 10]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": [{"$numberDouble": "0.1"}, 10]}}');
+                      bson_dollar_project                       
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "-0.99999999999999977796" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": [{"$numberDecimal": "10"}, {"$numberDouble": "10"}]}}');
+            bson_dollar_project            
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": [{"$numberDecimal": "10"}, {"$numberDouble": "5"}]}}');
+                             bson_dollar_project                             
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "1.430676558073393050670106568763966" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": [{"$numberDouble": "10"}, {"$numberDouble": "5"}]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.4306765580733933341" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": [{"$numberLong": "10"}, 10]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": [{"$numberLong": "9223372036854775807"}, 10]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "18.964889726830811867" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": [{"$numberDouble": "10"}, 2]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "3.3219280948873626258" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": [{"$numberDouble": "NaN"}, 2]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": [{"$numberDouble": "10"}, {"$numberDecimal": "NaN"}]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+-- $log: null/undefined returns null
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": [10, null]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": ["$a", 10]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"$a": null}', '{"result": { "$log": ["$a", 2]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+-- $log: number must be positive number greater than 0
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": [-1, 10]}}');
+ERROR:  $log requires its argument to be a positive number, but the provided value is -1
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": [0, 10]}}');
+ERROR:  $log requires its argument to be a positive number, but the provided value is 0
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": [{"$numberDecimal": "0"}, 10]}}');
+ERROR:  $log requires its argument to be a positive number, but the provided value is 0
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": [{"$numberDouble": "-3"}, 10]}}');
+ERROR:  $log requires its argument to be a positive number, but the provided value is -3
+-- $log: base must be positive number greater than 1
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": [1, 1]}}');
+ERROR:  The base value for the $log must be positive and cannot be 1, but it is 1.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": [2, 0]}}');
+ERROR:  The base value for the $log must be positive and cannot be 1, but it is 0.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": [2, { "$numberDecimal": "1"}]}}');
+ERROR:  The base value for the $log must be positive and cannot be 1, but it is 1.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": [2, { "$numberDecimal": "0"}]}}');
+ERROR:  The base value for the $log must be positive and cannot be 1, but it is 0.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": [2, { "$numberDouble": "0"}]}}');
+ERROR:  The base value for the $log must be positive and cannot be 1, but it is 0.
+-- $log: arguments must be numbers
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": [[], 1]}}');
+ERROR:  $log requires a numeric argument, but received array instead.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": [2, "str"]}}');
+ERROR:  The base value for the $log operator must be numeric, not string
+-- $log: takes exactly 2 arguments
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": []}}');
+ERROR:  The expression $log requires exactly 2 arguments, but 0 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": {}}}');
+ERROR:  The expression $log requires exactly 2 arguments, but 1 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": [1, 2, 3]}}');
+ERROR:  The expression $log requires exactly 2 arguments, but 3 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log": [1]}}');
+ERROR:  The expression $log requires exactly 2 arguments, but 1 arguments were actually provided.
+-- $log10: expected results
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log10": 10}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log10": {"$numberLong": "10"}}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log10": {"$numberDecimal": "10"}}}');
+            bson_dollar_project            
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log10": {"$numberDouble": "10"}}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log10": {"$numberDouble": "NaN"}}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log10": {"$numberDecimal": "NaN"}}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log10": {"$numberDecimal": "10000"}}}');
+            bson_dollar_project            
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "4" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log10": {"$numberLong": "10000"}}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "4.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log10": {"$numberDecimal": "0.0000000001"}}}');
+                             bson_dollar_project                              
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "-10.00000000000000000000000000000000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log10": {"$numberDouble": "0.001"}}}');
+             bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "-3.0" } }
+(1 row)
+
+-- $log10: null/undefined returns null
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log10": null}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log10": "$a"}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": null}', '{"result": { "$log10": "$a"}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+-- $log10: argument must be numeric
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log10": "str"}}');
+ERROR:  Expected numeric type for $log10 but found 'string' type
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log10": true}}');
+ERROR:  Expected numeric type for $log10 but found 'bool' type
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log10": [[]]}}');
+ERROR:  Expected numeric type for $log10 but found 'array' type
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log10": [{}]}}');
+ERROR:  Expected numeric type for $log10 but found 'object' type
+-- $log10: argument must be positive number
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log10": 0}}');
+ERROR:  The argument provided to $log10 must be a positive number, but the given value is 0.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log10": {"$numberLong": "-1"}}}');
+ERROR:  The argument provided to $log10 must be a positive number, but the given value is -1.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log10": {"$numberDecimal": "-1"}}}');
+ERROR:  The argument provided to $log10 must be a positive number, but the given value is -1.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log10": {"$numberDecimal": "0.000000000000"}}}');
+ERROR:  The argument provided to $log10 must be a positive number, but the given value is 0E-12.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log10": {"$numberDouble": "0.0000000"}}}');
+ERROR:  The argument provided to $log10 must be a positive number, but the given value is 0.
+-- $log10: takes exactly 1 arg
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log10": [1, 2]}}');
+ERROR:  The expression $log10 requires exactly 1 arguments, but 2 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log10": [1, 2, 3]}}');
+ERROR:  The expression $log10 requires exactly 1 arguments, but 3 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$log10": []}}');
+ERROR:  The expression $log10 requires exactly 1 arguments, but 0 arguments were actually provided.
+-- $pow: returns expected
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [2, 2]}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "4" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [-2, 1]}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "-2" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [-2, -1]}}');
+             bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "-0.5" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [-2, 0]}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [{ "$numberDouble": "2"}, 2]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "4.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [2, { "$numberDouble": "31"}]}}');
+                 bson_dollar_project                 
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "2147483648.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [2, { "$numberLong": "10"}]}}');
+            bson_dollar_project            
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "1024" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [2, { "$numberLong": "62"}]}}');
+                   bson_dollar_project                    
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "4611686018427387904" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [{ "$numberLong": "10"}, 2]}}');
+           bson_dollar_project            
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "100" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [{ "$numberDecimal": "10"}, 2]}}');
+                             bson_dollar_project                             
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "100.0000000000000000000000000000000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [5, { "$numberDecimal": "-112"}]}}');
+                               bson_dollar_project                               
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "5.192296858534827628530496329220096E-79" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [1, { "$numberDecimal": "NaN"}]}}');
+                             bson_dollar_project                             
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "1.000000000000000000000000000000000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [1, { "$numberDouble": "NaN"}]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [{ "$numberDecimal": "NaN"}, 2]}}');
+             bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [{ "$numberDouble": "NaN"}, 2]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+-- should lose precision only when a double is returned
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [3, 35]}}');
+                  bson_dollar_project                   
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "50031545098999707" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [3, {"$numberDecimal": "35"}]}}');
+                             bson_dollar_project                             
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "50031545098999707.00000000000000000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [3, {"$numberDouble": "35"}]}}');
+                    bson_dollar_project                     
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "50031545098999704.0" } }
+(1 row)
+
+-- $pow: should coerce when there is overflow
+-- int32 -> int64
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [2, 31]}}');
+               bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "2147483648" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [2, 62]}}');
+                   bson_dollar_project                    
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "4611686018427387904" } }
+(1 row)
+
+-- int32 -> double
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [2, 63]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "9223372036854775808.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [2, 66]}}');
+                      bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "73786976294838206464.0" } }
+(1 row)
+
+-- int64 -> double
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [{ "$numberLong": "2" }, 63]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "9223372036854775808.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [{ "$numberLong": "2" }, 64]}}');
+                      bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "18446744073709551616.0" } }
+(1 row)
+
+-- $pow: should return double for negative exponent with bases not [-1, 0, 1].
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [2, { "$numberLong": "-2" }]}}');
+             bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "0.25" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [-2, { "$numberLong": "-2" }]}}');
+             bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "0.25" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [-4, -2]}}');
+              bson_dollar_project              
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "0.0625" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [{ "$numberLong": "-1" }, -2]}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [{ "$numberLong": "1" }, -2]}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "1" } }
+(1 row)
+
+-- $pow: null/undefined should return null
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [null, 31]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [2, "$a"]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+-- $pow: arguments must be numeric
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [[], 31]}}');
+ERROR:  $pow requires its base to be numeric, but received array instead
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [2, "a"]}}');
+ERROR:  The operator $pow requires a numeric exponent rather than string
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [2, true]}}');
+ERROR:  The operator $pow requires a numeric exponent rather than bool
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [false, true]}}');
+ERROR:  $pow requires its base to be numeric, but received bool instead
+-- $pow: exponent can't be negative if base is 0
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [0, -31]}}');
+ERROR:  A base of 0 and a negative exponent can't be taken by $pow
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [0, -1]}}');
+ERROR:  A base of 0 and a negative exponent can't be taken by $pow
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [0, -0.00000001]}}');
+ERROR:  A base of 0 and a negative exponent can't be taken by $pow
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [0, {"$numberDecimal": "-0.00000001"}]}}');
+ERROR:  A base of 0 and a negative exponent can't be taken by $pow
+-- $pow: takes exactly 2 arguments
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [0, -31, 3]}}');
+ERROR:  The expression $pow requires exactly 2 arguments, but 3 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [0]}}');
+ERROR:  The expression $pow requires exactly 2 arguments, but 1 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": []}}');
+ERROR:  The expression $pow requires exactly 2 arguments, but 0 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$pow": [1,2,3,4,5,6]}}');
+ERROR:  The expression $pow requires exactly 2 arguments, but 6 arguments were actually provided.
+-- $sqrt: returns expected
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$sqrt": 4}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "2.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$sqrt": 0}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "0.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$sqrt": {"$numberLong": "4"}}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "2.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$sqrt": {"$numberLong": "9223372036854775807"}}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "3037000499.9760499001" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$sqrt": {"$numberDouble": "4"}}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "2.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$sqrt": {"$numberDecimal": "4"}}}');
+            bson_dollar_project            
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "2" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$sqrt": {"$numberDouble": "NaN"}}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$sqrt": {"$numberDecimal": "NaN"}}}');
+             bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "NaN" } }
+(1 row)
+
+-- $sqrt: null/undefined returns null
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$sqrt": null}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$sqrt": "$a"}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": null}', '{"result": { "$sqrt": "$a"}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+-- $sqrt: arg must be numeric
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$sqrt": "str"}}');
+ERROR:  $sqrt can only be applied to numeric types, not to string.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$sqrt": [[]]}}');
+ERROR:  $sqrt can only be applied to numeric types, not to array.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$sqrt": {}}}');
+ERROR:  $sqrt can only be applied to numeric types, not to object.
+-- $sqrt: arg must be greater than or equal to 0
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$sqrt": -1}}');
+ERROR:  The operator sqrt requires its argument to be zero or a positive value
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$sqrt": { "$numberDouble": "-1000000"}}}');
+ERROR:  The operator sqrt requires its argument to be zero or a positive value
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$sqrt": { "$numberDouble": "-0.00001"}}}');
+ERROR:  The operator sqrt requires its argument to be zero or a positive value
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$sqrt": { "$numberDecimal": "-0.000000000000001"}}}');
+ERROR:  The operator sqrt requires its argument to be zero or a positive value
+-- $sqrt: takes exactly 1 arg
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$sqrt": []}}');
+ERROR:  The expression $sqrt requires exactly 1 arguments, but 0 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$sqrt": [1, 2, 3, 4]}}');
+ERROR:  The expression $sqrt requires exactly 1 arguments, but 4 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$sqrt": [1, 2]}}');
+ERROR:  The expression $sqrt requires exactly 1 arguments, but 2 arguments were actually provided.
+-- $round: defaults to 0 if 1 arg is provided
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": { "$numberDouble": "1.3" }}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDouble": "1.3" }, 0]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": { "$numberDouble": "1.51" }}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "2.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDouble": "1.51" }, 0]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "2.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDouble": "1.49" }]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDouble": "1.49" }, 0]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": { "$numberDecimal": "1.68" }}}');
+            bson_dollar_project            
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "2" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDecimal": "1.68" }, 0]}}');
+            bson_dollar_project            
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "2" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": 10023 }}');
+            bson_dollar_project            
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "10023" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": { "$numberLong": "10023" }}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "10023" } }
+(1 row)
+
+-- $round: double, long or int
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDouble": "1.32" }, 3]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.3200000000000000622" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDouble": "1.32" }, 50]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.3200000000000000622" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDouble": "1.32" }, 100]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.3200000000000000622" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberLong": "132" }, 100]}}');
+           bson_dollar_project            
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "132" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberLong": "132" }, 20]}}');
+           bson_dollar_project            
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "132" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [132, 20]}}');
+           bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "132" } }
+(1 row)
+
+-- $round: positive precision, limit to 35 digits for number decimal
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDouble": "123.391" }, 1]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "123.40000000000000568" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDecimal": "123.391" }, 2]}}');
+              bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "123.39" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDecimal": "123.391" }, 3]}}');
+               bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "123.391" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDouble": "123.397" }, 2]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "123.40000000000000568" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDecimal": "1.397" }, 50]}}');
+                             bson_dollar_project                             
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "1.397000000000000000000000000000000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDecimal": "1.397" }, 35]}}');
+                             bson_dollar_project                             
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "1.397000000000000000000000000000000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDecimal": "132423423.397" }, 35]}}');
+                             bson_dollar_project                             
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "132423423.3970000000000000000000000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDecimal": "132423423.397" }, 100]}}');
+                             bson_dollar_project                             
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "132423423.3970000000000000000000000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDecimal": "132423423.397" }, 15]}}');
+                        bson_dollar_project                        
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "132423423.397000000000000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDouble": "-123.397" }, 2]}}');
+                      bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "-123.40000000000000568" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDecimal": "1.298912343250054252245154325" }, {"$numberDecimal": "20.000000"}]}}');
+                      bson_dollar_project                       
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "1.29891234325005425225" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDecimal": "0.0" }, {"$numberDecimal": "100.00000"}]}}');
+              bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "0E-100" } }
+(1 row)
+
+-- $round: negative precision
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDouble": "123.391" }, -2]}}');
+             bson_dollar_project              
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "100.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDouble": "123.391" }, -3]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "0.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDouble": "123.391" }, -4]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "0.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDecimal": "123.391" }, -2]}}');
+             bson_dollar_project              
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "1E+2" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDecimal": "123.391" }, -4]}}');
+             bson_dollar_project              
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "0E+4" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberLong": "1234532345" }, -5]}}');
+               bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "1234500000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberLong": "1234532345" }, -20]}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [123402345, -8]}}');
+              bson_dollar_project              
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "100000000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [123402345, -19]}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "0" } }
+(1 row)
+
+-- $round: NaN, Infinity/-Infinity, Null/Undefined
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDouble": "NaN" }, -2]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDecimal": "NaN" }, -2]}}');
+             bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDecimal": "Infinity" }, -2]}}');
+               bson_dollar_project                
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "Infinity" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDouble": "Infinity" }, -2]}}');
+               bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "Infinity" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{ "$numberDecimal": "-Infinity" }, -2]}}');
+                bson_dollar_project                
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "-Infinity" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [null, -2]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [1232, null]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": ["$a", 2]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [343, "$a"]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+-- $round: overflow
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [2147483647, -1]}}');
+               bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "2147483650" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{"$numberLong": "9223372036854775806"}, -1]}}');
+ERROR:  Invalid conversion from Decimal128 leading to $round, caused by provided arguments: [9223372036854775806, -1]
+-- $round: num args should be either 1 or 2.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [2147483647, -1, 4]}}');
+ERROR:  The expression $round requires no fewer than 1 arguments and no more than 2 arguments, but 3 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [2147483647, -1, 4, 5]}}');
+ERROR:  The expression $round requires no fewer than 1 arguments and no more than 2 arguments, but 4 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": []}}');
+ERROR:  The expression $round requires no fewer than 1 arguments and no more than 2 arguments, but 0 arguments were actually provided.
+-- $round: args should be numeric
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [{}]}}');
+ERROR:  $round works exclusively with numeric data types, not with object
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [1, "str"]}}');
+ERROR:  Unable to convert from BSON type string into a long value
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [true, 1]}}');
+ERROR:  $round works exclusively with numeric data types, not with bool
+-- $round: precision must be >= -20 and <= 100
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [214, -21]}}');
+ERROR:  Unable to apply $round when using precision value -21, as the acceptable range is between -20 and 100.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [214, 101]}}');
+ERROR:  Unable to apply $round when using precision value 101, as the acceptable range is between -20 and 100.
+-- $round: precision must be integral value in int64 range
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [214, {"$numberDecimal": "-21.1"} ]}}');
+ERROR:  precision argument to  $round must be a integral value
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [214, {"$numberDouble": "-21.1"} ]}}');
+ERROR:  precision argument to  $round must be a integral value
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$round": [214, {"$numberDecimal": "9223372036854775808"} ]}}');
+ERROR:  Unable to convert out-of-range value 9223372036854775808 into a long type
+-- $trunc: defaults to 0 if 1 arg is provided
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": { "$numberDouble": "1.3" }}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDouble": "1.3" }, 0]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": { "$numberDouble": "1.51" }}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDouble": "1.51" }, 0]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDouble": "1.49" }]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDouble": "1.49" }, 0]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": { "$numberDecimal": "1.68" }}}');
+            bson_dollar_project            
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDecimal": "1.68" }, 0]}}');
+            bson_dollar_project            
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": 10023 }}');
+            bson_dollar_project            
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "10023" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": { "$numberLong": "10023" }}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "10023" } }
+(1 row)
+
+-- $trunc: double, long or int
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDouble": "1.32" }, 3]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.3200000000000000622" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDouble": "1.32" }, 50]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.3200000000000000622" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDouble": "1.32" }, 100]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "1.3200000000000000622" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberLong": "132" }, 100]}}');
+           bson_dollar_project            
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "132" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberLong": "132" }, 20]}}');
+           bson_dollar_project            
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "132" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [132, 20]}}');
+           bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "132" } }
+(1 row)
+
+-- $trunc: positive precision, limit to 35 digits for number decimal
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDouble": "123.391" }, 1]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "123.29999999999999716" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDecimal": "123.391" }, 2]}}');
+              bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "123.39" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDecimal": "123.391" }, 3]}}');
+               bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "123.391" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDouble": "123.397" }, 2]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "123.39000000000000057" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDecimal": "1.397" }, 50]}}');
+                             bson_dollar_project                             
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "1.397000000000000000000000000000000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDecimal": "1.397" }, 35]}}');
+                             bson_dollar_project                             
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "1.397000000000000000000000000000000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDecimal": "132423423.397" }, 35]}}');
+                             bson_dollar_project                             
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "132423423.3970000000000000000000000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDecimal": "132423423.397" }, 100]}}');
+                             bson_dollar_project                             
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "132423423.3970000000000000000000000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDecimal": "132423423.397" }, 15]}}');
+                        bson_dollar_project                        
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "132423423.397000000000000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDouble": "-123.397" }, 2]}}');
+                      bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "-123.39000000000000057" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDecimal": "1.298912343250054252245154325" }, {"$numberDecimal": "20.000000"}]}}');
+                      bson_dollar_project                       
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "1.29891234325005425224" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDecimal": "0.0" }, {"$numberDecimal": "100.00000"}]}}');
+              bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "0E-100" } }
+(1 row)
+
+-- $trunc: negative precision
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDouble": "123.391" }, -2]}}');
+             bson_dollar_project              
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "100.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDouble": "123.391" }, -3]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "0.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDouble": "123.391" }, -4]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "0.0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDecimal": "123.391" }, -2]}}');
+             bson_dollar_project              
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "1E+2" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDecimal": "123.391" }, -4]}}');
+             bson_dollar_project              
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "0E+4" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberLong": "1234532345" }, -5]}}');
+               bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "1234500000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberLong": "1234532345" }, -20]}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberLong" : "0" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [123402345, -8]}}');
+              bson_dollar_project              
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "100000000" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [123402345, -19]}}');
+          bson_dollar_project          
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "0" } }
+(1 row)
+
+-- $trunc: NaN, Infinity/-Infinity, Null/Undefined
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDouble": "NaN" }, -2]}}');
+            bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDecimal": "NaN" }, -2]}}');
+             bson_dollar_project             
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "NaN" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDecimal": "Infinity" }, -2]}}');
+               bson_dollar_project                
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "Infinity" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDouble": "Infinity" }, -2]}}');
+               bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "$numberDouble" : "Infinity" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{ "$numberDecimal": "-Infinity" }, -2]}}');
+                bson_dollar_project                
+---------------------------------------------------------------------
+ { "result" : { "$numberDecimal" : "-Infinity" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [null, -2]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [1232, null]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": ["$a", 2]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [343, "$a"]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+-- $trunc: num args should be either 1 or 2.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [2147483647, -1, 4]}}');
+ERROR:  The expression $trunc requires no fewer than 1 arguments and no more than 2 arguments, but 3 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [2147483647, -1, 4, 5]}}');
+ERROR:  The expression $trunc requires no fewer than 1 arguments and no more than 2 arguments, but 4 arguments were actually provided.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": []}}');
+ERROR:  The expression $trunc requires no fewer than 1 arguments and no more than 2 arguments, but 0 arguments were actually provided.
+-- $trunc: args should be numeric
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [{}]}}');
+ERROR:  $trunc works exclusively with numeric data types, not with object
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [1, "str"]}}');
+ERROR:  Unable to convert from BSON type string into a long value
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [true, 1]}}');
+ERROR:  $trunc works exclusively with numeric data types, not with bool
+-- $trunc: precision must be >= -20 and <= 100
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [214, -21]}}');
+ERROR:  Unable to apply $trunc when using precision value -21, as the acceptable range is between -20 and 100.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [214, 101]}}');
+ERROR:  Unable to apply $trunc when using precision value 101, as the acceptable range is between -20 and 100.
+-- $trunc: precision must be integral value in int64 range
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [214, {"$numberDecimal": "-21.1"} ]}}');
+ERROR:  precision argument to  $trunc must be a integral value
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [214, {"$numberDouble": "-21.1"} ]}}');
+ERROR:  precision argument to  $trunc must be a integral value
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$trunc": [214, {"$numberDecimal": "9223372036854775808"} ]}}');
+ERROR:  Unable to convert out-of-range value 9223372036854775808 into a long type
+-- Test which verifies the infinity and NaN behavior
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$toInt": {"$numberDecimal": "inf"}}}');
+ERROR:  Attempt to convert infinity value to integer type in $convert with no onError value
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$toInt": {"$numberDecimal": "-inf"}}}');
+ERROR:  Attempt to convert infinity value to integer type in $convert with no onError value
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$toInt": {"$numberDecimal": "nan"}}}');
+ERROR:  Attempt to convert NaN value to integer type in $convert with no onError value
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$toInt": {"$numberDecimal": "1e310"}}}'); -- This would have failed while converting to double earlier
+ERROR:  Conversion would overflow target type in $convert with no onError value: 1E+310

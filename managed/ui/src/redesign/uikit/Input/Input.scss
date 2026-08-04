@@ -1,0 +1,84 @@
+@use '../common';
+
+.yb-uikit-input {
+  $arrows-width: 26px;
+
+  &--disabled {
+    background-color: common.$YB_BORDER_1;
+  }
+
+  &--invalid {
+    border-color: common.$YB_ERROR;
+    box-shadow: 0 0 5px rgba(common.$YB_ERROR, 0.2);
+  }
+
+  @include common.input-wrapper();
+
+  input {
+    @include common.input-control();
+
+    &[disabled] {
+      background-color: common.$YB_BORDER_1;
+    }
+
+    &[type='number'] {
+      padding-right: $arrows-width + 10px;
+      // hide arrows for firefox
+      -moz-appearance: textfield;
+
+      // hide arrows for chrome/safari/etc
+      &::-webkit-inner-spin-button,
+      &::-webkit-outer-spin-button {
+        appearance: none;
+        margin: 0;
+      }
+    }
+  }
+
+  &__number-controls {
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: $arrows-width;
+    height: 100%;
+    background-color: common.$YB_INPUT_NUMBERS_BG;
+    border-left: 1px solid common.$YB_BORDER_1;
+    display: flex;
+    justify-content: space-evenly;
+    flex-direction: column;
+
+    &--disabled {
+      pointer-events: none; // to turn off on hover styles
+      background-color: common.$YB_BORDER_1;
+      border-left-color: common.$YB_INPUT_NUMBERS_BG;
+
+      & .yb-uikit-input__number-delim {
+        border-top-color: common.$YB_INPUT_NUMBERS_BG;
+      }
+    }
+  }
+
+  &__number-up {
+    @include common.chevron-up();
+    margin-left: 7px;
+    cursor: pointer;
+
+    &:hover {
+      border-bottom-color: common.$YB_TEXT_1;
+    }
+  }
+
+  &__number-down {
+    @include common.chevron-down();
+    margin-left: 7px;
+    cursor: pointer;
+
+    &:hover {
+      border-top-color: common.$YB_TEXT_1;
+    }
+  }
+
+  &__number-delim {
+    border-top: 1px solid common.$YB_BORDER_1;
+  }
+}

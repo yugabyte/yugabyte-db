@@ -1,0 +1,6 @@
+comment = 'spi_srf:  Created by pgrx'
+default_version = '@CARGO_VERSION@'
+module_pathname = '$libdir/spi_srf'
+relocatable = false
+superuser = false
+schema = 'spi_srf'

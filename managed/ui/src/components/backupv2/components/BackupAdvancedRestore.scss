@@ -1,0 +1,91 @@
+@use '../../../_style/colors.scss';
+
+.advanced-restore-modal {
+  width: 1100px;
+  background: colors.$YB_BG_WHITE_3;
+  border-radius: 8px;
+
+  .modal-header {
+    padding: 22px 24px;
+  }
+
+  .modal-body {
+    padding: 0;
+  }
+}
+
+.advanced-restore-form {
+  font-size: 13px;
+
+  .yb-field-group {
+    padding-bottom: 0;
+  }
+
+  .kms-helper-text {
+    font-weight: 400;
+    font-size: 11.2px;
+    color: #67666c;
+  }
+
+  .help-text {
+    line-height: 21px;
+  }
+
+  .help-text-2 {
+    font-weight: 700;
+    font-size: 15px;
+    margin-top: 22px;
+    margin-bottom: 16px;
+  }
+
+  .no-padding {
+    padding: 0;
+  }
+
+  label.btn-group-radio,
+  .form-item-custom-label,
+  .form-item-label {
+    font-weight: 400 !important;
+    display: flex;
+    input {
+      margin-right: 10px;
+    }
+  }
+
+  .restore-form-controls {
+    background: colors.$YB_BG_WHITE_3;
+
+    border: 1px solid colors.$YB_GRAY_HOVER;
+    border-radius: 8px;
+    padding: 16px;
+    width: 560px;
+    margin-bottom: 24px;
+
+    .row:not(:last-child) {
+      margin-bottom: 14px;
+    }
+
+    .storage-cfg-name {
+      margin-right: 5px;
+    }
+
+    .should-rename-keyspace {
+      padding-left: 8px;
+      margin: 8px 0px;
+      label {
+        font-weight: 400;
+        font-size: 13px;
+        .yb-input-checkbox {
+          margin-right: 8px;
+        }
+      }
+
+      .disable-keyspace-subtext {
+        font-size: 12px;
+        line-height: 14px;
+        color: colors.$YB_DARKER_GRAY;
+        margin-top: 8px;
+      }
+    }
+  }
+}

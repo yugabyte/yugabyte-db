@@ -1,0 +1,30 @@
+Build on Microsoft Windows with Microsoft Visual Studio and meson
+
+1. Install
+   - Microsft Visual Studio with C and C++ support
+   - Meson
+   - PostgreSQL
+
+2. Run x64 Native Tools Command Prompt for VS 20xx (*** ensure x64 ***)
+
+3. Set PATH
+
+   set PATH=%PATH%;C:\Program Files\PostgreSQL\16\bin;C:\Program Files\Meson
+
+4. execute in orafce directory (buildtype should be release or plain,
+   attention - the release buildtype inject dependency on vc_redist.x64.exe)
+
+   meson setup --wipe --buildtype release build
+   cd build
+   ninja
+   sudo ninja install (on linux)
+   ninja test (on linux)
+   # ninja bindist
+
+5. tests on MSWIN requires installation DiffUtils from gnuwin32
+
+   set PATH=%PATH%;C:\Program Files (x86)\GnuWin32\bin
+   set PGPORT=
+   set PGUSER=
+   set PGPASSWORD=
+   ninja test

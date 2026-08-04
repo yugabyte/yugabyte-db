@@ -1,0 +1,472 @@
+-- ----------------------------------------------------------------
+-- Aggregate Operations with Out-Of-Band Values.
+-- NULL, UNDEFINED, EMPTY, EXPLICIT, SPARSE
+-- (Sparse and compressed are the same internally)
+-- ----------------------------------------------------------------
+SELECT hll_set_output_version(1);
+ hll_set_output_version 
+------------------------
+                      1
+(1 row)
+
+DROP TABLE IF EXISTS test_wdflbzfx;
+NOTICE:  table "test_wdflbzfx" does not exist, skipping
+CREATE TABLE test_wdflbzfx (
+    recno    SERIAL,
+    v1	     hll
+);
+INSERT INTO test_wdflbzfx (recno, v1) VALUES
+-- NULL --
+(0, NULL),
+(1, NULL),
+(2, NULL),
+(3, NULL),
+-- UNDEFINED --
+(4, E'\\x108b7f'),
+(5, E'\\x108b7f'),
+(6, E'\\x108b7f'),
+(7, E'\\x108b7f'),
+-- EMPTY --
+(8, E'\\x118b7f'),
+(9, E'\\x118b7f'),
+(10, E'\\x118b7f'),
+(11, E'\\x118b7f'),
+-- EXPLICIT --
+(12, E'\\x128b7f1111111111111111'),
+(13, E'\\x128b7f2222222222222222'),
+(14, E'\\x128b7f3333333333333333'),
+(15, E'\\x128b7f4444444444444444'),
+-- SPARSE --
+(16, E'\\x138b7f0001'),
+(17, E'\\x138b7f0022'),
+(18, E'\\x138b7f0041'),
+(19, E'\\x138b7f0061');
+-- ----------------------------------------------------------------
+-- Aggregate Union
+-- ----------------------------------------------------------------
+-- No rows selected
+SELECT hll_union_agg(v1) FROM test_wdflbzfx WHERE recno > 100;
+ hll_union_agg 
+---------------
+ 
+(1 row)
+
+-- NULLs
+SELECT hll_union_agg(v1) FROM test_wdflbzfx WHERE recno IN (0, 1, 2, 3);
+ hll_union_agg 
+---------------
+ 
+(1 row)
+
+-- UNDEFINED
+SELECT hll_union_agg(v1) FROM test_wdflbzfx WHERE recno IN (4, 5, 6, 7);
+ hll_union_agg 
+---------------
+ \x108b7f
+(1 row)
+
+-- UNDEFINED and NULL
+SELECT hll_union_agg(v1) FROM test_wdflbzfx WHERE recno IN (4, 5, 6, 7)
+                                               OR recno IN (0, 1, 2, 3);
+ hll_union_agg 
+---------------
+ \x108b7f
+(1 row)
+
+-- EMPTY
+SELECT hll_union_agg(v1) FROM test_wdflbzfx WHERE recno IN (8, 9, 10, 11);
+ hll_union_agg 
+---------------
+ \x118b7f
+(1 row)
+
+-- EMPTY and NULL
+SELECT hll_union_agg(v1) FROM test_wdflbzfx WHERE recno IN (8, 9, 10, 11)
+                                               OR recno IN (0, 1, 2, 3);
+ hll_union_agg 
+---------------
+ \x118b7f
+(1 row)
+
+-- EMPTY and UNDEFINED
+SELECT hll_union_agg(v1) FROM test_wdflbzfx WHERE recno IN (8, 9, 10, 11)
+                                               OR recno IN (4, 5, 6, 7);
+ hll_union_agg 
+---------------
+ \x108b7f
+(1 row)
+
+-- EMPTY, UNDEFINED and NULL
+SELECT hll_union_agg(v1) FROM test_wdflbzfx WHERE recno IN (8, 9, 10, 11)
+                                               OR recno IN (4, 5, 6, 7)
+                                               OR recno IN (0, 1, 2, 3);
+ hll_union_agg 
+---------------
+ \x108b7f
+(1 row)
+
+-- EXPLICIT
+SELECT hll_union_agg(v1) FROM test_wdflbzfx WHERE recno IN (12, 13, 14, 15);
+                              hll_union_agg                               
+--------------------------------------------------------------------------
+ \x128b7f1111111111111111222222222222222233333333333333334444444444444444
+(1 row)
+
+-- EXPLICIT and NULL
+SELECT hll_union_agg(v1) FROM test_wdflbzfx WHERE recno IN (12, 13, 14, 15)
+                                               OR recno IN (0, 1, 2, 3);
+                              hll_union_agg                               
+--------------------------------------------------------------------------
+ \x128b7f1111111111111111222222222222222233333333333333334444444444444444
+(1 row)
+
+-- EXPLICIT and UNDEFINED
+SELECT hll_union_agg(v1) FROM test_wdflbzfx WHERE recno IN (12, 13, 14, 15)
+                                               OR recno IN (4, 5, 6, 7);
+ hll_union_agg 
+---------------
+ \x108b7f
+(1 row)
+
+-- EXPLICIT, UNDEFINED and NULL
+SELECT hll_union_agg(v1) FROM test_wdflbzfx WHERE recno IN (12, 13, 14, 15)
+                                               OR recno IN (4, 5, 6, 7)
+                                               OR recno IN (0, 1, 2, 3);
+ hll_union_agg 
+---------------
+ \x108b7f
+(1 row)
+
+-- EXPLICIT and EMPTY
+SELECT hll_union_agg(v1) FROM test_wdflbzfx WHERE recno IN (12, 13, 14, 15)
+                                               OR recno IN (8, 9, 10, 11);
+                              hll_union_agg                               
+--------------------------------------------------------------------------
+ \x128b7f1111111111111111222222222222222233333333333333334444444444444444
+(1 row)
+
+-- EXPLICIT, EMPTY and NULL
+SELECT hll_union_agg(v1) FROM test_wdflbzfx WHERE recno IN (12, 13, 14, 15)
+                                               OR recno IN (8, 9, 10, 11)
+                                               OR recno IN (0, 1, 2, 3);
+                              hll_union_agg                               
+--------------------------------------------------------------------------
+ \x128b7f1111111111111111222222222222222233333333333333334444444444444444
+(1 row)
+
+-- EXPLICIT, EMPTY and UNDEFINED
+SELECT hll_union_agg(v1) FROM test_wdflbzfx WHERE recno IN (12, 13, 14, 15)
+                                               OR recno IN (8, 9, 10, 11)
+                                               OR recno IN (4, 5, 6, 7);
+ hll_union_agg 
+---------------
+ \x108b7f
+(1 row)
+
+-- EXPLICIT, EMPTY, UNDEFINED and NULL
+SELECT hll_union_agg(v1) FROM test_wdflbzfx WHERE recno IN (12, 13, 14, 15)
+                                               OR recno IN (8, 9, 10, 11)
+                                               OR recno IN (4, 5, 6, 7)
+                                               OR recno IN (0, 1, 2, 3);
+ hll_union_agg 
+---------------
+ \x108b7f
+(1 row)
+
+-- Don't feel like a full sparse/explicit permuatation is adding
+-- anything here ... just replace explicit w/ sparse.
+-- SPARSE
+SELECT hll_union_agg(v1) FROM test_wdflbzfx WHERE recno IN (16, 17, 18, 19);
+      hll_union_agg       
+--------------------------
+ \x138b7f0001002200410061
+(1 row)
+
+-- SPARSE and NULL
+SELECT hll_union_agg(v1) FROM test_wdflbzfx WHERE recno IN (16, 17, 18, 19)
+                                               OR recno IN (0, 1, 2, 3);
+      hll_union_agg       
+--------------------------
+ \x138b7f0001002200410061
+(1 row)
+
+-- SPARSE and UNDEFINED
+SELECT hll_union_agg(v1) FROM test_wdflbzfx WHERE recno IN (16, 17, 18, 19)
+                                               OR recno IN (4, 5, 6, 7);
+ hll_union_agg 
+---------------
+ \x108b7f
+(1 row)
+
+-- SPARSE, UNDEFINED and NULL
+SELECT hll_union_agg(v1) FROM test_wdflbzfx WHERE recno IN (16, 17, 18, 19)
+                                               OR recno IN (4, 5, 6, 7)
+                                               OR recno IN (0, 1, 2, 3);
+ hll_union_agg 
+---------------
+ \x108b7f
+(1 row)
+
+-- SPARSE and EMPTY
+SELECT hll_union_agg(v1) FROM test_wdflbzfx WHERE recno IN (16, 17, 18, 19)
+                                               OR recno IN (8, 9, 10, 11);
+      hll_union_agg       
+--------------------------
+ \x138b7f0001002200410061
+(1 row)
+
+-- SPARSE, EMPTY and NULL
+SELECT hll_union_agg(v1) FROM test_wdflbzfx WHERE recno IN (16, 17, 18, 19)
+                                               OR recno IN (8, 9, 10, 11)
+                                               OR recno IN (0, 1, 2, 3);
+      hll_union_agg       
+--------------------------
+ \x138b7f0001002200410061
+(1 row)
+
+-- SPARSE, EMPTY and UNDEFINED
+SELECT hll_union_agg(v1) FROM test_wdflbzfx WHERE recno IN (16, 17, 18, 19)
+                                               OR recno IN (8, 9, 10, 11)
+                                               OR recno IN (4, 5, 6, 7);
+ hll_union_agg 
+---------------
+ \x108b7f
+(1 row)
+
+-- SPARSE, EMPTY, UNDEFINED and NULL
+SELECT hll_union_agg(v1) FROM test_wdflbzfx WHERE recno IN (16, 17, 18, 19)
+                                               OR recno IN (8, 9, 10, 11)
+                                               OR recno IN (4, 5, 6, 7)
+                                               OR recno IN (0, 1, 2, 3);
+ hll_union_agg 
+---------------
+ \x108b7f
+(1 row)
+
+-- ----------------------------------------------------------------
+-- Aggregate Cardinality
+-- ----------------------------------------------------------------
+-- No rows selected
+SELECT ceiling(hll_cardinality(hll_union_agg(v1)))
+                      FROM test_wdflbzfx WHERE recno > 100;
+ ceiling 
+---------
+        
+(1 row)
+
+-- NULLs
+SELECT ceiling(hll_cardinality(hll_union_agg(v1)))
+                      FROM test_wdflbzfx WHERE recno IN (0, 1, 2, 3);
+ ceiling 
+---------
+        
+(1 row)
+
+-- UNDEFINED
+SELECT ceiling(hll_cardinality(hll_union_agg(v1)))
+                      FROM test_wdflbzfx WHERE recno IN (4, 5, 6, 7);
+ ceiling 
+---------
+        
+(1 row)
+
+-- UNDEFINED and NULL
+SELECT ceiling(hll_cardinality(hll_union_agg(v1)))
+                      FROM test_wdflbzfx WHERE recno IN (4, 5, 6, 7)
+                                            OR recno IN (0, 1, 2, 3);
+ ceiling 
+---------
+        
+(1 row)
+
+-- EMPTY
+SELECT ceiling(hll_cardinality(hll_union_agg(v1)))
+                      FROM test_wdflbzfx WHERE recno IN (8, 9, 10, 11);
+ ceiling 
+---------
+       0
+(1 row)
+
+-- EMPTY and NULL
+SELECT ceiling(hll_cardinality(hll_union_agg(v1)))
+                      FROM test_wdflbzfx WHERE recno IN (8, 9, 10, 11)
+                                            OR recno IN (0, 1, 2, 3);
+ ceiling 
+---------
+       0
+(1 row)
+
+-- EMPTY and UNDEFINED
+SELECT ceiling(hll_cardinality(hll_union_agg(v1)))
+                      FROM test_wdflbzfx WHERE recno IN (8, 9, 10, 11)
+                                            OR recno IN (4, 5, 6, 7);
+ ceiling 
+---------
+        
+(1 row)
+
+-- EMPTY, UNDEFINED and NULL
+SELECT ceiling(hll_cardinality(hll_union_agg(v1)))
+                      FROM test_wdflbzfx WHERE recno IN (8, 9, 10, 11)
+                                            OR recno IN (4, 5, 6, 7)
+                                            OR recno IN (0, 1, 2, 3);
+ ceiling 
+---------
+        
+(1 row)
+
+-- EXPLICIT
+SELECT ceiling(hll_cardinality(hll_union_agg(v1)))
+                      FROM test_wdflbzfx WHERE recno IN (12, 13, 14, 15);
+ ceiling 
+---------
+       4
+(1 row)
+
+-- EXPLICIT and NULL
+SELECT ceiling(hll_cardinality(hll_union_agg(v1)))
+                      FROM test_wdflbzfx WHERE recno IN (12, 13, 14, 15)
+                                            OR recno IN (0, 1, 2, 3);
+ ceiling 
+---------
+       4
+(1 row)
+
+-- EXPLICIT and UNDEFINED
+SELECT ceiling(hll_cardinality(hll_union_agg(v1)))
+                      FROM test_wdflbzfx WHERE recno IN (12, 13, 14, 15)
+                                            OR recno IN (4, 5, 6, 7);
+ ceiling 
+---------
+        
+(1 row)
+
+-- EXPLICIT, UNDEFINED and NULL
+SELECT ceiling(hll_cardinality(hll_union_agg(v1)))
+                      FROM test_wdflbzfx WHERE recno IN (12, 13, 14, 15)
+                                            OR recno IN (4, 5, 6, 7)
+                                            OR recno IN (0, 1, 2, 3);
+ ceiling 
+---------
+        
+(1 row)
+
+-- EXPLICIT and EMPTY
+SELECT ceiling(hll_cardinality(hll_union_agg(v1)))
+                      FROM test_wdflbzfx WHERE recno IN (12, 13, 14, 15)
+                                            OR recno IN (8, 9, 10, 11);
+ ceiling 
+---------
+       4
+(1 row)
+
+-- EXPLICIT, EMPTY and NULL
+SELECT ceiling(hll_cardinality(hll_union_agg(v1)))
+                      FROM test_wdflbzfx WHERE recno IN (12, 13, 14, 15)
+                                            OR recno IN (8, 9, 10, 11)
+                                            OR recno IN (0, 1, 2, 3);
+ ceiling 
+---------
+       4
+(1 row)
+
+-- EXPLICIT, EMPTY and UNDEFINED
+SELECT ceiling(hll_cardinality(hll_union_agg(v1)))
+                      FROM test_wdflbzfx WHERE recno IN (12, 13, 14, 15)
+                                            OR recno IN (8, 9, 10, 11)
+                                            OR recno IN (4, 5, 6, 7);
+ ceiling 
+---------
+        
+(1 row)
+
+-- EXPLICIT, EMPTY, UNDEFINED and NULL
+SELECT ceiling(hll_cardinality(hll_union_agg(v1)))
+                      FROM test_wdflbzfx WHERE recno IN (12, 13, 14, 15)
+                                            OR recno IN (8, 9, 10, 11)
+                                            OR recno IN (4, 5, 6, 7)
+                                            OR recno IN (0, 1, 2, 3);
+ ceiling 
+---------
+        
+(1 row)
+
+-- Don't feel like a full sparse/explicit permuatation is adding
+-- anything here ... just replace explicit w/ sparse.
+-- SPARSE
+SELECT ceiling(hll_cardinality(hll_union_agg(v1)))
+                      FROM test_wdflbzfx WHERE recno IN (16, 17, 18, 19);
+ ceiling 
+---------
+       5
+(1 row)
+
+-- SPARSE and NULL
+SELECT ceiling(hll_cardinality(hll_union_agg(v1)))
+                      FROM test_wdflbzfx WHERE recno IN (16, 17, 18, 19)
+                                            OR recno IN (0, 1, 2, 3);
+ ceiling 
+---------
+       5
+(1 row)
+
+-- SPARSE and UNDEFINED
+SELECT ceiling(hll_cardinality(hll_union_agg(v1)))
+                      FROM test_wdflbzfx WHERE recno IN (16, 17, 18, 19)
+                                            OR recno IN (4, 5, 6, 7);
+ ceiling 
+---------
+        
+(1 row)
+
+-- SPARSE, UNDEFINED and NULL
+SELECT ceiling(hll_cardinality(hll_union_agg(v1)))
+                      FROM test_wdflbzfx WHERE recno IN (16, 17, 18, 19)
+                                            OR recno IN (4, 5, 6, 7)
+                                            OR recno IN (0, 1, 2, 3);
+ ceiling 
+---------
+        
+(1 row)
+
+-- SPARSE and EMPTY
+SELECT ceiling(hll_cardinality(hll_union_agg(v1)))
+                      FROM test_wdflbzfx WHERE recno IN (16, 17, 18, 19)
+                                            OR recno IN (8, 9, 10, 11);
+ ceiling 
+---------
+       5
+(1 row)
+
+-- SPARSE, EMPTY and NULL
+SELECT ceiling(hll_cardinality(hll_union_agg(v1)))
+                      FROM test_wdflbzfx WHERE recno IN (16, 17, 18, 19)
+                                            OR recno IN (8, 9, 10, 11)
+                                            OR recno IN (0, 1, 2, 3);
+ ceiling 
+---------
+       5
+(1 row)
+
+-- SPARSE, EMPTY and UNDEFINED
+SELECT ceiling(hll_cardinality(hll_union_agg(v1)))
+                      FROM test_wdflbzfx WHERE recno IN (16, 17, 18, 19)
+                                            OR recno IN (8, 9, 10, 11)
+                                            OR recno IN (4, 5, 6, 7);
+ ceiling 
+---------
+        
+(1 row)
+
+-- SPARSE, EMPTY, UNDEFINED and NULL
+SELECT ceiling(hll_cardinality(hll_union_agg(v1)))
+                      FROM test_wdflbzfx WHERE recno IN (16, 17, 18, 19)
+                                            OR recno IN (8, 9, 10, 11)
+                                            OR recno IN (4, 5, 6, 7)
+                                            OR recno IN (0, 1, 2, 3);
+ ceiling 
+---------
+        
+(1 row)
+
+DROP TABLE IF EXISTS test_wdflbzfx;

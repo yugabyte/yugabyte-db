@@ -1,0 +1,12 @@
+# src/test/regress/yb_pg_window_schedule
+#
+####################################################################################################
+# This includes tests for Window Functions
+####################################################################################################
+# Dependencies
+test: yb.port.test_setup
+test: yb.depd.tenk1
+test: yb.depd.tenk2
+
+test: yb.port.groupingsets
+test: yb.port.window

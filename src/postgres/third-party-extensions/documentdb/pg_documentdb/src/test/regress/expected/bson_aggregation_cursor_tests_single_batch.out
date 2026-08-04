@@ -1,0 +1,510 @@
+SET search_path TO documentdb_api_catalog, documentdb_api, documentdb_core, public;
+SET documentdb.next_collection_id TO 600;
+SET documentdb.next_collection_index_id TO 600;
+DO $$
+DECLARE i int;
+BEGIN
+-- each doc is "a": 500KB, "c": 5 MB - ~5.5 MB & there's 10 of them
+FOR i IN 1..10 LOOP
+PERFORM documentdb_api.insert_one('sb_db', 'sb_get_aggregation_cursor_test', FORMAT('{ "_id": %s, "a": "%s", "c": [ %s "d" ] }',  i, repeat('Sample', 100000), repeat('"' || repeat('a', 1000) || '", ', 5000))::documentdb_core.bson);
+END LOOP;
+END;
+$$;
+NOTICE:  creating collection
+DO $$
+DECLARE i int;
+BEGIN
+FOR i IN 1..10 LOOP
+PERFORM documentdb_api.insert_one('sb_db', 'sb_get_aggregation_cursor_smalldoc_test', FORMAT('{ "_id": %s, "a": "%s", "c": [ %s "d" ] }',  i, repeat('Sample', 10), repeat('"' || repeat('a', 10) || '", ', 5))::documentdb_core.bson);
+END LOOP;
+END;
+$$;
+NOTICE:  creating collection
+-- turn on cursors on explain to see how the queries are generated.
+set documentdb.enableCursorsOnAggregationQueryRewrite to on;
+-- simple finds use streaming cursors
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_find('sb_db', '{ "find": "sb_get_aggregation_cursor_smalldoc_test" }');
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiScan)
+   Output: document, documentdb_api_internal.current_cursor_state(document)
+   ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+         Output: shard_key_value, object_id, document
+         Recheck Cond: (collection.shard_key_value = '602'::bigint)
+         Filter: documentdb_api_internal.cursor_state(collection.document, '{ }'::bson)
+         ->  Bitmap Index Scan on _id_
+               Index Cond: (collection.shard_key_value = '602'::bigint)
+(8 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_find('sb_db', '{ "find": "sb_get_aggregation_cursor_smalldoc_test", "filter": { "a": 1 } }');
+                                                                           QUERY PLAN                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiScan)
+   Output: document, documentdb_api_internal.current_cursor_state(document)
+   ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+         Output: shard_key_value, object_id, document
+         Recheck Cond: (collection.shard_key_value = '602'::bigint)
+         Filter: ((collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson) AND documentdb_api_internal.cursor_state(collection.document, '{ }'::bson))
+         ->  Bitmap Index Scan on _id_
+               Index Cond: (collection.shard_key_value = '602'::bigint)
+(8 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_find('sb_db', '{ "find": "sb_get_aggregation_cursor_smalldoc_test", "filter": { "a": 1 }, "skip": 0 }');
+                                                                           QUERY PLAN                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiScan)
+   Output: document, documentdb_api_internal.current_cursor_state(document)
+   ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+         Output: shard_key_value, object_id, document
+         Recheck Cond: (collection.shard_key_value = '602'::bigint)
+         Filter: ((collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson) AND documentdb_api_internal.cursor_state(collection.document, '{ }'::bson))
+         ->  Bitmap Index Scan on _id_
+               Index Cond: (collection.shard_key_value = '602'::bigint)
+(8 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_find('sb_db', '{ "find": "sb_get_aggregation_cursor_smalldoc_test", "filter": { "a": 1 }, "limit": 0 }');
+                                                                           QUERY PLAN                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiScan)
+   Output: document, documentdb_api_internal.current_cursor_state(document)
+   ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+         Output: shard_key_value, object_id, document
+         Recheck Cond: (collection.shard_key_value = '602'::bigint)
+         Filter: ((collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson) AND documentdb_api_internal.cursor_state(collection.document, '{ }'::bson))
+         ->  Bitmap Index Scan on _id_
+               Index Cond: (collection.shard_key_value = '602'::bigint)
+(8 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_find('sb_db', '{ "find": "sb_get_aggregation_cursor_smalldoc_test", "filter": { "a": 1 }, "skip": 0, "limit": 0 }');
+                                                                           QUERY PLAN                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiScan)
+   Output: document, documentdb_api_internal.current_cursor_state(document)
+   ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+         Output: shard_key_value, object_id, document
+         Recheck Cond: (collection.shard_key_value = '602'::bigint)
+         Filter: ((collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson) AND documentdb_api_internal.cursor_state(collection.document, '{ }'::bson))
+         ->  Bitmap Index Scan on _id_
+               Index Cond: (collection.shard_key_value = '602'::bigint)
+(8 rows)
+
+-- projection is applied after the cursor
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_find('sb_db', '{ "find": "sb_get_aggregation_cursor_smalldoc_test", "filter": { "a": 1 }, "skip": 0, "limit": 0, "projection": { "a": 1 } }');
+                                                                                                                                       QUERY PLAN                                                                                                                                        
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiScan)
+   Output: documentdb_api_internal.bson_dollar_project_find(document, '{ "a" : { "$numberInt" : "1" } }'::bson, '{ "a" : { "$numberInt" : "1" } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson), documentdb_api_internal.current_cursor_state(document)
+   ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+         Output: shard_key_value, object_id, document
+         Recheck Cond: (collection.shard_key_value = '602'::bigint)
+         Filter: ((collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson) AND documentdb_api_internal.cursor_state(collection.document, '{ }'::bson))
+         ->  Bitmap Index Scan on _id_
+               Index Cond: (collection.shard_key_value = '602'::bigint)
+(8 rows)
+
+-- with sort/skip limit it's persisted cursors
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_find('sb_db', '{ "find": "sb_get_aggregation_cursor_smalldoc_test", "filter": { "a": 1 }, "sort": { "b": 1 } }');
+                                              QUERY PLAN                                               
+-------------------------------------------------------------------------------------------------------
+ Sort
+   Output: document, (bson_orderby(document, '{ "b" : { "$numberInt" : "1" } }'::bson))
+   Sort Key: (bson_orderby(collection.document, '{ "b" : { "$numberInt" : "1" } }'::bson)) NULLS FIRST
+   ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+         Output: document, bson_orderby(document, '{ "b" : { "$numberInt" : "1" } }'::bson)
+         Recheck Cond: (collection.shard_key_value = '602'::bigint)
+         Filter: (collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+         ->  Bitmap Index Scan on _id_
+               Index Cond: (collection.shard_key_value = '602'::bigint)
+(9 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_find('sb_db', '{ "find": "sb_get_aggregation_cursor_smalldoc_test", "filter": { "a": 1 }, "sort": { "b": 1 }, "skip": 1 }');
+                                                 QUERY PLAN                                                  
+-------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: document, (bson_orderby(document, '{ "b" : { "$numberInt" : "1" } }'::bson))
+   ->  Sort
+         Output: document, (bson_orderby(document, '{ "b" : { "$numberInt" : "1" } }'::bson))
+         Sort Key: (bson_orderby(collection.document, '{ "b" : { "$numberInt" : "1" } }'::bson)) NULLS FIRST
+         ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+               Output: document, bson_orderby(document, '{ "b" : { "$numberInt" : "1" } }'::bson)
+               Recheck Cond: (collection.shard_key_value = '602'::bigint)
+               Filter: (collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '602'::bigint)
+(11 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_find('sb_db', '{ "find": "sb_get_aggregation_cursor_smalldoc_test", "filter": { "a": 1 }, "sort": { "b": 1 }, "limit": 1 }');
+                                                 QUERY PLAN                                                  
+-------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: document, (bson_orderby(document, '{ "b" : { "$numberInt" : "1" } }'::bson))
+   ->  Sort
+         Output: document, (bson_orderby(document, '{ "b" : { "$numberInt" : "1" } }'::bson))
+         Sort Key: (bson_orderby(collection.document, '{ "b" : { "$numberInt" : "1" } }'::bson)) NULLS FIRST
+         ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+               Output: document, bson_orderby(document, '{ "b" : { "$numberInt" : "1" } }'::bson)
+               Recheck Cond: (collection.shard_key_value = '602'::bigint)
+               Filter: (collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '602'::bigint)
+(11 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_find('sb_db', '{ "find": "sb_get_aggregation_cursor_smalldoc_test", "filter": { "a": 1 }, "skip": 1 }');
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Limit
+   Output: document
+   ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+         Output: document
+         Recheck Cond: (collection.shard_key_value = '602'::bigint)
+         Filter: (collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+         ->  Bitmap Index Scan on _id_
+               Index Cond: (collection.shard_key_value = '602'::bigint)
+(8 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_find('sb_db', '{ "find": "sb_get_aggregation_cursor_smalldoc_test", "filter": { "a": 1 }, "limit": 100 }');
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Limit
+   Output: document
+   ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+         Output: document
+         Recheck Cond: (collection.shard_key_value = '602'::bigint)
+         Filter: (collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+         ->  Bitmap Index Scan on _id_
+               Index Cond: (collection.shard_key_value = '602'::bigint)
+(8 rows)
+
+-- projection is applied after skip/limit
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_find('sb_db', '{ "find": "sb_get_aggregation_cursor_smalldoc_test", "filter": { "a": 1 }, "skip": 1, "projection": { "a": 1 }  }');
+                                                                                                                 QUERY PLAN                                                                                                                  
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_2
+   Output: documentdb_api_internal.bson_dollar_project_find(agg_stage_2.document, '{ "a" : { "$numberInt" : "1" } }'::bson, '{ "a" : { "$numberInt" : "1" } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+   ->  Limit
+         Output: collection.document
+         ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+               Output: collection.document
+               Recheck Cond: (collection.shard_key_value = '602'::bigint)
+               Filter: (collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '602'::bigint)
+(10 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_find('sb_db', '{ "find": "sb_get_aggregation_cursor_smalldoc_test", "filter": { "a": 1 }, "limit": 100, "projection": { "a": 1 }  }');
+                                                                                                              QUERY PLAN                                                                                                               
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: (documentdb_api_internal.bson_dollar_project_find(document, '{ "a" : { "$numberInt" : "1" } }'::bson, '{ "a" : { "$numberInt" : "1" } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson))
+   ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+         Output: documentdb_api_internal.bson_dollar_project_find(document, '{ "a" : { "$numberInt" : "1" } }'::bson, '{ "a" : { "$numberInt" : "1" } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+         Recheck Cond: (collection.shard_key_value = '602'::bigint)
+         Filter: (collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+         ->  Bitmap Index Scan on _id_
+               Index Cond: (collection.shard_key_value = '602'::bigint)
+(8 rows)
+
+-- for a case of limit 1 we use singleBatch cursors and not streaming
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_find('sb_db', '{ "find": "sb_get_aggregation_cursor_smalldoc_test", "filter": { "a": 1 }, "limit": 1 }');
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Limit
+   Output: document
+   ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+         Output: document
+         Recheck Cond: (collection.shard_key_value = '602'::bigint)
+         Filter: (collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+         ->  Bitmap Index Scan on _id_
+               Index Cond: (collection.shard_key_value = '602'::bigint)
+(8 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_find('sb_db', '{ "find": "sb_get_aggregation_cursor_smalldoc_test", "filter": { "a": 1 }, "skip": 0, "limit": 1 }');
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Limit
+   Output: document
+   ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+         Output: document
+         Recheck Cond: (collection.shard_key_value = '602'::bigint)
+         Filter: (collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+         ->  Bitmap Index Scan on _id_
+               Index Cond: (collection.shard_key_value = '602'::bigint)
+(8 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_find('sb_db', '{ "find": "sb_get_aggregation_cursor_smalldoc_test", "filter": { "a": 1 }, "limit": 1 }');
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Limit
+   Output: document
+   ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+         Output: document
+         Recheck Cond: (collection.shard_key_value = '602'::bigint)
+         Filter: (collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+         ->  Bitmap Index Scan on _id_
+               Index Cond: (collection.shard_key_value = '602'::bigint)
+(8 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_find('sb_db', '{ "find": "sb_get_aggregation_cursor_smalldoc_test", "filter": { "a": 1 }, "skip": 2, "limit": 1 }');
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Limit
+   Output: document
+   ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+         Output: document
+         Recheck Cond: (collection.shard_key_value = '602'::bigint)
+         Filter: (collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+         ->  Bitmap Index Scan on _id_
+               Index Cond: (collection.shard_key_value = '602'::bigint)
+(8 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_find('sb_db', '{ "find": "sb_get_aggregation_cursor_smalldoc_test", "filter": { "a": 1 }, "skip": 2, "limit": 1, "projection": { "a": 1 } }');
+                                                                                                                 QUERY PLAN                                                                                                                  
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_3
+   Output: documentdb_api_internal.bson_dollar_project_find(agg_stage_3.document, '{ "a" : { "$numberInt" : "1" } }'::bson, '{ "a" : { "$numberInt" : "1" } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+   ->  Limit
+         Output: collection.document
+         ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+               Output: collection.document
+               Recheck Cond: (collection.shard_key_value = '602'::bigint)
+               Filter: (collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '602'::bigint)
+(10 rows)
+
+-- do the same checks with aggregates
+-- these are streamable
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('sb_db', '{ "aggregate": "sb_get_aggregation_cursor_smalldoc_test", "pipeline": [] }');
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiScan)
+   Output: document, documentdb_api_internal.current_cursor_state(document)
+   ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+         Output: shard_key_value, object_id, document
+         Recheck Cond: (collection.shard_key_value = '602'::bigint)
+         Filter: documentdb_api_internal.cursor_state(collection.document, '{ }'::bson)
+         ->  Bitmap Index Scan on _id_
+               Index Cond: (collection.shard_key_value = '602'::bigint)
+(8 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('sb_db', '{ "aggregate": "sb_get_aggregation_cursor_smalldoc_test", "pipeline": [{ "$match": { "a": 1 }}] }');
+                                                                           QUERY PLAN                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiScan)
+   Output: document, documentdb_api_internal.current_cursor_state(document)
+   ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+         Output: shard_key_value, object_id, document
+         Recheck Cond: (collection.shard_key_value = '602'::bigint)
+         Filter: ((collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson) AND documentdb_api_internal.cursor_state(collection.document, '{ }'::bson))
+         ->  Bitmap Index Scan on _id_
+               Index Cond: (collection.shard_key_value = '602'::bigint)
+(8 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('sb_db', '{ "aggregate": "sb_get_aggregation_cursor_smalldoc_test", "pipeline": [{ "$match": { "a": 1 }}, { "$skip": 0 }] }');
+                                                                           QUERY PLAN                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiScan)
+   Output: document, documentdb_api_internal.current_cursor_state(document)
+   ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+         Output: shard_key_value, object_id, document
+         Recheck Cond: (collection.shard_key_value = '602'::bigint)
+         Filter: ((collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson) AND documentdb_api_internal.cursor_state(collection.document, '{ }'::bson))
+         ->  Bitmap Index Scan on _id_
+               Index Cond: (collection.shard_key_value = '602'::bigint)
+(8 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('sb_db', '{ "aggregate": "sb_get_aggregation_cursor_smalldoc_test", "pipeline": [ { "$skip": 0 }, { "$match": { "a": 1 }}] }');
+                                                                           QUERY PLAN                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Custom Scan (DocumentDBApiScan)
+   Output: document, documentdb_api_internal.current_cursor_state(document)
+   ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+         Output: shard_key_value, object_id, document
+         Recheck Cond: (collection.shard_key_value = '602'::bigint)
+         Filter: ((collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson) AND documentdb_api_internal.cursor_state(collection.document, '{ }'::bson))
+         ->  Bitmap Index Scan on _id_
+               Index Cond: (collection.shard_key_value = '602'::bigint)
+(8 rows)
+
+-- these are persistent
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('sb_db', '{ "aggregate": "sb_get_aggregation_cursor_smalldoc_test", "pipeline": [{ "$match": { "a": 1 }},  { "$limit": 2 }] }');
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Limit
+   Output: document
+   ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+         Output: document
+         Recheck Cond: (collection.shard_key_value = '602'::bigint)
+         Filter: (collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+         ->  Bitmap Index Scan on _id_
+               Index Cond: (collection.shard_key_value = '602'::bigint)
+(8 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('sb_db', '{ "aggregate": "sb_get_aggregation_cursor_smalldoc_test", "pipeline": [{ "$match": { "a": 1 }}, { "$skip": 1 }, { "$limit": 4 }] }');
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Limit
+   Output: collection.document
+   ->  Limit
+         Output: collection.document
+         ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+               Output: collection.document
+               Recheck Cond: (collection.shard_key_value = '602'::bigint)
+               Filter: (collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '602'::bigint)
+(10 rows)
+
+-- with limit 1 is singleBatch (not streaming)
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('sb_db', '{ "aggregate": "sb_get_aggregation_cursor_smalldoc_test", "pipeline": [ { "$limit": 1 }, { "$match": { "a": 1 }}] }');
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_1
+   Output: agg_stage_1.document
+   Filter: (agg_stage_1.document #= '{ "a" : { "$numberInt" : "1" } }'::bsonquery)
+   ->  Limit
+         Output: collection.document
+         ->  Seq Scan on documentdb_data.documents_602 collection
+               Output: collection.document
+(7 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('sb_db', '{ "aggregate": "sb_get_aggregation_cursor_smalldoc_test", "pipeline": [ { "$match": { "a": 1 }}, { "$limit": 1 } ] }');
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Limit
+   Output: document
+   ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+         Output: document
+         Recheck Cond: (collection.shard_key_value = '602'::bigint)
+         Filter: (collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+         ->  Bitmap Index Scan on _id_
+               Index Cond: (collection.shard_key_value = '602'::bigint)
+(8 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('sb_db', '{ "aggregate": "sb_get_aggregation_cursor_smalldoc_test", "pipeline": [ { "$match": { "a": 1 }}, { "$limit": 1 }, { "$limit": 2 } ] }');
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Limit
+   Output: collection.document
+   ->  Limit
+         Output: collection.document
+         ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+               Output: collection.document
+               Recheck Cond: (collection.shard_key_value = '602'::bigint)
+               Filter: (collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '602'::bigint)
+(10 rows)
+
+-- streamable with batchSize 0
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('sb_db', '{ "aggregate": "sb_get_aggregation_cursor_smalldoc_test", "pipeline": [ { "$match": { "a": 1 }}, { "$limit": 1 } ], "cursor": { "batchSize": 0 } }');
+                                                                              QUERY PLAN                                                                              
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: document, (documentdb_api_internal.current_cursor_state(document))
+   ->  Custom Scan (DocumentDBApiScan)
+         Output: document, documentdb_api_internal.current_cursor_state(document)
+         ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+               Output: shard_key_value, object_id, document
+               Recheck Cond: (collection.shard_key_value = '602'::bigint)
+               Filter: ((collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson) AND documentdb_api_internal.cursor_state(collection.document, '{ }'::bson))
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '602'::bigint)
+(10 rows)
+
+-- becomes streamable with guc off
+set documentdb.enableConversionStreamableToSingleBatch to off;
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('sb_db', '{ "aggregate": "sb_get_aggregation_cursor_smalldoc_test", "pipeline": [ { "$match": { "a": 1 }}, { "$limit": 1 } ] }');
+                                                                              QUERY PLAN                                                                              
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit
+   Output: document, (documentdb_api_internal.current_cursor_state(document))
+   ->  Custom Scan (DocumentDBApiScan)
+         Output: document, documentdb_api_internal.current_cursor_state(document)
+         ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+               Output: shard_key_value, object_id, document
+               Recheck Cond: (collection.shard_key_value = '602'::bigint)
+               Filter: ((collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson) AND documentdb_api_internal.cursor_state(collection.document, '{ }'::bson))
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '602'::bigint)
+(10 rows)
+
+-- still not streamable
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('sb_db', '{ "aggregate": "sb_get_aggregation_cursor_smalldoc_test", "pipeline": [ { "$limit": 1 }, { "$match": { "a": 1 }}] }');
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Subquery Scan on agg_stage_1
+   Output: agg_stage_1.document
+   Filter: (agg_stage_1.document #= '{ "a" : { "$numberInt" : "1" } }'::bsonquery)
+   ->  Limit
+         Output: collection.document
+         ->  Seq Scan on documentdb_data.documents_602 collection
+               Output: collection.document
+(7 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('sb_db', '{ "aggregate": "sb_get_aggregation_cursor_smalldoc_test", "pipeline": [ { "$match": { "a": 1 }}, { "$limit": 1 }, { "$limit": 2 } ] }');
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Limit
+   Output: collection.document
+   ->  Limit
+         Output: collection.document
+         ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+               Output: collection.document
+               Recheck Cond: (collection.shard_key_value = '602'::bigint)
+               Filter: (collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '602'::bigint)
+(10 rows)
+
+reset documentdb.enableConversionStreamableToSingleBatch;
+-- should be singlebatch
+set client_min_messages to DEBUG1;
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('sb_db', '{ "aggregate": "sb_get_aggregation_cursor_smalldoc_test", "pipeline": [ { "$match": { "a": 1 }}, { "$limit": 1 } ] }');
+DEBUG:  Aggregation cursorKind is 2
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Limit
+   Output: document
+   ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+         Output: document
+         Recheck Cond: (collection.shard_key_value = '602'::bigint)
+         Filter: (collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+         ->  Bitmap Index Scan on _id_
+               Index Cond: (collection.shard_key_value = '602'::bigint)
+(8 rows)
+
+-- TODO: Should make this streamable
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('sb_db', '{ "aggregate": "sb_get_aggregation_cursor_smalldoc_test", "pipeline": [ { "$match": { "a": 1 }}, { "$limit": 1 }, { "$limit": 2 } ] }');
+DEBUG:  Aggregation cursorKind is 5
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Limit
+   Output: collection.document
+   ->  Limit
+         Output: collection.document
+         ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+               Output: collection.document
+               Recheck Cond: (collection.shard_key_value = '602'::bigint)
+               Filter: (collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '602'::bigint)
+(10 rows)
+
+-- not streamable even with limit 1
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM documentdb_api_catalog.bson_aggregation_pipeline('sb_db', '{ "aggregate": "sb_get_aggregation_cursor_smalldoc_test", "pipeline": [ { "$match": { "a": 1 }}, { "$limit": 1 }, { "$unwind": "$a" } ] }');
+DEBUG:  Aggregation cursorKind is 5
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ ProjectSet
+   Output: bson_dollar_unwind(collection.document, '$a'::text)
+   ->  Limit
+         Output: collection.document
+         ->  Bitmap Heap Scan on documentdb_data.documents_602 collection
+               Output: collection.document
+               Recheck Cond: (collection.shard_key_value = '602'::bigint)
+               Filter: (collection.document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+               ->  Bitmap Index Scan on _id_
+                     Index Cond: (collection.shard_key_value = '602'::bigint)
+(10 rows)
+

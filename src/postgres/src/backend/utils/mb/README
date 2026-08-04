@@ -1,0 +1,20 @@
+src/backend/utils/mb/README
+
+Encodings
+=========
+
+conv.c:		static functions and a public table for code conversion
+mbutils.c:	public functions for the backend only.
+stringinfo_mb.c: public backend-only multibyte-aware stringinfo functions
+wstrcmp.c:	strcmp for mb
+wstrncmp.c:	strncmp for mb
+
+See also in src/common/:
+
+encnames.c:	public functions for encoding names
+wchar.c:	mostly static functions and a public table for mb string and
+		multibyte conversion
+
+Introduction
+------------
+	http://www.cprogramming.com/tutorial/unicode.html

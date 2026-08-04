@@ -1,0 +1,114 @@
+<!--
+doc/src/sgml/ref/drop_domain.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-dropdomain">
+ <indexterm zone="sql-dropdomain">
+  <primary>DROP DOMAIN</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>DROP DOMAIN</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>DROP DOMAIN</refname>
+  <refpurpose>remove a domain</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+DROP DOMAIN [ IF EXISTS ] <replaceable class="parameter">name</replaceable> [, ...] [ CASCADE | RESTRICT ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>DROP DOMAIN</command> removes a domain.  Only the owner of
+   a domain can remove it.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>IF EXISTS</literal></term>
+    <listitem>
+     <para>
+      Do not throw an error if the domain does not exist. A notice is issued
+      in this case.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of an existing domain.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>CASCADE</literal></term>
+    <listitem>
+     <para>
+      Automatically drop objects that depend on the domain (such as
+      table columns),
+      and in turn all objects that depend on those objects
+      (see <xref linkend="ddl-depend"/>).
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>RESTRICT</literal></term>
+    <listitem>
+     <para>
+      Refuse to drop the domain if any objects depend on it.  This is
+      the default.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1 id="sql-dropdomain-examples">
+  <title>Examples</title>
+
+  <para>
+   To remove the domain <type>box</type>:
+
+<programlisting>
+DROP DOMAIN box;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1 id="sql-dropdomain-compatibility">
+  <title>Compatibility</title>
+
+  <para>
+   This command conforms to the SQL standard, except for the
+   <literal>IF EXISTS</literal> option, which is a <productname>PostgreSQL</productname>
+   extension.
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-dropdomain-see-also">
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createdomain"/></member>
+   <member><xref linkend="sql-alterdomain"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

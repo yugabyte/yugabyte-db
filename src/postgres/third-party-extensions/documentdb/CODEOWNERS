@@ -1,0 +1,12 @@
+* @documentdb/documentdb-maintainers
+
+/.pipelines/ @safern @visridha @shuaitian-git @lichoil
+/.github/workflows/ @safern @visridha @shuaitian-git @lichoil
+/packaging/ @shuaitian-git @lichoil @fatmelon
+
+*.csv @documentdb/documentdb-maintainers
+*.sql @documentdb/documentdb-maintainers
+Make* @documentdb/documentdb-maintainers
+/internal/ @documentdb/documentdb-maintainers
+/pg_documentdb/ @documentdb/documentdb-maintainers
+/pg_documentdb_core/ @documentdb/documentdb-maintainers

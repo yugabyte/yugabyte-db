@@ -1,0 +1,268 @@
+-- Hypothetically hiding existing indexes tests
+-- Remove all the hypothetical indexes if any
+SELECT hypopg_reset();
+ hypopg_reset 
+--------------
+ 
+(1 row)
+
+-- The EXPLAIN initial state
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE id = 1') e
+WHERE e ~ 'hypo_id_idx';
+ count 
+-------
+     0
+(1 row)
+
+-- Create real index in hypo and use this index
+CREATE INDEX hypo_id_idx ON hypo(id);
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE id = 1') e
+WHERE e ~ 'hypo_id_idx';
+ count 
+-------
+     1
+(1 row)
+
+-- Should be zero
+SELECT COUNT(*) FROM hypopg_hidden_indexes();
+ count 
+-------
+     0
+(1 row)
+
+-- The hypo_id_idx index should not be used
+SELECT hypopg_hide_index('hypo_id_idx'::regclass);
+ hypopg_hide_index 
+-------------------
+ t
+(1 row)
+
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE id = 1') e
+WHERE e ~ 'hypo_id_idx';
+ count 
+-------
+     0
+(1 row)
+
+-- Should be only one record
+SELECT COUNT(*) FROM hypopg_hidden_indexes();
+ count 
+-------
+     1
+(1 row)
+
+SELECT table_name,index_name FROM hypopg_hidden_indexes;
+ table_name | index_name  
+------------+-------------
+ hypo       | hypo_id_idx
+(1 row)
+
+-- Create the real index again and
+-- EXPLAIN should use this index instead of the previous one
+CREATE index hypo_id_val_idx ON hypo(id, val);
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE id = 1') e
+WHERE e ~ 'hypo_id_val_idx';
+ count 
+-------
+     1
+(1 row)
+
+-- Shouldn't use any index
+SELECT hypopg_hide_index('hypo_id_val_idx'::regclass);
+ hypopg_hide_index 
+-------------------
+ t
+(1 row)
+
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE id = 1') e
+WHERE e ~ 'hypo_id_val_idx';
+ count 
+-------
+     0
+(1 row)
+
+-- Should be two records
+SELECT table_name,index_name FROM hypopg_hidden_indexes;
+ table_name |   index_name    
+------------+-----------------
+ hypo       | hypo_id_idx
+ hypo       | hypo_id_val_idx
+(2 rows)
+
+-- Try to add one repeatedly or add another wrong index oid
+SELECT hypopg_hide_index('hypo_id_idx'::regclass);
+ hypopg_hide_index 
+-------------------
+ f
+(1 row)
+
+SELECT hypopg_hide_index('hypo'::regclass);
+ hypopg_hide_index 
+-------------------
+ f
+(1 row)
+
+SELECT hypopg_hide_index(0);
+ hypopg_hide_index 
+-------------------
+ f
+(1 row)
+
+-- Also of course can be used to hide hypothetical indexes
+SELECT COUNT(*) FROM hypopg_create_index('create index on hypo(id,val);');
+ count 
+-------
+     1
+(1 row)
+
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE id = 1') e
+WHERE e ~ 'Index.*<\d+>btree_hypo.*';
+ count 
+-------
+     1
+(1 row)
+
+SELECT hypopg_hide_index((SELECT indexrelid FROM hypopg_list_indexes LIMIT 1));
+ hypopg_hide_index 
+-------------------
+ t
+(1 row)
+
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE id = 1') e
+WHERE e ~ 'Index.*<\d+>btree_hypo.*';
+ count 
+-------
+     0
+(1 row)
+
+-- Should be only three records
+SELECT COUNT(*) FROM hypopg_hidden_indexes;
+ count 
+-------
+     3
+(1 row)
+
+-- Hypothetical indexes should be unhidden when deleting
+SELECT hypopg_drop_index((SELECT indexrelid FROM hypopg_list_indexes LIMIT 1));
+ hypopg_drop_index 
+-------------------
+ t
+(1 row)
+
+-- Should become two records
+SELECT COUNT(*) FROM hypopg_hidden_indexes;
+ count 
+-------
+     2
+(1 row)
+
+-- Hypopg_reset can also unhidden the hidden indexes
+-- due to the deletion of hypothetical indexes.
+SELECT COUNT(*) FROM hypopg_create_index('create index on hypo(id,val);');
+ count 
+-------
+     1
+(1 row)
+
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE id = 1') e
+WHERE e ~ 'Index.*<\d+>btree_hypo.*';
+ count 
+-------
+     1
+(1 row)
+
+SELECT hypopg_hide_index((SELECT indexrelid FROM hypopg_list_indexes LIMIT 1));
+ hypopg_hide_index 
+-------------------
+ t
+(1 row)
+
+-- Changed from three records to two records.
+SELECT COUNT(*) FROM hypopg_hidden_indexes;
+ count 
+-------
+     3
+(1 row)
+
+SELECT hypopg_reset();
+ hypopg_reset 
+--------------
+ 
+(1 row)
+
+SELECT COUNT(*) FROM hypopg_hidden_indexes;
+ count 
+-------
+     2
+(1 row)
+
+-- Unhide an index
+SELECT hypopg_unhide_index('hypo_id_idx'::regclass);
+ hypopg_unhide_index 
+---------------------
+ t
+(1 row)
+
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE id = 1') e
+WHERE e ~ 'hypo_id_idx';
+ count 
+-------
+     1
+(1 row)
+
+-- Should become one record
+SELECT table_name,index_name FROM hypopg_hidden_indexes;
+ table_name |   index_name    
+------------+-----------------
+ hypo       | hypo_id_val_idx
+(1 row)
+
+-- Try to delete one repeatedly or delete another wrong index oid
+SELECT hypopg_unhide_index('hypo_id_idx'::regclass);
+ hypopg_unhide_index 
+---------------------
+ f
+(1 row)
+
+SELECT hypopg_unhide_index('hypo'::regclass);
+ hypopg_unhide_index 
+---------------------
+ f
+(1 row)
+
+SELECT hypopg_unhide_index(0);
+ hypopg_unhide_index 
+---------------------
+ f
+(1 row)
+
+-- Should still have one record
+SELECT table_name,index_name FROM hypopg_hidden_indexes;
+ table_name |   index_name    
+------------+-----------------
+ hypo       | hypo_id_val_idx
+(1 row)
+
+-- Unhide all indexes
+SELECT hypopg_unhide_all_indexes();
+ hypopg_unhide_all_indexes 
+---------------------------
+ 
+(1 row)
+
+-- Should change back to the original zero
+SELECT COUNT(*) FROM hypopg_hidden_indexes();
+ count 
+-------
+     0
+(1 row)
+
+-- Clean real indexes and hypothetical indexes
+DROP INDEX hypo_id_idx;
+DROP INDEX hypo_id_val_idx;
+SELECT hypopg_reset();
+ hypopg_reset 
+--------------
+ 
+(1 row)
+

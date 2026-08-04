@@ -1,0 +1,23 @@
+Parsed test spec with 3 sessions
+
+starting permutation: s1_create_table s2_select_parent s1_begin_rr s2_begin_rr s1_alter_table_add_col s2_create_child_table_via_inheritance s1_commit s2_commit s3_select_child s1_drop_parent
+step s1_create_table: create table parent(c1 int);
+step s2_select_parent: SELECT * from parent;
+c1
+--
+(0 rows)
+
+step s1_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s2_begin_rr: BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+step s1_alter_table_add_col: alter table parent add column c2 int;
+step s2_create_child_table_via_inheritance: create table child(chc1 int) inherits(parent); <waiting ...>
+step s1_commit: COMMIT;
+step s2_create_child_table_via_inheritance: <... completed>
+step s2_commit: COMMIT;
+step s3_select_child: SELECT * from child;
+c1|c2|chc1
+--+--+----
+(0 rows)
+
+s1: NOTICE:  drop cascades to table child
+step s1_drop_parent: drop table parent cascade;

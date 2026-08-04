@@ -1,0 +1,41 @@
+\unset ECHO
+1..39
+ok 1
+ok 2 - true
+ok 3
+ok 4 - NOT false
+ok 5
+ok 6 - three
+ok 7
+ok 8
+ok 9
+ok 10 - 1=2
+ok 11 - now()=now()
+ok 12 - '1 hour'::interval, '1 hour'::interval
+ok 13
+ok 14 - now=now date
+ok 15 - now!=now+1
+ok 16 - now()=now() timestamp
+ok 17 - now()=now() date
+ok 18 - TRUE=TRUE
+ok 19 - TRUE!=FALSE
+ok 20 - a=a char
+ok 21 - a!=b char
+ok 22 - a=a text
+ok 23 - a!=b text
+ok 24 - 3=3 int
+ok 25 - 3!=4 int
+ok 26 - 3=3 integer
+ok 27 - 3!=4 integer
+ok 28 - 3=3 int2
+ok 29 - 3!=4 int2
+ok 30 - 3=3 int4
+ok 31 - 3!=4 int4
+ok 32 - 3=3 int8
+ok 33 - 3!=4 int8
+ok 34 - 3.2=3.2 float
+ok 35 - 3.2!=4.5 float
+ok 36 - 3.2=3.2 float4
+ok 37 - 3.2!=4.5 float4
+ok 38 - 3.2=3.2 float8
+ok 39 - 3.2!=4.5 float8

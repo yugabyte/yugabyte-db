@@ -1,0 +1,454 @@
+<!--
+doc/src/sgml/ref/delete.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-delete">
+ <indexterm zone="sql-delete">
+  <primary>DELETE</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>DELETE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>DELETE</refname>
+  <refpurpose>delete rows of a table</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+[ WITH [ RECURSIVE ] <replaceable class="parameter">with_query</replaceable> [, ...] ]
+DELETE FROM [ ONLY ] <replaceable class="parameter">table_name</replaceable> [ * ]
+    [ FOR PORTION OF <replaceable class="parameter">range_column_name</replaceable> <replaceable class="parameter">for_portion_of_target</replaceable> ]
+    [ [ AS ] <replaceable class="parameter">alias</replaceable> ]
+    [ USING <replaceable class="parameter">from_item</replaceable> [, ...] ]
+    [ WHERE <replaceable class="parameter">condition</replaceable> | WHERE CURRENT OF <replaceable class="parameter">cursor_name</replaceable> ]
+    [ RETURNING [ WITH ( { OLD | NEW } AS <replaceable class="parameter">output_alias</replaceable> [, ...] ) ]
+                { * | <replaceable class="parameter">output_expression</replaceable> [ [ AS ] <replaceable class="parameter">output_name</replaceable> ] } [, ...] ]
+
+<phrase>where <replaceable class="parameter">for_portion_of_target</replaceable> is:</phrase>
+
+{ FROM <replaceable class="parameter">start_time</replaceable> TO <replaceable class="parameter">end_time</replaceable> |
+  ( <replaceable class="parameter">portion</replaceable> ) }
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>DELETE</command> deletes rows that satisfy the
+   <literal>WHERE</literal> clause from the specified table.  If the
+   <literal>WHERE</literal> clause is absent, the effect is to delete
+   all rows in the table.  The result is a valid, but empty table.
+  </para>
+
+   <tip>
+    <para>
+     <link linkend="sql-truncate"><command>TRUNCATE</command></link> provides a
+     faster mechanism to remove all rows from a table.
+    </para>
+   </tip>
+
+  <para>
+   There are two ways to delete rows in a table using information
+   contained in other tables in the database: using sub-selects, or
+   specifying additional tables in the <literal>USING</literal> clause.
+   Which technique is more appropriate depends on the specific
+   circumstances.
+  </para>
+
+  <para>
+   The optional <literal>RETURNING</literal> clause causes <command>DELETE</command>
+   to compute and return value(s) based on each row actually deleted.
+   Any expression using the table's columns, and/or columns of other
+   tables mentioned in <literal>USING</literal>, can be computed.
+   The syntax of the <literal>RETURNING</literal> list is identical to that of the
+   output list of <command>SELECT</command>.
+  </para>
+
+  <para>
+   If the <literal>FOR PORTION OF</literal> clause is used, the delete will
+   only affect rows that overlap the given portion.  Furthermore, if a row's
+   application time extends outside the <literal>FOR PORTION OF</literal>
+   bounds, then the delete will only change the application time within those
+   bounds.  In effect, only the history targeted by <literal>FOR PORTION
+   OF</literal> is deleted, and no moments outside.  Furthermore, after a row
+   is deleted, new <glossterm linkend="glossary-temporal-leftovers">temporal
+   leftovers</glossterm> might be inserted: rows whose range or multirange
+   receives the remaining application time outside the targeted bounds, with
+   the original values in their other columns. For range columns, there will
+   be zero to two inserted records, depending on whether the original
+   application time was completely deleted, extended before/after the change,
+   or both.  Multiranges never require two temporal leftovers, because one
+   value can always contain whatever application time remains.
+  </para>
+
+  <para>
+   You must have the <literal>DELETE</literal> privilege on the table
+   to delete from it, as well as the <literal>SELECT</literal>
+   privilege for any table in the <literal>USING</literal> clause or
+   whose values are read in the <replaceable
+   class="parameter">condition</replaceable>.
+   When <literal>FOR PORTION OF</literal> is used, the secondary inserts do
+   not require <literal>INSERT</literal> privilege on the table.  (This is
+   because conceptually no new information is being added; the inserted rows
+   only preserve existing data about the untargeted time period.)
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">with_query</replaceable></term>
+    <listitem>
+     <para>
+      The <literal>WITH</literal> clause allows you to specify one or more
+      subqueries that can be referenced by name in the <command>DELETE</command>
+      query. See <xref linkend="queries-with"/> and <xref linkend="sql-select"/>
+      for details.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">table_name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of the table to delete rows
+      from.  If <literal>ONLY</literal> is specified before the table name,
+      matching rows are deleted from the named table only.  If
+      <literal>ONLY</literal> is not specified, matching rows are also deleted
+      from any tables inheriting from the named table.  Optionally,
+      <literal>*</literal> can be specified after the table name to explicitly
+      indicate that descendant tables are included.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">alias</replaceable></term>
+    <listitem>
+     <para>
+      A substitute name for the target table. When an alias is
+      provided, it completely hides the actual name of the table.  For
+      example, given <literal>DELETE FROM foo AS f</literal>, the remainder
+      of the <command>DELETE</command> statement must refer to this
+      table as <literal>f</literal> not <literal>foo</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">range_column_name</replaceable></term>
+    <listitem>
+     <para>
+      The range or multirange column to use when performing a temporal delete.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">for_portion_of_target</replaceable></term>
+    <listitem>
+     <para>
+      The portion to delete. If targeting a range column, this can be in the
+      form <literal>FROM</literal> <replaceable
+      class="parameter">start_time</replaceable> <literal>TO</literal>
+      <replaceable class="parameter">end_time</replaceable>.  Otherwise, it
+      must be in the form <literal>(</literal><replaceable
+      class="parameter">portion</replaceable><literal>)</literal>, where
+      <replaceable class="parameter">portion</replaceable> is an expression
+      that yields a value of the same type as <replaceable
+      class="parameter">range_column_name</replaceable>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">start_time</replaceable></term>
+    <listitem>
+     <para>
+      The earliest time (inclusive) to change in a temporal delete.  This must
+      be a value matching the base type of the range from <replaceable
+      class="parameter">range_column_name</replaceable>.  A null value here
+      indicates a delete whose beginning is unbounded (as with range types).
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">end_time</replaceable></term>
+    <listitem>
+     <para>
+      The latest time (exclusive) to change in a temporal delete.  This must
+      be a value matching the base type of the range from <replaceable
+      class="parameter">range_column_name</replaceable>.  A null value here
+      indicates a delete whose end is unbounded (as with range types).
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">from_item</replaceable></term>
+    <listitem>
+     <para>
+      A table expression allowing columns from other tables to appear
+      in the <literal>WHERE</literal> condition.  This uses the same
+      syntax as the <link linkend="sql-from"><literal>FROM</literal></link>
+      clause of a <command>SELECT</command> statement; for example, an alias
+      for the table name can be specified.  Do not repeat the target
+      table as a <replaceable class="parameter">from_item</replaceable>
+      unless you wish to set up a self-join (in which case it must appear
+      with an alias in the <replaceable>from_item</replaceable>).
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">condition</replaceable></term>
+    <listitem>
+     <para>
+      An expression that returns a value of type <type>boolean</type>.
+      Only rows for which this expression returns <literal>true</literal>
+      will be deleted.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">cursor_name</replaceable></term>
+    <listitem>
+     <para>
+      The name of the cursor to use in a <literal>WHERE CURRENT OF</literal>
+      condition.  The row to be deleted is the one most recently fetched
+      from this cursor.  The cursor must be a non-grouping
+      query on the <command>DELETE</command>'s target table.
+      Note that <literal>WHERE CURRENT OF</literal> cannot be
+      specified together with a Boolean condition.  See
+      <xref linkend="sql-declare"/>
+      for more information about using cursors with
+      <literal>WHERE CURRENT OF</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">output_alias</replaceable></term>
+    <listitem>
+     <para>
+      An optional substitute name for <literal>OLD</literal> or
+      <literal>NEW</literal> rows in the <literal>RETURNING</literal> list.
+     </para>
+
+     <para>
+      By default, old values from the target table can be returned by writing
+      <literal>OLD.<replaceable class="parameter">column_name</replaceable></literal>
+      or <literal>OLD.*</literal>, and new values can be returned by writing
+      <literal>NEW.<replaceable class="parameter">column_name</replaceable></literal>
+      or <literal>NEW.*</literal>.  When an alias is provided, these names are
+      hidden and the old or new rows must be referred to using the alias.
+      For example <literal>RETURNING WITH (OLD AS o, NEW AS n) o.*, n.*</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">output_expression</replaceable></term>
+    <listitem>
+     <para>
+      An expression to be computed and returned by the <command>DELETE</command>
+      command after each row is deleted.  The expression can use any
+      column names of the table named by <replaceable class="parameter">table_name</replaceable>
+      or table(s) listed in <literal>USING</literal>.
+      Write <literal>*</literal> to return all columns.
+     </para>
+
+     <para>
+      A column name or <literal>*</literal> may be qualified using
+      <literal>OLD</literal> or <literal>NEW</literal>, or the corresponding
+      <replaceable class="parameter">output_alias</replaceable> for
+      <literal>OLD</literal> or <literal>NEW</literal>, to cause old or new
+      values to be returned.  An unqualified column name, or
+      <literal>*</literal>, or a column name or <literal>*</literal> qualified
+      using the target table name or alias will return old values.
+     </para>
+
+     <para>
+      For a simple <command>DELETE</command>, all new values will be
+      <literal>NULL</literal>.  However, if an <literal>ON DELETE</literal>
+      rule causes an <command>INSERT</command> or <command>UPDATE</command>
+      to be executed instead, the new values may be non-<literal>NULL</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">output_name</replaceable></term>
+    <listitem>
+     <para>
+      A name to use for a returned column.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Outputs</title>
+
+  <para>
+   On successful completion, a <command>DELETE</command> command returns a command
+   tag of the form
+<screen>
+DELETE <replaceable class="parameter">count</replaceable>
+</screen>
+   The <replaceable class="parameter">count</replaceable> is the number
+   of rows deleted.  Note that the number may be less than the number of
+   rows that matched the <replaceable
+   class="parameter">condition</replaceable> when deletes were
+   suppressed by a <literal>BEFORE DELETE</literal> trigger.  If <replaceable
+   class="parameter">count</replaceable> is 0, no rows were deleted by
+   the query (this is not considered an error).
+   If <literal>FOR PORTION OF</literal> was used, the
+   <replaceable class="parameter">count</replaceable> does not include
+   <glossterm linkend="glossary-temporal-leftovers">temporal leftovers</glossterm>
+   that were inserted.
+  </para>
+
+  <para>
+   If the <command>DELETE</command> command contains a <literal>RETURNING</literal>
+   clause, the result will be similar to that of a <command>SELECT</command>
+   statement containing the columns and values defined in the
+   <literal>RETURNING</literal> list, computed over the row(s) deleted by the
+   command. If <literal>FOR PORTION OF</literal> was used, the
+   <literal>RETURNING</literal> clause gives one result for each deleted row,
+   but does not include inserted
+   <glossterm linkend="glossary-temporal-leftovers">temporal leftovers</glossterm>.
+   The value of the application-time column matches the old value of the deleted
+   row(s). Note this will represent more application time than was actually erased,
+   if temporal leftovers were inserted.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   <productname>PostgreSQL</productname> lets you reference columns of
+   other tables in the <literal>WHERE</literal> condition by specifying the
+   other tables in the <literal>USING</literal> clause.  For example,
+   to delete all films produced by a given producer, one can do:
+<programlisting>
+DELETE FROM films USING producers
+  WHERE producer_id = producers.id AND producers.name = 'foo';
+</programlisting>
+   What is essentially happening here is a join between <structname>films</structname>
+   and <structname>producers</structname>, with all successfully joined
+   <structname>films</structname> rows being marked for deletion.
+   This syntax is not standard.  A more standard way to do it is:
+<programlisting>
+DELETE FROM films
+  WHERE producer_id IN (SELECT id FROM producers WHERE name = 'foo');
+</programlisting>
+   In some cases the join style is easier to write or faster to
+   execute than the sub-select style.
+  </para>
+
+  <para>
+   When <literal>FOR PORTION OF</literal> is used, this can result in users
+   who don't have <literal>INSERT</literal> privileges firing
+   <literal>INSERT</literal> triggers.  This should be considered when
+   using <literal>SECURITY DEFINER</literal> trigger functions.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Delete all films but musicals:
+<programlisting>
+DELETE FROM films WHERE kind &lt;&gt; 'Musical';
+</programlisting>
+  </para>
+
+  <para>
+   Clear the table <structname>films</structname>:
+<programlisting>
+DELETE FROM films;
+</programlisting>
+  </para>
+
+  <para>
+   Delete completed tasks, returning full details of the deleted rows:
+<programlisting>
+DELETE FROM tasks WHERE status = 'DONE' RETURNING *;
+</programlisting>
+  </para>
+
+  <para>
+   Delete the row of <structname>tasks</structname> on which the cursor
+   <literal>c_tasks</literal> is currently positioned:
+<programlisting>
+DELETE FROM tasks WHERE CURRENT OF c_tasks;
+</programlisting>
+  </para>
+
+  <para>
+   An example of a temporal delete:
+<programlisting>
+DELETE FROM products
+  FOR PORTION OF valid_at FROM '2021-08-01' TO '2023-09-01'
+  WHERE product_no = 5;
+</programlisting>
+  </para>
+
+  <para>
+   While there is no <literal>LIMIT</literal> clause
+   for <command>DELETE</command>, it is possible to get a similar effect
+   using the same method described in <link linkend="update-limit">the
+   documentation of <command>UPDATE</command></link>:
+<programlisting>
+WITH delete_batch AS (
+  SELECT l.ctid FROM user_logs AS l
+    WHERE l.status = 'archived'
+    ORDER BY l.creation_date
+    FOR UPDATE
+    LIMIT 10000
+)
+DELETE FROM user_logs AS dl
+  USING delete_batch AS del
+  WHERE dl.ctid = del.ctid;
+</programlisting>
+   This use of <structfield>ctid</structfield> is only safe because
+   the query is repeatedly run, avoiding the problem of changed
+   <structfield>ctid</structfield>s.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   This command conforms to the <acronym>SQL</acronym> standard, except
+   that the <literal>USING</literal> and <literal>RETURNING</literal> clauses
+   are <productname>PostgreSQL</productname> extensions, as is the ability
+   to use <literal>WITH</literal> with <command>DELETE</command>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-truncate"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

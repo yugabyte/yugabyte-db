@@ -1,0 +1,16 @@
+title: TimeUnitType
+description: |
+  TimeUnitType
+
+  Time units that correspond to TimeUnit.java enum. Used for variable frequencies.
+type: string
+enum:
+  - NANOSECONDS
+  - MICROSECONDS
+  - MILLISECONDS
+  - SECONDS
+  - MINUTES
+  - HOURS
+  - DAYS
+  - MONTHS
+  - YEARS

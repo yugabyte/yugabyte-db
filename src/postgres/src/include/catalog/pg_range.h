@@ -1,0 +1,90 @@
+/*-------------------------------------------------------------------------
+ *
+ * pg_range.h
+ *	  definition of the "range type" system catalog (pg_range)
+ *
+ *
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, Regents of the University of California
+ *
+ * src/include/catalog/pg_range.h
+ *
+ * NOTES
+ *	  The Catalog.pm module reads this file and derives schema
+ *	  information.
+ *
+ *-------------------------------------------------------------------------
+ */
+#ifndef PG_RANGE_H
+#define PG_RANGE_H
+
+#include "catalog/genbki.h"
+#include "catalog/pg_range_d.h" /* IWYU pragma: export */
+
+/* ----------------
+ *		pg_range definition.  cpp turns this into
+ *		typedef struct FormData_pg_range
+ * ----------------
+ */
+BEGIN_CATALOG_STRUCT
+
+CATALOG(pg_range,3541,RangeRelationId)
+{
+	/* OID of owning range type */
+	Oid			rngtypid BKI_LOOKUP(pg_type);
+
+	/* OID of range's element type (subtype) */
+	Oid			rngsubtype BKI_LOOKUP(pg_type);
+
+	/* OID of the range's multirange type */
+	Oid			rngmultitypid BKI_LOOKUP(pg_type);
+
+	/* collation for this range type, or 0 */
+	Oid			rngcollation BKI_DEFAULT(0) BKI_LOOKUP_OPT(pg_collation);
+
+	/* subtype's btree opclass */
+	Oid			rngsubopc BKI_LOOKUP(pg_opclass);
+
+	/* range constructor functions */
+	regproc		rngconstruct2 BKI_LOOKUP(pg_proc);
+	regproc		rngconstruct3 BKI_LOOKUP(pg_proc);
+
+	/* multirange constructor functions */
+	regproc		rngmltconstruct0 BKI_LOOKUP(pg_proc);
+	regproc		rngmltconstruct1 BKI_LOOKUP(pg_proc);
+	regproc		rngmltconstruct2 BKI_LOOKUP(pg_proc);
+
+	/* canonicalize range, or 0 */
+	regproc		rngcanonical BKI_LOOKUP_OPT(pg_proc);
+
+	/* subtype difference as a float8, or 0 */
+	regproc		rngsubdiff BKI_LOOKUP_OPT(pg_proc);
+} FormData_pg_range;
+
+END_CATALOG_STRUCT
+
+/* ----------------
+ *		Form_pg_range corresponds to a pointer to a tuple with
+ *		the format of pg_range relation.
+ * ----------------
+ */
+typedef FormData_pg_range *Form_pg_range;
+
+DECLARE_UNIQUE_INDEX_PKEY(pg_range_rngtypid_index, 3542, RangeTypidIndexId, pg_range, btree(rngtypid oid_ops));
+DECLARE_UNIQUE_INDEX(pg_range_rngmultitypid_index, 2228, RangeMultirangeTypidIndexId, pg_range, btree(rngmultitypid oid_ops));
+
+MAKE_SYSCACHE(RANGETYPE, pg_range_rngtypid_index, 4);
+MAKE_SYSCACHE(RANGEMULTIRANGE, pg_range_rngmultitypid_index, 4);
+
+/*
+ * prototypes for functions in pg_range.c
+ */
+
+extern void RangeCreate(Oid rangeTypeOid, Oid rangeSubType, Oid rangeCollation,
+						Oid rangeSubOpclass, RegProcedure rangeCanonical,
+						RegProcedure rangeSubDiff, Oid multirangeTypeOid,
+						RegProcedure rangeConstruct2, RegProcedure rangeConstruct3,
+						RegProcedure mltrngConstruct0, RegProcedure mltrngConstruct1, RegProcedure mltrngConstruct2);
+extern void RangeDelete(Oid rangeTypeOid);
+
+#endif							/* PG_RANGE_H */

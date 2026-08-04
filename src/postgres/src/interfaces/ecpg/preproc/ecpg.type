@@ -1,0 +1,18 @@
+/* src/interfaces/ecpg/preproc/ecpg.type */
+%type  <struct_union> s_struct_union_symbol
+
+%type  <descriptor> ECPGGetDescriptor
+%type  <descriptor> ECPGSetDescriptor
+
+%type  <type_enum> simple_type
+%type  <type_enum> signed_type
+%type  <type_enum> unsigned_type
+
+%type  <dtype_enum> descriptor_item
+%type  <dtype_enum> desc_header_item
+
+%type  <type>   var_type
+
+%type  <action> action
+
+%type  <describe> ECPGDescribe

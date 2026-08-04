@@ -1,0 +1,41 @@
+.field {
+  margin-bottom: 16px;
+  .field-label {
+    margin-bottom: 5px;
+    font-weight: 500;
+  }
+  .checkbox-label {
+    font-weight: 400;
+  }
+}
+
+.pillHolder {
+  display: inline-block;
+
+  .clear-all-filters {
+    color: #ef5824;
+    text-decoration: underline;
+    cursor: pointer;
+    margin-left: 5px;
+  }
+
+  .pill {
+    padding: 11px;
+    width: 80px;
+    height: 30px;
+    background: #e5e5e9;
+    border-radius: 6px;
+    font-size: 10px;
+    margin-left: 5px;
+
+    .pill-icon {
+      margin-right: 5px;
+      opacity: 0.4;
+    }
+
+    .remove-icon {
+      margin-left: 5px;
+      cursor: pointer;
+    }
+  }
+}

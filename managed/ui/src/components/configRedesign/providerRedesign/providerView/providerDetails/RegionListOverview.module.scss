@@ -1,0 +1,21 @@
+@use '../../../../../_style/colors.scss';
+
+.bootstrapTableContainer {
+  height: fit-content;
+
+  .bootstrapTable {
+    overflow-y: visible;
+
+    table > thead > tr > th {
+      vertical-align: middle;
+
+      border-bottom: 1px solid colors.$YB_GRAY_HOVER !important;
+    }
+    table > tbody > tr > td {
+      padding: 11px 8px 11px 0 !important;
+      vertical-align: middle;
+
+      border-bottom: 1px solid colors.$YB_GRAY_HOVER !important;
+    }
+  }
+}

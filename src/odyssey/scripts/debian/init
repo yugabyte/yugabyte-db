@@ -1,0 +1,112 @@
+#!/bin/sh
+#
+# chkconfig: 2345 99 01
+# description: @NAME@
+
+### BEGIN INIT INFO
+# Provides:          @NAME@
+# Required-Start:    $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Start @NAME@
+# Description:       Start @NAME@
+### END INIT INFO
+
+NAME="@NAME@"
+USER="@USER@"
+GROUP="@GROUP@"
+LOGDIR="@DEST_LOG_DIR@"
+PIDDIR="@DEST_PID_DIR@"
+PIDFILE="@DEST_PID_PATH@"
+BINFILE="@DEST_BIN_PATH@"
+CONFFILE="@DEST_CONFIG_PATH@"
+CMD="start-stop-daemon --verbose --pidfile $PIDFILE"
+
+# Include odyssey defaults if available
+if [ -f /etc/default/odyssey ] ; then
+        . /etc/default/odyssey
+fi
+
+
+create_dir() {
+    if [ ! -d $1 ]; then
+        mkdir -p $1
+        chown $USER:$GROUP $1
+    fi
+}
+
+do_action() {
+    echo -n "$1 $NAME: "
+    ERROR=$($CMD $2 2>&1)
+    EXIT=$?
+    if [ $EXIT -eq 0 ]; then
+        echo "OK"
+    else
+        echo "FAIL"
+        if [ -n "$ERROR" ]; then
+            echo "$ERROR"
+        fi
+    fi
+    return $EXIT
+}
+
+start() {
+    create_dir $LOGDIR
+    create_dir $PIDDIR
+    # temporary unlimit core file size for debug
+    ulimit -c unlimited
+    do_action "Starting" "--exec $BINFILE --chuid $USER:$GROUP --start -- $CONFFILE"
+}
+
+stop() {
+    do_action "Stopping" "--stop"
+}
+
+reload() {
+    do_action "Reloading" "--signal HUP --stop"
+}
+
+status() {
+    ERROR=$($CMD --status 2>&1)
+    EXIT=$?
+    case $EXIT in
+        0)
+            echo "$NAME is running (pid $(cat $PIDFILE))"
+            ;;
+        1)
+            echo "$NAME is not running but pid file $PIDFILE exist"
+            ;;
+        2)
+            echo "$NAME is not running"
+            ;;
+        *)
+            echo "unable to determine $NAME status: $ERROR"
+            ;;
+    esac
+    return $EXIT
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart|force-reload)
+        stop && start
+        ;;
+    reload)
+        reload
+        ;;
+    status)
+        status
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|reload|force-reload|status}"
+        exit 1
+        ;;
+esac
+
+exit $?

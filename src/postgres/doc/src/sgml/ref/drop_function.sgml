@@ -1,0 +1,192 @@
+<!--
+doc/src/sgml/ref/drop_function.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-dropfunction">
+ <indexterm zone="sql-dropfunction">
+  <primary>DROP FUNCTION</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>DROP FUNCTION</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>DROP FUNCTION</refname>
+  <refpurpose>remove a function</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+DROP FUNCTION [ IF EXISTS ] <replaceable class="parameter">name</replaceable> [ ( [ [ <replaceable class="parameter">argmode</replaceable> ] [ <replaceable class="parameter">argname</replaceable> ] <replaceable class="parameter">argtype</replaceable> [, ...] ] ) ] [, ...]
+    [ CASCADE | RESTRICT ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>DROP FUNCTION</command> removes the definition of an existing
+   function. To execute this command the user must be the
+   owner of the function. The argument types to the
+   function must be specified, since several different functions
+   can exist with the same name and different argument lists.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+    <varlistentry>
+    <term><literal>IF EXISTS</literal></term>
+    <listitem>
+     <para>
+      Do not throw an error if the function does not exist. A notice is issued
+      in this case.
+     </para>
+    </listitem>
+   </varlistentry>
+
+  <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of an existing function.  If no
+      argument list is specified, the name must be unique in its schema.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">argmode</replaceable></term>
+
+    <listitem>
+     <para>
+      The mode of an argument: <literal>IN</literal>, <literal>OUT</literal>,
+      <literal>INOUT</literal>, or <literal>VARIADIC</literal>.
+      If omitted, the default is <literal>IN</literal>.
+      Note that <command>DROP FUNCTION</command> does not actually pay
+      any attention to <literal>OUT</literal> arguments, since only the input
+      arguments are needed to determine the function's identity.
+      So it is sufficient to list the <literal>IN</literal>, <literal>INOUT</literal>,
+      and <literal>VARIADIC</literal> arguments.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">argname</replaceable></term>
+
+    <listitem>
+     <para>
+      The name of an argument.
+      Note that <command>DROP FUNCTION</command> does not actually pay
+      any attention to argument names, since only the argument data
+      types are needed to determine the function's identity.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">argtype</replaceable></term>
+
+    <listitem>
+     <para>
+      The data type(s) of the function's arguments (optionally
+      schema-qualified), if any.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>CASCADE</literal></term>
+    <listitem>
+     <para>
+      Automatically drop objects that depend on the function (such as
+      operators or triggers),
+      and in turn all objects that depend on those objects
+      (see <xref linkend="ddl-depend"/>).
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>RESTRICT</literal></term>
+    <listitem>
+     <para>
+      Refuse to drop the function if any objects depend on it.  This
+      is the default.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1 id="sql-dropfunction-examples">
+  <title>Examples</title>
+
+  <para>
+   This command removes the square root function:
+
+<programlisting>
+DROP FUNCTION sqrt(integer);
+</programlisting></para>
+
+  <para>
+   Drop multiple functions in one command:
+<programlisting>
+DROP FUNCTION sqrt(integer), sqrt(bigint);
+</programlisting></para>
+
+  <para>
+   If the function name is unique in its schema, it can be referred to without
+   an argument list:
+<programlisting>
+DROP FUNCTION update_employee_salaries;
+</programlisting>
+   Note that this is different from
+<programlisting>
+DROP FUNCTION update_employee_salaries();
+</programlisting>
+   which refers to a function with zero arguments, whereas the first variant
+   can refer to a function with any number of arguments, including zero, as
+   long as the name is unique.
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-dropfunction-compatibility">
+  <title>Compatibility</title>
+
+  <para>
+   This command conforms to the SQL standard, with
+   these <productname>PostgreSQL</productname> extensions:
+   <itemizedlist>
+    <listitem>
+     <para>The standard only allows one function to be dropped per command.</para>
+    </listitem>
+    <listitem>
+     <para>The <literal>IF EXISTS</literal> option</para>
+    </listitem>
+    <listitem>
+     <para>The ability to specify argument modes and names</para>
+    </listitem>
+   </itemizedlist></para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createfunction"/></member>
+   <member><xref linkend="sql-alterfunction"/></member>
+   <member><xref linkend="sql-dropprocedure"/></member>
+   <member><xref linkend="sql-droproutine"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

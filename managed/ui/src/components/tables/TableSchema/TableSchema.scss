@@ -1,0 +1,11 @@
+@use '../../../_style/colors.scss';
+
+.schema-definition-header {
+  color: colors.$YB_ORANGE;
+  font-size: 14px;
+  padding-bottom: 6px;
+}
+
+.schema-table-level-row {
+  padding-top: 50px;
+}

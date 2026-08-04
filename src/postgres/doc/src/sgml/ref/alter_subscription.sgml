@@ -1,0 +1,462 @@
+<!--
+doc/src/sgml/ref/alter_subscription.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-altersubscription">
+ <indexterm zone="sql-altersubscription">
+  <primary>ALTER SUBSCRIPTION</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER SUBSCRIPTION</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER SUBSCRIPTION</refname>
+  <refpurpose>change the definition of a subscription</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> SERVER <replaceable>servername</replaceable>
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> CONNECTION '<replaceable>conninfo</replaceable>'
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> SET PUBLICATION <replaceable class="parameter">publication_name</replaceable> [, ...] [ WITH ( <replaceable class="parameter">publication_option</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] ) ]
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> ADD PUBLICATION <replaceable class="parameter">publication_name</replaceable> [, ...] [ WITH ( <replaceable class="parameter">publication_option</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] ) ]
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> DROP PUBLICATION <replaceable class="parameter">publication_name</replaceable> [, ...] [ WITH ( <replaceable class="parameter">publication_option</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] ) ]
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> REFRESH PUBLICATION [ WITH ( <replaceable class="parameter">refresh_option</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] ) ]
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> REFRESH SEQUENCES
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> ENABLE
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> DISABLE
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> SET ( <replaceable class="parameter">subscription_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] )
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> SKIP ( <replaceable class="parameter">skip_option</replaceable> = <replaceable class="parameter">value</replaceable> )
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> OWNER TO { <replaceable>new_owner</replaceable> | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
+ALTER SUBSCRIPTION <replaceable class="parameter">name</replaceable> RENAME TO <replaceable>new_name</replaceable>
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>ALTER SUBSCRIPTION</command> can change most of the subscription
+   properties that can be specified
+   in <xref linkend="sql-createsubscription"/>.
+  </para>
+
+  <para>
+   You must own the subscription to use <command>ALTER SUBSCRIPTION</command>.
+   To rename a subscription or alter the owner, you must have
+   <literal>CREATE</literal> permission on the database. In addition,
+   to alter the owner, you must be able to <literal>SET ROLE</literal> to the
+   new owning role. If the subscription has
+   <literal>password_required=false</literal>, only superusers can modify it.
+  </para>
+
+  <para>
+   When refreshing a publication we remove the relations that are no longer
+   part of the publication and we also remove the table synchronization slots
+   if there are any. It is necessary to remove these slots so that the resources
+   allocated for the subscription on the remote host are released. If due to
+   network breakdown or some other error, <productname>PostgreSQL</productname>
+   is unable to remove the slots, an error will be reported. To proceed in this
+   situation, the user either needs to retry the operation or disassociate the
+   slot from the subscription and drop the subscription as explained in
+   <xref linkend="sql-dropsubscription"/>.
+  </para>
+
+  <para>
+   Commands <command>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</command>,
+   <command>ALTER SUBSCRIPTION ... {SET|ADD|DROP} PUBLICATION ...</command>
+   with <literal>refresh</literal> option as <literal>true</literal>,
+   <command>ALTER SUBSCRIPTION ... SET (failover = true|false)</command> and
+   <command>ALTER SUBSCRIPTION ... SET (two_phase = false)</command>
+   cannot be executed inside a transaction block.
+  </para>
+
+  <para>
+   Commands <command>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</command> and
+   <command>ALTER SUBSCRIPTION ... {SET|ADD|DROP} PUBLICATION ...</command>
+   with <literal>refresh</literal> option as <literal>true</literal> also cannot
+   be executed when the subscription has
+   <link linkend="sql-createsubscription-params-with-two-phase"><literal>two_phase</literal></link>
+   commit enabled, unless
+   <link linkend="sql-createsubscription-params-with-copy-data"><literal>copy_data</literal></link>
+   is <literal>false</literal>. See column <structfield>subtwophasestate</structfield>
+   of <link linkend="catalog-pg-subscription"><structname>pg_subscription</structname></link>
+   to know the actual two-phase state.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry id="sql-altersubscription-params-name">
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name of a subscription whose properties are to be altered.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-altersubscription-params-server">
+    <term><literal>SERVER <replaceable class="parameter">servername</replaceable></literal></term>
+    <listitem>
+     <para>
+      This clause replaces the foreign server or connection string originally
+      set by <xref linkend="sql-createsubscription"/> with the foreign server
+      <replaceable>servername</replaceable>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-altersubscription-params-connection">
+    <term><literal>CONNECTION '<replaceable class="parameter">conninfo</replaceable>'</literal></term>
+    <listitem>
+     <para>
+      This clause replaces the foreign server or connection string originally
+      set by <xref linkend="sql-createsubscription"/> with the connection
+      string <replaceable>conninfo</replaceable>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-altersubscription-params-setadddrop-publication">
+    <term><literal>SET PUBLICATION <replaceable class="parameter">publication_name</replaceable></literal></term>
+    <term><literal>ADD PUBLICATION <replaceable class="parameter">publication_name</replaceable></literal></term>
+    <term><literal>DROP PUBLICATION <replaceable class="parameter">publication_name</replaceable></literal></term>
+    <listitem>
+     <para>
+      These forms change the list of subscribed publications.
+      <literal>SET</literal>
+      replaces the entire list of publications with a new list,
+      <literal>ADD</literal> adds additional publications to the list of
+      publications, and <literal>DROP</literal> removes the publications from
+      the list of publications.  We allow non-existent publications to be
+      specified in <literal>ADD</literal> and <literal>SET</literal> variants
+      so that users can add those later.  See <xref linkend="sql-createsubscription"/>
+      for more information.  By default, this command will also act like
+      <literal>REFRESH PUBLICATION</literal>.
+     </para>
+
+     <para>
+      <replaceable>publication_option</replaceable> specifies additional
+      options for this operation.  The supported options are:
+
+      <variablelist>
+       <varlistentry>
+        <term><literal>refresh</literal> (<type>boolean</type>)</term>
+        <listitem>
+         <para>
+          When <literal>false</literal>, the command will not try to refresh
+          table and sequence information. <literal>REFRESH PUBLICATION</literal>
+          should then be executed separately. The default is
+          <literal>true</literal>.
+         </para>
+        </listitem>
+       </varlistentry>
+      </variablelist>
+
+      Additionally, the options described under
+      <literal>REFRESH PUBLICATION</literal> may be specified, to control the
+      implicit refresh operation.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-altersubscription-params-refresh-publication">
+    <term><literal>REFRESH PUBLICATION</literal></term>
+    <listitem>
+     <para>
+      Fetch missing table and sequence information from the publisher.  This will start
+      replication of tables that were added to the subscribed-to publications
+      since <link linkend="sql-createsubscription">
+      <command>CREATE SUBSCRIPTION</command></link> or
+      the last invocation of <command>REFRESH PUBLICATION</command>.
+     </para>
+
+     <para>
+      The system catalog <link linkend="catalog-pg-subscription-rel">pg_subscription_rel</link>
+      is updated to record all tables and sequences known to the subscription,
+      that are still part of the publication.
+     </para>
+
+     <para>
+      <replaceable>refresh_option</replaceable> specifies additional options for the
+      refresh operation.  The supported options are:
+
+      <variablelist>
+       <varlistentry>
+        <term><literal>copy_data</literal> (<type>boolean</type>)</term>
+        <listitem>
+         <para>
+          Specifies whether to copy pre-existing data for tables and synchronize
+          sequences in the publications that are being subscribed to when the replication
+          starts. The default is <literal>true</literal>.
+         </para>
+         <para>
+          Previously subscribed tables are not copied, even if a table's row
+          filter <literal>WHERE</literal> clause has since been modified.
+         </para>
+         <para>
+          Previously subscribed sequences are not re-synchronized. To do that,
+          use <link linkend="sql-altersubscription-params-refresh-sequences">
+          <command>ALTER SUBSCRIPTION ... REFRESH SEQUENCES</command></link>.
+         </para>
+         <para>
+          See <xref linkend="sequence-definition-mismatches"/> for recommendations on how
+          to handle any warnings about sequence definition differences between
+          the publisher and the subscriber, which might occur when
+          <literal>copy_data = true</literal>.
+         </para>
+         <para>
+          See <xref linkend="sql-createsubscription-notes"/> for details of
+          how <literal>copy_data = true</literal> can interact with the
+          <link linkend="sql-createsubscription-params-with-origin"><literal>origin</literal></link>
+          parameter.
+         </para>
+         <para>
+          See the
+          <link linkend="sql-createsubscription-params-with-binary"><literal>binary</literal></link>
+          parameter of <command>CREATE SUBSCRIPTION</command> for details about
+          copying pre-existing data in binary format.
+         </para>
+        </listitem>
+       </varlistentry>
+      </variablelist></para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-altersubscription-params-refresh-sequences">
+    <term><literal>REFRESH SEQUENCES</literal></term>
+    <listitem>
+     <para>
+      Re-synchronize sequence data with the publisher. Unlike
+      <link linkend="sql-altersubscription-params-refresh-publication">
+      <command>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</command></link> which
+      only has the ability to synchronize newly added sequences,
+      <literal>REFRESH SEQUENCES</literal> will re-synchronize the sequence
+      data for all currently subscribed sequences. It does not add or remove
+      sequences from the subscription to match the publication.
+     </para>
+     <para>
+      See <xref linkend="sequence-definition-mismatches"/> for
+      recommendations on how to handle any warnings about sequence definition
+      differences between the publisher and the subscriber.
+     </para>
+     <para>
+      See <xref linkend="sequences-out-of-sync"/> for recommendations on how to
+      identify and handle out-of-sync sequences.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-altersubscription-params-enable">
+    <term><literal>ENABLE</literal></term>
+    <listitem>
+     <para>
+      Enables a previously disabled subscription, starting the logical
+      replication worker at the end of the transaction.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-altersubscription-params-disable">
+    <term><literal>DISABLE</literal></term>
+    <listitem>
+     <para>
+      Disables a running subscription, stopping the logical replication
+      worker at the end of the transaction.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-altersubscription-params-set">
+    <term><literal>SET ( <replaceable class="parameter">subscription_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] )</literal></term>
+    <listitem>
+     <para>
+      This clause alters parameters originally set by
+      <xref linkend="sql-createsubscription"/>.  See there for more
+      information.  The parameters that can be altered are
+      <link linkend="sql-createsubscription-params-with-slot-name"><literal>slot_name</literal></link>,
+      <link linkend="sql-createsubscription-params-with-synchronous-commit"><literal>synchronous_commit</literal></link>,
+      <link linkend="sql-createsubscription-params-with-binary"><literal>binary</literal></link>,
+      <link linkend="sql-createsubscription-params-with-streaming"><literal>streaming</literal></link>,
+      <link linkend="sql-createsubscription-params-with-disable-on-error"><literal>disable_on_error</literal></link>,
+      <link linkend="sql-createsubscription-params-with-password-required"><literal>password_required</literal></link>,
+      <link linkend="sql-createsubscription-params-with-run-as-owner"><literal>run_as_owner</literal></link>,
+      <link linkend="sql-createsubscription-params-with-origin"><literal>origin</literal></link>,
+      <link linkend="sql-createsubscription-params-with-failover"><literal>failover</literal></link>,
+      <link linkend="sql-createsubscription-params-with-two-phase"><literal>two_phase</literal></link>,
+      <link linkend="sql-createsubscription-params-with-retain-dead-tuples"><literal>retain_dead_tuples</literal></link>,
+      <link linkend="sql-createsubscription-params-with-max-retention-duration"><literal>max_retention_duration</literal></link>, and
+      <link linkend="sql-createsubscription-params-with-wal-receiver-timeout"><literal>wal_receiver_timeout</literal></link>.
+      Only a superuser can set <literal>password_required = false</literal>.
+     </para>
+
+     <para>
+      When altering the
+      <link linkend="sql-createsubscription-params-with-slot-name"><literal>slot_name</literal></link>,
+      the <literal>failover</literal> and <literal>two_phase</literal> property
+      values of the named slot may differ from the counterpart
+      <link linkend="sql-createsubscription-params-with-failover"><literal>failover</literal></link>
+      and <link linkend="sql-createsubscription-params-with-two-phase"><literal>two_phase</literal></link>
+      parameters specified in the subscription. When creating the slot, ensure
+      the slot properties <literal>failover</literal> and <literal>two_phase</literal>
+      match their counterpart parameters of the subscription.
+      Otherwise, the slot on the publisher may behave differently from what these
+      subscription options say: for example, the slot on the publisher could either be
+      synced to the standbys even when the subscription's
+      <link linkend="sql-createsubscription-params-with-failover"><literal>failover</literal></link>
+      option is disabled or could be disabled for sync
+      even when the subscription's
+      <link linkend="sql-createsubscription-params-with-failover"><literal>failover</literal></link>
+      option is enabled.
+     </para>
+
+     <para>
+      The <link linkend="sql-createsubscription-params-with-failover"><literal>failover</literal></link>,
+      <link linkend="sql-createsubscription-params-with-two-phase"><literal>two_phase</literal></link>, and
+      <link linkend="sql-createsubscription-params-with-retain-dead-tuples"><literal>retain_dead_tuples</literal></link>
+      parameters can only be altered when the subscription is disabled.
+     </para>
+
+     <para>
+      When altering <link linkend="sql-createsubscription-params-with-two-phase"><literal>two_phase</literal></link>
+      from <literal>true</literal> to <literal>false</literal>, the backend
+      process reports an error if any prepared transactions done by the
+      logical replication worker (from when <literal>two_phase</literal>
+      parameter was still <literal>true</literal>) are found. You can resolve
+      prepared transactions on the publisher node, or manually roll back them
+      on the subscriber, and then try again. The transactions prepared by
+      logical replication worker corresponding to a particular subscription have
+      the following pattern: <quote><literal>pg_gid_%u_%u</literal></quote>
+      (parameters: subscription <parameter>oid</parameter>, remote transaction id <parameter>xid</parameter>).
+      To resolve such transactions manually, you need to roll back all
+      the prepared transactions with corresponding subscription IDs in their
+      names. Applications can check
+      <link linkend="view-pg-prepared-xacts"><structname>pg_prepared_xacts</structname></link>
+      to find the required prepared transactions. After the <literal>two_phase</literal>
+      option is changed from <literal>true</literal> to <literal>false</literal>,
+      the publisher will replicate the transactions again when they are committed.
+     </para>
+
+     <para>
+      If the <link linkend="sql-createsubscription-params-with-retain-dead-tuples"><literal>retain_dead_tuples</literal></link>
+      option is altered to <literal>false</literal> and no other subscription
+      has this option enabled, the replication slot named
+      <quote><literal>pg_conflict_detection</literal></quote>, created to retain
+      dead tuples for conflict detection, will be dropped.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-altersubscription-params-skip">
+    <term><literal>SKIP ( <replaceable class="parameter">skip_option</replaceable> = <replaceable class="parameter">value</replaceable> )</literal></term>
+    <listitem>
+     <para>
+      Skips applying all changes of the remote transaction.  If incoming data
+      violates any constraints, logical replication will stop until it is
+      resolved.  By using the <command>ALTER SUBSCRIPTION ... SKIP</command> command,
+      the logical replication worker skips all data modification changes within
+      the transaction.  This option has no effect on the transactions that are
+      already prepared by enabling
+      <link linkend="sql-createsubscription-params-with-two-phase"><literal>two_phase</literal></link>
+      on the subscriber.
+      After the logical replication worker successfully skips the transaction or
+      finishes a transaction, the LSN (stored in
+      <structname>pg_subscription</structname>.<structfield>subskiplsn</structfield>)
+      is cleared.  See <xref linkend="logical-replication-conflicts"/> for
+      the details of logical replication conflicts.
+     </para>
+
+     <para>
+      <replaceable>skip_option</replaceable> specifies options for this operation.
+      The supported option is:
+
+      <variablelist>
+       <varlistentry>
+        <term><literal>lsn</literal> (<type>pg_lsn</type>)</term>
+        <listitem>
+         <para>
+          Specifies the finish LSN of the remote transaction whose changes
+          are to be skipped by the logical replication worker.  The finish LSN
+          is the LSN at which the transaction is either committed or prepared.
+          Skipping individual subtransactions is not supported.  Setting
+          <literal>NONE</literal> resets the LSN.
+         </para>
+        </listitem>
+       </varlistentry>
+      </variablelist></para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-altersubscription-params-new-owner">
+    <term><replaceable class="parameter">new_owner</replaceable></term>
+    <listitem>
+     <para>
+      The user name of the new owner of the subscription.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry id="sql-altersubscription-params-new-name">
+    <term><replaceable class="parameter">new_name</replaceable></term>
+    <listitem>
+     <para>
+      The new name for the subscription.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <para>
+   When specifying a parameter of type <type>boolean</type>, the
+   <literal>=</literal> <replaceable class="parameter">value</replaceable>
+   part can be omitted, which is equivalent to
+   specifying <literal>TRUE</literal>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Change the publication subscribed by a subscription to
+   <literal>insert_only</literal>:
+<programlisting>
+ALTER SUBSCRIPTION mysub SET PUBLICATION insert_only;
+</programlisting>
+  </para>
+
+  <para>
+   Disable (stop) the subscription:
+<programlisting>
+ALTER SUBSCRIPTION mysub DISABLE;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>ALTER SUBSCRIPTION</command> is a <productname>PostgreSQL</productname>
+   extension.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createsubscription"/></member>
+   <member><xref linkend="sql-dropsubscription"/></member>
+   <member><xref linkend="sql-createpublication"/></member>
+   <member><xref linkend="sql-alterpublication"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

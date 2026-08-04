@@ -1,0 +1,243 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 220000;
+SET documentdb.next_collection_id TO 2200;
+SET documentdb.next_collection_index_id TO 2200;
+-- arrayFilters with aggregation pipeline
+SELECT documentdb_api_internal.update_bson_document(
+    '{"_id": 1 }','{ "": [ { "$addFields": { "fieldA.fieldB": 10 } }]}', '{}', NULL::documentdb_core.bson, NULL::documentdb_core.bson, NULL::TEXT);
+                                 update_bson_document                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "fieldA" : { "fieldB" : { "$numberInt" : "10" } } }
+(1 row)
+
+SELECT documentdb_api_internal.update_bson_document(
+    '{"_id": 1 }','{ "": [ { "$addFields": { "fieldA.fieldB": 10 } }]}', '{}', NULL::documentdb_core.bson, NULL::documentdb_core.bson, NULL::TEXT);
+                                 update_bson_document                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "fieldA" : { "fieldB" : { "$numberInt" : "10" } } }
+(1 row)
+
+SELECT documentdb_api_internal.update_bson_document(
+    '{"_id": 1 }','{ "": [ { "$addFields": { "fieldA.fieldB": 10 } }]}', '{}', '{ "": [ { "filterX": 30 }]}', NULL::documentdb_core.bson, NULL::TEXT);
+ERROR:  Specifying arrayFilters is not allowed when performing pipeline-style updates
+-- arrayFilters ignored on replace
+SELECT documentdb_api_internal.update_bson_document(
+    '{"_id": 1 }','{ "": { "fieldC": 40 } }', '{}', '{ "": [ { "filterX": 50 }]}', NULL::documentdb_core.bson, NULL::TEXT);
+                          update_bson_document                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "fieldC" : { "$numberInt" : "40" } }
+(1 row)
+
+-- arrayFilters with update fails - missing array filter
+SELECT documentdb_api_internal.update_bson_document(
+    '{"_id": 1 }','{ "": { "$set": { "arrayA.$[itemA]": 60 }}}', '{}', '{ "": [] }', NULL::documentdb_core.bson, NULL::TEXT);
+ERROR:  array filter identifier itemA must match an entry in arrayFilters (no match found)
+-- arrayFilters with update fails - invalid array filters
+SELECT documentdb_api_internal.update_bson_document(
+    '{"_id": 1 }','{ "": { "$set": { "arrayA.$[itemA]": 70 }}}', '{}', '{ "": [ 2 ] }', NULL::documentdb_core.bson, NULL::TEXT);
+ERROR:  BSONField updates.update.arrayFilters.0 is the wrong type int. expected type object
+SELECT documentdb_api_internal.update_bson_document(
+    '{"_id": 1 }','{ "": { "$set": { "arrayA.$[itemA]": 70 }}}', '{}', '{ "": [ {} ] }', NULL::documentdb_core.bson, NULL::TEXT);
+ERROR:  Cannot use an expression without a top-level field name in arrayFilters
+SELECT documentdb_api_internal.update_bson_document(
+    '{"_id": 1 }','{ "": { "$set": { "arrayA.$[itemA]": 70 }}}', '{}', '{ "": [ { "": 3} ] }', NULL::documentdb_core.bson, NULL::TEXT);
+ERROR:  The top level field name must be alphanumeric string. Found ''
+SELECT documentdb_api_internal.update_bson_document(
+    '{"_id": 1 }','{ "": { "$set": { "arrayA.$[itemA]": 70 }}}', '{}', '{ "": [ { "itemA": 4, "itemB.itemC": 5 } ] }', NULL::documentdb_core.bson, NULL::TEXT);
+ERROR:  Error parsing array filter :: caused by :: Expected a single top-level field name, found itemA and itemB
+SELECT documentdb_api_internal.update_bson_document(
+    '{"_id": 1 }','{ "": { "$set": { "arrayA.$[itemA]": 70 }}}', '{}', '{ "": [ { "itemA": 6 }, { "itemA": 7 } ] }', NULL::documentdb_core.bson, NULL::TEXT);
+ERROR:  Multiple array filters detected using identical top-level field name itemA
+-- simple array update on equality
+SELECT documentdb_api_internal.update_bson_document(
+    '{"_id": 1, "numbers": [ 100, 200 ] }','{ "": { "$set": { "numbers.$[numElem]": 300 }}}', '{}', '{ "": [{ "numElem": 100 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+                                          update_bson_document                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "numbers" : [ { "$numberInt" : "300" }, { "$numberInt" : "200" } ] }
+(1 row)
+
+SELECT documentdb_api_internal.update_bson_document(
+    '{}','{ "": { "$set": { "numbers.$[numElem]": 300 }}}', '{"_id": 1, "numbers": [ 100, 200 ] }', '{ "": [{ "numElem": 100 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+                                          update_bson_document                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "numbers" : [ { "$numberInt" : "300" }, { "$numberInt" : "200" } ] }
+(1 row)
+
+SELECT documentdb_api_internal.update_bson_document(
+    '{"_id": 1 }','{ "": { "$set": { "numbers.$[numElem]": 300 }}}', '{}', '{ "": [{ "numElem": 100 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+ERROR:  The specified path 'numbers' does not exist within the document. Cannot apply array update operations.
+-- updates on $gte condition
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "scores" : [ 150, 120, 110 ], "age": 15 }','{ "": { "$set": { "scores.$[scoreElem]": 200 }}}', '{}', '{ "": [{ "scoreElem": { "$gte": 200 } }] }', NULL::documentdb_core.bson, NULL::TEXT);
+ update_bson_document 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 3, "scores" : [ 150, 210, 200, 180, 202 ], "age": 16 }','{ "": { "$set": { "scores.$[scoreElem]": 200 }}}', '{}', '{ "": [{ "scoreElem": { "$gte": 200 } }] }', NULL::documentdb_core.bson, NULL::TEXT);
+                                                                                                 update_bson_document                                                                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "scores" : [ { "$numberInt" : "150" }, { "$numberInt" : "200" }, { "$numberInt" : "200" }, { "$numberInt" : "180" }, { "$numberInt" : "200" } ], "age" : { "$numberInt" : "16" } }
+(1 row)
+
+-- nested arrayFilters.
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 3, "metrics" : [ { "value": 58, "max": 136, "avg": 66, "dev": 88}, { "value": 96, "max": 176, "avg": 99, "dev": 75}, { "value": 68, "max":168, "avg": 86, "dev": 83 } ] }',
+    '{ "": { "$set": { "metrics.$[metricElem].avg": 100 }}}', '{}', '{ "": [{ "metricElem.value": { "$gte": 60 } }] }', NULL::documentdb_core.bson, NULL::TEXT);
+                                                                                                                                                                                                                                 update_bson_document                                                                                                                                                                                                                                  
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "metrics" : [ { "value" : { "$numberInt" : "58" }, "max" : { "$numberInt" : "136" }, "avg" : { "$numberInt" : "66" }, "dev" : { "$numberInt" : "88" } }, { "value" : { "$numberInt" : "96" }, "max" : { "$numberInt" : "176" }, "avg" : { "$numberInt" : "100" }, "dev" : { "$numberInt" : "75" } }, { "value" : { "$numberInt" : "68" }, "max" : { "$numberInt" : "168" }, "avg" : { "$numberInt" : "100" }, "dev" : { "$numberInt" : "83" } } ] }
+(1 row)
+
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 3, "metrics" : [ { "value": 58, "max": 136, "avg": 66, "dev": 88}, { "value": 96, "max": 176, "avg": 99, "dev": 75 }, { "value": 68, "max":168, "avg": 86, "dev": 83 } ] }',
+    '{ "": { "$inc": { "metrics.$[metricElem].dev": -50 }}}', '{}', '{ "": [{ "metricElem.value": { "$gte": 60 }, "metricElem.dev": { "$gte": 80 } }] }', NULL::documentdb_core.bson, NULL::TEXT);
+                                                                                                                                                                                                                                update_bson_document                                                                                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "metrics" : [ { "value" : { "$numberInt" : "58" }, "max" : { "$numberInt" : "136" }, "avg" : { "$numberInt" : "66" }, "dev" : { "$numberInt" : "88" } }, { "value" : { "$numberInt" : "96" }, "max" : { "$numberInt" : "176" }, "avg" : { "$numberInt" : "99" }, "dev" : { "$numberInt" : "75" } }, { "value" : { "$numberInt" : "68" }, "max" : { "$numberInt" : "168" }, "avg" : { "$numberInt" : "86" }, "dev" : { "$numberInt" : "33" } } ] }
+(1 row)
+
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 3, "metrics" : [ { "value": 58, "max": 136, "avg": 66, "dev": 88}, { "value": 96, "max": 176, "avg": 99, "dev": 75 }, { "value": 68, "max":168, "avg": 86, "dev": 83 } ] }',
+    '{ "": { "$inc": { "metrics.$[metricElem].dev": -50 }}}', '{}', '{ "": [{ "metricElem.value": { "$gte": 60 }, "metricElem.dev": { "$gte": 75 } }] }', NULL::documentdb_core.bson, NULL::TEXT);
+                                                                                                                                                                                                                                update_bson_document                                                                                                                                                                                                                                 
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "metrics" : [ { "value" : { "$numberInt" : "58" }, "max" : { "$numberInt" : "136" }, "avg" : { "$numberInt" : "66" }, "dev" : { "$numberInt" : "88" } }, { "value" : { "$numberInt" : "96" }, "max" : { "$numberInt" : "176" }, "avg" : { "$numberInt" : "99" }, "dev" : { "$numberInt" : "25" } }, { "value" : { "$numberInt" : "68" }, "max" : { "$numberInt" : "168" }, "avg" : { "$numberInt" : "86" }, "dev" : { "$numberInt" : "33" } } ] }
+(1 row)
+
+-- negation operators
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "degreesList" : [ { "level": "PhD", "age": 28}, { "level": "Bachelor", "age": 22} ] }',
+    '{ "": { "$set" : { "degreesList.$[deg].gradYear" : 2020 }} }', '{}', '{ "": [{ "deg.level": { "$ne": "Bachelor" } }] }', NULL::documentdb_core.bson, NULL::TEXT);
+                                                                                              update_bson_document                                                                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "degreesList" : [ { "level" : "PhD", "age" : { "$numberInt" : "28" }, "gradYear" : { "$numberInt" : "2020" } }, { "level" : "Bachelor", "age" : { "$numberInt" : "22" } } ] }
+(1 row)
+
+-- multiple positional operators
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "results" : [ { "type": "quiz", "answers": [ 20, 18, 15 ] }, { "type": "quiz", "answers": [ 18, 19, 16 ] }, { "type": "hw", "answers": [ 15, 14, 13 ] }, { "type": "exam", "answers": [ 35, 20, 33, 10 ] }] }',
+    '{ "": { "$inc": { "results.$[typeElem].answers.$[ansScore]": 190 }} }', '{}', '{ "": [{ "typeElem.type": "quiz" }, { "ansScore": { "$gte": 18 } }] }', NULL::documentdb_core.bson, NULL::TEXT);
+                                                                                                                                                                                                                                                             update_bson_document                                                                                                                                                                                                                                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "results" : [ { "type" : "quiz", "answers" : [ { "$numberInt" : "210" }, { "$numberInt" : "208" }, { "$numberInt" : "15" } ] }, { "type" : "quiz", "answers" : [ { "$numberInt" : "208" }, { "$numberInt" : "209" }, { "$numberInt" : "16" } ] }, { "type" : "hw", "answers" : [ { "$numberInt" : "15" }, { "$numberInt" : "14" }, { "$numberInt" : "13" } ] }, { "type" : "exam", "answers" : [ { "$numberInt" : "35" }, { "$numberInt" : "20" }, { "$numberInt" : "33" }, { "$numberInt" : "10" } ] } ] }
+(1 row)
+
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "results" : [ { "type": "quiz", "answers": [ 20, 18, 15 ] }, { "type": "quiz", "answers": [ 18, 19, 16 ] }, { "type": "hw", "answers": [ 15, 14, 13 ] }, { "type": "exam", "answers": [ 35, 20, 33, 10 ] }] }',
+    '{ "": { "$inc": { "results.$[].answers.$[ansScore]": 190 }} }', '{}', '{ "": [{ "ansScore": { "$gte": 18 } }] }', NULL::documentdb_core.bson, NULL::TEXT);
+                                                                                                                                                                                                                                                               update_bson_document                                                                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "results" : [ { "type" : "quiz", "answers" : [ { "$numberInt" : "210" }, { "$numberInt" : "208" }, { "$numberInt" : "15" } ] }, { "type" : "quiz", "answers" : [ { "$numberInt" : "208" }, { "$numberInt" : "209" }, { "$numberInt" : "16" } ] }, { "type" : "hw", "answers" : [ { "$numberInt" : "15" }, { "$numberInt" : "14" }, { "$numberInt" : "13" } ] }, { "type" : "exam", "answers" : [ { "$numberInt" : "225" }, { "$numberInt" : "210" }, { "$numberInt" : "223" }, { "$numberInt" : "10" } ] } ] }
+(1 row)
+
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "results" : [ { "type": "quiz", "answers": [ 20, 18, 15 ] }, { "type": "quiz", "answers": [ 18, 19, 16 ] }, { "type": "hw", "answers": [ 15, 14, 13 ] }, { "type": "exam", "answers": [ 35, 20, 33, 10 ] }] }',
+        '{ "": { "$inc": { "results.$[typeElem].answers.$[]": 190 }} }', '{}',  '{ "": [{ "typeElem.type": "quiz" }] }', NULL::documentdb_core.bson, NULL::TEXT);
+                                                                                                                                                                                                                                                              update_bson_document                                                                                                                                                                                                                                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "results" : [ { "type" : "quiz", "answers" : [ { "$numberInt" : "210" }, { "$numberInt" : "208" }, { "$numberInt" : "205" } ] }, { "type" : "quiz", "answers" : [ { "$numberInt" : "208" }, { "$numberInt" : "209" }, { "$numberInt" : "206" } ] }, { "type" : "hw", "answers" : [ { "$numberInt" : "15" }, { "$numberInt" : "14" }, { "$numberInt" : "13" } ] }, { "type" : "exam", "answers" : [ { "$numberInt" : "35" }, { "$numberInt" : "20" }, { "$numberInt" : "33" }, { "$numberInt" : "10" } ] } ] }
+(1 row)
+
+-- arrayFilters for all Update operators should recurse if for a single level nested array
+-- array update operators
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [0], [1] ] }',
+    '{ "": { "$addToSet": { "matrix.$[row]": 2 }} }', '{}', '{ "": [{ "row": 0 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+                                                       update_bson_document                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "matrix" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "2" } ], [ { "$numberInt" : "1" } ] ] }
+(1 row)
+
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [0, 1], [1, 2] ] }',
+    '{ "": { "$pop": { "matrix.$[row]": 1 }} }', '{}', '{ "": [{ "row": 0 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+                                                       update_bson_document                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "matrix" : [ [ { "$numberInt" : "0" } ], [ { "$numberInt" : "1" }, { "$numberInt" : "2" } ] ] }
+(1 row)
+
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [0, 1], [1, 2] ] }',
+    '{ "": { "$pull": { "matrix.$[row]": 1 }} }', '{}', '{ "": [{ "row": 2 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+                                                       update_bson_document                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "matrix" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" } ], [ { "$numberInt" : "2" } ] ] }
+(1 row)
+
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [0, 1], [1, 2] ] }',
+    '{ "": { "$pull": { "matrix.$[row]": 1 }} }', '{}', '{ "": [{ "row": 2 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+                                                       update_bson_document                                                        
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "matrix" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" } ], [ { "$numberInt" : "2" } ] ] }
+(1 row)
+
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [0, 1], [2, 3] ] }',
+    '{ "": { "$push": { "matrix.$[row]": 1 }} }', '{}', '{ "": [{ "row": 1 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+                                                                               update_bson_document                                                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "matrix" : [ [ { "$numberInt" : "0" }, { "$numberInt" : "1" }, { "$numberInt" : "1" } ], [ { "$numberInt" : "2" }, { "$numberInt" : "3" } ] ] }
+(1 row)
+
+-- field update operators, should be able to match but apply update based on the type requirement
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [0], [1] ] }',
+    '{ "": { "$inc": { "matrix.$[row]": 10 }} }', '{}', '{ "": [{ "row": 0 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+ERROR:  Operation $inc cannot be performed because the target value is not numeric. Document { _id: 1 } contains the field '0' which is of non-numeric type array.
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [0], [1] ] }',
+    '{ "": { "$min": { "matrix.$[row]": 10 }} }', '{}', '{ "": [{ "row": 0 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+                                          update_bson_document                                          
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "matrix" : [ { "$numberInt" : "10" }, [ { "$numberInt" : "1" } ] ] }
+(1 row)
+
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [0], [1] ] }',
+    '{ "": { "$max": { "matrix.$[row]": 10 }} }', '{}', '{ "": [{ "row": 0 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+ update_bson_document 
+---------------------------------------------------------------------
+ 
+(1 row)
+
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [0], [1] ] }',
+    '{ "": { "$mul": { "matrix.$[row]": 2 }} }', '{}', '{ "": [{ "row": 0 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+ERROR:  Unable to use the $mul operator on values that are not numeric. The document { _id: 1 } contains the field '0', which has a non-numeric type array.
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [0], [1] ] }',
+    '{ "": { "$rename": { "matrix.$[row]": "arrayA.3" }} }', '{}', '{ "": [{ "row": 0 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+ERROR:  The source field for $rename may not be dynamic: matrix.$[row]
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [0], [1] ] }',
+    '{ "": { "$set": { "matrix.$[row]": "updatedValue" }} }', '{}', '{ "": [{ "row": 0 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+                                     update_bson_document                                      
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "matrix" : [ "updatedValue", [ { "$numberInt" : "1" } ] ] }
+(1 row)
+
+-- bit operator
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [0], [1] ] }',
+    '{ "": { "$bit": { "matrix.$[row]": {"or": 5} }} }', '{}', '{ "": [{ "row": 0 }] }', NULL::documentdb_core.bson, NULL::TEXT);
+ERROR:  $bit cannot be used on a value that is not of an integral type. The document with _id = 1 contains the field 0, which has a non-integer type array.
+-- Check array value should also match in arrayFilters
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [11,12,13], [14,15,16] ] }',
+    '{ "": { "$set": { "matrix.$[row]": [21,22,23] }} }', '{}', '{ "": [{ "row": [11,12,13] }] }', NULL::documentdb_core.bson, NULL::TEXT);
+                                                                                              update_bson_document                                                                                               
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "matrix" : [ [ { "$numberInt" : "21" }, { "$numberInt" : "22" }, { "$numberInt" : "23" } ], [ { "$numberInt" : "14" }, { "$numberInt" : "15" }, { "$numberInt" : "16" } ] ] }
+(1 row)
+
+SELECT documentdb_api_internal.update_bson_document(
+    '{ "_id" : 1, "matrix" : [ [11,12,13], [14,15,16] ] }',
+    '{ "": { "$set": { "matrix.$[row]": 33 }} }', '{}', '{ "": [{ "row": {"$size": 3} }] }', NULL::documentdb_core.bson, NULL::TEXT);
+                                        update_bson_document                                         
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "matrix" : [ { "$numberInt" : "33" }, { "$numberInt" : "33" } ] }
+(1 row)
+

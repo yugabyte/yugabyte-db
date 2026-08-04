@@ -1,0 +1,276 @@
+$ALERT_INACTIVE : #808080;
+
+#alert-config-tab-panel {
+  textarea.form-control {
+    padding: 12px;
+  }
+
+  .on-prem-row-add-btn {
+    float: left;
+    margin-top: 0;
+  }
+
+  .tab-content {
+    padding: 30px 30px;
+  }
+
+  .tab-content:has(div.alert-destination-channels) {
+    padding: 0 !important;
+    height: 815px;
+    background: #f6f6f6;
+  }
+
+  .percent-text {
+    padding: 5px 10px;
+    font-size: 13px;
+    margin: 0;
+  }
+
+  .flex-container {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    height: 40px;
+  }
+
+  .actionBtnsMargin {
+    margin-bottom: 71px;
+  }
+
+  .alert-action-button-container {
+    position: absolute !important;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    min-height: 30px;
+    padding: 14px 12px;
+    border-top: 1px solid #ececea;
+    background-color: #f6f6f5;
+    margin-bottom: 0 !important;
+
+    .btn {
+      margin: 0 6px;
+      min-width: 120px !important;
+    }
+  }
+
+  .condition-row-container {
+    margin-top: 20px;
+  }
+
+  .alert-config-actions {
+    position: relative;
+    top: 10px;
+  }
+
+  .alert-dest-count {
+    margin-top: 50px;
+    margin-bottom: 20px;
+  }
+
+  .alert-config-list {
+    width: 220px;
+  }
+
+  .on-prem-row-delete-btn {
+    float: left;
+    font-size: 18px;
+  }
+
+  h5 {
+    margin-left: 0;
+    margin-top: 15px;
+  }
+
+  .react-bs-table-container {
+    .react-bs-container-header {
+      th {
+        border-bottom: 1px solid #e5e5e9 !important;
+        font-weight: bold;
+      }
+    }
+
+    td {
+      padding: 5px 5px 8px 0 !important;
+    }
+
+    button {
+      padding: 7px 15px 7px 15px;
+      margin-top: 3px;
+    }
+  }
+
+  .dropdown-menu li i {
+    font-size: 20px;
+    width: 24px;
+  }
+
+  .form-field-grid .row>* {
+    padding: 2px 15px 2px 0;
+  }
+
+  .add-destination-container {
+    position: relative;
+    top: 40px;
+  }
+
+  .pd-0 {
+    padding: 0;
+  }
+
+  .mg-l-15 {
+    margin-left: 15px;
+  }
+
+  .alert-dest-add-link {
+    cursor: pointer;
+    margin-left: -2px;
+    line-height: 37px;
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  .btn-group-radio {
+    margin: 0 20px 15px 0;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .react-bs-table-pagination {
+    .dropdown {
+      max-width: 60px;
+      display: flex;
+    }
+  }
+
+  .marginBottom {
+    margin-bottom: 8px !important;
+  }
+
+  .marginRight {
+    margin-right: 5px;
+  }
+}
+
+.row {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.hide-field {
+  display: none;
+}
+
+.alertDestinationDetail {
+  padding: 20px 10px 0px 10px;
+
+  h5 {
+    margin-top: 30px;
+  }
+
+  label {
+    min-width: 30%;
+    float: left;
+  }
+}
+
+.name-tag {
+  font-size: 10px;
+  color: #555555;
+  background: #e1e1e1;
+  padding: 4px 5px;
+  width: 50px;
+  height: 16px;
+  font-weight: 500;
+  line-height: 16px;
+  border-radius: 4px;
+}
+
+.highlight {
+  background-color: #cbdaff;
+}
+
+.alert-name {
+  max-width: 200px;
+  display: table-cell;
+}
+
+.alert-inactive {
+  color: $ALERT_INACTIVE;
+}
+
+.no-destination-msg {
+  color: $ALERT_INACTIVE;
+  display: flex;
+  align-items: baseline;
+
+  i {
+    margin-right: 4px;
+    font-size: 16px;
+  }
+}
+
+.actions-dropdown {
+  border: 0;
+  width: 100% !important;
+  font-size: 18px;
+  text-align: center;
+  font-weight: bold;
+}
+
+.react-bs-table-sizePerPage-dropdown.open {
+  display: flex !important;
+}
+
+.toggle-filter {
+  font-weight: 600;
+  font-size: 15px;
+  color: #333333;
+  padding: 8px;
+  cursor: pointer;
+  border-radius: 5px;
+
+  &:hover {
+    background-color: #e5e5e9;
+  }
+
+  i {
+    margin-right: 5px;
+  }
+}
+
+.pills-container {
+  display: flex;
+  justify-content: flex-start;
+  align-items: flex-end;
+  height: 40px;
+}
+
+.filters {
+  padding-right: 25px;
+}
+
+.leftBorder {
+  border-left: 1px solid #E9EEF2;
+  padding-left: 35px;
+}
+
+.alert-list-table {
+
+  .react-bs-container-body {
+    overflow-y: auto !important;
+    min-height: 350px;
+  }
+
+  .react-bs-table-pagination {
+    margin-top: 30px !important;
+
+    .col-lg-6:first-child {
+      padding: 0;
+    }
+  }
+
+  .yb-loader-circle {
+    position: absolute;
+  }
+}

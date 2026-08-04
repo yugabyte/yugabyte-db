@@ -1,0 +1,128 @@
+@use "sass:color";
+@use '../../../_style/colors.scss';
+
+.alert-details {
+  border-radius: 2px;
+  padding: 24px;
+  box-shadow: 0 0.12em 2px rgba(35, 35, 41, 0.05), 0 0.5em 10px rgba(35, 35, 41, 0.07);
+  background: colors.$YB_BG_WHITE_2;
+  height: 100%;
+  width: 700px;
+  position: fixed;
+  z-index: 9999;
+  top: 0;
+  right: 0%;
+  border-left: 1px solid color.adjust(colors.$YB_BACKGROUND, $lightness: -10%);
+  max-height: 100%;
+  .side-panel {
+    width: 700px !important;
+  }
+  .side-panel__title {
+    font-size: 16px;
+    padding: 20px 20px 20px 15px !important;
+    color: #232329 !important;
+  }
+  .side-panel__content{
+    padding: 15px 20px !important;
+    .panel-highlight{
+      background: colors.$YB_BACKGROUND;
+      padding: 16px;
+      border: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
+    }
+  }
+  .close-button {
+    cursor: pointer;
+  }
+
+  .no-left-padding {
+    padding-left: 0;
+  }
+  .no-padding {
+    padding: 0;
+  }
+  .no-margin-bottom {
+    margin-bottom: 0 !important;
+  }
+  .alert-message {
+    font-size: 13px;
+    max-height: 250px;
+    overflow: auto;
+  }
+  .alert-severity {
+    padding: 4px 6px;
+    font-size: 11.5px;
+    font-weight: 500;
+    border-radius: 6px;
+    &.danger{
+      color:#8F0000;
+      background: #FDE2E2;
+    }
+  }
+  .alert-label {
+    margin-bottom: 10px;
+
+    .alert-label-header {
+      font-size: 13px;
+      text-transform: uppercase;
+      margin-bottom: 5px;
+    }
+
+    .alert-label-value {
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+      margin-bottom: 5px;
+    }
+
+    .alert-label-message {
+      white-space: pre-wrap;
+      display: inline-block;
+      font-size: 12px;
+      max-height: 200px;
+      margin-bottom: 5px;
+    }
+  }
+  .marginTop {
+    margin-top: 24px;
+  }
+  .alert-history {
+    width: 100%;
+    padding: 5px;
+
+    ul {
+      margin: 0;
+      padding: 0;
+    }
+
+    li {
+      list-style: none;
+      border-left: 1px dashed colors.$YB_ORANGE;
+      padding: 0 0 0 10px;
+      position: relative;
+      min-height: 50px;
+
+      &:last-child {
+        border-left: 1px solid transparent;
+      }
+
+      &::before {
+        position: absolute;
+        left: -5px;
+        content: ' ';
+        border: 2px solid colors.$YB_ORANGE;
+        border-radius: 50%;
+        background: colors.$YB_WHITE;
+        height: 9px;
+        width: 9px;
+      }
+
+      .content {
+        top: -4px;
+        position: absolute;
+      }
+    }
+  }
+  .universeLink {
+    text-decoration: underline;
+  }
+}

@@ -1,0 +1,535 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 367000;
+SET documentdb.next_collection_id TO 3670;
+SET documentdb.next_collection_index_id TO 3670;
+-- -- $mergeObjects operator
+-- -- simple merge
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$mergeObjects": {"a": "1"}}}');
+     bson_dollar_project      
+---------------------------------------------------------------------
+ { "result" : { "a" : "1" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$mergeObjects": [{"a": "1"}, {"b": true}]}}');
+           bson_dollar_project            
+---------------------------------------------------------------------
+ { "result" : { "a" : "1", "b" : true } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$mergeObjects": [{"a": "1"}, {"b": true, "c": 2}]}}');
+                          bson_dollar_project                           
+---------------------------------------------------------------------
+ { "result" : { "a" : "1", "b" : true, "c" : { "$numberInt" : "2" } } }
+(1 row)
+
+-- null and undefined return empty doc
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$mergeObjects": null}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : {  } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$mergeObjects": "$undefinedField"}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : {  } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$mergeObjects": [null, null, null]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : {  } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$mergeObjects": [null, "$undefinedField", null]}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : {  } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{}', '{"result": { "$mergeObjects": [{"a": "onlyDoc"}, "$undefinedField", null]}}');
+        bson_dollar_project         
+---------------------------------------------------------------------
+ { "result" : { "a" : "onlyDoc" } }
+(1 row)
+
+-- with field expressions referencing parent doc
+SELECT * FROM bson_dollar_project('{"a": "1", "b": { "d": [true, "1"] }}', '{"result": { "$mergeObjects": "$b"}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "d" : [ true, "1" ] } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": "1", "b": { "d": [true, "1"] }, "c": {"foo": true}}', '{"result": { "$mergeObjects": ["$b", "$c"]}}');
+                 bson_dollar_project                  
+---------------------------------------------------------------------
+ { "result" : { "d" : [ true, "1" ], "foo" : true } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": "1", "b": { "d": [true, "1"] }, "c": {"foo": true}}', '{"result": { "$mergeObjects": ["$c", "$b"]}}');
+                 bson_dollar_project                  
+---------------------------------------------------------------------
+ { "result" : { "foo" : true, "d" : [ true, "1" ] } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": "1", "b": { "d": [true, "1"] }, "c": {"foo": true}}', '{"result": { "$mergeObjects": ["$c", "$d"]}}');
+       bson_dollar_project       
+---------------------------------------------------------------------
+ { "result" : { "foo" : true } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": "1", "b": { "d": { "f": [true, "1"] }}, "c": {"foo": true}}', '{"result": { "$mergeObjects": ["$c.d", "$b.d"]}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "f" : [ true, "1" ] } }
+(1 row)
+
+-- last path found wins when there is a clash
+SELECT * FROM bson_dollar_project('{"a": "1", "b": { "d": [true, "1"] }, "c": {"d": false}}', '{"result": { "$mergeObjects": ["$b", "$c"]}}');
+      bson_dollar_project       
+---------------------------------------------------------------------
+ { "result" : { "d" : false } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": "1", "b": { "d": [true, "1"] }, "c": {"d": false}}', '{"result": { "$mergeObjects": ["$b", "$c", {"d": "this is my final string"}]}}');
+                bson_dollar_project                 
+---------------------------------------------------------------------
+ { "result" : { "d" : "this is my final string" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": "1", "b": { "d": [true, "1"] }, "c": {"d": { "z": false}}}', '{"result": { "$mergeObjects": ["$b", {"d": "this is my final string"}, "$c.d"]}}');
+                       bson_dollar_project                       
+---------------------------------------------------------------------
+ { "result" : { "d" : "this is my final string", "z" : false } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": "1", "b": { "d": [true, "1"] }, "c": {"d": { "z": false}}}', '{"result": { "$mergeObjects": [{"d": "this is my final string"}, "$b", "$c.d", {"hello": "world"}]}}');
+                          bson_dollar_project                           
+---------------------------------------------------------------------
+ { "result" : { "d" : [ true, "1" ], "z" : false, "hello" : "world" } }
+(1 row)
+
+-- nested expressions are evaluated on result document
+SELECT * FROM bson_dollar_project('{"_id": 4, "a": 1}', '{"result": { "$mergeObjects": [{"id": { "$add": ["$_id", "$a"]}}]}}');
+                               bson_dollar_project                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "result" : { "id" : { "$numberInt" : "5" } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {"b": ["1","2","3"]}}', '{"result": { "$mergeObjects": ["$a", {"isArray": {"$isArray": "$a.b"}}]}}');
+                     bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "b" : [ "1", "2", "3" ], "isArray" : true } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {"b": ["1","2","3"]}}', '{"result": { "$mergeObjects": ["$a", {"b": [{"$literal": "$b"}]}]}}');
+        bson_dollar_project        
+---------------------------------------------------------------------
+ { "result" : { "b" : [ "$b" ] } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": {"b": ["1","2","3"]}}', '{"result": { "$mergeObjects": ["$a", {"b": [{"$literal": "$b"}, "$a"]}]}}');
+                      bson_dollar_project                       
+---------------------------------------------------------------------
+ { "result" : { "b" : [ "$b", { "b" : [ "1", "2", "3" ] } ] } }
+(1 row)
+
+-- -- expressions that evaluate to non objects are not valid
+SELECT * FROM bson_dollar_project('{"_id": 4, "a": 1}', '{"result": { "$mergeObjects": [{"id": "$a"}, "$a"]}}');
+ERROR:  Expected 'document' type for $mergeObjects but value 1 has 'int' type
+SELECT * FROM bson_dollar_project('{"_id": 4, "a": "string"}', '{"result": { "$mergeObjects": [{"id": "$a"}, "$a"]}}');
+ERROR:  Expected 'document' type for $mergeObjects but value "string" has 'string' type
+SELECT * FROM bson_dollar_project('{"_id": 4, "a": true}', '{"result": { "$mergeObjects": [{"id": "$a"}, "$a"]}}');
+ERROR:  Expected 'document' type for $mergeObjects but value true has 'bool' type
+SELECT * FROM bson_dollar_project('{"_id": 4, "a": 2.0}', '{"result": { "$mergeObjects": [{"id": "$a"}, "$a"]}}');
+ERROR:  Expected 'document' type for $mergeObjects but value 2 has 'double' type
+SELECT * FROM bson_dollar_project('{"_id": 4, "a": 2.0}', '{"result": { "$mergeObjects": [{"$add": [1, 2, 3]}]}}');
+ERROR:  Expected 'document' type for $mergeObjects but value 6 has 'int' type
+-- $setField operator
+-- $setField should be given an Object no array
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldA": {"$setField": [ "field", "input", "value" ]}}}');
+ERROR:  Expected 'document' type for $setField
+-- Extra param called thing gives an error
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldA": [{"$setField": { "thing": "a", "field": "a", "input": "$$ROOT", "value": "newValue" } }]}}');
+ERROR:  $setField encountered an unrecognized argument value: thing
+-- All required args -and- input param of field is a number
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldA": [{"$setField": { "field": 123, "input": "$$ROOT", "value": "newValue" } }]}}');
+ERROR:  Expected 'string' type for $setField but found 'int' type
+-- All required args -and- input: $$ROOT
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldA": [{"$setField": { "field": "a", "input": "$$ROOT", "value": "newValue" } }]}}');
+                  bson_dollar_project                   
+---------------------------------------------------------------------
+ { "result" : { "fieldA" : [ { "a" : "newValue" } ] } }
+(1 row)
+
+-- Missing param input
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldA": [{"$setField": { "field": "a", "value": "newValue" } }]}}');
+ERROR:  $setField needs the 'input' parameter to be explicitly specified
+-- Missing param field
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldA": [{"$setField": { "input": "$$ROOT", "value": "newValue" } }]}}');
+ERROR:  $setField cannot proceed unless the 'field' parameter is explicitly defined
+-- Missing param value
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldA": [{"$setField": { "field": "a", "input": "$$ROOT" } }]}}');
+ERROR:  The $setField requires that a 'value' parameter be explicitly provided
+-- Wrong type for field, must be a string not null or bool
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [ { "$literal": "b"}, {"$setField": { "field": true, "value": "REMOVE" } }]}}');
+ERROR:  $setField needs the 'input' parameter to be explicitly specified
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [ { "$literal": "b"}, {"$setField": { "field": null, "value": "REMOVE" } }]}}');
+ERROR:  $setField needs the 'input' parameter to be explicitly specified
+-- The next item should add  "$x.y.z" : "newValue" to the input doc {"a":"b"}
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [{"$setField": { "field": {"$literal" : "$x.y.z"}, "input": {"a":"b"}, "value": "newValue" } }]}}');
+                          bson_dollar_project                           
+---------------------------------------------------------------------
+ { "result" : { "fieldA" : [ { "a" : "b", "$x.y.z" : "newValue" } ] } }
+(1 row)
+
+-- Not yet implemented fully for $$REMOVE
+-- SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldA": [{"$setField": {"field": "a", "input": "$$ROOT", "value": "$$REMOVE" } }]}}');
+-- here we test the "value" as magic value $$REMOVE as value, that should remove "baz" from the input, using $literal as means to give field name. Field not present
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [{"$setField": { "field": {"$literal" : "$x.y.z"}, "input": {"a":"b"}, "value": "$$REMOVE" } }]}}');
+               bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "fieldA" : [ { "a" : "b" } ] } }
+(1 row)
+
+-- here we test the "value" as magic $$REMOVE as part of the value, that should not remove "baz" from the input, using $literal as means to give field name. Field not present
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [{"$setField": { "field": {"$literal" : "$x.y.z"}, "input": {"a":"b"}, "value": "no$$REMOVE" } }]}}');
+                           bson_dollar_project                            
+---------------------------------------------------------------------
+ { "result" : { "fieldA" : [ { "a" : "b", "$x.y.z" : "no$$REMOVE" } ] } }
+(1 row)
+
+-- here we test the "value" as magic $$REMOVE that should remove "baz" from the input, using $literal as means to give field name. Field *is* present.
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [{"$setField": { "field": {"$literal" : "baz"}, "input": {"a":"b"}, "value": "$$REMOVE" } }]}}');
+               bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "fieldA" : [ { "a" : "b" } ] } }
+(1 row)
+
+-- here we test the "value" as magic $$REMOVE that should remove "baz" from the input.  Same as prev test w/o using $literal operator.
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [{"$setField": { "field": "baz", "input": {"a":"b"}, "value": "$$REMOVE" } }]}}');
+               bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "fieldA" : [ { "a" : "b" } ] } }
+(1 row)
+
+-- here we test the "value" as a empty document
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [{"$setField": { "field": "baz", "input": {"a":"b"}, "value": {} } }]}}');
+                      bson_dollar_project                      
+---------------------------------------------------------------------
+ { "result" : { "fieldA" : [ { "a" : "b", "baz" : {  } } ] } }
+(1 row)
+
+-- here we test the "value" as a document with 1 item
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [{"$setField": { "field": "baz", "input": {"a":"b"}, "value": { "x" : "y"} } }]}}');
+                          bson_dollar_project                           
+---------------------------------------------------------------------
+ { "result" : { "fieldA" : [ { "a" : "b", "baz" : { "x" : "y" } } ] } }
+(1 row)
+
+-- Not yet implemented, fully for $$ROOT
+-- here we use $$ROOT in probably wrong "value" field, should pick up the record { "d1": {"val": "a"}} as the value of the new field
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [{"$setField": { "field": "baz", "input": {"a":"b"}, "value": "$$ROOT" } }]}}');
+                                 bson_dollar_project                                 
+---------------------------------------------------------------------
+ { "result" : { "fieldA" : [ { "a" : "b", "baz" : { "d1" : { "val" : "a" } } } ] } }
+(1 row)
+
+-- here we use $$ROOT that pickups the { "d1": {"val": "a"}} and should add "baz" : "foooooo"
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [{"$setField": { "field": "baz", "input": "$$ROOT", "value": "foooooo" } }]}}');
+                               bson_dollar_project                               
+---------------------------------------------------------------------
+ { "result" : { "fieldA" : [ { "d1" : { "val" : "a" }, "baz" : "foooooo" } ] } }
+(1 row)
+
+-- Check that we can use dot path like $$ROOT.d1:
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [{"$setField": { "field": "baz", "input": "$$ROOT.d1", "value": "foooooo" } }]}}');
+                         bson_dollar_project                          
+---------------------------------------------------------------------
+ { "result" : { "fieldA" : [ { "val" : "a", "baz" : "foooooo" } ] } }
+(1 row)
+
+-- Check that we can use dot path like $$REMOVE in a non $setField context
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [{"$concat": "$$REMOVE" } ]}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "fieldA" : [ null ] } }
+(1 row)
+
+-- Inject a null as "input", via "input"
+SELECT * FROM bson_dollar_project('{ "d1": {"val": "a"}}', '{"result": { "fieldA": [{"$setField": { "field": "baz", "input": null, "value": "foooooo" } }]}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "fieldA" : [ null ] } }
+(1 row)
+
+-- insert where we overwrite the tail.
+SELECT * FROM bson_dollar_project('{"a1": { "b": 1, "c": 1, "d": 1 }, "b1": { "d": 2, "e": 3 } }', '{"result": { "$mergeObjects": [ "$a1", "$b1" ]}}');
+                                                            bson_dollar_project                                                            
+---------------------------------------------------------------------
+ { "result" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "1" }, "d" : { "$numberInt" : "2" }, "e" : { "$numberInt" : "3" } } }
+(1 row)
+
+-- testing multiple scenarios with $$REMOVE to check all work properly
+SELECT * FROM bson_dollar_project('{"a": 1}', '{ "result": { "$bsonSize": "$$REMOVE" } }');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : null }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": 1}', '{ "result": { "$bsonSize": { "a": 1, "test": "$$REMOVE" } } }');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "$numberInt" : "12" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{ "_id": 16, "group": 2, "obj": { "a": 1, "b": 1 } }', '{ "mergedDocument": { "$mergeObjects": ["$obj", { "b": "$$REMOVE" } ] } }');
+                                                  bson_dollar_project                                                   
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "16" }, "mergedDocument" : { "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } } }
+(1 row)
+
+-- $getField operator
+SELECT insert_one('db','test_get_field',' { "_id": 0, "a": 1, "b": "test" }');
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- positive cases
+-- entire expression
+-- field parsed from $literal
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": { "$literal": "a" }, "input": {"a": { "b": 3 }}}}}}');
+                        bson_dollar_project                         
+---------------------------------------------------------------------
+ { "result" : { "fieldValue" : { "b" : { "$numberInt" : "3" } } } }
+(1 row)
+
+-- field parsed from expression
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": { "$literal": "a" }, "input": {"a": { "b": 3 }}}}}}');
+                        bson_dollar_project                         
+---------------------------------------------------------------------
+ { "result" : { "fieldValue" : { "b" : { "$numberInt" : "3" } } } }
+(1 row)
+
+-- field is a path
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "test_get_field", "pipeline":  [{"$project": {"result": {"fieldValue": {"$getField": {"field": "$b", "input": {"test": { "b": 3 }}}}}}}]}');
+                                              document                                              
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "result" : { "fieldValue" : { "b" : { "$numberInt" : "3" } } } }
+(1 row)
+
+-- input be a system variable
+SELECT * FROM bson_dollar_project('{"a": { "b": 3 }}', '{"result": { "fieldValue": {"$getField": {"field": "a", "input": "$$ROOT"}}}}');
+                        bson_dollar_project                         
+---------------------------------------------------------------------
+ { "result" : { "fieldValue" : { "b" : { "$numberInt" : "3" } } } }
+(1 row)
+
+-- input be null
+SELECT * FROM bson_dollar_project('{"a": { "b": 3 }}', '{"result": { "fieldValue": {"$getField": {"field": "a", "input": null}}}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "fieldValue" : null } }
+(1 row)
+
+-- input be a path
+SELECT * FROM bson_dollar_project('{"a": { "b": 3 }}', '{"result": { "fieldValue": {"$getField": {"field": "b", "input": "$a"}}}}');
+                   bson_dollar_project                    
+---------------------------------------------------------------------
+ { "result" : { "fieldValue" : { "$numberInt" : "3" } } }
+(1 row)
+
+-- input be a missing path
+SELECT * FROM bson_dollar_project('{"a": { "b": 3 }}', '{"result": { "fieldValue": {"$getField": {"field": "b", "input": "$adf"}}}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : {  } }
+(1 row)
+
+-- input be constant
+SELECT * FROM bson_dollar_project('{"a": { "b": 3 }}', '{"result": { "fieldValue": {"$getField": {"field": "b", "input": "dx"}}}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : {  } }
+(1 row)
+
+-- get array field value
+SELECT * FROM bson_dollar_project('{"a": { "b": ["1"] }}', '{"result": { "fieldValue": {"$getField": {"field": "b", "input": "$a"}}}}');
+            bson_dollar_project            
+---------------------------------------------------------------------
+ { "result" : { "fieldValue" : [ "1" ] } }
+(1 row)
+
+-- get document field value
+SELECT * FROM bson_dollar_project('{"a": { "b": {"c": "1"} }}', '{"result": { "fieldValue": {"$getField": {"field": "b", "input": "$a"}}}}');
+               bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "fieldValue" : { "c" : "1" } } }
+(1 row)
+
+-- field name contains $ and .
+SELECT * FROM bson_dollar_project('{"a": { "b": {"c": "nested text"}, "b.c": "plain text" }}', '{"result": { "fieldValue": {"$getField": {"field": "b.c", "input": "$a"}}}}');
+              bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "fieldValue" : "plain text" } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": { "$b.01": {"c": "1"} }}', '{"result": { "fieldValue": {"$getField": {"field": { "$literal": "$b.01" }, "input": "$a"}}}}');
+               bson_dollar_project               
+---------------------------------------------------------------------
+ { "result" : { "fieldValue" : { "c" : "1" } } }
+(1 row)
+
+-- nested expression
+SELECT * FROM bson_dollar_project('{"a": { "b": 3 }}', '{"result": { "fieldValue": {"$getField": {"field": "b", "input": { "$getField": "a" }}}}}');
+                   bson_dollar_project                    
+---------------------------------------------------------------------
+ { "result" : { "fieldValue" : { "$numberInt" : "3" } } }
+(1 row)
+
+-- test pipeline
+SELECT documentdb_api.insert_one('db','getfield','{"_id":"1", "a": null }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','getfield','{"_id":"2", "a": { "b": 1 } }', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','getfield','{"_id":"3"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "getfield", "pipeline": [ { "$project": { "fieldValue": { "$getField": { "field": "b", "input": "$a" }}}}], "cursor": {} }');
+                        document                        
+---------------------------------------------------------------------
+ { "_id" : "1", "fieldValue" : null }
+ { "_id" : "2", "fieldValue" : { "$numberInt" : "1" } }
+ { "_id" : "3" }
+(3 rows)
+
+-- shorthand expression
+-- input will be $$CURRENT
+SELECT * FROM bson_dollar_project('{"a": { "b": 3 }}', '{"result": { "fieldValue": {"$getField": "a"}}}');
+                        bson_dollar_project                         
+---------------------------------------------------------------------
+ { "result" : { "fieldValue" : { "b" : { "$numberInt" : "3" } } } }
+(1 row)
+
+SELECT * FROM bson_dollar_project('{"a": { "b": 3 }}', '{"result": { "fieldValue": {"$getField": "b"}}}');
+ bson_dollar_project 
+---------------------------------------------------------------------
+ { "result" : {  } }
+(1 row)
+
+-- negative cases
+-- full expression
+-- field is required
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {}}}}');
+ERROR:  $getField requires that the 'field' parameter must be explicitly specified
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"input": {}}}}}');
+ERROR:  $getField requires that the 'field' parameter must be explicitly specified
+-- input is required
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": "a"}}}}');
+ERROR:  $getField needs the 'input' parameter to be defined
+-- field must be a string
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": null, "input": {}}}}}');
+ERROR:  $getField needs 'field' to evaluate to a String type, but received null
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": 1, "input": {}}}}}');
+ERROR:  $getField needs 'field' to evaluate to a String type, but received int
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": {"field": [], "input": {}}}}}');
+ERROR:  $getField needs 'field' to evaluate to a String type, but received array
+-- shorthand expression
+-- field must be a string
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$getField": []}}}');
+ERROR:  $getField needs 'field' to evaluate to a String type, but received array
+-- $unsetField
+-- postive cases
+-- null input
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a", "input": null}}}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "fieldValue" : null } }
+(1 row)
+
+-- empty input
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a", "input": {}}}}}');
+          bson_dollar_project           
+---------------------------------------------------------------------
+ { "result" : { "fieldValue" : {  } } }
+(1 row)
+
+-- remove from input argument not current document
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a", "input": {"a": 1, "b": 2}}}}}');
+                        bson_dollar_project                         
+---------------------------------------------------------------------
+ { "result" : { "fieldValue" : { "b" : { "$numberInt" : "2" } } } }
+(1 row)
+
+-- won't traverse objects automatically with dotted field
+SELECT * FROM bson_dollar_project('{"a": {"b": 1}, "a.b": 2}', '{"result": { "fieldValue": {"$unsetField": {"field": "a.b", "input": "$$ROOT"}}}}');
+                             bson_dollar_project                              
+---------------------------------------------------------------------
+ { "result" : { "fieldValue" : { "a" : { "b" : { "$numberInt" : "1" } } } } }
+(1 row)
+
+-- field name starts with $
+SELECT * FROM bson_dollar_project('{"$a": 1, "b": 2}', '{"result": { "fieldValue": {"$unsetField": {"field": { "$const": "$a" }, "input": "$$ROOT"}}}}');
+                        bson_dollar_project                         
+---------------------------------------------------------------------
+ { "result" : { "fieldValue" : { "b" : { "$numberInt" : "2" } } } }
+(1 row)
+
+-- take specific path from current document
+SELECT * FROM bson_dollar_project('{"a": {"b": 1, "c": 2}}', '{"result": { "fieldValue": {"$unsetField": {"field": "b", "input": "$a"}}}}');
+                        bson_dollar_project                         
+---------------------------------------------------------------------
+ { "result" : { "fieldValue" : { "c" : { "$numberInt" : "2" } } } }
+(1 row)
+
+-- cooperate with getField
+SELECT * FROM bson_dollar_project('{"a": {"b": 1, "c": 2}}', '{"result": { "fieldValue": {"$unsetField": {"field": "b", "input": {"$getField": "a"}}}}}');
+                        bson_dollar_project                         
+---------------------------------------------------------------------
+ { "result" : { "fieldValue" : { "c" : { "$numberInt" : "2" } } } }
+(1 row)
+
+-- unset an array
+SELECT * FROM bson_dollar_project('{"a": {"b": 1, "c": 2}, "d": [2, 3]}', '{"result": { "fieldValue": {"$unsetField": {"field": "d", "input": "$$ROOT"}}}}');
+                                            bson_dollar_project                                             
+---------------------------------------------------------------------
+ { "result" : { "fieldValue" : { "a" : { "b" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "2" } } } } }
+(1 row)
+
+-- negative cases
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": 1}}}');
+ERROR:  Expected 'document' type for $unsetField
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a"}}}}');
+ERROR:  $unsetField needs the 'input' parameter to be explicitly specified
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"input": null}}}}');
+ERROR:  $unsetField cannot proceed unless the 'field' parameter is explicitly defined
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a", "input": null, "value": 1}}}}');
+ERROR:  $unsetField encountered an unrecognized argument value: value
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": {"$add": [2, 3]}, "input": null}}}}');
+ERROR:  The $unsetField needs the 'field' value to be constant, but a non-constant value was provided instead.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "$a", "input": null}}}}');
+ERROR:  A field path reference is being used here, but it is not permitted in this specific context. Perhaps you intended to use the operators {$literal: '$a'} instead?
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": 5, "input": null}}}}');
+ERROR:  Expected 'string' type for $unsetField but found 'int' type
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": ["a"], "input": null}}}}');
+ERROR:  The $unsetField needs the 'field' value to be constant, but a non-constant value was provided instead.
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": null, "input": null}}}}');
+ERROR:  Expected 'string' type for $unsetField but found 'null' type
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a", "input": 3}}}}');
+ERROR:  $unsetField needs 'input' to evaluate as an Object type
+SELECT * FROM bson_dollar_project('{}', '{"result": { "fieldValue": {"$unsetField": {"field": "a", "input": {"$add": [2, 3]}}}}}');
+ERROR:  $unsetField needs 'input' to evaluate as an Object type

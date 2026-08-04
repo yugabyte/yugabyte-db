@@ -1,0 +1,29 @@
+<!--
+doc/src/sgml/ref/drop_profile.sgml
+YSQL documentation
+-->
+
+<refentry id="sql-dropprofile">
+ <indexterm zone="sql-dropprofile">
+  <primary>DROP PROFILE</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>DROP PROFILE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>DROP PROFILE</refname>
+  <refpurpose>remove a login profile</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+
+<synopsis>
+DROP PROFILE <replaceable class="parameter">profile_name</replaceable>;
+</synopsis>
+
+ </refsynopsisdiv>
+</refentry>

@@ -1,0 +1,6 @@
+# src/test/regress/parallel_plans_schedule
+#
+####################################################################################################
+# Tests for planner's parallel vs. serial plan choices
+####################################################################################################
+test: yb.orig.parallel_plans

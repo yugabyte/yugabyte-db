@@ -1,0 +1,473 @@
+Implementation notes about Henry Spencer's regex library
+========================================================
+
+If Henry ever had any internals documentation, he didn't publish it.
+So this file is an attempt to reverse-engineer some docs.
+
+General source-file layout
+--------------------------
+
+There are six separately-compilable source files, five of which expose
+exactly one exported function apiece:
+	regcomp.c: pg_regcomp
+	regexec.c: pg_regexec
+	regerror.c: pg_regerror
+	regfree.c: pg_regfree
+	regprefix.c: pg_regprefix
+(The pg_ prefixes were added by the Postgres project to distinguish this
+library version from any similar one that might be present on a particular
+system.  They'd need to be removed or replaced in any standalone version
+of the library.)
+
+The sixth file, regexport.c, exposes multiple functions that allow extraction
+of info about a compiled regex (see regexport.h).
+
+There are additional source files regc_*.c that are #include'd in regcomp,
+and similarly additional source files rege_*.c that are #include'd in
+regexec.  This was done to avoid exposing internal symbols globally;
+all functions not meant to be part of the library API are static.
+
+(Actually the above is a lie in one respect: there are two more global
+symbols, pg_set_regex_collation and pg_reg_getcolor in regcomp.  These are
+not meant to be part of the API, but they have to be global because both
+regcomp and regexec call them.  It'd be better to get rid of
+pg_set_regex_collation, as well as the static variables it sets, in favor of
+keeping the needed locale state in the regex structs.  We have not done this
+yet for lack of a design for how to add application-specific state to the
+structs.)
+
+What's where in src/backend/regex/:
+
+regcomp.c		Top-level regex compilation code
+regc_color.c		Color map management
+regc_cvec.c		Character vector (cvec) management
+regc_lex.c		Lexer
+regc_nfa.c		NFA handling
+regc_locale.c		Application-specific locale code from Tcl project
+regc_pg_locale.c	Postgres-added application-specific locale code
+regexec.c		Top-level regex execution code
+rege_dfa.c		DFA creation and execution
+regerror.c		pg_regerror: generate text for a regex error code
+regfree.c		pg_regfree: API to free a no-longer-needed regex_t
+regexport.c		Functions for extracting info from a regex_t
+regprefix.c		Code for extracting a common prefix from a regex_t
+
+The locale-specific code is concerned primarily with case-folding and with
+expanding locale-specific character classes, such as [[:alnum:]].  It
+really needs refactoring if this is ever to become a standalone library.
+
+The header files for the library are in src/include/regex/:
+
+regcustom.h		Customizes library for particular application
+regerrs.h		Error message list
+regex.h			Exported API
+regexport.h		Exported API for regexport.c
+regguts.h		Internals declarations
+
+
+DFAs, NFAs, and all that
+------------------------
+
+This library is a hybrid DFA/NFA regex implementation.  (If you've never
+heard either of those terms, get thee to a first-year comp sci textbook.)
+It might not be clear at first glance what that really means and how it
+relates to what you'll see in the code.  Here's what really happens:
+
+* Initial parsing of a regex generates an NFA representation, with number
+of states approximately proportional to the length of the regexp.
+
+* The NFA is then optimized into a "compact NFA" representation, which is
+basically the same idea but without fields that are not going to be needed
+at runtime.  It is simplified too: the compact format only allows "plain"
+and "LACON" arc types.  The cNFA representation is what is passed from
+regcomp to regexec.
+
+* Unlike traditional NFA-based regex engines, we do not execute directly
+from the NFA representation, as that would require backtracking and so be
+very slow in some cases.  Rather, we execute a DFA, which ideally can
+process an input string in linear time (O(M) for M characters of input)
+without backtracking.  Each state of the DFA corresponds to a set of
+states of the NFA, that is all the states that the NFA might have been in
+upon reaching the current point in the input string.  Therefore, an NFA
+with N states might require as many as 2^N states in the corresponding
+DFA, which could easily require unreasonable amounts of memory.  We deal
+with this by materializing states of the DFA lazily (only when needed) and
+keeping them in a limited-size cache.  The possible need to build the same
+state of the DFA repeatedly makes this approach not truly O(M) time, but
+in the worst case as much as O(M*N).  That's still far better than the
+worst case for a backtracking NFA engine.
+
+If that were the end of it, we'd just say this is a DFA engine, with the
+use of NFAs being merely an implementation detail.  However, a DFA engine
+cannot handle some important regex features such as capturing parens and
+back-references.  If the parser finds that a regex uses these features
+(collectively called "messy cases" in the code), then we have to use
+NFA-style backtracking search after all.
+
+When using the NFA mode, the representation constructed by the parser
+consists of a tree of sub-expressions ("subre"s).  Leaf tree nodes are
+either plain regular expressions (which are executed as DFAs in the manner
+described above) or back-references (which try to match the input to some
+previous substring).  Non-leaf nodes are capture nodes (which save the
+location of the substring currently matching their child node),
+concatenation, alternation, or iteration nodes.  At execution time, the
+executor recursively scans the tree.  At concatenation, alternation, or
+iteration nodes, it considers each possible alternative way of matching the
+input string, that is each place where the string could be split for a
+concatenation or iteration, or each child node for an alternation.  It
+tries the next alternative if the match fails according to the child nodes.
+This is exactly the sort of backtracking search done by a traditional NFA
+regex engine.  If there are many tree levels it can get very slow.
+
+But all is not lost: we can still be smarter than the average pure NFA
+engine.  To do this, each subre node has an associated DFA, which
+represents what the node could possibly match insofar as a mathematically
+pure regex can describe that, which basically means "no backrefs".
+Before we perform any search of possible alternative sub-matches, we run
+the DFA to see if it thinks the proposed substring could possibly match.
+If not, we can reject the match immediately without iterating through many
+possibilities.
+
+As an example, consider the regex "(a[bc]+)\1".  The compiled
+representation will have a top-level concatenation subre node.  Its first
+child is a plain DFA node for "a[bc]+" (which is marked as being a capture
+node).  The concatenation's second child is a backref node for \1.
+The DFA associated with the concatenation node will be "a[bc]+a[bc]+",
+where the backref has been replaced by a copy of the DFA for its referent
+expression.  When executed, the concatenation node will have to search for
+a possible division of the input string that allows its two child nodes to
+each match their part of the string (and although this specific case can
+only succeed when the division is at the middle, the code does not know
+that, nor would it be true in general).  However, we can first run the DFA
+and quickly reject any input that doesn't start with an "a" and contain
+one more "a" plus some number of b's and c's.  If the DFA doesn't match,
+there is no need to recurse to the two child nodes for each possible
+string division point.  In many cases, this prefiltering makes the search
+run much faster than a pure NFA engine could do.  It is this behavior that
+justifies using the phrase "hybrid DFA/NFA engine" to describe Spencer's
+library.
+
+It's perhaps worth noting that separate capture subre nodes are a rarity:
+normally, we just mark a subre as capturing and that's it.  However, it's
+legal to write a regex like "((x))" in which the same substring has to be
+captured by multiple sets of parentheses.  Since a subre has room for only
+one "capno" field, a single subre can't handle that.  We handle such cases
+by wrapping the base subre (which captures the innermost parens) in a
+no-op capture node, or even more than one for "(((x)))" etc.  This is a
+little bit inefficient because we end up with multiple identical NFAs,
+but since the case is pointless and infrequent, it's not worth working
+harder.
+
+
+Colors and colormapping
+-----------------------
+
+In many common regex patterns, there are large numbers of characters that
+can be treated alike by the execution engine.  A simple example is the
+pattern "[[:alpha:]][[:alnum:]]*" for an identifier.  Basically the engine
+only needs to care whether an input symbol is a letter, a digit, or other.
+We could build the NFA or DFA with a separate arc for each possible letter
+and digit, but that's very wasteful of space and not so cheap to execute
+either, especially when dealing with Unicode which can have thousands of
+letters.  Instead, the parser builds a "color map" that maps each possible
+input symbol to a "color", or equivalence class.  The NFA or DFA
+representation then has arcs labeled with colors, not specific input
+symbols.  At execution, the first thing the executor does with each input
+symbol is to look up its color in the color map, and then everything else
+works from the color only.
+
+To build the colormap, we start by assigning every possible input symbol
+the color WHITE, which means "other" (that is, at the end of parsing, the
+symbols that are still WHITE are those not explicitly referenced anywhere
+in the regex).  When we see a simple literal character or a bracket
+expression in the regex, we want to assign that character, or all the
+characters represented by the bracket expression, a unique new color that
+can be used to label the NFA arc corresponding to the state transition for
+matching this character or bracket expression.  The basic idea is:
+first, change the color assigned to a character to some new value;
+second, run through all the existing arcs in the partially-built NFA,
+and for each one referencing the character's old color, add a parallel
+arc referencing its new color (this keeps the reassignment from changing
+the semantics of what we already built); and third, add a new arc with
+the character's new color to the current pair of NFA states, denoting
+that seeing this character allows the state transition to be made.
+
+This is complicated a bit by not wanting to create more colors
+(equivalence classes) than absolutely necessary.  In particular, if a
+bracket expression mentions two characters that had the same color before,
+they should still share the same color after we process the bracket, since
+there is still not a need to distinguish them.  But we do need to
+distinguish them from other characters that previously had the same color
+yet are not listed in the bracket expression.  To mechanize this, the code
+has a concept of "parent colors" and "subcolors", where a color's subcolor
+is the new color that we are giving to any characters of that color while
+parsing the current atom.  (The word "parent" is a bit unfortunate here,
+because it suggests a long-lived relationship, but a subcolor link really
+only lasts for the duration of parsing a single atom.)  In other words,
+a subcolor link means that we are in process of splitting the parent color
+into two colors (equivalence classes), depending on whether or not each
+member character should be included by the current regex atom.
+
+As an example, suppose we have the regex "a\d\wx".  Initially all possible
+character codes are labeled WHITE (color 0).  To parse the atom "a", we
+create a new color (1), update "a"'s color map entry to 1, and create an
+arc labeled 1 between the first two states of the NFA.  Now we see \d,
+which is really a bracket expression containing the digits "0"-"9".
+First we process "0", which is currently WHITE, so we create a new color
+(2), update "0"'s color map entry to 2, and create an arc labeled 2
+between the second and third states of the NFA.  We also mark color WHITE
+as having the subcolor 2, which means that future relabelings of WHITE
+characters should also select 2 as the new color.  Thus, when we process
+"1", we won't create a new color but re-use 2.  We update "1"'s color map
+entry to 2, and then find that we don't need a new arc because there is
+already one labeled 2 between the second and third states of the NFA.
+Similarly for the other 8 digits, so there will be only one arc labeled 2
+between NFA states 2 and 3 for all members of this bracket expression.
+At completion of processing of the bracket expression, we call okcolors()
+which breaks all the existing parent/subcolor links; there is no longer a
+marker saying that WHITE characters should be relabeled 2.  (Note:
+actually, we did the same creation and clearing of a subcolor link for the
+primitive atom "a", but it didn't do anything very interesting.)  Now we
+come to the "\w" bracket expression, which for simplicity assume expands
+to just "[a-z0-9]".  We process "a", but observe that it is already the
+sole member of its color 1.  This means there is no need to subdivide that
+equivalence class more finely, so we do not create any new color.  We just
+make an arc labeled 1 between the third and fourth NFA states.  Next we
+process "b", which is WHITE and far from the only WHITE character, so we
+create a new color (3), link that as WHITE's subcolor, relabel "b" as
+color 3, and make an arc labeled 3.  As we process "c" through "z", each
+is relabeled from WHITE to 3, but no new arc is needed.  Now we come to
+"0", which is not the only member of its color 2, so we suppose that a new
+color is needed and create color 4.  We link 4 as subcolor of 2, relabel
+"0" as color 4 in the map, and add an arc for color 4.  Next "1" through
+"9" are similarly relabeled as color 4, with no additional arcs needed.
+Having finished the bracket expression, we call okcolors(), which breaks
+the subcolor links.  okcolors() further observes that we have removed
+every member of color 2 (the previous color of the digit characters).
+Therefore, it runs through the partial NFA built so far and relabels arcs
+labeled 2 to color 4; in particular the arc from NFA state 2 to state 3 is
+relabeled color 4.  Then it frees up color 2, since we have no more use
+for that color.  We now have an NFA in which transitions for digits are
+consistently labeled with color 4.  Last, we come to the atom "x".
+"x" is currently labeled with color 3, and it's not the only member of
+that color, so we realize that we now need to distinguish "x" from other
+letters when we did not before.  We create a new color, which might have
+been 5 but instead we recycle the unused color 2.  "x" is relabeled 2 in
+the color map and 2 is linked as the subcolor of 3, and we add an arc for
+2 between states 4 and 5 of the NFA.  Now we call okcolors(), which breaks
+the subcolor link between colors 3 and 2 and notices that both colors are
+nonempty.  Therefore, it also runs through the existing NFA arcs and adds
+an additional arc labeled 2 wherever there is an arc labeled 3; this
+action ensures that characters of color 2 (i.e., "x") will still be
+considered as allowing any transitions they did before.  We are now done
+parsing the regex, and we have these final color assignments:
+	color 1: "a"
+	color 2: "x"
+	color 3: other letters
+	color 4: digits
+and the NFA has these arcs:
+	states 1 -> 2 on color 1 (hence, "a" only)
+	states 2 -> 3 on color 4 (digits)
+	states 3 -> 4 on colors 1, 3, 4, and 2 (covering all \w characters)
+	states 4 -> 5 on color 2 ("x" only)
+which can be seen to be a correct representation of the regex.
+
+There is one more complexity, which is how to handle ".", that is a
+match-anything atom.  We used to do that by generating a "rainbow"
+of arcs of all live colors between the two NFA states before and after
+the dot.  That's expensive in itself when there are lots of colors,
+and it also typically adds lots of follow-on arc-splitting work for the
+color splitting logic.  Now we handle this case by generating a single arc
+labeled with the special color RAINBOW, meaning all colors.  Such arcs
+never need to be split, so they help keep NFAs small in this common case.
+(Note: this optimization doesn't help in REG_NLSTOP mode, where "." is
+not supposed to match newline.  In that case we still handle "." by
+generating an almost-rainbow of all colors except newline's color.)
+
+Given this summary, we can see we need the following operations for
+colors:
+
+* A fast way to look up the current color assignment for any character
+  code.  (This is needed during both parsing and execution, while the
+  remaining operations are needed only during parsing.)
+* A way to alter the color assignment for any given character code.
+* We must track the number of characters currently assigned to each
+  color, so that we can detect empty and singleton colors.
+* We must track all existing NFA arcs of a given color, so that we
+  can relabel them at need, or add parallel arcs of a new color when
+  an existing color has to be subdivided.
+
+The last two of these are handled with the "struct colordesc" array and
+the "colorchain" links in NFA arc structs.
+
+Ideally, we'd do the first two operations using a simple linear array
+storing the current color assignment for each character code.
+Unfortunately, that's not terribly workable for large charsets such as
+Unicode.  Our solution is to divide the color map into two parts.  A simple
+linear array is used for character codes up to MAX_SIMPLE_CHR, which can be
+chosen large enough to include all popular characters (so that the
+significantly-slower code paths about to be described are seldom invoked).
+Characters above that need be considered at compile time only if they
+appear explicitly in the regex pattern.  We store each such mentioned
+character or character range as an entry in the "colormaprange" array in
+the colormap.  (Overlapping ranges are split into unique subranges, so that
+each range in the finished list needs only a single color that describes
+all its characters.)  When mapping a character above MAX_SIMPLE_CHR to a
+color at runtime, we search this list of ranges explicitly.
+
+That's still not quite enough, though, because of locale-dependent
+character classes such as [[:alpha:]].  In Unicode locales these classes
+may have thousands of entries that are above MAX_SIMPLE_CHR, and we
+certainly don't want to be searching large colormaprange arrays at runtime.
+Nor do we even want to spend the time to initialize cvec structures that
+exhaustively describe all of those characters.  Our solution is to compute
+exact per-character colors at regex compile time only up to MAX_SIMPLE_CHR.
+For characters above that, we apply the <ctype.h> or <wctype.h> lookup
+functions at runtime for each locale-dependent character class used in the
+regex pattern, constructing a bitmap that describes which classes the
+runtime character belongs to.  The per-character-range data structure
+mentioned above actually holds, for each range, a separate color entry
+for each possible combination of character class properties.  That is,
+the color map for characters above MAX_SIMPLE_CHR is really a 2-D array,
+whose rows correspond to high characters or character ranges that are
+explicitly mentioned in the regex pattern, and whose columns correspond
+to sets of the locale-dependent character classes that are used in the
+regex.
+
+As an example, given the pattern '\w\u1234[\U0001D100-\U0001D1FF]'
+(and supposing that MAX_SIMPLE_CHR is less than 0x1234), we will need
+a high color map with three rows.  One row is for the single character
+U+1234 (represented as a single-element range), one is for the range
+U+1D100..U+1D1FF, and the other row represents all remaining high
+characters.  The color map has two columns, one for characters that
+satisfy iswalnum() and one for those that don't.
+
+We build this color map in parallel with scanning the regex.  Each time
+we detect a new explicit high character (or range) or a locale-dependent
+character class, we split existing entry(s) in the high color map so that
+characters we need to be able to distinguish will have distinct entries
+that can be given separate colors.  Often, though, single entries in the
+high color map will represent very large sets of characters.
+
+If there are both explicit high characters/ranges and locale-dependent
+character classes, we may have entries in the high color map array that
+have non-WHITE colors but don't actually represent any real characters.
+(For example, in a row representing a singleton range, only one of the
+columns could possibly be a live entry; it's the one matching the actual
+locale properties for that single character.)  We don't currently make
+any effort to reclaim such colors.  In principle it could be done, but
+it's not clear that it's worth the trouble.
+
+
+Detailed semantics of an NFA
+----------------------------
+
+When trying to read dumped-out NFAs, it's helpful to know these facts:
+
+State 0 (additionally marked with "@" in dumpnfa's output) is always the
+goal state, and state 1 (additionally marked with ">") is the start state.
+(The code refers to these as the post state and pre state respectively.)
+
+The possible arc types are:
+
+    PLAIN arcs, which specify matching of any character of a given "color"
+    (see above).  These are dumped as "[color_number]->to_state".
+    In addition there can be "rainbow" PLAIN arcs, which are dumped as
+    "[*]->to_state".
+
+    EMPTY arcs, which specify a no-op transition to another state.  These
+    are dumped as "->to_state".
+
+    AHEAD constraints, which represent a "next character must be of this
+    color" constraint.  AHEAD differs from a PLAIN arc in that the input
+    character is not consumed when crossing the arc.  These are dumped as
+    ">color_number>->to_state", or possibly ">*>->to_state".
+
+    BEHIND constraints, which represent a "previous character must be of
+    this color" constraint, which likewise consumes no input.  These are
+    dumped as "<color_number<->to_state", or possibly "<*<->to_state".
+
+    '^' arcs, which specify a beginning-of-input constraint.  These are
+    dumped as "^0->to_state" or "^1->to_state" for beginning-of-string and
+    beginning-of-line constraints respectively.
+
+    '$' arcs, which specify an end-of-input constraint.  These are dumped
+    as "$0->to_state" or "$1->to_state" for end-of-string and end-of-line
+    constraints respectively.
+
+    LACON constraints, which represent "(?=re)", "(?!re)", "(?<=re)", and
+    "(?<!re)" constraints, i.e. the input starting/ending at this point must
+    match (or not match) a given sub-RE, but the matching input is not
+    consumed.  These are dumped as ":subtree_number:->to_state".
+
+If you see anything else (especially any question marks) in the display of
+an arc, it's dumpnfa() trying to tell you that there's something fishy
+about the arc; see the source code.
+
+The regex executor can only handle PLAIN and LACON transitions.  The regex
+optimize() function is responsible for transforming the parser's output
+to get rid of all the other arc types.  In particular, ^ and $ arcs that
+are not dropped as impossible will always end up adjacent to the pre or
+post state respectively, and then will be converted into PLAIN arcs that
+mention the special "colors" for BOS, BOL, EOS, or EOL.
+
+To decide whether a thus-transformed NFA matches a given substring of the
+input string, the executor essentially follows these rules:
+1. Start the NFA "looking at" the character *before* the given substring,
+or if the substring is at the start of the input, prepend an imaginary BOS
+character instead.
+2. Run the NFA until it has consumed the character *after* the given
+substring, or an imaginary following EOS character if the substring is at
+the end of the input.
+3. If the NFA is (or can be) in the goal state at this point, it matches.
+
+This definition is necessary to support regexes that begin or end with
+constraints such as \m and \M, which imply requirements on the adjacent
+character if any.  The executor implements that by checking if the
+adjacent character (or BOS/BOL/EOS/EOL pseudo-character) is of the
+right color, and it does that in the same loop that checks characters
+within the match.
+
+So one can mentally execute an untransformed NFA by taking ^ and $ as
+ordinary constraints that match at start and end of input; but plain
+arcs out of the start state should be taken as matches for the character
+before the target substring, and similarly, plain arcs leading to the
+post state are matches for the character after the target substring.
+After the optimize() transformation, there are explicit arcs mentioning
+BOS/BOL/EOS/EOL adjacent to the pre-state and post-state.  So a finished
+NFA for a pattern without anchors or adjacent-character constraints will
+have pre-state outarcs for RAINBOW (all possible character colors) as well
+as BOS and BOL, and likewise post-state inarcs for RAINBOW, EOS, and EOL.
+Also note that LACON arcs will never connect to the pre-state
+or post-state.
+
+
+Look-around constraints (LACONs)
+--------------------------------
+
+The regex compiler doesn't have much intelligence about LACONs; it just
+constructs a sub-NFA representing the pattern that the constraint says to
+match or not match, and puts a LACON arc referencing that sub-NFA into the
+main NFA.  At runtime, the executor applies the sub-NFA at each point in
+the string where the constraint is relevant, and then traverses or doesn't
+traverse the arc.  ("Traversal" means including the arc's to-state in the
+set of NFA states that are considered active at the next character.)
+
+The actual basic matching cycle of the executor is
+1.  Identify the color of the next input character, then advance over it.
+2.  Apply the DFA to follow all the matching "plain" arcs of the NFA.
+    (Notionally, the previous DFA state represents the set of states the
+    NFA could have been in before the character, and the new DFA state
+    represents the set of states the NFA could be in after the character.)
+3.  If there are any LACON arcs leading out of any of the new NFA states,
+    apply each LACON constraint starting from the new next input character
+    (while not actually consuming any input).  For each successful LACON,
+    add its to-state to the current set of NFA states.  If any such
+    to-state has outgoing LACON arcs, process those in the same way.
+    (Mathematically speaking, we compute the transitive closure of the
+    set of states reachable by successful LACONs.)
+
+Thus, LACONs are always checked immediately after consuming a character
+via a plain arc.  This is okay because the NFA's "pre" state only has
+plain out-arcs, so we can always consume a character (possibly a BOS
+pseudo-character as described above) before we need to worry about LACONs.

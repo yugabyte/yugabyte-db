@@ -1,0 +1,6 @@
+description: YBA Info
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/YBAInfo.yaml"
+x-yba-api-visibility: internal

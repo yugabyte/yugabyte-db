@@ -1,0 +1,14 @@
+.noLeftPadding {
+  padding-left: 0;
+}
+.component-flex {
+  display: flex;
+  align-items: center;
+  margin-bottom: 15px;
+  .yb-field-group {
+    padding-bottom: 0;
+  }
+  .component-label {
+    margin-top: 4px;
+  }
+}

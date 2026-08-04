@@ -1,0 +1,110 @@
+<!--
+doc/src/sgml/ref/drop_tablespace.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-droptablespace">
+ <indexterm zone="sql-droptablespace">
+  <primary>DROP TABLESPACE</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>DROP TABLESPACE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>DROP TABLESPACE</refname>
+  <refpurpose>remove a tablespace</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+DROP TABLESPACE [ IF EXISTS ] <replaceable class="parameter">name</replaceable>
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>DROP TABLESPACE</command> removes a tablespace from the system.
+  </para>
+
+  <para>
+   A tablespace can only be dropped by its owner or a superuser.
+   The tablespace must be empty of all database objects before it can be
+   dropped. It is possible that objects in other databases might still reside
+   in the tablespace even if no objects in the current database are using
+   the tablespace.  Also, if the tablespace is listed in the <xref
+   linkend="guc-temp-tablespaces"/> setting of any active session, the
+   <command>DROP</command> might fail due to temporary files residing in the
+   tablespace.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+
+   <varlistentry>
+    <term><literal>IF EXISTS</literal></term>
+    <listitem>
+     <para>
+      Do not throw an error if the tablespace does not exist. A notice is issued
+      in this case.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name of a tablespace.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+   <para>
+    <command>DROP TABLESPACE</command> cannot be executed inside a transaction block.
+   </para>
+ </refsect1>
+
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   To remove tablespace <literal>mystuff</literal> from the system:
+<programlisting>
+DROP TABLESPACE mystuff;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>DROP TABLESPACE</command> is a <productname>PostgreSQL</productname>
+   extension.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createtablespace"/></member>
+   <member><xref linkend="sql-altertablespace"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

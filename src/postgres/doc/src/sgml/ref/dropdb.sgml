@@ -1,0 +1,317 @@
+<!--
+doc/src/sgml/ref/dropdb.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="app-dropdb">
+ <indexterm zone="app-dropdb">
+  <primary>dropdb</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle><application>dropdb</application></refentrytitle>
+  <manvolnum>1</manvolnum>
+  <refmiscinfo>Application</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>dropdb</refname>
+  <refpurpose>remove a <productname>PostgreSQL</productname> database</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+  <cmdsynopsis>
+   <command>dropdb</command>
+   <arg rep="repeat"><replaceable>connection-option</replaceable></arg>
+   <arg rep="repeat"><replaceable>option</replaceable></arg>
+   <arg choice="plain"><replaceable>dbname</replaceable></arg>
+  </cmdsynopsis>
+ </refsynopsisdiv>
+
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <application>dropdb</application> destroys an existing
+   <productname>PostgreSQL</productname> database.
+   The user who executes this command must be a database
+   superuser or the owner of the database.
+  </para>
+
+  <para>
+   <application>dropdb</application> is a wrapper around the
+   <acronym>SQL</acronym> command <link linkend="sql-dropdatabase"><command>DROP DATABASE</command></link>.
+   There is no effective difference between dropping databases via
+   this utility and via other methods for accessing the server.
+  </para>
+
+ </refsect1>
+
+
+ <refsect1>
+  <title>Options</title>
+
+  <para>
+   <application>dropdb</application> accepts the following command-line arguments:
+
+    <variablelist>
+     <varlistentry>
+      <term><replaceable class="parameter">dbname</replaceable></term>
+      <listitem>
+       <para>
+        Specifies the name of the database to be removed.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-e</option></term>
+      <term><option>--echo</option></term>
+      <listitem>
+       <para>
+        Echo the commands that <application>dropdb</application> generates
+        and sends to the server.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-f</option></term>
+      <term><option>--force</option></term>
+      <listitem>
+       <para>
+        Attempt to terminate all existing connections to the target database
+        before dropping it.   See <xref linkend="sql-dropdatabase"/> for more
+        information on this option.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-i</option></term>
+      <term><option>--interactive</option></term>
+      <listitem>
+       <para>
+       Issues a verification prompt before doing anything destructive.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+       <term><option>-V</option></term>
+       <term><option>--version</option></term>
+       <listitem>
+       <para>
+       Print the <application>dropdb</application> version and exit.
+       </para>
+       </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--if-exists</option></term>
+      <listitem>
+       <para>
+       Do not throw an error if the database does not exist. A notice is issued
+       in this case.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+       <term><option>-?</option></term>
+       <term><option>--help</option></term>
+       <listitem>
+       <para>
+       Show help about <application>dropdb</application> command line
+       arguments, and exit.
+       </para>
+       </listitem>
+     </varlistentry>
+
+    </variablelist>
+
+  </para>
+
+  <para>
+   <application>dropdb</application> also accepts the following
+   command-line arguments for connection parameters:
+
+   <variablelist>
+     <varlistentry>
+      <term><option>-h <replaceable class="parameter">host</replaceable></option></term>
+      <term><option>--host=<replaceable class="parameter">host</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the host name of the machine on which the
+        server
+        is running.  If the value begins with a slash, it is used
+        as the directory for the Unix domain socket.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-p <replaceable class="parameter">port</replaceable></option></term>
+      <term><option>--port=<replaceable class="parameter">port</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the TCP port or local Unix domain socket file
+        extension on which the server
+        is listening for connections.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-U <replaceable class="parameter">username</replaceable></option></term>
+      <term><option>--username=<replaceable class="parameter">username</replaceable></option></term>
+      <listitem>
+       <para>
+        User name to connect as.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-w</option></term>
+      <term><option>--no-password</option></term>
+      <listitem>
+       <para>
+        Never issue a password prompt.  If the server requires
+        password authentication and a password is not available by
+        other means such as a <filename>.pgpass</filename> file, the
+        connection attempt will fail.  This option can be useful in
+        batch jobs and scripts where no user is present to enter a
+        password.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-W</option></term>
+      <term><option>--password</option></term>
+      <listitem>
+       <para>
+        Force <application>dropdb</application> to prompt for a
+        password before connecting to a database.
+       </para>
+
+       <para>
+        This option is never essential, since
+        <application>dropdb</application> will automatically prompt
+        for a password if the server demands password authentication.
+        However, <application>dropdb</application> will waste a
+        connection attempt finding out that the server wants a password.
+        In some cases it is worth typing <option>-W</option> to avoid the extra
+        connection attempt.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--maintenance-db=<replaceable class="parameter">dbname</replaceable></option></term>
+      <listitem>
+       <para>
+         Specifies the name of the database to connect to in order to drop the
+         target database. If not specified, the <literal>postgres</literal>
+         database will be used; if that does not exist (or is the database
+         being dropped), <literal>template1</literal> will be used.
+         This can be a <link linkend="libpq-connstring">connection
+         string</link>.  If so, connection string parameters will override any
+         conflicting command line options.
+       </para>
+      </listitem>
+     </varlistentry>
+   </variablelist>
+  </para>
+ </refsect1>
+
+
+ <refsect1>
+  <title>Environment</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><envar>PGHOST</envar></term>
+    <term><envar>PGPORT</envar></term>
+    <term><envar>PGUSER</envar></term>
+
+    <listitem>
+     <para>
+      Default connection parameters
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><envar>PG_COLOR</envar></term>
+    <listitem>
+     <para>
+      Specifies whether to use color in diagnostic messages. Possible values
+      are <literal>always</literal>, <literal>auto</literal> and
+      <literal>never</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <para>
+   This utility, like most other <productname>PostgreSQL</productname> utilities,
+   also uses the environment variables supported by <application>libpq</application>
+   (see <xref linkend="libpq-envars"/>).
+  </para>
+
+ </refsect1>
+
+
+ <refsect1>
+  <title>Diagnostics</title>
+
+  <para>
+   In case of difficulty, see <xref linkend="sql-dropdatabase"/>
+   and <xref linkend="app-psql"/> for
+   discussions of potential problems and error messages.
+   The database server must be running at the
+   targeted host.  Also, any default connection settings and environment
+   variables used by the <application>libpq</application> front-end
+   library will apply.
+  </para>
+
+ </refsect1>
+
+
+ <refsect1>
+  <title>Examples</title>
+
+   <para>
+    To destroy the database <literal>demo</literal> on the default
+    database server:
+<screen>
+<prompt>$ </prompt><userinput>dropdb demo</userinput>
+</screen>
+   </para>
+
+   <para>
+    To destroy the database <literal>demo</literal> using the
+    server on host <literal>eden</literal>, port 5000, with verification and a peek
+    at the underlying command:
+<screen>
+<prompt>$ </prompt><userinput>dropdb -p 5000 -h eden -i -e demo</userinput>
+<computeroutput>Database "demo" will be permanently deleted.
+Are you sure? (y/n) </computeroutput><userinput>y</userinput>
+<computeroutput>DROP DATABASE demo;</computeroutput>
+</screen></para>
+ </refsect1>
+
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="app-createdb"/></member>
+   <member><xref linkend="sql-dropdatabase"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

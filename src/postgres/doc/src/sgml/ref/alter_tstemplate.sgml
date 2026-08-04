@@ -1,0 +1,93 @@
+<!--
+doc/src/sgml/ref/alter_tstemplate.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-altertstemplate">
+ <indexterm zone="sql-altertstemplate">
+  <primary>ALTER TEXT SEARCH TEMPLATE</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER TEXT SEARCH TEMPLATE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER TEXT SEARCH TEMPLATE</refname>
+  <refpurpose>change the definition of a text search template</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER TEXT SEARCH TEMPLATE <replaceable>name</replaceable> RENAME TO <replaceable>new_name</replaceable>
+ALTER TEXT SEARCH TEMPLATE <replaceable>name</replaceable> SET SCHEMA <replaceable>new_schema</replaceable>
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>ALTER TEXT SEARCH TEMPLATE</command> changes the definition of
+   a text search template.  Currently, the only supported functionality
+   is to change the template's name.
+  </para>
+
+  <para>
+   You must be a superuser to use <command>ALTER TEXT SEARCH TEMPLATE</command>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of an existing text search template.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_name</replaceable></term>
+    <listitem>
+     <para>
+      The new name of the text search template.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_schema</replaceable></term>
+    <listitem>
+     <para>
+      The new schema for the text search template.
+     </para>
+    </listitem>
+   </varlistentry>
+ </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   There is no <command>ALTER TEXT SEARCH TEMPLATE</command> statement in
+   the SQL standard.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createtstemplate"/></member>
+   <member><xref linkend="sql-droptstemplate"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

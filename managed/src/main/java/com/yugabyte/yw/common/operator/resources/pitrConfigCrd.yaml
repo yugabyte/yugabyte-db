@@ -1,0 +1,80 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: pitrconfigs.operator.yugabyte.io
+spec:
+  group: operator.yugabyte.io
+  scope: Namespaced
+  names:
+    plural: pitrconfigs
+    singular: pitrconfig
+    kind: PitrConfig
+    categories:
+      - all
+      - yugabyte
+  versions:
+    - name: v1alpha1
+      subresources:
+        status: {}
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          description: Custom resource definition for PITR config.
+          type: object
+          properties:
+            status:
+              type: object
+              description: PITR config status for the PITR config custom resource.
+              properties:
+                message:
+                  description: String log message from PITR config controller
+                  type: string
+                resourceUUID:
+                  description: Internal UUID of the PITR config resource.
+                  type: string
+                taskUUID:
+                  description: Internal UUID of the task associated with the PITR config.
+                  type: string
+            spec:
+              type: object
+              description: PITR configuration spec
+              x-kubernetes-validations:
+                - message: retentionPeriodInSeconds must be greater than intervalInSeconds
+                  rule: self.retentionPeriodInSeconds > self.intervalInSeconds
+              properties:
+                universe:
+                  description: >
+                    Name of the universe for which PitrConfig needs to be setup
+                  type: string
+                  x-kubernetes-validations:
+                  - message: universe cannot be changed
+                    rule: self == oldSelf
+                name:
+                  description: Name of the PITR config
+                  type: string
+                tableType:
+                  description: The table type for which PITR has to be configured
+                  type: string
+                  enum:
+                    - YSQL
+                    - YCQL
+                database:
+                  description: The database for which PITR has to be configured
+                  type: string
+                intervalInSeconds:
+                  description: The schedule interval of the PITR snapshot
+                  type: integer
+                  minimum: 0
+                  default: 86400
+                retentionPeriodInSeconds:
+                  description: The retention period of the PITR snapshot
+                  type: integer
+                  minimum: 0
+                  default: 604800
+              required:
+              - universe
+              - name
+              - tableType
+              - database

@@ -1,0 +1,77 @@
+title: YCQLAuditConfig
+description: YCQL Audit Logging Configuration. Part of AuditLogConfig.
+type: object
+required:
+  - enabled
+  - excluded_categories
+  - excluded_keyspaces
+  - excluded_users
+  - included_categories
+  - included_keyspaces
+  - included_users
+  - log_level
+properties:
+  enabled:
+    description: Enabled
+    type: boolean
+  excluded_categories:
+    description: Excluded Categories
+    type: array
+    items:
+      enum:
+        - QUERY
+        - DML
+        - DDL
+        - DCL
+        - AUTH
+        - PREPARE
+        - ERROR
+        - OTHER
+      type: string
+    uniqueItems: true
+  excluded_keyspaces:
+    description: Excluded Keyspaces
+    type: array
+    items:
+      type: string
+    uniqueItems: true
+  excluded_users:
+    description: Excluded Users
+    type: array
+    items:
+      type: string
+    uniqueItems: true
+  included_categories:
+    description: Included categories
+    type: array
+    items:
+      enum:
+        - QUERY
+        - DML
+        - DDL
+        - DCL
+        - AUTH
+        - PREPARE
+        - ERROR
+        - OTHER
+      type: string
+    uniqueItems: true
+  included_keyspaces:
+    description: Included Keyspaces
+    type: array
+    items:
+      type: string
+    uniqueItems: true
+  included_users:
+    description: Included Users
+    type: array
+    items:
+      type: string
+    uniqueItems: true
+  log_level:
+    description: Log Level
+    type: string
+    enum:
+      - INFO
+      - WARNING
+      - ERROR

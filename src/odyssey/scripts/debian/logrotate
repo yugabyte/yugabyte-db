@@ -1,0 +1,8 @@
+@DEST_LOG_DIR@/@NAME@*.log {
+    daily
+    rotate 30
+    copytruncate
+    delaycompress
+    missingok
+    create 640 @USER@ @GROUP@
+}

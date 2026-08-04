@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        pg: [17, 16, 15, 14, 13]
+    name: 🐘 PostgreSQL ${{ matrix.pg }}
+    runs-on: ubuntu-latest
+    container: pgxn/pgxn-tools
+    steps:
+      - run: pg-start ${{ matrix.pg }} flex bison
+      - uses: actions/checkout@v2
+      - run: pg-build-test
+

@@ -1,0 +1,3 @@
+-- Copyright (c) YugaByte, Inc.
+
+ALTER TABLE IF EXISTS role ADD COLUMN IF NOT EXISTS description VARCHAR(1023) DEFAULT '' NOT NULL;

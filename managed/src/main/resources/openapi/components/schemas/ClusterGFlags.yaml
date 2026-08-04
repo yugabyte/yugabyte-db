@@ -1,0 +1,22 @@
+title: ClusterGFlags
+description: 'GFlags for a single cluster of a YugabyteDB Universe. Used as part of ClusterSpec at Universe create time, and as part of UniverseEditGFlags to edit GFlags for a Universe.'
+type: object
+allOf:
+  - $ref: "./AvailabilityZoneGFlags.yaml"
+  - properties:
+      az_gflags:
+        description: GFlags per availability zone uuid
+        type: object
+        additionalProperties:
+          $ref: "./AvailabilityZoneGFlags.yaml"
+      gflag_groups:
+        description: GFlag groups to be applied
+        type: array
+        items:
+          type: string
+          enum:
+            - ENHANCED_POSTGRES_COMPATIBILITY
+        example:
+          - ENHANCED_POSTGRES_COMPATIBILITY
+        x-yba-api-since: 2024.2.0.0
+        x-yba-api-visibility: internal

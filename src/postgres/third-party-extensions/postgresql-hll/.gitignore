@@ -1,0 +1,10 @@
+*.o
+*.so
+*.bc
+binary.dat
+regression.out
+regression.diffs
+results
+.deps/
+
+/*.sql

@@ -1,0 +1,15 @@
+@use '../../_style/colors.scss';
+
+.configActionsContainer {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  flex-direction: column;
+
+  .setMaxAcceptableLagBtn {
+    margin-right: 10px;
+
+    background-color: colors.$YB_BG_WHITE_3;
+    border: 1px solid colors.$YB_BG_WHITE_4;
+  }
+}

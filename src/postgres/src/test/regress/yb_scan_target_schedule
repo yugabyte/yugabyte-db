@@ -1,0 +1,7 @@
+# src/test/regress/yb_scan_target_schedule
+#
+####################################################################################################
+# This suite validates that targets are properly set for different scan types
+####################################################################################################
+test: yb.orig.no_explicit_target
+test: yb.orig.system_targets

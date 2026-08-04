@@ -1,0 +1,60 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 314000;
+SET documentdb.next_collection_id TO 3140;
+SET documentdb.next_collection_index_id TO 3140;
+-- collection agnostic with no pipeline should work and return 0 rows.
+SELECT document from bson_aggregation_pipeline('agnosticTests', '{ "aggregate" : 1.0, "pipeline" : [  ], "cursor" : {  }, "txnNumber" : 100, "lsid" : { "id" : { "$binary" : { "base64": "AAAAAA==", "subType" : "04" } } }, "$db" : "agnosticTests" }');
+ document 
+---------------------------------------------------------------------
+(0 rows)
+
+-- $document tests
+SELECT document FROM bson_aggregation_pipeline('agnosticTests', '{ "aggregate": 1, "pipeline": [ { "$documents": [] } ], "cursor": {}}');
+ documents_aggregate 
+---------------------------------------------------------------------
+(0 rows)
+
+SELECT document FROM bson_aggregation_pipeline('agnosticTests', '{ "aggregate": 1, "pipeline": [ { "$documents": [ { "field1": 10 }, { "field2": 20 } ] }], "cursor": {} }');
+          documents_aggregate           
+---------------------------------------------------------------------
+ { "field1" : { "$numberInt" : "10" } }
+ { "field2" : { "$numberInt" : "20" } }
+(2 rows)
+
+SELECT document FROM bson_aggregation_pipeline('agnosticTests', '{ "aggregate": 1, "pipeline": [ { "$documents": [ { "field1": { "$isArray": "field1" } }, { "field2": 20 } ] }], "cursor": {}}');
+          documents_aggregate           
+---------------------------------------------------------------------
+ { "field1" : false }
+ { "field2" : { "$numberInt" : "20" } }
+(2 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('agnosticTests', '{ "aggregate": 1, "pipeline": [ { "$documents": [ { "field1": 10 }, { "field2": 20 } ] }], "cursor": {} }');
+                                                                               QUERY PLAN                                                                               
+---------------------------------------------------------------------
+ Function Scan on documentdb_api_catalog.bson_lookup_unwind documents
+   Output: documents
+   Function Call: bson_lookup_unwind('{ "$documents" : [ { "field1" : { "$numberInt" : "10" } }, { "field2" : { "$numberInt" : "20" } } ] }'::bson, '$documents'::text)
+(3 rows)
+
+EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('agnosticTests', '{ "aggregate": 1, "pipeline": [ { "$documents": [ { "field1": 10 }, { "field2": 20 } ] }, { "$addFields": { "field2": 30 } } ], "cursor": {} }');
+                                                                                  QUERY PLAN                                                                                  
+---------------------------------------------------------------------
+ Function Scan on documentdb_api_catalog.bson_lookup_unwind documents
+   Output: bson_dollar_add_fields(documents.documents, '{ "field2" : { "$numberInt" : "30" } }'::bson, '{ "now" : NOW_SYS_VARIABLE }'::bson)
+   Function Call: bson_lookup_unwind('{ "$documents" : [ { "field1" : { "$numberInt" : "10" } }, { "field2" : { "$numberInt" : "20" } } ] }'::bson, '$documents'::text)
+(3 rows)
+
+-- error cases
+SELECT document FROM bson_aggregation_pipeline('agnosticTests', '{ "aggregate": 1, "pipeline": [ { "$documents": null }], "cursor": {} }');
+ERROR:  An array was expected.
+SELECT document FROM bson_aggregation_pipeline('agnosticTests', '{ "aggregate": 1, "pipeline": [ { "$documents": "String Value" }], "cursor": {} }');
+ERROR:  An array was expected.
+SELECT document FROM bson_aggregation_pipeline('agnosticTests', '{ "aggregate": 1, "pipeline": [ { "$documents": {} }], "cursor": {}}');
+ERROR:  An array was expected.
+-- bugfix scenario:
+SELECT document FROM bson_aggregation_pipeline('agnosticTests', '{ "aggregate": 1, "pipeline": [{ "$documents": [ { "userId": "User1", "sessionId": "S1", "points": 100 } ] }, { "$group": { "_id": "$sessionId", "firstFivePoints": { "$firstN": { "input": "$points", "n": 5 } } } } ] }');
+                        documents_aggregate                         
+---------------------------------------------------------------------
+ { "_id" : "S1", "firstFivePoints" : [ { "$numberInt" : "100" } ] }
+(1 row)
+

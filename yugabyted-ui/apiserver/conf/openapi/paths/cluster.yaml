@@ -1,0 +1,42 @@
+'/cluster':
+  get:
+    summary: Get a cluster
+    description: Get a Yugabyte Cluster
+    operationId: getCluster
+    tags:
+      - cluster
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ClusterResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+  delete:
+    summary: Submit task to delete a cluster
+    description: Submit task to delete a Yugabyte Cluster
+    tags:
+      - cluster
+    responses:
+      '200':
+        description: Successfully submitted delete cluster request
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+    operationId: deleteCluster
+  put:
+    summary: Submit task to edit a cluster
+    description: Submit task to edit a Yugabyte Cluster
+    operationId: editCluster
+    tags:
+      - cluster
+    requestBody:
+      $ref: '../request_bodies/_index.yaml#/ClusterSpec'
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ClusterResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'

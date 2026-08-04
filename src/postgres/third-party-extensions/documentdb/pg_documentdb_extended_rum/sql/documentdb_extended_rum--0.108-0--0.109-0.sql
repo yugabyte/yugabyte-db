@@ -1,0 +1,2 @@
+ALTER OPERATOR FAMILY documentdb_extended_rum_catalog.bson_extended_rum_unique_shard_path_ops USING documentdb_extended_rum
+    ADD FUNCTION 11 (__CORE_SCHEMA__.bson) documentdb_api_internal.gin_bson_unique_shard_options(internal);

@@ -1,0 +1,15 @@
+title: AllowedTasksOnFailure
+description: 'When the last Universe operation has failed, YB Anywhere prevents most Universe operations until this failure is first fixed. This property lists all the allowed tasks on such a Universe. Part of UniverseInfo.'
+type: object
+properties:
+  restricted:
+    description: Whether the Universe is restricted from performing other operations
+    type: boolean
+    readOnly: true
+  task_types:
+    description: 'If restricted, this is the list of task types that are allowed to be retried on this Universe. This  is in the format <taskType>_<targetResource>. Eg. Create_Backup, Delete_Universe, etc.'
+    type: array
+    items:
+      type: string
+    readOnly: true
+    uniqueItems: true

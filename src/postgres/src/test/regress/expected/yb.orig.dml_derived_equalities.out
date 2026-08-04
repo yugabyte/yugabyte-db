@@ -1,0 +1,407 @@
+-- Enable CBO
+SET yb_enable_optimizer_statistics = true;
+SET yb_enable_base_scans_cost_model = true;
+SET yb_enable_derived_equalities = true;
+-- Point lookups on single relation
+CREATE TABLE orders (
+    order_id int,
+    user_id int,
+    created_at timestamptz,
+    bucket_id int GENERATED ALWAYS AS (yb_hash_code(user_id::text || order_id::text) % 5) STORED,
+    PRIMARY KEY (bucket_id ASC, user_id ASC, order_id ASC)
+);
+-- Secondary index with expression (not generated column)
+CREATE INDEX orders_created_idx ON orders((yb_hash_code(created_at) % 3) ASC, created_at ASC);
+INSERT INTO orders VALUES
+    (1, 100, '2024-01-01'::timestamptz),
+    (2, 100, '2024-01-02'::timestamptz);
+ANALYZE orders;
+-- Multi-column bucket (bucket depends on user_id AND order_id)
+EXPLAIN (COSTS OFF) SELECT * FROM orders WHERE user_id = 100 AND order_id = 1;
+                                                     QUERY PLAN                                                      
+---------------------------------------------------------------------------------------------------------------------
+ Index Scan using orders_pkey on orders
+   Index Cond: ((bucket_id = (yb_hash_code(((100)::text || (1)::text)) % 5)) AND (user_id = 100) AND (order_id = 1))
+(2 rows)
+
+SELECT * FROM orders WHERE user_id = 100 AND order_id = 1;
+ order_id | user_id |          created_at          | bucket_id 
+----------+---------+------------------------------+-----------
+        1 |     100 | Mon Jan 01 00:00:00 2024 PST |         4
+(1 row)
+
+-- Expression index
+EXPLAIN (COSTS OFF) SELECT /*+ IndexScan(orders orders_created_idx) */ * FROM orders WHERE created_at = '2024-01-02'::timestamptz;
+                                                                                                 QUERY PLAN                                                                                                  
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using orders_created_idx on orders
+   Index Cond: (((yb_hash_code(created_at) % 3) = (yb_hash_code('Tue Jan 02 00:00:00 2024 PST'::timestamp with time zone) % 3)) AND (created_at = 'Tue Jan 02 00:00:00 2024 PST'::timestamp with time zone))
+(2 rows)
+
+SELECT * FROM orders WHERE created_at = '2024-01-02'::timestamptz;
+ order_id | user_id |          created_at          | bucket_id 
+----------+---------+------------------------------+-----------
+        2 |     100 | Tue Jan 02 00:00:00 2024 PST |         0
+(1 row)
+
+-- Stable expression
+EXPLAIN (COSTS OFF) SELECT /*+ IndexScan(orders orders_created_idx) */ * FROM orders WHERE created_at = date_trunc('day', '2024-01-02 15:30:12.789'::timestamptz);
+                                                                                                                              QUERY PLAN                                                                                                                               
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using orders_created_idx on orders
+   Index Cond: (((yb_hash_code(created_at) % 3) = (yb_hash_code(date_trunc('day'::text, 'Tue Jan 02 15:30:12.789 2024 PST'::timestamp with time zone)) % 3)) AND (created_at = date_trunc('day'::text, 'Tue Jan 02 15:30:12.789 2024 PST'::timestamp with time zone)))
+(2 rows)
+
+SELECT * FROM orders WHERE created_at = date_trunc('day', '2024-01-02 15:30:12.789'::timestamptz);
+ order_id | user_id |          created_at          | bucket_id 
+----------+---------+------------------------------+-----------
+        2 |     100 | Tue Jan 02 00:00:00 2024 PST |         0
+(1 row)
+
+-- Parameterized query
+PREPARE order_query AS SELECT * FROM orders WHERE user_id = $1 AND order_id = $2;
+EXPLAIN (COSTS OFF) EXECUTE order_query(100, 2);
+                                                     QUERY PLAN                                                      
+---------------------------------------------------------------------------------------------------------------------
+ Index Scan using orders_pkey on orders
+   Index Cond: ((bucket_id = (yb_hash_code(((100)::text || (2)::text)) % 5)) AND (user_id = 100) AND (order_id = 2))
+(2 rows)
+
+EXECUTE order_query(100, 2);
+ order_id | user_id |          created_at          | bucket_id 
+----------+---------+------------------------------+-----------
+        2 |     100 | Tue Jan 02 00:00:00 2024 PST |         0
+(1 row)
+
+DROP TABLE orders;
+-- Tests for joins
+CREATE TABLE users (
+    id int,
+    email text
+);
+INSERT INTO users VALUES (50, 'user50@test.com'), (60, 'user60@test.com'), (70, 'user70@test.com'), (80, 'user80@test.com');
+-- Table 1: No bucket (baseline)
+CREATE TABLE orders_no_bucket (
+    order_id int,
+    user_id int
+);
+CREATE INDEX orders_no_bucket_user_id_idx ON orders_no_bucket(user_id ASC);
+INSERT INTO orders_no_bucket VALUES (1, 50), (2, 50), (3, 60), (4, 70);
+-- Table 2: With generated column in PRIMARY KEY
+CREATE TABLE orders_gen (
+    order_id int,
+    user_id int,
+    bucket_id int GENERATED ALWAYS AS (yb_hash_code(user_id) % 5) STORED,
+    PRIMARY KEY (bucket_id ASC, user_id ASC, order_id ASC)
+);
+INSERT INTO orders_gen VALUES (1, 50), (2, 50), (3, 60), (4, 70);
+-- Table 3: With expression index
+CREATE TABLE orders_expr (
+    order_id int,
+    user_id int
+);
+CREATE INDEX orders_expr_idx ON orders_expr((yb_hash_code(user_id) % 3) ASC, user_id ASC);
+INSERT INTO orders_expr VALUES (1, 50), (2, 50), (3, 60), (4, 70);
+ANALYZE users, orders_no_bucket, orders_gen, orders_expr;
+SET yb_prefer_bnl = false;
+SET yb_enable_batchednl = false;
+-- Baseline NL
+EXPLAIN (COSTS OFF) SELECT /*+ NestLoop(u o) IndexScan(o orders_no_bucket_user_id_idx) */ * FROM users u JOIN orders_no_bucket o ON o.user_id = u.id;
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Nested Loop
+   Join Filter: (u.id = o.user_id)
+   ->  Seq Scan on users u
+   ->  Materialize
+         ->  Index Scan using orders_no_bucket_user_id_idx on orders_no_bucket o
+(5 rows)
+
+-- NL with generated column (should show bucket condition)
+EXPLAIN (COSTS OFF) SELECT /*+ NestLoop(u o) IndexScan(o) */ * FROM users u JOIN orders_gen o ON o.user_id = u.id;
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on users u
+   ->  Index Scan using orders_gen_pkey on orders_gen o
+         Index Cond: ((bucket_id = (yb_hash_code(u.id) % 5)) AND (user_id = u.id))
+(4 rows)
+
+-- NL with expression index (should show bucket condition)
+EXPLAIN (COSTS OFF) SELECT /*+ NestLoop(u o) IndexScan(o orders_expr_idx) */ * FROM users u JOIN orders_expr o ON o.user_id = u.id;
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on users u
+   ->  Index Scan using orders_expr_idx on orders_expr o
+         Index Cond: (((yb_hash_code(user_id) % 3) = (yb_hash_code(u.id) % 3)) AND (user_id = u.id))
+(4 rows)
+
+SET yb_prefer_bnl = true;
+SET yb_enable_batchednl = true;
+-- Baseline BNL
+EXPLAIN (COSTS OFF) SELECT /*+ NestLoop(u o) IndexScan(o orders_no_bucket_user_id_idx) */ * FROM users u JOIN orders_no_bucket o ON o.user_id = u.id;
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Nested Loop
+   Join Filter: (u.id = o.user_id)
+   ->  Seq Scan on users u
+   ->  Materialize
+         ->  Index Scan using orders_no_bucket_user_id_idx on orders_no_bucket o
+(5 rows)
+
+-- BNL with generated column (should show bucket condition)
+EXPLAIN (COSTS OFF) SELECT /*+ NestLoop(u o) IndexScan(o) */ * FROM users u JOIN orders_gen o ON o.user_id = u.id;
+                                                                                                   QUERY PLAN                                                                                                   
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (u.id = o.user_id)
+   ->  Seq Scan on users u
+   ->  Index Scan using orders_gen_pkey on orders_gen o
+         Index Cond: (ROW(bucket_id, user_id) = ANY (ARRAY[ROW((yb_hash_code(u.id) % 5), u.id), ROW((yb_hash_code($1) % 5), $1), ROW((yb_hash_code($2) % 5), $2), ..., ROW((yb_hash_code($1023) % 5), $1023)]))
+(5 rows)
+
+-- TODO: BNL is not supported when the index clause is on an expression column
+-- This will pick NL
+EXPLAIN (COSTS OFF) SELECT /*+ NestLoop(u o) IndexScan(o orders_expr_idx) */ * FROM users u JOIN orders_expr o ON o.user_id = u.id;
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on users u
+   ->  Index Scan using orders_expr_idx on orders_expr o
+         Index Cond: (((yb_hash_code(user_id) % 3) = (yb_hash_code(u.id) % 3)) AND (user_id = u.id))
+(4 rows)
+
+-- With WHERE clause filter
+EXPLAIN (COSTS OFF) SELECT /*+ NestLoop(u o) IndexScan(o) */ * FROM users u JOIN orders_gen o ON o.user_id = u.id WHERE u.id = 50;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on users u
+         Storage Filter: (id = 50)
+   ->  Index Scan using orders_gen_pkey on orders_gen o
+         Index Cond: ((bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50))
+(5 rows)
+
+EXPLAIN (COSTS OFF) SELECT /*+ NestLoop(u o) IndexScan(o) */ * FROM users u JOIN orders_gen o ON o.user_id = u.id WHERE u.id IN (50, 60, 70);
+                                                                                                   QUERY PLAN                                                                                                   
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (u.id = o.user_id)
+   ->  Seq Scan on users u
+         Storage Filter: (id = ANY ('{50,60,70}'::integer[]))
+   ->  Index Scan using orders_gen_pkey on orders_gen o
+         Index Cond: (ROW(bucket_id, user_id) = ANY (ARRAY[ROW((yb_hash_code(u.id) % 5), u.id), ROW((yb_hash_code($1) % 5), $1), ROW((yb_hash_code($2) % 5), $2), ..., ROW((yb_hash_code($1023) % 5), $1023)]))
+(6 rows)
+
+-- Condition in ON clause
+EXPLAIN (COSTS OFF) SELECT /*+ NestLoop(u o) IndexScan(o) */ * FROM users u JOIN orders_gen o ON o.user_id = u.id AND u.id = 50;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on users u
+         Storage Filter: (id = 50)
+   ->  Index Scan using orders_gen_pkey on orders_gen o
+         Index Cond: ((bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50))
+(5 rows)
+
+EXPLAIN (COSTS OFF) SELECT /*+ NestLoop(u o) IndexScan(o) */ * FROM users u JOIN orders_gen o ON o.user_id = u.id AND u.id IN (50, 60, 70);
+                                                                                                   QUERY PLAN                                                                                                   
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (u.id = o.user_id)
+   ->  Seq Scan on users u
+         Storage Filter: (id = ANY ('{50,60,70}'::integer[]))
+   ->  Index Scan using orders_gen_pkey on orders_gen o
+         Index Cond: (ROW(bucket_id, user_id) = ANY (ARRAY[ROW((yb_hash_code(u.id) % 5), u.id), ROW((yb_hash_code($1) % 5), $1), ROW((yb_hash_code($2) % 5), $2), ..., ROW((yb_hash_code($1023) % 5), $1023)]))
+(6 rows)
+
+-- Equality conditions in outer joins
+-- Left join with WHERE on non-nullable side
+EXPLAIN (COSTS OFF) SELECT /*+ NestLoop(u o) IndexScan(o) */ * FROM users u LEFT JOIN orders_gen o ON o.user_id = u.id WHERE u.id = 80;
+                                                             QUERY PLAN                                                              
+-------------------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: (o.user_id = u.id)
+   ->  Seq Scan on users u
+         Storage Filter: (id = 80)
+   ->  Index Scan using orders_gen_pkey on orders_gen o
+         Index Cond: ((user_id = ANY (ARRAY[u.id, $1, $2, ..., $1023])) AND (bucket_id = (yb_hash_code(80) % 5)) AND (user_id = 80))
+(6 rows)
+
+SELECT * FROM users u LEFT JOIN orders_gen o ON o.user_id = u.id WHERE u.id = 80 ORDER BY u.id, o.order_id;
+ id |      email      | order_id | user_id | bucket_id 
+----+-----------------+----------+---------+-----------
+ 80 | user80@test.com |          |         |          
+(1 row)
+
+-- Left join with WHERE on nullable side
+EXPLAIN (COSTS OFF) SELECT /*+ NestLoop(u o) IndexScan(o) */ * FROM users u LEFT JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 50;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on users u
+         Storage Filter: (id = 50)
+   ->  Index Scan using orders_gen_pkey on orders_gen o
+         Index Cond: ((bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50))
+(5 rows)
+
+SELECT * FROM users u LEFT JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 50 ORDER BY u.id, o.order_id;
+ id |      email      | order_id | user_id | bucket_id 
+----+-----------------+----------+---------+-----------
+ 50 | user50@test.com |        1 |      50 |         0
+ 50 | user50@test.com |        2 |      50 |         0
+(2 rows)
+
+-- Left join with WHERE in ON clause
+EXPLAIN (COSTS OFF) SELECT /*+ NestLoop(u o) IndexScan(o) */ * FROM users u LEFT JOIN orders_gen o ON o.user_id = u.id AND o.user_id = 50;
+                                                             QUERY PLAN                                                              
+-------------------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: (o.user_id = u.id)
+   ->  Seq Scan on users u
+   ->  Index Scan using orders_gen_pkey on orders_gen o
+         Index Cond: ((user_id = ANY (ARRAY[u.id, $1, $2, ..., $1023])) AND (bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50))
+(5 rows)
+
+SELECT * FROM users u LEFT JOIN orders_gen o ON o.user_id = u.id AND o.user_id = 50 ORDER BY u.id, o.order_id;
+ id |      email      | order_id | user_id | bucket_id 
+----+-----------------+----------+---------+-----------
+ 50 | user50@test.com |        1 |      50 |         0
+ 50 | user50@test.com |        2 |      50 |         0
+ 60 | user60@test.com |          |         |          
+ 70 | user70@test.com |          |         |          
+ 80 | user80@test.com |          |         |          
+(5 rows)
+
+-- Left join with expression index
+EXPLAIN (COSTS OFF) SELECT /*+ NestLoop(u o) IndexScan(o orders_expr_idx) */ * FROM users u LEFT JOIN orders_expr o ON o.user_id = u.id WHERE u.id = 50;
+                                                                      QUERY PLAN                                                                       
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: (o.user_id = u.id)
+   ->  Seq Scan on users u
+         Storage Filter: (id = 50)
+   ->  Index Scan using orders_expr_idx on orders_expr o
+         Index Cond: ((user_id = ANY (ARRAY[u.id, $1, $2, ..., $1023])) AND ((yb_hash_code(user_id) % 3) = (yb_hash_code(50) % 3)) AND (user_id = 50))
+(6 rows)
+
+SELECT * FROM users u LEFT JOIN orders_expr o ON o.user_id = u.id WHERE u.id = 50 ORDER BY u.id, o.order_id;
+ id |      email      | order_id | user_id 
+----+-----------------+----------+---------
+ 50 | user50@test.com |        1 |      50
+ 50 | user50@test.com |        2 |      50
+(2 rows)
+
+-- Full join with WHERE on either side
+EXPLAIN (COSTS OFF) SELECT /*+ NestLoop(u o) IndexScan(o) */ * FROM users u FULL JOIN orders_gen o ON o.user_id = u.id WHERE u.id = 50;
+                                                             QUERY PLAN                                                              
+-------------------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: (o.user_id = u.id)
+   ->  Seq Scan on users u
+         Storage Filter: (id = 50)
+   ->  Index Scan using orders_gen_pkey on orders_gen o
+         Index Cond: ((user_id = ANY (ARRAY[u.id, $1, $2, ..., $1023])) AND (bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50))
+(6 rows)
+
+SELECT * FROM users u FULL JOIN orders_gen o ON o.user_id = u.id WHERE u.id = 50 ORDER BY u.id, o.order_id;
+ id |      email      | order_id | user_id | bucket_id 
+----+-----------------+----------+---------+-----------
+ 50 | user50@test.com |        1 |      50 |         0
+ 50 | user50@test.com |        2 |      50 |         0
+(2 rows)
+
+EXPLAIN (COSTS OFF) SELECT /*+ NestLoop(u o) IndexScan(o) */ * FROM users u FULL JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 60;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Nested Loop Left Join
+   Join Filter: (o.user_id = u.id)
+   ->  Index Scan using orders_gen_pkey on orders_gen o
+         Index Cond: ((bucket_id = (yb_hash_code(60) % 5)) AND (user_id = 60))
+   ->  Seq Scan on users u
+         Storage Filter: (id = 60)
+(6 rows)
+
+SELECT * FROM users u FULL JOIN orders_gen o ON o.user_id = u.id WHERE o.user_id = 60 ORDER BY u.id, o.order_id;
+ id |      email      | order_id | user_id | bucket_id 
+----+-----------------+----------+---------+-----------
+ 60 | user60@test.com |        3 |      60 |         1
+(1 row)
+
+-- Full join with WHERE on both sides
+EXPLAIN (COSTS OFF) SELECT /*+ NestLoop(u o) IndexScan(o) */ * FROM users u FULL JOIN orders_gen o ON o.user_id = u.id WHERE u.id = 50 AND o.user_id = 50;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on users u
+         Storage Filter: (id = 50)
+   ->  Index Scan using orders_gen_pkey on orders_gen o
+         Index Cond: ((bucket_id = (yb_hash_code(50) % 5)) AND (user_id = 50))
+(5 rows)
+
+-- Full join with expression index
+EXPLAIN (COSTS OFF) SELECT /*+ NestLoop(u o) IndexScan(o orders_expr_idx) */ * FROM users u FULL JOIN orders_expr o ON o.user_id = u.id WHERE u.id = 50;
+                                                                      QUERY PLAN                                                                       
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: (o.user_id = u.id)
+   ->  Seq Scan on users u
+         Storage Filter: (id = 50)
+   ->  Index Scan using orders_expr_idx on orders_expr o
+         Index Cond: ((user_id = ANY (ARRAY[u.id, $1, $2, ..., $1023])) AND ((yb_hash_code(user_id) % 3) = (yb_hash_code(50) % 3)) AND (user_id = 50))
+(6 rows)
+
+SELECT * FROM users u FULL JOIN orders_expr o ON o.user_id = u.id WHERE u.id = 50 ORDER BY u.id, o.order_id;
+ id |      email      | order_id | user_id 
+----+-----------------+----------+---------
+ 50 | user50@test.com |        1 |      50
+ 50 | user50@test.com |        2 |      50
+(2 rows)
+
+-- Multi-way joins
+CREATE TABLE t1 (x int);
+CREATE TABLE t2 (x int, bucket_id int GENERATED ALWAYS AS (yb_hash_code(x) % 5) STORED,
+                 PRIMARY KEY (bucket_id, x));
+CREATE TABLE t3 (x int);
+INSERT INTO t1 SELECT generate_series(1, 1000);
+INSERT INTO t2 SELECT generate_series(1, 1000);
+INSERT INTO t3 SELECT generate_series(1, 1000);
+ANALYZE t1, t2, t3;
+SET enable_hashjoin = false;
+SET enable_mergejoin = false;
+EXPLAIN (COSTS OFF) SELECT * FROM t1 JOIN t2 ON t2.x = t1.x JOIN t3 ON t3.x = t1.x;
+                                                                                                   QUERY PLAN                                                                                                   
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Nested Loop
+   Join Filter: (t2.x = t3.x)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (t1.x = t2.x)
+         ->  Seq Scan on t1
+         ->  Index Scan using t2_pkey on t2
+               Index Cond: (ROW(bucket_id, x) = ANY (ARRAY[ROW((yb_hash_code(t1.x) % 5), t1.x), ROW((yb_hash_code($1) % 5), $1), ROW((yb_hash_code($2) % 5), $2), ..., ROW((yb_hash_code($1023) % 5), $1023)]))
+   ->  Materialize
+         ->  Seq Scan on t3
+(9 rows)
+
+SET join_collapse_limit = 1;
+EXPLAIN (COSTS OFF) SELECT * FROM t3 JOIN t2 ON t2.x = t3.x JOIN t1 ON t1.x = t3.x;
+                                                                                                   QUERY PLAN                                                                                                   
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Nested Loop
+   Join Filter: (t2.x = t1.x)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (t3.x = t2.x)
+         ->  Seq Scan on t3
+         ->  Index Scan using t2_pkey on t2
+               Index Cond: (ROW(bucket_id, x) = ANY (ARRAY[ROW((yb_hash_code(t3.x) % 5), t3.x), ROW((yb_hash_code($1) % 5), $1), ROW((yb_hash_code($2) % 5), $2), ..., ROW((yb_hash_code($1023) % 5), $1023)]))
+   ->  Materialize
+         ->  Seq Scan on t1
+(9 rows)
+
+RESET join_collapse_limit;
+-- Cleanup
+DROP TABLE users;
+DROP TABLE orders_no_bucket;
+DROP TABLE orders_gen;
+DROP TABLE orders_expr;
+DROP TABLE t1, t2, t3;

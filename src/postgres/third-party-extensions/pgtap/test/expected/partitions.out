@@ -1,0 +1,104 @@
+\unset ECHO
+1..102
+ok 1 - is_partition_of( csch, ctab, psch, ptab, desc ) should pass
+ok 2 - is_partition_of( csch, ctab, psch, ptab, desc ) should have the proper description
+ok 3 - is_partition_of( csch, ctab, psch, ptab, desc ) should have the proper diagnostics
+ok 4 - is_partition_of( csch, ctab, psch, ptab ) should pass
+ok 5 - is_partition_of( csch, ctab, psch, ptab ) should have the proper description
+ok 6 - is_partition_of( csch, ctab, psch, ptab ) should have the proper diagnostics
+ok 7 - is_partition_of( ctab, ptab, desc ) should pass
+ok 8 - is_partition_of( ctab, ptab, desc ) should have the proper description
+ok 9 - is_partition_of( ctab, ptab, desc ) should have the proper diagnostics
+ok 10 - is_partition_of( ctab, ptab ) should pass
+ok 11 - is_partition_of( ctab, ptab ) should have the proper description
+ok 12 - is_partition_of( ctab, ptab ) should have the proper diagnostics
+ok 13 - is_partition_of( csch, non-part ctab, psch, non-part ptab, desc ) should fail
+ok 14 - is_partition_of( csch, non-part ctab, psch, non-part ptab, desc ) should have the proper description
+ok 15 - is_partition_of( csch, non-part ctab, psch, non-part ptab, desc ) should have the proper diagnostics
+ok 16 - is_partition_of( non-part ctab, non-part ptab, desc ) should fail
+ok 17 - is_partition_of( non-part ctab, non-part ptab, desc ) should have the proper description
+ok 18 - is_partition_of( non-part ctab, non-part ptab, desc ) should have the proper diagnostics
+ok 19 - is_partition_of( csch, non-part ctab, psch, ptab, desc ) should fail
+ok 20 - is_partition_of( csch, non-part ctab, psch, ptab, desc ) should have the proper description
+ok 21 - is_partition_of( csch, non-part ctab, psch, ptab, desc ) should have the proper diagnostics
+ok 22 - is_partition_of( non-part ctab, ptab, desc ) should fail
+ok 23 - is_partition_of( non-part ctab, ptab, desc ) should have the proper description
+ok 24 - is_partition_of( non-part ctab, ptab, desc ) should have the proper diagnostics
+ok 25 - is_partition_of( csch, ctab, psch, non-part ptab, desc ) should fail
+ok 26 - is_partition_of( csch, ctab, psch, non-part ptab, desc ) should have the proper description
+ok 27 - is_partition_of( csch, ctab, psch, non-part ptab, desc ) should have the proper diagnostics
+ok 28 - is_partition_of( ctab, non-part ptab, desc ) should fail
+ok 29 - is_partition_of( ctab, non-part ptab, desc ) should have the proper description
+ok 30 - is_partition_of( ctab, non-part ptab, desc ) should have the proper diagnostics
+ok 31 - is_partition_of( priv csch, ctab, priv psch, ptab, desc ) should pass
+ok 32 - is_partition_of( priv csch, ctab, priv psch, ptab, desc ) should have the proper description
+ok 33 - is_partition_of( priv csch, ctab, priv psch, ptab, desc ) should have the proper diagnostics
+ok 34 - is_partition_of( priv ctab, priv ptab, desc ) should fail
+ok 35 - is_partition_of( priv ctab, priv ptab, desc ) should have the proper description
+ok 36 - is_partition_of( priv ctab, priv ptab, desc ) should have the proper diagnostics
+ok 37 - is_partition_of( priv csch, ctab, psch, ptab, desc ) should pass
+ok 38 - is_partition_of( priv csch, ctab, psch, ptab, desc ) should have the proper description
+ok 39 - is_partition_of( priv csch, ctab, psch, ptab, desc ) should have the proper diagnostics
+ok 40 - is_partition_of( priv ctab, ptab, desc ) should fail
+ok 41 - is_partition_of( priv ctab, ptab, desc ) should have the proper description
+ok 42 - is_partition_of( priv ctab, ptab, desc ) should have the proper diagnostics
+ok 43 - is_partition_of( csch, ctab, priv psch, ptab, desc ) should pass
+ok 44 - is_partition_of( csch, ctab, priv psch, ptab, desc ) should have the proper description
+ok 45 - is_partition_of( csch, ctab, priv psch, ptab, desc ) should have the proper diagnostics
+ok 46 - is_partition_of( ctab, priv ptab, desc ) should fail
+ok 47 - is_partition_of( ctab, priv ptab, desc ) should have the proper description
+ok 48 - is_partition_of( ctab, priv ptab, desc ) should have the proper diagnostics
+ok 49 - is_partition_of( csch, non-ctab, psch, non-ptab, desc ) should fail
+ok 50 - is_partition_of( csch, non-ctab, psch, non-ptab, desc ) should have the proper description
+ok 51 - is_partition_of( csch, non-ctab, psch, non-ptab, desc ) should have the proper diagnostics
+ok 52 - is_partition_of( non-ctab, non-ptab, desc ) should fail
+ok 53 - is_partition_of( non-ctab, non-ptab, desc ) should have the proper description
+ok 54 - is_partition_of( non-ctab, non-ptab, desc ) should have the proper diagnostics
+ok 55 - is_partition_of( csch, ctab, psch, non-ptab, desc ) should fail
+ok 56 - is_partition_of( csch, ctab, psch, non-ptab, desc ) should have the proper description
+ok 57 - is_partition_of( csch, ctab, psch, non-ptab, desc ) should have the proper diagnostics
+ok 58 - is_partition_of( ctab, non-ptab, desc ) should fail
+ok 59 - is_partition_of( ctab, non-ptab, desc ) should have the proper description
+ok 60 - is_partition_of( ctab, non-ptab, desc ) should have the proper diagnostics
+ok 61 - is_partition_of( csch, non-ctab, psch, ptab, desc ) should fail
+ok 62 - is_partition_of( csch, non-ctab, psch, ptab, desc ) should have the proper description
+ok 63 - is_partition_of( csch, non-ctab, psch, ptab, desc ) should have the proper diagnostics
+ok 64 - is_partition_of( non-ctab, ptab, desc ) should fail
+ok 65 - is_partition_of( non-ctab, ptab, desc ) should have the proper description
+ok 66 - is_partition_of( non-ctab, ptab, desc ) should have the proper diagnostics
+ok 67 - partitions_are( sch, tab, parts, desc ) should pass
+ok 68 - partitions_are( sch, tab, parts, desc ) should have the proper description
+ok 69 - partitions_are( sch, tab, parts, desc ) should have the proper diagnostics
+ok 70 - partitions_are( sch, tab, parts ) should pass
+ok 71 - partitions_are( sch, tab, parts ) should have the proper description
+ok 72 - partitions_are( sch, tab, parts ) should have the proper diagnostics
+ok 73 - partitions_are( tab, parts, desc ) should pass
+ok 74 - partitions_are( tab, parts, desc ) should have the proper description
+ok 75 - partitions_are( tab, parts, desc ) should have the proper diagnostics
+ok 76 - partitions_are( tab, parts ) should pass
+ok 77 - partitions_are( tab, parts ) should have the proper description
+ok 78 - partitions_are( tab, parts ) should have the proper diagnostics
+ok 79 - partitions_are( sch, tab, bad parts, desc ) should fail
+ok 80 - partitions_are( sch, tab, bad parts, desc ) should have the proper description
+ok 81 - partitions_are( sch, tab, bad parts, desc ) should have the proper diagnostics
+ok 82 - partitions_are( tab, bad parts, desc ) should fail
+ok 83 - partitions_are( tab, bad parts, desc ) should have the proper description
+ok 84 - partitions_are( tab, bad parts, desc ) should have the proper diagnostics
+ok 85 - partitions_are( hidden sch, tab, parts, desc ) should pass
+ok 86 - partitions_are( hidden sch, tab, parts, desc ) should have the proper description
+ok 87 - partitions_are( hidden sch, tab, parts, desc ) should have the proper diagnostics
+ok 88 - partitions_are( hidden tab, parts, desc ) should fail
+ok 89 - partitions_are( hidden tab, parts, desc ) should have the proper description
+ok 90 - partitions_are( hidden tab, parts, desc ) should have the proper diagnostics
+ok 91 - partitions_are( sch, non-parted tab, inherited tab, desc ) should fail
+ok 92 - partitions_are( sch, non-parted tab, inherited tab, desc ) should have the proper description
+ok 93 - partitions_are( sch, non-parted tab, inherited tab, desc ) should have the proper diagnostics
+ok 94 - partitions_are( non-parted tab, inherited tab, desc ) should fail
+ok 95 - partitions_are( non-parted tab, inherited tab, desc ) should have the proper description
+ok 96 - partitions_are( non-parted tab, inherited tab, desc ) should have the proper diagnostics
+ok 97 - partitions_are( sch, non-existent tab, parts, desc ) should fail
+ok 98 - partitions_are( sch, non-existent tab, parts, desc ) should have the proper description
+ok 99 - partitions_are( sch, non-existent tab, parts, desc ) should have the proper diagnostics
+ok 100 - partitions_are( non-existent tab, parts, desc ) should fail
+ok 101 - partitions_are( non-existent tab, parts, desc ) should have the proper description
+ok 102 - partitions_are( non-existent tab, parts, desc ) should have the proper diagnostics

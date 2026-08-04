@@ -1,380 +1,194 @@
-# pgAudit <br/> Open Source PostgreSQL Audit Logging
+<img src="https://cloud.yugabyte.com/logo-big.png" align="center" alt="YugabyteDB" width="50%"/>
+<img referrerpolicy="no-referrer-when-downgrade" src="https://static.scarf.sh/a.png?x-pxid=0969fc8d-7684-4250-9cbd-4249c3ebb47b" />
 
-## Introduction
+---------------------------------------
 
-The PostgreSQL Audit Extension (pgAudit) provides detailed session and/or object audit logging via the standard PostgreSQL logging facility.
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Documentation Status](https://readthedocs.org/projects/ansicolortags/badge/?version=latest)](https://docs.yugabyte.com/)
+[![Ask in forum](https://img.shields.io/badge/ask%20us-forum-orange.svg)](https://forum.yugabyte.com/)
+[![Slack chat](https://img.shields.io/badge/Slack:-%23yugabyte_db-blueviolet.svg?logo=slack)](https://communityinviter.com/apps/yugabyte-db/register)
+[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/home?pixel&useReferer)](https://github.com/yugabyte/ga-beacon)
 
-The goal of pgAudit is to provide PostgreSQL users with capability to produce audit logs often required to comply with government, financial, or ISO certifications.
+# What is YugabyteDB?
 
-An audit is an official inspection of an individual's or organization's accounts, typically by an independent body. The information gathered by pgAudit is properly called an audit trail or audit log. The term audit log is used in this documentation.
+YugabyteDB is a PostgreSQL-compatible, [high-performance](https://docs.yugabyte.com/stable/benchmark/), cloud-native, [distributed SQL](https://www.yugabyte.com/tech/distributed-sql/) database. It combines the benefits of traditional relational databases with the scalability of NoSQL systems, making it suitable for applications that require both transactional consistency and the ability to handle large amounts of data. It is best suited for cloud-native OLTP (that is, real-time, business-critical) applications that need absolute data correctness and require at least one of the following: scalability, high tolerance to failures, or globally-distributed deployments.
 
-## Why pgAudit?
+* [Core Features](#core-features)
+* [Get Started](#get-started)
+* [Build Applications](#build-applications)
+* [Current Roadmap](#current-roadmap)
+* [Recent features](#recently-released-features)
+* [Architecture](#architecture)
+* [Need Help?](#need-help)
+* [Contribute](#contribute)
+* [License](#license)
+* [Read More](#read-more)
 
-Basic statement logging can be provided by the standard logging facility with `log_statement = all`. This is acceptable for monitoring and other usages but does not provide the level of detail generally required for an audit. It is not enough to have a list of all the operations performed against the database. It must also be possible to find particular statements that are of interest to an auditor. The standard logging facility shows what the user requested, while pgAudit focuses on the details of what happened while the database was satisfying the request.
+# Core Features
 
-For example, an auditor may want to verify that a particular table was created inside a documented maintenance window. This might seem like a simple job for grep, but what if you are presented with something like this (intentionally obfuscated) example:
-```
-DO $$
-BEGIN
-    EXECUTE 'CREATE TABLE import' || 'ant_table (id INT)';
-END $$;
-```
-Standard logging will give you this:
-```
-LOG:  statement: DO $$
-BEGIN
-    EXECUTE 'CREATE TABLE import' || 'ant_table (id INT)';
-END $$;
-```
-It appears that finding the table of interest may require some knowledge of the code in cases where tables are created dynamically. This is not ideal since it would be preferable to just search on the table name. This is where pgAudit comes in. For the same input, it will produce this output in the log:
-```
-AUDIT: SESSION,33,1,FUNCTION,DO,,,"DO $$
-BEGIN
-    EXECUTE 'CREATE TABLE import' || 'ant_table (id INT)';
-END $$;"
-AUDIT: SESSION,33,2,DDL,CREATE TABLE,TABLE,public.important_table,CREATE TABLE important_table (id INT)
-```
-Not only is the `DO` block logged, but substatement 2 contains the full text of the `CREATE TABLE` with the statement type, object type, and full-qualified name to make searches easy.
+* **[Powerful RDBMS capabilities](https://docs.yugabyte.com/stable/explore/ysql-language-features/)** Yugabyte SQL (*YSQL* for short) reuses the PostgreSQL query layer (similar to Amazon Aurora PostgreSQL), thereby supporting most of its features (datatypes, queries, expressions, operators and functions, stored procedures, triggers, extensions, and so on).
 
-When logging `SELECT` and `DML` statements, pgAudit can be configured to log a separate entry for each relation referenced in a statement. No parsing is required to find all statements that touch a particular table. In fact, the goal is that the statement text is provided primarily for deep forensics and should not be required for an audit.
+* **[Distributed transactions](https://docs.yugabyte.com/stable/architecture/transactions/)** The transaction design is based on the Google Spanner architecture. Strong consistency of writes is achieved by using Raft consensus for replication and cluster-wide distributed ACID transactions using *hybrid logical clocks*. *Snapshot*, *serializable* and *read committed* isolation levels are supported. Reads (queries) have strong consistency by default, but can be tuned dynamically to read from followers and read replicas.
 
-## Usage Considerations
+* **[Continuous availability](https://docs.yugabyte.com/stable/explore/fault-tolerance/)** YugabyteDB is extremely resilient to common outages with native failover and repair. YugabyteDB can be configured to tolerate disk, rack, node, zone, region, and cloud failures automatically. For a typical deployment where a YugabyteDB cluster is deployed in one region across multiple zones on a public cloud, the RPO is 0 (meaning no data is lost on failure) and the RTO is 3 seconds (meaning the data being served by the failed node is available in 3 seconds).
 
-Depending on settings, it is possible for pgAudit to generate an enormous volume of logging. Be careful to determine exactly what needs to be audit logged in your environment to avoid logging too much.
+* **[Horizontal scalability](https://docs.yugabyte.com/stable/explore/linear-scalability/)** Scaling a YugabyteDB cluster to achieve more IOPS or data storage is as simple as adding nodes to the cluster.
 
-For example, when working in an OLAP environment it would probably not be wise to audit log inserts into a large fact table. The size of the log file will likely be many times the actual data size of the inserts because the log file is expressed as text. Since logs are generally stored with the OS this may lead to disk space being exhausted very quickly. In cases where it is not possible to limit audit logging to certain tables, be sure to assess the performance impact while testing and allocate plenty of space on the log volume. This may also be true for OLTP environments. Even if the insert volume is not as high, the performance impact of audit logging may still noticeably affect latency.
+* **[Geo-distributed, multi-cloud](https://docs.yugabyte.com/stable/develop/multi-cloud/)** YugabyteDB can be deployed in public clouds and natively inside Kubernetes. It supports deployments that span three or more fault domains, such as multi-zone, multi-rack, multi-region, and multi-cloud deployments. It also supports xCluster asynchronous replication with unidirectional master-slave and bidirectional multi-master configurations in two-region deployments. Read replicas are also a supported to serve (stale) data with low latencies.
 
-To limit the number of relations audit logged for `SELECT` and `DML` statements, consider using object audit logging (see [Object Auditing](#object-audit-logging)). Object audit logging allows selection of the relations to be logged allowing for reduction of the overall log volume. However, when new relations are added they must be explicitly added to object audit logging. A programmatic solution where specified tables are excluded from logging and all others are included may be a good option in this case.
+* **[Multi API design](https://docs.yugabyte.com/stable/api)** The YugabyteDB query layer is built to be extensible. Currently, YugabyteDB supports two distributed SQL APIs: [Yugabyte SQL (YSQL)](https://docs.yugabyte.com/stable/api/ysql/), a fully relational API that re-uses the PostgreSQL query layer, and [Yugabyte Cloud QL (YCQL)](https://docs.yugabyte.com/stable/api/ycql/), a semi-relational SQL-like API with documents/indexing support with Apache Cassandra QL roots.
 
-## PostgreSQL Version Compatibility
+* **[100% open source](https://github.com/yugabyte/yugabyte-db)** YugabyteDB is fully open-source under the [Apache 2.0 license](https://github.com/yugabyte/yugabyte-db/blob/master/LICENSE.md). The open-source version has powerful enterprise features such as distributed backups, encryption of data at rest, in-flight TLS encryption, change data capture, read replicas, and more.
 
-pgAudit supports PostgreSQL 14 or greater.
+YugabyteDB was created with several key design goals in mind, aiming to address the challenges faced by modern, cloud-native applications while maintaining the familiarity and power of traditional relational databases. Read more about these in our [Design goals](https://docs.yugabyte.com/stable/architecture/design-goals/).
 
-In order to support new functionality introduced in each PostgreSQL release, pgAudit maintains a separate branch for each PostgreSQL major version (currently PostgreSQL 14 - 19) which will be maintained in a manner similar to the PostgreSQL project.
+# Get Started
 
-Aside from bug fixes, no further development is allowed for stable branches. New development, if any, will be strictly for the next unreleased major version of PostgreSQL.
+* [Quick Start](https://docs.yugabyte.com/stable/quick-start/)
+* Try running a real-world demo application:
+  * [Microservices-oriented e-commerce app](https://github.com/yugabyte/yugastore-java)
+  * [Lodging Recommendation Service With OpenAI and pgvector](https://github.com/YugabyteDB-Samples/openai-pgvector-lodging-service/)
 
-pgAudit versions relate to PostgreSQL major versions as follows:
+Can't find what you're looking for? Have a question? Post your questions or comments on our Community [Slack](https://communityinviter.com/apps/yugabyte-db/register) or [Forum](https://forum.yugabyte.com).
 
-- **pgAudit v19.X** is intended to support PostgreSQL 19.
+# Build Applications
 
-- **pgAudit v18.X** is intended to support PostgreSQL 18.
+YugabyteDB supports many languages and client drivers, including Java, Go, NodeJS, Python, and more. For a complete list, including examples, see [Drivers and ORMs](https://docs.yugabyte.com/stable/develop/drivers-orms/).
 
-- **pgAudit v17.X** is intended to support PostgreSQL 17.
+# Current Roadmap
 
-- **pgAudit v16.X** is intended to support PostgreSQL 16.
+The following is a list of some of the key features being worked on for upcoming releases.
 
-- **pgAudit v1.7.X** is intended to support PostgreSQL 15.
+|                                                  Feature                                                   |                                                           Details                                                           |
+| ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| [PostgreSQL 15 Compatibility](https://github.com/yugabyte/yugabyte-db/issues/9797)                         | For latest features, new PostgreSQL extensions, performance, and community fixes.                                            |
+| [PostgreSQL Publication/Replication slot API in CDC](https://github.com/yugabyte/yugabyte-db/issues/18724) | PostgreSQL has a huge community that needs a PG-compatible API to set up and consume database changes.                      |
+| [Bitmap scan](https://github.com/yugabyte/yugabyte-db/issues/22653)                                        | Bitmap Scan support for using Index Scans, remote filter and enhanced Cost Model.                                            |
+| [Cost based optimizer(CBO)](https://github.com/yugabyte/yugabyte-db/issues/10177)                          | Efficient query plans based on statistics (such as table size, number of rows) and data distribution.                       |
+| [Parallel query execution](https://github.com/yugabyte/yugabyte-db/issues/17984)                           | Higher query performance by splitting a single query for execution across different CPU cores.          |
+| [pgvector extension](https://github.com/yugabyte/yugabyte-db/issues/16166)                                 | Support for vector data types, enabling efficient storage and querying of high-dimensional vectors.                         |
+| [Connection Management](https://github.com/yugabyte/yugabyte-db/issues/17599)                              | Server side connection management enabling upto 30K connections per node                                                    |
 
-- **pgAudit v1.6.X** is intended to support PostgreSQL 14.
+Refer to [roadmap tracker](https://github.com/yugabyte/yugabyte-db/issues?q=is:issue+is:open+label:current-roadmap) for the list of all items in the current roadmap.
 
-## Compile and Install
+# Recently released features
 
-pgAudit can be compiled against an installed copy of PostgreSQL with development packages using `PGXS`. The following instructions should work on most Unix-like operating systems.
+## v2025.2 (Stable) - December 2025
 
-Clone the pgAudit extension:
-```
-git clone https://github.com/pgaudit/pgaudit.git
-```
-Change to pgAudit directory:
-```
-cd pgaudit
-```
-Checkout `REL_19_STABLE` branch (note that the stable branch may not exist for unreleased versions of PostgreSQL):
-```
-git checkout REL_19_STABLE
-```
-Build and install pgAudit:
-```
-make install USE_PGXS=1 PG_CONFIG=/usr/pgsql-19/bin/pg_config
-```
-Instructions for testing and development may be found in `test`.
+**v2025.2** is the current [stable](https://docs.yugabyte.com/stable/releases/versioning/#stable-releases) release. Stable releases undergo rigorous testing for a longer period of time and are ready for production use. For the full list of features and improvements in this release, see [Release notes - v2025.2](https://docs.yugabyte.com/stable/releases/ybdb-releases/v2025.2/). Here are some of the prominent features.
 
-## Settings
+### PostgreSQL features enabled by default on new universes**
 
-Settings may be modified only by a superuser. Allowing normal users to change their settings would defeat the point of an audit log.
+For new universes running v2025.2 or later, the following YSQL features are now enabled by default when you deploy using [yugabyted](https://docs.yugabyte.com/stable/deploy/manual-deployment/start-yugabyted/), [YugabyteDB Anywhere](https://docs.yugabyte.com/stable/yugabyte-platform/create-deployments/create-universe-multi-zone/), or [YugabyteDB Aeon](https://docs.yugabyte.com/stable/yugabyte-cloud/cloud-basics/create-clusters/) (coming soon to the Early Access track):
 
-Settings can be specified globally (in `postgresql.conf` or using `ALTER SYSTEM ... SET`), at the database level (using `ALTER DATABASE ... SET`), or at the role level (using `ALTER ROLE ... SET`). Note that settings are not inherited through normal role inheritance and `SET ROLE` will not alter a user's pgAudit settings. This is a limitation of the roles system and not inherent to pgAudit.
+* [Read committed](https://docs.yugabyte.com/stable/architecture/transactions/read-committed/)
+* [Cost-based optimizer](https://docs.yugabyte.com/stable/best-practices-operations/ysql-yb-enable-cbo/)
+* [Auto Analyze](https://docs.yugabyte.com/stable/additional-features/auto-analyze/)
+* [YugabyteDB bitmap scan](https://docs.yugabyte.com/stable/reference/configuration/postgresql-compatibility/#yugabytedb-bitmap-scan)
+* [Parallel append](https://docs.yugabyte.com/stable/additional-features/parallel-query/)
 
-The pgAudit extension must be loaded in [shared_preload_libraries](http://www.postgresql.org/docs/19/runtime-config-client.html#GUC-SHARED-PRELOAD-LIBRARIES). Otherwise, an error will be raised at load time and no audit logging will occur.
+In addition, if you upgrade to v2025.2 and the universe already has cost-based optimizer enabled, the following features are enabled by default:
 
-In addition, `CREATE EXTENSION pgaudit` must be called before `pgaudit.log` is set to ensure proper pgaudit functionality. The extension installs event triggers which add additional auditing for DDL. pgAudit will work without the extension installed but DDL statements will not have information about the object type and name.
+* Auto Analyze
+* YugabyteDB bitmap scan
+* Parallel append
 
-If the `pgaudit` extension is dropped and needs to be recreated then `pgaudit.log` must be unset first otherwise an error will be raised.
+Note that, apart from the exceptions noted, upgrading existing universes does not change the defaults for any of these features.
 
-### pgaudit.log
+For more information on PostgreSQL features developed in YugabyteDB for enhanced compatibility, refer to [Enhanced PostgreSQL Compatibility Mode](https://docs.yugabyte.com/stable/reference/configuration/postgresql-compatibility/).
 
-Specifies which classes of statements will be logged by session audit logging. Possible values are:
+### [Table-level locking for concurrent DDL and DML](https://docs.yugabyte.com/stable/stable/explore/transactions/explicit-locking/#table-level-locks)
 
-- **READ**: `SELECT` and `COPY` when the source is a relation or a query.
+Added Table-level locks to support concurrent DDL and DML operations across sessions, improving workload concurrency and reducing conflicts during schema changes.
 
-- **WRITE**: `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, and `COPY` when the destination is a relation.
+### [Improved time synchronization across nodes](https://docs.yugabyte.com/stable/deploy/manual-deployment/system-config/#configure-clockbound)
 
-- **FUNCTION**: Function calls and `DO` blocks.
+Time synchronization across nodes has been enhanced through the use of the [ClockBound](https://github.com/aws/clock-bound) library, which is an open source daemon that allows you to compare timestamps to determine order for events and transactions, independent of an instance's geographic location; it improves clock accuracy by several orders of magnitude.
 
-- **ROLE**: Statements related to roles and privileges: `GRANT`, `REVOKE`, `CREATE/ALTER/DROP ROLE`.
+## v2025.1 (Stable) - July 2025
 
-- **DDL**: All `DDL` that is not included in the `ROLE` class.
+For the full list of features and improvements in this release, see [Release notes - v2025.1](https://docs.yugabyte.com/stable/releases/ybdb-releases/v2025.1/). Here are some of the prominent features.
 
-- **MISC**: Miscellaneous commands, e.g. `DISCARD`, `FETCH`, `CHECKPOINT`, `VACUUM`, `SET`.
+### [PostgreSQL 15 compatible YugabyteDB clusters](https://docs.yugabyte.com/stable/api/ysql/pg15-features/)
 
-- **MISC_SET**: Miscellaneous `SET` commands, e.g. `SET ROLE`.
+This is the first stable release featuring a PostgreSQL fork rebase from version 11.2 to 15.0, enabling you to leverage the many key capabilities introduced in PostgreSQL between the two versions. This upgrade brings YSQL API support for numerous features, including stored generated columns, foreign keys on partitioned tables, and non-distinct NULLs in unique indexes. It also introduces query execution optimizations like incremental sort and memoization, along with various observability and security enhancements.
 
-- **ALL**: Include all of the above.
+We're also pleased to announce that YugabyteDB 2025.1.0.0 supports in-place online upgrades and downgrade—even with the PostgreSQL fork rebased to 15.0.
 
-Multiple classes can be provided using a comma-separated list and classes can be subtracted by prefacing the class with a `-` sign (see [Session Audit Logging](#session-audit-logging)).
+**Note** that the source cluster must be running version 2024.2.3.0 or later to upgrade to version 2025.1.0.
 
-The default is `none`.
+### [HNSW indexing support for pgvector](https://docs.yugabyte.com/stable/additional-features/pg-extensions/extension-pgvector/#vector-indexing)
 
-### pgaudit.log_catalog
+Brings AI-native capability by enabling efficient similarity search in vector workloads. Enhanced vector search capabilities via Hierarchical Navigable Small World (HNSW) indexing provide faster and more efficient high-dimensional vector lookups.
 
-Specifies that session logging should be enabled in the case where all relations in a statement are in pg_catalog. Disabling this setting will reduce noise in the log from tools like psql and PgAdmin that query the catalog heavily.
+### [Automatic transactional xCluster DDL replication](https://docs.yugabyte.com/stable/deploy/multi-dc/async-replication/async-transactional-setup-automatic/#set-up-automatic-mode-replication)
 
-The default is `on`.
+YugabyteDB now supports seamless replication of YSQL DDL changes across xCluster setups, eliminating the need to manually apply DDLs on both source and target clusters.
 
-### pgaudit.log_client
+### [Parallel queries: Enabling PG parallelism for colocated tables](https://docs.yugabyte.com/stable/additional-features/parallel-query/)
 
-Specifies whether log messages will be visible to a client process such as psql. This setting should generally be left disabled but may be useful for debugging or other purposes.
+Improves query performance for colocated tables by allowing PostgreSQL to leverage multiple CPUs, leading to faster query execution times.
 
-Note that `pgaudit.log_level` is only enabled when `pgaudit.log_client` is `on`.
+### [Optimization of INSERT ON CONFLICT batching](https://docs.yugabyte.com/stable/reference/configuration/yb-tserver/#yb-insert-on-conflict-read-batch-size)
 
-The default is `off`.
+Queries using the `INSERT ... ON CONFLICT` clause are optimized for efficient execution, with automatic batching applied when multiple statements are executed to improve performance.
 
-### pgaudit.log_level
+### [Cost-Based Optimizer (CBO)](https://docs.yugabyte.com/stable/best-practices-operations/ysql-yb-enable-cbo/)
 
-Specifies the log level that will be used for log entries (see [Message Severity Levels](http://www.postgresql.org/docs/19/runtime-config-logging.html#RUNTIME-CONFIG-SEVERITY-LEVELS) for valid levels) but note that `ERROR`, `FATAL`, and `PANIC` are not allowed). This setting is used for regression testing and may also be useful to end users for testing or other purposes.
+The CBO leverages YugabyteDB's distributed storage architecture and advanced query execution optimizations, including query pushdowns, LSM indexes, and batched nested loop joins, to deliver PostgreSQL-like performance.
 
-Note that `pgaudit.log_level` is only enabled when `pgaudit.log_client` is `on`; otherwise the default will be used.
+### [Bitmap scan support](https://docs.yugabyte.com/stable/reference/configuration/yb-tserver/#enable-bitmapscan)
 
-The default is `log`.
+Combine multiple indexes for more efficient scans.
 
-### pgaudit.log_parameter
+## v2.25 (Preview) - January 2025
 
-Specifies that audit logging should include the parameters that were passed with the statement. When parameters are present they will be included in `CSV` format after the statement text.
+**v2.25** is the most recent [Preview](https://docs.yugabyte.com/stable/releases/versioning/#preview-releases) release. This includes features under active development and is recommended for development and testing only. For the full list of features and improvements in this release, see [Release notes - v2.25](https://docs.yugabyte.com/stable/releases/ybdb-releases/v2.25/). Here are some of the prominent features.
 
-The default is `off`.
+### [PostgreSQL 15 Support](https://docs.yugabyte.com/stable/develop/pg15-features/)
 
-### pgaudit.log_parameter_max_size
+As part of this release, we have upgraded our PostgreSQL fork from version 11.2 to 15.0, enabling you to leverage the many key capabilities introduced in PostgreSQL between these two versions. This upgrade brings YSQL API support for numerous features, including stored generated columns, foreign keys on partitioned tables, and non-distinct NULLs in unique indexes. It also introduces query execution optimizations like incremental sort and memoization, along with various observability and security enhancements.
 
-Specifies that parameter values longer than this setting (in bytes) should not be logged, but replaced with `<long param suppressed>`. This is set in bytes, not characters, so does not account for multi-byte characters in a text parameters's encoding. This setting has no effect if `log_parameter` is `off`. If this setting is 0 (the default), all parameters are logged regardless of length
+### [Query Diagnostics](https://docs.yugabyte.com/stable/explore/query-1-performance/query-diagnostics/)
 
-The default is `0`.
+This feature significantly simplifies tuning poorly performing SQL queries by allowing you to capture and export detailed diagnostic information, including bind variables and constants, pg_stat_statements statistics, schema details, active session history, and execution plans.
 
-### pgaudit.log_relation
+### [Active session history](https://docs.yugabyte.com/stable/explore/observability/active-session-history/)
 
-Specifies whether session audit logging should create a separate log entry for each relation (`TABLE`, `VIEW`, etc.) referenced in a `SELECT` or `DML` statement. This is a useful shortcut for exhaustive logging without using object audit logging.
+In addition, the Active Session History, which provides real-time and historical views of system activity, is now enabled by default.
 
-The default is `off`.
+# Architecture
 
-### pgaudit.log_rows
+<img src="https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/architecture/images/yb-architecture.jpg" align="center" alt="YugabyteDB Architecture"/>
 
-Specifies that audit logging should include the number of rows retrieved or affected by a statement. When enabled the rows field will be included after the parameter field.
+Review detailed architecture in our [Docs](https://docs.yugabyte.com/stable/architecture/).
 
-The default is `off`.
+# Need Help?
 
-### pgaudit.log_statement
+* You can ask questions, find answers, and help others on our Community [Slack](https://communityinviter.com/apps/yugabyte-db/register), [Forum](https://forum.yugabyte.com), [Stack Overflow](https://stackoverflow.com/questions/tagged/yugabyte-db), as well as Twitter [@Yugabyte](https://twitter.com/yugabyte).
 
-Specifies whether logging will include the statement text and parameters (if enabled). Depending on requirements, an audit log might not require this and it makes the logs less verbose.
+* Use [GitHub issues](https://github.com/yugabyte/yugabyte-db/issues) to report issues or request new features.
 
-The default is `on`.
+* To troubleshoot YugabyteDB and cluster/node-level issues, refer to [Troubleshooting documentation](https://docs.yugabyte.com/stable/troubleshoot/).
 
-### pgaudit.log_statement_once
+# Contribute
 
-Specifies whether logging will include the statement text and parameters with the first log entry for a statement/substatement combination or with every entry. Enabling this setting will result in less verbose logging but may make it more difficult to determine the statement that generated a log entry, though the statement/substatement pair along with the process id should suffice to identify the statement text logged with a previous entry.
+As an open-source project with a strong focus on the user community, we welcome contributions as GitHub pull requests. See our [Contributor Guides](https://docs.yugabyte.com/stable/contribute/) to get going. Discussions and RFCs for features happen on the design discussions section of our [Forum](https://forum.yugabyte.com/c/design-discussions/7).
 
-The default is `off`.
+For AI agents, refer to [AGENTS.md](AGENTS.md) for guidance on working with this codebase.
 
-### pgaudit.role
+# License
 
-Specifies the master role to use for object audit logging. Multiple audit roles can be defined by granting them to the master role. This allows multiple groups to be in charge of different aspects of audit logging.
+This repository contains two differently licensed components. See [LICENSE.md](LICENSE.md) for detailed directory mappings.
 
-There is no default.
+* **YugabyteDB** (core database in `src/`, `java/`, etc.) - [Apache License 2.0](licenses/APACHE-LICENSE-2.0.txt)
+* **YugabyteDB Anywhere** (management platform in `managed/`) - [Polyform Free Trial License 1.0.0](licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt)
 
-## Session Audit Logging
+> By default, the build generates only the Apache 2.0 licensed database binaries.
 
-Session audit logging provides detailed logs of all statements executed by a user in the backend.
+# Read More
 
-### Configuration
-
-Session logging is enabled with the [pgaudit.log](#pgauditlog) setting.
-
-Enable session logging for all `DML` and `DDL` and log all relations in `DML` statements:
-```
-set pgaudit.log = 'write, ddl';
-set pgaudit.log_relation = on;
-```
-Enable session logging for all commands except `MISC` and raise audit log messages as `NOTICE`:
-```
-set pgaudit.log = 'all, -misc';
-set pgaudit.log_level = notice;
-```
-
-### Example
-
-In this example session audit logging is used for logging `DDL` and `SELECT` statements. Note that the insert statement is not logged since the `WRITE` class is not enabled
-
-_SQL_:
-```
-set pgaudit.log = 'read, ddl';
-
-create table account
-(
-    id int,
-    name text,
-    password text,
-    description text
-);
-
-insert into account (id, name, password, description)
-             values (1, 'user1', 'HASH1', 'blah, blah');
-
-select *
-    from account;
-```
-_Log Output_:
-```
-AUDIT: SESSION,1,1,DDL,CREATE TABLE,TABLE,public.account,create table account
-(
-    id int,
-    name text,
-    password text,
-    description text
-);,<not logged>
-AUDIT: SESSION,2,1,READ,SELECT,,,select *
-    from account,,<not logged>
-```
-
-## Object Audit Logging
-
-Object audit logging logs statements that affect a particular relation. Only `SELECT`, `INSERT`, `UPDATE` and `DELETE` commands are supported. `TRUNCATE` is not included in object audit logging.
-
-Object audit logging is intended to be a finer-grained replacement for `pgaudit.log = 'read, write'`. As such, it may not make sense to use them in conjunction but one possible scenario would be to use session logging to capture each statement and then supplement that with object logging to get more detail about specific relations.
-
-### Configuration
-
-Object-level audit logging is implemented via the roles system. The [pgaudit.role](#pgauditrole) setting defines the role that will be used for audit logging. A relation (`TABLE`, `VIEW`, etc.) will be audit logged when the audit role has permissions for the command executed or inherits the permissions from another role. This allows you to effectively have multiple audit roles even though there is a single master role in any context.
-
-Set [pgaudit.role](#pgauditrole) to `auditor` and grant `SELECT` and `DELETE` privileges on the `account` table. Any `SELECT` or `DELETE` statements on the `account` table will now be logged:
-```
-set pgaudit.role = 'auditor';
-
-grant select, delete
-   on public.account
-   to auditor;
-```
-
-### Example
-
-In this example object audit logging is used to illustrate how a granular approach may be taken towards logging of `SELECT` and `DML` statements. Note that logging on the `account` table is controlled by column-level permissions, while logging on the `account_role_map` table is table-level.
-
-_SQL_:
-```
-set pgaudit.role = 'auditor';
-
-create table account
-(
-    id int,
-    name text,
-    password text,
-    description text
-);
-
-grant select (password)
-   on public.account
-   to auditor;
-
-select id, name
-  from account;
-
-select password
-  from account;
-
-grant update (name, password)
-   on public.account
-   to auditor;
-
-update account
-   set description = 'yada, yada';
-
-update account
-   set password = 'HASH2';
-
-create table account_role_map
-(
-    account_id int,
-    role_id int
-);
-
-grant select
-   on public.account_role_map
-   to auditor;
-
-select account.password,
-       account_role_map.role_id
-  from account
-       inner join account_role_map
-            on account.id = account_role_map.account_id
-```
-_Log Output_:
-```
-AUDIT: OBJECT,1,1,READ,SELECT,TABLE,public.account,select password
-  from account,<not logged>
-AUDIT: OBJECT,2,1,WRITE,UPDATE,TABLE,public.account,update account
-   set password = 'HASH2',<not logged>
-AUDIT: OBJECT,3,1,READ,SELECT,TABLE,public.account,select account.password,
-       account_role_map.role_id
-  from account
-       inner join account_role_map
-            on account.id = account_role_map.account_id,<not logged>
-AUDIT: OBJECT,3,1,READ,SELECT,TABLE,public.account_role_map,select account.password,
-       account_role_map.role_id
-  from account
-       inner join account_role_map
-            on account.id = account_role_map.account_id,<not logged>
-```
-
-## Format
-
-Audit entries are written to the standard logging facility and contain the following columns in comma-separated format. Output is compliant CSV format only if the log line prefix portion of each log entry is removed.
-
-- **AUDIT_TYPE** - `SESSION` or `OBJECT`.
-
-- **STATEMENT_ID** - Unique statement ID for this session. Each statement ID represents a backend call. Statement IDs are sequential even if some statements are not logged. There may be multiple entries for a statement ID when more than one relation is logged.
-
-- **SUBSTATEMENT_ID** - Sequential ID for each sub-statement within the main statement. For example, calling a function from a query. Sub-statement IDs are continuous even if some sub-statements are not logged. There may be multiple entries for a sub-statement ID when more than one relation is logged.
-
-- **CLASS** - e.g. `READ`, `ROLE` (see [pgaudit.log](#pgauditlog)).
-
-- **COMMAND** - e.g. `ALTER TABLE`, `SELECT`.
-
-- **OBJECT_TYPE** - `TABLE`, `INDEX`, `VIEW`, etc. Available for `SELECT`, `DML` and most `DDL` statements.
-
-- **OBJECT_NAME** - The fully-qualified object name (e.g. public.account). Available for `SELECT`, `DML` and most `DDL` statements.
-
-- **STATEMENT** - Statement executed on the backend.
-
-- **PARAMETER** - If `pgaudit.log_parameter` is set then this field will contain the statement parameters as quoted CSV or `<none>` if there are no parameters. Otherwise, the field is `<not logged>`.
-
-Use [log_line_prefix](http://www.postgresql.org/docs/19/runtime-config-logging.html#GUC-LOG-LINE-PREFIX) to add any other fields that are needed to satisfy your audit log requirements. A typical log line prefix might be `'%m %u %d [%p]: '` which would provide the date/time, user name, database name, and process id for each audit log.
-
-## Caveats
-
-Audit logging is best-effort and not transactional. pgAudit writes audit entries through the standard PostgreSQL logging facility, which does not flush each entry to disk synchronously with the transaction that produced it, nor does it propagate write errors back to the session. There is no guarantee that a committed transaction will have a corresponding audit log entry. If the server crashes or loses power, or the log destination becomes unavailable (for example, the log volume fills up) after a transaction commits but before its audit entries are durably written, those entries may be lost. Conversely, a statement is logged when it executes, so an entry may be written even if its transaction later rolls back.
-
-Object renames are logged under the name they were renamed to. For example, renaming a table will produce the following result:
-```
-ALTER TABLE test RENAME TO test2;
-
-AUDIT: SESSION,36,1,DDL,ALTER TABLE,TABLE,public.test2,ALTER TABLE test RENAME TO test2,<not logged>
-```
-It is possible to have a command logged more than once. For example, when a table is created with a primary key specified at creation time the index for the primary key will be logged independently and another audit log will be made for the index under the create entry. The multiple entries will however be contained within one statement ID.
-
-Autovacuum and Autoanalyze are not logged.
-
-Statements that are executed after a transaction enters an aborted state will not be audit logged. However, the statement that caused the error and any subsequent statements executed in the aborted transaction will be logged as ERRORs by the standard logging facility.
-
-It is not possible to reliably audit superusers with pgAudit. One solution is to restrict access to superuser accounts and use the [set_user](https://github.com/pgaudit/set_user) extension to escalate permissions when required.
-
-## Authors
-
-The PostgreSQL Audit Extension is based on the [2ndQuadrant](http://www.2ndquadrant.com) [pgaudit project](https://github.com/2ndQuadrant/pgaudit) authored by Simon Riggs, Abhijit Menon-Sen, and Ian Barwick and submitted as an extension to PostgreSQL core. Additional development has been done by David Steele of [Crunchy Data](http://www.crunchydata.com).
+* To see our updates, go to the [Distributed SQL Blog](https://blog.yugabyte.com/).
+* For in-depth design and architecture details, see our [design specs](https://github.com/yugabyte/yugabyte-db/tree/master/architecture/design).
+* [Tech Talks](https://www.yugabyte.com/yftt/) and [Videos](https://www.youtube.com/c/YugaByte).
+* See how YugabyteDB [compares with other databases](https://docs.yugabyte.com/stable/faq/comparisons/).

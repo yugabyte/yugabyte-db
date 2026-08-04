@@ -1,0 +1,19 @@
+title: UniverseEditKubernetesOverrides
+description: |
+  UniverseEditKubernetesOverrides
+
+  Update all kubernetes overrides on the universe. Part of UniverseKubernetesOverridesReq 
+type: object
+properties:
+  overrides:
+    description: Global kubernetes overrides to apply across the entire universe.
+    type: string
+    example: |-
+      tserver:
+        podLabels:
+          env: test
+  az_overrides:
+    description: Granular kubernetes overrides per Availability Zone identified by AZ uuid.
+    example: 'az_uuid: "tserver:\n  podLabels:\n    env: test"'
+    additionalProperties:
+      type: string

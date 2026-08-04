@@ -1,0 +1,114 @@
+<!--
+doc/src/sgml/ref/alter_tablegroup.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-altertablegroup">
+   <indexterm zone="sql-altertablegroup">
+      <primary>ALTER TABLEGROUP</primary>
+   </indexterm>
+
+   <refmeta>
+      <refentrytitle>ALTER TABLEGROUP</refentrytitle>
+      <manvolnum>7</manvolnum>
+      <refmiscinfo>SQL - Language Statements</refmiscinfo>
+   </refmeta>
+
+   <refnamediv>
+      <refname>ALTER TABLEGROUP</refname>
+      <refpurpose>change the definition of a tablegroup</refpurpose>
+   </refnamediv>
+
+   <refsynopsisdiv>
+      <synopsis>
+ALTER TABLEGROUP <replaceable>name</replaceable> RENAME TO <replaceable>new_name</replaceable>
+ALTER TABLEGROUP <replaceable>name</replaceable> OWNER TO { <replaceable>new_owner</replaceable> | CURRENT_USER | SESSION_USER }
+      </synopsis>
+   </refsynopsisdiv>
+
+   <refsect1>
+      <title>Description</title>
+
+      <para>
+         <command>ALTER TABLEGROUP</command> can be used to change the definition of
+         a tablegroup.
+      </para>
+
+      <para>
+         You must own the tablegroup to change the definition of a tablegroup.
+         To alter the owner, you must also be a direct or indirect member of the new
+         owning role.
+         (Note that superusers have these privileges automatically.)
+      </para>
+
+   </refsect1>
+
+   <refsect1>
+      <title>Parameters</title>
+
+      <variablelist>
+         <varlistentry>
+            <term><replaceable class="parameter">name</replaceable></term>
+            <listitem>
+               <para>
+                  The name of an existing tablegroup.
+               </para>
+            </listitem>
+         </varlistentry>
+
+         <varlistentry>
+            <term><replaceable class="parameter">new_name</replaceable></term>
+            <listitem>
+               <para>
+                  The new name of the tablegroup.
+               </para>
+            </listitem>
+         </varlistentry>
+
+         <varlistentry>
+            <term><replaceable class="parameter">new_owner</replaceable></term>
+            <listitem>
+               <para>
+                  The new owner of the tablegroup.
+               </para>
+            </listitem>
+         </varlistentry>
+      </variablelist>
+   </refsect1>
+
+   <refsect1>
+      <title>Examples</title>
+
+      <para>
+         Rename tablegroup <literal>tbl_grp</literal> to <literal>tgroup</literal>:
+         <programlisting>
+            ALTER TABLEGROUP tbl_grp RENAME TO tgroup;
+         </programlisting>
+      </para>
+
+      <para>
+         Change the owner of tablegroup <literal>tbl_grp</literal>:
+         <programlisting>
+            ALTER TABLEGROUP tbl_grp OWNER TO mary;
+         </programlisting>
+      </para>
+   </refsect1>
+
+   <refsect1>
+      <title>Compatibility</title>
+
+      <para>
+         There is no <command>ALTER TABLEGROUP</command> statement in
+         the SQL standard.
+      </para>
+   </refsect1>
+
+   <refsect1>
+      <title>See Also</title>
+
+      <simplelist type="inline">
+         <member><xref linkend="sql-createtablegroup"/></member>
+         <member><xref linkend="sql-droptablegroup"/></member>
+      </simplelist>
+   </refsect1>
+</refentry>

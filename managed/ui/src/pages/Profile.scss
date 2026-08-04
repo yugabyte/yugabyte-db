@@ -1,0 +1,10 @@
+@use '../_style/colors.scss';
+
+.p-page-banner {
+  width: fit-content;
+  margin: 10px 30px -20px 30px;
+}
+
+.p-page-banner-link {
+  text-decoration: underline;
+}

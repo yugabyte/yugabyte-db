@@ -1,0 +1,125 @@
+@use '../../../_style/colors.scss';
+
+.restore-choose-universe {
+  .row {
+    margin-top: 24px;
+  }
+
+  .backup-info {
+    background: #f7f7f7;
+    padding: 10px 16px;
+    border: 1px solid #e5e5e9;
+    border-radius: 8px;
+    margin-top: 0px;
+
+    .title {
+      font-weight: 600;
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+  }
+
+  .Select {
+    .status-badge {
+      display: inline;
+      color: #67666c;
+    }
+    .kms-used {
+      color: #ef5824 !important;
+    }
+    .active-kms {
+      border-bottom: 1px solid #e5e5e9;
+    }
+  }
+
+  .should-rename-keyspace {
+    margin-left: 6px;
+
+    label {
+      font-weight: 400;
+      font-size: 13px;
+    }
+
+    .disable-keyspace-subtext {
+      font-size: 12px;
+      line-height: 14px;
+      color: colors.$YB_DARKER_GRAY;
+      margin-top: 8px;
+    }
+  }
+
+  .kms-helper-text {
+    font-weight: 400;
+    font-size: 11.2px;
+    color: #67666c;
+  }
+
+  .form-item-label {
+    font-weight: 400;
+    font-size: 13px;
+  }
+
+  .yb-field-group {
+    padding-bottom: 0;
+  }
+
+  .deleted-kms-warning {
+    .helper-text {
+      font-weight: 400;
+      font-size: 13px;
+      color: #232329;
+    }
+
+    .deleted-key-title {
+      font-weight: 500;
+      font-size: 13px;
+      color: #151730;
+    }
+    .deleted-key {
+      font-weight: 400;
+      font-size: 13px;
+      color: #151730;
+    }
+  }
+
+  .alert-warning {
+    display: flex;
+    border-radius: 8px;
+    background-color: #ffeec8;
+  }
+}
+
+.rename-keyspace-step {
+  .help-text {
+    margin-bottom: 24px;
+    margin-top: 24px;
+    font-weight: 600;
+    font-size: 13px;
+  }
+
+  .keyspaces-input {
+    margin-bottom: 15px;
+  }
+
+  .yb-field-group {
+    padding-bottom: 0 !important;
+  }
+}
+
+.keyspace-loading {
+  margin-bottom: 15px;
+}
+
+.backup-modal {
+  .restore-wth-rename-but {
+    height: 46px;
+  }
+  .err-msg {
+    color: colors.$YB_ERROR_TEXT_COLOR;
+    margin-bottom: 5px;
+  }
+}
+
+.Toastify__toast-container {
+  z-index: 100000;
+}

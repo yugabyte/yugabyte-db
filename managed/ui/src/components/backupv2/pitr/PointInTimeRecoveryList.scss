@@ -1,0 +1,39 @@
+@use '../../../_style/colors.scss';
+
+.point-in-time-recovery {
+  font-family: 'Inter';
+  font-style: normal;
+
+  .pitr-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    .search-input {
+      width: 380px;
+    }
+  }
+
+  .info-text {
+    margin: 32px 0;
+    font-weight: 700;
+    font-size: 14px;
+    line-height: 16px;
+  }
+
+  .actions-btn {
+    margin: 4px 0px;
+  }
+
+  .action-danger a,
+  .action-danger a:hover {
+    color: colors.$YB_ORANGE;
+  }
+}
+
+.point-in-time-recovery-err {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 300px;
+}

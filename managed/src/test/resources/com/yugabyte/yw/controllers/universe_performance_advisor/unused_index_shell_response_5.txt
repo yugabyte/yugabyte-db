@@ -1,0 +1,5 @@
+ 
+jsonb_agg                                                                                                                                                                                                                                                                                                                                                                                              
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"comment": "perf tuning", "index_name": "ts_test_ts2_idx", "table_name": "ts_test", "index_command": "CREATE INDEX ts_test_ts2_idx ON public.ts_test USING lsm (ts2 HASH)", "current_database": "yb_test"}]
+(1 row)

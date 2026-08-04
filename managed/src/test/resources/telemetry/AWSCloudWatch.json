@@ -1,0 +1,21 @@
+{
+    "uuid": "e9d5d6db-09b1-43b9-8c49-2d9823e1b90e",
+    "customerUUID": "a3f345bd-18e7-4dc9-8f97-6dd87d4f952a",
+    "name": "DataDogProvider",
+    "createTime": "2023-08-08T10:00:00Z",
+    "updateTime": "2023-08-08T12:30:00Z",
+    "config": {
+      "type": "AWS_CLOUDWATCH",
+      "logGroup": "logGroup",
+      "logStream": "logStream",
+      "region": "region",
+      "roleARN": "roleARN",
+      "endpoint": "endpoint",
+      "accessKey": "accessKey",
+      "secretKey": "secretKey"
+    },
+    "tags": {
+      "user": "john",
+      "environment": "dev"
+    }
+}

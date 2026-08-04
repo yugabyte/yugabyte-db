@@ -1,0 +1,90 @@
+@use '../../../../_style/colors.scss';
+
+.ntp-row.show-margin {
+  .form-group {
+    &>span {
+      margin-right: 0 !important;
+    }
+  }
+
+  .manual-ntp {
+    margin-left: 23px !important;
+  }
+}
+
+.ntp-row {
+  display: flex;
+  flex-direction: column;
+
+  .yb-info-tip {
+    font-size: 1.2em;
+  }
+
+  .form-group {
+    display: flex;
+    align-items: center;
+    min-height: 35px;
+
+    &>span {
+      margin-right: 10px;
+    }
+    .yb-field-group{
+      padding-bottom: 0px;
+    }
+    .yb-field-group>.btn-group-radio {
+      display: inline-flex;
+      align-items: center;
+      margin-bottom: 2px;
+      input {
+        margin: 0 10px 0 0;
+      }
+    }
+
+    label {
+      margin-right: 20px;
+      font-weight: 400;
+      font-size: 13px;
+      font-family: 'Inter';
+      font-style: normal;
+    }
+
+    input[type="radio"] {
+      margin-right: 10px;
+    }
+  }
+
+  .no-ntp-warning {
+    display: flex;
+    gap: 10px;
+    font-size: 13px;
+    color: colors.$YB_TEXT_COLOR;
+    background: colors.$YB_BANNER_WARNING_BACKGROUND;
+    padding: 12px 10px;
+    border-radius: 8px;
+
+    i {
+      color: colors.$YB_WARNING_COLOR;
+      font-size: 20px;
+    }
+  }
+
+  .manual-ntp {
+    margin-left: 28px;
+
+    .info-text {
+      margin-bottom: 6px;
+    }
+
+    .sub-text {
+      font-size: 12px;
+      margin-top: 8px;
+      color: #6D7C88;
+    }
+
+    .standard-error {
+      margin-top: 5px;
+      display: inline-block;
+      color: colors.$YB_ERROR_TEXT_COLOR;
+    }
+  }
+}

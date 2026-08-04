@@ -1,0 +1,49 @@
+#LICENSE Portions Copyright 2019-2021 ZomboDB, LLC.
+#LICENSE
+#LICENSE Portions Copyright 2021-2023 Technology Concepts & Design, Inc.
+#LICENSE
+#LICENSE Portions Copyright 2023-2023 PgCentral Foundation, Inc. <contact@pgcentral.org>
+#LICENSE
+#LICENSE All rights reserved.
+#LICENSE
+#LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
+
+[package]
+name = "aggregate"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[[bin]]
+name = "pgrx_embed_aggregate"
+path = "./src/bin/pgrx_embed.rs"
+
+[features]
+default = ["pg13"]
+pg13 = ["pgrx/pg13", "pgrx-tests/pg13"]
+pg14 = ["pgrx/pg14", "pgrx-tests/pg14"]
+pg15 = ["pgrx/pg15", "pgrx-tests/pg15"]
+pg16 = ["pgrx/pg16", "pgrx-tests/pg16"]
+pg17 = ["pgrx/pg17", "pgrx-tests/pg17"]
+pg_test = []
+bob = []
+
+[dependencies]
+pgrx = { path = "../../pgrx", default-features = false }
+serde = "1.0"
+
+[dev-dependencies]
+pgrx-tests = { path = "../../pgrx-tests" }
+
+# uncomment these if compiling outside of 'pgrx'
+# [profile.dev]
+# panic = "unwind"
+
+# [profile.release]
+# panic = "unwind"
+# opt-level = 3
+# lto = "fat"
+# codegen-units = 1

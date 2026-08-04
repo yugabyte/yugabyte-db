@@ -1,0 +1,65 @@
+# Example of how to build this container (ran from pgrx checkout directory):
+#   docker build --build-arg PG_MAJOR_VER=14 -f .github/docker/Dockerfile.alpine_3.21 -t pgrx-alpine .
+#
+# Example of how to run this container with tests after building the image:
+#   docker run pgrx-alpine cargo test --no-default-features --features pg14 --locked
+#
+# Note that "PG_MAJOR_VER" build arg in the build step must match the
+# "--features pgXX" in the run step
+
+ARG PG_MAJOR_VER
+# Use Postgres' official alpine version, it's just easier that way
+FROM postgres:${PG_MAJOR_VER}-alpine3.21
+ENV PG_MAJOR_VER=${PG_MAJOR_VER}
+
+# Required for compiling Rust
+ENV RUSTFLAGS="-C target-feature=-crt-static"
+
+RUN apk add --no-cache \
+  bash \
+  clang \
+  clang-dev \
+  clang-libs \
+  coreutils \
+  curl \
+  gcc \
+  git \
+  make \
+  musl-dev \
+  openssl-dev \
+  util-linux-dev
+
+# Set up permissions so that the rust user below can create extensions
+RUN chmod a+rwx `$(which pg_config) --pkglibdir` \
+  `$(which pg_config) --sharedir`/extension \
+  /var/run/postgresql/
+
+# Running pgrx and tests require a non-root user
+RUN adduser -s /bin/bash -D rust
+WORKDIR /checkout
+RUN chown -R rust:rust /checkout
+COPY --chown=rust:rust . /checkout
+
+USER rust
+# This environment variable is required for postgres while running the tests
+ENV USER=rust
+
+# Install cargo and Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y
+ENV PATH="/home/rust/.cargo/bin:${PATH}"
+
+# By default, we always want to use '--locked'. However, there are some circumstances
+# where we might want to try it unlocked. In those one-off scenarios, the image
+# can be built by docker with: --build-arg CARGO_LOCKED_OPTION=''
+ARG CARGO_LOCKED_OPTION='--locked'
+ENV CARGO_LOCKED_OPTION=${CARGO_LOCKED_OPTION}
+
+# Install cargo-pgrx from source copied into this container
+RUN echo "Running cargo install --path cargo-pgrx/ $CARGO_LOCKED_OPTION" && cargo install --path cargo-pgrx/ $CARGO_LOCKED_OPTION
+
+# This seems strange, but by this point $PG_MAJOR_VER is blank and
+# $PG_MAJOR is always set to the correct version. I think it's something built
+# into the postgres:XX-alpine3.16 images, so it was easier to go with the grain
+RUN cargo pgrx init --pg$PG_MAJOR=$(which pg_config)
+
+CMD ["cargo", "test", "--no-default-features", "--features", "pg${PG_MAJOR_VER} cshim", "${CARGO_LOCKED_OPTION}"]

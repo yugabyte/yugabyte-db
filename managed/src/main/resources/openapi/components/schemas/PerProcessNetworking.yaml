@@ -1,0 +1,3 @@
+title: PerProcessNetworking
+description: '(Place holder for) Network settings that can be overridden per tserver or master process for nodes in the cluster. The node instances can be onprem nodes, VMs in GCP/AWS/Azure, or pods in k8s. Part of AvailabilityZoneNetworking.'
+type: object

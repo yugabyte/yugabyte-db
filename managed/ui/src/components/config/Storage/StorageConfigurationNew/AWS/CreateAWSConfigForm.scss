@@ -1,0 +1,67 @@
+.multi-region-aws-disabled-config {
+  .divider {
+    color: #67666c;
+    // margin: 16px 8px 0 8px;
+    width: 2px;
+    height: 22px;
+    top: 30px;
+    position: relative;
+
+    &.lean {
+      transform: rotate(15deg);
+      margin-left: 13px;
+      margin-right: 13px;
+    }
+  }
+
+  .bucket-controls {
+    display: flex;
+    justify-content: space-between;
+
+    .field-bucket {
+      width: 535px;
+    }
+  }
+}
+
+.multi-region-enabled.aws {
+  width: 1255px !important;
+
+  .aws-folder-field {
+    display: flex;
+    align-items: center;
+  }
+
+  .aws-field-region {
+    width: 280px;
+  }
+}
+
+.aws-storage-config-form {
+  padding: 0 15px;
+}
+
+#config-tab-panel-pane-newBackupConfig {
+  .form-divider {
+    height: 1px;
+    width: auto;
+    background-color: #e5e5e9;
+    margin: 26px 0px;
+  }
+
+  .yb-field-group {
+    & > .description-item {
+      align-items: center;
+      display: flex;
+      justify-content: flex-start;
+
+      .description-item-sub-text {
+        margin-left: 8px;
+      }
+    }
+  }
+
+  .backup-proxy-config {
+    margin-top: 32px;
+  }
+}

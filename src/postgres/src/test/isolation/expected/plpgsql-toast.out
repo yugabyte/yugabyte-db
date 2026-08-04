@@ -1,0 +1,316 @@
+Parsed test spec with 2 sessions
+
+starting permutation: lock assign1 vacuum unlock
+pg_advisory_unlock_all
+----------------------
+                      
+(1 row)
+
+pg_advisory_unlock_all
+----------------------
+                      
+(1 row)
+
+step lock: 
+    SELECT pg_advisory_lock(1);
+
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step assign1: 
+do $$
+  declare
+    x text;
+  begin
+    select test1.b into x from test1;
+    delete from test1;
+    commit;
+    perform pg_advisory_lock(1);
+    raise notice 'length(x) = %', length(x);
+  end;
+$$;
+ <waiting ...>
+step vacuum: 
+    VACUUM test1;
+
+step unlock: 
+    SELECT pg_advisory_unlock(1);
+
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+s1: NOTICE:  length(x) = 6000
+step assign1: <... completed>
+
+starting permutation: lock assign2 vacuum unlock
+pg_advisory_unlock_all
+----------------------
+                      
+(1 row)
+
+pg_advisory_unlock_all
+----------------------
+                      
+(1 row)
+
+step lock: 
+    SELECT pg_advisory_lock(1);
+
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step assign2: 
+do $$
+  declare
+    x text;
+  begin
+    x := (select test1.b from test1);
+    delete from test1;
+    commit;
+    perform pg_advisory_lock(1);
+    raise notice 'length(x) = %', length(x);
+  end;
+$$;
+ <waiting ...>
+step vacuum: 
+    VACUUM test1;
+
+step unlock: 
+    SELECT pg_advisory_unlock(1);
+
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+s1: NOTICE:  length(x) = 6000
+step assign2: <... completed>
+
+starting permutation: lock assign3 vacuum unlock
+pg_advisory_unlock_all
+----------------------
+                      
+(1 row)
+
+pg_advisory_unlock_all
+----------------------
+                      
+(1 row)
+
+step lock: 
+    SELECT pg_advisory_lock(1);
+
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step assign3: 
+do $$
+  declare
+    r record;
+  begin
+    select * into r from test1;
+    r.b := (select test1.b from test1);
+    delete from test1;
+    commit;
+    perform pg_advisory_lock(1);
+    raise notice 'length(r) = %', length(r::text);
+  end;
+$$;
+ <waiting ...>
+step vacuum: 
+    VACUUM test1;
+
+step unlock: 
+    SELECT pg_advisory_unlock(1);
+
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+s1: NOTICE:  length(r) = 6004
+step assign3: <... completed>
+
+starting permutation: lock assign4 vacuum unlock
+pg_advisory_unlock_all
+----------------------
+                      
+(1 row)
+
+pg_advisory_unlock_all
+----------------------
+                      
+(1 row)
+
+step lock: 
+    SELECT pg_advisory_lock(1);
+
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step assign4: 
+do $$
+  declare
+    r test2;
+  begin
+    select * into r from test1;
+    delete from test1;
+    commit;
+    perform pg_advisory_lock(1);
+    raise notice 'length(r) = %', length(r::text);
+  end;
+$$;
+ <waiting ...>
+step vacuum: 
+    VACUUM test1;
+
+step unlock: 
+    SELECT pg_advisory_unlock(1);
+
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+s1: NOTICE:  length(r) = 6004
+step assign4: <... completed>
+
+starting permutation: lock assign5 vacuum unlock
+pg_advisory_unlock_all
+----------------------
+                      
+(1 row)
+
+pg_advisory_unlock_all
+----------------------
+                      
+(1 row)
+
+step lock: 
+    SELECT pg_advisory_lock(1);
+
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step assign5: 
+do $$
+  declare
+    r record;
+  begin
+    for r in select test1.b from test1 loop
+      null;
+    end loop;
+    delete from test1;
+    commit;
+    perform pg_advisory_lock(1);
+    raise notice 'length(r) = %', length(r::text);
+  end;
+$$;
+ <waiting ...>
+step vacuum: 
+    VACUUM test1;
+
+step unlock: 
+    SELECT pg_advisory_unlock(1);
+
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+s1: NOTICE:  length(r) = 6002
+step assign5: <... completed>
+
+starting permutation: lock assign6 vacuum unlock
+pg_advisory_unlock_all
+----------------------
+                      
+(1 row)
+
+pg_advisory_unlock_all
+----------------------
+                      
+(1 row)
+
+step lock: 
+    SELECT pg_advisory_lock(1);
+
+pg_advisory_lock
+----------------
+                
+(1 row)
+
+step assign6: 
+do $$
+  declare
+    r record;
+  begin
+    insert into test1 values (2, repeat('bar', 3000));
+    insert into test1 values (3, repeat('baz', 4000));
+    for r in select test1.b from test1 loop
+      delete from test1;
+      commit;
+      perform pg_advisory_lock(1);
+      raise notice 'length(r) = %', length(r::text);
+    end loop;
+  end;
+$$;
+ <waiting ...>
+step vacuum: 
+    VACUUM test1;
+
+step unlock: 
+    SELECT pg_advisory_unlock(1);
+
+pg_advisory_unlock
+------------------
+t                 
+(1 row)
+
+s1: NOTICE:  length(r) = 6002
+s1: NOTICE:  length(r) = 9002
+s1: NOTICE:  length(r) = 12002
+step assign6: <... completed>
+
+starting permutation: fetch-after-commit
+pg_advisory_unlock_all
+----------------------
+                      
+(1 row)
+
+pg_advisory_unlock_all
+----------------------
+                      
+(1 row)
+
+s1: NOTICE:  length(t) = 6000
+s1: NOTICE:  length(t) = 9000
+s1: NOTICE:  length(t) = 12000
+step fetch-after-commit: 
+do $$
+  declare
+    r record;
+    t text;
+  begin
+    insert into test1 values (2, repeat('bar', 3000));
+    insert into test1 values (3, repeat('baz', 4000));
+    for r in select test1.a from test1 loop
+      commit;
+      select b into t from test1 where a = r.a;
+      raise notice 'length(t) = %', length(t);
+    end loop;
+  end;
+$$;
+

@@ -1,0 +1,1 @@
+ALTER TABLE hook_scope ADD COLUMN IF NOT EXISTS cluster_uuid UUID;

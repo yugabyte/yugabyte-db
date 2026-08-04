@@ -1,0 +1,235 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+LOAD 'age';
+SET search_path TO ag_catalog;
+SELECT create_graph('cypher');
+NOTICE:  graph "cypher" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+-- cypher() function takes only a dollar-quoted string constant as an argument.
+-- All other cases throw an error.
+SELECT * FROM cypher('none', $$RETURN 0$$) as q(c agtype);
+ERROR:  graph "none" does not exist
+LINE 1: SELECT * FROM cypher('none', $$RETURN 0$$) as q(c agtype);
+                             ^
+SELECT * FROM cypher('cypher', $$RETURN 0$$) AS r(c agtype);
+ c 
+---
+ 0
+(1 row)
+
+WITH r(c) AS (
+  SELECT * FROM cypher('cypher', $$RETURN 0$$) AS r(c agtype)
+)
+SELECT * FROM r;
+ c 
+---
+ 0
+(1 row)
+
+SELECT * FROM cypher('cypher', 'RETURN 0') AS r(c text);
+ERROR:  a dollar-quoted string constant is expected
+LINE 1: SELECT * FROM cypher('cypher', 'RETURN 0') AS r(c text);
+                                       ^
+SELECT * FROM cypher('cypher', NULL) AS r(c text);
+ERROR:  a dollar-quoted string constant is expected
+LINE 1: SELECT * FROM cypher('cypher', NULL) AS r(c text);
+                                       ^
+WITH q(s) AS (
+  VALUES (textout($$RETURN 0$$))
+)
+SELECT * FROM q, cypher('cypher', q.s) AS r(c text);
+ERROR:  a dollar-quoted string constant is expected
+LINE 4: SELECT * FROM q, cypher('cypher', q.s) AS r(c text);
+                                          ^
+-- The numbers of the attributes must match.
+SELECT * FROM cypher('cypher', $$RETURN 0$$) AS r(c text, x text);
+ERROR:  return row and column definition list do not match
+LINE 1: SELECT * FROM cypher('cypher', $$RETURN 0$$) AS r(c text, x ...
+                      ^
+-- cypher() function can be called in ROWS FROM only if it is there solely.
+SELECT * FROM ROWS FROM (cypher('cypher', $$RETURN 0$$) AS (c agtype));
+ c 
+---
+ 0
+(1 row)
+
+SELECT * FROM ROWS FROM (cypher('cypher', $$RETURN 0$$) AS (c text),
+                         generate_series(1, 2));
+ERROR:  cypher(...) in ROWS FROM is not supported
+LINE 1: SELECT * FROM ROWS FROM (cypher('cypher', $$RETURN 0$$) AS (...
+                                 ^
+-- WITH ORDINALITY is not supported.
+SELECT *
+FROM ROWS FROM (cypher('cypher', $$RETURN 0$$) AS (c text)) WITH ORDINALITY;
+ERROR:  WITH ORDINALITY is not supported
+LINE 2: FROM ROWS FROM (cypher('cypher', $$RETURN 0$$) AS (c text)) ...
+                        ^
+-- cypher() function cannot be called in expressions.
+-- However, it can be called in subqueries.
+SELECT cypher('cypher', $$RETURN 0$$);
+ERROR:  cypher(...) in expressions is not supported
+LINE 1: SELECT cypher('cypher', $$RETURN 0$$);
+               ^
+HINT:  Use subquery instead if possible.
+SELECT (SELECT * FROM cypher('cypher', $$RETURN 0$$) AS r(c agtype));
+ c 
+---
+ 0
+(1 row)
+
+-- Attributes returned from cypher() function are agtype. If other than agtype
+-- is given in the column definition list and there is a type coercion from
+-- agtype to the given type, agtype will be coerced to that type. If there is
+-- not such a coercion, an error is thrown.
+SELECT * FROM cypher('cypher', $$RETURN true$$) AS (c bool);
+ c 
+---
+ t
+(1 row)
+
+SELECT * FROM cypher('cypher', $$RETURN 0$$) AS (c oid);
+ERROR:  cannot cast type agtype to oid for column "c"
+LINE 1: SELECT * FROM cypher('cypher', $$RETURN 0$$) AS (c oid);
+                      ^
+--
+-- Issue 1767: create table as select * from cypher()... throw an error
+--             This is due to the convert_cypher_walker not recognizing
+--             utility commands.
+-- create our graph
+SELECT * FROM create_graph('issue_1767');
+NOTICE:  graph "issue_1767" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+-- add in 5 relationships
+SELECT * FROM cypher('issue_1767', $$ CREATE ()-[:knows]->() $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('issue_1767', $$ CREATE ()-[:knows]->() $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('issue_1767', $$ CREATE ()-[:knows]->() $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('issue_1767', $$ CREATE ()-[:knows]->() $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('issue_1767', $$ CREATE ()-[:knows]->() $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+-- show the 5 relationships
+SELECT * FROM cypher('issue_1767', $$ MATCH ()-[e]->() RETURN e $$) as (e agtype);
+                                                             e                                                             
+---------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "knows", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {}}::edge
+ {"id": 844424930131970, "label": "knows", "end_id": 281474976710660, "start_id": 281474976710659, "properties": {}}::edge
+ {"id": 844424930131971, "label": "knows", "end_id": 281474976710662, "start_id": 281474976710661, "properties": {}}::edge
+ {"id": 844424930131972, "label": "knows", "end_id": 281474976710664, "start_id": 281474976710663, "properties": {}}::edge
+ {"id": 844424930131973, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710665, "properties": {}}::edge
+(5 rows)
+
+-- create table my_vertices from the vertices. should be 10 rows.
+CREATE TABLE my_vertices AS
+    (SELECT * FROM cypher('issue_1767', $$ MATCH (u) RETURN u $$) as (u agtype));
+-- create table my_edges from the edges. should be 5 rows
+CREATE TABLE my_edges AS
+    (SELECT * FROM cypher('issue_1767', $$ MATCH ()-[e]->() RETURN e $$) as (e agtype));
+-- create a table of 4 columns, u, e, v, p. should be 5 rows
+CREATE TABLE my_detailed_paths AS
+    (SELECT * FROM cypher('issue_1767', $$ MATCH p=(u)-[e]->(v) RETURN u,e,v,p $$) as (u agtype, e agtype, v agtype, p agtype));
+-- dump out the tables
+SELECT * FROM my_vertices;
+                               u                                
+----------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex
+ {"id": 281474976710658, "label": "", "properties": {}}::vertex
+ {"id": 281474976710659, "label": "", "properties": {}}::vertex
+ {"id": 281474976710660, "label": "", "properties": {}}::vertex
+ {"id": 281474976710661, "label": "", "properties": {}}::vertex
+ {"id": 281474976710662, "label": "", "properties": {}}::vertex
+ {"id": 281474976710663, "label": "", "properties": {}}::vertex
+ {"id": 281474976710664, "label": "", "properties": {}}::vertex
+ {"id": 281474976710665, "label": "", "properties": {}}::vertex
+ {"id": 281474976710666, "label": "", "properties": {}}::vertex
+(10 rows)
+
+SELECT * FROM my_edges;
+                                                             e                                                             
+---------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "knows", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {}}::edge
+ {"id": 844424930131970, "label": "knows", "end_id": 281474976710660, "start_id": 281474976710659, "properties": {}}::edge
+ {"id": 844424930131971, "label": "knows", "end_id": 281474976710662, "start_id": 281474976710661, "properties": {}}::edge
+ {"id": 844424930131972, "label": "knows", "end_id": 281474976710664, "start_id": 281474976710663, "properties": {}}::edge
+ {"id": 844424930131973, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710665, "properties": {}}::edge
+(5 rows)
+
+SELECT * FROM my_detailed_paths;
+                               u                                |                                                             e                                                             |                               v                                |                                                                                                                                 p                                                                                                                                 
+----------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex | {"id": 844424930131969, "label": "knows", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {}}::edge | {"id": 281474976710658, "label": "", "properties": {}}::vertex | [{"id": 281474976710657, "label": "", "properties": {}}::vertex, {"id": 844424930131969, "label": "knows", "end_id": 281474976710658, "start_id": 281474976710657, "properties": {}}::edge, {"id": 281474976710658, "label": "", "properties": {}}::vertex]::path
+ {"id": 281474976710659, "label": "", "properties": {}}::vertex | {"id": 844424930131970, "label": "knows", "end_id": 281474976710660, "start_id": 281474976710659, "properties": {}}::edge | {"id": 281474976710660, "label": "", "properties": {}}::vertex | [{"id": 281474976710659, "label": "", "properties": {}}::vertex, {"id": 844424930131970, "label": "knows", "end_id": 281474976710660, "start_id": 281474976710659, "properties": {}}::edge, {"id": 281474976710660, "label": "", "properties": {}}::vertex]::path
+ {"id": 281474976710661, "label": "", "properties": {}}::vertex | {"id": 844424930131971, "label": "knows", "end_id": 281474976710662, "start_id": 281474976710661, "properties": {}}::edge | {"id": 281474976710662, "label": "", "properties": {}}::vertex | [{"id": 281474976710661, "label": "", "properties": {}}::vertex, {"id": 844424930131971, "label": "knows", "end_id": 281474976710662, "start_id": 281474976710661, "properties": {}}::edge, {"id": 281474976710662, "label": "", "properties": {}}::vertex]::path
+ {"id": 281474976710663, "label": "", "properties": {}}::vertex | {"id": 844424930131972, "label": "knows", "end_id": 281474976710664, "start_id": 281474976710663, "properties": {}}::edge | {"id": 281474976710664, "label": "", "properties": {}}::vertex | [{"id": 281474976710663, "label": "", "properties": {}}::vertex, {"id": 844424930131972, "label": "knows", "end_id": 281474976710664, "start_id": 281474976710663, "properties": {}}::edge, {"id": 281474976710664, "label": "", "properties": {}}::vertex]::path
+ {"id": 281474976710665, "label": "", "properties": {}}::vertex | {"id": 844424930131973, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710665, "properties": {}}::edge | {"id": 281474976710666, "label": "", "properties": {}}::vertex | [{"id": 281474976710665, "label": "", "properties": {}}::vertex, {"id": 844424930131973, "label": "knows", "end_id": 281474976710666, "start_id": 281474976710665, "properties": {}}::edge, {"id": 281474976710666, "label": "", "properties": {}}::vertex]::path
+(5 rows)
+
+-- cleanup
+DROP TABLE my_vertices;
+DROP TABLE my_edges;
+DROP TABLE my_detailed_paths;
+SELECT drop_graph('issue_1767', true);
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table issue_1767._ag_label_vertex
+drop cascades to table issue_1767._ag_label_edge
+drop cascades to table issue_1767.knows
+NOTICE:  graph "issue_1767" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+SELECT drop_graph('cypher', true);
+NOTICE:  drop cascades to 2 other objects
+DETAIL:  drop cascades to table cypher._ag_label_vertex
+drop cascades to table cypher._ag_label_edge
+NOTICE:  graph "cypher" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+--
+-- End
+--

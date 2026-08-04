@@ -1,0 +1,27 @@
+title: UniverseRestart
+description: |
+  UniverseRestart
+
+  Payload to restart a Universe. Part of UniverseRestartReq. This will restart all nodes in the 
+  universe or just restart the master and tserver processes.
+type: object
+allOf:
+  - $ref: "./SleepAfterRestartSchema.yaml"
+  - type: object
+    properties:
+      rolling_restart:
+        description: 'Perform a rolling restart of the universe. Otherwise, all nodes will be restarted at the same time.'
+        type: boolean
+        default: true
+      restart_type:
+        description: |
+          The method to reboot the node. This is not required for kubernetes universes, as the pods 
+          will get restarted no matter what. "HARD" reboots are not supported today.
+
+          OS: Restarts the node via the operating system.
+          SERVICE: Restart the YugabyteDB Process only (master, tserver, etc).
+        type: string
+        default: SERVICE
+        enum:
+          - OS
+          - SERVICE

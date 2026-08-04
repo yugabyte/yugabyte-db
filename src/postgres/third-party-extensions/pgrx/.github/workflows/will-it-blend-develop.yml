@@ -1,0 +1,69 @@
+name: Will It Blend™
+
+on:
+  schedule:
+    - cron: '0 7 * * WED'
+  workflow_dispatch:
+
+env:
+  # NB: Don't modify `RUSTFLAGS` here, since it would override the ones
+  # configured by `.cargo/config.toml` on macOS.
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: "false"
+  # CARGO_LOG: cargo::core::compiler::fingerprint=info # Uncomment this to output compiler fingerprint info
+
+jobs:
+  distro_tests:
+    name: Distro tests
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false # We want all of them to run, even if one fails
+      matrix:
+        pg_version: [ "pg13", "pg14", "pg15", "pg16", "pg17" ]
+        container: [ "fedora", "debian_bullseye", "alpine" ]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up environment variables
+        run: |
+          export PG_MAJOR_VER=$(echo ${{ matrix.pg_version}} | cut -c3-)
+          echo "PG_MAJOR_VER=$PG_MAJOR_VER" >> $GITHUB_ENV
+          echo "CARGO_LOCKED_OPTION=--locked" >> $GITHUB_ENV
+
+      - name: Run PGRX tests for Postgres ${{ matrix.pg_version }} using container ${{ matrix.container }}
+        shell: bash
+        run: ./.github/docker/run-docker.sh "$PG_MAJOR_VER" ${{ matrix.container }}
+
+  cargo_unlocked_tests:
+    name: Cargo unlocked tests
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false # We want all of them to run, even if one fails
+      matrix:
+        pg_version: [ "pg13", "pg14", "pg15", "pg16", "pg17" ]
+        container: [ "debian_bullseye" ]
+    steps:
+      # See above for logic details here
+      - name: Set up correct branch environment variable
+        run: |
+          if [ $GITHUB_EVENT_NAME == "schedule" ]; then
+            echo "Running via schedule, so using branch develop"
+            echo "NIGHTLY_BUILD_REF=develop" >> $GITHUB_ENV
+          else
+            echo "Not running via schedule, so using branch $GITHUB_HEAD_REF"
+            echo "NIGHTLY_BUILD_REF=$GITHUB_HEAD_REF" >> $GITHUB_ENV
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.NIGHTLY_BUILD_REF }}
+
+      - name: Set up environment variables
+        run: |
+          export PG_MAJOR_VER=$(echo ${{ matrix.pg_version}} | cut -c3-)
+          echo "PG_MAJOR_VER=$PG_MAJOR_VER" >> $GITHUB_ENV
+          echo "CARGO_LOCKED_OPTION=" >> $GITHUB_ENV
+
+      - name: Run PGRX tests for Postgres ${{ matrix.pg_version }} using container ${{ matrix.container }}
+        shell: bash
+        run: ./.github/docker/run-docker.sh "$PG_MAJOR_VER" ${{ matrix.container }}

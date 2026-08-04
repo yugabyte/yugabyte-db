@@ -1,0 +1,18 @@
+title: PaginationSpec
+description: Pagination spec in page API requests.
+type: object
+properties:
+  offset:
+    description: Start offset of the records.
+    type: integer
+    format: int32
+  limit:
+    description: Maximum number of records to be fetched.
+    type: integer
+    format: int32
+  direction:
+    description: Sort order of the records.
+    type: string
+    enum:
+      - ASC
+      - DESC

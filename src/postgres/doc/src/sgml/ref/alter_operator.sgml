@@ -1,0 +1,237 @@
+<!--
+doc/src/sgml/ref/alter_operator.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-alteroperator">
+ <indexterm zone="sql-alteroperator">
+  <primary>ALTER OPERATOR</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER OPERATOR</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER OPERATOR</refname>
+  <refpurpose>change the definition of an operator</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER OPERATOR <replaceable>name</replaceable> ( { <replaceable>left_type</replaceable> | NONE } , <replaceable>right_type</replaceable> )
+    OWNER TO { <replaceable>new_owner</replaceable> | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
+
+ALTER OPERATOR <replaceable>name</replaceable> ( { <replaceable>left_type</replaceable> | NONE } , <replaceable>right_type</replaceable> )
+    SET SCHEMA <replaceable>new_schema</replaceable>
+
+ALTER OPERATOR <replaceable>name</replaceable> ( { <replaceable>left_type</replaceable> | NONE } , <replaceable>right_type</replaceable> )
+    SET ( {  RESTRICT = { <replaceable class="parameter">res_proc</replaceable> | NONE }
+           | JOIN = { <replaceable class="parameter">join_proc</replaceable> | NONE }
+           | COMMUTATOR = <replaceable class="parameter">com_op</replaceable>
+           | NEGATOR = <replaceable class="parameter">neg_op</replaceable>
+           | HASHES
+           | MERGES
+          } [, ... ] )
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>ALTER OPERATOR</command> changes the definition of
+   an operator.
+  </para>
+
+  <para>
+   You must own the operator to use <command>ALTER OPERATOR</command>.
+   To alter the owner, you must be able to <literal>SET ROLE</literal> to the
+   new owning role, and that role must have <literal>CREATE</literal>
+   privilege on the operator's schema.
+   (These restrictions enforce that altering the owner
+   doesn't do anything you couldn't do by dropping and recreating the operator.
+   However, a superuser can alter ownership of any operator anyway.)
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of an existing operator.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">left_type</replaceable></term>
+    <listitem>
+     <para>
+      The data type of the operator's left operand; write
+      <literal>NONE</literal> if the operator has no left operand.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">right_type</replaceable></term>
+    <listitem>
+     <para>
+      The data type of the operator's right operand.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_owner</replaceable></term>
+    <listitem>
+     <para>
+      The new owner of the operator.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_schema</replaceable></term>
+    <listitem>
+     <para>
+      The new schema for the operator.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+     <term><replaceable class="parameter">res_proc</replaceable></term>
+     <listitem>
+       <para>
+         The restriction selectivity estimator function for this operator; write NONE to remove existing selectivity estimator.
+       </para>
+      </listitem>
+   </varlistentry>
+
+   <varlistentry>
+     <term><replaceable class="parameter">join_proc</replaceable></term>
+     <listitem>
+       <para>
+         The join selectivity estimator function for this operator; write NONE to remove existing selectivity estimator.
+       </para>
+     </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">com_op</replaceable></term>
+    <listitem>
+     <para>
+      The commutator of this operator. Can only be changed if the operator
+      does not have an existing commutator.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">neg_op</replaceable></term>
+    <listitem>
+     <para>
+      The negator of this operator. Can only be changed if the operator does
+      not have an existing negator.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>HASHES</literal></term>
+    <listitem>
+     <para>
+      Indicates this operator can support a hash join. Can only be enabled and
+      not disabled.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>MERGES</literal></term>
+    <listitem>
+     <para>
+      Indicates this operator can support a merge join. Can only be enabled
+      and not disabled.
+     </para>
+    </listitem>
+   </varlistentry>
+
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   Refer to <xref linkend="xoper"/> and
+   <xref linkend="xoper-optimization"/> for further information.
+  </para>
+
+  <para>
+   Since commutators come in pairs that are commutators of each other,
+   <literal>ALTER OPERATOR SET COMMUTATOR</literal> will also set the
+   commutator of the <replaceable class="parameter">com_op</replaceable>
+   to be the target operator.  Likewise, <literal>ALTER OPERATOR SET
+   NEGATOR</literal> will also set the negator of
+   the <replaceable class="parameter">neg_op</replaceable> to be the
+   target operator.  Therefore, you must own the commutator or negator
+   operator as well as the target operator.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Change the owner of a custom operator <literal>a @@ b</literal> for type <type>text</type>:
+<programlisting>
+ALTER OPERATOR @@ (text, text) OWNER TO joe;
+</programlisting>
+  </para>
+
+  <para>
+   Change the restriction and join selectivity estimator functions of a
+   custom operator <literal>a &amp;&amp; b</literal> for
+   type <type>int[]</type>:
+<programlisting>
+ALTER OPERATOR &amp;&amp; (int[], int[]) SET (RESTRICT = _int_contsel, JOIN = _int_contjoinsel);
+</programlisting>
+  </para>
+
+  <para>
+   Mark the <literal>&amp;&amp;</literal> operator as being its own
+   commutator:
+<programlisting>
+ALTER OPERATOR &amp;&amp; (int[], int[]) SET (COMMUTATOR = &amp;&amp;);
+</programlisting>
+  </para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   There is no <command>ALTER OPERATOR</command> statement in
+   the SQL standard.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createoperator"/></member>
+   <member><xref linkend="sql-dropoperator"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

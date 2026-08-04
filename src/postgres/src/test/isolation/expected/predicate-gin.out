@@ -1,0 +1,581 @@
+Parsed test spec with 3 sessions
+
+starting permutation: ra1 ro2 wo1 c1 wa2 c2
+step ra1: select * from gin_tbl where p @> array[1] limit 1;
+p  
+---
+{1}
+(1 row)
+
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step wo1: insert into other_tbl values (1);
+step c1: commit;
+step wa2: insert into gin_tbl values (array[1]);
+ERROR:  could not serialize access due to read/write dependencies among transactions
+step c2: commit;
+
+starting permutation: ro2 ra1 wo1 c1 wa2 c2
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step ra1: select * from gin_tbl where p @> array[1] limit 1;
+p  
+---
+{1}
+(1 row)
+
+step wo1: insert into other_tbl values (1);
+step c1: commit;
+step wa2: insert into gin_tbl values (array[1]);
+ERROR:  could not serialize access due to read/write dependencies among transactions
+step c2: commit;
+
+starting permutation: ro2 ra1 wo1 wa2 c1 c2
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step ra1: select * from gin_tbl where p @> array[1] limit 1;
+p  
+---
+{1}
+(1 row)
+
+step wo1: insert into other_tbl values (1);
+step wa2: insert into gin_tbl values (array[1]);
+step c1: commit;
+step c2: commit;
+ERROR:  could not serialize access due to read/write dependencies among transactions
+
+starting permutation: ra1 ro2 wa2 wo1 c1 c2
+step ra1: select * from gin_tbl where p @> array[1] limit 1;
+p  
+---
+{1}
+(1 row)
+
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step wa2: insert into gin_tbl values (array[1]);
+step wo1: insert into other_tbl values (1);
+step c1: commit;
+step c2: commit;
+ERROR:  could not serialize access due to read/write dependencies among transactions
+
+starting permutation: rb1 ro2 wo1 c1 wb2 c2
+step rb1: select count(*) from gin_tbl where p @> array[2];
+count
+-----
+    1
+(1 row)
+
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step wo1: insert into other_tbl values (1);
+step c1: commit;
+step wb2: insert into gin_tbl values (array[2]);
+ERROR:  could not serialize access due to read/write dependencies among transactions
+step c2: commit;
+
+starting permutation: ro2 rb1 wo1 c1 wb2 c2
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step rb1: select count(*) from gin_tbl where p @> array[2];
+count
+-----
+    1
+(1 row)
+
+step wo1: insert into other_tbl values (1);
+step c1: commit;
+step wb2: insert into gin_tbl values (array[2]);
+ERROR:  could not serialize access due to read/write dependencies among transactions
+step c2: commit;
+
+starting permutation: ro2 rb1 wo1 wb2 c1 c2
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step rb1: select count(*) from gin_tbl where p @> array[2];
+count
+-----
+    1
+(1 row)
+
+step wo1: insert into other_tbl values (1);
+step wb2: insert into gin_tbl values (array[2]);
+step c1: commit;
+step c2: commit;
+ERROR:  could not serialize access due to read/write dependencies among transactions
+
+starting permutation: rb1 ro2 wb2 wo1 c1 c2
+step rb1: select count(*) from gin_tbl where p @> array[2];
+count
+-----
+    1
+(1 row)
+
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step wb2: insert into gin_tbl values (array[2]);
+step wo1: insert into other_tbl values (1);
+step c1: commit;
+step c2: commit;
+ERROR:  could not serialize access due to read/write dependencies among transactions
+
+starting permutation: rc1 ro2 wo1 c1 wc2 c2
+step rc1: select count(*) from gin_tbl where p @> array[800];
+count
+-----
+    1
+(1 row)
+
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step wo1: insert into other_tbl values (1);
+step c1: commit;
+step wc2: insert into gin_tbl values (array[800]);
+ERROR:  could not serialize access due to read/write dependencies among transactions
+step c2: commit;
+
+starting permutation: ro2 rc1 wo1 c1 wc2 c2
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step rc1: select count(*) from gin_tbl where p @> array[800];
+count
+-----
+    1
+(1 row)
+
+step wo1: insert into other_tbl values (1);
+step c1: commit;
+step wc2: insert into gin_tbl values (array[800]);
+ERROR:  could not serialize access due to read/write dependencies among transactions
+step c2: commit;
+
+starting permutation: ro2 rc1 wo1 wc2 c1 c2
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step rc1: select count(*) from gin_tbl where p @> array[800];
+count
+-----
+    1
+(1 row)
+
+step wo1: insert into other_tbl values (1);
+step wc2: insert into gin_tbl values (array[800]);
+step c1: commit;
+step c2: commit;
+ERROR:  could not serialize access due to read/write dependencies among transactions
+
+starting permutation: rc1 ro2 wc2 wo1 c1 c2
+step rc1: select count(*) from gin_tbl where p @> array[800];
+count
+-----
+    1
+(1 row)
+
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step wc2: insert into gin_tbl values (array[800]);
+step wo1: insert into other_tbl values (1);
+step c1: commit;
+step c2: commit;
+ERROR:  could not serialize access due to read/write dependencies among transactions
+
+starting permutation: ra1 ro2 wo1 c1 wb2 c2
+step ra1: select * from gin_tbl where p @> array[1] limit 1;
+p  
+---
+{1}
+(1 row)
+
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step wo1: insert into other_tbl values (1);
+step c1: commit;
+step wb2: insert into gin_tbl values (array[2]);
+step c2: commit;
+
+starting permutation: ro2 ra1 wo1 c1 wc2 c2
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step ra1: select * from gin_tbl where p @> array[1] limit 1;
+p  
+---
+{1}
+(1 row)
+
+step wo1: insert into other_tbl values (1);
+step c1: commit;
+step wc2: insert into gin_tbl values (array[800]);
+step c2: commit;
+
+starting permutation: ro2 rb1 wo1 wa2 c1 c2
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step rb1: select count(*) from gin_tbl where p @> array[2];
+count
+-----
+    1
+(1 row)
+
+step wo1: insert into other_tbl values (1);
+step wa2: insert into gin_tbl values (array[1]);
+step c1: commit;
+step c2: commit;
+
+starting permutation: rc1 ro2 wa2 wo1 c1 c2
+step rc1: select count(*) from gin_tbl where p @> array[800];
+count
+-----
+    1
+(1 row)
+
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step wa2: insert into gin_tbl values (array[1]);
+step wo1: insert into other_tbl values (1);
+step c1: commit;
+step c2: commit;
+
+starting permutation: rb1 ro2 wo1 c1 wa2 c2
+step rb1: select count(*) from gin_tbl where p @> array[2];
+count
+-----
+    1
+(1 row)
+
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step wo1: insert into other_tbl values (1);
+step c1: commit;
+step wa2: insert into gin_tbl values (array[1]);
+step c2: commit;
+
+starting permutation: ro2 rb1 wo1 c1 wc2 c2
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step rb1: select count(*) from gin_tbl where p @> array[2];
+count
+-----
+    1
+(1 row)
+
+step wo1: insert into other_tbl values (1);
+step c1: commit;
+step wc2: insert into gin_tbl values (array[800]);
+step c2: commit;
+
+starting permutation: ro2 ra1 wo1 wb2 c1 c2
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step ra1: select * from gin_tbl where p @> array[1] limit 1;
+p  
+---
+{1}
+(1 row)
+
+step wo1: insert into other_tbl values (1);
+step wb2: insert into gin_tbl values (array[2]);
+step c1: commit;
+step c2: commit;
+
+starting permutation: rc1 ro2 wb2 wo1 c1 c2
+step rc1: select count(*) from gin_tbl where p @> array[800];
+count
+-----
+    1
+(1 row)
+
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step wb2: insert into gin_tbl values (array[2]);
+step wo1: insert into other_tbl values (1);
+step c1: commit;
+step c2: commit;
+
+starting permutation: rc1 ro2 wo1 c1 wa2 c2
+step rc1: select count(*) from gin_tbl where p @> array[800];
+count
+-----
+    1
+(1 row)
+
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step wo1: insert into other_tbl values (1);
+step c1: commit;
+step wa2: insert into gin_tbl values (array[1]);
+step c2: commit;
+
+starting permutation: ro2 rc1 wo1 c1 wb2 c2
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step rc1: select count(*) from gin_tbl where p @> array[800];
+count
+-----
+    1
+(1 row)
+
+step wo1: insert into other_tbl values (1);
+step c1: commit;
+step wb2: insert into gin_tbl values (array[2]);
+step c2: commit;
+
+starting permutation: ro2 ra1 wo1 wc2 c1 c2
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step ra1: select * from gin_tbl where p @> array[1] limit 1;
+p  
+---
+{1}
+(1 row)
+
+step wo1: insert into other_tbl values (1);
+step wc2: insert into gin_tbl values (array[800]);
+step c1: commit;
+step c2: commit;
+
+starting permutation: rb1 ro2 wc2 wo1 c1 c2
+step rb1: select count(*) from gin_tbl where p @> array[2];
+count
+-----
+    1
+(1 row)
+
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step wc2: insert into gin_tbl values (array[800]);
+step wo1: insert into other_tbl values (1);
+step c1: commit;
+step c2: commit;
+
+starting permutation: fu ra1 ro2 wo1 c1 wa2 c2
+step fu: alter index ginidx set (fastupdate = on);
+step ra1: select * from gin_tbl where p @> array[1] limit 1;
+p  
+---
+{1}
+(1 row)
+
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step wo1: insert into other_tbl values (1);
+step c1: commit;
+step wa2: insert into gin_tbl values (array[1]);
+ERROR:  could not serialize access due to read/write dependencies among transactions
+step c2: commit;
+
+starting permutation: fu ra1 ro2 wo1 c1 wb2 c2
+step fu: alter index ginidx set (fastupdate = on);
+step ra1: select * from gin_tbl where p @> array[1] limit 1;
+p  
+---
+{1}
+(1 row)
+
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step wo1: insert into other_tbl values (1);
+step c1: commit;
+step wb2: insert into gin_tbl values (array[2]);
+ERROR:  could not serialize access due to read/write dependencies among transactions
+step c2: commit;
+
+starting permutation: ra1 ro2 wo1 c1 fu wa2 c2
+step ra1: select * from gin_tbl where p @> array[1] limit 1;
+p  
+---
+{1}
+(1 row)
+
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step wo1: insert into other_tbl values (1);
+step c1: commit;
+step fu: alter index ginidx set (fastupdate = on);
+step wa2: insert into gin_tbl values (array[1]);
+ERROR:  could not serialize access due to read/write dependencies among transactions
+step c2: commit;
+
+starting permutation: rd1 ro2 wo1 c1 wd2 c2
+step rd1: select count(*) from gin_tbl where p @> array[2000];
+count
+-----
+    0
+(1 row)
+
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step wo1: insert into other_tbl values (1);
+step c1: commit;
+step wd2: insert into gin_tbl values (array[2000]);
+ERROR:  could not serialize access due to read/write dependencies among transactions
+step c2: commit;
+
+starting permutation: ro2 rd1 wo1 c1 wd2 c2
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step rd1: select count(*) from gin_tbl where p @> array[2000];
+count
+-----
+    0
+(1 row)
+
+step wo1: insert into other_tbl values (1);
+step c1: commit;
+step wd2: insert into gin_tbl values (array[2000]);
+ERROR:  could not serialize access due to read/write dependencies among transactions
+step c2: commit;
+
+starting permutation: ro2 rd1 wo1 wd2 c1 c2
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step rd1: select count(*) from gin_tbl where p @> array[2000];
+count
+-----
+    0
+(1 row)
+
+step wo1: insert into other_tbl values (1);
+step wd2: insert into gin_tbl values (array[2000]);
+step c1: commit;
+step c2: commit;
+ERROR:  could not serialize access due to read/write dependencies among transactions
+
+starting permutation: rd1 ro2 wd2 wo1 c1 c2
+step rd1: select count(*) from gin_tbl where p @> array[2000];
+count
+-----
+    0
+(1 row)
+
+step ro2: select count(*) from other_tbl;
+count
+-----
+    0
+(1 row)
+
+step wd2: insert into gin_tbl values (array[2000]);
+step wo1: insert into other_tbl values (1);
+step c1: commit;
+step c2: commit;
+ERROR:  could not serialize access due to read/write dependencies among transactions

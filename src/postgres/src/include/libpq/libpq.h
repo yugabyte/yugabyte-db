@@ -1,0 +1,172 @@
+/*-------------------------------------------------------------------------
+ *
+ * libpq.h
+ *	  POSTGRES LIBPQ buffer structure definitions.
+ *
+ *
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, Regents of the University of California
+ *
+ * src/include/libpq/libpq.h
+ *
+ *-------------------------------------------------------------------------
+ */
+#ifndef LIBPQ_H
+#define LIBPQ_H
+
+#include <netinet/in.h>
+
+#include "lib/stringinfo.h"
+#include "libpq/libpq-be.h"
+
+
+/* avoid including waiteventset.h */
+typedef struct WaitEventSet WaitEventSet;
+
+
+/*
+ * Callers of pq_getmessage() must supply a maximum expected message size.
+ * By convention, if there's not any specific reason to use another value,
+ * use PQ_SMALL_MESSAGE_LIMIT for messages that shouldn't be too long, and
+ * PQ_LARGE_MESSAGE_LIMIT for messages that can be long.
+ */
+#define PQ_SMALL_MESSAGE_LIMIT	10000
+#define PQ_LARGE_MESSAGE_LIMIT	(MaxAllocSize - 1)
+
+typedef struct
+{
+	void		(*comm_reset) (void);
+	int			(*flush) (void);
+	int			(*flush_if_writable) (void);
+	bool		(*is_send_pending) (void);
+	int			(*putmessage) (char msgtype, const char *s, size_t len);
+	void		(*putmessage_noblock) (char msgtype, const char *s, size_t len);
+} PQcommMethods;
+
+extern const PGDLLIMPORT PQcommMethods *PqCommMethods;
+
+#define pq_comm_reset() (PqCommMethods->comm_reset())
+#define pq_flush() (PqCommMethods->flush())
+#define pq_flush_if_writable() (PqCommMethods->flush_if_writable())
+#define pq_is_send_pending() (PqCommMethods->is_send_pending())
+#define pq_putmessage(msgtype, s, len) \
+	(PqCommMethods->putmessage(msgtype, s, len))
+#define pq_putmessage_noblock(msgtype, s, len) \
+	(PqCommMethods->putmessage_noblock(msgtype, s, len))
+
+/*
+ * External functions.
+ */
+
+/*
+ * prototypes for functions in pqcomm.c
+ */
+extern PGDLLIMPORT WaitEventSet *FeBeWaitSet;
+
+#define FeBeWaitSetSocketPos 0
+#define FeBeWaitSetLatchPos 1
+#define FeBeWaitSetNEvents 3
+
+extern int	ListenServerPort(int family, const char *hostName,
+							 unsigned short portNumber, const char *unixSocketDir,
+							 pgsocket ListenSockets[], int *NumListenSockets, int MaxListen);
+extern int	AcceptConnection(pgsocket server_fd, ClientSocket *client_sock);
+extern void TouchSocketFiles(void);
+extern void RemoveSocketFiles(void);
+extern Port *pq_init(ClientSocket *client_sock);
+extern int	pq_getbytes(void *b, size_t len);
+extern void pq_startmsgread(void);
+extern void pq_endmsgread(void);
+extern bool pq_is_reading_msg(void);
+extern int	pq_getmessage(StringInfo s, int maxlen);
+extern int	pq_getbyte(void);
+extern int	pq_peekbyte(void);
+extern int	pq_getbyte_if_available(unsigned char *c);
+extern ssize_t pq_buffer_remaining_data(void);
+extern int	pq_putmessage_v2(char msgtype, const char *s, size_t len);
+extern bool pq_check_connection(void);
+
+/* YB */
+extern int	yb_pq_peekbyte_no_msg_reading_status_check(void);
+
+/*
+ * prototypes for functions in be-secure.c
+ */
+extern int	secure_initialize(bool isServerStart);
+extern bool secure_loaded_verify_locations(void);
+extern void secure_destroy(void);
+extern int	secure_open_server(Port *port);
+extern void secure_close(Port *port);
+extern ssize_t secure_read(Port *port, void *ptr, size_t len);
+extern ssize_t secure_write(Port *port, const void *ptr, size_t len);
+extern ssize_t secure_raw_read(Port *port, void *ptr, size_t len);
+extern ssize_t secure_raw_write(Port *port, const void *ptr, size_t len);
+
+/*
+ * declarations for variables defined in be-secure.c
+ */
+extern PGDLLIMPORT char *ssl_library;
+extern PGDLLIMPORT char *ssl_ca_file;
+extern PGDLLIMPORT char *ssl_cert_file;
+extern PGDLLIMPORT char *ssl_crl_file;
+extern PGDLLIMPORT char *ssl_crl_dir;
+extern PGDLLIMPORT char *ssl_key_file;
+extern PGDLLIMPORT int ssl_min_protocol_version;
+extern PGDLLIMPORT int ssl_max_protocol_version;
+extern PGDLLIMPORT char *ssl_passphrase_command;
+extern PGDLLIMPORT bool ssl_passphrase_command_supports_reload;
+extern PGDLLIMPORT char *ssl_dh_params_file;
+extern PGDLLIMPORT bool ssl_sni;
+extern PGDLLIMPORT char *SSLCipherSuites;
+extern PGDLLIMPORT char *SSLCipherList;
+extern PGDLLIMPORT char *SSLECDHCurve;
+extern PGDLLIMPORT bool SSLPreferServerCiphers;
+#ifdef USE_SSL
+extern PGDLLIMPORT bool ssl_loaded_verify_locations;
+#endif
+
+#ifdef USE_SSL
+#define SSL_LIBRARY "OpenSSL"
+#else
+#define SSL_LIBRARY ""
+#endif
+
+#ifdef USE_OPENSSL
+#define DEFAULT_SSL_CIPHERS "HIGH:MEDIUM:+3DES:!aNULL"
+#else
+#define DEFAULT_SSL_CIPHERS "none"
+#endif
+
+#ifdef USE_SSL
+#define DEFAULT_SSL_GROUPS "X25519:prime256v1"
+#else
+#define DEFAULT_SSL_GROUPS "none"
+#endif
+
+/*
+ * prototypes for functions in be-secure-gssapi.c
+ */
+#ifdef ENABLE_GSS
+extern ssize_t secure_open_gssapi(Port *port);
+#endif
+
+enum ssl_protocol_versions
+{
+	PG_TLS_ANY = 0,
+	PG_TLS1_VERSION,
+	PG_TLS1_1_VERSION,
+	PG_TLS1_2_VERSION,
+	PG_TLS1_3_VERSION,
+};
+
+/*
+ * prototypes for functions in be-secure-common.c
+ */
+extern int	run_ssl_passphrase_command(const char *cmd, const char *prompt,
+									   bool is_server_start,
+									   char *buf, int size);
+extern bool check_ssl_key_file_permissions(const char *ssl_key_file,
+										   bool isServerStart);
+extern int	load_hosts(List **hosts, char **err_msg);
+
+#endif							/* LIBPQ_H */

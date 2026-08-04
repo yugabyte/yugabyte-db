@@ -1,0 +1,38 @@
+[
+  {
+    "dbid": "13243",
+    "rows": 500,
+    "calls": 101,
+    "query": "query1",
+    "datname": "postgres",
+    "queryid": 10,
+    "timestamp": "2023-12-25T15:58:39.246982+00:00",
+    "total_time": 1300.0,
+    "yb_latency_histogram": [
+      {
+        "[1.1,1.2)": 50,
+        "[1.2,1.3)": 40,
+        "[1.3,1.4)": 10,
+        "[1.4,2.0)": 1
+      }
+    ]
+  },
+  {
+    "dbid": "13243",
+    "rows": 1000,
+    "calls": 102,
+    "query": "query2",
+    "datname": "postgres",
+    "queryid": 11,
+    "timestamp": "2023-12-25T15:58:39.246982+00:00",
+    "total_time": 1301.0,
+    "yb_latency_histogram": [
+      {
+        "[1.1,1.2)": 50,
+        "[1.2,1.3)": 40,
+        "[1.3,1.4)": 10,
+        "[1.4,2.0)": 2
+      }
+    ]
+  }
+]

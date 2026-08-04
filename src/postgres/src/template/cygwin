@@ -1,0 +1,22 @@
+# src/template/cygwin
+
+# Prefer unnamed POSIX semaphores if available, unless user overrides choice
+if test x"$PREFERRED_SEMAPHORES" = x"" ; then
+  PREFERRED_SEMAPHORES=UNNAMED_POSIX
+fi
+
+SRCH_LIB="/usr/local/lib"
+
+# This is required for ppoll(2), and perhaps other things
+CPPFLAGS="$CPPFLAGS -D_GNU_SOURCE"
+
+# Extra CFLAGS for code that will go into a shared library
+CFLAGS_SL=""
+
+# --allow-multiple-definition is required to link pg_dump because it finds
+# pg_toupper() etc. in both libpq and pgport
+# we'd prefer to use --disable-auto-import to match MSVC linking behavior,
+# but support for it in Cygwin is too haphazard
+LDFLAGS="$LDFLAGS -Wl,--allow-multiple-definition -Wl,--enable-auto-import"
+
+DLSUFFIX=".dll"

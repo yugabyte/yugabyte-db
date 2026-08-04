@@ -1,0 +1,68 @@
+\set VERBOSITY terse
+SET client_encoding = utf8;
+SET search_path TO public, oracle;
+--
+-- test type modifier related rules
+--
+-- ERROR (typmod >= 1)
+CREATE TABLE bar (a NVARCHAR2(0));
+ERROR:  length for type varchar must be at least 1 at character 21
+-- ERROR (number of typmods = 1)
+CREATE TABLE bar (a NVARCHAR2(10, 1));
+ERROR:  invalid type modifier at character 21
+-- OK
+CREATE TABLE bar (a VARCHAR(5000));
+CREATE INDEX ON bar(a);
+-- cleanup
+DROP TABLE bar;
+-- OK
+CREATE TABLE bar (a NVARCHAR2(5));
+--
+-- test that no value longer than maxlen is allowed
+--
+-- ERROR (length > 5)
+INSERT INTO bar VALUES ('abcdef');
+ERROR:  input value too long for type nvarchar2(5)
+-- ERROR (length > 5);
+-- NVARCHAR2 does not truncate blank spaces on implicit coercion
+INSERT INTO bar VALUES ('abcde  ');
+ERROR:  input value too long for type nvarchar2(5)
+-- OK
+INSERT INTO bar VALUES ('abcde');
+-- OK
+INSERT INTO bar VALUES ('abcdef'::NVARCHAR2(5));
+-- OK
+INSERT INTO bar VALUES ('abcde  '::NVARCHAR2(5));
+--OK
+INSERT INTO bar VALUES ('abc'::NVARCHAR2(5));
+--
+-- test whitespace semantics on comparison
+--
+-- equal
+SELECT 'abcde   '::NVARCHAR2(10) = 'abcde   '::NVARCHAR2(10);
+ ?column? 
+----------
+ t
+(1 row)
+
+-- not equal
+SELECT 'abcde  '::NVARCHAR2(10) = 'abcde   '::NVARCHAR2(10);
+ ?column? 
+----------
+ f
+(1 row)
+
+-- null safe concat (disabled by default)
+SELECT NULL || 'hello'::varchar2 || NULL;
+ ?column? 
+----------
+ 
+(1 row)
+
+SET orafce.varchar2_null_safe_concat TO true;
+SELECT NULL || 'hello'::varchar2 || NULL;
+ ?column? 
+----------
+ hello
+(1 row)
+

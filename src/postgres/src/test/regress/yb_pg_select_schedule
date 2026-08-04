@@ -1,0 +1,18 @@
+# src/test/regress/yb_pg_select_schedule
+#
+###############################################################################
+# Postgres Testsuites: Porting from PostgreSQL original tests.
+# This includes upstream ported tests with "select".
+###############################################################################
+# Dependencies.
+test: yb.depd.int4_tbl
+test: yb.depd.int8_tbl
+test: yb.depd.onek
+test: yb.depd.tenk1
+test: yb.depd.person
+test: yb.depd.onek2
+
+test: yb.port.select
+test: yb.port.select_distinct
+test: select_distinct_on
+test: yb.port.subselect

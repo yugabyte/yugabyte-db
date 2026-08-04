@@ -1,0 +1,186 @@
+{# Start of the configuration file #}
+# This is an auto-generated file. Do not edit manually.
+# Use 'True' or 'False' for boolean comparisons in jinja and shell files.
+# Do not quote the values because they are already strings and doing so makes quotes part of them.
+
+{% macro render_section(section, prefix="") -%}
+{%- for key in section -%}
+    {%- set value = section[key] -%}
+    {%- if value != '' -%}
+        {%- if value is mapping -%}
+            {{ render_section(value, prefix + key + "_") -}}
+        {%- else -%}
+            {{- prefix + key }} = {{ value }}{{ "\n" -}}
+        {%- endif -%}
+    {%- endif -%}
+{%- endfor -%}
+{%- endmacro %}
+
+[DEFAULT]
+version = 1.0.0
+ynp_driver = {{ ynp_driver }}
+# Keep this as debug level for printing the shell file output.
+# Any previously defined vars are overridden here.
+{% for section_key in ynp_config %}
+    {% if section_key not in ['ynp', 'yba', 'logging'] %}
+        {% set section_value = ynp_config[section_key] %}
+        {{ render_section(section_value) }}
+    {% endif %}
+{% endfor %}
+loglevel = {{ ynp_config['logging'].level }}
+logdir = {{ ynp_config['logging'].directory }}
+logfile = {{ ynp_config['logging'].file }}
+is_airgap = {{ ynp_config['ynp'].is_airgap }}
+ynp_dir = {{ ynp_dir }}
+execution_start_time = {{ start_time }}
+yb_home_dir = {{ ynp_config['ynp'].yb_home_dir }}
+yb_user = yugabyte
+# User name is used in systemd unit files.
+user_name = yugabyte
+is_install_node_agent = {{ ynp_config['ynp'].is_install_node_agent }}
+tmp_directory = {{ ynp_config['ynp'].tmp_directory }}
+# empty is null in ini, hence that syntax
+{% if ynp_config['ynp'].no_proxy_list is not defined or not ynp_config['ynp'].no_proxy_list %}
+no_proxy =
+{% else %}
+no_proxy = {{ ynp_config['ynp'].no_proxy_list| join(', ') }}
+{% endif %}
+# Minimum required space in data dirs in gigabytes. Default is 49GB.
+min_mount_point_dir_space_gb = {{ ynp_config['ynp'].min_mount_point_dir_space_gb | default(49) }}
+# Minimum required space in home directory in gigabytes. Default is 3GB.
+min_home_dir_space_gb = {{ ynp_config['ynp'].min_home_dir_space_gb | default(3) }}
+# Minimum required space in temp directory in gigabytes. Default is 1GB.
+min_tmp_dir_space_gb = {{ ynp_config['ynp'].min_tmp_dir_space_gb | default(1) }}
+# Minimum required space for prometheus in gigabytes. Default is 1GB.
+min_prometheus_space_gb = {{ ynp_config['ynp'].min_prometheus_space_gb | default(1) }}
+# Check clean directories only if set for first time installation.
+check_clean_dirs = {{ ynp_config['ynp'].check_clean_dirs | default(false) }}
+# Check available ports only if set for first time installation.
+check_available_ports = {{ ynp_config['ynp'].check_available_ports | default(false) }}
+# Define ports with default values if not provided.
+node_exporter_port = {{ ynp_config['ynp'].node_exporter_http_port | default(9300) }}
+master_http_port = {{ ynp_config['ynp'].master_http_port | default(7000) }}
+master_rpc_port = {{ ynp_config['ynp'].master_rpc_port | default(7100) }}
+tserver_http_port = {{ ynp_config['ynp'].tserver_http_port | default(9000) }}
+tserver_rpc_port = {{ ynp_config['ynp'].tserver_rpc_port | default(9100) }}
+yb_controller_http_port = {{ ynp_config['ynp'].yb_controller_http_port | default(14000) }}
+yb_controller_rpc_port = {{ ynp_config['ynp'].yb_controller_rpc_port | default(18018) }}
+redis_server_http_port = {{ ynp_config['ynp'].redis_server_http_port | default(11000) }}
+redis_server_rpc_port = {{ ynp_config['ynp'].redis_server_rpc_port | default(6379) }}
+ycql_server_http_port = {{ ynp_config['ynp'].ycql_server_http_port | default(12000) }}
+ycql_server_rpc_port = {{ ynp_config['ynp'].ycql_server_rpc_port | default(9042) }}
+ysql_server_http_port = {{ ynp_config['ynp'].ysql_server_http_port | default(13000) }}
+ysql_server_rpc_port = {{ ynp_config['ynp'].ysql_server_rpc_port | default(5433) }}
+{% if ynp_config['yba'].instance_type.mount_points %}
+mount_paths = {{ ynp_config['yba'].instance_type.mount_points | join(' ') }}
+{% endif %}
+configure_clockbound = {{ ynp_config['ynp'].is_configure_clockbound | default(false)}}
+is_yb_prebuilt_image = {{ ynp_config['ynp'].is_yb_prebuilt_image | default(false) }}
+is_ybcontroller_disabled = {{ ynp_config['ynp'].is_ybcontroller_disabled | default(false) }}
+configure_cgroup = {{ ynp_config['ynp'].configure_cgroup | default(true) }}
+skip_tls_verify = {{ ynp_config['yba'].skip_tls_verify | default(true) }}
+
+{%- if is_noroot_mode is false %}
+{%- if ynp_config['extra'].is_cloud is true %}
+[UpdateOS]
+{%- endif %}
+
+{%- if ynp_config['extra'].cloud_type != "onprem" %}
+[MountEphemeralDrive]
+{%- endif %}
+
+{%- if ynp_config['extra'].is_cloud is true %}
+[InstallPackages]
+{%- endif %}
+
+[ConfigureChrony]
+chrony_servers = {{ ynp_config['ynp'].chrony_servers | join(', ') }}
+
+[ConfigureClockbound]
+
+{%- if ynp_config['ynp'].configure_thp_settings %}
+[ConfigureTHP]
+{%- endif %}
+
+[CreateYugabyteUser]
+yb_user_id = {{ ynp_config['ynp'].yb_user_id }}
+yb_user_password =
+
+[ConfigureOs]
+use_system_level_systemd = {{ ynp_config['ynp'].use_system_level_systemd | default(false) }}
+message = Configure limits and sysctl parameters
+fd_limit = 1048576
+nproc_limit = 64000
+vm_swappiness = 0
+{%- if ynp_driver == "python" %}
+kernel_core_pattern = {{ ynp_config['ynp'].yb_home_dir }}/cores/core_%%p_%%t_%%E
+{%- else %}
+kernel_core_pattern = {{ ynp_config['ynp'].yb_home_dir }}/cores/core_%p_%t_%E
+{%- endif %}
+vm_max_map_count = 262144
+
+[ConfigureOs.limits]
+# Add all the limits to be set in /etc/security/limits.conf.
+core = unlimited
+data = unlimited
+fsize = unlimited
+sigpending = 119934
+memlock = 64
+rss = unlimited
+nofile = 1048576
+msgqueue = 819200
+stack = 8192
+cpu = unlimited
+nproc = 64000
+locks = unlimited
+
+
+{%- if ynp_config['extra'].custom_ssh_port is defined and ynp_config['extra'].custom_ssh_port %}
+[ConfigureSshD]
+ip_address={{ ynp_config['ynp'].node_ip }}
+{%- endif %}
+
+[ConfigureSudoers]
+{% if ynp_config['ynp'].sudoers_commands %}
+sudoers_commands = {{ynp_config['ynp'].sudoers_commands | join(',')}}
+{% endif %}
+
+[ConfigureNodeExporter]
+prometheus_user = prometheus
+
+[BackupUtils]
+
+[ConfigureRootSystemd]
+use_system_level_systemd = {{ ynp_config['ynp'].use_system_level_systemd | default(false) }}
+service_files = yb-tserver.service, yb-master.service, yb-bind_check.service, yb-clean_cores.service, yb-clean_cores.timer, yb-collect_metrics.service, yb-collect_metrics.timer, yb-controller.service, yb-zip_purge_yb_logs.service, yb-zip_purge_yb_logs.timer
+{%- endif %}
+
+{%- if is_root_mode is false %}
+{%- if ynp_config['ynp'].configure_cgroup | default(true) %}
+[ConfigureRuntimeCgroups]
+use_system_level_systemd = {{ ynp_config['ynp'].use_system_level_systemd | default(false) }}
+{%- endif %}
+
+[ConfigureSystemd]
+use_system_level_systemd = {{ ynp_config['ynp'].use_system_level_systemd | default(false) }}
+service_files = yb-tserver.service, yb-master.service, yb-bind_check.service, yb-clean_cores.service, yb-clean_cores.timer, yb-collect_metrics.service, yb-collect_metrics.timer, yb-controller.service, yb-zip_purge_yb_logs.service, yb-zip_purge_yb_logs.timer
+
+[ConfigureNetwork]
+ip_address={{ ynp_config['ynp'].node_ip }}
+
+[InstallNodeAgent]
+{{ render_section(ynp_config['yba']) -}}
+node_ip = {{ ynp_config['yba'].node_external_fqdn }}
+bind_ip = {{ ynp_config['ynp'].node_ip }}
+node_agent_port = {{ ynp_config['ynp'].node_agent_port | default(9070) }}
+
+{%- if 'earlyoom' in ynp_config['ynp'] %}
+[InstallConfigureEarlyoom]
+earlyoom_enable = {{ ynp_config['ynp']['earlyoom'].earlyoom_enable | default(false) }}
+earlyoom_args = {{ ynp_config['ynp']['earlyoom'].earlyoom_args | default('') }}
+{%- endif %}
+
+{%- if ynp_config['extra'].is_ybm is true %}
+[ConfigureYBMAMI]
+{%- endif %}
+{%- endif %}

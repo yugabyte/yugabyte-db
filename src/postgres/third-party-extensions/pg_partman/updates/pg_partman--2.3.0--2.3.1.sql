@@ -1,0 +1,4 @@
+-- NOTE: This update contains no updates if pg_partman is already installed. This file is only here for version upgrade continuity.
+-- Fixed typo in standalone create_parent.sql file that caused a brand new installation of v2.3.0 to fail (Github Issue #94).
+-- Added --noparent option to new vacuum_maintenance.py script to allow parent table to be excluded from the maintenance run.
+-- Added vacuum_maintenance.py script to documentation.

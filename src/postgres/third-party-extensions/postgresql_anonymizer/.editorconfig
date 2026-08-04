@@ -1,0 +1,40 @@
+# editorconfig.org
+
+# This is the project's root directory
+root = true
+
+[*]
+# Use spaces for indentation
+indent_style = space
+# Each indent should contain 2 spaces
+indent_size = 2
+# Use Unix line endings
+end_of_line = lf
+# The files are utf-8 encoded
+charset = utf-8
+# No whitespace at the end of line
+trim_trailing_whitespace = true
+# A file must end with an empty line - this is good for version control systems
+insert_final_newline = true
+# A line should not have more than this amount of chars (not supported by all plugins)
+max_line_length = 80
+
+[*.csv]
+indent_style = tab
+
+[*.tsv]
+indent_style = tab
+
+[*.md]
+#trim_trailing_whitespace = false
+
+[{Makefile,**.mk,debian/rules}]
+# Use tabs for indentation (Makefiles require tabs)
+indent_style = tab
+
+# ignore test output
+[tests/expected/*]
+trim_trailing_whitespace = false
+insert_final_newline = false
+indent_size = unset
+indent_style = unset

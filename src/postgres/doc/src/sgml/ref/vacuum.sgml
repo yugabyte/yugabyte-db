@@ -1,0 +1,540 @@
+<!--
+doc/src/sgml/ref/vacuum.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-vacuum">
+ <indexterm zone="sql-vacuum">
+  <primary>VACUUM</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>VACUUM</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>VACUUM</refname>
+  <refpurpose>garbage-collect and optionally analyze a database</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+VACUUM [ ( <replaceable class="parameter">option</replaceable> [, ...] ) ] [ <replaceable class="parameter">table_and_columns</replaceable> [, ...] ]
+
+<phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
+
+    FREEZE [ <replaceable class="parameter">boolean</replaceable> ]
+    VERBOSE [ <replaceable class="parameter">boolean</replaceable> ]
+    ANALYZE [ <replaceable class="parameter">boolean</replaceable> ]
+    DISABLE_PAGE_SKIPPING [ <replaceable class="parameter">boolean</replaceable> ]
+    SKIP_LOCKED [ <replaceable class="parameter">boolean</replaceable> ]
+    INDEX_CLEANUP { AUTO | ON | OFF }
+    PROCESS_MAIN [ <replaceable class="parameter">boolean</replaceable> ]
+    PROCESS_TOAST [ <replaceable class="parameter">boolean</replaceable> ]
+    TRUNCATE [ <replaceable class="parameter">boolean</replaceable> ]
+    PARALLEL <replaceable class="parameter">integer</replaceable>
+    SKIP_DATABASE_STATS [ <replaceable class="parameter">boolean</replaceable> ]
+    ONLY_DATABASE_STATS [ <replaceable class="parameter">boolean</replaceable> ]
+    BUFFER_USAGE_LIMIT <replaceable class="parameter">size</replaceable>
+    FULL [ <replaceable class="parameter">boolean</replaceable> ]
+
+<phrase>and <replaceable class="parameter">table_and_columns</replaceable> is:</phrase>
+
+    [ ONLY ] <replaceable class="parameter">table_name</replaceable> [ * ] [ ( <replaceable class="parameter">column_name</replaceable> [, ...] ) ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>VACUUM</command> reclaims storage occupied by dead tuples.
+   In normal <productname>PostgreSQL</productname> operation, tuples that
+   are deleted or obsoleted by an update are not physically removed from
+   their table; they remain present until a <command>VACUUM</command> is
+   done.  Therefore it's necessary to do <command>VACUUM</command>
+   periodically, especially on frequently-updated tables.
+  </para>
+
+  <para>
+   Without a <replaceable class="parameter">table_and_columns</replaceable>
+   list, <command>VACUUM</command> processes every table and materialized view
+   in the current database that the current user has permission to vacuum.
+   With a list, <command>VACUUM</command> processes only those table(s).
+  </para>
+
+  <para>
+   <command>VACUUM ANALYZE</command> performs a <command>VACUUM</command>
+   and then an <command>ANALYZE</command> for each selected table.  This
+   is a handy combination form for routine maintenance scripts.  See
+   <xref linkend="sql-analyze"/>
+   for more details about its processing.
+  </para>
+
+  <para>
+   Plain <command>VACUUM</command> (without <literal>FULL</literal>) simply reclaims
+   space and makes it
+   available for re-use.  This form of the command can operate in parallel
+   with normal reading and writing of the table, as an exclusive lock
+   is not obtained.  However, extra space is not returned to the operating
+   system (in most cases); it's just kept available for re-use within the
+   same table.  It also allows us to leverage multiple CPUs in order to process
+   indexes.  This feature is known as <firstterm><xref linkend="parallel-vacuum"/></firstterm>.
+   To disable this feature, one can use <literal>PARALLEL</literal> option and
+   specify parallel workers as zero.  <command>VACUUM FULL</command> rewrites
+   the entire contents of the table into a new disk file with no extra space,
+   allowing unused space to be returned to the operating system.  This form is
+   much slower and requires an <literal>ACCESS EXCLUSIVE</literal> lock on
+   each table while it is being processed.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>FREEZE</literal></term>
+    <listitem>
+     <para>
+      Selects aggressive <quote>freezing</quote> of tuples.
+      Specifying <literal>FREEZE</literal> is equivalent to performing
+      <command>VACUUM</command> with the
+      <xref linkend="guc-vacuum-freeze-min-age"/> and
+      <xref linkend="guc-vacuum-freeze-table-age"/> parameters
+      set to zero.  Aggressive freezing is always performed when the
+      table is rewritten, so this option is redundant when <literal>FULL</literal>
+      is specified.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>VERBOSE</literal></term>
+    <listitem>
+     <para>
+      Prints a detailed vacuum activity report for each table
+      at <literal>INFO</literal> level.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ANALYZE</literal></term>
+    <listitem>
+     <para>
+      Updates statistics used by the planner to determine the most
+      efficient way to execute a query.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>DISABLE_PAGE_SKIPPING</literal></term>
+    <listitem>
+     <para>
+      Normally, <command>VACUUM</command> will skip pages based on the <link
+      linkend="vacuum-for-visibility-map">visibility map</link>.  Pages where
+      all tuples are known to be frozen can always be skipped, and those
+      where all tuples are known to be visible to all transactions may be
+      skipped except when performing an aggressive vacuum.  Furthermore,
+      except when performing an aggressive vacuum, some pages may be skipped
+      in order to avoid waiting for other sessions to finish using them.
+      This option disables all page-skipping behavior, and is intended to
+      be used only when the contents of the visibility map are
+      suspect, which should happen only if there is a hardware or software
+      issue causing database corruption.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SKIP_LOCKED</literal></term>
+    <listitem>
+     <para>
+      Specifies that <command>VACUUM</command> should not wait for any
+      conflicting locks to be released when beginning work on a relation:
+      if a relation cannot be locked immediately without waiting, the relation
+      is skipped.  Note that even with this option,
+      <command>VACUUM</command> may still block when opening the relation's
+      indexes.  Additionally, <command>VACUUM ANALYZE</command> may still
+      block when acquiring sample rows from partitions, table inheritance
+      children, and some types of foreign tables.  Also, while
+      <command>VACUUM</command> ordinarily processes all partitions of
+      specified partitioned tables, this option will cause
+      <command>VACUUM</command> to skip all partitions if there is a
+      conflicting lock on the partitioned table.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>INDEX_CLEANUP</literal></term>
+    <listitem>
+     <para>
+      Normally, <command>VACUUM</command> will skip index vacuuming
+      when there are very few dead tuples in the table.  The cost of
+      processing all of the table's indexes is expected to greatly
+      exceed the benefit of removing dead index tuples when this
+      happens.  This option can be used to force
+      <command>VACUUM</command> to process indexes when there are more
+      than zero dead tuples.  The default is <literal>AUTO</literal>,
+      which allows <command>VACUUM</command> to skip index vacuuming
+      when appropriate.  If <literal>INDEX_CLEANUP</literal> is set to
+      <literal>ON</literal>, <command>VACUUM</command> will
+      conservatively remove all dead tuples from indexes.  This may be
+      useful for backwards compatibility with earlier releases of
+      <productname>PostgreSQL</productname> where this was the
+      standard behavior.
+     </para>
+     <para>
+      <literal>INDEX_CLEANUP</literal> can also be set to
+      <literal>OFF</literal> to force <command>VACUUM</command> to
+      <emphasis>always</emphasis> skip index vacuuming, even when
+      there are many dead tuples in the table.  This may be useful
+      when it is necessary to make <command>VACUUM</command> run as
+      quickly as possible to avoid imminent transaction ID wraparound
+      (see <xref linkend="vacuum-for-wraparound"/>).  However, the
+      wraparound failsafe mechanism controlled by <xref
+       linkend="guc-vacuum-failsafe-age"/>  will generally trigger
+      automatically to avoid transaction ID wraparound failure, and
+      should be preferred.  If index cleanup is not performed
+      regularly, performance may suffer, because as the table is
+      modified indexes will accumulate dead tuples and the table
+      itself will accumulate dead line pointers that cannot be removed
+      until index cleanup is completed.
+     </para>
+     <para>
+      This option has no effect for tables that have no index and is
+      ignored if the <literal>FULL</literal> option is used.  It also
+      has no effect on the transaction ID wraparound failsafe
+      mechanism.  When triggered it will skip index vacuuming, even
+      when <literal>INDEX_CLEANUP</literal> is set to
+      <literal>ON</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>PROCESS_MAIN</literal></term>
+    <listitem>
+     <para>
+      Specifies that <command>VACUUM</command> should attempt to process the
+      main relation. This is usually the desired behavior and is the default.
+      Setting this option to false may be useful when it is only necessary to
+      vacuum a relation's corresponding <literal>TOAST</literal> table.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>PROCESS_TOAST</literal></term>
+    <listitem>
+     <para>
+      Specifies that <command>VACUUM</command> should attempt to process the
+      corresponding <literal>TOAST</literal> table for each relation, if one
+      exists. This is usually the desired behavior and is the default.
+      Setting this option to false may be useful when it is only necessary to
+      vacuum the main relation. This option is required when the
+      <literal>FULL</literal> option is used.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>TRUNCATE</literal></term>
+    <listitem>
+     <para>
+      Specifies that <command>VACUUM</command> should attempt to
+      truncate off any empty pages at the end of the table and allow
+      the disk space for the truncated pages to be returned to
+      the operating system. This is normally the desired behavior
+      and is the default unless <xref linkend="guc-vacuum-truncate"/>
+      is set to false or the <literal>vacuum_truncate</literal>
+      option has been set to false for the table to be vacuumed.
+      Setting this option to false may be useful to avoid
+      <literal>ACCESS EXCLUSIVE</literal> lock on the table that
+      the truncation requires. This option is ignored if the
+      <literal>FULL</literal> option is used.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>PARALLEL</literal></term>
+    <listitem>
+     <para>
+      Specifies the maximum number of parallel workers that can be used
+      for <xref linkend="parallel-vacuum"/>, which is further limited
+      by <xref linkend="guc-max-parallel-maintenance-workers"/>. This
+      option can't be used with the <literal>FULL</literal> option.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SKIP_DATABASE_STATS</literal></term>
+    <listitem>
+     <para>
+      Specifies that <command>VACUUM</command> should skip updating the
+      database-wide statistics about oldest unfrozen XIDs.  Normally
+      <command>VACUUM</command> will update these statistics once at the
+      end of the command.  However, this can take awhile in a database
+      with a very large number of tables, and it will accomplish nothing
+      unless the table that had contained the oldest unfrozen XID was
+      among those vacuumed.  Moreover, if multiple <command>VACUUM</command>
+      commands are issued in parallel, only one of them can update the
+      database-wide statistics at a time.  Therefore, if an application
+      intends to issue a series of many <command>VACUUM</command>
+      commands, it can be helpful to set this option in all but the last
+      such command; or set it in all the commands and separately
+      issue <literal>VACUUM (ONLY_DATABASE_STATS)</literal> afterwards.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ONLY_DATABASE_STATS</literal></term>
+    <listitem>
+     <para>
+      Specifies that <command>VACUUM</command> should do nothing except
+      update the database-wide statistics about oldest unfrozen XIDs.
+      When this option is specified,
+      the <replaceable class="parameter">table_and_columns</replaceable>
+      list must be empty, and no other option may be enabled
+      except <literal>VERBOSE</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>BUFFER_USAGE_LIMIT</literal></term>
+    <listitem>
+     <para>
+      Specifies the
+      <glossterm linkend="glossary-buffer-access-strategy">Buffer Access Strategy</glossterm>
+      ring buffer size for <command>VACUUM</command>.  This size is used to
+      calculate the number of shared buffers which will be reused as part of
+      this strategy.  <literal>0</literal> disables use of a
+      <literal>Buffer Access Strategy</literal>.  If <option>ANALYZE</option>
+      is also specified, the <option>BUFFER_USAGE_LIMIT</option> value is used
+      for both the vacuum and analyze stages.  This option can't be used with
+      the <option>FULL</option> option except if <option>ANALYZE</option> is
+      also specified.  When this option is not specified,
+      <command>VACUUM</command> uses the value from
+      <xref linkend="guc-vacuum-buffer-usage-limit"/>.  Higher settings can
+      allow <command>VACUUM</command> to run more quickly, but having too
+      large a setting may cause too many other useful pages to be evicted from
+      shared buffers.  The minimum value is <literal>128 kB</literal> and the
+      maximum value is <literal>16 GB</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>FULL</literal></term>
+    <listitem>
+     <para>
+      This option, which is deprecated, makes <command>VACUUM</command>
+      behave like <command>REPACK</command> without a
+      <literal>USING INDEX</literal> clause.
+      This method of compacting the table takes much longer than
+      <command>VACUUM</command> and exclusively locks the table.
+      This method also requires extra disk space, since it writes a
+      new copy of the table and doesn't release the old copy until
+      the operation is complete.  Usually this should only be used when a
+      significant amount of space needs to be reclaimed from within the table.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">boolean</replaceable></term>
+    <listitem>
+     <para>
+      Specifies whether the selected option should be turned on or off.
+      You can write <literal>TRUE</literal>, <literal>ON</literal>, or
+      <literal>1</literal> to enable the option, and <literal>FALSE</literal>,
+      <literal>OFF</literal>, or <literal>0</literal> to disable it.  The
+      <replaceable class="parameter">boolean</replaceable> value can also
+      be omitted, in which case <literal>TRUE</literal> is assumed.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">integer</replaceable></term>
+    <listitem>
+     <para>
+      Specifies a non-negative integer value passed to the selected option.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">size</replaceable></term>
+    <listitem>
+     <para>
+      Specifies an amount of memory in kilobytes.  Sizes may also be specified
+      as a string containing the numerical size followed by any one of the
+      following memory units: <literal>B</literal> (bytes),
+      <literal>kB</literal> (kilobytes), <literal>MB</literal> (megabytes),
+      <literal>GB</literal> (gigabytes), or <literal>TB</literal> (terabytes).
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">table_name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of a specific table or
+      materialized view to vacuum.  If <literal>ONLY</literal> is specified
+      before the table name, only that table is vacuumed.  If
+      <literal>ONLY</literal> is not specified, the table and all its
+      inheritance child tables or partitions (if any) are also vacuumed.
+      Optionally, <literal>*</literal> can be specified after the table name
+      to explicitly indicate that inheritance child tables (or partitions) are
+      to be vacuumed.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">column_name</replaceable></term>
+    <listitem>
+     <para>
+      The name of a specific column to analyze. Defaults to all columns.
+      If a column list is specified, <literal>ANALYZE</literal> must also be
+      specified.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Outputs</title>
+
+   <para>
+    When <literal>VERBOSE</literal> is specified, <command>VACUUM</command> emits
+    progress messages to indicate which table is currently being
+    processed.  Various statistics about the tables are printed as well.
+   </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+   <para>
+    To vacuum a table, one must ordinarily have the <literal>MAINTAIN</literal>
+    privilege on the table.  However, database owners are allowed to
+    vacuum all tables in their databases, except shared catalogs.
+    <command>VACUUM</command> will skip over any tables that the calling user
+    does not have permission to vacuum.
+   </para>
+
+   <para>
+    While <command>VACUUM</command> is running, the <xref
+    linkend="guc-search-path"/> is temporarily changed to <literal>pg_catalog,
+    pg_temp</literal>.
+   </para>
+
+   <para>
+    <command>VACUUM</command> cannot be executed inside a transaction block.
+   </para>
+
+   <para>
+    For tables with <acronym>GIN</acronym> indexes, <command>VACUUM</command> (in
+    any form) also completes any pending index insertions, by moving pending
+    index entries to the appropriate places in the main <acronym>GIN</acronym> index
+    structure.  See <xref linkend="gin-fast-update"/> for details.
+   </para>
+
+   <para>
+    We recommend that all databases be vacuumed regularly in
+    order to remove dead rows.  <productname>PostgreSQL</productname> includes
+    an <quote>autovacuum</quote> facility which can automate routine vacuum
+    maintenance.  For more information about automatic and manual vacuuming,
+    see <xref linkend="routine-vacuuming"/>.
+   </para>
+
+   <para>
+    The <option>FULL</option> option is not recommended for routine use,
+    but might be useful in special cases.  An example is when you have deleted
+    or updated most of the rows in a table and would like the table to
+    physically shrink to occupy less disk space and allow faster table
+    scans. <command>VACUUM FULL</command> will usually shrink the table
+    more than a plain <command>VACUUM</command> would.
+   </para>
+
+   <para>
+     The <option>PARALLEL</option> option is used only for vacuum purposes.
+     If this option is specified with the <option>ANALYZE</option> option,
+     it does not affect <option>ANALYZE</option>.
+   </para>
+
+   <para>
+    <command>VACUUM</command> causes a substantial increase in I/O traffic,
+    which might cause poor performance for other active sessions.  Therefore,
+    it is sometimes advisable to use the cost-based vacuum delay feature.  For
+    parallel vacuum, each worker sleeps in proportion to the work done by that
+    worker.  See <xref linkend="runtime-config-resource-vacuum-cost"/> for
+    details.
+   </para>
+
+   <para>
+    Each backend running <command>VACUUM</command> without the
+    <literal>FULL</literal> option will report its progress in the
+    <structname>pg_stat_progress_vacuum</structname> view. Backends running
+    <command>VACUUM FULL</command> will instead report their progress in the
+    <structname>pg_stat_progress_cluster</structname> view. See
+    <xref linkend="vacuum-progress-reporting"/> and
+    <xref linkend="cluster-progress-reporting"/> for details.
+   </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   To clean a single table <structname>onek</structname>, analyze it for
+   the optimizer and print a detailed vacuum activity report:
+
+<programlisting>
+VACUUM (VERBOSE, ANALYZE) onek;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   There is no <command>VACUUM</command> statement in the SQL standard.
+  </para>
+
+  <para>
+   The following syntax was used before <productname>PostgreSQL</productname>
+   version 9.0 and is still supported:
+<synopsis>
+VACUUM [ FULL ] [ FREEZE ] [ VERBOSE ] [ ANALYZE ] [ <replaceable class="parameter">table_and_columns</replaceable> [, ...] ]
+</synopsis>
+   Note that in this syntax, the options must be specified in exactly the order
+   shown.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="app-vacuumdb"/></member>
+   <member><xref linkend="runtime-config-resource-vacuum-cost"/></member>
+   <member><xref linkend="autovacuum"/></member>
+   <member><xref linkend="vacuum-progress-reporting"/></member>
+   <member><xref linkend="cluster-progress-reporting"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

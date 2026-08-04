@@ -1,0 +1,92 @@
+@use '../../../src/_style/colors.scss';
+
+.customer-runtime-config-container,
+.provider-runtime-config-container,
+.global-runtime-config-container,
+.universe-runtime-config-container {
+  margin: 20px 20px 20px 20px;
+
+  &__display {
+    display: flex;
+    flex-direction: row;
+  }
+
+  &__label {
+    align-items: center;
+    margin-top: 10px;
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 400;
+    font-size: 13px;
+  }
+
+  .customer-runtime-config-dropdown,
+  .universe-runtime-config-dropdown,
+  .provider-runtime-config-dropdown {
+    width: 180px;
+    background-color: #fff;
+
+    .dropdown-menu .active a {
+      color: #2B59C3;
+    }
+
+    .dropdown-toggle {
+      width: 100%;
+      border-radius: 8px;
+      height: 42px;
+    }
+
+    .dropdown-menu {
+      max-height: 500px;
+      overflow-y: scroll;
+    }
+
+    .caret {
+      float: right;
+      vertical-align: middle;
+      margin-top: 9px;
+    }
+
+    .customer-config-dropdown-value,
+    .universe-config-dropdown-value,
+    .provider-config-dropdown-value {
+      font-family: 'Inter';
+      font-style: normal;
+      font-weight: 400;
+      font-size: 13px;
+      float: left;
+      list-style-type: none;
+      text-overflow: ellipsis;
+      overflow: auto;
+      max-width: 90%;
+      white-space: nowrap;
+    }
+  }
+
+  .runtime-config-data-container {
+    &__check {
+      margin-top: 20px;
+      display: flex;
+      justify-content: flex-end;
+      font-size: 13px;
+    }
+
+    .config-inherited-row {
+      color: colors.$YB_TEXT_BLACK;
+    }
+
+    .config-non-inherited-row {
+      color: colors.$YB_ORANGE;
+    }
+  }
+
+  .yb-table-cell-align {
+    vertical-align: middle;
+  }
+}
+
+.global-runtime-config-container {
+  .runtime-config-data-container {
+    margin-top: 80px;
+  }
+}

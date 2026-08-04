@@ -1,0 +1,127 @@
+<!--
+doc/src/sgml/ref/pgtestfsync.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="pgtestfsync">
+ <indexterm zone="pgtestfsync">
+  <primary>pg_test_fsync</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle><application>pg_test_fsync</application></refentrytitle>
+  <manvolnum>1</manvolnum>
+  <refmiscinfo>Application</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>pg_test_fsync</refname>
+  <refpurpose>determine fastest <varname>wal_sync_method</varname> for <productname>PostgreSQL</productname></refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+  <cmdsynopsis>
+   <command>pg_test_fsync</command>
+   <arg rep="repeat"><replaceable>option</replaceable></arg>
+  </cmdsynopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+ <para>
+  <application>pg_test_fsync</application> is intended to give you a reasonable
+  idea of what the fastest <xref linkend="guc-wal-sync-method"/> is on your
+  specific system,
+  as well as supplying diagnostic information in the event of an identified I/O
+  problem.  However, differences shown by
+  <application>pg_test_fsync</application> might not make any significant
+  difference in real database throughput, especially since many database servers
+  are not speed-limited by their write-ahead logs.
+  <application>pg_test_fsync</application> reports average file sync operation
+  time in microseconds for each <literal>wal_sync_method</literal>, which can also be used to
+  inform efforts to optimize the value of <xref linkend="guc-commit-delay"/>.
+ </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Options</title>
+
+   <para>
+    <application>pg_test_fsync</application> accepts the following
+    command-line options:
+
+    <variablelist>
+
+     <varlistentry>
+      <term><option>-f</option></term>
+      <term><option>--filename</option></term>
+      <listitem>
+       <para>
+        Specifies the file name to write test data in.
+        This file should be in the same file system that the
+        <filename>pg_wal</filename> directory is or will be placed in.
+        (<filename>pg_wal</filename> contains the <acronym>WAL</acronym> files.)
+        The default is <filename>pg_test_fsync.out</filename> in the current
+        directory.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-s</option></term>
+      <term><option>--secs-per-test</option></term>
+      <listitem>
+       <para>
+        Specifies the number of seconds for each test.  The more time
+        per test, the greater the test's accuracy, but the longer it takes
+        to run.  The default is 5 seconds, which allows the program to
+        complete in under 2 minutes.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-V</option></term>
+      <term><option>--version</option></term>
+      <listitem>
+       <para>
+        Print the <application>pg_test_fsync</application> version and exit.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-?</option></term>
+      <term><option>--help</option></term>
+      <listitem>
+       <para>
+        Show help about <application>pg_test_fsync</application> command line
+        arguments, and exit.
+       </para>
+      </listitem>
+     </varlistentry>
+    </variablelist>
+   </para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Environment</title>
+
+  <para>
+   The environment variable <envar>PG_COLOR</envar> specifies whether to use
+   color in diagnostic messages. Possible values are
+   <literal>always</literal>, <literal>auto</literal> and
+   <literal>never</literal>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="app-postgres"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

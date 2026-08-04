@@ -1,0 +1,24 @@
+/*
+ * subtrans.h
+ *
+ * PostgreSQL subtransaction-log manager
+ *
+ * Portions Copyright (c) 1996-2026, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, Regents of the University of California
+ *
+ * src/include/access/subtrans.h
+ */
+#ifndef SUBTRANS_H
+#define SUBTRANS_H
+
+extern void SubTransSetParent(TransactionId xid, TransactionId parent);
+extern TransactionId SubTransGetParent(TransactionId xid);
+extern TransactionId SubTransGetTopmostTransaction(TransactionId xid);
+
+extern void BootStrapSUBTRANS(void);
+extern void StartupSUBTRANS(TransactionId oldestActiveXID);
+extern void CheckPointSUBTRANS(void);
+extern void ExtendSUBTRANS(TransactionId newestXact);
+extern void TruncateSUBTRANS(TransactionId oldestXact);
+
+#endif							/* SUBTRANS_H */

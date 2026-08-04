@@ -1,0 +1,32 @@
+@use '../../../_style/colors.scss';
+.associated-backups-modal {
+  .associated-backup-list-table {
+    background: colors.$YB_BG_WHITE_3;
+    padding: 10px 22px;
+    margin-top: 16px;
+    border: 1px solid #dcdcde;
+    border-radius: 8px;
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.15);
+    .react-bs-table {
+      max-height: 500px;
+      overflow-y: auto;
+    }
+    .table-row {
+      cursor: pointer;
+
+      td {
+        font-weight: 400 !important;
+      }
+    }
+  }
+}
+.associated-backups-details .backup-details-actions > button {
+  width: unset;
+}
+.associated-backups-details {
+  .restore-detail-button,
+  .copy-location-button {
+    width: unset;
+    float: unset;
+  }
+}

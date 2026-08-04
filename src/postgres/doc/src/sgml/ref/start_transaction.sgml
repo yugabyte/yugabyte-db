@@ -1,0 +1,97 @@
+<!--
+doc/src/sgml/ref/start_transaction.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-start-transaction">
+ <indexterm zone="sql-start-transaction">
+  <primary>START TRANSACTION</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>START TRANSACTION</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>START TRANSACTION</refname>
+  <refpurpose>start a transaction block</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+START TRANSACTION [ <replaceable class="parameter">transaction_mode</replaceable> [, ...] ]
+
+<phrase>where <replaceable class="parameter">transaction_mode</replaceable> is one of:</phrase>
+
+    ISOLATION LEVEL { SERIALIZABLE | REPEATABLE READ | READ COMMITTED | READ UNCOMMITTED }
+    READ WRITE | READ ONLY
+    [ NOT ] DEFERRABLE
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   This command begins a new transaction block. If the isolation level,
+   read/write mode, or deferrable mode is specified, the new transaction has those
+   characteristics, as if <link linkend="sql-set-transaction"><command>SET TRANSACTION</command></link> was executed. This is the same
+   as the <link linkend="sql-begin"><command>BEGIN</command></link> command.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <para>
+   Refer to <xref linkend="sql-set-transaction"/> for information on the meaning
+   of the parameters to this statement.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   In the standard, it is not necessary to issue <command>START TRANSACTION</command>
+   to start a transaction block: any SQL command implicitly begins a block.
+   <productname>PostgreSQL</productname>'s behavior can be seen as implicitly
+   issuing a <command>COMMIT</command> after each command that does not
+   follow <command>START TRANSACTION</command> (or <command>BEGIN</command>),
+   and it is therefore often called <quote>autocommit</quote>.
+   Other relational database systems might offer an autocommit feature
+   as a convenience.
+  </para>
+
+  <para>
+   The <literal>DEFERRABLE</literal>
+   <replaceable class="parameter">transaction_mode</replaceable>
+   is a <productname>PostgreSQL</productname> language extension.
+  </para>
+
+  <para>
+   The SQL standard requires commas between successive <replaceable
+   class="parameter">transaction_modes</replaceable>, but for historical
+   reasons <productname>PostgreSQL</productname> allows the commas to be
+   omitted.
+  </para>
+
+  <para>
+   See also the compatibility section of <xref linkend="sql-set-transaction"/>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-begin"/></member>
+   <member><xref linkend="sql-commit"/></member>
+   <member><xref linkend="sql-rollback"/></member>
+   <member><xref linkend="sql-savepoint"/></member>
+   <member><xref linkend="sql-set-transaction"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

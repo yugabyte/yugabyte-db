@@ -1,0 +1,80 @@
+--
+-- CREATE_SCHEMA
+--
+CREATE SCHEMA foo;
+NOTICE:  DDL test: type simple, tag CREATE SCHEMA
+CREATE SCHEMA IF NOT EXISTS bar;
+NOTICE:  DDL test: type simple, tag CREATE SCHEMA
+CREATE SCHEMA baz;
+NOTICE:  DDL test: type simple, tag CREATE SCHEMA
+-- Will not be created, and will not be handled by the
+-- event trigger
+CREATE SCHEMA IF NOT EXISTS baz;
+NOTICE:  schema "baz" already exists, skipping
+CREATE SCHEMA element_test
+  CREATE TABLE foo (id int)
+  CREATE VIEW bar AS SELECT * FROM foo
+  CREATE COLLATION coll (LOCALE="C")
+  CREATE DOMAIN d1 AS INT
+  CREATE FUNCTION et_add(int4, int4) RETURNS int4 LANGUAGE sql
+    AS 'SELECT $1 + $2'
+  CREATE PROCEDURE et_proc(int4, int4)
+    BEGIN ATOMIC SELECT et_add($1,$2); END
+  CREATE TYPE floatrange AS RANGE (subtype = float8, subtype_diff = float8mi)
+  CREATE TYPE ss AS (a int)
+  CREATE TYPE sss
+  CREATE TYPE rainbow AS ENUM ('red', 'orange')
+  CREATE TEXT SEARCH PARSER et_ts_prs
+    (start = prsd_start, gettoken = prsd_nexttoken, end = prsd_end,
+     lextypes = prsd_lextype)
+;
+NOTICE:  DDL test: type simple, tag CREATE SCHEMA
+NOTICE:  DDL test: type simple, tag CREATE TABLE
+NOTICE:  DDL test: type simple, tag CREATE VIEW
+NOTICE:  DDL test: type simple, tag CREATE COLLATION
+NOTICE:  DDL test: type simple, tag CREATE DOMAIN
+NOTICE:  DDL test: type simple, tag CREATE FUNCTION
+NOTICE:  DDL test: type simple, tag CREATE PROCEDURE
+NOTICE:  DDL test: type simple, tag CREATE TYPE
+NOTICE:  DDL test: type simple, tag CREATE TYPE
+NOTICE:  DDL test: type simple, tag CREATE TYPE
+NOTICE:  DDL test: type simple, tag CREATE TYPE
+NOTICE:  DDL test: type simple, tag CREATE TEXT SEARCH PARSER
+DROP SCHEMA element_test CASCADE;
+NOTICE:  drop cascades to 11 other objects
+DETAIL:  drop cascades to table element_test.foo
+drop cascades to view element_test.bar
+drop cascades to collation element_test.coll
+drop cascades to type element_test.d1
+drop cascades to function element_test.et_add(integer,integer)
+drop cascades to function element_test.et_proc(integer,integer)
+drop cascades to type element_test.floatrange
+drop cascades to type element_test.ss
+drop cascades to type element_test.sss
+drop cascades to type element_test.rainbow
+drop cascades to text search parser element_test.et_ts_prs
+CREATE SCHEMA regress_schema_1
+CREATE TABLE t4(
+    b INT,
+    a INT REFERENCES t5 DEFERRABLE INITIALLY DEFERRED NOT ENFORCED
+          REFERENCES t6 DEFERRABLE INITIALLY DEFERRED,
+    CONSTRAINT fk FOREIGN KEY (a) REFERENCES t6 DEFERRABLE)
+CREATE TABLE t5 (a INT, b INT, PRIMARY KEY (a))
+CREATE TABLE t6 (a INT, b INT, PRIMARY KEY (a));
+NOTICE:  DDL test: type simple, tag CREATE SCHEMA
+NOTICE:  DDL test: type simple, tag CREATE TABLE
+NOTICE:  DDL test: type simple, tag CREATE TABLE
+NOTICE:  DDL test: type simple, tag CREATE INDEX
+NOTICE:  DDL test: type simple, tag CREATE TABLE
+NOTICE:  DDL test: type simple, tag CREATE INDEX
+NOTICE:  DDL test: type alter table, tag ALTER TABLE
+NOTICE:    subcommand: type ADD CONSTRAINT (and recurse) desc constraint t4_a_fkey on table regress_schema_1.t4
+NOTICE:  DDL test: type alter table, tag ALTER TABLE
+NOTICE:    subcommand: type ADD CONSTRAINT (and recurse) desc constraint t4_a_fkey1 on table regress_schema_1.t4
+NOTICE:  DDL test: type alter table, tag ALTER TABLE
+NOTICE:    subcommand: type ADD CONSTRAINT (and recurse) desc constraint fk on table regress_schema_1.t4
+DROP SCHEMA regress_schema_1 CASCADE;
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table regress_schema_1.t4
+drop cascades to table regress_schema_1.t5
+drop cascades to table regress_schema_1.t6

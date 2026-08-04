@@ -1,0 +1,943 @@
+Revision history for pgTAP
+==========================
+
+1.3.3 2024-04-08T13:44:11Z
+--------------------------
+* Improved the correctness and performance of `col_type_is` on Postgres 17
+  thanks to the introduction of the `to_regtypemod()` function.
+* Fix bug introduced in v1.3.2 where `col_type_is` throws an error when the
+  type isn't in the search path. Thanks to Erik Wienhold for the PR (#332)!
+* Removed the reference to PGUnit from the docs, as the project seems to have
+  disappeared. Also the link to the GitHub repo. Thanks to Vick Khera for the
+  report (#333)!
+
+1.3.2 2024-02-04T18:59:37Z
+--------------------------
+
+* Replaced the C `parse_type()` function added in v1.3.1 with a PL/pgSQL
+  function, eliminating the need for the the installing use to be a superuser.
+  Aliases still work for all data types passed to `col_type_is()` except for
+  intervals, which must be specified exactly as rendered by Postgres itself,
+  without aliasing. Thanks to @spencerbryson for the report (#328) and to
+  Erik Wienhold for the PL/pgSQL technique necessary to properly format
+  type strings (#315).
+* Added tests to ensure that that the function-testing assertions also support
+  procedures and noted the fact where appropriate in the documentation.
+  Thanks to @hettie-d for the call-out (#329)!
+
+1.3.1 2023-09-24T15:29:42Z
+--------------------------
+* Revamped the handling of data type declarations in `col_type_is()` to always
+  accurately normalize data type representations, whether using aliases, such
+  as `varchar` for `character varying`, or more complicated types that failed
+  to work in v1.3.0, such as `interval second(0)`. This is done by delegating
+  the parsing of the type declaration to a core PostgresSQL function. Many
+  thanks to Erik Wienhold for the report and for ultimately uncovering and
+  implementing an SQL interface to the `parseTypeString()` core function
+  (#315).
+* Removed the documentation for `pg_typeof()`, which was removed from pgTAP
+  when support for PostgreSQL 8.3 was dropped, since the same function has
+  been available in the PostgreSQL core since then.
+* Improved the support for type name aliases to the following functions:
+    * `has_cast()`
+    * `hasnt_cast()`
+    * `cast_context_is()`
+    * `domain_type_is()`
+    * `domain_type_isnt()`
+    * `has_operator()`
+    * `hasnt_operator()`
+* Added the `has_pk( :schema, :table )` variant, which requires that `:table` be
+  cast to `name` to avoid confusion with the `has_pk( :schema, :description )`
+  variant. Thanks to Adrian Klaver for the report (#287)!
+
+1.3.0 2023-08-14T22:14:20Z
+--------------------------
+* Fixed an issue with xUnit tests where they would exit immediately on
+  unexpected errors (aside from PL/pgSQL RAISE errors) rather than exit just the
+  current test function. Thanks to @kzathey for the report and to @fjf2002 for
+  the analysis.
+* Fixed a pluralization error reporting xUnit test failures to report "failed 1
+  test" instead of "failed 1 tests".
+* Removed the indentation for diagnostic comments at the start of subtests to
+  make it easier to see where they start and end. This changes the output
+  format, which will not affect tests run by `pg_prove`, but will break tests
+  that depend on diffing files, as `pg_regress` does. Thanks to Matt DeLuco for
+  highlighting the visual confusion of the indented diagnostic (#264).
+* Added variants of `col_is_pk()` with schema and without description (variants
+  without schema or description already existed). Thanks to Luca Ferrari and
+  Matteo Ferrando for the PRs (#178 & #199)!
+* Added a note on the use of temporary tables to the `fk_ok()` documentation, as
+  well as a test to ensure the suggested expressions work. Thanks to Jim Nasby
+  for highlighting the special treatment of the temporary schema (#109).
+* Removed redundant `DROP` statements from the 1.2.0 upgrade script that
+  prevented upgrades from working properly. Thanks to @robins for the PR
+  (#300)!
+* Fixed a test failure caused by the removal of support for select rules in
+  postgres/postgres@b23cd18 (expected in Postgres 16). Thanks to @Deltaus for
+  the report (#309)!
+* Fixed `LIKE` expression in `schemas_are()` to escape the underscore wildcard,
+  making it `pg\_%` instead of `pg_%`. Thanks to Jehan-Guillaume (ioguix) de
+  Rorthais for the PR (#311)!
+* Updated function-testing functions to allow short names for argument types, so
+  that they can be specified as, e.g., `int` and `bool` rather than `integer`
+  and `boolean`. The return value argument to `function_returns` and and data
+  type tests such as `col_type_is` and `cast_context_is` must still use full
+  type names. Thanks to @wphilips53 for the suggestion (#292).
+* Updated type-testing functions to allow short names for types, and updated
+  function-testing functions to allow short names for argument types. This means
+  that common aliases for standard types can be specified as, e.g., `int` and
+  `bool` rather than `integer` and `boolean`. Thanks to @wphilips53 for the
+  suggestion (#292).
+* Tweaked the installation docs for Docker, binary Linux distributions, and
+  downloading the source from PGXN. Thanks to @jed-walker-icd (#275) and
+  @machineghost (#301) for the suggestions!
+
+1.2.0 2021-12-05T18:08:13Z
+--------------------------
+* Made the description field optional in `has_view()` and `hasnt_view()` when
+  specifying schema (#230). Thanks to Godwottery for the patch!
+* Added support for the date and time keywords `CURRENT_DATE`, `CURRENT_TIME`,
+  `CURRENT_TIMESTAMP`, `LOCALTIME`, and `LOCALTIMESTAMP` to `col_default_is()`.
+  Thanks to Kevin Brannen for the report (#244)!
+* Fixed failure to run tests on Postgres 13. Thanks to Christoph Berg for the
+  report (#248).
+* Documented that mixed-case column names created with double quotes
+  must be double-quoted when passed to `has_index()` or `is_indexed()`,
+  sadly unlike other column arguments in pgTAP. Thanks to Keith Fiske for
+  the report (#247).
+* Fixed test failures where the current username was not being quoted as an
+  identifier. Thanks to Matt DeLuco for the report (#216) and pull request
+  (#259)!
+* Fixed the `col_not_null()` drop statements in the uninstall script. Thanks
+  to Kyle L. Jensen for the report (#252).
+* Removed straggler references to Postgres 9.0 and earlier, including
+  conditional tests.
+* Updated all relevant URLs to use https instead of http.
+* Added instructions to install the extension on a host with PostgreSQL running
+  and with the contrib modules installed. Thanks to F. Eugene Aumson for the
+  report (#276).
+* Fixed test failures due to changes in PostgreSQL 14. Thanks to Christoph Berg
+  for the report (#277).
+* Added `isnt_member_of()` (#38, #204). Thanks to Wolfgang Walther for the
+  pull request (#249).
+* Added docker files for local test environment. Thanks to Wolfgang Walther for
+  the pull request (#250).
+* Added `hasnt_operator()`, `hasnt_leftop()`, `hasnt_rightop()` (#38). Thanks to
+  Wolfgang Walther for the pull request (#251).
+* Improved the output of `results_eq()` and `results_ne()` when the number of
+  columns or their types are different (#37). Thanks to Wolfgang Walther for
+  the pull request (#255).
+* Fixed testing issue where tests for unsupported features were not properly
+  skipped on Postgres 9.6 and earlier. Only appeared when tests were run
+  serially (#279).
+* Fixed an issue where tests might not run in parallel even when the server
+  supported it (#279).
+
+1.1.0 2019-11-25T19:05:38Z
+--------------------------
+* Remove support for PostgreSQL older than 9.1. Note that some automated tests
+  don't run on versions older than 9.4, so it's recommended you run PostgreSQL
+  9.4 at minimum.
+* Add a `throw_exception` argument to `finish()`. `finish(true)` will raise an
+  exception if any tests failed. Thanks to Stephen Paul Weber for the idea
+  (#80), and Rodolphe Quiédeville for most of the work (#104)!
+* Make description optional for `col_not_null()` (#221).
+* Fix syntax of test_user function example in the docs (#208). Thanks to
+  PeteDevoy for the patch!
+* Fix issue with `pgtap-core` referencing `pg_proc.proisagg` on PostgreSQL 11+
+  (#197).
+* Add PostgreSQL 12.0 to automated tests (#223).
+* Fix `pgtap_version()`, which incorrectly returned 0.99 when upgrading from
+  version 0.99.0 to 1.0.0 (#214).
+* Fix issue with using `pg_upgrade` to PostgreSQL 11+ with pgTAP installed
+  (#201, #215).
+* Start using `DEFAULT` in functions.
+* Add automated testing of extension upgrade scripts (#128), as well as testing
+  of `pg_upgrade` with pgTAP installed (#218, #222).
+
+1.0.0 2019-02-21T22:39:42Z
+--------------------------
+* Fixed uninstall script generation to properly emit `DROP TYPE` statements.
+  Thanks to Kamen Naydenov for the PR (#181)!
+* Added policy test assertion functions for PostgreSQL 9.5 and higher:
+    + `policies_are()`
+    + `policy_roles_are()`
+    + `policy_cmd_is()`
+  Thanks to Kamen Naydenov for the PR (#185).
+* Fixed an issue with `has_function()` where a test would fail if arguments
+  are schema-qualified even though the schema is in the search path. Thanks to
+  Sandro Santilli for the bug report (#179) and PR (#180).
+* Added table inheritance testing functions:
+    + `has_inherited_tables()`
+    + `hasnt_inherited_tables()`
+    + `is_ancestor_of()`
+    + `isnt_ancestor_of()`
+    + `is_descendent_of()`
+    + `isnt_descendent_of()`
+  Thanks to Luca Ferrari for the inspiration.
+* Fixed `col_default_is()` to properly report special SQL syntax functions
+  like `CURRENT_USER` and `CURRENT_CATALOG` instead of evaluating them on
+  PostgreSQL 10 and higher.
+* Changed the uninstall script to use `DROP IF EXISTS` rather than just `DROP`
+  so that it works even with partial or failed installs. Thanks to Sandro
+  Santilli for the PR (#194).
+* Officially end support for PostgreSQL 8.2 and older.
+
+0.99.0 2018-09-16T20:55:41Z
+---------------------------
+* Updated introductory documentation. A lot has changed over the years!
+* Added the "Secrets of the pgTAP Mavens" section of the documentation.
+  Contributions wanted!
+* Fixed `pg_version_num()` to always return the value of `server_version_num`
+  on PostgreSQL 8.3 and higher, thus fixing a test failure on 10.1. Thanks to
+  Christoph Berg for the report (#148)!
+* Changed the diagnostic output of extra and missing values from the `*_are()`
+  functions to sort the extra and missing values. Fixes a test failure on
+  PostgreSQL 10, and generally makes the diagnostics more deterministic and
+  easier to read. Thanks to Michael Glaesemann for the report (#158)!
+* Fixed an issue on PostgreSQL 11, where the `pg_class.relhaspkey` column has
+  been removed. The primary key testing functions now refer to
+  `pg_index.indisprimary`, instead. Thanks to Keith Fiske for the report
+  (#174)!
+* Fixed an issue on PostgreSQL 11, where the `pg_proc.proisagg` column has
+  been replaced with the more generically useful `pg_proc.prokind`. Thanks to
+  Keith Fiske for the report (#174)!
+* Documented that a `RECORD` can be passed to `row_eq()` on PostgreSQL 11,
+  and fixed the tests to match this new functionality.
+* Removed tests that only ran on 8.0, support for which was discontinued in
+  v0.90.0.
+* Removed `test/sql/run*` tests, which intentionally fail, from the `test`
+  target in the `Makefile`. It's not meaningful to test them via `pg_prove`;
+  they must instead be tested by `make installcheck`, so their output can be
+  compared against output that varies by PostgreSQL version. Thanks to Jim Nasby
+  for the report (#172).
+* Fixed a bug where `have_fk()` would fail if the table had no primary key.
+  Thanks to @bigmodem for the report! (#171).
+
+0.98.0 2017-11-06T22:30:54Z
+---------------------------
+* `make install` once again properly installs the versioned SQL file required
+  by `CREATE EXTENSION`. Thanks to Keith Fiske for the reports (Issue #131,
+  Issue #143) and Jim Nasby for the fix (Issue #132).
+* Removed references to the Epic test framework, since its domain
+  (`epictest.org`) has expired and the project appears to no longer be
+  available online. Thanks to Andreas Brekken for the report (#140).
+* Fix failing version tests on PostgreSQL v10. Thanks to Erik Rijkers
+  for the patch.
+* Improved foreign tables test to account for varying message order for
+  diagnostic output. Thanks to Erik Rijkers for the patch.
+* Clarified the use of the `:schema` parameter to the extension-testing
+  functions in the documentation. Required since extensions do not belong to
+  schemas, but their objects may be specifically created in a schema. Thanks to
+  Jim Nasby for the report (#121)!
+* Updated the table-testing functions to also recognize partitioned tables:
+    + `has_table()`
+    + `hasnt_table()`
+    + `tables_are()`
+    + `table_owner_is()`
+* Added partition-testing assertion functions:
+    + `is_partitioned()`
+    + `isnt_partitioned()`
+    + `is_partition_of()`
+    + `partitions_are()`
+* Added the materialized view-testing assertion functions to the v0.95.0 upgrade
+  script; they were inadvertently omitted in the v0.95.0 release.
+* Fixed failing tests on Postgres 8.1.
+* Added function type testing functions to complement `is_aggregate()` and
+  `isnt_aggregate()`:
+    + `is_normal_function()`
+    + `isnt_normal_function()`
+    + `is_window()`
+    + `isnt_window()`
+    + `is_procedure()`
+    + `isnt_procedure()`
+* Made the diagnostic output of `is_aggregate()` and `isnt_aggregate()`
+  consistent. Previously, when the function did not exist, some instances would
+  generate diagnostic output and some would not.
+
+0.97.0 2016-11-28T22:18:29Z
+---------------------------
+* Fixed the default description for `hasnt_opclass()` to say "should not
+  exist" instead of "should exist", thanks to Rodolphe Quiédeville (PR #99).
+* Added `is_indexed()`, which tests to see if specific table columns are
+  indexed. It's effectively the same as `has_index()` except that it doesn't
+  require an index name and does require one or more column names or index
+  expressions. Thanks to Rodolphe Quiédeville (PR #103).
+* Fixed `pg_version_num()` to work with the new version format coming in
+  PostgreSQL 10.
+* Fix `lives_ok()` and `throws_ok()` to also trap `ASSERT_FAILURE` (PR #119).
+* Add negation functions `isnt_aggregate()` and `isnt_definer()`, which return
+  the opposite of `is_aggregate()` and `is_definer()`. Thanks to Rodolphe
+  Quiédeville (PR #106).
+* Add `has_extension()` and `hasnt_extension()`. Thanks to Rodolphe Quiédeville
+  (PR #101).
+ 
+0.96.0 2016-05-16T20:53:57Z
+---------------------------
+* Added an optional `:exclude_pattern` parameter to `findfuncs()` to prevent
+  matching of some functions. This is useful to prevent matching
+  startup/setup/teardown/shutdown functions. Patch from Jim Nasby.
+* Changed `runtests()` to use the new `:exclude_pattern` to prevent the
+  running of startup/setup/teardown/shutdown functions as test functions.
+  Patch from Jim Nasby.
+* Fixed `database_privs_are()`, `schema_privs_are()`, `tablespace_privs_are()`
+  `fdw_privs_are()`, and `server_privs_are()` to properly handle
+  case-sensitive object names. Thanks to Ingo for the report!
+* Updated the Makefile to handle the case when PGXS sets the PERL variable to
+  `missing perl`.
+* Fixed a test failure due to the use of a hash index on PostgresSQL 9.5.
+* Added `extensions_are()`, prompted by a pull request from Grégoire HUBERT
+  (Issue #98).
+* The `sql/unininstall_pgtap.sql` file is now generated by `make` from the
+  `sql/pgtap.sql` file. This should make it much more up-to-date and accurate
+  in the future.
+* Added full stack diagnostic output to the `lives_ok()` failures, as well as
+  xUnit test function errors. Patch from Jim Nasby.
+
+0.95.0 2015-03-20T20:31:41Z
+---------------------------
+* Added materialized view-testing assertion functions:
+    + `materialized_views_are()`
+    + `has_materialized_view()`
+    + `hasnt_materialized_view()`
+    + `materialized_view_owner_is()`
+  Thanks to Charly Batista for the contribution!
+* Added `performs_within()`, a function that tests the average performance of
+  an SQL statement over a number of iterations. Contributed by Ryan Duryea.
+* Changed `is_member_of()` to work with roles instead of users. Patch from Jim
+  Nasby.
+* Granted SELECT access to the views created by pgTAP to PUBLIC, to avoid
+  permission errors when the tests are run by a user other than the owner of
+  those views. Thanks to Jim Nasby for the report.
+* Added `foreign_tables_are()` functions. Thanks to Chad for the pull request!
+* Updated `enum_has_labels()` to properly sort labels added by `ALTER TYPE ADD
+  VALUE`.
+* Added `diag_test_name()` to `pgtap-core`, since it's called by `_runner()`
+  in that extension. Thanks to Jim Nasby for the spot.
+* Added `isnt_strict()` to complement `is_strict()`. Requested by Jim Nasby.
+* Added schema/table/column variations of `col_is_unique()`. Contributed by
+  Jim Nasby.
+* The `runtests()` function now executes each test as a TAP subtest, with its
+  own plan and test count. This allows each test function to function more
+  independently of the others. It's easier to read the TAP, too. Users of
+  xUnit-style tests with `pg_regress` will need to update their expected
+  output files, however.
+* An exception thrown by a test no run by `runtests()` no longer halts
+  execution. It is instead properly rolled back, reported as a subtest
+  failure, and the error message emitted as a diagnostic message. Thanks to
+  Vitaliy Kotov for the report.
+* Eliminated the temporary table `__tresults__`. Test results are no longer
+  written to a table, but simply emitted. This elimination of unnecessary I/O
+  should make tests run a bit faster.
+* Added missing functions `has_sequence(:schema, :sequence)` mentioned in the
+  docs (Issue #58):
+
+0.94.0 2014-01-07T01:32:36Z
+---------------------------
+* Fixed the Makefile to allow `PG_CONFIG=/path/to/pg_config` to actually work.
+  Patch from Aaron W. Swenson.
+* Eliminated superfluous tabs in the `Makefile` that could cause it to fail in
+  some situations. Patch from Eric Neault.
+* Fixed `function_privs_are() to work with functions with long names and/or
+  signatures. Thanks to Jörg Beyer for the detailed report.
+* Added missing functions mentioned in the docs (Issue #54):
+    + `has_table(:schema, :table)`
+    + `hasnt_table(:schema, :table)`
+    + `has_foreign_table(:schema, :table)`
+    + `hasnt_foreign_table(:schema, :table)`
+* Fixed the format of SKIP output to match the
+  [TAP spec](https://testanything.org/tap-specification.html#skipping-tests).
+* Fixed incorrect handling of leading space when comparing diagnostic output
+  in `check_test()`.
+* Fixed an installation issue on PostgreSQL 9.3.2.
+
+0.93.0 2013-01-28T20:14:58Z
+---------------------------
+* Added additional ownership-testing functions:
+  + `tablespace_owner_is()`
+  + `schema_owner_is()`
+  + `index_owner_is()`
+  + `language_owner_is()`
+  + `opclass_owner_is()`
+  + `type_owner_is()`
+* Fixed misselling of "constraint" in constraint test diagnostic output.
+* Fixed constraint, trigger, index, opclaass, and foreign key test functions
+  so that they don't find objects outside the search path unless the schema is
+  specified.
+* Fixed `col_type_is()` so that it won't report the column as not existing
+  when the column's data type is not in the search path.
+* Removed `format_type()` and switched to the core PostgreSQL type formatting
+  function so that type names always include the schema name if the schema is
+  not in the search path. You might have to update data type tests to include
+  the schema name if the type is not in the search path.
+* `ALTER EXTENSION` now properly updates the value returned by
+  `pgtap_version()`.
+* Removed `CREATE EXTENSION` support for `pgtap-core` and `pgtap-control` (by
+  deleting `pgtap-core.control` and `pgtap-schema.control`). There were never
+  upgrade scripts for them, and upgrade scripts would be difficult to maintain
+  anyway. These files are really designed for copying into other projects for
+  inline testing support.
+
+0.92.0 2013-01-16T00:41:07Z
+---------------------------
+* Fixed some misspellings of `SELECT` in documentation examples.
+* Added note about the lack of typemods to the documentation for `has_cast()`.
+* Added check to ensure a table is visible in tests for column defaults.
+  Thanks to Henk Enting for the report.
+* Added `has_relation()` and `hasnt_relation()`.
+* Added `has_foreign_table()` and `hasnt_foreign_table()`.
+* Added `has_composite()` and `hasnt_composite()`.
+* Added new ownership assertion functions:
+  + `relation_owner_is()`
+  + `table_owner_is()`
+  + `view_owner_is()`
+  + `sequence_owner_is()`
+  + `composite_owner_is()`
+  + `foreign_table_owner_is()`
+  + `function_owner_is()`
+* Changed the uninformative error 'relation "__tcache__" does not exist' to
+  the more useful 'You tried to run a test without a plan! Gotta have a plan'.
+  Thanks to Steven Samuel Cole for [the
+  report](https://github.com/theory/pgtap/issues/22).
+* Changed `triggers_are()` so that it ignores internal triggers on PostgreSQL
+  9.1 and higher. Thanks to Sherrylyn Branchaw for the report!
+* Changed the diagnostic output of `results_eq()` for data type differences to
+  reduce confusion when the rows have the same values of different types.
+  Thanks to Peter Eisentraut and Taylor Ralston for [the
+  nudging](https://github.com/theory/pgtap/issues/15).
+* Added `isnt_empty()` to ensure that a query does not return the empty set.
+* Fixed `has_index()` to properly handle indexes composed of both columns and
+  expressions.
+* Added new functions for testing a user's access to database objects:
+  + `database_privs_are()`
+  + `tablespace_privs_are()`
+  + `schema_privs_are()`
+  + `table_privs_are()`
+  + `sequence_privs_are()`
+  + `any_column_privs_are()`
+  + `column_privs_are()`
+  + `function_privs_are()`
+  + `language_privs_are()`
+  + `fdw_privs_are()`
+  + `server_privs_are()`
+
+0.91.1 2012-09-11T00:26:52Z
+---------------------------
+* The OS name is restored to the call to `os_name()`. The `getos.sh` shell
+  script was not getting called during `make`. Thanks to Peter Eisentraut for
+  [the report](https://github.com/theory/pgtap/issues/16).
+* Noted `pg_prove --verbose` for showing test descriptions and fixed a few
+  typos in the documentation. Thanks to Jay Levitt for the pull request!
+* Fixed broken examples in the `row_eq()` documentation. Thanks to @set5think
+  for the report!
+* Fixed `has_tablespace()` to work on PostgreSQL 9.2, where its failure was
+  preventing pgTAP from even being installed.
+
+0.90.0 2011-12-03T20:18:16Z
+---------------------------
+* Removed the "Supported Versions" section of the documentation. Suffice it to
+  say that pgTAP supports PostgreSQL 8.1 or higher.
+* Added a build target to create a portable copy of pgTAP that can be included
+  in any distribution and should just work for tesing on PostgreSQL 8.3+. The
+  new files are `pgtap-core.sql`, which contains the core functionality, and
+  `pgtap-schema.sql`, which depends on pgtap-core and adds in the schema
+  testing assertion functions.
+* Added abstract to the `provides` section of `META.json`.
+* Removed use of `relistemp` column in an internal function, as it has been
+  removed in PostgreSQL 9.1. As a bonus, it now works on PostgreSQL 8.3 and
+  older without needing to be patched. Thanks to Tom Lane for the alternate
+  syntax.
+* Added PostreSQL 9.1 `CREATE EXTENSION` support.
+* Removed `TAPSCHEMA` option to `make`. Use `PGOPTIONS=--search_path=tap` with
+  `psql`, instead.
+* Added `db_owner_is()`. Based on a patch by Gerd Koenig.
+* Dropped support for PostgreSQL 8.0, as the new directory structure
+  introduced in 0.25.0 is incompatible with the 8.0 version og `pg_regress`,
+  making testing all but impossible. 8.0 has been EOLed for some time, so it's
+  time for pgTAP to finally drop its support, too.
+
+0.25.0 2011-02-02T03:21:55Z
+---------------------------
+* Minor documentation tweaks.
+* The sequence created to keep track of test numbers is now a temporary
+  sequence. This will prevent it from persisting beyond the current
+  connection, which could lead to erorrs in future connections. Thanks to
+  Richard Huxton for the report.
+* Fixed `is_superuser()` and `isnt_superuser()` so that they properly detect
+  superuser roles as well as users.
+* Fixed examples of single-quoted string values stored in `psql` variables in
+  `README.pgtap`.
+* Fixed a bug in `plan()` where a sequence wasn't getting created as a
+  temporary sequence. This wasn't a problem if all testing was done inside a
+  transaction, but if not, you could only run tests once without an error.
+* Fixed bug where `has_column()`, `col_type_is()`, `domain_type_is()`,
+  `cast_exists()`, `cast_context_is()`, and `has_operator()`, were forcing the
+  type argument to lowercase, which wasn't correct when the type is actually
+  mixed case or uppercase (that is, named in double quotes when it was
+  created).
+* The expected type passed to `index_is_type()` is no longer compared
+  case-insensitively, since it might be possible in the future to create a
+  type with mixed case by using double quotes when naming it.
+* Documented that double-quotes must be used for types created with
+  double-quoted names in the strings passed to `casts_are()`. This should be
+  the only part of the API that does require this sort of quoting.
+* Added `diag(anyelement)` (for 8.3 and higher) and `diag(VARIADIC anyarray)`
+  (for 8.4 and higher) to make it easier to emit diagnostics for whatever data
+  you have at hand.
+* The `_cleanup()` function now properly drops the temporary sequences as well
+  as the temporary tables. These are usually automatically dropped when the
+  tests finish and the client disconnects, but it's best to try to keep things
+  tidy ourselves, too. Spotted by Peter Eisentraut.
+* Fixed a bug in `has_pk()` so that it properly checks that a table is visible
+  in the search path when a schema is not specified, and doesn't check that
+  when the schema *is* specified. Patch from Cédric Villemain.
+* Fixed a bug in `col_is_unique()` and `col_has_check()` where they considered
+  *all* columns in a table that were unique or involved in a check constraint
+  were assocated with only one constraint. Since one can have multiple unique
+  or check constraints on a table, each using different columns, this was
+  sub-optimal. Thanks to Cédric Villemain for the spot!
+* Removed `pg_prove` and `pg_tapgen` from the distribution. They must now be
+  installed separately from CPAN. If it's not installed, the intaller will
+  issue a warning.
+* Added `META.json` and distributed on [PGXN](https://pgxn.org/).
+* Rearranged the source directory layout to more closely match the [preferred
+  PGXN layout](http://manager.pgxn.org/howto#new-order).
+
+0.24 2010-05-24T23:33:22Z
+--------------------------
+* Got `sql/artap.sql` tests passing again when building with `$TAPSCHEMA` set.
+* Changed to nicer source URL in `contrib/pgtap.spec`.
+* Fixed a bug in `has_member()` where it failed to confirm that users were
+  actually members of a group.
+* Fixed a bug where `display_type()` would include the schema name in its
+  output for types not found in the current path, despite its assertion that
+  it wouldn't.
+* Changed the diagnostic output for row type mismatches from `set_eq()`,
+  `set_ne()`, `bag_eq()`, and `bag_ne()` to include the schema name for types
+  not found in the search path.
+* Fixed bug in the diagnostic output of `set_eq()`, `set_ne()`, `bag_eq()`,
+  and `bag_ne()` where a column's type would not be displayed if the column
+  was not in the search path. Thanks to Rod Taylor for the spot!
+* Made the implementation of `row_eq()` always return a value, even if the
+  query it executes returns no rows.
+* Fixed bug in the default description for `col_type_is()` where the column
+  name was listed as the type!
+* Updated the `Makefile` and the test suite to support PostgreSQL 9.
+* Removed the primary keys from the temporary tables used internally by pgTAP
+  and thus eliminated the logging of NOTICEs to the PostgreSQL log when pgTAP
+  creates those tables.
+* Eliminated the need to set `USE_PGXS=1` when building outsde the contrib
+  directory of the PostgreSQL distribution. If `pg_config` isn't in the
+  `$PATH` environment variable, one can simply set `PG_CONFIG` to point to it.
+  If building inside the contrib directory, set `NO_PGXS=1`.
+* Fixed typo in the statement to drop the `tap_funky` view in
+  `uninstall_pgtap.sql`. Thanks to Erik Rijkers.
+* Removed deprecated `can_ok()` functions. Use `has_function()`, instead.
+
+0.23 2009-12-18T23:03:39Z
+-------------------------
+* Fixed broken Perl detection in `Makefile`.
+* Copied OS detection from Perl's `Configure` script to new script,
+  `getos.sh`. OS detection should now be much more accurate.
+* Fixed `pg_prove` to exit with non-zero status if tests failed, as it works
+  better in automated testing environments and consistent with `prove` (fix by
+  Darrell Fuhriman).
+* Updated documentation of supported environment variables in `bin/pg_prove`.
+* Fixed a bug in the function tests where the return value of a function was
+  not always consistently formatted. For example, `function_returns()` would
+  find "bool" instead of "boolean".
+* Added `isa_ok()`.
+* Added support for building against 8.5 [Dan Colish].
+* Fixed failing test on alpha releases [Jonathan Leto]
+* Added `is_empty()` to test that a query returns an empty set (no results).
+* Added `collect_tap()`, which makes it easier to run multiple tests in a
+  single `SELECT` statement in combination with `skip()`.
+* Added `throws_like()`, `throws_ilike()`, `throws_matching()`, and
+  `throws_imatching()` to test that an SQL statement throws an error message
+  matching a `LIKE` pattern or a regular expression.
+* Added `roles_are()`, `types_are()`, `domains_are()`, `enums_are()`,
+  `triggers_are()`, `casts_are()`, `operators_are()`, and `columns_are()`.
+* Fixed the diagnostic output from `isnt()` and `col_isnt_pk()` when they
+  fail. They now more closely matches what Test::More's `isnt()` outputs and
+  makes much more sense.
+* Added `domain_type_is()` and `domain_type_isnt()`. Based on an
+  implementation by Bob Lunney.
+* Added variants of `col_is_type()` to allow a schema name to be specified for
+  the type.
+* Added `display_type()` and replaced all internal use of `format_type()` with
+  it. This is so that schemas are always displayed properly.
+* Added `row_eq()`. It's a 90% solution that requires that `record` values be
+  cast to existing composite values. But it should work well even at that.
+* Changed the default descriptions output by `has_operator()`, `has_leftop()`,
+  and `has_rightop()` to format the operator names more like the display of
+  `regoperator` types.
+* Fixed issue with using SET SESSION AUTHORIZATION among tests [Kevin Field]
+* Added `display_oper()` so that schemas are always displayed properly when
+  comparing operators.
+
+0.22 2009-07-31T00:26:16Z
+-------------------------
+* Fixed failing test on 8.4rc2.
+* Added result set testing functions. These allow testers to write queries in
+  pure SQL and check that their results are as expected. The new functions
+  are:
+  + `results_eq()`
+  + `results_ne()`
+  + `set_eq()`
+  + `bag_eq()`
+  + `set_ne()`
+  + `bag_ne()`
+  + `set_has()`
+  + `bag_has()`
+  + `set_hasnt()`
+  + `bag_hasnt()`
+* Changed some internal queries to use explicit `JOIN`s.
+* Fixed capitalization of `TAP::Harness` in the `Makefile`. Thanks to
+  Quinn Weaver.
+* Fixed a syntax error that caused `uninstall_pgtap.sql` to fail on older
+  PostgreSQL versions (fix by Quinn Weaver).
+* Modified the summary documentation for the `--schema` and `--match` options
+  to `pg_prove` to better reflect that they are for finding xUnit tests,
+  not for finding pgTAP functions.
+
+0.21 2009-05-29T00:04:31Z
+-------------------------
+* Fixed a bug in the processing of the `--schema` and `--match` options that
+  only shows up in Getopt::Long 2.38 or higher.
+* A few doc and test typos fixed thanks to Gabrielle Roth.
+* Fixed failing test on Solaris 10 on Intel thanks to Gabrielle Roth.
+* Fixed a failing test for the version number string on 8.4 beta.
+* Added `performs_ok()`.
+* Added `has_language()`, `hasnt_language()`, and `language_is_trusted()`.
+* Added `has_opclass()` and `hasnt_opclass()`.
+* Added `has_rule()`, `hasnt_rule()`, `rule_is_instead()`, and `rule_is_on()`.
+* Added `tablespaces_are()`, `schemas_are()`, `tables_are()`, `views_are()`,
+  `sequences_are()`, `functions_are()`, `indexes_are()`, `users_are()`,
+  `groups_are()`, `opclasses_are()`, `languages_are()`, and `rules_are()`.
+* Added a `has_trigger(table, trigger, description)`. Note that this means
+  that if you were previously using `has_trigger(schema, table, trigger)`, you
+  will need to cast the third argument to `NAME` to get it working again.
+* Changed `can_ok()` to `has_function()`, so that it's named like all of the
+  other functions that check for the presence of database objects. The old
+  `can_ok()` function is still available as an alias, but it emits a warning
+  and will be removed in a future version of pgTAP.
+* Added `hasnt_trigger()`, `hasnt_index()`, and `hasnt_function()`.
+* Added `function_lang_is()`, `function_returns()`, `is_definer()`,
+  `is_aggregate()`, `is_strict()`, and `volatility_is()`.
+
+0.20 2009-03-29T19:05:40Z
+-------------------------
+* Changed the names of the functions tested in `sql/do_tap.sql` and
+  `sql/runtests.sql` so that they are less likely to be ordered differently
+  given varying collation orders provided in different locales and by
+  different vendors. Reported by Ingmar Brouns.
+* Added the `--formatter` and `--archive` options to `pg_prove`.
+* Fixed the typos in `pg_prove` where the output of `--help` listed
+  `--test-match` and `--test-schema` instead of `--match` and `--schema`.
+* Added `has_cast()`, `hasnt_cast()`, and `cast_context_is()`.
+* Fixed a borked function signature in `has_trigger()`.
+* Added `has_operator()`, `has_leftop()`, and `has_rightop()`.
+* Fixed a bug where the order of columns found for multicolumn indexes by
+  `has_index()` could be wrong. Reported by Jeff Wartes. Thanks to Andrew
+  Gierth for help fixing the query.
+
+0.19 2009-02-21T02:09:26Z
+-------------------------
+* Added an alternate version of `col_default_is()` to better handle the common
+  case when a default is specified as a string, such as a text or expression
+  default. This means that you have to do a lot less casting of default values
+  specified in the arguments to `col_default_is()`. It also restores the
+  signature that 0.17 recommended be dropped.
+* Added `has_role()` and `isnt_role()`.
+* Added `has_user()`, `isnt_user()`, `is_superuser()`, and `isnt_superuser()`.
+* Added `has_group()`, `isnt_group()`, and `is_member_of()`.
+* Fixed syntax in the `Makefile` to make it compatible with older versions of
+  `make`. Reported by Aaron Kangas.
+* Improved the documentation of `runtests()` to make it clearer that all tests
+  it runs are run in transactions that are rolled back after each test.
+  Suggested by Aaron Kangas.
+* Added the `--runtests`, `--schema`, and `--match` options to `pg_prove` so
+  that it can be used to run xUnit-style test functions without an SQL script.
+* Fixed a bug in `can()` where it could sometimes report that functions
+  were available in a schema when in fact they were not.
+* In the schema testing functions, removed the use of `quote_ident()` to
+  compare all identifiers, such as table names, schema names, column names,
+  etc, added in 0.17. This is because `quote_ident(a) = quote_ident(b)` can't
+  give a different result than `a = b`, and besides, made things slower and
+  prevented the use of indexes. Thanks to Andrew Gierth for the spot.
+* The output from `pg_prove` now includes a list of failing tests when it is
+  not run with `--verbose`. When using TAP::Harness 3.17 and later, it also
+  shows comments and diagnostics in the non-verbose output. Verbose output
+  still outputs everything.
+
+0.18  2009-02-06T20:06:00Z
+--------------------------
+* Fixed `pg_version_num()`. It was broken in 0.16; sorry about that!
+* Fixed a bug in `col_type_is()` where it would die if it was looking
+  for a type in a table that had dropped columns. Thanks to depesz and
+  RhodiumToad on #postgresql for the help nailing that one down!
+* Fixed a test failure in `sql/coltap.sql` on PostgreSQL 8.3.
+* Fixed a bug in the `Makefile` where it did not properly point to
+  `pg_config` when building from the `compat` directory in the
+  PostgreSQL source tree.
+* Fixed a bug in the `Makefile` where the `test_setup.sql` file, which
+  is required for tests, was not always getting created.
+
+0.17  2009-02-06T17:51:52Z
+--------------------------
+* Fixed `col_default_is()` so that it works properly in cases where the
+  default value is `NULL`.
+* Fixed `col_default_is()` to gracefully handle different data types,
+  columns without defaults, and nonexistent columns.
+* Fixed the three-argument form of `col_default_is()` to accept any data type
+  for the default, not just text. *NOTE:* You must `DROP FUNCTION
+  col_default_is ( NAME, NAME, TEXT );` if you have previous versions of this
+  function installed, so as to eliminate the incompatible version.
+* Added `col_has_default()` and `col_hasnt_default()`.
+* Changed default descriptions for column testing functions to refer to
+  the columns as the more SQL-standard `schema.table.column` instead of
+  `schema.table(column)`.
+* Modified all diagnostic messages and test descriptions that reference
+  database objects to use `quote_ident()` to quote the names of those
+  objects, rather than emitting them with or without double-quotes in an
+  ad-hoc way as had hitherto been the case.
+* Modified `col_not_null()`, `col_is_null()` and `col_type_is()` to emit
+  diagnostics if they fail because the column in question does not
+  exist.
+* Added `has_tablespace()` and `hasnt_tablespace()`.
+* Added `has_sequence()` and `hasnt_sequence()`.
+* Changed `has_index()` so that expressions are compared case-
+  sensitively.
+* In the schema testing functions, now using `quote_ident()` to compare
+  all identifiers, such as table names, schema names, column names, etc.
+  It had been a mix of straight-forward string comparison, and
+  case-insensitive matching. This means that tests should use only
+  lowercase strings to specify object names, unless mixed case objects
+  were created with double quote characters.
+* Added version of `todo()` with the `why` and `how_many` arguments
+  reversed, so that I don't have to remember a specific order.
+
+0.16  2009-02-03T17:37:03Z
+--------------------------
+* Switched from a crazy trinary logic in `is()` and `isnt()` to the use
+  of `IS NOT DISTINCT FROM` and `IS DISTINCT FROM`. Swiped from PGUnit.
+* Fixed documentation for the short version of `--help` in `pg_prove`.
+  It's `-H`, not `-h`.
+* Fixed a bug in the makefile that prevented OS detection from working
+  properly on many platforms (including Linux, and probably many
+  others). This allows `os_name()` to actually work on those platforms.
+* The definition of the `pg_typeof()` function is removed when
+  installing on PostgreSQL 8.4 and no C code is compiled, since the only
+  C code is for this function. This is because `pg_typeof()` is included
+  with PostgreSQL 8.4.
+* Added `has_schema()` and `hasnt_schema()`.
+* Added `has_type()`, `hasnt_type()`, `has_domain()`, `hasnt_domain()`,
+  `has_enum()`, and `hasnt_enum()`.
+* Added `enum_has_labels()`.
+* Updated the `Makefile` to fix the shebang line in `pg_prove` if
+  Perl is found, and to emit a warning if the `$PERL` variable is not
+  set. - Updated the `Makefile` so that if `$PERL` is set and
+  TAP::Harness is not installed, it warns the user to install it in
+  order to use `pg_prove`. - Updated the `Makefile` to set the location
+  of the `psql` binary to the bin directory specified for PostgreSQL
+  when it was built.
+* Fixed `pg_version_num()` to work on PostgreSQL 8.4devel.
+* Fixed test failures on PostgreSQL 8.4devel.
+
+0.15  2009-01-20T18:41:24Z
+--------------------------
+* Changed `pg_typeof()` from immutable to stable, in compliance with its
+  configuration in the forthcoming PostgreSQL 8.4.
+* Added `do_tap()`, which finds test functions and runs them, allowing
+  tap tests to be embedded in functions and then executed all at once.
+* Added `runtests()`, which introduces xUnit-style test running, for
+  those who prefer to put their tests in a slew of test functions and
+  then run one function to run all of the test functions (plus startup,
+  setup, teardown, and shutdown tests).
+* Added `findfuncs()`, which is used by `do_tap()` to find the functions
+  to execute.
+* The `col_type_is()` function now requires that the type be visible in
+  the search path when it is called without a schema argument.
+* The `plan()` function no longer resets the `client_min_messages`
+  setting to its default value, but leaves it set to whatever it was set
+  to before the function was called.
+* Fixed a typo in the documentation of the short version of the
+  `--version` option to `pg_prove`, which is `-V`, not `-v`.
+* Added `pgtap_version()`.
+* Added the "html" make target to generate the HTML documentation for
+  the Web site, including a table of contents and documentation for
+  `pg_prove`.
+
+0.14  2008-10-27T22:43:36Z
+--------------------------
+* Added `SET search_path` statements to `uninstall_pgtap.sql.in` so that
+  it will work properly when TAP is installed in its own schema. Thanks to
+  Ben for the catch!
+* Added commands to drop `pg_version()` and `pg_version_num()`
+  to`uninstall_pgtap.sql.in`.
+* Added `has_index()`, `index_is_unique()`, `index_is_primary()`,
+  `is_clustered()`, and `index_is_type()`.
+* Added `os_name()`. This is somewhat experimental. If you have `uname`,
+  it's probably correct, but assistance in improving OS detection in the
+  `Makefile` would be greatly appreciated. Notably, it does not detect
+  Windows.
+* Made `ok()` smarter when the test result is passed as `NULL`. It was
+  dying, but now it simply fails and attaches a diagnostic message
+  reporting that the test result was `NULL`. Reported by Jason Gordon.
+* Fixed an issue in `check_test()` where an extra character was removed
+  from the beginning of the diagnostic output before testing it.
+* Fixed a bug comparing `name[]`s on PostgreSQL 8.2, previously hacked
+  around.
+* Added `has_trigger()` and `trigger_is()`.
+* Switched to pure SQL implementations of the `pg_version()` and
+  `pg_version_num()` functions, to simplify including pgTAP in module
+  distributions.
+* Added a note to `README.pgtap` about the need to avoid `pg_typeof()`
+  and `cmp_ok()` in tests run as part of a distribution.
+
+0.13  2008-10-13T19:09:46Z
+--------------------------
+* Added `pg_version()` and `pg_version_num()`.
+* Documented `pg_typeof()`.
+
+0.12  2008-10-11T04:02:42Z
+--------------------------
+* Updated `plan()` to disable warnings while it creates its tables.
+  This means that `plan()` no longer send NOTICE messages when they run,
+  although tests still might, depending on the setting of
+  `client_min_messages`.
+* Added `hasnt_table()`, `hasnt_view()`, and `hasnt_column()`.
+* Added `hasnt_pk()`, `hasnt_fk()`, `col_isnt_pk()`, and
+  `col_isnt_fk()`.
+* Added missing `DROP` statements to `uninstall_pgtap.sql.in`.
+
+0.11  2008-09-24T20:41:42Z
+--------------------------
+* Simplified the tests so that they now load `test_setup.sql` instead of
+  setting a bunch of stuff themselves. Now only `test_setup.sql` needs
+  to be created from `test_setup.sql.in`, and the other `.sql` files
+  depend on it, meaning that one no longer has to specify `TAPSCHEMA`
+  for any `make` target other than the default.
+* Eliminated all uses of `E''` in the tests, so that we don't have to
+  process them for testing on 8.0.
+* Fixed the spelling of `ON_ROLLBACK` in the test setup. Can't believe I
+  had it with one L in all of the test files before! Thanks to Curtis
+  "Ovid" Poe for the spot.
+* Added a couple of variants of `todo()` and `skip()`, since I can never
+  remember whether the numeric argument comes first or second. Thanks to
+  PostgreSQL's functional polymorphism, I don't have to. Also, there are
+  variants where the numeric value, if not passed, defaults to 1.
+* Updated the link to the pgTAP home page in `pgtap.sql.in`.
+* TODO tests can now nest.
+* Added `todo_start()`, `todo_end()`, and `in_todo()`.
+* Added variants of `throws_ok()` that test error messages as well as
+  error codes.
+* Converted some more tests to use `check_test()`.
+* Added `can()` and `can_ok()`.
+* Fixed a bug in `check_test()` where the leading white space for
+  diagnostic messages could be off by 1 or more characters.
+* Fixed the `installcheck` target so that it properly installs PL/pgSQL
+  into the target database before the tests run.
+
+0.10  2008-09-18T22:59:31Z
+--------------------------
+* Changed `pg_prove` to set `QUIET=1` when it runs, so as to prevent the
+  output of extraneous stuff.
+* Added some `GRANT` statements to `plan()` in order to make it easier
+  to run tests using roles other than the one that called `plan()`.
+  Patch from Rod Taylor.
+* Replaced a call to `lastval()` with a call to `currval()` in order to
+  improve compatibility with PostgreSQL 8.0. Reported by David Westbrook.
+* Added support for TODO and SKIP tests.
+* Removed the few uses of named parameters and added alias names instead.
+  This improves compatibility for versions of PostgreSQL prior to 8.0.
+  Reported by David Westbrook.
+* Fixed the plural of "test" in the output from `finish()`. It was
+  plural when there was one test and singular otherwise. So I reversed
+  that.
+* Moved assignment to declared variables from the `DECLARE` block to the
+  body of the functions. Improves compatibility with versions of
+  PostgreSQL prior to 8.0. Reported by David Westbrook.
+* Eliminated passing the result of a function call to `RAISE` in order
+  to better support older versions of PostgreSQL. Reported by David
+  Westbrook.
+* Switched from using `FOUND` to `GET DIAGNOSTICS ROW_COUNT` because the
+  former does not seem to be set for `EXECUTE` SQL in older versions of
+  PostgreSQL. Reported by David Westbrook.
+* Added tests specifically targeting PostgreSQL 7.3. From David
+  Westbrook.
+* Ported all the way back to PostgreSQL 8.0, thanks to some Makefile
+  hackery and a patch file. All tests pass on 8.0, 8.1, 8.2, and 8.3.
+  The only exception is `throws_ok()` and `lives_ok()`, which are not
+  supported on 8.0. Versions of PostgreSQL lower than 8.0 are not yet
+  supported, even though we have made some changes to simplify getting
+  things to work in earlier versions.
+* Changed "got/expected" to "have/want", following Schwern's plans for
+  Test::Builder 2. Also changed "caught/expected" to "caught/wanted" for
+  nice parity when outputting diagnostics for exception testing.
+* Added the `has_table()`, `has_view()`, `has_column()`, `has_pk()`,
+  `has_fk()`, `fk_ok()`, `has_unique()` and `has_check()` test
+  functions.
+* Added the `col_not_null()` and `col_is_null()` test functions.
+* Added the `col_type_is()`, `col_default_is()`, `col_is_pk()`,
+  `col_is_fk()`, `col_is_unique()`, and `col_has_check()` test
+  functions.
+* Fixed `is()` and `isnt()` to better handle `NULL`s.
+* Added `cmp_ok()`.
+* Added the `--set ON_ERROR_STOP=1` option to the call to `psql` in
+  `pg_prove`.
+* Renamed `drop_pgtap.sql.in` to `uninstall_pgtap.sql.in`, which is more
+  in line with typical PostgreSQL contrib modules.
+* Removed verbose output of the `psql` command from `pg_prove`. Thanks
+  to Andy Armstrong for the spot.
+* Divided the tests up into many separate test script files, so that
+  things are a bit better organized and easier to maintain.
+* Added the `check_test()` function and started converting internal
+  tests to use it instead of the hacked stuff they were doing before.
+* As in Test::Builder 0.81_01, changed the message for extra tests run
+  to show the number of tests run rather than the number extra to avoid
+  the user having to do mental math.
+* The regression test files are now processed by `make installcheck` and
+  `make test` so that the schema can be properly set, if pgTAP is built
+  with a schema.
+
+0.02  2008-06-17T16:26:41Z
+--------------------------
+* Converted the documentation to Markdown.
+* Added pg_prove, a Perl script that use TAP::Harness to run tests and
+  report the results, just like the Perl program `prove`.
+* Fixed `no_plan()` so that it no longer emits a plan, which apparently
+  was wrong. Now `finish()` outputs it when there's no plan.
+* Fixed the test script so that it now emits a proper plan.
+* Removed all of the configuration settings from `pgtap.sql`, as they're
+  now handled by `pg_prove`. I've mentioned them in the README for
+  reference.
+* Added `lives_ok()`.
+* Moved the creation of temporary tables into `plan()`, so that
+  everything is properly self-contained.
+* Improved the handling of transactions. Test scripts are now assumed to
+  be single transactions with a ROLLBACK at the end. This makes it so
+  that test scripts don't have to include `drop_pgtap.sql`.
+* Updated `pg_prove` to rollback on an error, rather than just stop.
+  This allows all test functions to be properly rolled back, too, in a
+  test script that includes them but then encounters an unhandled
+  exception.
+* Updated `pg_prove` to emit an appropriate error message if no test
+  scripts are specified.
+* Added a Makefile. It uses the typical PostgreSQL installation
+  procedures to install pgTAP. The SQL files have now been turned into
+  `.in` templates that are processed by `make`.
+* Added support for schema qualification of test functions. Just set the
+  `$TAPSCHEMA` environment variable when running `make`.
+* Added support for standard PostgreSQL-type regression testing by just
+  copying the test script, setting some variables inside it, and
+  providing an `expected/` directory. The test now lives in the `sql/`
+  directory.
+* Changed all instances of `RETURN QUERY SELECT` to `RETURN NEXT`, which
+  should allow pgtap to run on versions of PostgreSQL earlier than 8.3.
+  Thanks to Neil Conway for the suggestion.
+
+0.01  2008-06-07T05:24:27Z
+--------------------------
+* Initial public release. Announcement at
+  https://justatheory.com/2008/06/introducing-pgtap/

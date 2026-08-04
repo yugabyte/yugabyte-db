@@ -1,0 +1,243 @@
+SET search_path TO documentdb_core,documentdb_api,documentdb_api_catalog,documentdb_api_internal;
+SET citus.next_shard_id TO 2930000;
+SET documentdb.next_collection_id TO 293000;
+SET documentdb.next_collection_index_id TO 293000;
+SET documentdb.enableDataTableWithoutCreationTime to off;
+-- create table with 4 columns first
+SELECT documentdb_api.create_collection('db', '4col');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+\d documentdb_data.documents_293000
+                  Table "documentdb_data.documents_293000"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_293000" PRIMARY KEY, btree (shard_key_value, object_id)
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '293000'::bigint)
+
+SELECT documentdb_api.insert_one('db', '4col', '{ "_id": 1}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- enable GUC
+SET documentdb.enableDataTableWithoutCreationTime to on;
+-- [1] let's test 4 column table after enabling GUC
+-- (1.1)  insert to 4 column collection
+SELECT documentdb_api.insert_one('db', '4col', '{ "_id": 2}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- (1.2)  multiple-insert to 4 column collection
+SELECT documentdb_api.insert('db', '{"insert":"4col", "documents":[ { "_id" : 3}, { "_id" : 4}, { "_id" : 5}]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+-- (1.3)  update to 4 column collection
+SELECT documentdb_api.update('db', '{"update":"4col", "updates":[{"q":{"_id":{"$eq":1}},"u":[{"$set":{"a" : 1} }]}]}');
+                                                               update                                                               
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberInt"" : ""1"" }, ""n"" : { ""$numberInt"" : ""1"" } }",t)
+(1 row)
+
+-- (1.4)  aggregate to 4 column collection
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "4col", "pipeline": [ {"$match" : {}} ] , "cursor": { "batchSize": 10 } }', 4294967294);
+                                                                                                                                                                  cursorpage                                                                                                                                                                  | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.4col", "firstBatch" : [ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" } }, { "_id" : { "$numberInt" : "2" } }, { "_id" : { "$numberInt" : "3" } }, { "_id" : { "$numberInt" : "4" } }, { "_id" : { "$numberInt" : "5" } } ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+-- (1.5)  aggregate to 4 column collection
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "4col",  "pipeline": [  {"$project" : {"a" : "GUC IS ENABLED"}},{"$merge" : { "into": "4col",  "whenMatched" : "replace" , "whenNotMatched" : "insert" }} ] , "cursor": { "batchSize": 1 } }', 4294967294);
+                                                          cursorpage                                                          | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.4col", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "4col", "pipeline": [ {"$match" : {}} ] , "cursor": { "batchSize": 10 } }', 4294967294);
+                                                                                                                                                                                                               cursorpage                                                                                                                                                                                                               | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.4col", "firstBatch" : [ { "_id" : { "$numberInt" : "1" }, "a" : "GUC IS ENABLED" }, { "_id" : { "$numberInt" : "2" }, "a" : "GUC IS ENABLED" }, { "_id" : { "$numberInt" : "3" }, "a" : "GUC IS ENABLED" }, { "_id" : { "$numberInt" : "4" }, "a" : "GUC IS ENABLED" }, { "_id" : { "$numberInt" : "5" }, "a" : "GUC IS ENABLED" } ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+-- [2] let's test 3 column table after enabling GUC
+SELECT documentdb_api.create_collection('db', '3col');
+NOTICE:  creating collection
+ create_collection 
+---------------------------------------------------------------------
+ t
+(1 row)
+
+\d documentdb_data.documents_293001
+         Table "documentdb_data.documents_293001"
+     Column      |  Type  | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
+Indexes:
+    "collection_pk_293001" PRIMARY KEY, btree (shard_key_value, object_id)
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '293001'::bigint)
+
+-- (2.1)  insert to 3 column collection
+SELECT documentdb_api.insert_one('db', '3col', '{ "_id": 2}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- (2.2)  multiple-insert to 3 column collection
+SELECT documentdb_api.insert('db', '{"insert":"3col", "documents":[ { "_id" : 3}, { "_id" : 4}, { "_id" : 5}]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+-- (2.3)  update to 3 column collection
+SELECT documentdb_api.update('db', '{"update":"3col", "updates":[{"q":{"_id":{"$eq":1}},"u":[{"$set":{"a" : 1} }]}]}');
+                                                               update                                                               
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberInt"" : ""0"" }, ""n"" : { ""$numberInt"" : ""0"" } }",t)
+(1 row)
+
+-- (2.4)  aggregate to 3 column collection
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "3col",  "pipeline": [  {"$project" : {"a" : "GUC IS ENABLED"}},{"$merge" : { "into": "3col",  "whenMatched" : "replace" , "whenNotMatched" : "insert" }} ] , "cursor": { "batchSize": 1 } }', 4294967294);
+                                                          cursorpage                                                          | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.3col", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "3col", "pipeline": [ {"$match" : {}} ] , "cursor": { "batchSize": 10 } }', 4294967294);
+                                                                                                                                                                                 cursorpage                                                                                                                                                                                 | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.3col", "firstBatch" : [ { "_id" : { "$numberInt" : "2" }, "a" : "GUC IS ENABLED" }, { "_id" : { "$numberInt" : "3" }, "a" : "GUC IS ENABLED" }, { "_id" : { "$numberInt" : "4" }, "a" : "GUC IS ENABLED" }, { "_id" : { "$numberInt" : "5" }, "a" : "GUC IS ENABLED" } ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+--3. let's disable GUC
+SET documentdb.enableDataTableWithoutCreationTime to off;
+-- (3.1)  insert to 3 column collection
+SELECT documentdb_api.insert_one('db', '3col', '{ "_id": 200}');
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- (3.2)  multiple-insert to 3 column collection
+SELECT documentdb_api.insert('db', '{"insert":"3col", "documents":[ { "_id" : 300}, { "_id" : 400}, { "_id" : 500}]}');
+                                         insert                                         
+---------------------------------------------------------------------
+ ("{ ""n"" : { ""$numberInt"" : ""3"" }, ""ok"" : { ""$numberDouble"" : ""1.0"" } }",t)
+(1 row)
+
+-- (3.3)  update to 3 column collection
+SELECT documentdb_api.update('db', '{"update":"3col", "updates":[{"q":{"_id":{"$eq":1}},"u":[{"$set":{"a" : 1} }]}]}');
+                                                               update                                                               
+---------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberDouble"" : ""1.0"" }, ""nModified"" : { ""$numberInt"" : ""0"" }, ""n"" : { ""$numberInt"" : ""0"" } }",t)
+(1 row)
+
+-- (3.4)  aggregate to 3 column collection
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "3col", "pipeline": [ {"$match" : {}} ] , "cursor": { "batchSize": 1 } }', 4294967294);
+                                                                                           cursorpage                                                                                            |                                                                                                                                                                                                                          continuation                                                                                                                                                                                                                          | persistconnection |  cursorid  
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "4294967294" }, "ns" : "db.3col", "firstBatch" : [ { "_id" : { "$numberInt" : "2" }, "a" : "GUC IS ENABLED" } ] }, "ok" : { "$numberDouble" : "1.0" } } | { "qi" : { "$numberLong" : "4294967294" }, "qp" : false, "qk" : { "$numberInt" : "2" }, "qc" : { "aggregate" : "3col", "pipeline" : [ { "$match" : {  } } ], "cursor" : { "batchSize" : { "$numberInt" : "1" } } }, "continuation" : [ { "table_name" : "documents_293001_2930020", "value" : { "$binary" : { "base64" : "AAAAAAUA", "subType" : "00" } } } ], "numIters" : { "$numberInt" : "1" }, "sn" : NOW_SYS_VARIABLE } | f                 | 4294967294
+(1 row)
+
+-- (3.5)  $merge to 4 column collection
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "3col",  "pipeline": [  {"$project" : {"a" : "GUC IS DISBALE"}},{"$merge" : { "into": "3col",  "whenMatched" : "replace" , "whenNotMatched" : "insert" }} ] , "cursor": { "batchSize": 1 } }', 4294967294);
+                                                          cursorpage                                                          | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.3col", "firstBatch" : [  ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+SELECT * FROM aggregate_cursor_first_page('db', '{ "aggregate": "3col", "pipeline": [ {"$match" : {}} ] , "cursor": { "batchSize": 10 } }', 4294967294);
+                                                                                                                                                                                                                                                                                                             cursorpage                                                                                                                                                                                                                                                                                                             | continuation | persistconnection | cursorid 
+---------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0" }, "ns" : "db.3col", "firstBatch" : [ { "_id" : { "$numberInt" : "2" }, "a" : "GUC IS DISBALE" }, { "_id" : { "$numberInt" : "3" }, "a" : "GUC IS DISBALE" }, { "_id" : { "$numberInt" : "4" }, "a" : "GUC IS DISBALE" }, { "_id" : { "$numberInt" : "5" }, "a" : "GUC IS DISBALE" }, { "_id" : { "$numberInt" : "200" }, "a" : "GUC IS DISBALE" }, { "_id" : { "$numberInt" : "300" }, "a" : "GUC IS DISBALE" }, { "_id" : { "$numberInt" : "400" }, "a" : "GUC IS DISBALE" }, { "_id" : { "$numberInt" : "500" }, "a" : "GUC IS DISBALE" } ] }, "ok" : { "$numberDouble" : "1.0" } } |              | f                 |        0
+(1 row)
+
+-- lookup test
+-- create 4 column table for lookup
+SELECT documentdb_api.insert_one('db','three_column_data_table_from',' {"_id": 1, "col1": "Value1", "col2": ["item1", "item2"], "col3": 100 , "col4": ["item3", "item4"]}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','three_column_data_table_from','{ "_id": 2, "col1": "Value2", "col2": ["item5", "item6"], "col3": 120, "col4": ["item7"]}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+\d documentdb_data.documents_293002
+                  Table "documentdb_data.documents_293002"
+     Column      |           Type           | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           |          | 
+Indexes:
+    "collection_pk_293002" PRIMARY KEY, btree (shard_key_value, object_id)
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '293002'::bigint)
+
+-- now create table with 3 column
+SET documentdb.enableDataTableWithoutCreationTime to on;
+SELECT documentdb_api.insert_one('db','three_column_data_table_to','{ "_id": 1, "item": "item1", "ref_col": "Value1"}', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','three_column_data_table_to','{ "_id": 2, "item": "item5", "ref_col": "Value2", "extra_col": "extra1"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('db','three_column_data_table_to','{ "_id": 3, "item": "item5", "ref_col": "Value2", "extra_col": "item7"}', NULL);
+                              insert_one                              
+---------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+\d documentdb_data.documents_293003
+         Table "documentdb_data.documents_293003"
+     Column      |  Type  | Collation | Nullable | Default 
+---------------------------------------------------------------------
+ shard_key_value | bigint |           | not null | 
+ object_id       | bson   |           | not null | 
+ document        | bson   |           | not null | 
+Indexes:
+    "collection_pk_293003" PRIMARY KEY, btree (shard_key_value, object_id)
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '293003'::bigint)
+
+SELECT document from bson_aggregation_pipeline('db', 
+  '{ "aggregate": "three_column_data_table_to", "pipeline": [ { "$lookup": { "from": "three_column_data_table_from", "pipeline": [ { "$match": { "col3": { "$gt": 110 } }}], "as": "matched_docs", "localField": "ref_col", "foreignField": "col1" }} ], "cursor": {} }');
+                                                                                                                                document                                                                                                                                
+---------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "item" : "item1", "ref_col" : "Value1", "matched_docs" : [  ] }
+ { "_id" : { "$numberInt" : "2" }, "item" : "item5", "ref_col" : "Value2", "extra_col" : "extra1", "matched_docs" : [ { "_id" : { "$numberInt" : "2" }, "col1" : "Value2", "col2" : [ "item5", "item6" ], "col3" : { "$numberInt" : "120" }, "col4" : [ "item7" ] } ] }
+ { "_id" : { "$numberInt" : "3" }, "item" : "item5", "ref_col" : "Value2", "extra_col" : "item7", "matched_docs" : [ { "_id" : { "$numberInt" : "2" }, "col1" : "Value2", "col2" : [ "item5", "item6" ], "col3" : { "$numberInt" : "120" }, "col4" : [ "item7" ] } ] }
+(3 rows)
+

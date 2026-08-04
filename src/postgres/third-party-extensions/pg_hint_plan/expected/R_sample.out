@@ -1,0 +1,10 @@
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Merge Join  (cost=xxx rows=100 width=29)
+   Merge Cond: (t1.c1 = t2.c1)
+   ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1000 width=15)
+   ->  Sort  (cost=xxx rows=100 width=14)
+         Sort Key: t2.c1
+         ->  Seq Scan on t2  (cost=xxx rows=100 width=14)
+(6 rows)
+

@@ -1,0 +1,18 @@
+test: yb.orig.wait-queues-single-shard-waiter-unlocks
+test: yb.orig.single-shard-waiters-same-tablet
+test: yb.port.fk-snapshot
+test: lock-update-traversal
+test: yb.orig.wait-queues-weak-read-unlocks
+test: yb.orig.wait-queues-serializable-reads
+test: yb.orig.lock-status-waiters
+test: yb.orig.concurrent-inserts-duplicate-key-error
+test: yb.orig.unblock-waiter-after-subtxn-rollsback
+# TODO: #30791:  Re-enable part of the test that can run with skip_prefix_locks=true mode
+# test: yb.orig.fk-row-locking
+test: yb.orig.user-managed-constraint
+test: yb.orig.fk-relationship
+test: yb.orig.check-constraint-locking
+test: yb.port.insert-conflict-do-nothing-2
+test: yb.orig.deadlock
+test: yb.orig.modify-transaction-characteristics
+test: yb.orig.fk_triggers_use_latest_snapshot

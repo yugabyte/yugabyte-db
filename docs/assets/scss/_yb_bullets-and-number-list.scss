@@ -1,0 +1,80 @@
+.td-content {
+  li p {
+    margin: 0 0 0 0;
+    line-height: 24px;
+
+    & + p {
+      margin: 12px 0 0 0;
+    }
+  }
+}
+
+.td-content {
+  > {
+    &,
+    :not(.component-box):not(.resources):not(.three-box-row) {
+      ul:not(.navbar-nav):not(.tabs-name):not(.nav) {
+        margin: 1.5rem 0;
+        list-style: none;
+        padding-left: 2.5rem;
+
+        > {
+          li {
+            margin: 0 0 12px 0 !important;
+            position: relative;
+
+            &::before {
+              position: absolute;
+              left: -40px;
+              top: 0;
+              border-radius: 50%;
+              display: inline-block;
+              content: '';
+              width: 8px;
+              height: 8px;
+              margin: 8px;
+              background: #b7c3cb;
+            }
+          }
+        }
+      }
+
+      ol:not(.navbar-nav) {
+        margin: 1.5rem 0;
+        list-style: none;
+        padding-left: 2.5rem;
+        counter-reset: orderlist;
+
+        > {
+          li {
+            margin: 0 0 12px 0 !important;
+            position: relative;
+
+            &::before {
+              position: absolute;
+              left: -40px;
+              top: 0;
+              border-radius: 50%;
+              counter-increment: orderlist;
+              content: counter(orderlist);
+              width: 24px;
+              height: 24px;
+              font-size: 12px;
+              background: #f0f4f7;
+              line-height: 18px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            }
+          }
+        }
+
+        @for $i from 1 through 100 {
+          &[start="#{$i}"] {
+            counter-reset: lis $i;
+          }
+        }
+      }
+    }
+  }
+}

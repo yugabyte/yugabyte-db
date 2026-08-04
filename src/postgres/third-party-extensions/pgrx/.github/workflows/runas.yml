@@ -1,0 +1,98 @@
+name: cargo pgrx test --runas
+
+on:
+  push:
+    branches: [ develop ]
+  pull_request:
+    branches: [ develop ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  TOOL_DIR: ./tools
+  PG_VER: 14
+
+jobs:
+  ubuntu:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v1-cargo-pgrx-test--runas"
+
+      - name: Set up prerequisites and environment
+        run: |
+          sudo apt-get update -y -qq --fix-missing
+          
+          echo ""
+          echo "----- Install sccache -----"
+          mkdir -p $HOME/.local/bin
+          curl -L https://github.com/mozilla/sccache/releases/download/v0.2.15/sccache-v0.2.15-x86_64-unknown-linux-musl.tar.gz | tar xz
+          mv -f sccache-v0.2.15-x86_64-unknown-linux-musl/sccache $HOME/.local/bin/sccache
+          chmod +x $HOME/.local/bin/sccache
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          mkdir -p /home/runner/.cache/sccache
+          echo ""
+          
+          echo "----- Set up dynamic variables -----"
+          cat $GITHUB_ENV
+          echo ""
+          
+          echo "----- Remove old postgres -----"
+          sudo apt remove -y '^postgres.*' '^libpq.*' '^clang.*' '^llvm.*' '^libclang.*' '^libllvm.*' '^mono-llvm.*'
+          echo ""
+          
+          echo "----- Install system dependencies -----"
+          sudo apt-get install -y \
+            build-essential \
+            llvm-14-dev libclang-14-dev clang-14 \
+            gcc \
+            libssl-dev \
+            libz-dev \
+            make \
+            pkg-config \
+            strace \
+            zlib1g-dev
+          echo ""
+
+          "$TOOL_DIR"/rustup.sh
+
+          echo "----- Set up cross compilation -----"
+          sudo apt-get install -y --fix-missing crossbuild-essential-arm64
+
+          echo 'CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc' >> $GITHUB_ENV
+          # TODO: not all of these should be needed, but for now it's likely fine.
+          echo 'BINDGEN_EXTRA_CLANG_ARGS_aarch64-unknown-linux-gnu=-target aarch64-unknown-linux-gnu -isystem /usr/aarch64-linux-gnu/include/ -ccc-gcc-name aarch64-linux-gnu-gcc' >> $GITHUB_ENV
+          
+          echo "----- Print env -----"
+          env
+          echo ""
+
+      - name: Setup release Postgres apt repo
+        run: |
+          sudo apt-get install -y wget gnupg
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+
+      - name: Install Postgres deps
+        run: |
+          sudo apt-get update -y -qq --fix-missing
+          sudo apt-get install -y postgresql-$PG_VER postgresql-server-dev-$PG_VER
+
+      - name: Report version
+        run: |
+          cargo --version
+          pg_config --version
+
+      - name: Install cargo pgrx
+        run: cd cargo-pgrx && cargo install --path . --debug
+
+      - name: cargo pgrx init
+        run: cargo pgrx init --pg14=$(which pg_config)
+
+      - name: Test cargo pgrx test --runas
+        run: |
+          echo 0 | sudo tee /proc/sys/fs/protected_fifos
+          cd pgrx-examples/arrays && cargo pgrx test pg14 --runas postgres --pgdata=/tmp/pgdata

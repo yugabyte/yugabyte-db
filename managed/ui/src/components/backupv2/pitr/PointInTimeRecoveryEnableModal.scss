@@ -1,0 +1,40 @@
+@use '../../../_style/colors.scss';
+
+.pitr-enable-modal {
+  width: 1100px;
+
+  .modal-header {
+    padding: 23px 32px;
+  }
+
+  .modal-body {
+    padding: 32px !important;
+    & > .row {
+      margin-bottom: 24px;
+    }
+  }
+
+  .duration-options {
+    display: flex;
+    align-items: baseline;
+    margin-top: 5px;
+  }
+  label.btn-group-radio,
+  .form-item-custom-label,
+  .form-item-label {
+    font-weight: 400 !important;
+    display: flex;
+    input {
+      margin-right: 10px;
+    }
+  }
+  .notice {
+    font-size: 13px;
+    line-height: 32px;
+    color: colors.$YB_DARKER_GRAY;
+    margin-top: 8px;
+    b {
+      font-weight: 700;
+    }
+  }
+}

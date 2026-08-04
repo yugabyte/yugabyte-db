@@ -1,0 +1,121 @@
+
+ul.nav.yb-pills {
+  display: flex;
+  gap: 16px;
+  margin: 40px 0;
+
+  li {
+    background: #fff;
+    border: 1px solid #d7dee4;
+    box-shadow: 0 0 0 1px transparent;
+    border-radius: 8px;
+    width: 350px;
+    max-width: calc(33.3% - 11px);
+    display: flex;
+    align-items: center;
+    padding: 0;
+    margin: 0;
+    height: 56px;
+    position: relative;
+    min-width: 222px;
+
+    @media (max-width: 991px) {
+      max-width: calc(50% - 10px);
+    }
+
+    @media (max-width: 600px) {
+      max-width: calc(100%);
+      margin: 0 auto;
+    }
+
+    &.active,
+    &:hover {
+      background: #f2f6ff;
+      cursor: pointer;
+      box-shadow: 0 0 0 1px #cbdbff;
+      border: 1px solid #cbdbff;
+      border-radius: 8px;
+    }
+
+    &.text-overlap {
+      a {
+        width: 100%;
+        text-overflow: ellipsis;
+      }
+    }
+
+    a {
+      background: transparent;
+      text-decoration: none !important;
+      align-items: center;
+      position: static !important;
+      font-weight: 400;
+      font-size: 13px;
+      line-height: 24px;
+      color: #25323d;
+      padding: 0 12px;
+      overflow: hidden;
+      display: inline-block;
+      width: auto;
+      //text-overflow: ellipsis;
+      white-space: nowrap;
+
+      &::before {
+        content: "";
+        position: absolute;
+        z-index: -1;
+        border-radius: 8px;
+        width: 100%;
+        height: 100%;
+        left: 0;
+        top: 0;
+        right: 0;
+      }
+
+      &.orange {
+        i {
+          color: #f75821;
+        }
+      }
+
+      img,
+      i {
+        font-size: 24px;
+        margin: 0 12px 0 0;
+        align-items: center;
+        height: 24px;
+        width: 24px;
+        vertical-align: middle;
+        display: inline-block;
+      }
+    }
+
+    .tooltip {
+      opacity: 0;
+      width: 0;
+    }
+
+    &:hover {
+      .tooltip {
+        display: block;
+        background: #fff;
+        border: 1px solid #e9edf0;
+        box-shadow: 0 0 8px rgba(0, 0, 0, 0.1);
+        border-radius: 8px;
+        opacity: 1;
+        top: 0;
+        font-weight: 400;
+        font-size: 11.5px;
+        line-height: 16px;
+        color: #4e5f6d;
+        padding: 10px;
+        left: 0;
+        margin-top: -4px;
+        transform: translate(72px, 110%);
+        white-space: nowrap;
+        width: auto;
+        transition: opacity 500ms linear;
+      }
+    }
+  }
+}

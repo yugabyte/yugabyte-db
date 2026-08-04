@@ -1,0 +1,5 @@
+description: Job instances
+content:
+  application/json:
+    schema:
+      $ref: "../schemas/JobInstancePagedResp.yaml"

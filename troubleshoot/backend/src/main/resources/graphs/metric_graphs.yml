@@ -1,0 +1,330 @@
+cpu_usage:
+  metric: "node_cpu_seconds_total"
+  function: "rate|avg"
+  range: true
+  operator: "* 100"
+  filters:
+    mode: "user|system"
+  group_by: "mode"
+  panel_group: "Node Metrics"
+  layout:
+    title: "CPU Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "user": "User"
+        "system": "System"
+      ticksuffix: "&nbsp;%"
+
+disk_iops:
+  metric: ""
+  function: "rate|sum without (device)|avg"
+  range: true
+  filters:
+    saved_name: "node_disk_reads_completed_total|node_disk_writes_completed_total"
+  group_by: "saved_name"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Disk IOPS / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_disk_reads_completed_total": "Read"
+        "node_disk_writes_completed_total": "Write"
+
+disk_bytes_per_second_per_node:
+  metric: ""
+  filters:
+    saved_name: "node_disk_read_bytes_total|node_disk_written_bytes_total"
+  group_by: "saved_name"
+  range: true
+  function: "rate|sum without (device)|avg"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Disk Bytes / Sec / Node"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_disk_read_bytes_total": "Read"
+        "node_disk_written_bytes_total": "Write"
+
+disk_usage:
+  metric: ""
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    saved_name: "node_filesystem_free_bytes|node_filesystem_size_bytes"
+    mountpoint: "/mnt/d[0-9]+"
+  exclude_filters:
+    fstype: "rootfs"
+  group_by: saved_name
+  panel_group: "Node Metrics"
+  layout:
+    title: "Data Disks Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_filesystem_free_bytes": "free"
+        "node_filesystem_size_bytes": "size"
+      ticksuffix: "&nbsp;GB"
+
+node_clock_skew:
+  metric: "hybrid_clock_skew"
+  function: "max_over_time|max"
+  range: true
+  group_by: "saved_name"
+  filters:
+    export_type: "(tserver_export|master_export)"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Clock Skew"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "hybrid_clock_skew": "Max"
+      ticksuffix: "&nbsp;\u00B5s"
+
+
+ysql_server_rpc_per_second:
+  metric: "rpc_latency_count"
+  function: "rate|avg"
+  range: true
+  filters:
+    export_type: "ysql_export"
+    server_type: "yb_ysqlserver"
+    service_type: "SQLProcessor"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt"
+  group_by: "service_method"
+  panel_group: "YSQL Ops & Latency"
+  layout:
+    title: "Total YSQL Ops / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "InsertStmt": "Insert"
+        "SelectStmt": "Select"
+        "UpdateStmt": "Update"
+        "DeleteStmt": "Delete"
+
+ysql_sql_latency:
+  metric: "rpc_latency.avg"
+  function: "rate|avg"
+  range: true
+  filters:
+    export_type: "ysql_export"
+    server_type: "yb_ysqlserver"
+    service_type: "SQLProcessor"
+    service_method: "SelectStmt|InsertStmt|UpdateStmt|DeleteStmt"
+  group_by: "service_method"
+  panel_group: "YSQL Ops & Latency"
+  layout:
+    title: "YSQL Op Latency (Avg)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "InsertStmt": "Insert"
+        "SelectStmt": "Select"
+        "UpdateStmt": "Update"
+        "DeleteStmt": "Delete"
+      ticksuffix: "&nbsp;\u00B5s"
+
+
+ysql_connections:
+  metric: ""
+  function: "avg_over_time|sum"
+  range: true
+  filters:
+    export_type: "ysql_export"
+    saved_name: "yb_ysqlserver_connection_total|yb_ysqlserver_active_connection_total"
+  group_by: "saved_name"
+  panel_group: "YSQL Ops & Latency"
+  layout:
+    title: "Total YSQL Connections"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "yb_ysqlserver_active_connection_total": "Active"
+        "yb_ysqlserver_connection_total": "Total"
+
+ysql_connections_per_sec:
+  metric: ""
+  function: "rate|sum"
+  range: true
+  filters:
+    export_type: "ysql_export"
+    saved_name: "yb_ysqlserver_new_connection_total|yb_ysqlserver_connection_over_limit_total"
+  group_by: "saved_name"
+  panel_group: "YSQL Ops & Latency"
+  layout:
+    title: "Total YSQL Connections / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "yb_ysqlserver_new_connection_total": "New"
+        "yb_ysqlserver_connection_over_limit_total": "Rejected"
+
+
+tserver_rpc_queue_size_tserver:
+  metric: ""
+  function: "avg_over_time|avg"
+  range: true
+  filters:
+    saved_name: "rpcs_in_queue_.*"
+    export_type: "tserver_export"
+  group_by: "saved_name"
+  panel_group: "Tablet Server"
+  layout:
+    title: "RPC Queue Size"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rpcs_in_queue_yb_consensus_ConsensusService": "Consensus"
+        "rpcs_in_queue_yb_server_GenericService": "Generic"
+        "rpcs_in_queue_yb_tserver_RemoteBootstrapService": "RemoteBootstrap"
+        "rpcs_in_queue_yb_tserver_TabletServerService": "TS RPC"
+        "rpcs_in_queue_yb_tserver_TabletServerBackupService": "Backups"
+        "rpcs_in_queue_yb_tserver_TabletServerAdminService": "Admin"
+        "rpcs_in_queue_yb_cdc_CDCService": "CDC"
+        "rpcs_in_queue_yb_tserver_PgClientService": "PG Client"
+        "rpcs_in_queue_yb_stateful_service_PgAutoAnalyzeService": "PG AutoAnalyze"
+
+tserver_rpcs_per_sec_by_universe:
+  metric: "rpc_latency_count"
+  function: "rate|sum"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    server_type: "yb_tserver"
+    service_type: "TabletServerService"
+    service_method: "Read|Write"
+  group_by: "service_method, node_prefix"
+  panel_group: "Tablet Server"
+  layout:
+    title: "TServer Ops / Sec / Node"
+    xaxis:
+      type: "date"
+
+
+lsm_rocksdb_memory_rejections:
+  metric: ""
+  function: "rate|sum by (exported_instance, saved_name)|avg"
+  range: true
+  filters:
+    export_type: "tserver_export"
+    saved_name: "leader_memory_pressure_rejections|follower_memory_pressure_rejections|operation_memory_pressure_rejections"
+  group_by: "saved_name"
+  panel_group: "RocksDB"
+  layout:
+    title: "Memory Pressure Rejections"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "leader_memory_pressure_rejections": "Leader"
+        "follower_memory_pressure_rejections": "Follower"
+        "operation_memory_pressure_rejections": "Operations"
+
+disk_io_time:
+  metric: "node_disk_io_time_seconds_total"
+  function: "rate|avg"
+  operator: "* 100"
+  range: true
+  group_by: "device"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Disk active IO time"
+    xaxis:
+      type: "date"
+    yaxis:
+      ticksuffix: "&nbsp;%"
+
+disk_io_queue_depth:
+  metric: "node_disk_io_time_weighted_seconds_total"
+  function: "rate|avg"
+  range: true
+  group_by: "device"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Average I/O Queue Depth"
+    xaxis:
+      type: "date"
+
+lsm_rocksdb_compaction:
+  metric: ""
+  function: "rate|sum by (exported_instance, saved_name)|avg"
+  range: true
+  operator: "/ 1048576"
+  filters:
+    export_type: "tserver_export"
+    saved_name: "rocksdb_compact_read_bytes|rocksdb_compact_write_bytes"
+  group_by: "saved_name"
+  panel_group: "RocksDB"
+  layout:
+    title: "Compaction"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "rocksdb_compact_read_bytes": "Read"
+        "rocksdb_compact_write_bytes": "Written"
+      ticksuffix: "&nbsp;MB"
+
+lsm_rocksdb_compaction_tasks:
+  metric: "compaction_tasks"
+  function: "avg_over_time|sum"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  group_by: "state_type"
+  panel_group: "RocksDB"
+  layout:
+    title: "Compaction tasks"
+    xaxis:
+      type: "date"
+
+table_size:
+  metric: ""
+  function: "last_over_time|max without (metric_type)|sum"
+  range: true
+  filters:
+    saved_name: "rocksdb_current_version_sst_files_size|log_wal_size"
+    export_type: "tserver_export"
+  group_by: "namespace_name,table_name,table_id"
+  layout:
+    title: "Table size"
+    xaxis:
+      type: "date"
+
+table_sst_size:
+  metric: "rocksdb_current_version_sst_files_size"
+  function: "last_over_time|max without (metric_type)|sum"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  group_by: "namespace_name,table_name,table_id"
+  layout:
+    title: "Table SST size"
+    xaxis:
+      type: "date"
+
+table_wal_size:
+  metric: "log_wal_size"
+  function: "last_over_time|max without (metric_type)|sum"
+  range: true
+  filters:
+    export_type: "tserver_export"
+  group_by: "namespace_name,table_name,table_id"
+  layout:
+    title: "Table WAL size"
+    xaxis:
+      type: "date"

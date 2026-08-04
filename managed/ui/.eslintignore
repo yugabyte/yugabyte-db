@@ -1,0 +1,7 @@
+node_modules
+craco.config.js
+build
+src/redesign/**/*.tsx
+src/redesign/**/*.ts
+src/redesign/types
+src/v2/api/**/*

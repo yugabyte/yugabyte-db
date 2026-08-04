@@ -1,0 +1,10 @@
+{{- $basedir := default "${HOME}/var/node" (.Get "basedir") }}
+{{- $op := default "stop" (.Get "op") }}
+{{- $nodes := default "1,2,3" (.Get "nodes") -}}
+{{- $nodes = split (replace $nodes " " "") "," -}}
+{{- $data := print "```sh" "\n" -}}
+{{- range $index, $node := $nodes -}}
+{{- $data = print $data "./bin/yugabyted " $op " --base_dir=" $basedir $node "\n" -}}
+{{- end -}}
+{{- $data = print $data "```\n" -}}
+{{- $data -}}

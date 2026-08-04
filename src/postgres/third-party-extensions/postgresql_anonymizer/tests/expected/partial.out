@@ -1,0 +1,47 @@
+BEGIN;
+CREATE EXTENSION IF NOT EXISTS anon CASCADE;
+-- TEST 1 : partial
+SELECT anon.partial('abcdefgh',1,'xxxxxx',1) = 'axxxxxxh';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT anon.partial(NULL,1,'xxxxxx',1) IS NULL;
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT anon.partial('1234567890',3,'*',3) = '123*890';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT anon.partial('dnfjdnvljdnvjsdn',1,'ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ',0) = 'dZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ';
+ ?column? 
+----------
+ t
+(1 row)
+
+-- TEST 2 : partial_email
+SELECT anon.partial_email('daamien@gmail.com') = 'da******@gm******.com';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT anon.partial_email('big@ben.co.uk') = 'bi******@be******.uk';
+ ?column? 
+----------
+ t
+(1 row)
+
+SELECT anon.partial_email(NULL) IS NULL;
+ ?column? 
+----------
+ t
+(1 row)
+
+ROLLBACK;

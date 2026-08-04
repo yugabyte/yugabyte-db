@@ -1,0 +1,3555 @@
+<!-- doc/src/sgml/logical-replication.sgml -->
+
+<chapter id="logical-replication">
+ <title>Logical Replication</title>
+
+ <para>
+  Logical replication is a method of replicating data objects and their
+  changes, based upon their replication identity (usually a primary key).  We
+  use the term logical replication in contrast to physical replication, which uses exact
+  block addresses and byte-by-byte replication.  PostgreSQL supports both
+  mechanisms concurrently, see <xref linkend="high-availability"/>.  Logical
+  replication allows fine-grained control over both data replication and
+  security.
+ </para>
+
+ <para>
+  Logical replication uses a <firstterm>publish</firstterm>
+  and <firstterm>subscribe</firstterm> model with one or
+  more <firstterm>subscribers</firstterm> subscribing to one or more
+  <firstterm>publications</firstterm> on a <firstterm>publisher</firstterm>
+  node.  Subscribers pull data from the publications they subscribe to and may
+  subsequently re-publish data to allow cascading replication or more complex
+  configurations.
+ </para>
+
+ <para>
+  When logical replication of a table typically starts, PostgreSQL takes
+  a snapshot of the table's data on the publisher database and copies it
+  to the subscriber.  Once complete, changes on the publisher since the
+  initial copy are sent continually to the subscriber.  The subscriber
+  applies the data in the same
+  order as the publisher so that transactional consistency is guaranteed for
+  publications within a single subscription.  This method of data replication
+  is sometimes referred to as transactional replication.
+ </para>
+
+ <para>
+  The typical use-cases for logical replication are:
+
+  <itemizedlist>
+   <listitem>
+    <para>
+     Sending incremental changes in a single database or a subset of a
+     database to subscribers as they occur
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     Sending a subset of the database to multiple databases (i.e.,
+     broadcast)
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     Consolidating multiple databases into a single one (e.g., for
+     analytics).
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     Replicating between different major versions of PostgreSQL
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     Replicating between PostgreSQL instances on different platforms (for
+     example Linux to Windows)
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     Giving access to replicated data to different groups of users.
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     Firing triggers for individual changes as they arrive on the
+     subscriber.
+    </para>
+   </listitem>
+  </itemizedlist>
+ </para>
+
+ <para>
+  The subscriber database behaves in the same way as any other PostgreSQL
+  instance and can be used as a publisher for other databases by defining its
+  own publications.  When the subscriber is treated as read-only by
+  application, there will be no conflicts from a single subscription.  On the
+  other hand, if there are other writes done either by an application or by other
+  subscribers to the same set of tables, conflicts can arise.
+ </para>
+
+ <sect1 id="logical-replication-publication">
+  <title>Publication</title>
+
+  <para>
+   A <firstterm>publication</firstterm> can be defined on any physical
+   replication primary.  The node where a publication is defined is referred to
+   as <firstterm>publisher</firstterm>.  A publication is a set of changes
+   generated from a table, a group of tables or the current state of all
+   sequences, and might also be described as a change set or replication set.
+   Each publication exists in only one database.
+  </para>
+
+  <para>
+   Publications are different from schemas and do not affect how the table is
+   accessed.  Each table can be added to multiple publications if needed.
+   Publications may currently only contain tables or sequences. Objects must be
+   added explicitly, except when a publication is created using
+   <literal>FOR TABLES IN SCHEMA</literal>, <literal>FOR ALL TABLES</literal>,
+   or <literal>FOR ALL SEQUENCES</literal>. Unlike tables, sequences can be
+   synchronized at any time. For more information, see
+   <xref linkend="logical-replication-sequences"/>. When a publication is
+   created with <literal>FOR ALL TABLES</literal>, a table or set of tables can
+   be explicitly excluded from publication using the
+   <link linkend="sql-createpublication-params-for-except-table"><literal>EXCEPT</literal></link>
+   clause.
+  </para>
+
+  <para>
+   Publications can choose to limit the changes they produce to
+   any combination of <command>INSERT</command>, <command>UPDATE</command>,
+   <command>DELETE</command>, and <command>TRUNCATE</command>, similar to how triggers are fired by
+   particular event types. By default, all operation types are replicated.
+   These publication specifications apply only for DML operations; they do not affect the initial
+   data synchronization copy. (Row filters have no effect for
+   <command>TRUNCATE</command>. See <xref linkend="logical-replication-row-filter"/>).
+  </para>
+
+  <para>
+   Every publication can have multiple subscribers.
+  </para>
+
+  <para>
+   A publication is created using the <link linkend="sql-createpublication"><command>CREATE PUBLICATION</command></link>
+   command and may later be altered or dropped using corresponding commands.
+  </para>
+
+  <para>
+   The individual tables can be added and removed dynamically using
+   <link linkend="sql-alterpublication"><command>ALTER PUBLICATION</command></link>.  Both the <literal>ADD
+   TABLE</literal> and <literal>DROP TABLE</literal> operations are
+   transactional, so the table will start or stop replicating at the correct
+   snapshot once the transaction has committed.
+  </para>
+
+  <sect2 id="logical-replication-publication-replica-identity">
+   <title>Replica Identity</title>
+
+   <para>
+    A published table must have a <firstterm>replica identity</firstterm>
+    configured in order to be able to replicate <command>UPDATE</command>
+    and <command>DELETE</command> operations, so that appropriate rows to
+    update or delete can be identified on the subscriber side.
+   </para>
+
+   <para>
+    By default, this is the primary key, if there is one. Another unique index
+    (with certain additional requirements) can also be set to be the replica
+    identity.  If the table does not have any suitable key, then it can be set
+    to replica identity <literal>FULL</literal>, which means the entire row
+    becomes the key.  When replica identity <literal>FULL</literal> is
+    specified, indexes can be used on the subscriber side for searching the
+    rows.  Candidate indexes must be btree or hash, non-partial, and the
+    leftmost index field must be a column (not an expression) that references
+    the published table column.  These restrictions on the non-unique index
+    properties adhere to some of the restrictions that are enforced for
+    primary keys.  If there are no such suitable indexes, the search on the
+    subscriber side can be very inefficient, therefore replica identity
+    <literal>FULL</literal> should only be used as a fallback if no other
+    solution is possible.
+   </para>
+
+   <para>
+    If a replica identity other than <literal>FULL</literal> is set on the
+    publisher side, a replica identity comprising the same or fewer columns
+    must also be set on the subscriber side.
+   </para>
+
+   <para>
+    Tables with a replica identity defined as <literal>NOTHING</literal>,
+    <literal>DEFAULT</literal> without a primary key, or <literal>USING
+    INDEX</literal> with a dropped index, cannot support
+    <command>UPDATE</command> or <command>DELETE</command> operations when
+    included in a publication replicating these actions. Attempting such
+    operations will result in an error on the publisher.
+   </para>
+
+   <para>
+    <command>INSERT</command> operations can proceed regardless of any replica identity.
+   </para>
+
+   <para>
+    See <link linkend="sql-altertable-replica-identity"><literal>ALTER TABLE...REPLICA IDENTITY</literal></link>
+    for details on how to set the replica identity.
+   </para>
+  </sect2>
+
+ </sect1>
+
+ <sect1 id="logical-replication-subscription">
+  <title>Subscription</title>
+
+  <para>
+   A <firstterm>subscription</firstterm> is the downstream side of logical
+   replication.  The node where a subscription is defined is referred to as
+   the <firstterm>subscriber</firstterm>.  A subscription defines the connection
+   to another database and set of publications (one or more) to which it wants
+   to subscribe.
+  </para>
+
+  <para>
+   The subscriber database behaves in the same way as any other PostgreSQL
+   instance and can be used as a publisher for other databases by defining its
+   own publications.
+  </para>
+
+  <para>
+   A subscriber node may have multiple subscriptions if desired.  It is
+   possible to define multiple subscriptions between a single
+   publisher-subscriber pair, in which case care must be taken to ensure
+   that the subscribed publication objects don't overlap.
+  </para>
+
+  <para>
+   By default a new subscription creates a logical replication slot on
+   the publisher and then uses this slot to track relevant transaction
+   activity and preserve necessary WAL (see <xref
+   linkend="streaming-replication-slots"/>).  Additional replication
+   slots may be required for the initial data synchronization of
+   pre-existing table data and those will be dropped at the end of data
+   synchronization.
+  </para>
+
+  <para>
+   A logical replication subscription can be a standby for synchronous
+   replication (see <xref linkend="synchronous-replication"/>).  The standby
+   name is by default the subscription name.  An alternative name can be
+   specified as <literal>application_name</literal> in the connection
+   information of the subscription.
+  </para>
+
+  <para>
+   Subscriptions are dumped by <command>pg_dump</command> if the current user
+   is a superuser.  Otherwise a warning is written and subscriptions are
+   skipped, because non-superusers cannot read all subscription information
+   from the <structname>pg_subscription</structname> catalog.
+  </para>
+
+  <para>
+   The subscription is added using <link linkend="sql-createsubscription"><command>CREATE SUBSCRIPTION</command></link> and
+   can be stopped/resumed at any time using the
+   <link linkend="sql-altersubscription"><command>ALTER SUBSCRIPTION</command></link> command and removed using
+   <link linkend="sql-dropsubscription"><command>DROP SUBSCRIPTION</command></link>.
+  </para>
+
+  <para>
+   When a subscription is dropped and recreated, the synchronization
+   information is lost.  This means that the data has to be resynchronized
+   afterwards.
+  </para>
+
+  <para>
+   The schema definitions are not replicated, and the published tables must
+   exist on the subscriber.  Only regular tables may be
+   the target of replication.  For example, you can't replicate to a view.
+  </para>
+
+  <para>
+   The tables are matched between the publisher and the subscriber using the
+   fully qualified table name.  Replication to differently-named tables on the
+   subscriber is not supported.
+  </para>
+
+  <para>
+   Columns of a table are also matched by name.  The order of columns in the
+   subscriber table does not need to match that of the publisher.  The data
+   types of the columns do not need to match, as long as the text
+   representation of the data can be converted to the target type.  For
+   example, you can replicate from a column of type <type>integer</type> to a
+   column of type <type>bigint</type>.  The target table can also have
+   additional columns not provided by the published table.  Any such columns
+   will be filled with the default value as specified in the definition of the
+   target table. However, logical replication in binary format is more
+   restrictive. See the
+   <link linkend="sql-createsubscription-params-with-binary"><literal>binary</literal></link>
+   option of <command>CREATE SUBSCRIPTION</command> for details.
+  </para>
+
+  <sect2 id="logical-replication-subscription-slot">
+   <title>Logical Replication Slot Management</title>
+
+   <para>
+    As mentioned earlier, each (active) subscription uses a logical
+    replication slot on the remote (publishing) side.
+   </para>
+   <para>
+    Additional table synchronization slots are normally transient, created
+    internally to perform initial table synchronization and dropped
+    automatically when they are no longer needed. These table synchronization
+    slots have generated names: <quote><literal>pg_%u_sync_%u_%llu</literal></quote>
+    (parameters: Subscription <parameter>oid</parameter>,
+    Table <parameter>relid</parameter>, system identifier <parameter>sysid</parameter>)
+   </para>
+   <para>
+    Normally, the remote logical replication slot is created automatically when the
+    subscription is created using <link linkend="sql-createsubscription">
+    <command>CREATE SUBSCRIPTION</command></link> and it
+    is dropped automatically when the subscription is dropped using
+    <link linkend="sql-dropsubscription"><command>DROP SUBSCRIPTION</command></link>.
+    In some situations, however, it can
+    be useful or necessary to manipulate the subscription and the underlying
+    replication slot separately.  Here are some scenarios:
+
+    <itemizedlist>
+     <listitem>
+      <para>
+       When creating a subscription, the replication slot already exists.  In
+       that case, the subscription can be created using
+       the <literal>create_slot = false</literal> option to associate with the
+       existing slot.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       When creating a subscription, the remote host is not reachable or in an
+       unclear state.  In that case, the subscription can be created using
+       the <literal>connect = false</literal> option.  The remote host will then not
+       be contacted at all.  This is what <application>pg_dump</application>
+       uses.  The remote replication slot will then have to be created
+       manually before the subscription can be activated.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       When dropping a subscription, the replication slot should be kept.
+       This could be useful when the subscriber database is being moved to a
+       different host and will be activated from there.  In that case,
+       disassociate the slot from the subscription using
+       <link linkend="sql-altersubscription"><command>ALTER SUBSCRIPTION</command></link>
+       before attempting to drop the subscription.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       When dropping a subscription, the remote host is not reachable.  In
+       that case, disassociate the slot from the subscription
+       using <command>ALTER SUBSCRIPTION</command> before attempting to drop
+       the subscription.  If the remote database instance no longer exists, no
+       further action is then necessary.  If, however, the remote database
+       instance is just unreachable, the replication slot (and any still
+       remaining table synchronization slots) should then be
+       dropped manually; otherwise it/they would continue to reserve WAL and might
+       eventually cause the disk to fill up.  Such cases should be carefully
+       investigated.
+      </para>
+     </listitem>
+    </itemizedlist>
+   </para>
+  </sect2>
+
+  <sect2 id="logical-replication-subscription-examples">
+    <title>Examples: Set Up Logical Replication</title>
+
+    <para>
+     Create some test tables on the publisher.
+<programlisting>
+/* pub # */ CREATE TABLE t1(a int, b text, PRIMARY KEY(a));
+/* pub # */ CREATE TABLE t2(c int, d text, PRIMARY KEY(c));
+/* pub # */ CREATE TABLE t3(e int, f text, PRIMARY KEY(e));
+</programlisting></para>
+
+    <para>
+     Create the same tables on the subscriber.
+<programlisting>
+/* sub # */ CREATE TABLE t1(a int, b text, PRIMARY KEY(a));
+/* sub # */ CREATE TABLE t2(c int, d text, PRIMARY KEY(c));
+/* sub # */ CREATE TABLE t3(e int, f text, PRIMARY KEY(e));
+</programlisting></para>
+
+    <para>
+     Insert data to the tables at the publisher side.
+<programlisting>
+/* pub # */ INSERT INTO t1 VALUES (1, 'one'), (2, 'two'), (3, 'three');
+/* pub # */ INSERT INTO t2 VALUES (1, 'A'), (2, 'B'), (3, 'C');
+/* pub # */ INSERT INTO t3 VALUES (1, 'i'), (2, 'ii'), (3, 'iii');
+</programlisting></para>
+
+    <para>
+     Create publications for the tables. The publications <literal>pub2</literal>
+     and <literal>pub3a</literal> disallow some
+     <link linkend="sql-createpublication-params-with-publish"><literal>publish</literal></link>
+     operations. The publication <literal>pub3b</literal> has a row filter (see
+     <xref linkend="logical-replication-row-filter"/>).
+<programlisting><![CDATA[
+/* pub # */ CREATE PUBLICATION pub1 FOR TABLE t1;
+/* pub # */ CREATE PUBLICATION pub2 FOR TABLE t2 WITH (publish = 'truncate');
+/* pub # */ CREATE PUBLICATION pub3a FOR TABLE t3 WITH (publish = 'truncate');
+/* pub # */ CREATE PUBLICATION pub3b FOR TABLE t3 WHERE (e > 5);
+]]></programlisting></para>
+
+    <para>
+     Create subscriptions for the publications. The subscription
+     <literal>sub3</literal> subscribes to both <literal>pub3a</literal> and
+     <literal>pub3b</literal>. All subscriptions will copy initial data by default.
+<programlisting>
+/* sub # */ CREATE SUBSCRIPTION sub1
+/* sub - */ CONNECTION 'host=localhost dbname=test_pub application_name=sub1'
+/* sub - */ PUBLICATION pub1;
+/* sub # */ CREATE SUBSCRIPTION sub2
+/* sub - */ CONNECTION 'host=localhost dbname=test_pub application_name=sub2'
+/* sub - */ PUBLICATION pub2;
+/* sub # */ CREATE SUBSCRIPTION sub3
+/* sub - */ CONNECTION 'host=localhost dbname=test_pub application_name=sub3'
+/* sub - */ PUBLICATION pub3a, pub3b;
+</programlisting></para>
+
+    <para>
+     Observe that initial table data is copied, regardless of the
+     <literal>publish</literal> operation of the publication.
+<programlisting>
+/* sub # */ SELECT * FROM t1;
+ a |   b
+---+-------
+ 1 | one
+ 2 | two
+ 3 | three
+(3 rows)
+
+/* sub # */ SELECT * FROM t2;
+ c | d
+---+---
+ 1 | A
+ 2 | B
+ 3 | C
+(3 rows)
+</programlisting></para>
+
+    <para>
+     Furthermore, because the initial data copy ignores the <literal>publish</literal>
+     operation, and because publication <literal>pub3a</literal> has no row filter,
+     it means the copied table <structname>t3</structname> contains all rows even when
+     they do not match the row filter of publication <literal>pub3b</literal>.
+<programlisting>
+/* sub # */ SELECT * FROM t3;
+ e |  f
+---+-----
+ 1 | i
+ 2 | ii
+ 3 | iii
+(3 rows)
+</programlisting></para>
+
+   <para>
+    Insert more data to the tables at the publisher side.
+<programlisting>
+/* pub # */ INSERT INTO t1 VALUES (4, 'four'), (5, 'five'), (6, 'six');
+/* pub # */ INSERT INTO t2 VALUES (4, 'D'), (5, 'E'), (6, 'F');
+/* pub # */ INSERT INTO t3 VALUES (4, 'iv'), (5, 'v'), (6, 'vi');
+</programlisting></para>
+
+   <para>
+    Now the publisher side data looks like:
+<programlisting>
+/* pub # */ SELECT * FROM t1;
+ a |   b
+---+-------
+ 1 | one
+ 2 | two
+ 3 | three
+ 4 | four
+ 5 | five
+ 6 | six
+(6 rows)
+
+/* pub # */ SELECT * FROM t2;
+ c | d
+---+---
+ 1 | A
+ 2 | B
+ 3 | C
+ 4 | D
+ 5 | E
+ 6 | F
+(6 rows)
+
+/* pub # */ SELECT * FROM t3;
+ e |  f
+---+-----
+ 1 | i
+ 2 | ii
+ 3 | iii
+ 4 | iv
+ 5 | v
+ 6 | vi
+(6 rows)
+</programlisting></para>
+
+   <para>
+    Observe that during normal replication the appropriate
+    <literal>publish</literal> operations are used. This means publications
+    <literal>pub2</literal> and <literal>pub3a</literal> will not replicate the
+    <literal>INSERT</literal>. Also, publication <literal>pub3b</literal> will
+    only replicate data that matches the row filter of <literal>pub3b</literal>.
+    Now the subscriber side data looks like:
+<programlisting>
+/* sub # */ SELECT * FROM t1;
+ a |   b
+---+-------
+ 1 | one
+ 2 | two
+ 3 | three
+ 4 | four
+ 5 | five
+ 6 | six
+(6 rows)
+
+/* sub # */ SELECT * FROM t2;
+ c | d
+---+---
+ 1 | A
+ 2 | B
+ 3 | C
+(3 rows)
+
+/* sub # */ SELECT * FROM t3;
+ e |  f
+---+-----
+ 1 | i
+ 2 | ii
+ 3 | iii
+ 6 | vi
+(4 rows)
+</programlisting></para>
+  </sect2>
+
+  <sect2 id="logical-replication-subscription-examples-deferred-slot">
+   <title>Examples: Deferred Logical Replication Slot Creation</title>
+
+   <para>
+    There are some cases (e.g.
+    <xref linkend="logical-replication-subscription-slot"/>) where, if the
+    remote logical replication slot was not created automatically, the user must create
+    it manually before the subscription can be activated. The steps to create
+    the slot and activate the subscription are shown in the following examples.
+    These examples specify the standard logical decoding output plugin
+    (<xref linkend="logicaldecoding-pgoutput"/>),
+    which is what the built-in logical replication uses.
+   </para>
+   <para>
+    First, create a publication for the examples to use.
+<programlisting>
+/* pub # */ CREATE PUBLICATION pub1 FOR ALL TABLES;
+</programlisting></para>
+   <para>
+    Example 1: Where the subscription says <literal>connect = false</literal>
+   </para>
+   <para>
+    <itemizedlist>
+     <listitem>
+      <para>
+       Create the subscription.
+<programlisting>
+/* sub # */ CREATE SUBSCRIPTION sub1
+/* sub - */ CONNECTION 'host=localhost dbname=test_pub'
+/* sub - */ PUBLICATION pub1
+/* sub - */ WITH (connect=false);
+WARNING:  subscription was created, but is not connected
+HINT:  To initiate replication, you must manually create the replication slot, enable the subscription, and refresh the subscription.
+</programlisting></para>
+     </listitem>
+     <listitem>
+      <para>
+       On the publisher, manually create a slot. Because the name was not
+       specified during <literal>CREATE SUBSCRIPTION</literal>, the name of the
+       slot to create is same as the subscription name, e.g. "sub1".
+<programlisting>
+/* pub # */ SELECT * FROM pg_create_logical_replication_slot('sub1', 'pgoutput');
+ slot_name |    lsn
+-----------+------------
+ sub1      | 0/019404D0
+(1 row)
+</programlisting></para>
+     </listitem>
+     <listitem>
+      <para>
+       On the subscriber, complete the activation of the subscription. After
+       this the tables of <literal>pub1</literal> will start replicating.
+<programlisting>
+/* sub # */ ALTER SUBSCRIPTION sub1 ENABLE;
+/* sub # */ ALTER SUBSCRIPTION sub1 REFRESH PUBLICATION;
+</programlisting></para>
+     </listitem>
+    </itemizedlist>
+   </para>
+
+   <para>
+    Example 2: Where the subscription says <literal>connect = false</literal>,
+    but also specifies the
+    <link linkend="sql-createsubscription-params-with-slot-name"><literal>slot_name</literal></link>
+    option.
+    <itemizedlist>
+     <listitem>
+      <para>
+       Create the subscription.
+<programlisting>
+/* sub # */ CREATE SUBSCRIPTION sub1
+/* sub - */ CONNECTION 'host=localhost dbname=test_pub'
+/* sub - */ PUBLICATION pub1
+/* sub - */ WITH (connect=false, slot_name='myslot');
+WARNING:  subscription was created, but is not connected
+HINT:  To initiate replication, you must manually create the replication slot, enable the subscription, and refresh the subscription.
+</programlisting></para>
+     </listitem>
+     <listitem>
+      <para>
+       On the publisher, manually create a slot using the same name that was
+       specified during <literal>CREATE SUBSCRIPTION</literal>, e.g. "myslot".
+<programlisting>
+/* pub # */ SELECT * FROM pg_create_logical_replication_slot('myslot', 'pgoutput');
+ slot_name |    lsn
+-----------+------------
+ myslot    | 0/019059A0
+(1 row)
+</programlisting></para>
+     </listitem>
+     <listitem>
+      <para>
+       On the subscriber, the remaining subscription activation steps are the
+       same as before.
+<programlisting>
+/* sub # */ ALTER SUBSCRIPTION sub1 ENABLE;
+/* sub # */ ALTER SUBSCRIPTION sub1 REFRESH PUBLICATION;
+</programlisting></para>
+     </listitem>
+    </itemizedlist>
+   </para>
+
+   <para>
+    Example 3: Where the subscription specifies <literal>slot_name = NONE</literal>
+    <itemizedlist>
+     <listitem>
+      <para>
+       Create the subscription. When <literal>slot_name = NONE</literal> then
+       <literal>enabled = false</literal>, and
+       <literal>create_slot = false</literal> are also needed.
+<programlisting>
+/* sub # */ CREATE SUBSCRIPTION sub1
+/* sub - */ CONNECTION 'host=localhost dbname=test_pub'
+/* sub - */ PUBLICATION pub1
+/* sub - */ WITH (slot_name=NONE, enabled=false, create_slot=false);
+</programlisting></para>
+     </listitem>
+     <listitem>
+      <para>
+       On the publisher, manually create a slot using any name, e.g. "myslot".
+<programlisting>
+/* pub # */ SELECT * FROM pg_create_logical_replication_slot('myslot', 'pgoutput');
+ slot_name |    lsn
+-----------+------------
+ myslot    | 0/01905930
+(1 row)
+</programlisting></para>
+     </listitem>
+     <listitem>
+      <para>
+       On the subscriber, associate the subscription with the slot name just
+       created.
+<programlisting>
+/* sub # */ ALTER SUBSCRIPTION sub1 SET (slot_name='myslot');
+</programlisting></para>
+     </listitem>
+     <listitem>
+      <para>
+       The remaining subscription activation steps are same as before.
+<programlisting>
+/* sub # */ ALTER SUBSCRIPTION sub1 ENABLE;
+/* sub # */ ALTER SUBSCRIPTION sub1 REFRESH PUBLICATION;
+</programlisting></para>
+     </listitem>
+    </itemizedlist>
+   </para>
+  </sect2>
+
+ </sect1>
+
+ <sect1 id="logical-replication-failover">
+  <title>Logical Replication Failover</title>
+
+  <para>
+   To allow subscriber nodes to continue replicating data from the publisher
+   node even when the publisher node goes down, there must be a physical standby
+   corresponding to the publisher node. The logical slots on the primary server
+   corresponding to the subscriptions can be synchronized to the standby server by
+   specifying <literal>failover = true</literal> when creating subscriptions. See
+   <xref linkend="logicaldecoding-replication-slots-synchronization"/> for details.
+   Enabling the
+   <link linkend="sql-createsubscription-params-with-failover"><literal>failover</literal></link>
+   parameter ensures a seamless transition of those subscriptions after the
+   standby is promoted. They can continue subscribing to publications on the
+   new primary server.
+  </para>
+
+  <para>
+   Because the slot synchronization logic copies asynchronously, it is
+   necessary to confirm that replication slots have been synced to the standby
+   server before the failover happens. To ensure a successful failover, the
+   standby server must be ahead of the subscriber. This can be achieved by
+   configuring
+   <link linkend="guc-synchronized-standby-slots"><varname>synchronized_standby_slots</varname></link>.
+  </para>
+
+  <para>
+   To confirm that the standby server is indeed ready for failover for a given subscriber, follow these
+   steps to verify that all the logical replication slots required by that subscriber have been
+   synchronized to the standby server:
+  </para>
+
+  <procedure>
+   <step performance="required">
+    <para>
+     On the subscriber node, use the following SQL to identify which replication
+     slots should be synced to the standby that we plan to promote. This query
+     will return the relevant replication slots associated with the
+     failover-enabled subscriptions.
+<programlisting>
+/* sub # */ SELECT
+               array_agg(quote_literal(s.subslotname)) AS slots
+           FROM  pg_subscription s
+           WHERE s.subfailover AND
+                 s.subslotname IS NOT NULL;
+ slots
+-------
+ {'sub1','sub2','sub3'}
+(1 row)
+</programlisting></para>
+   </step>
+   <step performance="required">
+    <para>
+     On the subscriber node, use the following SQL to identify which table
+     synchronization slots should be synced to the standby that we plan to promote.
+     This query needs to be run on each database that includes the failover-enabled
+     subscription(s). Note that the table sync slot should be synced to the standby
+     server only if the table copy is finished
+     (See <xref linkend="catalog-pg-subscription-rel"/>).
+     We don't need to ensure that the table sync slots are synced in other scenarios
+     as they will either be dropped or re-created on the new primary server in those
+     cases.
+<programlisting>
+/* sub # */ SELECT
+               array_agg(quote_literal(slot_name)) AS slots
+           FROM
+           (
+               SELECT CONCAT('pg_', srsubid, '_sync_', srrelid, '_', ctl.system_identifier) AS slot_name
+               FROM pg_control_system() ctl, pg_subscription_rel r, pg_subscription s
+               WHERE r.srsubstate = 'f' AND s.oid = r.srsubid AND s.subfailover
+           );
+ slots
+-------
+ {'pg_16394_sync_16385_7394666715149055164'}
+(1 row)
+</programlisting></para>
+   </step>
+   <step performance="required">
+    <para>
+     Check that the logical replication slots identified above exist on
+     the standby server and are ready for failover.
+<programlisting>
+/* standby # */ SELECT slot_name, (synced AND NOT temporary AND invalidation_reason IS NULL) AS failover_ready
+               FROM pg_replication_slots
+               WHERE slot_name IN
+                   ('sub1','sub2','sub3', 'pg_16394_sync_16385_7394666715149055164');
+  slot_name                                 | failover_ready
+--------------------------------------------+----------------
+  sub1                                      | t
+  sub2                                      | t
+  sub3                                      | t
+  pg_16394_sync_16385_7394666715149055164   | t
+(4 rows)
+</programlisting></para>
+    </step>
+  </procedure>
+
+  <para>
+   If all the slots are present on the standby server and the result
+   (<literal>failover_ready</literal>) of the above SQL query is true, then
+   existing subscriptions can continue subscribing to publications on the new
+   primary server.
+  </para>
+
+  <para>
+   The first two steps in the above procedure are meant for a
+   <productname>PostgreSQL</productname> subscriber. It is recommended to run
+   these steps on each subscriber node, that will be served by the designated
+   standby after failover, to obtain the complete list of replication
+   slots. This list can then be verified in Step 3 to ensure failover readiness.
+   Non-<productname>PostgreSQL</productname> subscribers, on the other hand, may
+   use their own methods to identify the replication slots used by their
+   respective subscriptions.
+  </para>
+
+  <para>
+   In some cases, such as during a planned failover, it is necessary to confirm
+   that all subscribers, whether <productname>PostgreSQL</productname> or
+   non-<productname>PostgreSQL</productname>, will be able to continue
+   replication after failover to a given standby server. In such cases, use the
+   following SQL, instead of performing the first two steps above, to identify
+   which replication slots on the primary need to be synced to the standby that
+   is intended for promotion. This query returns the relevant replication slots
+   associated with all the failover-enabled subscriptions.
+  </para>
+
+   <para>
+<programlisting>
+/* primary # */ SELECT array_agg(quote_literal(r.slot_name)) AS slots
+               FROM pg_replication_slots r
+               WHERE r.failover AND NOT r.temporary;
+ slots
+-------
+ {'sub1','sub2','sub3', 'pg_16394_sync_16385_7394666715149055164'}
+(1 row)
+</programlisting></para>
+ </sect1>
+
+ <sect1 id="logical-replication-row-filter">
+  <title>Row Filters</title>
+
+  <para>
+   By default, all data from all published tables will be replicated to the
+   appropriate subscribers. The replicated data can be reduced by using a
+   <firstterm>row filter</firstterm>. A user might choose to use row filters
+   for behavioral, security or performance reasons. If a published table sets a
+   row filter, a row is replicated only if its data satisfies the row filter
+   expression. This allows a set of tables to be partially replicated. The row
+   filter is defined per table. Use a <literal>WHERE</literal> clause after the
+   table name for each published table that requires data to be filtered out.
+   The <literal>WHERE</literal> clause must be enclosed by parentheses. See
+   <xref linkend="sql-createpublication"/> for details.
+  </para>
+
+  <sect2 id="logical-replication-row-filter-rules">
+   <title>Row Filter Rules</title>
+
+   <para>
+    Row filters are applied <emphasis>before</emphasis> publishing the changes.
+    If the row filter evaluates to <literal>false</literal> or <literal>NULL</literal>
+    then the row is not replicated. The <literal>WHERE</literal> clause expression
+    is evaluated with the same role used for the replication connection (i.e.
+    the role specified in the
+    <link linkend="sql-createsubscription-params-connection"><literal>CONNECTION</literal></link>
+    clause of the <xref linkend="sql-createsubscription"/>). Row filters have
+    no effect for <command>TRUNCATE</command> command.
+   </para>
+
+  </sect2>
+
+  <sect2 id="logical-replication-row-filter-restrictions">
+   <title>Expression Restrictions</title>
+
+   <para>
+    The <literal>WHERE</literal> clause allows only simple expressions. It
+    cannot contain user-defined functions, operators, types, and collations,
+    system column references or non-immutable built-in functions.
+   </para>
+
+   <para>
+    If a publication publishes <command>UPDATE</command> or
+    <command>DELETE</command> operations, the row filter <literal>WHERE</literal>
+    clause must contain only columns that are covered by the replica identity
+    (see <xref linkend="sql-altertable-replica-identity"/>). If a publication
+    publishes only <command>INSERT</command> operations, the row filter
+    <literal>WHERE</literal> clause can use any column.
+   </para>
+
+  </sect2>
+
+  <sect2 id="logical-replication-row-filter-transformations">
+   <title>UPDATE Transformations</title>
+
+   <para>
+    Whenever an <command>UPDATE</command> is processed, the row filter
+    expression is evaluated for both the old and new row (i.e. using the data
+    before and after the update). If both evaluations are <literal>true</literal>,
+    it replicates the <command>UPDATE</command> change. If both evaluations are
+    <literal>false</literal>, it doesn't replicate the change. If only one of
+    the old/new rows matches the row filter expression, the <command>UPDATE</command>
+    is transformed to <command>INSERT</command> or <command>DELETE</command>, to
+    avoid any data inconsistency. The row on the subscriber should reflect what
+    is defined by the row filter expression on the publisher.
+   </para>
+
+   <para>
+    If the old row satisfies the row filter expression (it was sent to the
+    subscriber) but the new row doesn't, then, from a data consistency
+    perspective the old row should be removed from the subscriber.
+    So the <command>UPDATE</command> is transformed into a <command>DELETE</command>.
+   </para>
+
+   <para>
+    If the old row doesn't satisfy the row filter expression (it wasn't sent
+    to the subscriber) but the new row does, then, from a data consistency
+    perspective the new row should be added to the subscriber.
+    So the <command>UPDATE</command> is transformed into an <command>INSERT</command>.
+   </para>
+
+   <para>
+    <xref linkend="logical-replication-row-filter-transformations-summary"/>
+    summarizes the applied transformations.
+   </para>
+
+   <table id="logical-replication-row-filter-transformations-summary">
+    <title><command>UPDATE</command> Transformation Summary</title>
+    <tgroup cols="3">
+    <thead>
+     <row>
+      <entry>Old row</entry><entry>New row</entry><entry>Transformation</entry>
+     </row>
+    </thead>
+    <tbody>
+     <row>
+      <entry>no match</entry><entry>no match</entry><entry>don't replicate</entry>
+     </row>
+     <row>
+      <entry>no match</entry><entry>match</entry><entry><literal>INSERT</literal></entry>
+     </row>
+     <row>
+      <entry>match</entry><entry>no match</entry><entry><literal>DELETE</literal></entry>
+     </row>
+     <row>
+      <entry>match</entry><entry>match</entry><entry><literal>UPDATE</literal></entry>
+     </row>
+    </tbody>
+   </tgroup>
+   </table>
+
+  </sect2>
+
+  <sect2 id="logical-replication-row-filter-partitioned-table">
+   <title>Partitioned Tables</title>
+
+   <para>
+    If the publication contains a partitioned table, the publication parameter
+    <link linkend="sql-createpublication-params-with-publish-via-partition-root"><literal>publish_via_partition_root</literal></link>
+    determines which row filter is used. If <literal>publish_via_partition_root</literal>
+    is <literal>true</literal>, the <emphasis>root partitioned table's</emphasis>
+    row filter is used. Otherwise, if <literal>publish_via_partition_root</literal>
+    is <literal>false</literal> (default), each <emphasis>partition's</emphasis>
+    row filter is used.
+   </para>
+
+  </sect2>
+
+  <sect2 id="logical-replication-row-filter-initial-data-sync">
+   <title>Initial Data Synchronization</title>
+
+   <para>
+    If the subscription requires copying pre-existing table data
+    and a publication contains <literal>WHERE</literal> clauses, only data that
+    satisfies the row filter expressions is copied to the subscriber.
+   </para>
+
+   <para>
+    If the subscription has several publications in which a table has been
+    published with different <literal>WHERE</literal> clauses, rows that satisfy
+    <emphasis>any</emphasis> of the expressions will be copied. See
+    <xref linkend="logical-replication-row-filter-combining"/> for details.
+   </para>
+
+   <warning>
+    <para>
+     Because initial data synchronization does not take into account the
+     <link linkend="sql-createpublication-params-with-publish"><literal>publish</literal></link>
+     parameter when copying existing table data, some rows may be copied that
+     would not be replicated using DML. Refer to
+     <xref linkend="logical-replication-snapshot"/>, and see
+     <xref linkend="logical-replication-subscription-examples"/> for examples.
+    </para>
+   </warning>
+
+   <note>
+    <para>
+     If the subscriber is in a release prior to 15, copy pre-existing data
+     doesn't use row filters even if they are defined in the publication.
+     This is because old releases can only copy the entire table data.
+    </para>
+   </note>
+
+  </sect2>
+
+  <sect2 id="logical-replication-row-filter-combining">
+   <title>Combining Multiple Row Filters</title>
+
+   <para>
+    If the subscription has several publications in which the same table has
+    been published with different row filters (for the same
+    <link linkend="sql-createpublication-params-with-publish"><literal>publish</literal></link>
+    operation), those expressions get ORed together, so that rows satisfying
+    <emphasis>any</emphasis> of the expressions will be replicated. This means all
+    the other row filters for the same table become redundant if:
+    <itemizedlist>
+     <listitem>
+      <para>
+       One of the publications has no row filter.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       One of the publications was created using
+       <link linkend="sql-createpublication-params-for-all-tables"><literal>FOR ALL TABLES</literal></link>.
+       This clause does not allow row filters.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       One of the publications was created using
+       <link linkend="sql-createpublication-params-for-tables-in-schema"><literal>FOR TABLES IN SCHEMA</literal></link>
+       and the table belongs to the referred schema. This clause does not allow
+       row filters.
+      </para>
+     </listitem>
+    </itemizedlist></para>
+
+  </sect2>
+
+  <sect2 id="logical-replication-row-filter-examples">
+   <title>Examples</title>
+
+   <para>
+    Create some tables to be used in the following examples.
+<programlisting>
+/* pub # */ CREATE TABLE t1(a int, b int, c text, PRIMARY KEY(a,c));
+/* pub # */ CREATE TABLE t2(d int, e int, f int, PRIMARY KEY(d));
+/* pub # */ CREATE TABLE t3(g int, h int, i int, PRIMARY KEY(g));
+</programlisting></para>
+
+   <para>
+    Create some publications. Publication <literal>p1</literal> has one table
+    (<literal>t1</literal>) and that table has a row filter. Publication
+    <literal>p2</literal> has two tables. Table <structname>t1</structname> has no row
+    filter, and table <structname>t2</structname> has a row filter. Publication
+    <literal>p3</literal> has two tables, and both of them have a row filter.
+<programlisting><![CDATA[
+/* pub # */ CREATE PUBLICATION p1 FOR TABLE t1 WHERE (a > 5 AND c = 'NSW');
+/* pub # */ CREATE PUBLICATION p2 FOR TABLE t1, t2 WHERE (e = 99);
+/* pub # */ CREATE PUBLICATION p3 FOR TABLE t2 WHERE (d = 10), t3 WHERE (g = 10);
+]]></programlisting></para>
+
+   <para>
+    <command>psql</command> can be used to show the row filter expressions (if
+    defined) for each publication.
+<programlisting><![CDATA[
+/* pub # */ \dRp+
+                                         Publication p1
+  Owner   | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root
+----------+------------+---------------+---------+---------+---------+-----------+-------------------+----------
+ postgres | f          | f             | t       | t       | t       | t         | none              | f
+Tables:
+    "public.t1" WHERE ((a > 5) AND (c = 'NSW'::text))
+
+                                                Publication p2
+  Owner   | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root
+----------+------------+---------------+---------+---------+---------+-----------+-------------------+----------
+ postgres | f          | f             | t       | t       | t       | t         | none              | f
+Tables:
+    "public.t1"
+    "public.t2" WHERE (e = 99)
+
+                                                Publication p3
+  Owner   | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root
+----------+------------+---------------+---------+---------+---------+-----------+-------------------+----------
+ postgres | f          | f             | t       | t       | t       | t         | none              | f
+Tables:
+    "public.t2" WHERE (d = 10)
+    "public.t3" WHERE (g = 10)
+]]></programlisting></para>
+
+   <para>
+    <command>psql</command> can be used to show the row filter expressions (if
+    defined) for each table. See that table <structname>t1</structname> is a member
+    of two publications, but has a row filter only in <literal>p1</literal>.
+    See that table <structname>t2</structname> is a member of two publications, and
+    has a different row filter in each of them.
+<programlisting><![CDATA[
+/* pub # */ \d t1
+                 Table "public.t1"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ a      | integer |           | not null |
+ b      | integer |           |          |
+ c      | text    |           | not null |
+Indexes:
+    "t1_pkey" PRIMARY KEY, btree (a, c)
+Publications:
+    "p1" WHERE ((a > 5) AND (c = 'NSW'::text))
+    "p2"
+
+/* pub # */ \d t2
+                 Table "public.t2"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ d      | integer |           | not null |
+ e      | integer |           |          |
+ f      | integer |           |          |
+Indexes:
+    "t2_pkey" PRIMARY KEY, btree (d)
+Publications:
+    "p2" WHERE (e = 99)
+    "p3" WHERE (d = 10)
+
+/* pub # */ \d t3
+                 Table "public.t3"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ g      | integer |           | not null |
+ h      | integer |           |          |
+ i      | integer |           |          |
+Indexes:
+    "t3_pkey" PRIMARY KEY, btree (g)
+Publications:
+    "p3" WHERE (g = 10)
+]]></programlisting></para>
+
+   <para>
+    On the subscriber node, create a table <structname>t1</structname> with the same
+    definition as the one on the publisher, and also create the subscription
+    <literal>s1</literal> that subscribes to the publication <literal>p1</literal>.
+<programlisting>
+/* sub # */ CREATE TABLE t1(a int, b int, c text, PRIMARY KEY(a,c));
+/* sub # */ CREATE SUBSCRIPTION s1
+/* sub - */ CONNECTION 'host=localhost dbname=test_pub application_name=s1'
+/* sub - */ PUBLICATION p1;
+</programlisting></para>
+
+   <para>
+    Insert some rows. Only the rows satisfying the <literal>t1 WHERE</literal>
+    clause of publication <literal>p1</literal> are replicated.
+<programlisting>
+/* pub # */ INSERT INTO t1 VALUES (2, 102, 'NSW');
+/* pub # */ INSERT INTO t1 VALUES (3, 103, 'QLD');
+/* pub # */ INSERT INTO t1 VALUES (4, 104, 'VIC');
+/* pub # */ INSERT INTO t1 VALUES (5, 105, 'ACT');
+/* pub # */ INSERT INTO t1 VALUES (6, 106, 'NSW');
+/* pub # */ INSERT INTO t1 VALUES (7, 107, 'NT');
+/* pub # */ INSERT INTO t1 VALUES (8, 108, 'QLD');
+/* pub # */ INSERT INTO t1 VALUES (9, 109, 'NSW');
+
+/* pub # */ SELECT * FROM t1;
+ a |  b  |  c
+---+-----+-----
+ 2 | 102 | NSW
+ 3 | 103 | QLD
+ 4 | 104 | VIC
+ 5 | 105 | ACT
+ 6 | 106 | NSW
+ 7 | 107 | NT
+ 8 | 108 | QLD
+ 9 | 109 | NSW
+(8 rows)
+</programlisting>
+<programlisting>
+/* sub # */ SELECT * FROM t1;
+ a |  b  |  c
+---+-----+-----
+ 6 | 106 | NSW
+ 9 | 109 | NSW
+(2 rows)
+</programlisting></para>
+
+   <para>
+    Update some data, where the old and new row values both
+    satisfy the <literal>t1 WHERE</literal> clause of publication
+    <literal>p1</literal>. The <command>UPDATE</command> replicates
+    the change as normal.
+<programlisting>
+/* pub # */ UPDATE t1 SET b = 999 WHERE a = 6;
+
+/* pub # */ SELECT * FROM t1;
+ a |  b  |  c
+---+-----+-----
+ 2 | 102 | NSW
+ 3 | 103 | QLD
+ 4 | 104 | VIC
+ 5 | 105 | ACT
+ 7 | 107 | NT
+ 8 | 108 | QLD
+ 9 | 109 | NSW
+ 6 | 999 | NSW
+(8 rows)
+</programlisting>
+<programlisting>
+/* sub # */ SELECT * FROM t1;
+ a |  b  |  c
+---+-----+-----
+ 9 | 109 | NSW
+ 6 | 999 | NSW
+(2 rows)
+</programlisting></para>
+
+   <para>
+    Update some data, where the old row values did not satisfy
+    the <literal>t1 WHERE</literal> clause of publication <literal>p1</literal>,
+    but the new row values do satisfy it. The <command>UPDATE</command> is
+    transformed into an <command>INSERT</command> and the change is replicated.
+    See the new row on the subscriber.
+<programlisting>
+/* pub # */ UPDATE t1 SET a = 555 WHERE a = 2;
+
+/* pub # */ SELECT * FROM t1;
+  a  |  b  |  c
+-----+-----+-----
+   3 | 103 | QLD
+   4 | 104 | VIC
+   5 | 105 | ACT
+   7 | 107 | NT
+   8 | 108 | QLD
+   9 | 109 | NSW
+   6 | 999 | NSW
+ 555 | 102 | NSW
+(8 rows)
+</programlisting>
+<programlisting>
+/* sub # */ SELECT * FROM t1;
+  a  |  b  |  c
+-----+-----+-----
+   9 | 109 | NSW
+   6 | 999 | NSW
+ 555 | 102 | NSW
+(3 rows)
+</programlisting></para>
+
+   <para>
+    Update some data, where the old row values satisfied
+    the <literal>t1 WHERE</literal> clause of publication <literal>p1</literal>,
+    but the new row values do not satisfy it. The <command>UPDATE</command> is
+    transformed into a <command>DELETE</command> and the change is replicated.
+    See that the row is removed from the subscriber.
+<programlisting>
+/* pub # */ UPDATE t1 SET c = 'VIC' WHERE a = 9;
+
+/* pub # */ SELECT * FROM t1;
+  a  |  b  |  c
+-----+-----+-----
+   3 | 103 | QLD
+   4 | 104 | VIC
+   5 | 105 | ACT
+   7 | 107 | NT
+   8 | 108 | QLD
+   6 | 999 | NSW
+ 555 | 102 | NSW
+   9 | 109 | VIC
+(8 rows)
+</programlisting>
+<programlisting>
+/* sub # */ SELECT * FROM t1;
+  a  |  b  |  c
+-----+-----+-----
+   6 | 999 | NSW
+ 555 | 102 | NSW
+(2 rows)
+</programlisting></para>
+
+   <para>
+    The following examples show how the publication parameter
+    <link linkend="sql-createpublication-params-with-publish-via-partition-root"><literal>publish_via_partition_root</literal></link>
+    determines whether the row filter of the parent or child table will be used
+    in the case of partitioned tables.
+   </para>
+
+   <para>
+    Create a partitioned table on the publisher.
+<programlisting>
+/* pub # */ CREATE TABLE parent(a int PRIMARY KEY) PARTITION BY RANGE(a);
+/* pub # */ CREATE TABLE child PARTITION OF parent DEFAULT;
+</programlisting>
+   Create the same tables on the subscriber.
+<programlisting>
+/* sub # */ CREATE TABLE parent(a int PRIMARY KEY) PARTITION BY RANGE(a);
+/* sub # */ CREATE TABLE child PARTITION OF parent DEFAULT;
+</programlisting></para>
+
+   <para>
+    Create a publication <literal>p4</literal>, and then subscribe to it. The
+    publication parameter <literal>publish_via_partition_root</literal> is set
+    as true. There are row filters defined on both the partitioned table
+    (<literal>parent</literal>), and on the partition (<literal>child</literal>).
+<programlisting><![CDATA[
+/* pub # */ CREATE PUBLICATION p4 FOR TABLE parent WHERE (a < 5), child WHERE (a >= 5)
+/* pub - */ WITH (publish_via_partition_root=true);
+]]></programlisting>
+<programlisting>
+/* sub # */ CREATE SUBSCRIPTION s4
+/* sub - */ CONNECTION 'host=localhost dbname=test_pub application_name=s4'
+/* sub - */ PUBLICATION p4;
+</programlisting></para>
+
+   <para>
+    Insert some values directly into the <literal>parent</literal> and
+    <literal>child</literal> tables. They replicate using the row filter of
+    <literal>parent</literal> (because <literal>publish_via_partition_root</literal>
+    is true).
+<programlisting>
+/* pub # */ INSERT INTO parent VALUES (2), (4), (6);
+/* pub # */ INSERT INTO child VALUES (3), (5), (7);
+
+/* pub # */ SELECT * FROM parent ORDER BY a;
+ a
+---
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+(6 rows)
+</programlisting>
+<programlisting>
+/* sub # */ SELECT * FROM parent ORDER BY a;
+ a
+---
+ 2
+ 3
+ 4
+(3 rows)
+</programlisting></para>
+
+   <para>
+    Repeat the same test, but with a different value for <literal>publish_via_partition_root</literal>.
+    The publication parameter <literal>publish_via_partition_root</literal> is
+    set as false. A row filter is defined on the partition (<literal>child</literal>).
+<programlisting><![CDATA[
+/* pub # */ DROP PUBLICATION p4;
+/* pub # */ CREATE PUBLICATION p4 FOR TABLE parent, child WHERE (a >= 5)
+/* pub - */ WITH (publish_via_partition_root=false);
+]]></programlisting>
+<programlisting>
+/* sub # */ ALTER SUBSCRIPTION s4 REFRESH PUBLICATION;
+</programlisting></para>
+
+   <para>
+    Do the inserts on the publisher same as before. They replicate using the
+    row filter of <literal>child</literal> (because
+    <literal>publish_via_partition_root</literal> is false).
+<programlisting>
+/* pub # */ TRUNCATE parent;
+/* pub # */ INSERT INTO parent VALUES (2), (4), (6);
+/* pub # */ INSERT INTO child VALUES (3), (5), (7);
+
+/* pub # */ SELECT * FROM parent ORDER BY a;
+ a
+---
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+(6 rows)
+</programlisting>
+<programlisting>
+/* sub # */ SELECT * FROM child ORDER BY a;
+ a
+---
+ 5
+ 6
+ 7
+(3 rows)
+</programlisting></para>
+
+  </sect2>
+
+ </sect1>
+
+ <sect1 id="logical-replication-col-lists">
+  <title>Column Lists</title>
+
+  <para>
+   Each publication can optionally specify which columns of each table are
+   replicated to subscribers. The table on the subscriber side must have at
+   least all the columns that are published. If no column list is specified,
+   then all columns on the publisher are replicated.
+   See <xref linkend="sql-createpublication"/> for details on the syntax.
+  </para>
+
+  <para>
+   The choice of columns can be based on behavioral or performance reasons.
+   However, do not rely on this feature for security: a malicious subscriber
+   is able to obtain data from columns that are not specifically
+   published.  If security is a consideration, protections can be applied
+   at the publisher side.
+  </para>
+
+  <para>
+   If no column list is specified, any columns added to the table later are
+   automatically replicated. This means that having a column list which names
+   all columns is not the same as having no column list at all.
+  </para>
+
+  <para>
+   A column list can contain only simple column references.  The order
+   of columns in the list is not preserved.
+  </para>
+
+  <para>
+   Generated columns can also be specified in a column list. This allows
+   generated columns to be published, regardless of the publication parameter
+   <link linkend="sql-createpublication-params-with-publish-generated-columns">
+   <literal>publish_generated_columns</literal></link>. See
+   <xref linkend="logical-replication-gencols"/> for details.
+  </para>
+
+  <para>
+   Specifying a column list when the publication also publishes
+   <link linkend="sql-createpublication-params-for-tables-in-schema"><literal>FOR TABLES IN SCHEMA</literal></link>
+   is not supported.
+  </para>
+
+  <para>
+   For partitioned tables, the publication parameter
+   <link linkend="sql-createpublication-params-with-publish-via-partition-root"><literal>publish_via_partition_root</literal></link>
+   determines which column list is used. If <literal>publish_via_partition_root</literal>
+   is <literal>true</literal>, the root partitioned table's column list is
+   used. Otherwise, if <literal>publish_via_partition_root</literal> is
+   <literal>false</literal> (the default), each partition's column list is used.
+  </para>
+
+  <para>
+   If a publication publishes <command>UPDATE</command> or
+   <command>DELETE</command> operations, any column list must include the
+   table's replica identity columns (see
+   <xref linkend="sql-altertable-replica-identity"/>).
+   If a publication publishes only <command>INSERT</command> operations, then
+   the column list may omit replica identity columns.
+  </para>
+
+  <para>
+   Column lists have no effect for the <literal>TRUNCATE</literal> command.
+  </para>
+
+  <para>
+   During initial data synchronization, only the published columns are
+   copied.  However, if the subscriber is from a release prior to 15, then
+   all the columns in the table are copied during initial data synchronization,
+   ignoring any column lists. If the subscriber is from a release prior to 18,
+   then initial table synchronization won't copy generated columns even if they
+   are defined in the publisher.
+  </para>
+
+   <warning id="logical-replication-col-list-combining">
+    <title>Warning: Combining Column Lists from Multiple Publications</title>
+    <para>
+     There's currently no support for subscriptions comprising several
+     publications where the same table has been published with different
+     column lists.  <xref linkend="sql-createsubscription"/> disallows
+     creating such subscriptions, but it is still possible to get into
+     that situation by adding or altering column lists on the publication
+     side after a subscription has been created.
+    </para>
+    <para>
+     This means changing the column lists of tables on publications that are
+     already subscribed could lead to errors being thrown on the subscriber
+     side.
+    </para>
+    <para>
+     If a subscription is affected by this problem, the only way to resume
+     replication is to adjust one of the column lists on the publication
+     side so that they all match; and then either recreate the subscription,
+     or use <link linkend="sql-altersubscription-params-setadddrop-publication">
+     <literal>ALTER SUBSCRIPTION ... DROP PUBLICATION</literal></link> to
+     remove one of the offending publications and add it again.
+    </para>
+   </warning>
+
+  <sect2 id="logical-replication-col-list-examples">
+   <title>Examples</title>
+
+   <para>
+    Create a table <structname>t1</structname> to be used in the following example.
+<programlisting>
+/* pub # */ CREATE TABLE t1(id int, a text, b text, c text, d text, e text, PRIMARY KEY(id));
+</programlisting></para>
+
+   <para>
+    Create a publication <literal>p1</literal>. A column list is defined for
+    table <structname>t1</structname> to reduce the number of columns that will be
+    replicated. Notice that the order of column names in the column list does
+    not matter.
+<programlisting>
+/* pub # */ CREATE PUBLICATION p1 FOR TABLE t1 (id, b, a, d);
+</programlisting></para>
+
+    <para>
+     <literal>psql</literal> can be used to show the column lists (if defined)
+     for each publication.
+<programlisting>
+/* pub # */ \dRp+
+                                                Publication p1
+  Owner   | All tables | All sequences | Inserts | Updates | Deletes | Truncates | Generated columns | Via root
+----------+------------+---------------+---------+---------+---------+-----------+-------------------+----------
+ postgres | f          | f             | t       | t       | t       | t         | none              | f
+Tables:
+    "public.t1" (id, a, b, d)
+</programlisting></para>
+
+    <para>
+     <literal>psql</literal> can be used to show the column lists (if defined)
+     for each table.
+<programlisting>
+/* pub # */ \d t1
+                 Table "public.t1"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ id     | integer |           | not null |
+ a      | text    |           |          |
+ b      | text    |           |          |
+ c      | text    |           |          |
+ d      | text    |           |          |
+ e      | text    |           |          |
+Indexes:
+    "t1_pkey" PRIMARY KEY, btree (id)
+Publications:
+    "p1" (id, a, b, d)
+</programlisting></para>
+
+    <para>
+     On the subscriber node, create a table <structname>t1</structname> which now
+     only needs a subset of the columns that were on the publisher table
+     <structname>t1</structname>, and also create the subscription
+     <literal>s1</literal> that subscribes to the publication
+     <literal>p1</literal>.
+<programlisting>
+/* sub # */ CREATE TABLE t1(id int, b text, a text, d text, PRIMARY KEY(id));
+/* sub # */ CREATE SUBSCRIPTION s1
+/* sub - */ CONNECTION 'host=localhost dbname=test_pub application_name=s1'
+/* sub - */ PUBLICATION p1;
+</programlisting></para>
+
+    <para>
+     On the publisher node, insert some rows to table <structname>t1</structname>.
+<programlisting>
+/* pub # */ INSERT INTO t1 VALUES(1, 'a-1', 'b-1', 'c-1', 'd-1', 'e-1');
+/* pub # */ INSERT INTO t1 VALUES(2, 'a-2', 'b-2', 'c-2', 'd-2', 'e-2');
+/* pub # */ INSERT INTO t1 VALUES(3, 'a-3', 'b-3', 'c-3', 'd-3', 'e-3');
+/* pub # */ SELECT * FROM t1 ORDER BY id;
+ id |  a  |  b  |  c  |  d  |  e
+----+-----+-----+-----+-----+-----
+  1 | a-1 | b-1 | c-1 | d-1 | e-1
+  2 | a-2 | b-2 | c-2 | d-2 | e-2
+  3 | a-3 | b-3 | c-3 | d-3 | e-3
+(3 rows)
+</programlisting></para>
+
+    <para>
+     Only data from the column list of publication <literal>p1</literal> is
+     replicated.
+<programlisting>
+/* sub # */ SELECT * FROM t1 ORDER BY id;
+ id |  b  |  a  |  d
+----+-----+-----+-----
+  1 | b-1 | a-1 | d-1
+  2 | b-2 | a-2 | d-2
+  3 | b-3 | a-3 | d-3
+(3 rows)
+</programlisting></para>
+
+  </sect2>
+
+ </sect1>
+
+ <sect1 id="logical-replication-gencols">
+  <title>Generated Column Replication</title>
+
+  <para>
+   Typically, a table at the subscriber will be defined the same as the
+   publisher table, so if the publisher table has a <link linkend="ddl-generated-columns">
+   <literal>GENERATED column</literal></link> then the subscriber table will
+   have a matching generated column. In this case, it is always the subscriber
+   table generated column value that is used.
+  </para>
+
+  <para>
+   For example, note below that subscriber table generated column value comes from the
+   subscriber column's calculation.
+<programlisting>
+/* pub # */ CREATE TABLE tab_gen_to_gen (a int, b int GENERATED ALWAYS AS (a + 1) STORED);
+/* pub # */ INSERT INTO tab_gen_to_gen VALUES (1),(2),(3);
+/* pub # */ CREATE PUBLICATION pub1 FOR TABLE tab_gen_to_gen;
+/* pub # */ SELECT * FROM tab_gen_to_gen;
+ a | b
+---+---
+ 1 | 2
+ 2 | 3
+ 3 | 4
+(3 rows)
+
+/* sub # */ CREATE TABLE tab_gen_to_gen (a int, b int GENERATED ALWAYS AS (a * 100) STORED);
+/* sub # */ CREATE SUBSCRIPTION sub1 CONNECTION 'dbname=test_pub' PUBLICATION pub1;
+/* sub # */ SELECT * FROM tab_gen_to_gen;
+ a | b
+---+----
+ 1 | 100
+ 2 | 200
+ 3 | 300
+(3 rows)
+</programlisting>
+  </para>
+
+  <para>
+   In fact, prior to version 18.0, logical replication does not publish
+   <literal>GENERATED</literal> columns at all.
+  </para>
+
+  <para>
+   But, replicating a generated column to a regular column can sometimes be
+   desirable.
+   <tip>
+    <para>
+     This feature may be useful when replicating data to a
+     non-PostgreSQL database via output plugin, especially if the target database
+     does not support generated columns.
+    </para>
+  </tip>
+  </para>
+
+  <para>
+   Generated columns are not published by default, but users can opt to
+   publish stored generated columns just like regular ones.
+  </para>
+
+  <para>
+   There are two ways to do this:
+   <itemizedlist>
+     <listitem>
+      <para>
+       Set the <command>PUBLICATION</command> parameter
+       <link linkend="sql-createpublication-params-with-publish-generated-columns">
+       <literal>publish_generated_columns</literal></link> to <literal>stored</literal>.
+       This instructs PostgreSQL logical replication to publish current and
+       future stored generated columns of the publication's tables.
+      </para>
+     </listitem>
+
+     <listitem>
+      <para>
+       Specify a table <link linkend="logical-replication-col-lists">column list</link>
+       to explicitly nominate which stored generated columns will be published.
+      </para>
+
+      <note>
+       <para>
+        When determining which table columns will be published, a column list
+        takes precedence, overriding the effect of the
+        <literal>publish_generated_columns</literal> parameter.
+       </para>
+      </note>
+     </listitem>
+   </itemizedlist>
+  </para>
+
+  <para>
+   The following table summarizes behavior when there are generated columns
+   involved in the logical replication. Results are shown for when
+   publishing generated columns is not enabled, and for when it is
+   enabled.
+  </para>
+
+  <table id="logical-replication-gencols-table-summary">
+   <title>Replication Result Summary</title>
+   <tgroup cols="4">
+
+    <thead>
+     <row>
+      <entry>Publish generated columns?</entry>
+      <entry>Publisher table column</entry>
+      <entry>Subscriber table column</entry>
+      <entry>Result</entry>
+     </row>
+    </thead>
+
+    <tbody>
+     <row>
+      <entry>No</entry>
+      <entry>GENERATED</entry>
+      <entry>GENERATED</entry>
+      <entry>Publisher table column is not replicated. Use the subscriber table generated column value.</entry>
+     </row>
+
+     <row>
+      <entry>No</entry>
+      <entry>GENERATED</entry>
+      <entry>regular</entry>
+      <entry>Publisher table column is not replicated. Use the subscriber table regular column default value.</entry>
+     </row>
+
+     <row>
+      <entry>No</entry>
+      <entry>GENERATED</entry>
+      <entry>--missing--</entry>
+      <entry>Publisher table column is not replicated. Nothing happens.</entry>
+     </row>
+
+     <row>
+      <entry>Yes</entry>
+      <entry>GENERATED</entry>
+      <entry>GENERATED</entry>
+      <entry>ERROR. Not supported.</entry>
+     </row>
+
+     <row>
+      <entry>Yes</entry>
+      <entry>GENERATED</entry>
+      <entry>regular</entry>
+      <entry>Publisher table column value is replicated to the subscriber table column.</entry>
+     </row>
+
+     <row>
+      <entry>Yes</entry>
+      <entry>GENERATED</entry>
+      <entry>--missing--</entry>
+      <entry>ERROR. The column is reported as missing from the subscriber table.</entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+
+  <warning>
+   <para>
+    There's currently no support for subscriptions comprising several
+    publications where the same table has been published with different column
+    lists. See <xref linkend="logical-replication-col-lists"/>.
+   </para>
+
+   <para>
+    This same situation can occur if one publication is publishing generated
+    columns, while another publication in the same subscription is not
+    publishing generated columns for the same table.
+   </para>
+  </warning>
+
+  <note>
+   <para>
+    If the subscriber is from a release prior to 18, then initial table
+    synchronization won't copy generated columns even if they are defined in
+    the publisher.
+   </para>
+  </note>
+ </sect1>
+
+ <sect1 id="logical-replication-sequences">
+  <title>Replicating Sequences</title>
+
+  <para>
+   To synchronize sequences from a publisher to a subscriber, first publish
+   them using <link linkend="sql-createpublication-params-for-all-sequences">
+   <command>CREATE PUBLICATION ... FOR ALL SEQUENCES</command></link> and then
+   on the subscriber:
+  </para>
+
+  <para>
+   <itemizedlist>
+    <listitem>
+     <para>
+      use <link linkend="sql-createsubscription"><command>CREATE SUBSCRIPTION</command></link>
+      to initially synchronize the published sequences.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      use <link linkend="sql-altersubscription-params-refresh-publication">
+      <command>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</command></link>
+      to synchronize only newly added sequences.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      use <link linkend="sql-altersubscription-params-refresh-sequences">
+      <command>ALTER SUBSCRIPTION ... REFRESH SEQUENCES</command></link>
+      to re-synchronize all sequences currently known to the subscription.
+     </para>
+    </listitem>
+   </itemizedlist>
+  </para>
+
+  <para>
+   A <firstterm>sequence synchronization worker</firstterm> will be started
+   after executing any of the above subscriber commands, and will exit once the
+   sequences are synchronized.
+  </para>
+  <para>
+   The ability to launch a sequence synchronization worker is limited by the
+   <link linkend="guc-max-sync-workers-per-subscription">
+   <varname>max_sync_workers_per_subscription</varname></link>
+   configuration.
+  </para>
+
+  <sect2 id="sequence-definition-mismatches">
+   <title>Sequence Definition Mismatches</title>
+   <para>
+    The sequence synchronization worker validates that sequence definitions
+    match between publisher and subscriber. If mismatches exist, the worker
+    logs an error identifying them and exits. The apply worker continues
+    respawning the sequence synchronization worker until synchronization
+    succeeds. See also
+    <link linkend="guc-wal-retrieve-retry-interval"><varname>wal_retrieve_retry_interval</varname></link>.
+   </para>
+   <para>
+    To resolve this, use
+    <link linkend="sql-altersequence"><command>ALTER SEQUENCE</command></link>
+    to align the subscriber's sequence parameters with those of the publisher.
+   </para>
+  </sect2>
+
+  <sect2 id="sequences-out-of-sync">
+   <title>Refreshing Out-of-Sync Sequences</title>
+   <para>
+    Subscriber sequence values will become out of sync as the publisher
+    advances them.
+   </para>
+   <para>
+    To detect this, compare the
+    <link linkend="catalog-pg-subscription-rel">pg_subscription_rel</link>.<structfield>srsublsn</structfield>
+    on the subscriber with the <structfield>page_lsn</structfield> obtained
+    from the <link linkend="func-pg-get-sequence-data"><function>pg_get_sequence_data</function></link>
+    function for the sequence on the publisher. Then run
+    <link linkend="sql-altersubscription-params-refresh-sequences">
+    <command>ALTER SUBSCRIPTION ... REFRESH SEQUENCES</command></link> to
+    re-synchronize if necessary.
+   </para>
+   <warning>
+    <para>
+     Each sequence caches a block of values (typically 32) in memory before
+     generating a new WAL record, so its LSN advances only after the entire
+     cached batch has been consumed. As a result, sequence value drift cannot
+     be detected by LSN comparison when sequence increments fall within the
+     same cached block (typically 32 values).
+    </para>
+   </warning>
+  </sect2>
+
+  <sect2 id="logical-replication-sequences-examples">
+   <title>Examples</title>
+
+   <para>
+    Create some sequences on the publisher.
+<programlisting>
+/* pub # */ CREATE SEQUENCE s1 START WITH 10 INCREMENT BY 1;
+/* pub # */ CREATE SEQUENCE s2 START WITH 100 INCREMENT BY 10;
+</programlisting></para>
+
+   <para>
+    Create the same sequences on the subscriber.
+<programlisting>
+/* sub # */ CREATE SEQUENCE s1 START WITH 10 INCREMENT BY 1;
+/* sub # */ CREATE SEQUENCE s2 START WITH 100 INCREMENT BY 10;
+</programlisting></para>
+
+   <para>
+    Advance the sequences on the publisher a few times.
+<programlisting>
+/* pub # */ SELECT nextval('s1');
+ nextval
+---------
+      10
+(1 row)
+/* pub # */ SELECT nextval('s1');
+ nextval
+---------
+      11
+(1 row)
+/* pub # */ SELECT nextval('s2');
+ nextval
+---------
+     100
+(1 row)
+/* pub # */ SELECT nextval('s2');
+ nextval
+---------
+     110
+(1 row)
+</programlisting></para>
+
+   <para>
+    Check the sequence page LSNs on the publisher.
+<programlisting>
+/* pub # */ SELECT * FROM pg_get_sequence_data('s1');
+ last_value | is_called |  page_lsn
+------------+-----------+------------
+         11 | t         | 0/0178F9E0
+(1 row)
+/* pub # */ SELECT * FROM pg_get_sequence_data('s2');
+ last_value | is_called |  page_lsn
+------------+-----------+------------
+        110 | t         | 0/0178FAB0
+(1 row)
+</programlisting></para>
+
+   <para>
+    Create a publication for the sequences.
+<programlisting>
+/* pub # */ CREATE PUBLICATION pub1 FOR ALL SEQUENCES;
+</programlisting></para>
+
+   <para>
+    Subscribe to the publication.
+<programlisting>
+/* sub # */ CREATE SUBSCRIPTION sub1
+/* sub - */ CONNECTION 'host=localhost dbname=test_pub application_name=sub1'
+/* sub - */ PUBLICATION pub1;
+</programlisting></para>
+
+   <para>
+    Verify that the initial sequence values are synchronized.
+<programlisting>
+/* sub # */ SELECT last_value, is_called FROM s1;
+ last_value | is_called
+------------+-----------
+         11 | t
+(1 row)
+
+/* sub # */ SELECT last_value, is_called FROM s2;
+ last_value | is_called
+------------+-----------
+        110 | t
+(1 row)
+</programlisting></para>
+
+   <para>
+    Confirm that the sequence page LSNs on the publisher have been recorded
+    on the subscriber.
+<programlisting>
+/* sub # */ SELECT srrelid::regclass, srsublsn FROM pg_subscription_rel;
+ srrelid |  srsublsn
+---------+------------
+ s1      | 0/0178F9E0
+ s2      | 0/0178FAB0
+(2 rows)
+</programlisting></para>
+
+   <para>
+    Advance the sequences on the publisher 50 more times.
+<programlisting>
+/* pub # */  SELECT nextval('s1') FROM generate_series(1,50);
+/* pub # */  SELECT nextval('s2') FROM generate_series(1,50);
+</programlisting></para>
+
+   <para>
+    Check the sequence page LSNs on the publisher.
+<programlisting>
+/* pub # */ SELECT * FROM pg_get_sequence_data('s1');
+ last_value | is_called |  page_lsn
+------------+-----------+------------
+         61 | t         | 0/017CED28
+(1 row)
+
+/* pub # */ SELECT * FROM pg_get_sequence_data('s2');
+ last_value | is_called |  page_lsn
+------------+-----------+------------
+        610 | t         | 0/017CEDF8
+(1 row)
+</programlisting></para>
+
+   <para>
+    The difference between the sequence page LSNs on the publisher and the
+    sequence page LSNs on the subscriber indicates that the sequences are out
+    of sync. Re-synchronize all sequences known to the subscriber using
+    <link linkend="sql-altersubscription-params-refresh-sequences">
+    <command>ALTER SUBSCRIPTION ... REFRESH SEQUENCES</command></link>.
+<programlisting>
+/* sub # */ ALTER SUBSCRIPTION sub1 REFRESH SEQUENCES;
+</programlisting></para>
+
+   <para>
+    Recheck the sequences on the subscriber.
+<programlisting>
+/* sub # */ SELECT last_value, is_called FROM s1;
+ last_value | is_called
+------------+-----------
+         61 | t
+(1 row)
+
+/* sub # */ SELECT last_value, is_called FROM s2;
+ last_value | is_called
+------------+-----------
+        610 | t
+(1 row)
+</programlisting></para>
+  </sect2>
+ </sect1>
+
+ <sect1 id="logical-replication-conflicts">
+  <title>Conflicts</title>
+
+  <para>
+   Logical replication behaves similarly to normal DML operations in that
+   the data will be updated even if it was changed locally on the subscriber
+   node.  If incoming data violates any constraints the replication will
+   stop.  This is referred to as a <firstterm>conflict</firstterm>.  When
+   replicating <command>UPDATE</command> or <command>DELETE</command>
+   operations, missing data is also considered as a
+   <firstterm>conflict</firstterm>, but does not result in an error and such
+   operations will simply be skipped.
+  </para>
+
+  <para>
+   Additional logging is triggered, and the conflict statistics are collected (displayed in the
+   <link linkend="monitoring-pg-stat-subscription-stats"><structname>pg_stat_subscription_stats</structname></link> view)
+   in the following <firstterm>conflict</firstterm> cases:
+   <variablelist>
+    <varlistentry id="conflict-insert-exists" xreflabel="insert_exists">
+     <term><literal>insert_exists</literal></term>
+     <listitem>
+      <para>
+       Inserting a row that violates a <literal>NOT DEFERRABLE</literal>
+       unique constraint. Note that to log the origin and commit
+       timestamp details of the conflicting key,
+       <link linkend="guc-track-commit-timestamp"><varname>track_commit_timestamp</varname></link>
+       should be enabled on the subscriber. In this case, an error will be
+       raised until the conflict is resolved manually.
+      </para>
+     </listitem>
+    </varlistentry>
+    <varlistentry id="conflict-update-origin-differs" xreflabel="update_origin_differs">
+     <term><literal>update_origin_differs</literal></term>
+     <listitem>
+      <para>
+       Updating a row that was previously modified by another origin.
+       Note that this conflict can only be detected when
+       <link linkend="guc-track-commit-timestamp"><varname>track_commit_timestamp</varname></link>
+       is enabled on the subscriber. Currently, the update is always applied
+       regardless of the origin of the local row.
+      </para>
+     </listitem>
+    </varlistentry>
+    <varlistentry id="conflict-update-exists" xreflabel="update_exists">
+     <term><literal>update_exists</literal></term>
+     <listitem>
+      <para>
+       The updated value of a row violates a <literal>NOT DEFERRABLE</literal>
+       unique constraint. Note that to log the origin and commit
+       timestamp details of the conflicting key,
+       <link linkend="guc-track-commit-timestamp"><varname>track_commit_timestamp</varname></link>
+       should be enabled on the subscriber. In this case, an error will be
+       raised until the conflict is resolved manually. Note that when updating a
+       partitioned table, if the updated row value satisfies another partition
+       constraint resulting in the row being inserted into a new partition, the
+       <literal>insert_exists</literal> conflict may arise if the new row
+       violates a <literal>NOT DEFERRABLE</literal> unique constraint.
+      </para>
+     </listitem>
+    </varlistentry>
+    <varlistentry id="conflict-update-deleted" xreflabel="update_deleted">
+     <term><literal>update_deleted</literal></term>
+     <listitem>
+      <para>
+       The tuple to be updated was concurrently deleted by another origin. The
+       update will simply be skipped in this scenario. Note that this conflict
+       can only be detected when
+       <link linkend="guc-track-commit-timestamp"><varname>track_commit_timestamp</varname></link>
+       and <link linkend="sql-createsubscription-params-with-retain-dead-tuples"><literal>retain_dead_tuples</literal></link>
+       are enabled. Note that if a tuple cannot be found due to the table being
+       truncated, only a <literal>update_missing</literal> conflict will
+       arise. Additionally, if the tuple was deleted by the same origin, an
+       <literal>update_missing</literal> conflict will arise.
+      </para>
+     </listitem>
+    </varlistentry>
+    <varlistentry id="conflict-update-missing" xreflabel="update_missing">
+     <term><literal>update_missing</literal></term>
+     <listitem>
+      <para>
+       The row to be updated was not found. The update will simply be
+       skipped in this scenario.
+      </para>
+     </listitem>
+    </varlistentry>
+    <varlistentry id="conflict-delete-origin-differs" xreflabel="delete_origin_differs">
+     <term><literal>delete_origin_differs</literal></term>
+     <listitem>
+      <para>
+       Deleting a row that was previously modified by another origin. Note that
+       this conflict can only be detected when
+       <link linkend="guc-track-commit-timestamp"><varname>track_commit_timestamp</varname></link>
+       is enabled on the subscriber. Currently, the delete is always applied
+       regardless of the origin of the local row.
+      </para>
+     </listitem>
+    </varlistentry>
+    <varlistentry id="conflict-delete-missing" xreflabel="delete_missing">
+     <term><literal>delete_missing</literal></term>
+     <listitem>
+      <para>
+       The row to be deleted was not found. The delete will simply be
+       skipped in this scenario.
+      </para>
+     </listitem>
+    </varlistentry>
+    <varlistentry id="conflict-multiple-unique-conflicts" xreflabel="multiple_unique_conflicts">
+     <term><literal>multiple_unique_conflicts</literal></term>
+     <listitem>
+      <para>
+       Inserting or updating a row violates multiple
+       <literal>NOT DEFERRABLE</literal> unique constraints. Note that to log
+       the origin and commit timestamp details of conflicting keys, ensure
+       that <link linkend="guc-track-commit-timestamp"><varname>track_commit_timestamp</varname></link>
+       is enabled on the subscriber. In this case, an error will be raised until
+       the conflict is resolved manually.
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+    Note that there are other conflict scenarios, such as exclusion constraint
+    violations. Currently, we do not provide additional details for them in the
+    log.
+  </para>
+
+  <para>
+   The log format for logical replication conflicts is as follows:
+<synopsis>
+LOG:  conflict detected on relation "<replaceable>schemaname</replaceable>.<replaceable>tablename</replaceable>": conflict=<replaceable>conflict_type</replaceable>
+DETAIL:  <replaceable class="parameter">detailed_explanation</replaceable>[: <replaceable class="parameter">detail_values</replaceable> [, ... ]].
+
+<phrase>where <replaceable class="parameter">detail_values</replaceable> is one of:</phrase>
+
+    <literal>key</literal> (<replaceable>column_name</replaceable> <optional>, ...</optional>)=(<replaceable>column_value</replaceable> <optional>, ...</optional>)
+    <literal>local row</literal> <optional>(<replaceable>column_name</replaceable> <optional>, ...</optional>)=</optional>(<replaceable>column_value</replaceable> <optional>, ...</optional>)
+    <literal>remote row</literal> <optional>(<replaceable>column_name</replaceable> <optional>, ...</optional>)=</optional>(<replaceable>column_value</replaceable> <optional>, ...</optional>)
+    <literal>replica identity</literal> {(<replaceable>column_name</replaceable> <optional>, ...</optional>)=(<replaceable>column_value</replaceable> <optional>, ...</optional>) | full <optional>(<replaceable>column_name</replaceable> <optional>, ...</optional>)=</optional>(<replaceable>column_value</replaceable> <optional>, ...</optional>)}
+</synopsis>
+
+   The log provides the following information:
+   <variablelist>
+    <varlistentry>
+     <term><literal>LOG</literal></term>
+      <listitem>
+       <itemizedlist>
+        <listitem>
+         <para>
+         <replaceable>schemaname</replaceable>.<replaceable>tablename</replaceable>
+         identifies the local relation involved in the conflict.
+         </para>
+        </listitem>
+        <listitem>
+         <para>
+         <replaceable>conflict_type</replaceable> is the type of conflict that occurred
+         (e.g., <literal>insert_exists</literal>, <literal>update_exists</literal>).
+         </para>
+        </listitem>
+       </itemizedlist>
+      </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>DETAIL</literal></term>
+      <listitem>
+      <itemizedlist>
+       <listitem>
+        <para>
+         <replaceable class="parameter">detailed_explanation</replaceable> includes
+         the origin, transaction ID, and commit timestamp of the transaction that
+         modified the local row, if available.
+        </para>
+       </listitem>
+       <listitem>
+        <para>
+         The <literal>key</literal> section includes the key values of the local
+         row that violated a unique constraint for
+         <literal>insert_exists</literal>, <literal>update_exists</literal> or
+         <literal>multiple_unique_conflicts</literal> conflicts.
+        </para>
+       </listitem>
+       <listitem>
+        <para>
+         The <literal>local row</literal> section includes the local row if its
+         origin differs from the remote row for
+         <literal>update_origin_differs</literal> or <literal>delete_origin_differs</literal>
+         conflicts, or if the key value conflicts with the remote row for
+         <literal>insert_exists</literal>, <literal>update_exists</literal> or
+         <literal>multiple_unique_conflicts</literal> conflicts.
+        </para>
+       </listitem>
+       <listitem>
+        <para>
+         The <literal>remote row</literal> section includes the new row from
+         the remote insert or update operation that caused the conflict. Note that
+         for an update operation, the column value of the new row will be null
+         if the value is unchanged and toasted.
+        </para>
+       </listitem>
+       <listitem>
+        <para>
+         The <literal>replica identity</literal> section includes the replica
+         identity key values that were used to search for the existing local
+         row to be updated or deleted. This may include the full row value
+         if the local relation is marked with
+         <link linkend="sql-altertable-replica-identity-full"><literal>REPLICA IDENTITY FULL</literal></link>.
+        </para>
+       </listitem>
+       <listitem>
+        <para>
+         <replaceable class="parameter">column_name</replaceable> is the column name.
+         For <literal>local row</literal>, <literal>remote row</literal>, and
+         <literal>replica identity full</literal> cases, column names are
+         logged only if the user lacks the privilege to access all columns of
+         the table. If column names are present, they appear in the same order
+         as the corresponding column values.
+        </para>
+       </listitem>
+       <listitem>
+        <para>
+         <replaceable class="parameter">column_value</replaceable> is the column value.
+         The large column values are truncated to 64 bytes.
+        </para>
+       </listitem>
+       <listitem>
+        <para>
+         Note that in case of <literal>multiple_unique_conflicts</literal> conflict,
+         multiple <replaceable class="parameter">detailed_explanation</replaceable>
+         and <replaceable class="parameter">detail_values</replaceable> lines
+         will be generated, each detailing the conflict information associated
+         with distinct unique
+         constraints.
+        </para>
+       </listitem>
+      </itemizedlist>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+  </para>
+
+  <para>
+   Logical replication operations are performed with the privileges of the role
+   which owns the subscription.  Permissions failures on target tables will
+   cause replication conflicts, as will enabled
+   <link linkend="ddl-rowsecurity">row-level security</link> on target tables
+   that the subscription owner is subject to, without regard to whether any
+   policy would ordinarily reject the <command>INSERT</command>,
+   <command>UPDATE</command>, <command>DELETE</command> or
+   <command>TRUNCATE</command> which is being replicated.  This restriction on
+   row-level security may be lifted in a future version of
+   <productname>PostgreSQL</productname>.
+  </para>
+
+  <para>
+   A conflict that produces an error will stop the replication; it must be
+   resolved manually by the user.  Details about the conflict can be found in
+   the subscriber's server log.
+  </para>
+
+  <para>
+   The resolution can be done either by changing data or permissions on the subscriber so
+   that it does not conflict with the incoming change or by skipping the
+   transaction that conflicts with the existing data.  When a conflict produces
+   an error, the replication won't proceed, and the logical replication worker will
+   emit the following kind of message to the subscriber's server log:
+<screen>
+ERROR:  conflict detected on relation "public.test": conflict=insert_exists
+DETAIL:  Could not apply remote change: remote row (1, 'remote').
+Key already exists in unique index "test_pkey", modified locally in transaction 800 at 2026-01-16 18:15:25.652759+09: key (c)=(1), local row (1, 'local').
+CONTEXT:  processing remote data for replication origin "pg_16395" during "INSERT" for replication target relation "public.test" in transaction 725 finished at 0/014C0378
+</screen>
+   The LSN of the transaction that contains the change violating the constraint and
+   the replication origin name can be found from the server log (LSN 0/014C0378 and
+   replication origin <literal>pg_16395</literal> in the above case).  The
+   transaction that produced the conflict can be skipped by using
+   <link linkend="sql-altersubscription-params-skip"><command>ALTER SUBSCRIPTION ... SKIP</command></link>
+   with the finish LSN
+   (i.e., LSN 0/014C0378).  The finish LSN could be an LSN at which the transaction
+   is committed or prepared on the publisher.  Alternatively, the transaction can
+   also be skipped by calling the <link linkend="pg-replication-origin-advance">
+   <function>pg_replication_origin_advance()</function></link> function.
+   Before using this function, the subscription needs to be disabled temporarily
+   either by <link linkend="sql-altersubscription-params-disable">
+   <command>ALTER SUBSCRIPTION ... DISABLE</command></link> or, the
+   subscription can be used with the
+   <link linkend="sql-createsubscription-params-with-disable-on-error"><literal>disable_on_error</literal></link>
+   option. Then, you can use <function>pg_replication_origin_advance()</function>
+   function with the <parameter>node_name</parameter> (i.e., <literal>pg_16395</literal>)
+   and the next LSN of the finish LSN (i.e., 0/014C0379).  The current position of
+   origins can be seen in the <link linkend="view-pg-replication-origin-status">
+   <structname>pg_replication_origin_status</structname></link> system view.
+   Please note that skipping the whole transaction includes skipping changes that
+   might not violate any constraint.  This can easily make the subscriber
+   inconsistent.
+   The additional details regarding conflicting rows, such as their origin and
+   commit timestamp can be seen in the <literal>DETAIL</literal> line of the
+   log. But note that this information is only available when
+   <link linkend="guc-track-commit-timestamp"><varname>track_commit_timestamp</varname></link>
+   is enabled on the subscriber. Users can use this information to decide
+   whether to retain the local change or adopt the remote alteration. For
+   instance, the <literal>DETAIL</literal> line in the above log indicates that
+   the existing row was modified locally. Users can manually perform a
+   remote-change-win.
+  </para>
+
+  <para>
+   When the
+   <link linkend="sql-createsubscription-params-with-streaming"><literal>streaming</literal></link>
+   mode is <literal>parallel</literal>, the finish LSN of failed transactions
+   may not be logged. In that case, it may be necessary to change the streaming
+   mode to <literal>on</literal> or <literal>off</literal> and cause the same
+   conflicts again so the finish LSN of the failed transaction will be written
+   to the server log. For the usage of finish LSN, please refer to <link
+   linkend="sql-altersubscription"><command>ALTER SUBSCRIPTION ...
+   SKIP</command></link>.
+  </para>
+ </sect1>
+
+ <sect1 id="logical-replication-restrictions">
+  <title>Restrictions</title>
+
+  <para>
+   Logical replication currently has the following restrictions or missing
+   functionality.  These might be addressed in future releases.
+  </para>
+
+  <itemizedlist>
+   <listitem>
+    <para>
+     The database schema and DDL commands are not replicated.  The initial
+     schema can be copied by hand using <literal>pg_dump
+     --schema-only</literal>.  Subsequent schema changes would need to be kept
+     in sync manually.  (Note, however, that there is no need for the schemas
+     to be absolutely the same on both sides.)  Logical replication is robust
+     when schema definitions change in a live database: When the schema is
+     changed on the publisher and replicated data starts arriving at the
+     subscriber but does not fit into the table schema, replication will error
+     until the schema is updated.  In many cases, intermittent errors can be
+     avoided by applying additive schema changes to the subscriber first.
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     Incremental sequence changes are not replicated.  Although the data in
+     serial or identity columns backed by sequences will be replicated as part
+     of the table, the sequences themselves do not replicate ongoing changes.
+     On the subscriber, a sequence will retain the last value it synchronized
+     from the publisher. If the subscriber is used as a read-only database,
+     then this should typically not be a problem.  If, however, some kind of
+     switchover or failover to the subscriber database is intended, then the
+     sequences would need to be updated to the latest values, either by
+     executing <link linkend="sql-altersubscription-params-refresh-sequences">
+     <command>ALTER SUBSCRIPTION ... REFRESH SEQUENCES</command></link>
+     or by copying the current data from the publisher (perhaps using
+     <command>pg_dump</command>) or by determining a sufficiently high value
+     from the tables themselves.
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     Replication of <command>TRUNCATE</command> commands is supported, but
+     some care must be taken when truncating groups of tables connected by
+     foreign keys.  When replicating a truncate action, the subscriber will
+     truncate the same group of tables that was truncated on the publisher,
+     either explicitly specified or implicitly collected via
+     <literal>CASCADE</literal>, minus tables that are not part of the
+     subscription.  This will work correctly if all affected tables are part
+     of the same subscription.  But if some tables to be truncated on the
+     subscriber have foreign-key links to tables that are not part of the same
+     (or any) subscription, then the application of the truncate action on the
+     subscriber will fail.
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     Large objects (see <xref linkend="largeobjects"/>) are not replicated.
+     There is no workaround for that, other than storing data in normal
+     tables.
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     Replication is only supported by tables, including partitioned tables.
+     Attempts to replicate other types of relations, such as views, materialized
+     views, or foreign tables, will result in an error.
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     When replicating between partitioned tables, the actual replication
+     originates, by default, from the leaf partitions on the publisher, so
+     partitions on the publisher must also exist on the subscriber as valid
+     target tables. (They could either be leaf partitions themselves, or they
+     could be further subpartitioned, or they could even be independent
+     tables.)  Publications can also specify that changes are to be replicated
+     using the identity and schema of the partitioned root table instead of
+     that of the individual leaf partitions in which the changes actually
+     originate (see
+     <link linkend="sql-createpublication-params-with-publish-via-partition-root"><literal>publish_via_partition_root</literal></link>
+     parameter of <command>CREATE PUBLICATION</command>).
+    </para>
+   </listitem>
+
+   <listitem>
+    <para>
+     When using
+     <link linkend="sql-altertable-replica-identity-full"><literal>REPLICA IDENTITY FULL</literal></link>
+     on published tables, it is important to note that the <literal>UPDATE</literal>
+     and <literal>DELETE</literal> operations cannot be applied to subscribers
+     if the tables include attributes with datatypes (such as point or box)
+     that do not have a default operator class for B-tree or Hash. However,
+     this limitation can be overcome by ensuring that the table has a primary
+     key or replica identity defined for it.
+    </para>
+   </listitem>
+  </itemizedlist>
+ </sect1>
+
+ <sect1 id="logical-replication-architecture">
+  <title>Architecture</title>
+
+  <para>
+   Logical replication is built with an architecture similar to physical
+   streaming replication (see <xref linkend="streaming-replication"/>).  It is
+   implemented by <literal>walsender</literal> and <literal>apply</literal>
+   processes.  The walsender process starts logical decoding (described
+   in <xref linkend="logicaldecoding"/>) of the WAL and loads the standard
+   logical decoding output plugin (<xref linkend="logicaldecoding-pgoutput"/>).
+   The plugin transforms the changes read
+   from WAL to the logical replication protocol
+   (see <xref linkend="protocol-logical-replication"/>) and filters the data
+   according to the publication specification.  The data is then continuously
+   transferred using the streaming replication protocol to the apply worker,
+   which maps the data to local tables and applies the individual changes as
+   they are received, in correct transactional order.
+  </para>
+
+  <para>
+   The apply process on the subscriber database always runs with
+   <link linkend="guc-session-replication-role"><varname>session_replication_role</varname></link>
+   set to <literal>replica</literal>. This means that, by default,
+   triggers and rules will not fire on a subscriber. Users can optionally choose to
+   enable triggers and rules on a table using the
+   <link linkend="sql-altertable"><command>ALTER TABLE</command></link> command
+   and the <literal>ENABLE TRIGGER</literal> and <literal>ENABLE RULE</literal>
+   clauses.
+  </para>
+
+  <para>
+   The logical replication apply process currently only fires row triggers,
+   not statement triggers.  The initial table synchronization, however, is
+   implemented like a <command>COPY</command> command and thus fires both row
+   and statement triggers for <command>INSERT</command>.
+  </para>
+
+  <sect2 id="logical-replication-snapshot">
+    <title>Initial Snapshot</title>
+    <para>
+     The initial data in existing subscribed tables are snapshotted and
+     copied in parallel instances of a special kind of apply process.
+     These special apply processes are dedicated table synchronization
+     workers, spawned for each table to be synchronized.  Each table
+     synchronization process will create its own replication slot and
+     copy the existing data.  As soon as the copy is finished the table
+     contents will become visible to other backends.  Once existing data
+     is copied, the worker enters synchronization mode, which ensures
+     that the table is brought up to a synchronized state with the main
+     apply process by streaming any changes that happened during the
+     initial data copy using standard logical replication.  During this
+     synchronization phase, the changes are applied and committed in the same
+     order as they happened on the publisher.  Once synchronization is done,
+     control of the replication of the table is given back to the main apply
+     process where replication continues as normal.
+    </para>
+    <note>
+     <para>
+      The publication
+      <link linkend="sql-createpublication-params-with-publish"><literal>publish</literal></link>
+      parameter only affects what DML operations will be replicated. The
+      initial data synchronization does not take this parameter into account
+      when copying the existing table data.
+     </para>
+    </note>
+    <note>
+     <para>
+      If a table synchronization worker fails during copy, the apply worker
+      detects the failure and respawns the table synchronization worker to
+      continue the synchronization process. This behaviour ensures that
+      transient errors do not permanently disrupt the replication setup. See
+      also <link linkend="guc-wal-retrieve-retry-interval"><varname>wal_retrieve_retry_interval</varname></link>.
+     </para>
+    </note>
+  </sect2>
+ </sect1>
+
+ <sect1 id="logical-replication-monitoring">
+  <title>Monitoring</title>
+
+  <para>
+   Because streaming logical replication is based on a similar architecture as
+   <link linkend="streaming-replication">streaming physical replication</link>,
+   the monitoring on a publication node is similar to monitoring of a
+   physical replication primary
+   (see <xref linkend="streaming-replication-monitoring"/>).
+  </para>
+
+  <para>
+   The monitoring information about subscription is visible in
+   <link linkend="monitoring-pg-stat-subscription">
+   <structname>pg_stat_subscription</structname></link>.
+   This view contains one row for every subscription worker.  A subscription
+   can have zero or more active subscription workers depending on its state.
+  </para>
+
+  <para>
+   Normally, there is a single apply process running for an enabled
+   subscription.  A disabled subscription or a crashed subscription will have
+   zero rows in this view.  If the initial data synchronization of any
+   table is in progress, there will be additional workers for the tables
+   being synchronized. Moreover, if the
+   <link linkend="sql-createsubscription-params-with-streaming"><literal>streaming</literal></link>
+   transaction is applied in parallel, there may be additional parallel apply
+   workers.
+  </para>
+ </sect1>
+
+ <sect1 id="logical-replication-security">
+  <title>Security</title>
+
+  <para>
+   The role used for the replication connection must have
+   the <literal>REPLICATION</literal> attribute (or be a superuser).  If the
+   role lacks <literal>SUPERUSER</literal> and <literal>BYPASSRLS</literal>,
+   publisher row security policies can execute.  If the role does not trust
+   all table owners, include <literal>options=-crow_security=off</literal> in
+   the connection string; if a table owner then adds a row security policy,
+   that setting will cause replication to halt rather than execute the policy.
+   Access for the role must be configured in <filename>pg_hba.conf</filename>
+   and it must have the <literal>LOGIN</literal> attribute.
+  </para>
+
+  <para>
+   In order to be able to copy the initial table or sequence data, the role
+   used for the replication connection must have the <literal>SELECT</literal>
+   privilege on a published table or sequence (or be a superuser).
+  </para>
+
+  <para>
+   To create a publication, the user must have the <literal>CREATE</literal>
+   privilege in the database.
+  </para>
+
+  <para>
+   To create a publication using <literal>FOR TABLE</literal>, the user must
+   have ownership rights on all the listed tables. To create a publication
+   using any of <literal>FOR ALL TABLES</literal>,
+   <literal>FOR ALL SEQUENCES</literal>,
+   or <literal>FOR TABLES IN SCHEMA</literal>, the user must be a superuser. To
+   alter a publication using <literal>ADD TABLE</literal>, the user must have
+   ownership rights on all the listed tables. To alter a publication using
+   <literal>ADD TABLES IN SCHEMA</literal>, the user must be a superuser.
+  </para>
+
+  <para>
+   There are currently no privileges on publications.  Any subscription (that
+   is able to connect) can access any publication.  Thus, if you intend to
+   hide some information from particular subscribers, such as by using row
+   filters or column lists, or by not adding the whole table to the
+   publication, be aware that other publications in the same database could
+   expose the same information.  Publication privileges might be added to
+   <productname>PostgreSQL</productname> in the future to allow for
+   finer-grained access control.
+  </para>
+
+  <para>
+   To create a subscription, the user must have the privileges of
+   the <literal>pg_create_subscription</literal> role, as well as
+   <literal>CREATE</literal> privileges on the database.  If
+   <literal>SERVER</literal> is specified, the user also must have
+   <literal>USAGE</literal> privileges on the server.
+  </para>
+
+  <para>
+   The subscription apply process will, at a session level, run with the
+   privileges of the subscription owner. However, when performing an insert,
+   update, delete, or truncate operation on a particular table, it will switch
+   roles to the table owner and perform the operation with the table owner's
+   privileges. Similarly, when synchronizing sequence data, it will switch to
+   the sequence owner's role and perform the operation using the sequence
+   owner's privileges. This means that the subscription owner needs to be able
+   to <literal>SET ROLE</literal> to each role that owns a replicated table or
+   sequence.
+  </para>
+
+  <para>
+   If the subscription has been configured with
+   <literal>run_as_owner = true</literal>, then no user switching will
+   occur. Instead, all operations will be performed with the permissions
+   of the subscription owner. In this case, the subscription owner only
+   needs privileges to <literal>SELECT</literal>, <literal>INSERT</literal>,
+   <literal>UPDATE</literal>, and <literal>DELETE</literal> from the
+   target table, and does not need privileges to <literal>SET ROLE</literal>
+   to the table owner. However, this also means that any user who owns
+   a table into which replication is happening can execute arbitrary code with
+   the privileges of the subscription owner. For example, they could do this
+   by simply attaching a trigger to one of the tables which they own.
+   Because it is usually undesirable to allow one role to freely assume
+   the privileges of another, this option should be avoided unless user
+   security within the database is of no concern.
+  </para>
+
+  <para>
+   On the publisher, privileges are only checked once at the start of a
+   replication connection and are not re-checked as each change record is read.
+  </para>
+
+  <para>
+   On the subscriber, the subscription owner's privileges are re-checked for
+   each transaction when applied. If a worker is in the process of applying a
+   transaction when the ownership of the subscription is changed by a
+   concurrent transaction, the application of the current transaction will
+   continue under the old owner's privileges.
+  </para>
+ </sect1>
+
+ <sect1 id="logical-replication-config">
+  <title>Configuration Settings</title>
+
+  <para>
+   Logical replication requires several configuration options to be set. These
+   options are relevant only on one side of the replication.
+  </para>
+
+  <sect2 id="logical-replication-config-publisher">
+   <title>Publishers</title>
+
+   <para>
+    <link linkend="guc-wal-level"><varname>wal_level</varname></link> must be
+    set to <literal>replica</literal> or <literal>logical</literal>.
+   </para>
+
+   <para>
+    <link linkend="guc-max-replication-slots"><varname>max_replication_slots</varname></link>
+    must be set to at least the number of subscriptions expected to connect,
+    plus some reserve for table synchronization.
+   </para>
+
+   <para>
+    Logical replication slots are also affected by
+    <link linkend="guc-idle-replication-slot-timeout"><varname>idle_replication_slot_timeout</varname></link>.
+   </para>
+
+   <para>
+    <link linkend="guc-max-wal-senders"><varname>max_wal_senders</varname></link>
+    should be set to at least the same as
+    <varname>max_replication_slots</varname>, plus the number of physical
+    replicas that are connected at the same time.
+   </para>
+
+   <para>
+    Logical replication walsender is also affected by
+    <link linkend="guc-wal-sender-timeout"><varname>wal_sender_timeout</varname></link>.
+   </para>
+
+  </sect2>
+
+  <sect2 id="logical-replication-config-subscriber">
+   <title>Subscribers</title>
+
+   <para>
+    <link linkend="guc-max-active-replication-origins"><varname>max_active_replication_origins</varname></link>
+    must be set to at least the number of subscriptions that will be added to
+    the subscriber, plus some reserve for table synchronization.
+   </para>
+
+   <para>
+    <link linkend="guc-max-replication-slots"><varname>max_replication_slots</varname></link>
+    must be set to at least 1 when <link linkend="sql-createsubscription-params-with-retain-dead-tuples"><literal>retain_dead_tuples</literal></link>
+    is enabled for any subscription.
+   </para>
+
+   <para>
+    <link linkend="guc-max-logical-replication-workers"><varname>max_logical_replication_workers</varname></link>
+    must be set to at least the number of subscriptions (for leader apply
+    workers), plus some reserve for the parallel apply workers, and
+    table/sequence synchronization workers.
+   </para>
+
+   <para>
+    <link linkend="guc-max-worker-processes"><varname>max_worker_processes</varname></link>
+    may need to be adjusted to accommodate for replication workers, at least
+    (<link linkend="guc-max-logical-replication-workers"><varname>max_logical_replication_workers</varname></link>
+    + <literal>1</literal>). Note, some extensions and parallel queries also
+    take worker slots from <varname>max_worker_processes</varname>.
+   </para>
+
+   <para>
+    <link linkend="guc-max-sync-workers-per-subscription"><varname>max_sync_workers_per_subscription</varname></link>
+     controls how many tables can be synchronized in parallel during
+     subscription initialization or when new tables are added. One additional
+     worker is also needed for sequence synchronization.
+   </para>
+
+   <para>
+    <link linkend="guc-max-parallel-apply-workers-per-subscription"><varname>max_parallel_apply_workers_per_subscription</varname></link>
+     controls the amount of parallelism for streaming of in-progress
+     transactions with subscription parameter
+     <literal>streaming = parallel</literal>.
+   </para>
+
+   <para>
+    Logical replication workers are also affected by
+    <link linkend="guc-wal-receiver-timeout"><varname>wal_receiver_timeout</varname></link>,
+    <link linkend="guc-wal-receiver-status-interval"><varname>wal_receiver_status_interval</varname></link> and
+    <link linkend="guc-wal-retrieve-retry-interval"><varname>wal_retrieve_retry_interval</varname></link>.
+   </para>
+
+  </sect2>
+
+ </sect1>
+
+ <sect1 id="logical-replication-upgrade">
+  <title>Upgrade</title>
+
+  <para>
+   Migration of <glossterm linkend="glossary-logical-replication-cluster">logical replication clusters</glossterm>
+   is possible only when all the members of the old logical replication
+   clusters are version 17.0 or later.
+  </para>
+
+  <sect2 id="prepare-publisher-upgrades">
+   <title>Prepare for Publisher Upgrades</title>
+
+   <para>
+    <application>pg_upgrade</application> attempts to migrate logical
+    slots. This helps avoid the need for manually defining the same
+    logical slots on the new publisher. Migration of logical slots is
+    only supported when the old cluster is version 17.0 or later.
+    Logical slots on clusters before version 17.0 will silently be
+    ignored.
+   </para>
+
+   <para>
+    Before you start upgrading the publisher cluster, ensure that the
+    subscription is temporarily disabled, by executing
+    <link linkend="sql-altersubscription"><command>ALTER SUBSCRIPTION ... DISABLE</command></link>.
+    Re-enable the subscription after the upgrade.
+   </para>
+
+   <para>
+    There are some prerequisites for <application>pg_upgrade</application> to
+    be able to upgrade the logical slots. If these are not met an error
+    will be reported.
+   </para>
+
+   <itemizedlist>
+    <listitem>
+     <para>
+      The new cluster must have
+      <link linkend="guc-wal-level"><varname>wal_level</varname></link> as
+      <literal>replica</literal> or <literal>logical</literal>.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      The new cluster must have
+      <link linkend="guc-max-replication-slots"><varname>max_replication_slots</varname></link>
+      configured to a value greater than or equal to the number of slots
+      present in the old cluster.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      The output plugins referenced by the slots on the old cluster must be
+      installed in the new PostgreSQL executable directory.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      The old cluster has replicated all the transactions and logical decoding
+      messages to subscribers.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      All slots on the old cluster must be usable, i.e., there are no slots
+      whose
+      <link linkend="view-pg-replication-slots">pg_replication_slots</link>.<structfield>conflicting</structfield>
+      is not <literal>true</literal>.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      The new cluster must not have permanent logical slots, i.e.,
+      there must be no slots where
+      <link linkend="view-pg-replication-slots">pg_replication_slots</link>.<structfield>temporary</structfield>
+      is <literal>false</literal>.
+     </para>
+    </listitem>
+   </itemizedlist>
+  </sect2>
+
+  <sect2 id="prepare-subscriber-upgrades">
+   <title>Prepare for Subscriber Upgrades</title>
+
+   <para>
+    Setup the <link linkend="logical-replication-config-subscriber">
+    subscriber configurations</link> in the new subscriber.
+    <application>pg_upgrade</application> attempts to migrate subscription
+    dependencies which includes the subscription's table information present in
+    <link linkend="catalog-pg-subscription-rel">pg_subscription_rel</link>
+    system catalog and also the subscription's replication origin. This allows
+    logical replication on the new subscriber to continue from where the
+    old subscriber was up to. Migration of subscription dependencies is only
+    supported when the old cluster is version 17.0 or later. Subscription
+    dependencies on clusters before version 17.0 will silently be ignored.
+   </para>
+
+   <note>
+    <para>
+     Commit timestamps and origin data are not preserved during the upgrade.
+     As a result, even if
+     <link linkend="sql-createsubscription-params-with-retain-dead-tuples"><literal>retain_dead_tuples</literal></link>
+     is enabled, the upgraded subscriber may be unable to detect conflicts or
+     log relevant commit timestamps and origins when applying changes from the
+     publisher occurred before the upgrade. Additionally, immediately after the
+     upgrade, the vacuum may remove the deleted rows that are required for
+     conflict detection. This can affect the changes that were not replicated
+     before the upgrade. To ensure consistent conflict tracking, users should
+     ensure that all potentially conflicting changes are replicated to the
+     subscriber before initiating the upgrade.
+    </para>
+   </note>
+
+   <para>
+    There are some prerequisites for <application>pg_upgrade</application> to
+    be able to upgrade the subscriptions. If these are not met an error
+    will be reported.
+   </para>
+
+   <itemizedlist>
+    <listitem>
+     <para>
+      All the subscription tables in the old subscriber should be in state
+      <literal>i</literal> (initialize) or <literal>r</literal> (ready). This
+      can be verified by checking <link linkend="catalog-pg-subscription-rel">pg_subscription_rel</link>.<structfield>srsubstate</structfield>.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      The replication origin entry corresponding to each of the subscriptions
+      should exist in the old cluster. This can be found by checking
+      <link linkend="catalog-pg-subscription">pg_subscription</link> and
+      <link linkend="catalog-pg-replication-origin">pg_replication_origin</link>
+      system tables.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      The new cluster must have
+      <link linkend="guc-max-active-replication-origins"><varname>max_active_replication_origins</varname></link>
+      configured to a value greater than or equal to the number of
+      subscriptions present in the old cluster.
+     </para>
+    </listitem>
+    <listitem>
+     <para>
+      If there are subscriptions with retain_dead_tuples enabled, the reserved
+      replication slot <quote><literal>pg_conflict_detection</literal></quote>
+      must not exist on the new cluster. Additionally, the
+      <link linkend="guc-wal-level"><varname>wal_level</varname></link> on the
+      new cluster must be set to <literal>replica</literal> or
+      <literal>logical</literal>.
+     </para>
+    </listitem>
+   </itemizedlist>
+  </sect2>
+
+  <sect2 id="upgrading-logical-replication-clusters">
+   <title>Upgrading Logical Replication Clusters</title>
+
+   <para>
+    While upgrading a subscriber, write operations can be performed in the
+    publisher. These changes will be replicated to the subscriber once the
+    subscriber upgrade is completed.
+   </para>
+
+   <note>
+    <para>
+     The logical replication restrictions apply to logical replication cluster
+     upgrades also. See <xref linkend="logical-replication-restrictions"/> for
+     details.
+    </para>
+    <para>
+     The prerequisites of publisher upgrade apply to logical replication
+     cluster upgrades also. See <xref linkend="prepare-publisher-upgrades"/>
+     for details.
+    </para>
+    <para>
+     The prerequisites of subscriber upgrade apply to logical replication
+     cluster upgrades also. See <xref linkend="prepare-subscriber-upgrades"/>
+     for details.
+    </para>
+   </note>
+
+   <warning>
+    <para>
+     Upgrading logical replication cluster requires multiple steps to be
+     performed on various nodes. Because not all operations are
+     transactional, the user is advised to take backups as described in
+     <xref linkend="backup-base-backup"/>.
+    </para>
+   </warning>
+
+   <para>
+    The steps to upgrade the following logical replication clusters are
+    detailed below:
+    <itemizedlist>
+     <listitem>
+      <para>
+       Follow the steps specified in
+       <xref linkend="steps-two-node-logical-replication-cluster"/> to upgrade
+       a two-node logical replication cluster.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       Follow the steps specified in
+       <xref linkend="steps-cascaded-logical-replication-cluster"/> to upgrade
+       a cascaded logical replication cluster.
+      </para>
+     </listitem>
+     <listitem>
+      <para>
+       Follow the steps specified in
+       <xref linkend="steps-two-node-circular-logical-replication-cluster"/>
+       to upgrade a two-node circular logical replication cluster.
+      </para>
+     </listitem>
+    </itemizedlist>
+   </para>
+
+   <sect3 id="steps-two-node-logical-replication-cluster">
+    <title>Steps to Upgrade a Two-node Logical Replication Cluster</title>
+     <para>
+      Let's say publisher is in <literal>node1</literal> and subscriber is
+      in <literal>node2</literal>. The subscriber <literal>node2</literal> has
+      a subscription <literal>sub1_node1_node2</literal> which is subscribing
+      the changes from <literal>node1</literal>.
+     </para>
+
+     <procedure>
+      <step id="two-node-cluster-disable-subscriptions-node2">
+       <para>
+        Disable all the subscriptions on <literal>node2</literal> that are
+        subscribing the changes from <literal>node1</literal> by using
+        <link linkend="sql-altersubscription-params-disable"><command>ALTER SUBSCRIPTION ... DISABLE</command></link>,
+        e.g.:
+<programlisting>
+/* node2 # */ ALTER SUBSCRIPTION sub1_node1_node2 DISABLE;
+</programlisting>
+       </para>
+      </step>
+      <step>
+       <para>
+        Stop the publisher server in <literal>node1</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data1 stop
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Initialize <literal>data1_upgraded</literal> instance by using the
+        required newer version.
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Upgrade the publisher <literal>node1</literal>'s server to the
+        required newer version, e.g.:
+<programlisting>
+pg_upgrade
+        --old-datadir "/opt/PostgreSQL/postgres/17/data1"
+        --new-datadir "/opt/PostgreSQL/postgres/18/data1_upgraded"
+        --old-bindir "/opt/PostgreSQL/postgres/17/bin"
+        --new-bindir "/opt/PostgreSQL/postgres/18/bin"
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Start the upgraded publisher server in <literal>node1</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data1_upgraded start -l logfile
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Stop the subscriber server in <literal>node2</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data2 stop
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Initialize <literal>data2_upgraded</literal> instance by using the
+        required newer version.
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Upgrade the subscriber <literal>node2</literal>'s server to
+        the required new version, e.g.:
+<programlisting>
+pg_upgrade
+       --old-datadir "/opt/PostgreSQL/postgres/17/data2"
+       --new-datadir "/opt/PostgreSQL/postgres/18/data2_upgraded"
+       --old-bindir "/opt/PostgreSQL/postgres/17/bin"
+       --new-bindir "/opt/PostgreSQL/postgres/18/bin"
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Start the upgraded subscriber server in <literal>node2</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data2_upgraded start -l logfile
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        On <literal>node2</literal>, create any tables that were created in
+        the upgraded publisher <literal>node1</literal> server between
+        <xref linkend="two-node-cluster-disable-subscriptions-node2"/>
+        and now, e.g.:
+<programlisting>
+/* node2 # */ CREATE TABLE distributors (did integer PRIMARY KEY, name varchar(40));
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Enable all the subscriptions on <literal>node2</literal> that are
+        subscribing the changes from <literal>node1</literal> by using
+        <link linkend="sql-altersubscription-params-enable"><command>ALTER SUBSCRIPTION ... ENABLE</command></link>,
+        e.g.:
+<programlisting>
+/* node2 # */ ALTER SUBSCRIPTION sub1_node1_node2 ENABLE;
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Refresh the <literal>node2</literal> subscription's publications using
+        <link linkend="sql-altersubscription-params-refresh-publication"><command>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</command></link>,
+        e.g.:
+<programlisting>
+/* node2 # */ ALTER SUBSCRIPTION sub1_node1_node2 REFRESH PUBLICATION;
+</programlisting>
+       </para>
+      </step>
+     </procedure>
+
+     <note>
+      <para>
+       In the steps described above, the publisher is upgraded first, followed
+       by the subscriber. Alternatively, the user can use similar steps to
+       upgrade the subscriber first, followed by the publisher.
+      </para>
+     </note>
+    </sect3>
+
+    <sect3 id="steps-cascaded-logical-replication-cluster">
+     <title>Steps to Upgrade a Cascaded Logical Replication Cluster</title>
+     <para>
+      Let's say we have a cascaded logical replication setup
+      <literal>node1</literal>-><literal>node2</literal>-><literal>node3</literal>.
+      Here <literal>node2</literal> is subscribing the changes from
+      <literal>node1</literal> and <literal>node3</literal> is subscribing
+      the changes from <literal>node2</literal>. The <literal>node2</literal>
+      has a subscription <literal>sub1_node1_node2</literal> which is
+      subscribing the changes from <literal>node1</literal>. The
+      <literal>node3</literal> has a subscription
+      <literal>sub1_node2_node3</literal> which is subscribing the changes from
+      <literal>node2</literal>.
+     </para>
+
+     <procedure>
+      <step id="cascaded-cluster-disable-sub-node1-node2">
+       <para>
+        Disable all the subscriptions on <literal>node2</literal> that are
+        subscribing the changes from <literal>node1</literal> by using
+        <link linkend="sql-altersubscription-params-disable"><command>ALTER SUBSCRIPTION ... DISABLE</command></link>,
+        e.g.:
+<programlisting>
+/* node2 # */ ALTER SUBSCRIPTION sub1_node1_node2 DISABLE;
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Stop the server in <literal>node1</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data1 stop
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Initialize <literal>data1_upgraded</literal> instance by using the
+        required newer version.
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Upgrade the <literal>node1</literal>'s server to the required newer
+        version, e.g.:
+<programlisting>
+pg_upgrade
+        --old-datadir "/opt/PostgreSQL/postgres/17/data1"
+        --new-datadir "/opt/PostgreSQL/postgres/18/data1_upgraded"
+        --old-bindir "/opt/PostgreSQL/postgres/17/bin"
+        --new-bindir "/opt/PostgreSQL/postgres/18/bin"
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Start the upgraded server in <literal>node1</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data1_upgraded start -l logfile
+</programlisting>
+       </para>
+      </step>
+
+      <step id="cascaded-cluster-disable-sub-node2-node3">
+       <para>
+        Disable all the subscriptions on <literal>node3</literal> that are
+        subscribing the changes from <literal>node2</literal> by using
+        <link linkend="sql-altersubscription-params-disable"><command>ALTER SUBSCRIPTION ... DISABLE</command></link>,
+        e.g.:
+<programlisting>
+/* node3 # */ ALTER SUBSCRIPTION sub1_node2_node3 DISABLE;
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Stop the server in <literal>node2</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data2 stop
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Initialize <literal>data2_upgraded</literal> instance by using the
+        required newer version.
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Upgrade the <literal>node2</literal>'s server to the required
+        new version, e.g.:
+<programlisting>
+pg_upgrade
+        --old-datadir "/opt/PostgreSQL/postgres/17/data2"
+        --new-datadir "/opt/PostgreSQL/postgres/18/data2_upgraded"
+        --old-bindir "/opt/PostgreSQL/postgres/17/bin"
+        --new-bindir "/opt/PostgreSQL/postgres/18/bin"
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Start the upgraded server in <literal>node2</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data2_upgraded start -l logfile
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        On <literal>node2</literal>, create any tables that were created in
+        the upgraded publisher <literal>node1</literal> server between
+        <xref linkend="cascaded-cluster-disable-sub-node1-node2"/>
+        and now, e.g.:
+<programlisting>
+/* node2 # */ CREATE TABLE distributors (did integer PRIMARY KEY, name varchar(40));
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Enable all the subscriptions on <literal>node2</literal> that are
+        subscribing the changes from <literal>node1</literal> by using
+        <link linkend="sql-altersubscription-params-enable"><command>ALTER SUBSCRIPTION ... ENABLE</command></link>,
+        e.g.:
+<programlisting>
+/* node2 # */ ALTER SUBSCRIPTION sub1_node1_node2 ENABLE;
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Refresh the <literal>node2</literal> subscription's publications using
+        <link linkend="sql-altersubscription-params-refresh-publication"><command>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</command></link>,
+        e.g.:
+<programlisting>
+/* node2 # */ ALTER SUBSCRIPTION sub1_node1_node2 REFRESH PUBLICATION;
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Stop the server in <literal>node3</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data3 stop
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Initialize <literal>data3_upgraded</literal> instance by using the
+        required newer version.
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Upgrade the <literal>node3</literal>'s server to the required
+        new version, e.g.:
+<programlisting>
+pg_upgrade
+        --old-datadir "/opt/PostgreSQL/postgres/17/data3"
+        --new-datadir "/opt/PostgreSQL/postgres/18/data3_upgraded"
+        --old-bindir "/opt/PostgreSQL/postgres/17/bin"
+        --new-bindir "/opt/PostgreSQL/postgres/18/bin"
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Start the upgraded server in <literal>node3</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data3_upgraded start -l logfile
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        On <literal>node3</literal>, create any tables that were created in
+        the upgraded <literal>node2</literal> between
+        <xref linkend="cascaded-cluster-disable-sub-node2-node3"/> and now,
+        e.g.:
+<programlisting>
+/* node3 # */ CREATE TABLE distributors (did integer PRIMARY KEY, name varchar(40));
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Enable all the subscriptions on <literal>node3</literal> that are
+        subscribing the changes from <literal>node2</literal> by using
+        <link linkend="sql-altersubscription-params-enable"><command>ALTER SUBSCRIPTION ... ENABLE</command></link>,
+        e.g.:
+<programlisting>
+/* node3 # */ ALTER SUBSCRIPTION sub1_node2_node3 ENABLE;
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Refresh the <literal>node3</literal> subscription's publications using
+        <link linkend="sql-altersubscription-params-refresh-publication"><command>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</command></link>,
+        e.g.:
+<programlisting>
+/* node3 # */ ALTER SUBSCRIPTION sub1_node2_node3 REFRESH PUBLICATION;
+</programlisting>
+       </para>
+      </step>
+     </procedure>
+    </sect3>
+
+    <sect3 id="steps-two-node-circular-logical-replication-cluster">
+     <title>Steps to Upgrade a Two-node Circular Logical Replication Cluster</title>
+     <para>
+      Let's say we have a circular logical replication setup
+      <literal>node1</literal>-><literal>node2</literal> and
+      <literal>node2</literal>-><literal>node1</literal>. Here
+      <literal>node2</literal> is subscribing the changes from
+      <literal>node1</literal> and <literal>node1</literal> is subscribing
+      the changes from <literal>node2</literal>. The <literal>node1</literal>
+      has a subscription <literal>sub1_node2_node1</literal> which is
+      subscribing the changes from <literal>node2</literal>. The
+      <literal>node2</literal> has a subscription
+      <literal>sub1_node1_node2</literal> which is subscribing the changes from
+      <literal>node1</literal>.
+     </para>
+
+     <procedure>
+      <step id="circular-cluster-disable-sub-node2">
+       <para>
+        Disable all the subscriptions on <literal>node2</literal> that are
+        subscribing the changes from <literal>node1</literal> by using
+        <link linkend="sql-altersubscription-params-disable"><command>ALTER SUBSCRIPTION ... DISABLE</command></link>,
+        e.g.:
+<programlisting>
+/* node2 # */ ALTER SUBSCRIPTION sub1_node1_node2 DISABLE;
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Stop the server in <literal>node1</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data1 stop
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Initialize <literal>data1_upgraded</literal> instance by using the
+        required newer version.
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Upgrade the <literal>node1</literal>'s server to the required
+        newer version, e.g.:
+<programlisting>
+pg_upgrade
+        --old-datadir "/opt/PostgreSQL/postgres/17/data1"
+        --new-datadir "/opt/PostgreSQL/postgres/18/data1_upgraded"
+        --old-bindir "/opt/PostgreSQL/postgres/17/bin"
+        --new-bindir "/opt/PostgreSQL/postgres/18/bin"
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Start the upgraded server in <literal>node1</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data1_upgraded start -l logfile
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Enable all the subscriptions on <literal>node2</literal> that are
+        subscribing the changes from <literal>node1</literal> by using
+        <link linkend="sql-altersubscription-params-enable"><command>ALTER SUBSCRIPTION ... ENABLE</command></link>,
+        e.g.:
+<programlisting>
+/* node2 # */ ALTER SUBSCRIPTION sub1_node1_node2 ENABLE;
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        On <literal>node1</literal>, create any tables that were created in
+        <literal>node2</literal> between <xref linkend="circular-cluster-disable-sub-node2"/>
+        and now, e.g.:
+<programlisting>
+/* node1 # */ CREATE TABLE distributors (did integer PRIMARY KEY, name varchar(40));
+</programlisting>
+       </para>
+      </step>
+
+
+      <step>
+       <para>
+        Refresh the <literal>node1</literal> subscription's publications to
+        copy initial table data from <literal>node2</literal> using
+        <link linkend="sql-altersubscription-params-refresh-publication"><command>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</command></link>,
+        e.g.:
+<programlisting>
+/* node1 # */ ALTER SUBSCRIPTION sub1_node2_node1 REFRESH PUBLICATION;
+</programlisting>
+       </para>
+      </step>
+
+      <step id="circular-cluster-disable-sub-node1">
+       <para>
+        Disable all the subscriptions on <literal>node1</literal> that are
+        subscribing the changes from <literal>node2</literal> by using
+        <link linkend="sql-altersubscription-params-disable"><command>ALTER SUBSCRIPTION ... DISABLE</command></link>,
+        e.g.:
+<programlisting>
+/* node1 # */ ALTER SUBSCRIPTION sub1_node2_node1 DISABLE;
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Stop the server in <literal>node2</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data2 stop
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Initialize <literal>data2_upgraded</literal> instance by using the
+        required newer version.
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Upgrade the <literal>node2</literal>'s server to the required
+        new version, e.g.:
+<programlisting>
+pg_upgrade
+        --old-datadir "/opt/PostgreSQL/postgres/17/data2"
+        --new-datadir "/opt/PostgreSQL/postgres/18/data2_upgraded"
+        --old-bindir "/opt/PostgreSQL/postgres/17/bin"
+        --new-bindir "/opt/PostgreSQL/postgres/18/bin"
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Start the upgraded server in <literal>node2</literal>, e.g.:
+<programlisting>
+pg_ctl -D /opt/PostgreSQL/data2_upgraded start -l logfile
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Enable all the subscriptions on <literal>node1</literal> that are
+        subscribing the changes from <literal>node2</literal> by using
+        <link linkend="sql-altersubscription-params-enable"><command>ALTER SUBSCRIPTION ... ENABLE</command></link>,
+        e.g.:
+<programlisting>
+/* node1 # */ ALTER SUBSCRIPTION sub1_node2_node1 ENABLE;
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        On <literal>node2</literal>, create any tables that were created in
+        the upgraded <literal>node1</literal> between <xref linkend="circular-cluster-disable-sub-node1"/>
+        and now, e.g.:
+<programlisting>
+/* node2 # */ CREATE TABLE distributors (did integer PRIMARY KEY, name varchar(40));
+</programlisting>
+       </para>
+      </step>
+
+      <step>
+       <para>
+        Refresh the <literal>node2</literal> subscription's publications to
+        copy initial table data from <literal>node1</literal> using
+        <link linkend="sql-altersubscription-params-refresh-publication"><command>ALTER SUBSCRIPTION ... REFRESH PUBLICATION</command></link>,
+        e.g.:
+<programlisting>
+/* node2 # */ ALTER SUBSCRIPTION sub1_node1_node2 REFRESH PUBLICATION;
+</programlisting>
+       </para>
+      </step>
+     </procedure>
+    </sect3>
+
+   </sect2>
+ </sect1>
+
+ <sect1 id="logical-replication-quick-setup">
+  <title>Quick Setup</title>
+
+  <para>
+   First set the configuration options in <filename>postgresql.conf</filename>:
+<programlisting>
+wal_level = logical
+</programlisting>
+   The other required settings have default values that are sufficient for a
+   basic setup.
+  </para>
+
+  <para>
+   <filename>pg_hba.conf</filename> needs to be adjusted to allow replication
+   (the values here depend on your actual network configuration and user you
+   want to use for connecting):
+<programlisting>
+host     all     repuser     0.0.0.0/0     scram-sha-256
+</programlisting>
+  </para>
+
+  <para>
+   Then on the publisher database:
+<programlisting>
+CREATE PUBLICATION mypub FOR TABLE users, departments;
+</programlisting>
+  </para>
+
+  <para>
+   And on the subscriber database:
+<programlisting>
+CREATE SUBSCRIPTION mysub CONNECTION 'dbname=foo host=bar user=repuser' PUBLICATION mypub;
+</programlisting>
+  </para>
+
+  <para>
+   The above will start the replication process, which synchronizes the
+   initial table contents of the tables <structname>users</structname> and
+   <structname>departments</structname> and then starts replicating
+   incremental changes to those tables.
+  </para>
+ </sect1>
+</chapter>

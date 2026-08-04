@@ -1,0 +1,5 @@
+
+                                                                                                                                                                                                              jsonb_agg
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+[{"tableName": "bank_transactions_eu", "schemaName": "public", "parentTable": "bank_transactions", "parentSchema": "public", "tablespace": "us_west_1_tablespace", "parentTablespace": null}, {"tableName": "bank_transactions_india", "schemaName": "public", "parentTable": "bank_transactions", "parentSchema": "public", "tablespace": "us_west_3_tablespace", "parentTablespace": null}]
+(1 row)

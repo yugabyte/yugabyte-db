@@ -1,0 +1,57 @@
+Parsed test spec with 3 sessions
+
+starting permutation: chkiso prepi preps begin disableseq explaini enableseq explains select2 drop insert2 end2 selecti selects end
+step chkiso: SELECT (setting in ('read committed','read uncommitted')) AS is_read_committed FROM pg_settings WHERE name = 'default_transaction_isolation';
+is_read_committed
+-----------------
+t                
+(1 row)
+
+step prepi: PREPARE getrow_idxscan AS SELECT * FROM test_dc WHERE data = 34 ORDER BY id,data;
+step preps: PREPARE getrow_seqscan AS SELECT * FROM test_dc WHERE data = 34 ORDER BY id,data;
+step begin: BEGIN;
+step disableseq: SET enable_seqscan = false;
+step explaini: EXPLAIN (COSTS OFF) EXECUTE getrow_idxscan;
+QUERY PLAN                                    
+----------------------------------------------
+Sort                                          
+  Sort Key: id                                
+  ->  Index Scan using test_dc_data on test_dc
+        Index Cond: (data = 34)               
+(4 rows)
+
+step enableseq: SET enable_seqscan = true;
+step explains: EXPLAIN (COSTS OFF) EXECUTE getrow_seqscan;
+QUERY PLAN                 
+---------------------------
+Sort                       
+  Sort Key: id             
+  ->  Seq Scan on test_dc  
+        Filter: (data = 34)
+(4 rows)
+
+step select2: SELECT * FROM test_dc WHERE data = 34 ORDER BY id,data;
+id|data
+--+----
+34|  34
+(1 row)
+
+step drop: DROP INDEX CONCURRENTLY test_dc_data; <waiting ...>
+step insert2: INSERT INTO test_dc(data) SELECT * FROM generate_series(1, 100);
+step end2: COMMIT;
+step selecti: EXECUTE getrow_idxscan;
+ id|data
+---+----
+ 34|  34
+134|  34
+(2 rows)
+
+step selects: EXECUTE getrow_seqscan;
+ id|data
+---+----
+ 34|  34
+134|  34
+(2 rows)
+
+step end: COMMIT;
+step drop: <... completed>

@@ -1,0 +1,19 @@
+title: IsolatedBackupCreateSpec
+description: |
+  IsolatedBackupCreateSpec
+
+  User provided details to trigger a one time backup of YBA to a particular local directory.
+type: object
+required:
+  - local_dir
+  - components
+properties:
+  local_dir:
+    description: local directory to store backup
+    type: string
+    example: /opt/yba_backups
+  components:
+    description: the components to include in YBA backup
+    items:
+      $ref: "./YbaComponent.yaml"
+    type: array

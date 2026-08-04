@@ -1,0 +1,209 @@
+\set VERBOSITY terse
+-- predictability
+SET synchronous_commit = on;
+SET extra_float_digits = 0;
+CREATE TABLE w2j_pk_with_pk (
+a	int,
+b	timestamp,
+c	text,
+d	boolean,
+e	numeric(5,3),
+PRIMARY KEY(b, d, e)
+);
+CREATE TABLE w2j_pk_without_pk (
+a	int,
+b	timestamp,
+c	text,
+d	boolean,
+e	numeric(5,3)
+);
+CREATE TABLE w2j_pk_with_ri (
+a	int NOT NULL,
+b	timestamp,
+c	text,
+d	boolean,
+e	numeric(5,3),
+UNIQUE(a)
+);
+ALTER TABLE w2j_pk_with_ri REPLICA IDENTITY USING INDEX w2j_pk_with_ri_a_key;
+SELECT 'init' FROM pg_create_logical_replication_slot('regression_slot', 'wal2json');
+ ?column? 
+----------
+ init
+(1 row)
+
+INSERT INTO w2j_pk_with_pk (a, b, c, d, e) VALUES(123, '2020-04-26 16:23:59', 'Melanosuchus Niger', true, 4.56);
+UPDATE w2j_pk_with_pk SET a = 456, c = 'Panthera Onca', d = false;
+DELETE FROM w2j_pk_with_pk;
+INSERT INTO w2j_pk_without_pk (a, b, c, d, e) VALUES(123, '2020-04-26 16:23:59', 'Melanosuchus Niger', true, 4.56);
+UPDATE w2j_pk_without_pk SET a = 456, c = 'Panthera Onca', d = false;
+DELETE FROM w2j_pk_without_pk;
+INSERT INTO w2j_pk_with_ri (a, b, c, d, e) VALUES(123, '2020-04-26 16:23:59', 'Inia Araguaiaensis', true, 4.56);
+UPDATE w2j_pk_with_ri SET a = 456, c = 'Panthera Onca', d = false;
+DELETE FROM w2j_pk_with_ri;
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '1', 'pretty-print', '1', 'include-typmod', '0', 'include-pk', '1');
+WARNING:  table "w2j_pk_without_pk" without primary key or replica identity is nothing
+WARNING:  table "w2j_pk_without_pk" without primary key or replica identity is nothing
+                                                     data                                                      
+---------------------------------------------------------------------------------------------------------------
+ {                                                                                                            +
+         "change": [                                                                                          +
+                 {                                                                                            +
+                         "kind": "insert",                                                                    +
+                         "schema": "public",                                                                  +
+                         "table": "w2j_pk_with_pk",                                                           +
+                         "columnnames": ["a", "b", "c", "d", "e"],                                            +
+                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                     +
+                         "columnvalues": [123, "Sun Apr 26 16:23:59 2020", "Melanosuchus Niger", true, 4.560],+
+                         "pk": {                                                                              +
+                                 "pknames": ["b", "d", "e"],                                                  +
+                                 "pktypes": ["timestamp", "bool", "numeric"]                                  +
+                         }                                                                                    +
+                 }                                                                                            +
+         ]                                                                                                    +
+ }
+ {                                                                                                            +
+         "change": [                                                                                          +
+                 {                                                                                            +
+                         "kind": "update",                                                                    +
+                         "schema": "public",                                                                  +
+                         "table": "w2j_pk_with_pk",                                                           +
+                         "columnnames": ["a", "b", "c", "d", "e"],                                            +
+                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                     +
+                         "columnvalues": [456, "Sun Apr 26 16:23:59 2020", "Panthera Onca", false, 4.560],    +
+                         "pk": {                                                                              +
+                                 "pknames": ["b", "d", "e"],                                                  +
+                                 "pktypes": ["timestamp", "bool", "numeric"]                                  +
+                         },                                                                                   +
+                         "oldkeys": {                                                                         +
+                                 "keynames": ["b", "d", "e"],                                                 +
+                                 "keytypes": ["timestamp", "bool", "numeric"],                                +
+                                 "keyvalues": ["Sun Apr 26 16:23:59 2020", true, 4.560]                       +
+                         }                                                                                    +
+                 }                                                                                            +
+         ]                                                                                                    +
+ }
+ {                                                                                                            +
+         "change": [                                                                                          +
+                 {                                                                                            +
+                         "kind": "delete",                                                                    +
+                         "schema": "public",                                                                  +
+                         "table": "w2j_pk_with_pk",                                                           +
+                         "pk": {                                                                              +
+                                 "pknames": ["b", "d", "e"],                                                  +
+                                 "pktypes": ["timestamp", "bool", "numeric"]                                  +
+                         },                                                                                   +
+                         "oldkeys": {                                                                         +
+                                 "keynames": ["b", "d", "e"],                                                 +
+                                 "keytypes": ["timestamp", "bool", "numeric"],                                +
+                                 "keyvalues": ["Sun Apr 26 16:23:59 2020", false, 4.560]                      +
+                         }                                                                                    +
+                 }                                                                                            +
+         ]                                                                                                    +
+ }
+ {                                                                                                            +
+         "change": [                                                                                          +
+                 {                                                                                            +
+                         "kind": "insert",                                                                    +
+                         "schema": "public",                                                                  +
+                         "table": "w2j_pk_without_pk",                                                        +
+                         "columnnames": ["a", "b", "c", "d", "e"],                                            +
+                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                     +
+                         "columnvalues": [123, "Sun Apr 26 16:23:59 2020", "Melanosuchus Niger", true, 4.560] +
+                 }                                                                                            +
+         ]                                                                                                    +
+ }
+ {                                                                                                            +
+         "change": [                                                                                          +
+         ]                                                                                                    +
+ }
+ {                                                                                                            +
+         "change": [                                                                                          +
+         ]                                                                                                    +
+ }
+ {                                                                                                            +
+         "change": [                                                                                          +
+                 {                                                                                            +
+                         "kind": "insert",                                                                    +
+                         "schema": "public",                                                                  +
+                         "table": "w2j_pk_with_ri",                                                           +
+                         "columnnames": ["a", "b", "c", "d", "e"],                                            +
+                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                     +
+                         "columnvalues": [123, "Sun Apr 26 16:23:59 2020", "Inia Araguaiaensis", true, 4.560] +
+                 }                                                                                            +
+         ]                                                                                                    +
+ }
+ {                                                                                                            +
+         "change": [                                                                                          +
+                 {                                                                                            +
+                         "kind": "update",                                                                    +
+                         "schema": "public",                                                                  +
+                         "table": "w2j_pk_with_ri",                                                           +
+                         "columnnames": ["a", "b", "c", "d", "e"],                                            +
+                         "columntypes": ["int4", "timestamp", "text", "bool", "numeric"],                     +
+                         "columnvalues": [456, "Sun Apr 26 16:23:59 2020", "Panthera Onca", false, 4.560],    +
+                         "oldkeys": {                                                                         +
+                                 "keynames": ["a"],                                                           +
+                                 "keytypes": ["int4"],                                                        +
+                                 "keyvalues": [123]                                                           +
+                         }                                                                                    +
+                 }                                                                                            +
+         ]                                                                                                    +
+ }
+ {                                                                                                            +
+         "change": [                                                                                          +
+                 {                                                                                            +
+                         "kind": "delete",                                                                    +
+                         "schema": "public",                                                                  +
+                         "table": "w2j_pk_with_ri",                                                           +
+                         "oldkeys": {                                                                         +
+                                 "keynames": ["a"],                                                           +
+                                 "keytypes": ["int4"],                                                        +
+                                 "keyvalues": [456]                                                           +
+                         }                                                                                    +
+                 }                                                                                            +
+         ]                                                                                                    +
+ }
+(9 rows)
+
+SELECT data FROM pg_logical_slot_peek_changes('regression_slot', NULL, NULL, 'format-version', '2', 'include-pk', '1');
+WARNING:  no tuple identifier for UPDATE in table "public"."w2j_pk_without_pk"
+WARNING:  no tuple identifier for DELETE in table "public"."w2j_pk_without_pk"
+                                                                                                                                                                                                                                                                                                                                     data                                                                                                                                                                                                                                                                                                                                     
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ {"action":"B"}
+ {"action":"I","schema":"public","table":"w2j_pk_with_pk","columns":[{"name":"a","type":"integer","value":123},{"name":"b","type":"timestamp without time zone","value":"Sun Apr 26 16:23:59 2020"},{"name":"c","type":"text","value":"Melanosuchus Niger"},{"name":"d","type":"boolean","value":true},{"name":"e","type":"numeric(5,3)","value":4.560}],"pk":[{"name":"b","type":"timestamp without time zone"},{"name":"d","type":"boolean"},{"name":"e","type":"numeric(5,3)"}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"U","schema":"public","table":"w2j_pk_with_pk","columns":[{"name":"a","type":"integer","value":456},{"name":"b","type":"timestamp without time zone","value":"Sun Apr 26 16:23:59 2020"},{"name":"c","type":"text","value":"Panthera Onca"},{"name":"d","type":"boolean","value":false},{"name":"e","type":"numeric(5,3)","value":4.560}],"identity":[{"name":"b","type":"timestamp without time zone","value":"Sun Apr 26 16:23:59 2020"},{"name":"d","type":"boolean","value":true},{"name":"e","type":"numeric(5,3)","value":4.560}],"pk":[{"name":"b","type":"timestamp without time zone"},{"name":"d","type":"boolean"},{"name":"e","type":"numeric(5,3)"}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"D","schema":"public","table":"w2j_pk_with_pk","identity":[{"name":"b","type":"timestamp without time zone","value":"Sun Apr 26 16:23:59 2020"},{"name":"d","type":"boolean","value":false},{"name":"e","type":"numeric(5,3)","value":4.560}],"pk":[{"name":"b","type":"timestamp without time zone"},{"name":"d","type":"boolean"},{"name":"e","type":"numeric(5,3)"}]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"I","schema":"public","table":"w2j_pk_without_pk","columns":[{"name":"a","type":"integer","value":123},{"name":"b","type":"timestamp without time zone","value":"Sun Apr 26 16:23:59 2020"},{"name":"c","type":"text","value":"Melanosuchus Niger"},{"name":"d","type":"boolean","value":true},{"name":"e","type":"numeric(5,3)","value":4.560}],"pk":[]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"I","schema":"public","table":"w2j_pk_with_ri","columns":[{"name":"a","type":"integer","value":123},{"name":"b","type":"timestamp without time zone","value":"Sun Apr 26 16:23:59 2020"},{"name":"c","type":"text","value":"Inia Araguaiaensis"},{"name":"d","type":"boolean","value":true},{"name":"e","type":"numeric(5,3)","value":4.560}],"pk":[]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"U","schema":"public","table":"w2j_pk_with_ri","columns":[{"name":"a","type":"integer","value":456},{"name":"b","type":"timestamp without time zone","value":"Sun Apr 26 16:23:59 2020"},{"name":"c","type":"text","value":"Panthera Onca"},{"name":"d","type":"boolean","value":false},{"name":"e","type":"numeric(5,3)","value":4.560}],"identity":[{"name":"a","type":"integer","value":123}],"pk":[]}
+ {"action":"C"}
+ {"action":"B"}
+ {"action":"D","schema":"public","table":"w2j_pk_with_ri","identity":[{"name":"a","type":"integer","value":456}],"pk":[]}
+ {"action":"C"}
+(25 rows)
+
+SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
+ ?column? 
+----------
+ stop
+(1 row)
+
+DROP TABLE w2j_pk_with_pk;
+DROP TABLE w2j_pk_without_pk;
+DROP TABLE w2j_pk_with_ri;

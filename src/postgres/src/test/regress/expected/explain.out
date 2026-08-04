@@ -1,0 +1,834 @@
+--
+-- EXPLAIN
+--
+-- There are many test cases elsewhere that use EXPLAIN as a vehicle for
+-- checking something else (usually planner behavior).  This file is
+-- concerned with testing EXPLAIN in its own right.
+--
+-- To produce stable regression test output, it's usually necessary to
+-- ignore details such as exact costs or row counts.  These filter
+-- functions replace changeable output details with fixed strings.
+create function explain_filter(text) returns setof text
+language plpgsql as
+$$
+declare
+    ln text;
+begin
+    for ln in execute $1
+    loop
+        -- Replace any numeric word with just 'N'
+        ln := regexp_replace(ln, '-?\m\d+\M', 'N', 'g');
+        -- In sort output, the above won't match units-suffixed numbers
+        ln := regexp_replace(ln, '\m\d+kB', 'NkB', 'g');
+        -- Ignore text-mode buffers output because it varies depending
+        -- on the system state
+        CONTINUE WHEN (ln ~ ' +Buffers: .*');
+        -- Ignore text-mode "Planning:" line because whether it's output
+        -- varies depending on the system state
+        CONTINUE WHEN (ln = 'Planning:');
+        return next ln;
+    end loop;
+end;
+$$;
+-- To produce valid JSON output, replace numbers with "0" or "0.0" not "N"
+create function explain_filter_to_json(text) returns jsonb
+language plpgsql as
+$$
+declare
+    data text := '';
+    ln text;
+begin
+    for ln in execute $1
+    loop
+        -- Replace any numeric word with just '0'
+        ln := regexp_replace(ln, '\m\d+\M', '0', 'g');
+        data := data || ln;
+    end loop;
+    return data::jsonb;
+end;
+$$;
+-- Disable JIT, or we'll get different output on machines where that's been
+-- forced on
+set jit = off;
+-- Similarly, disable track_io_timing, to avoid output differences when
+-- enabled.
+set track_io_timing = off;
+-- Simple cases
+explain (costs off) select 1 as a, 2 as b having false;
+        QUERY PLAN        
+--------------------------
+ Result
+   Replaces: Aggregate
+   One-Time Filter: false
+(3 rows)
+
+select explain_filter('explain select * from int8_tbl i8');
+                     explain_filter                      
+---------------------------------------------------------
+ Seq Scan on int8_tbl i8  (cost=N.N..N.N rows=N width=N)
+(1 row)
+
+select explain_filter('explain (analyze, buffers off) select * from int8_tbl i8');
+                                         explain_filter                                          
+-------------------------------------------------------------------------------------------------
+ Seq Scan on int8_tbl i8  (cost=N.N..N.N rows=N width=N) (actual time=N.N..N.N rows=N.N loops=N)
+ Planning Time: N.N ms
+ Execution Time: N.N ms
+(3 rows)
+
+select explain_filter('explain (analyze, buffers off, verbose) select * from int8_tbl i8');
+                                             explain_filter                                             
+--------------------------------------------------------------------------------------------------------
+ Seq Scan on public.int8_tbl i8  (cost=N.N..N.N rows=N width=N) (actual time=N.N..N.N rows=N.N loops=N)
+   Output: q1, q2
+ Planning Time: N.N ms
+ Execution Time: N.N ms
+(4 rows)
+
+select explain_filter('explain (analyze, buffers, format text) select * from int8_tbl i8');
+                                         explain_filter                                          
+-------------------------------------------------------------------------------------------------
+ Seq Scan on int8_tbl i8  (cost=N.N..N.N rows=N width=N) (actual time=N.N..N.N rows=N.N loops=N)
+ Planning Time: N.N ms
+ Execution Time: N.N ms
+(3 rows)
+
+select explain_filter('explain (buffers, format text) select * from int8_tbl i8');
+                     explain_filter                      
+---------------------------------------------------------
+ Seq Scan on int8_tbl i8  (cost=N.N..N.N rows=N width=N)
+(1 row)
+
+\a
+select explain_filter('explain (analyze, buffers, io, format xml) select * from int8_tbl i8');
+explain_filter
+<explain xmlns="http://www.postgresql.org/N/explain">
+  <Query>
+    <Plan>
+      <Node-Type>Seq Scan</Node-Type>
+      <Parallel-Aware>false</Parallel-Aware>
+      <Async-Capable>false</Async-Capable>
+      <Relation-Name>int8_tbl</Relation-Name>
+      <Alias>i8</Alias>
+      <Startup-Cost>N.N</Startup-Cost>
+      <Total-Cost>N.N</Total-Cost>
+      <Plan-Rows>N</Plan-Rows>
+      <Plan-Width>N</Plan-Width>
+      <Actual-Startup-Time>N.N</Actual-Startup-Time>
+      <Actual-Total-Time>N.N</Actual-Total-Time>
+      <Actual-Rows>N.N</Actual-Rows>
+      <Actual-Loops>N</Actual-Loops>
+      <Disabled>false</Disabled>
+      <Average-Prefetch-Distance>N.N</Average-Prefetch-Distance>
+      <Max-Prefetch-Distance>N</Max-Prefetch-Distance>
+      <Prefetch-Capacity>N</Prefetch-Capacity>
+      <I-O-Count>N</I-O-Count>
+      <I-O-Waits>N</I-O-Waits>
+      <Average-I-O-Size>N.N</Average-I-O-Size>
+      <Average-I-Os-In-Progress>N.N</Average-I-Os-In-Progress>
+      <Shared-Hit-Blocks>N</Shared-Hit-Blocks>
+      <Shared-Read-Blocks>N</Shared-Read-Blocks>
+      <Shared-Dirtied-Blocks>N</Shared-Dirtied-Blocks>
+      <Shared-Written-Blocks>N</Shared-Written-Blocks>
+      <Local-Hit-Blocks>N</Local-Hit-Blocks>
+      <Local-Read-Blocks>N</Local-Read-Blocks>
+      <Local-Dirtied-Blocks>N</Local-Dirtied-Blocks>
+      <Local-Written-Blocks>N</Local-Written-Blocks>
+      <Temp-Read-Blocks>N</Temp-Read-Blocks>
+      <Temp-Written-Blocks>N</Temp-Written-Blocks>
+    </Plan>
+    <Planning>
+      <Shared-Hit-Blocks>N</Shared-Hit-Blocks>
+      <Shared-Read-Blocks>N</Shared-Read-Blocks>
+      <Shared-Dirtied-Blocks>N</Shared-Dirtied-Blocks>
+      <Shared-Written-Blocks>N</Shared-Written-Blocks>
+      <Local-Hit-Blocks>N</Local-Hit-Blocks>
+      <Local-Read-Blocks>N</Local-Read-Blocks>
+      <Local-Dirtied-Blocks>N</Local-Dirtied-Blocks>
+      <Local-Written-Blocks>N</Local-Written-Blocks>
+      <Temp-Read-Blocks>N</Temp-Read-Blocks>
+      <Temp-Written-Blocks>N</Temp-Written-Blocks>
+    </Planning>
+    <Planning-Time>N.N</Planning-Time>
+    <Triggers>
+    </Triggers>
+    <Execution-Time>N.N</Execution-Time>
+  </Query>
+</explain>
+(1 row)
+select explain_filter('explain (analyze, serialize, buffers, io, format yaml) select * from int8_tbl i8');
+explain_filter
+- Plan: 
+    Node Type: "Seq Scan"
+    Parallel Aware: false
+    Async Capable: false
+    Relation Name: "int8_tbl"
+    Alias: "i8"
+    Startup Cost: N.N
+    Total Cost: N.N
+    Plan Rows: N
+    Plan Width: N
+    Actual Startup Time: N.N
+    Actual Total Time: N.N
+    Actual Rows: N.N
+    Actual Loops: N
+    Disabled: false
+    Average Prefetch Distance: N.N
+    Max Prefetch Distance: N
+    Prefetch Capacity: N
+    I/O Count: N
+    I/O Waits: N
+    Average I/O Size: N.N
+    Average I/Os In Progress: N.N
+    Shared Hit Blocks: N
+    Shared Read Blocks: N
+    Shared Dirtied Blocks: N
+    Shared Written Blocks: N
+    Local Hit Blocks: N
+    Local Read Blocks: N
+    Local Dirtied Blocks: N
+    Local Written Blocks: N
+    Temp Read Blocks: N
+    Temp Written Blocks: N
+  Planning: 
+    Shared Hit Blocks: N
+    Shared Read Blocks: N
+    Shared Dirtied Blocks: N
+    Shared Written Blocks: N
+    Local Hit Blocks: N
+    Local Read Blocks: N
+    Local Dirtied Blocks: N
+    Local Written Blocks: N
+    Temp Read Blocks: N
+    Temp Written Blocks: N
+  Planning Time: N.N
+  Triggers: 
+  Serialization: 
+    Time: N.N
+    Output Volume: N
+    Format: "text"
+    Shared Hit Blocks: N
+    Shared Read Blocks: N
+    Shared Dirtied Blocks: N
+    Shared Written Blocks: N
+    Local Hit Blocks: N
+    Local Read Blocks: N
+    Local Dirtied Blocks: N
+    Local Written Blocks: N
+    Temp Read Blocks: N
+    Temp Written Blocks: N
+  Execution Time: N.N
+(1 row)
+select explain_filter('explain (buffers, format json) select * from int8_tbl i8');
+explain_filter
+[
+  {
+    "Plan": {
+      "Node Type": "Seq Scan",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Relation Name": "int8_tbl",
+      "Alias": "i8",
+      "Startup Cost": N.N,
+      "Total Cost": N.N,
+      "Plan Rows": N,
+      "Plan Width": N,
+      "Disabled": false,
+      "Shared Hit Blocks": N,
+      "Shared Read Blocks": N,
+      "Shared Dirtied Blocks": N,
+      "Shared Written Blocks": N,
+      "Local Hit Blocks": N,
+      "Local Read Blocks": N,
+      "Local Dirtied Blocks": N,
+      "Local Written Blocks": N,
+      "Temp Read Blocks": N,
+      "Temp Written Blocks": N
+    },
+    "Planning": {
+      "Shared Hit Blocks": N,
+      "Shared Read Blocks": N,
+      "Shared Dirtied Blocks": N,
+      "Shared Written Blocks": N,
+      "Local Hit Blocks": N,
+      "Local Read Blocks": N,
+      "Local Dirtied Blocks": N,
+      "Local Written Blocks": N,
+      "Temp Read Blocks": N,
+      "Temp Written Blocks": N
+    }
+  }
+]
+(1 row)
+\a
+-- Check expansion of window definitions
+select explain_filter('explain verbose select sum(unique1) over w, sum(unique2) over (w order by hundred), sum(tenthous) over (w order by hundred) from tenk1 window w as (partition by ten)');
+                                            explain_filter                                             
+-------------------------------------------------------------------------------------------------------
+ WindowAgg  (cost=N.N..N.N rows=N width=N)
+   Output: sum(unique1) OVER w, (sum(unique2) OVER w1), (sum(tenthous) OVER w1), ten, hundred
+   Window: w AS (PARTITION BY tenk1.ten)
+   ->  WindowAgg  (cost=N.N..N.N rows=N width=N)
+         Output: ten, hundred, unique1, unique2, tenthous, sum(unique2) OVER w1, sum(tenthous) OVER w1
+         Window: w1 AS (PARTITION BY tenk1.ten ORDER BY tenk1.hundred)
+         ->  Sort  (cost=N.N..N.N rows=N width=N)
+               Output: ten, hundred, unique1, unique2, tenthous
+               Sort Key: tenk1.ten, tenk1.hundred
+               ->  Seq Scan on public.tenk1  (cost=N.N..N.N rows=N width=N)
+                     Output: ten, hundred, unique1, unique2, tenthous
+(11 rows)
+
+select explain_filter('explain verbose select sum(unique1) over w1, sum(unique2) over (w1 order by hundred), sum(tenthous) over (w1 order by hundred rows 10 preceding) from tenk1 window w1 as (partition by ten)');
+                                             explain_filter                                              
+---------------------------------------------------------------------------------------------------------
+ WindowAgg  (cost=N.N..N.N rows=N width=N)
+   Output: sum(unique1) OVER w1, (sum(unique2) OVER w2), (sum(tenthous) OVER w3), ten, hundred
+   Window: w1 AS (PARTITION BY tenk1.ten)
+   ->  WindowAgg  (cost=N.N..N.N rows=N width=N)
+         Output: ten, hundred, unique1, unique2, tenthous, (sum(unique2) OVER w2), sum(tenthous) OVER w3
+         Window: w3 AS (PARTITION BY tenk1.ten ORDER BY tenk1.hundred ROWS 'N'::bigint PRECEDING)
+         ->  WindowAgg  (cost=N.N..N.N rows=N width=N)
+               Output: ten, hundred, unique1, unique2, tenthous, sum(unique2) OVER w2
+               Window: w2 AS (PARTITION BY tenk1.ten ORDER BY tenk1.hundred)
+               ->  Sort  (cost=N.N..N.N rows=N width=N)
+                     Output: ten, hundred, unique1, unique2, tenthous
+                     Sort Key: tenk1.ten, tenk1.hundred
+                     ->  Seq Scan on public.tenk1  (cost=N.N..N.N rows=N width=N)
+                           Output: ten, hundred, unique1, unique2, tenthous
+(14 rows)
+
+-- Check output including I/O timings.  These fields are conditional
+-- but always set in JSON format, so check them only in this case.
+set track_io_timing = on;
+select explain_filter('explain (analyze, buffers, format json) select * from int8_tbl i8');
+           explain_filter            
+-------------------------------------
+ [                                  +
+   {                                +
+     "Plan": {                      +
+       "Node Type": "Seq Scan",     +
+       "Parallel Aware": false,     +
+       "Async Capable": false,      +
+       "Relation Name": "int8_tbl", +
+       "Alias": "i8",               +
+       "Startup Cost": N.N,         +
+       "Total Cost": N.N,           +
+       "Plan Rows": N,              +
+       "Plan Width": N,             +
+       "Actual Startup Time": N.N,  +
+       "Actual Total Time": N.N,    +
+       "Actual Rows": N.N,          +
+       "Actual Loops": N,           +
+       "Disabled": false,           +
+       "Shared Hit Blocks": N,      +
+       "Shared Read Blocks": N,     +
+       "Shared Dirtied Blocks": N,  +
+       "Shared Written Blocks": N,  +
+       "Local Hit Blocks": N,       +
+       "Local Read Blocks": N,      +
+       "Local Dirtied Blocks": N,   +
+       "Local Written Blocks": N,   +
+       "Temp Read Blocks": N,       +
+       "Temp Written Blocks": N,    +
+       "Shared I/O Read Time": N.N, +
+       "Shared I/O Write Time": N.N,+
+       "Local I/O Read Time": N.N,  +
+       "Local I/O Write Time": N.N, +
+       "Temp I/O Read Time": N.N,   +
+       "Temp I/O Write Time": N.N   +
+     },                             +
+     "Planning": {                  +
+       "Shared Hit Blocks": N,      +
+       "Shared Read Blocks": N,     +
+       "Shared Dirtied Blocks": N,  +
+       "Shared Written Blocks": N,  +
+       "Local Hit Blocks": N,       +
+       "Local Read Blocks": N,      +
+       "Local Dirtied Blocks": N,   +
+       "Local Written Blocks": N,   +
+       "Temp Read Blocks": N,       +
+       "Temp Written Blocks": N,    +
+       "Shared I/O Read Time": N.N, +
+       "Shared I/O Write Time": N.N,+
+       "Local I/O Read Time": N.N,  +
+       "Local I/O Write Time": N.N, +
+       "Temp I/O Read Time": N.N,   +
+       "Temp I/O Write Time": N.N   +
+     },                             +
+     "Planning Time": N.N,          +
+     "Triggers": [                  +
+     ],                             +
+     "Execution Time": N.N          +
+   }                                +
+ ]
+(1 row)
+
+set track_io_timing = off;
+-- SETTINGS option
+-- We have to ignore other settings that might be imposed by the environment,
+-- so printing the whole Settings field unfortunately won't do.
+begin;
+set local plan_cache_mode = force_generic_plan;
+select true as "OK"
+  from explain_filter('explain (settings) select * from int8_tbl i8') ln
+  where ln ~ '^ *Settings: .*plan_cache_mode = ''force_generic_plan''';
+ OK 
+----
+ t
+(1 row)
+
+select explain_filter_to_json('explain (settings, format json) select * from int8_tbl i8') #> '{0,Settings,plan_cache_mode}';
+       ?column?       
+----------------------
+ "force_generic_plan"
+(1 row)
+
+rollback;
+-- GENERIC_PLAN option
+select explain_filter('explain (generic_plan) select unique1 from tenk1 where thousand = $1');
+                                 explain_filter                                  
+---------------------------------------------------------------------------------
+ Bitmap Heap Scan on tenk1  (cost=N.N..N.N rows=N width=N)
+   Recheck Cond: (thousand = $N)
+   ->  Bitmap Index Scan on tenk1_thous_tenthous  (cost=N.N..N.N rows=N width=N)
+         Index Cond: (thousand = $N)
+(4 rows)
+
+-- should fail
+select explain_filter('explain (analyze, generic_plan) select unique1 from tenk1 where thousand = $1');
+ERROR:  EXPLAIN options ANALYZE and GENERIC_PLAN cannot be used together
+CONTEXT:  PL/pgSQL function explain_filter(text) line 5 at FOR over EXECUTE statement
+-- MEMORY option
+select explain_filter('explain (memory) select * from int8_tbl i8');
+                     explain_filter                      
+---------------------------------------------------------
+ Seq Scan on int8_tbl i8  (cost=N.N..N.N rows=N width=N)
+   Memory: used=NkB  allocated=NkB
+(2 rows)
+
+select explain_filter('explain (memory, analyze, buffers off) select * from int8_tbl i8');
+                                         explain_filter                                          
+-------------------------------------------------------------------------------------------------
+ Seq Scan on int8_tbl i8  (cost=N.N..N.N rows=N width=N) (actual time=N.N..N.N rows=N.N loops=N)
+   Memory: used=NkB  allocated=NkB
+ Planning Time: N.N ms
+ Execution Time: N.N ms
+(4 rows)
+
+select explain_filter('explain (memory, summary, format yaml) select * from int8_tbl i8');
+        explain_filter         
+-------------------------------
+ - Plan:                      +
+     Node Type: "Seq Scan"    +
+     Parallel Aware: false    +
+     Async Capable: false     +
+     Relation Name: "int8_tbl"+
+     Alias: "i8"              +
+     Startup Cost: N.N        +
+     Total Cost: N.N          +
+     Plan Rows: N             +
+     Plan Width: N            +
+     Disabled: false          +
+   Planning:                  +
+     Memory Used: N           +
+     Memory Allocated: N      +
+   Planning Time: N.N
+(1 row)
+
+select explain_filter('explain (memory, analyze, format json) select * from int8_tbl i8');
+           explain_filter           
+------------------------------------
+ [                                 +
+   {                               +
+     "Plan": {                     +
+       "Node Type": "Seq Scan",    +
+       "Parallel Aware": false,    +
+       "Async Capable": false,     +
+       "Relation Name": "int8_tbl",+
+       "Alias": "i8",              +
+       "Startup Cost": N.N,        +
+       "Total Cost": N.N,          +
+       "Plan Rows": N,             +
+       "Plan Width": N,            +
+       "Actual Startup Time": N.N, +
+       "Actual Total Time": N.N,   +
+       "Actual Rows": N.N,         +
+       "Actual Loops": N,          +
+       "Disabled": false,          +
+       "Shared Hit Blocks": N,     +
+       "Shared Read Blocks": N,    +
+       "Shared Dirtied Blocks": N, +
+       "Shared Written Blocks": N, +
+       "Local Hit Blocks": N,      +
+       "Local Read Blocks": N,     +
+       "Local Dirtied Blocks": N,  +
+       "Local Written Blocks": N,  +
+       "Temp Read Blocks": N,      +
+       "Temp Written Blocks": N    +
+     },                            +
+     "Planning": {                 +
+       "Shared Hit Blocks": N,     +
+       "Shared Read Blocks": N,    +
+       "Shared Dirtied Blocks": N, +
+       "Shared Written Blocks": N, +
+       "Local Hit Blocks": N,      +
+       "Local Read Blocks": N,     +
+       "Local Dirtied Blocks": N,  +
+       "Local Written Blocks": N,  +
+       "Temp Read Blocks": N,      +
+       "Temp Written Blocks": N,   +
+       "Memory Used": N,           +
+       "Memory Allocated": N       +
+     },                            +
+     "Planning Time": N.N,         +
+     "Triggers": [                 +
+     ],                            +
+     "Execution Time": N.N         +
+   }                               +
+ ]
+(1 row)
+
+prepare int8_query as select * from int8_tbl i8;
+select explain_filter('explain (memory) execute int8_query');
+                     explain_filter                      
+---------------------------------------------------------
+ Seq Scan on int8_tbl i8  (cost=N.N..N.N rows=N width=N)
+   Memory: used=NkB  allocated=NkB
+(2 rows)
+
+-- Test EXPLAIN (GENERIC_PLAN) with partition pruning
+-- partitions should be pruned at plan time, based on constants,
+-- but there should be no pruning based on parameter placeholders
+create table gen_part (
+  key1 integer not null,
+  key2 integer not null
+) partition by list (key1);
+create table gen_part_1
+  partition of gen_part for values in (1)
+  partition by range (key2);
+create table gen_part_1_1
+  partition of gen_part_1 for values from (1) to (2);
+create table gen_part_1_2
+  partition of gen_part_1 for values from (2) to (3);
+create table gen_part_2
+  partition of gen_part for values in (2);
+-- should scan gen_part_1_1 and gen_part_1_2, but not gen_part_2
+select explain_filter('explain (generic_plan) select key1, key2 from gen_part where key1 = 1 and key2 = $1');
+                              explain_filter                               
+---------------------------------------------------------------------------
+ Append  (cost=N.N..N.N rows=N width=N)
+   ->  Seq Scan on gen_part_1_1 gen_part_1  (cost=N.N..N.N rows=N width=N)
+         Filter: ((key1 = N) AND (key2 = $N))
+   ->  Seq Scan on gen_part_1_2 gen_part_2  (cost=N.N..N.N rows=N width=N)
+         Filter: ((key1 = N) AND (key2 = $N))
+(5 rows)
+
+drop table gen_part;
+--
+-- Test production of per-worker data
+--
+-- Unfortunately, because we don't know how many worker processes we'll
+-- actually get (maybe none at all), we can't examine the "Workers" output
+-- in any detail.  We can check that it parses correctly as JSON, and then
+-- remove it from the displayed results.
+begin;
+-- encourage use of parallel plans
+set parallel_setup_cost=0;
+set parallel_tuple_cost=0;
+set min_parallel_table_scan_size=0;
+set max_parallel_workers_per_gather=4;
+select jsonb_pretty(
+  explain_filter_to_json('explain (analyze, verbose, buffers, format json)
+                         select * from tenk1 order by tenthous')
+  -- remove "Workers" node of the Seq Scan plan node
+  #- '{0,Plan,Plans,0,Plans,0,Workers}'
+  -- remove "Workers" node of the Sort plan node
+  #- '{0,Plan,Plans,0,Workers}'
+  -- Also remove its sort-type fields, as those aren't 100% stable
+  #- '{0,Plan,Plans,0,Sort Method}'
+  #- '{0,Plan,Plans,0,Sort Space Type}'
+);
+                        jsonb_pretty                         
+-------------------------------------------------------------
+ [                                                          +
+     {                                                      +
+         "Plan": {                                          +
+             "Plans": [                                     +
+                 {                                          +
+                     "Plans": [                             +
+                         {                                  +
+                             "Alias": "tenk1",              +
+                             "Output": [                    +
+                                 "unique1",                 +
+                                 "unique2",                 +
+                                 "two",                     +
+                                 "four",                    +
+                                 "ten",                     +
+                                 "twenty",                  +
+                                 "hundred",                 +
+                                 "thousand",                +
+                                 "twothousand",             +
+                                 "fivethous",               +
+                                 "tenthous",                +
+                                 "odd",                     +
+                                 "even",                    +
+                                 "stringu1",                +
+                                 "stringu2",                +
+                                 "string4"                  +
+                             ],                             +
+                             "Schema": "public",            +
+                             "Disabled": false,             +
+                             "Node Type": "Seq Scan",       +
+                             "Plan Rows": 0,                +
+                             "Plan Width": 0,               +
+                             "Total Cost": 0.0,             +
+                             "Actual Rows": 0.0,            +
+                             "Actual Loops": 0,             +
+                             "Startup Cost": 0.0,           +
+                             "Async Capable": false,        +
+                             "Relation Name": "tenk1",      +
+                             "Parallel Aware": true,        +
+                             "Local Hit Blocks": 0,         +
+                             "Temp Read Blocks": 0,         +
+                             "Actual Total Time": 0.0,      +
+                             "Local Read Blocks": 0,        +
+                             "Shared Hit Blocks": 0,        +
+                             "Shared Read Blocks": 0,       +
+                             "Actual Startup Time": 0.0,    +
+                             "Parent Relationship": "Outer",+
+                             "Temp Written Blocks": 0,      +
+                             "Local Dirtied Blocks": 0,     +
+                             "Local Written Blocks": 0,     +
+                             "Shared Dirtied Blocks": 0,    +
+                             "Shared Written Blocks": 0     +
+                         }                                  +
+                     ],                                     +
+                     "Output": [                            +
+                         "unique1",                         +
+                         "unique2",                         +
+                         "two",                             +
+                         "four",                            +
+                         "ten",                             +
+                         "twenty",                          +
+                         "hundred",                         +
+                         "thousand",                        +
+                         "twothousand",                     +
+                         "fivethous",                       +
+                         "tenthous",                        +
+                         "odd",                             +
+                         "even",                            +
+                         "stringu1",                        +
+                         "stringu2",                        +
+                         "string4"                          +
+                     ],                                     +
+                     "Disabled": false,                     +
+                     "Sort Key": [                          +
+                         "tenk1.tenthous"                   +
+                     ],                                     +
+                     "Node Type": "Sort",                   +
+                     "Plan Rows": 0,                        +
+                     "Plan Width": 0,                       +
+                     "Total Cost": 0.0,                     +
+                     "Actual Rows": 0.0,                    +
+                     "Actual Loops": 0,                     +
+                     "Startup Cost": 0.0,                   +
+                     "Async Capable": false,                +
+                     "Parallel Aware": false,               +
+                     "Sort Space Used": 0,                  +
+                     "Local Hit Blocks": 0,                 +
+                     "Temp Read Blocks": 0,                 +
+                     "Actual Total Time": 0.0,              +
+                     "Local Read Blocks": 0,                +
+                     "Shared Hit Blocks": 0,                +
+                     "Shared Read Blocks": 0,               +
+                     "Actual Startup Time": 0.0,            +
+                     "Parent Relationship": "Outer",        +
+                     "Temp Written Blocks": 0,              +
+                     "Local Dirtied Blocks": 0,             +
+                     "Local Written Blocks": 0,             +
+                     "Shared Dirtied Blocks": 0,            +
+                     "Shared Written Blocks": 0             +
+                 }                                          +
+             ],                                             +
+             "Output": [                                    +
+                 "unique1",                                 +
+                 "unique2",                                 +
+                 "two",                                     +
+                 "four",                                    +
+                 "ten",                                     +
+                 "twenty",                                  +
+                 "hundred",                                 +
+                 "thousand",                                +
+                 "twothousand",                             +
+                 "fivethous",                               +
+                 "tenthous",                                +
+                 "odd",                                     +
+                 "even",                                    +
+                 "stringu1",                                +
+                 "stringu2",                                +
+                 "string4"                                  +
+             ],                                             +
+             "Disabled": false,                             +
+             "Node Type": "Gather Merge",                   +
+             "Plan Rows": 0,                                +
+             "Plan Width": 0,                               +
+             "Total Cost": 0.0,                             +
+             "Actual Rows": 0.0,                            +
+             "Actual Loops": 0,                             +
+             "Startup Cost": 0.0,                           +
+             "Async Capable": false,                        +
+             "Parallel Aware": false,                       +
+             "Workers Planned": 0,                          +
+             "Local Hit Blocks": 0,                         +
+             "Temp Read Blocks": 0,                         +
+             "Workers Launched": 0,                         +
+             "Actual Total Time": 0.0,                      +
+             "Local Read Blocks": 0,                        +
+             "Shared Hit Blocks": 0,                        +
+             "Shared Read Blocks": 0,                       +
+             "Actual Startup Time": 0.0,                    +
+             "Temp Written Blocks": 0,                      +
+             "Local Dirtied Blocks": 0,                     +
+             "Local Written Blocks": 0,                     +
+             "Shared Dirtied Blocks": 0,                    +
+             "Shared Written Blocks": 0                     +
+         },                                                 +
+         "Planning": {                                      +
+             "Local Hit Blocks": 0,                         +
+             "Temp Read Blocks": 0,                         +
+             "Local Read Blocks": 0,                        +
+             "Shared Hit Blocks": 0,                        +
+             "Shared Read Blocks": 0,                       +
+             "Temp Written Blocks": 0,                      +
+             "Local Dirtied Blocks": 0,                     +
+             "Local Written Blocks": 0,                     +
+             "Shared Dirtied Blocks": 0,                    +
+             "Shared Written Blocks": 0                     +
+         },                                                 +
+         "Triggers": [                                      +
+         ],                                                 +
+         "Planning Time": 0.0,                              +
+         "Execution Time": 0.0                              +
+     }                                                      +
+ ]
+(1 row)
+
+rollback;
+-- Test display of temporary objects
+create temp table t1(f1 float8);
+create function pg_temp.mysin(float8) returns float8 language plpgsql
+as 'begin return sin($1); end';
+select explain_filter('explain (verbose) select * from t1 where pg_temp.mysin(f1) < 0.5');
+                       explain_filter                       
+------------------------------------------------------------
+ Seq Scan on pg_temp.t1  (cost=N.N..N.N rows=N width=N)
+   Output: f1
+   Filter: (pg_temp.mysin(t1.f1) < 'N.N'::double precision)
+(3 rows)
+
+-- Test compute_query_id
+set compute_query_id = on;
+select explain_filter('explain (verbose) select * from int8_tbl i8');
+                         explain_filter                         
+----------------------------------------------------------------
+ Seq Scan on public.int8_tbl i8  (cost=N.N..N.N rows=N width=N)
+   Output: q1, q2
+ Query Identifier: N
+(3 rows)
+
+-- Test compute_query_id with utility statements containing plannable query
+select explain_filter('explain (verbose) declare test_cur cursor for select * from int8_tbl');
+                       explain_filter                        
+-------------------------------------------------------------
+ Seq Scan on public.int8_tbl  (cost=N.N..N.N rows=N width=N)
+   Output: q1, q2
+ Query Identifier: N
+(3 rows)
+
+select explain_filter('explain (verbose) create table test_ctas as select 1');
+             explain_filter             
+----------------------------------------
+ Result  (cost=N.N..N.N rows=N width=N)
+   Output: N
+ Query Identifier: N
+(3 rows)
+
+-- Test SERIALIZE option
+select explain_filter('explain (analyze,buffers off,serialize) select * from int8_tbl i8');
+                                         explain_filter                                          
+-------------------------------------------------------------------------------------------------
+ Seq Scan on int8_tbl i8  (cost=N.N..N.N rows=N width=N) (actual time=N.N..N.N rows=N.N loops=N)
+ Planning Time: N.N ms
+ Serialization: time=N.N ms  output=NkB  format=text
+ Execution Time: N.N ms
+(4 rows)
+
+select explain_filter('explain (analyze,serialize text,buffers,timing off) select * from int8_tbl i8');
+                                  explain_filter                                   
+-----------------------------------------------------------------------------------
+ Seq Scan on int8_tbl i8  (cost=N.N..N.N rows=N width=N) (actual rows=N.N loops=N)
+ Planning Time: N.N ms
+ Serialization: output=NkB  format=text
+ Execution Time: N.N ms
+(4 rows)
+
+select explain_filter('explain (analyze,serialize binary,buffers,timing) select * from int8_tbl i8');
+                                         explain_filter                                          
+-------------------------------------------------------------------------------------------------
+ Seq Scan on int8_tbl i8  (cost=N.N..N.N rows=N width=N) (actual time=N.N..N.N rows=N.N loops=N)
+ Planning Time: N.N ms
+ Serialization: time=N.N ms  output=NkB  format=binary
+ Execution Time: N.N ms
+(4 rows)
+
+-- this tests an edge case where we have no data to return
+select explain_filter('explain (analyze,buffers off,serialize) create temp table explain_temp as select * from int8_tbl i8');
+                                         explain_filter                                          
+-------------------------------------------------------------------------------------------------
+ Seq Scan on int8_tbl i8  (cost=N.N..N.N rows=N width=N) (actual time=N.N..N.N rows=N.N loops=N)
+ Planning Time: N.N ms
+ Serialization: time=N.N ms  output=NkB  format=text
+ Execution Time: N.N ms
+(4 rows)
+
+-- Test tuplestore storage usage in Window aggregate (memory case)
+select explain_filter('explain (analyze,buffers off,costs off) select sum(n) over() from generate_series(1,10) a(n)');
+                                  explain_filter                                  
+----------------------------------------------------------------------------------
+ WindowAgg (actual time=N.N..N.N rows=N.N loops=N)
+   Window: w1 AS ()
+   Storage: Memory  Maximum Storage: NkB
+   ->  Function Scan on generate_series a (actual time=N.N..N.N rows=N.N loops=N)
+ Planning Time: N.N ms
+ Execution Time: N.N ms
+(6 rows)
+
+-- Test tuplestore storage usage in Window aggregate (disk case)
+set work_mem to 64;
+select explain_filter('explain (analyze,buffers off,costs off) select sum(n) over() from generate_series(1,2500) a(n)');
+                                  explain_filter                                  
+----------------------------------------------------------------------------------
+ WindowAgg (actual time=N.N..N.N rows=N.N loops=N)
+   Window: w1 AS ()
+   Storage: Disk  Maximum Storage: NkB
+   ->  Function Scan on generate_series a (actual time=N.N..N.N rows=N.N loops=N)
+ Planning Time: N.N ms
+ Execution Time: N.N ms
+(6 rows)
+
+-- Test tuplestore storage usage in Window aggregate (memory and disk case, final result is disk)
+select explain_filter('explain (analyze,buffers off,costs off) select sum(n) over(partition by m) from (SELECT n < 3 as m, n from generate_series(1,2500) a(n))');
+                                     explain_filter                                     
+----------------------------------------------------------------------------------------
+ WindowAgg (actual time=N.N..N.N rows=N.N loops=N)
+   Window: w1 AS (PARTITION BY ((a.n < N)))
+   Storage: Disk  Maximum Storage: NkB
+   ->  Sort (actual time=N.N..N.N rows=N.N loops=N)
+         Sort Key: ((a.n < N))
+         Sort Method: external merge  Disk: NkB
+         ->  Function Scan on generate_series a (actual time=N.N..N.N rows=N.N loops=N)
+ Planning Time: N.N ms
+ Execution Time: N.N ms
+(9 rows)
+
+reset work_mem;

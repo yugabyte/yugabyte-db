@@ -1,0 +1,39 @@
+@use '../../_style/colors.scss';
+
+.replicationParticipant {
+  min-width: 120px;
+  height: 100%;
+  padding: 12px;
+
+  background: colors.$YB_BG_WHITE_3;
+  border: 1px solid #d7dde1;
+  border-radius: 8px;
+
+  &.isCurrentUniverse {
+    background: colors.$YB_LIGHT_GRAY;
+  }
+
+  .label {
+    width: 50px;
+    height: 20px;
+    padding-top: 3px;
+
+    color: #0b1117;
+    background: #e9eef2;
+    border-radius: 4px;
+    font-size: 10px;
+    text-align: center;
+  }
+
+  .participantName {
+    margin-top: 10px;
+
+    font-weight: 500;
+    font-size: 14px;
+  }
+
+  .pillContainer {
+    display: flex;
+    gap: 4px;
+  }
+}

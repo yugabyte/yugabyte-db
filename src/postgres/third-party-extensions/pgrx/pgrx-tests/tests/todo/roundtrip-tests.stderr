@@ -1,0 +1,182 @@
+error[E0261]: use of undeclared lifetime name `'a`
+  --> tests/todo/roundtrip-tests.rs:69:21
+   |
+22 |             fn $fname(i: $rtype) -> $rtype {
+   |             - - help: consider introducing lifetime `'a` here: `<'a>`
+   |             |
+   |             lifetime `'a` is missing in item created through this procedural macro
+...
+69 |         Vec<Option<&'a str>>,
+   |                     ^^ undeclared lifetime
+
+error[E0261]: use of undeclared lifetime name `'a`
+  --> tests/todo/roundtrip-tests.rs:69:21
+   |
+67 |         rt_array_refstr,
+   |                        - lifetime `'a` is missing in item created through this procedural macro
+68 |         test_rt_array_refstr,
+69 |         Vec<Option<&'a str>>,
+   |                     ^^ undeclared lifetime
+
+error[E0261]: use of undeclared lifetime name `'a`
+  --> tests/todo/roundtrip-tests.rs:69:21
+   |
+67 |         rt_array_refstr,
+   |                        - help: consider introducing lifetime `'a` here: `<'a>`
+68 |         test_rt_array_refstr,
+69 |         Vec<Option<&'a str>>,
+   |                     ^^ undeclared lifetime
+
+error[E0261]: use of undeclared lifetime name `'a`
+  --> tests/todo/roundtrip-tests.rs:69:21
+   |
+22 |               fn $fname(i: $rtype) -> $rtype {
+   |  ____________________________________________-
+23 | |                 i
+24 | |             }
+   | |_____________- lifetime `'a` is missing in item created through this procedural macro
+...
+69 |           Vec<Option<&'a str>>,
+   |                       ^^ undeclared lifetime
+
+error[E0261]: use of undeclared lifetime name `'a`
+  --> tests/todo/roundtrip-tests.rs:69:21
+   |
+68 |         test_rt_array_refstr,
+   |                             - help: consider introducing lifetime `'a` here: `<'a>`
+69 |         Vec<Option<&'a str>>,
+   |                     ^^ undeclared lifetime
+
+error[E0277]: the trait bound `Vec<Option<&[u8]>>: ArgAbi<'_>` is not satisfied
+  --> tests/todo/roundtrip-tests.rs:22:23
+   |
+22 |               fn $fname(i: $rtype) -> $rtype {
+   |                         ^ the trait `ArgAbi<'_>` is not implemented for `Vec<Option<&[u8]>>`
+...
+52 | /     roundtrip!(
+53 | |         rt_array_bytea,
+54 | |         test_rt_array_bytea,
+55 | |         Vec<Option<&[u8]>>,
+...  |
+64 | |     );
+   | |_____- in this macro invocation
+   |
+   = help: the following other types implement trait `ArgAbi<'fcx>`:
+             Vec<Option<T>>
+             Vec<T>
+             Vec<u8>
+note: required by a bound in `pgrx::callconv::Args::<'a, 'fcx>::next_arg_unchecked`
+  --> $WORKSPACE/pgrx/src/callconv.rs
+   |
+   |     pub unsafe fn next_arg_unchecked<T: ArgAbi<'fcx>>(&mut self) -> Option<T> {
+   |                                         ^^^^^^^^^^^^ required by this bound in `Args::<'a, 'fcx>::next_arg_unchecked`
+   = note: this error originates in the attribute macro `pg_extern` which comes from the expansion of the macro `roundtrip` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `Vec<Option<&[u8]>>: FromDatum` is not satisfied
+  --> tests/todo/roundtrip-tests.rs:36:38
+   |
+36 |                   let result: $rtype = Spi::get_one_with_args(
+   |  ______________________________________^
+37 | |                     &format!("SELECT {}($1)", stringify!(tests.$fname)),
+38 | |                     &[value.into()],
+39 | |                 )?
+   | |_________________^ the trait `FromDatum` is not implemented for `Vec<Option<&[u8]>>`
+...
+52 | /     roundtrip!(
+53 | |         rt_array_bytea,
+54 | |         test_rt_array_bytea,
+55 | |         Vec<Option<&[u8]>>,
+...  |
+64 | |     );
+   | |_____- in this macro invocation
+   |
+   = help: the following other types implement trait `FromDatum`:
+             Vec<Option<T>>
+             Vec<T>
+             Vec<u8>
+note: required by a bound in `pgrx::Spi::get_one_with_args`
+  --> $WORKSPACE/pgrx/src/spi.rs
+   |
+   |     pub fn get_one_with_args<'mcx, A: FromDatum + IntoDatum>(
+   |                                       ^^^^^^^^^ required by this bound in `Spi::get_one_with_args`
+   = note: this error originates in the macro `roundtrip_test` which comes from the expansion of the macro `roundtrip` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0284]: type annotations needed: cannot satisfy `for<'arr> <Option<&str> as UnboxDatum>::As<'arr> == Option<&str>`
+  --> tests/todo/roundtrip-tests.rs:36:38
+   |
+36 |                   let result: $rtype = Spi::get_one_with_args(
+   |  ______________________________________^
+37 | |                     &format!("SELECT {}($1)", stringify!(tests.$fname)),
+38 | |                     &[value.into()],
+39 | |                 )?
+   | |_________________^ cannot satisfy `for<'arr> <Option<&str> as UnboxDatum>::As<'arr> == Option<&str>`
+...
+66 | /     roundtrip!(
+67 | |         rt_array_refstr,
+68 | |         test_rt_array_refstr,
+69 | |         Vec<Option<&'a str>>,
+70 | |         vec![None, Some("foo"), Some("bar"), None, Some("baz"), None]
+71 | |     );
+   | |_____- in this macro invocation
+   |
+   = note: required for `Vec<Option<&str>>` to implement `FromDatum`
+note: required by a bound in `pgrx::Spi::get_one_with_args`
+  --> $WORKSPACE/pgrx/src/spi.rs
+   |
+   |     pub fn get_one_with_args<'mcx, A: FromDatum + IntoDatum>(
+   |                                       ^^^^^^^^^ required by this bound in `Spi::get_one_with_args`
+   = note: this error originates in the macro `roundtrip_test` which comes from the expansion of the macro `roundtrip` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `Vec<Option<&CStr>>: ArgAbi<'_>` is not satisfied
+  --> tests/todo/roundtrip-tests.rs:22:23
+   |
+22 |               fn $fname(i: $rtype) -> $rtype {
+   |                         ^ the trait `ArgAbi<'_>` is not implemented for `Vec<Option<&CStr>>`
+...
+73 | /     roundtrip!(
+74 | |         rt_array_cstr,
+75 | |         test_rt_array_cstr,
+76 | |         Vec<Option<&'static CStr>>,
+...  |
+85 | |     );
+   | |_____- in this macro invocation
+   |
+   = help: the following other types implement trait `ArgAbi<'fcx>`:
+             Vec<Option<T>>
+             Vec<T>
+             Vec<u8>
+note: required by a bound in `pgrx::callconv::Args::<'a, 'fcx>::next_arg_unchecked`
+  --> $WORKSPACE/pgrx/src/callconv.rs
+   |
+   |     pub unsafe fn next_arg_unchecked<T: ArgAbi<'fcx>>(&mut self) -> Option<T> {
+   |                                         ^^^^^^^^^^^^ required by this bound in `Args::<'a, 'fcx>::next_arg_unchecked`
+   = note: this error originates in the attribute macro `pg_extern` which comes from the expansion of the macro `roundtrip` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: the trait bound `Vec<Option<&CStr>>: FromDatum` is not satisfied
+  --> tests/todo/roundtrip-tests.rs:36:38
+   |
+36 |                   let result: $rtype = Spi::get_one_with_args(
+   |  ______________________________________^
+37 | |                     &format!("SELECT {}($1)", stringify!(tests.$fname)),
+38 | |                     &[value.into()],
+39 | |                 )?
+   | |_________________^ the trait `FromDatum` is not implemented for `Vec<Option<&CStr>>`
+...
+73 | /     roundtrip!(
+74 | |         rt_array_cstr,
+75 | |         test_rt_array_cstr,
+76 | |         Vec<Option<&'static CStr>>,
+...  |
+85 | |     );
+   | |_____- in this macro invocation
+   |
+   = help: the following other types implement trait `FromDatum`:
+             Vec<Option<T>>
+             Vec<T>
+             Vec<u8>
+note: required by a bound in `pgrx::Spi::get_one_with_args`
+  --> $WORKSPACE/pgrx/src/spi.rs
+   |
+   |     pub fn get_one_with_args<'mcx, A: FromDatum + IntoDatum>(
+   |                                       ^^^^^^^^^ required by this bound in `Spi::get_one_with_args`
+   = note: this error originates in the macro `roundtrip_test` which comes from the expansion of the macro `roundtrip` (in Nightly builds, run with -Z macro-backtrace for more info)

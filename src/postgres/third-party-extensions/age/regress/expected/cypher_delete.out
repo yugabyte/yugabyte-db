@@ -1,0 +1,850 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+LOAD 'age';
+SET search_path TO ag_catalog;
+SELECT create_graph('cypher_delete');
+NOTICE:  graph "cypher_delete" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+--Test 1: Delete Vertices
+SELECT * FROM cypher('cypher_delete', $$CREATE (:v)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$CREATE (:v {i: 0, j: 5, a: 0})$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$CREATE (:v {i: 1})$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) DELETE n RETURN n$$) AS (a agtype);
+                                           a                                           
+---------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "v", "properties": {}}::vertex
+ {"id": 844424930131970, "label": "v", "properties": {"a": 0, "i": 0, "j": 5}}::vertex
+ {"id": 844424930131971, "label": "v", "properties": {"i": 1}}::vertex
+(3 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) RETURN n$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--Test 2: Delete Edges
+SELECT * FROM cypher('cypher_delete', $$CREATE (:v)-[:e]->(:v)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--Should Fail
+SELECT * FROM cypher('cypher_delete', $$MATCH(n1)-[e]->(n2) DELETE n1 RETURN n1$$) AS (a agtype);
+ERROR:  Cannot delete a vertex that has edge(s). Delete the edge(s) first, or try DETACH DELETE.
+SELECT * FROM cypher('cypher_delete', $$MATCH(n1)-[e]->(n2) DELETE n2 RETURN n2$$) AS (a agtype);
+ERROR:  Cannot delete a vertex that has edge(s). Delete the edge(s) first, or try DETACH DELETE.
+SELECT * FROM cypher('cypher_delete', $$MATCH(n1)-[e]->(n2) DELETE e RETURN e$$) AS (a agtype);
+                                                           a                                                            
+------------------------------------------------------------------------------------------------------------------------
+ {"id": 1125899906842625, "label": "e", "end_id": 844424930131973, "start_id": 844424930131972, "properties": {}}::edge
+(1 row)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH()-[e]->() DELETE e RETURN e$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--Cleanup
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) DELETE n RETURN n$$) AS (a agtype);
+                                a                                
+-----------------------------------------------------------------
+ {"id": 844424930131972, "label": "v", "properties": {}}::vertex
+ {"id": 844424930131973, "label": "v", "properties": {}}::vertex
+(2 rows)
+
+--Test 4: DETACH DELETE a vertex
+SELECT * FROM cypher('cypher_delete', $$CREATE (:v)-[:e]->(:v)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n1)-[e]->(n2) DETACH DELETE n1 RETURN e$$) AS (a agtype);
+                                                           a                                                            
+------------------------------------------------------------------------------------------------------------------------
+ {"id": 1125899906842626, "label": "e", "end_id": 844424930131975, "start_id": 844424930131974, "properties": {}}::edge
+(1 row)
+
+--Cleanup
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) RETURN n$$) AS (a agtype);
+                                a                                
+-----------------------------------------------------------------
+ {"id": 844424930131975, "label": "v", "properties": {}}::vertex
+(1 row)
+
+--Test 4: DETACH DELETE two vertices tied to the same edge
+SELECT * FROM cypher('cypher_delete', $$CREATE (:v)-[:e]->(:v)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n1)-[e]->(n2) DETACH DELETE n1, n2 RETURN e$$) AS (a agtype);
+                                                           a                                                            
+------------------------------------------------------------------------------------------------------------------------
+ {"id": 1125899906842627, "label": "e", "end_id": 844424930131977, "start_id": 844424930131976, "properties": {}}::edge
+(1 row)
+
+--Test 4: DETACH DELETE a vertex
+SELECT * FROM cypher('cypher_delete', $$CREATE (:v)-[:e]->(:v)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n1)-[e]->(n2) DETACH DELETE n1, n2 RETURN e$$) AS (a agtype);
+                                                           a                                                            
+------------------------------------------------------------------------------------------------------------------------
+ {"id": 1125899906842628, "label": "e", "end_id": 844424930131979, "start_id": 844424930131978, "properties": {}}::edge
+(1 row)
+
+--Test 5: DETACH DELETE a vertex that points to itself
+SELECT * FROM cypher('cypher_delete', $$CREATE (n:v)-[:e]->(n)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n1)-[e]->() DETACH DELETE n1 RETURN e$$) AS (a agtype);
+                                                           a                                                            
+------------------------------------------------------------------------------------------------------------------------
+ {"id": 1125899906842629, "label": "e", "end_id": 844424930131980, "start_id": 844424930131980, "properties": {}}::edge
+(1 row)
+
+--Test 6: DETACH Delete a vertex twice
+SELECT * FROM cypher('cypher_delete', $$CREATE (n:v)-[:e]->(n)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n1)-[e]->(n2) DETACH DELETE n1, n2 RETURN e$$) AS (a agtype);
+                                                           a                                                            
+------------------------------------------------------------------------------------------------------------------------
+ {"id": 1125899906842630, "label": "e", "end_id": 844424930131981, "start_id": 844424930131981, "properties": {}}::edge
+(1 row)
+
+--Test 7: Test the SET Clause on DELETED node
+SELECT * FROM cypher('cypher_delete', $$CREATE (:v)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$CREATE (:v {i: 0, j: 5, a: 0})$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$CREATE (:v {i: 1})$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) DELETE n SET n.lol = 'ftw' RETURN n$$) AS (a agtype);
+                                                  a                                                  
+-----------------------------------------------------------------------------------------------------
+ {"id": 844424930131975, "label": "v", "properties": {"lol": "ftw"}}::vertex
+ {"id": 844424930131982, "label": "v", "properties": {"lol": "ftw"}}::vertex
+ {"id": 844424930131983, "label": "v", "properties": {"a": 0, "i": 0, "j": 5, "lol": "ftw"}}::vertex
+ {"id": 844424930131984, "label": "v", "properties": {"i": 1, "lol": "ftw"}}::vertex
+(4 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) RETURN n$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--Test 8:
+SELECT * FROM cypher('cypher_delete', $$CREATE (n:v)-[:e]->(:v) CREATE (n)-[:e]->(:v)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n1)-[]->() DELETE n1 RETURN n1$$) AS (a agtype);
+ERROR:  Cannot delete a vertex that has edge(s). Delete the edge(s) first, or try DETACH DELETE.
+--Cleanup
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) DETACH DELETE n RETURN n$$) AS (a agtype);
+                                a                                
+-----------------------------------------------------------------
+ {"id": 844424930131985, "label": "v", "properties": {}}::vertex
+ {"id": 844424930131986, "label": "v", "properties": {}}::vertex
+ {"id": 844424930131987, "label": "v", "properties": {}}::vertex
+(3 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) RETURN n$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--Test 9:
+SELECT * FROM cypher('cypher_delete', $$CREATE (n:v)-[:e]->(:v)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n1)-[e]->() DELETE e, n1 RETURN n1$$) AS (a agtype);
+                                a                                
+-----------------------------------------------------------------
+ {"id": 844424930131988, "label": "v", "properties": {}}::vertex
+(1 row)
+
+--Cleanup
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) DETACH DELETE n RETURN n$$) AS (a agtype);
+                                a                                
+-----------------------------------------------------------------
+ {"id": 844424930131989, "label": "v", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) RETURN n$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--Test 10:
+SELECT * FROM cypher('cypher_delete', $$CREATE (n:v)-[:e]->(:v)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n1)-[e]->() DELETE n1, e RETURN n1$$) AS (a agtype);
+                                a                                
+-----------------------------------------------------------------
+ {"id": 844424930131990, "label": "v", "properties": {}}::vertex
+(1 row)
+
+--Cleanup
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) DETACH DELETE n RETURN n$$) AS (a agtype);
+                                a                                
+-----------------------------------------------------------------
+ {"id": 844424930131991, "label": "v", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) RETURN n$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--Test 11: Delete a vertex twice
+SELECT * FROM cypher('cypher_delete', $$CREATE (n:v)-[:e]->(:v), (n)-[:e]->(:v) RETURN n$$) AS (a agtype);
+                                a                                
+-----------------------------------------------------------------
+ {"id": 844424930131992, "label": "v", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n1)-[e]->() DETACH DELETE n1 RETURN n1, e$$) AS (a agtype, b agtype);
+                                a                                |                                                           b                                                            
+-----------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------
+ {"id": 844424930131992, "label": "v", "properties": {}}::vertex | {"id": 1125899906842635, "label": "e", "end_id": 844424930131993, "start_id": 844424930131992, "properties": {}}::edge
+ {"id": 844424930131992, "label": "v", "properties": {}}::vertex | {"id": 1125899906842636, "label": "e", "end_id": 844424930131994, "start_id": 844424930131992, "properties": {}}::edge
+(2 rows)
+
+--Cleanup
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) DELETE n RETURN n$$) AS (a agtype);
+                                a                                
+-----------------------------------------------------------------
+ {"id": 844424930131993, "label": "v", "properties": {}}::vertex
+ {"id": 844424930131994, "label": "v", "properties": {}}::vertex
+(2 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) RETURN n$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--Test 12:
+SELECT * FROM cypher('cypher_delete', $$CREATE (:v)-[:e]->(:v)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n)-[e]->() DETACH DELETE n CREATE (n)-[:e2]->(:v) RETURN e$$) AS (a agtype);
+ERROR:  vertex assigned to variable n was deleted
+--Cleanup
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) DETACH DELETE n RETURN n$$) AS (a agtype);
+                                a                                
+-----------------------------------------------------------------
+ {"id": 844424930131995, "label": "v", "properties": {}}::vertex
+ {"id": 844424930131996, "label": "v", "properties": {}}::vertex
+(2 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) RETURN n$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--Test 13:
+SELECT * FROM cypher('cypher_delete', $$CREATE (n:v)-[:e]->(n)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n)-[e]->(m) DETACH DELETE n CREATE (m)-[:e2]->(:v) RETURN e$$) AS (a agtype);
+ERROR:  vertex assigned to variable m was deleted
+--Cleanup
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) DETACH DELETE n RETURN n$$) AS (a agtype);
+                                a                                
+-----------------------------------------------------------------
+ {"id": 844424930131997, "label": "v", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) RETURN n$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--Test 14:
+SELECT * FROM cypher('cypher_delete', $$CREATE (n:v)-[:e]->(n)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$CREATE (:v)-[:e]->(:v)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n)-[e]->(m) DETACH DELETE n CREATE (m)-[:e2]->(:v) RETURN e$$) AS (a agtype);
+ERROR:  vertex assigned to variable m was deleted
+--Cleanup
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) DETACH DELETE n RETURN n$$) AS (a agtype);
+                                a                                
+-----------------------------------------------------------------
+ {"id": 844424930131998, "label": "v", "properties": {}}::vertex
+ {"id": 844424930131999, "label": "v", "properties": {}}::vertex
+ {"id": 844424930132000, "label": "v", "properties": {}}::vertex
+(3 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) RETURN n$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--Test 15:
+SELECT * FROM cypher('cypher_delete', $$CREATE (:v)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) SET n.i = 0 DELETE n RETURN n$$) AS (a agtype);
+                                   a                                   
+-----------------------------------------------------------------------
+ {"id": 844424930132001, "label": "v", "properties": {"i": 0}}::vertex
+(1 row)
+
+--Cleanup
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) RETURN n$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--Test 16:
+SELECT * FROM cypher('cypher_delete', $$CREATE (:v)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) DELETE n SET n.i = 0 RETURN n$$) AS (a agtype);
+                                   a                                   
+-----------------------------------------------------------------------
+ {"id": 844424930132002, "label": "v", "properties": {"i": 0}}::vertex
+(1 row)
+
+--Cleanup
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) RETURN n$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--Test 17:
+SELECT * FROM cypher('cypher_delete', $$CREATE (n:v)-[:e]->(:v)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n)-[e]->(m) DETACH DELETE n SET e.i = 1 RETURN e$$) AS (a agtype);
+                                                              a                                                               
+------------------------------------------------------------------------------------------------------------------------------
+ {"id": 1125899906842641, "label": "e", "end_id": 844424930132004, "start_id": 844424930132003, "properties": {"i": 1}}::edge
+(1 row)
+
+--Cleanup
+--Note: Expect 1 vertex
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) DELETE n RETURN n$$) AS (a agtype);
+                                a                                
+-----------------------------------------------------------------
+ {"id": 844424930132004, "label": "v", "properties": {}}::vertex
+(1 row)
+
+--Test 18:
+SELECT * FROM cypher('cypher_delete', $$CREATE (n:v)-[:e]->(:v)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n)-[e]->(m) SET e.i = 1 DETACH DELETE n RETURN e$$) AS (a agtype);
+                                                              a                                                               
+------------------------------------------------------------------------------------------------------------------------------
+ {"id": 1125899906842642, "label": "e", "end_id": 844424930132006, "start_id": 844424930132005, "properties": {"i": 1}}::edge
+(1 row)
+
+--Cleanup
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) DELETE n RETURN n$$) AS (a agtype);
+                                a                                
+-----------------------------------------------------------------
+ {"id": 844424930132006, "label": "v", "properties": {}}::vertex
+(1 row)
+
+--Test 19:
+SELECT * FROM cypher('cypher_delete', $$CREATE (n:v)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH (n) DELETE n CREATE (n)-[:e]->(:v) RETURN n$$) AS (a agtype);
+ERROR:  vertex assigned to variable n was deleted
+--Cleanup
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) DELETE n RETURN n$$) AS (a agtype);
+                                a                                
+-----------------------------------------------------------------
+ {"id": 844424930132007, "label": "v", "properties": {}}::vertex
+(1 row)
+
+--Test 20 Undefined Reference:
+SELECT * FROM cypher('cypher_delete', $$MATCH (n) DELETE m RETURN n$$) AS (a agtype);
+ERROR:  undefined reference to variable m in DELETE clause
+LINE 1: ...* FROM cypher('cypher_delete', $$MATCH (n) DELETE m RETURN n...
+                                                             ^
+--Test 21 Prepared Statements
+SELECT * FROM cypher('cypher_delete', $$CREATE (v:v)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+PREPARE d AS SELECT * FROM cypher('cypher_delete', $$MATCH (v) DELETE (v) RETURN v$$) AS (a agtype);
+EXECUTE d;
+                                a                                
+-----------------------------------------------------------------
+ {"id": 844424930132008, "label": "v", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_delete', $$CREATE (v:v)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+EXECUTE d;
+                                a                                
+-----------------------------------------------------------------
+ {"id": 844424930132009, "label": "v", "properties": {}}::vertex
+(1 row)
+
+--Test 22 pl/pgsql Functions
+SELECT * FROM cypher('cypher_delete', $$CREATE (v:v)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+CREATE FUNCTION delete_test()
+RETURNS TABLE(vertex agtype)
+LANGUAGE plpgsql
+VOLATILE
+AS $BODY$
+BEGIN
+	RETURN QUERY SELECT * FROM cypher('cypher_delete', $$MATCH (v) DELETE (v) RETURN v$$) AS (a agtype);
+END
+$BODY$;
+SELECT delete_test();
+                           delete_test                           
+-----------------------------------------------------------------
+ {"id": 844424930132010, "label": "v", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_delete', $$CREATE (v:v)$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT delete_test();
+                           delete_test                           
+-----------------------------------------------------------------
+ {"id": 844424930132011, "label": "v", "properties": {}}::vertex
+(1 row)
+
+-- Clean Up
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) DETACH DELETE n RETURN n$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+--Test 23
+SELECT * FROM cypher('cypher_delete', $$CREATE (n:v)-[:e]->()$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$CREATE (n:v)-[:e2]->()$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH p=()-[]->() RETURN p$$) AS (a agtype);
+                                                                                                                                a                                                                                                                                 
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 844424930132012, "label": "v", "properties": {}}::vertex, {"id": 1125899906842643, "label": "e", "end_id": 281474976710657, "start_id": 844424930132012, "properties": {}}::edge, {"id": 281474976710657, "label": "", "properties": {}}::vertex]::path
+ [{"id": 844424930132013, "label": "v", "properties": {}}::vertex, {"id": 2251799813685249, "label": "e2", "end_id": 281474976710658, "start_id": 844424930132013, "properties": {}}::edge, {"id": 281474976710658, "label": "", "properties": {}}::vertex]::path
+(2 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n)-[e]->(m)  DELETE e$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH p=()-[]->() RETURN p$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+-- Clean Up
+SELECT * FROM cypher('cypher_delete', $$MATCH(n)  DELETE n RETURN n$$) AS (a agtype);
+                                a                                
+-----------------------------------------------------------------
+ {"id": 281474976710657, "label": "", "properties": {}}::vertex
+ {"id": 281474976710658, "label": "", "properties": {}}::vertex
+ {"id": 844424930132012, "label": "v", "properties": {}}::vertex
+ {"id": 844424930132013, "label": "v", "properties": {}}::vertex
+(4 rows)
+
+--Test 24
+SELECT * FROM cypher('cypher_delete', $$CREATE (n:v)-[:e]->()$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$CREATE (n:v)-[:e2]->()$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH p=()-[]->() RETURN p$$) AS (a agtype);
+                                                                                                                                a                                                                                                                                 
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 844424930132014, "label": "v", "properties": {}}::vertex, {"id": 1125899906842644, "label": "e", "end_id": 281474976710659, "start_id": 844424930132014, "properties": {}}::edge, {"id": 281474976710659, "label": "", "properties": {}}::vertex]::path
+ [{"id": 844424930132015, "label": "v", "properties": {}}::vertex, {"id": 2251799813685250, "label": "e2", "end_id": 281474976710660, "start_id": 844424930132015, "properties": {}}::edge, {"id": 281474976710660, "label": "", "properties": {}}::vertex]::path
+(2 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH(n)-[]->() DETACH DELETE n$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH p=()-[]->() RETURN p$$) AS (a agtype);
+ a 
+---
+(0 rows)
+
+-- Clean Up
+SELECT * FROM cypher('cypher_delete', $$MATCH(n) DELETE n RETURN n$$) AS (a agtype);
+                               a                                
+----------------------------------------------------------------
+ {"id": 281474976710659, "label": "", "properties": {}}::vertex
+ {"id": 281474976710660, "label": "", "properties": {}}::vertex
+(2 rows)
+
+-- test DELETE in transaction block
+SELECT * FROM cypher('cypher_delete', $$CREATE (u:vertices) RETURN u $$) AS (result agtype);
+                                 result                                  
+-------------------------------------------------------------------------
+ {"id": 2533274790395905, "label": "vertices", "properties": {}}::vertex
+(1 row)
+
+BEGIN;
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) RETURN u $$) AS (result agtype);
+                                 result                                  
+-------------------------------------------------------------------------
+ {"id": 2533274790395905, "label": "vertices", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) DELETE u RETURN u $$) AS (result agtype);
+                                 result                                  
+-------------------------------------------------------------------------
+ {"id": 2533274790395905, "label": "vertices", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) RETURN u $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$CREATE (u:vertices) RETURN u $$) AS (result agtype);
+                                 result                                  
+-------------------------------------------------------------------------
+ {"id": 2533274790395906, "label": "vertices", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) RETURN u $$) AS (result agtype);
+                                 result                                  
+-------------------------------------------------------------------------
+ {"id": 2533274790395906, "label": "vertices", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) DELETE u RETURN u $$) AS (result agtype);
+                                 result                                  
+-------------------------------------------------------------------------
+ {"id": 2533274790395906, "label": "vertices", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) RETURN u $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+SELECT * FROM cypher('cypher_delete', $$CREATE (u:vertices) RETURN u $$) AS (result agtype);
+                                 result                                  
+-------------------------------------------------------------------------
+ {"id": 2533274790395907, "label": "vertices", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) RETURN u $$) AS (result agtype);
+                                 result                                  
+-------------------------------------------------------------------------
+ {"id": 2533274790395907, "label": "vertices", "properties": {}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) DELETE u SET u.i = 1 RETURN u $$) AS (result agtype);
+                                    result                                     
+-------------------------------------------------------------------------------
+ {"id": 2533274790395907, "label": "vertices", "properties": {"i": 1}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) RETURN u $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+END;
+SELECT * FROM cypher('cypher_delete', $$MATCH (u:vertices) RETURN u $$) AS (result agtype);
+ result 
+--------
+(0 rows)
+
+--
+-- Detach Delete
+--
+SELECT create_graph('detach_delete');
+NOTICE:  graph "detach_delete" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+SELECT * FROM cypher('detach_delete',
+$$
+    CREATE (x:Label3{name:'x', delete: true}),
+           (y:Label3{name:'y', delete: true}),
+           (a:Label1{name:'a', delete: true}),
+           (b:Label5{name:'b'}),
+           (c:Label5{name:'c'}),
+           (d:Label5{name:'d'}),
+           (m:Label7{name:'m', delete: true}),
+           (n:Label2{name:'n'}),
+           (p:Label2{name:'p'}),
+           (q:Label2{name:'q'}),
+           (a)-[:rel1{name:'ab'}]->(b),
+           (c)-[:rel2{name:'cd'}]->(d),
+           (n)-[:rel3{name:'nm'}]->(m),
+           (a)-[:rel4{name:'am'}]->(m),
+           (p)-[:rel5{name:'pq'}]->(q)
+$$
+) as (a agtype);
+ a 
+---
+(0 rows)
+
+-- no vertices or edges are deleted (error is expected)
+SELECT * FROM cypher('detach_delete', $$ MATCH (x:Label1), (y:Label3), (z:Label7) DELETE x, y, z RETURN 1 $$) as (a agtype);
+ERROR:  Cannot delete a vertex that has edge(s). Delete the edge(s) first, or try DETACH DELETE.
+SELECT * FROM cypher('detach_delete', $$ MATCH (v) RETURN v.name $$) as (vname agtype);
+ vname 
+-------
+ "x"
+ "y"
+ "a"
+ "b"
+ "c"
+ "d"
+ "m"
+ "n"
+ "p"
+ "q"
+(10 rows)
+
+SELECT * FROM cypher('detach_delete', $$ MATCH ()-[e]->() RETURN e.name $$) as (ename agtype);
+ ename 
+-------
+ "ab"
+ "cd"
+ "am"
+ "nm"
+ "pq"
+(5 rows)
+
+-- x, y, a, m, ab, nm, am are deleted
+SELECT * FROM cypher('detach_delete', $$ MATCH (x:Label1), (y:Label3), (z:Label7) DETACH DELETE x, y, z RETURN 1 $$) as (a agtype);
+ a 
+---
+ 1
+ 1
+(2 rows)
+
+SELECT * FROM cypher('detach_delete', $$ MATCH (v) RETURN v.name $$) as (vname agtype);
+ vname 
+-------
+ "b"
+ "c"
+ "d"
+ "n"
+ "p"
+ "q"
+(6 rows)
+
+SELECT * FROM cypher('detach_delete', $$ MATCH ()-[e]->() RETURN e.name $$) as (ename agtype);
+ ename 
+-------
+ "cd"
+ "pq"
+(2 rows)
+
+SELECT drop_graph('detach_delete', true);
+NOTICE:  drop cascades to 12 other objects
+DETAIL:  drop cascades to table detach_delete._ag_label_vertex
+drop cascades to table detach_delete._ag_label_edge
+drop cascades to table detach_delete."Label3"
+drop cascades to table detach_delete."Label1"
+drop cascades to table detach_delete."Label5"
+drop cascades to table detach_delete."Label7"
+drop cascades to table detach_delete."Label2"
+drop cascades to table detach_delete.rel1
+drop cascades to table detach_delete.rel2
+drop cascades to table detach_delete.rel3
+drop cascades to table detach_delete.rel4
+drop cascades to table detach_delete.rel5
+NOTICE:  graph "detach_delete" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+--
+-- SET followed by DELETE
+--
+SELECT create_graph('setdelete');
+NOTICE:  graph "setdelete" has been created
+ create_graph 
+--------------
+ 
+(1 row)
+
+-- MATCH (x) SET x DELETE x
+SELECT * FROM cypher('setdelete', $$ CREATE (:A), (:A), (:A) $$) as ("CREATE" agtype);
+ CREATE 
+--------
+(0 rows)
+
+SELECT * FROM cypher('setdelete', $$ MATCH (x:A) SET x.age = 24 DELETE x $$) as ("SET + DELETE" agtype);
+ SET + DELETE 
+--------------
+(0 rows)
+
+SELECT id as "expected: 0 rows" FROM setdelete._ag_label_vertex;
+ expected: 0 rows 
+------------------
+(0 rows)
+
+-- MATCH (n)-[e]->(m) SET e DETACH DELETE n
+SELECT * FROM cypher('setdelete', $$ CREATE (:n)-[:e]->(:m), (:n)-[:e]->(:m) $$) AS ("CREATE" agtype);
+ CREATE 
+--------
+(0 rows)
+
+SELECT * FROM cypher('setdelete', $$ MATCH (n)-[e]->(m) SET e.i = 1 DETACH DELETE n RETURN id(m) $$) AS ("SET + DETACH DELETE" agtype);
+ SET + DETACH DELETE 
+---------------------
+ 1688849860263937
+ 1688849860263938
+(2 rows)
+
+SELECT id as "expected: 2 rows (m vertices)" FROM setdelete._ag_label_vertex;
+ expected: 2 rows (m vertices) 
+-------------------------------
+ 1688849860263937
+ 1688849860263938
+(2 rows)
+
+SELECT id as "expected: 0 rows"              FROM setdelete._ag_label_edge;
+ expected: 0 rows 
+------------------
+(0 rows)
+
+-- clean up
+SELECT drop_graph('setdelete', true);
+NOTICE:  drop cascades to 6 other objects
+DETAIL:  drop cascades to table setdelete._ag_label_vertex
+drop cascades to table setdelete._ag_label_edge
+drop cascades to table setdelete."A"
+drop cascades to table setdelete.n
+drop cascades to table setdelete.e
+drop cascades to table setdelete.m
+NOTICE:  graph "setdelete" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+--
+-- Clean up
+--
+DROP FUNCTION delete_test;
+SELECT drop_graph('cypher_delete', true);
+NOTICE:  drop cascades to 6 other objects
+DETAIL:  drop cascades to table cypher_delete._ag_label_vertex
+drop cascades to table cypher_delete._ag_label_edge
+drop cascades to table cypher_delete.v
+drop cascades to table cypher_delete.e
+drop cascades to table cypher_delete.e2
+drop cascades to table cypher_delete.vertices
+NOTICE:  graph "cypher_delete" has been dropped
+ drop_graph 
+------------
+ 
+(1 row)
+
+--
+-- End
+--

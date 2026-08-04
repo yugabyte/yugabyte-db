@@ -1,0 +1,18 @@
+---
+# Warning: Yugabyte.SubstitutionWarnings
+#
+# Checks for misused terms that you probably should change in most cases.
+# Substitutions.yml and SubstitionSuggestions.yml also exist.
+#
+# For a list of all options, see https://docs.errata.ai/vale/styles
+extends: substitution
+message: 'Use "%s" instead of "%s".'
+level: warning
+ignorecase: true
+swap:
+  config: configuration
+  param: parameter
+  params: parameters
+  repo: repository
+  repos: repositories
+  '(?:vscode|vs code)': '"Visual Studio Code"'

@@ -1,0 +1,71 @@
+CREATE TABLE test1 (x int, y int[]);
+INSERT INTO test1 VALUES (1, ARRAY[11, 111]);
+CREATE INDEX test1_y_idx ON test1 USING gin (y) WITH (fastupdate = off);
+\x
+SELECT * FROM gin_metapage_info(get_raw_page('test1_y_idx', 0));
+-[ RECORD 1 ]----+-----------
+pending_head     | 4294967295
+pending_tail     | 4294967295
+tail_free_size   | 0
+n_pending_pages  | 0
+n_pending_tuples | 0
+n_total_pages    | 2
+n_entry_pages    | 1
+n_data_pages     | 0
+n_entries        | 2
+version          | 2
+
+SELECT * FROM gin_metapage_info(get_raw_page('test1_y_idx', 1));
+ERROR:  input page is not a GIN metapage
+DETAIL:  Flags 0002, expected 0008
+SELECT * FROM gin_page_opaque_info(get_raw_page('test1_y_idx', 1));
+-[ RECORD 1 ]---------
+rightlink | 4294967295
+maxoff    | 0
+flags     | {leaf}
+
+SELECT * FROM gin_leafpage_items(get_raw_page('test1_y_idx', 1));
+ERROR:  input page is not a compressed GIN data leaf page
+DETAIL:  Flags 0002, expected 0083
+INSERT INTO test1 SELECT x, ARRAY[1,10] FROM generate_series(2,10000) x;
+SELECT COUNT(*) > 0
+FROM gin_leafpage_items(get_raw_page('test1_y_idx',
+                        (pg_relation_size('test1_y_idx') /
+                         current_setting('block_size')::bigint)::int - 1));
+-[ RECORD 1 ]
+?column? | t
+
+-- Failure with various modes.
+-- Suppress the DETAIL message, to allow the tests to work across various
+-- page sizes and architectures.
+\set VERBOSITY terse
+-- invalid page size
+SELECT gin_leafpage_items('aaa'::bytea);
+ERROR:  invalid page size
+SELECT gin_metapage_info('bbb'::bytea);
+ERROR:  invalid page size
+SELECT gin_page_opaque_info('ccc'::bytea);
+ERROR:  invalid page size
+-- invalid special area size
+SELECT * FROM gin_metapage_info(get_raw_page('test1', 0));
+ERROR:  input page is not a valid GIN metapage
+SELECT * FROM gin_page_opaque_info(get_raw_page('test1', 0));
+ERROR:  input page is not a valid GIN data leaf page
+SELECT * FROM gin_leafpage_items(get_raw_page('test1', 0));
+ERROR:  input page is not a valid GIN data leaf page
+\set VERBOSITY default
+-- Tests with all-zero pages.
+SHOW block_size \gset
+SELECT gin_leafpage_items(decode(repeat('00', :block_size), 'hex'));
+-[ RECORD 1 ]------+-
+gin_leafpage_items | 
+
+SELECT gin_metapage_info(decode(repeat('00', :block_size), 'hex'));
+-[ RECORD 1 ]-----+-
+gin_metapage_info | 
+
+SELECT gin_page_opaque_info(decode(repeat('00', :block_size), 'hex'));
+-[ RECORD 1 ]--------+-
+gin_page_opaque_info | 
+
+DROP TABLE test1;

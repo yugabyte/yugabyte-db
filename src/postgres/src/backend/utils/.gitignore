@@ -1,0 +1,10 @@
+/fmgrtab.c
+/fmgroids.h
+/fmgrprotos.h
+/fmgr-stamp
+/guc_tables.inc.c
+/probes.h
+/errcodes.h
+/pgstat_wait_event.c
+/wait_event_funcs_data.c
+/wait_event_types.h

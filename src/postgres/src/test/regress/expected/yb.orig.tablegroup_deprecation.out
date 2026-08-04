@@ -1,0 +1,49 @@
+--
+-- Tablegroup Deprecation Warning Test
+--
+CREATE TABLEGROUP tg;
+WARNING:  'tablegroup' is a beta feature!
+LINE 1: CREATE TABLEGROUP tg;
+        ^
+HINT:  To suppress this warning, set the 'ysql_beta_feature_tablegroup' yb-tserver gflag to true.
+(Set 'ysql_beta_features' yb-tserver gflag to true to suppress the warning for all beta features.)
+WARNING:  'tablegroup' feature is deprecated and will be removed in a future release
+LINE 1: CREATE TABLEGROUP tg;
+        ^
+CREATE TABLE tbl (k INT, v INT) TABLEGROUP tg;
+WARNING:  'tablegroup' is a beta feature!
+LINE 1: CREATE TABLE tbl (k INT, v INT) TABLEGROUP tg;
+                                        ^
+HINT:  To suppress this warning, set the 'ysql_beta_feature_tablegroup' yb-tserver gflag to true.
+(Set 'ysql_beta_features' yb-tserver gflag to true to suppress the warning for all beta features.)
+WARNING:  'tablegroup' feature is deprecated and will be removed in a future release
+LINE 1: CREATE TABLE tbl (k INT, v INT) TABLEGROUP tg;
+                                        ^
+ALTER TABLEGROUP tg OWNER TO postgres;
+WARNING:  'tablegroup' is a beta feature!
+LINE 1: ALTER TABLEGROUP tg OWNER TO postgres;
+        ^
+HINT:  To suppress this warning, set the 'ysql_beta_feature_tablegroup' yb-tserver gflag to true.
+(Set 'ysql_beta_features' yb-tserver gflag to true to suppress the warning for all beta features.)
+WARNING:  'tablegroup' feature is deprecated and will be removed in a future release
+LINE 1: ALTER TABLEGROUP tg OWNER TO postgres;
+        ^
+ALTER TABLEGROUP tg RENAME TO tg2;
+WARNING:  'tablegroup' is a beta feature!
+LINE 1: ALTER TABLEGROUP tg RENAME TO tg2;
+        ^
+HINT:  To suppress this warning, set the 'ysql_beta_feature_tablegroup' yb-tserver gflag to true.
+(Set 'ysql_beta_features' yb-tserver gflag to true to suppress the warning for all beta features.)
+WARNING:  'tablegroup' feature is deprecated and will be removed in a future release
+LINE 1: ALTER TABLEGROUP tg RENAME TO tg2;
+        ^
+DROP TABLE tbl;
+DROP TABLEGROUP tg2;
+WARNING:  'tablegroup' is a beta feature!
+LINE 1: DROP TABLEGROUP tg2;
+             ^
+HINT:  To suppress this warning, set the 'ysql_beta_feature_tablegroup' yb-tserver gflag to true.
+(Set 'ysql_beta_features' yb-tserver gflag to true to suppress the warning for all beta features.)
+WARNING:  'tablegroup' feature is deprecated and will be removed in a future release
+LINE 1: DROP TABLEGROUP tg2;
+             ^

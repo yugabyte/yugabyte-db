@@ -1,0 +1,9 @@
+[submodule "pg_dump_anon/tests/bats-core"]
+	path = pg_dump_anon/tests/bats-core
+	url = https://github.com/bats-core/bats-core.git
+[submodule "pg_dump_anon/tests/bats-assert"]
+	path = pg_dump_anon/tests/bats-assert
+	url = https://github.com/bats-core/bats-assert.git
+[submodule "pg_dump_anon/tests/bats-support"]
+	path = pg_dump_anon/tests/bats-support
+	url = https://github.com/bats-core/bats-support.git

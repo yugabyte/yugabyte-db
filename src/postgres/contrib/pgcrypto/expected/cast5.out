@@ -1,0 +1,73 @@
+--
+-- Cast5 cipher
+--
+-- test vectors from RFC2144
+-- 128 bit key
+SELECT encrypt('\x0123456789ABCDEF', '\x0123456712345678234567893456789A', 'cast5-ecb/pad:none');
+      encrypt       
+--------------------
+ \x238b4fe5847e44b2
+(1 row)
+
+-- 80 bit key
+SELECT encrypt('\x0123456789ABCDEF', '\x01234567123456782345', 'cast5-ecb/pad:none');
+      encrypt       
+--------------------
+ \xeb6a711a2c02271b
+(1 row)
+
+-- 40 bit key
+SELECT encrypt('\x0123456789ABCDEF', '\x0123456712', 'cast5-ecb/pad:none');
+      encrypt       
+--------------------
+ \x7ac816d16e9b302e
+(1 row)
+
+-- cbc
+-- empty data
+select encrypt('', 'foo', 'cast5');
+      encrypt       
+--------------------
+ \xa48bd1aabde4de10
+(1 row)
+
+-- 10 bytes key
+select encrypt('foo', '0123456789', 'cast5');
+      encrypt       
+--------------------
+ \xb07f19255e60cb6d
+(1 row)
+
+-- decrypt
+select encode(decrypt(encrypt('foo', '0123456', 'cast5'), '0123456', 'cast5'), 'escape');
+ encode 
+--------
+ foo
+(1 row)
+
+-- iv
+select encrypt_iv('foo', '0123456', 'abcd', 'cast5');
+     encrypt_iv     
+--------------------
+ \x384a970695ce016a
+(1 row)
+
+select encode(decrypt_iv('\x384a970695ce016a', '0123456', 'abcd', 'cast5'), 'escape');
+ encode 
+--------
+ foo
+(1 row)
+
+-- long message
+select encrypt('Lets try a longer message.', '0123456789', 'cast5');
+                              encrypt                               
+--------------------------------------------------------------------
+ \x04fcffc91533e1505dadcb10766d9fed0937818e663e402384e049942ba60fff
+(1 row)
+
+select encode(decrypt(encrypt('Lets try a longer message.', '0123456789', 'cast5'), '0123456789', 'cast5'), 'escape');
+           encode           
+----------------------------
+ Lets try a longer message.
+(1 row)
+

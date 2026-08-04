@@ -1,0 +1,353 @@
+SET search_path TO documentdb_core, documentdb_api, documentdb_api_catalog, public;
+SET documentdb.next_collection_id TO 781000;
+SET documentdb.next_collection_index_id TO 781000;
+-- make sure ttl job is scheduled and disable it to avoid flakiness on the test as it could run on its schedule and delete documents before we run our commands in the test
+select schedule, command, active from cron.job where jobname like '%ttl_task%';
+ schedule  |                       command                       | active 
+-----------+-----------------------------------------------------+--------
+ * * * * * | CALL documentdb_api_internal.delete_expired_rows(); | t
+(1 row)
+
+select cron.unschedule(jobid) from cron.job where jobname like '%ttl_task%';
+ unschedule 
+------------
+ t
+(1 row)
+
+-- 1. Populate collection with a set of documents with different combination of $date fields --
+SELECT documentdb_api.insert_one('ttl_tests','coll1', '{ "_id" : 0, "ttl" : { "$date": { "$numberLong": "-1000" } } }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('ttl_tests','coll1', '{ "_id" : 1, "ttl" : { "$date": { "$numberLong": "0" } } }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('ttl_tests','coll1', '{ "_id" : 2, "ttl" : { "$date": { "$numberLong": "100" } } }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with date older than when the test was written
+SELECT documentdb_api.insert_one('ttl_tests','coll1', '{ "_id" : 3, "ttl" : { "$date": { "$numberLong": "1657900030774" } } }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with date way in future
+SELECT documentdb_api.insert_one('ttl_tests','coll1', '{ "_id" : 4, "ttl" : { "$date": { "$numberLong": "2657899731608" } } }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with date array
+SELECT documentdb_api.insert_one('ttl_tests','coll1', '{ "_id" : 5, "ttl" : [{ "$date": { "$numberLong": "100" }}] }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with date array, should be deleted based on min timestamp
+SELECT documentdb_api.insert_one('ttl_tests','coll2', '{ "_id" : 6, "ttl" : [{ "$date": { "$numberLong": "100" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
+NOTICE:  creating collection
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('ttl_tests','coll1', '{ "_id" : 6, "other_field" : [{ "$date": { "$numberLong": "100" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('ttl_tests','coll2', '{ "_id" : 7, "ttl" : [true, { "$date": { "$numberLong": "100" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('ttl_tests','coll1', '{ "_id" : 7, "other_field" : [true, { "$date": { "$numberLong": "100" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with non-date ttl field
+SELECT documentdb_api.insert_one('ttl_tests','coll2', '{ "_id" : 8, "ttl" : true }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('ttl_tests','coll1', '{ "_id" : 8, "other_field" : true }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+    -- Documents with non-date ttl field
+SELECT documentdb_api.insert_one('ttl_tests','coll2', '{ "_id" : 9, "ttl" : "would not expire" }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('ttl_tests','coll1', '{ "_id" : 9, "other_field" : "would not expire" }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('ttl_tests', '{"createIndexes": "coll1", "indexes": [{"key": {"ttl": 1}, "name": "ttl_index", "v" : 1, "expireAfterSeconds": 5}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('ttl_tests', '{"createIndexes": "coll2", "indexes": [{"key": {"ttl": 1}, "name": "ttl_index", "v" : 1, "expireAfterSeconds": 10}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT document FROM documentdb_api.collection('ttl_tests', 'coll1');
+                                                                         document                                                                         
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "ttl" : { "$date" : { "$numberLong" : "-1000" } } }
+ { "_id" : { "$numberInt" : "1" }, "ttl" : { "$date" : { "$numberLong" : "0" } } }
+ { "_id" : { "$numberInt" : "2" }, "ttl" : { "$date" : { "$numberLong" : "100" } } }
+ { "_id" : { "$numberInt" : "3" }, "ttl" : { "$date" : { "$numberLong" : "1657900030774" } } }
+ { "_id" : { "$numberInt" : "4" }, "ttl" : { "$date" : { "$numberLong" : "2657899731608" } } }
+ { "_id" : { "$numberInt" : "5" }, "ttl" : [ { "$date" : { "$numberLong" : "100" } } ] }
+ { "_id" : { "$numberInt" : "6" }, "other_field" : [ { "$date" : { "$numberLong" : "100" } }, { "$date" : { "$numberLong" : "2657899731608" } } ] }
+ { "_id" : { "$numberInt" : "7" }, "other_field" : [ true, { "$date" : { "$numberLong" : "100" } }, { "$date" : { "$numberLong" : "2657899731608" } } ] }
+ { "_id" : { "$numberInt" : "8" }, "other_field" : true }
+ { "_id" : { "$numberInt" : "9" }, "other_field" : "would not expire" }
+(10 rows)
+
+SELECT document FROM documentdb_api.collection('ttl_tests', 'coll2');
+                                                                     document                                                                     
+--------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "ttl" : [ { "$date" : { "$numberLong" : "100" } }, { "$date" : { "$numberLong" : "2657899731608" } } ] }
+ { "_id" : { "$numberInt" : "7" }, "ttl" : [ true, { "$date" : { "$numberLong" : "100" } }, { "$date" : { "$numberLong" : "2657899731608" } } ] }
+ { "_id" : { "$numberInt" : "8" }, "ttl" : true }
+ { "_id" : { "$numberInt" : "9" }, "ttl" : "would not expire" }
+(4 rows)
+
+-- should not delete any documents because batch size is 0
+CALL documentdb_api_internal.delete_expired_rows(0);
+SELECT document FROM documentdb_api.collection('ttl_tests', 'coll1');
+                                                                         document                                                                         
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "0" }, "ttl" : { "$date" : { "$numberLong" : "-1000" } } }
+ { "_id" : { "$numberInt" : "1" }, "ttl" : { "$date" : { "$numberLong" : "0" } } }
+ { "_id" : { "$numberInt" : "2" }, "ttl" : { "$date" : { "$numberLong" : "100" } } }
+ { "_id" : { "$numberInt" : "3" }, "ttl" : { "$date" : { "$numberLong" : "1657900030774" } } }
+ { "_id" : { "$numberInt" : "4" }, "ttl" : { "$date" : { "$numberLong" : "2657899731608" } } }
+ { "_id" : { "$numberInt" : "5" }, "ttl" : [ { "$date" : { "$numberLong" : "100" } } ] }
+ { "_id" : { "$numberInt" : "6" }, "other_field" : [ { "$date" : { "$numberLong" : "100" } }, { "$date" : { "$numberLong" : "2657899731608" } } ] }
+ { "_id" : { "$numberInt" : "7" }, "other_field" : [ true, { "$date" : { "$numberLong" : "100" } }, { "$date" : { "$numberLong" : "2657899731608" } } ] }
+ { "_id" : { "$numberInt" : "8" }, "other_field" : true }
+ { "_id" : { "$numberInt" : "9" }, "other_field" : "would not expire" }
+(10 rows)
+
+SELECT document FROM documentdb_api.collection('ttl_tests', 'coll2');
+                                                                     document                                                                     
+--------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "ttl" : [ { "$date" : { "$numberLong" : "100" } }, { "$date" : { "$numberLong" : "2657899731608" } } ] }
+ { "_id" : { "$numberInt" : "7" }, "ttl" : [ true, { "$date" : { "$numberLong" : "100" } }, { "$date" : { "$numberLong" : "2657899731608" } } ] }
+ { "_id" : { "$numberInt" : "8" }, "ttl" : true }
+ { "_id" : { "$numberInt" : "9" }, "ttl" : "would not expire" }
+(4 rows)
+
+-- should delete all expired rows, but only ttl field since we haven't created an index for other_field
+CALL documentdb_api_internal.delete_expired_rows();
+SELECT document FROM documentdb_api.collection('ttl_tests', 'coll1');
+                                                                         document                                                                         
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "ttl" : { "$date" : { "$numberLong" : "2657899731608" } } }
+ { "_id" : { "$numberInt" : "6" }, "other_field" : [ { "$date" : { "$numberLong" : "100" } }, { "$date" : { "$numberLong" : "2657899731608" } } ] }
+ { "_id" : { "$numberInt" : "7" }, "other_field" : [ true, { "$date" : { "$numberLong" : "100" } }, { "$date" : { "$numberLong" : "2657899731608" } } ] }
+ { "_id" : { "$numberInt" : "8" }, "other_field" : true }
+ { "_id" : { "$numberInt" : "9" }, "other_field" : "would not expire" }
+(5 rows)
+
+SELECT document FROM documentdb_api.collection('ttl_tests', 'coll2');
+                            document                            
+----------------------------------------------------------------
+ { "_id" : { "$numberInt" : "8" }, "ttl" : true }
+ { "_id" : { "$numberInt" : "9" }, "ttl" : "would not expire" }
+(2 rows)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('ttl_tests', '{"createIndexes": "coll1", "indexes": [{"key": {"other_field": 1}, "name": "ttl_index_other_field", "v" : 1, "expireAfterSeconds": 10}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- should now delete other_field entries
+CALL documentdb_api_internal.delete_expired_rows();
+SELECT document FROM documentdb_api.collection('ttl_tests', 'coll1');
+                                           document                                            
+-----------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "ttl" : { "$date" : { "$numberLong" : "2657899731608" } } }
+ { "_id" : { "$numberInt" : "8" }, "other_field" : true }
+ { "_id" : { "$numberInt" : "9" }, "other_field" : "would not expire" }
+(3 rows)
+
+-- insert more data and create one more ttl index
+SELECT documentdb_api.insert_one('ttl_tests','coll2', '{ "_id" : 10, "new_field" : [{ "$date": { "$numberLong": "100" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('ttl_tests','coll2', '{ "_id" : 11, "new_field" : true }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently('ttl_tests', '{"createIndexes": "coll2", "indexes": [{"key": {"new_field": 1}, "name": "ttl_index_new_field", "v" : 1, "expireAfterSeconds": 10}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('ttl_tests','coll1', '{ "_id" : 11, "ttl" : { "$date": { "$numberLong": "100" }} }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('ttl_tests','coll1', '{ "_id" : 12, "other_field" : [{ "$date": { "$numberLong": "100" }}, { "$date": { "$numberLong": "2657899731608" }}] }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('ttl_tests','coll1', '{ "_id" : 13, "ttl" : true, "other_field": {"$date": {"$numberLong": "-10" }} }', NULL);
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT document FROM documentdb_api.collection('ttl_tests', 'coll1');
+                                                                      document                                                                       
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "ttl" : { "$date" : { "$numberLong" : "2657899731608" } } }
+ { "_id" : { "$numberInt" : "8" }, "other_field" : true }
+ { "_id" : { "$numberInt" : "9" }, "other_field" : "would not expire" }
+ { "_id" : { "$numberInt" : "11" }, "ttl" : { "$date" : { "$numberLong" : "100" } } }
+ { "_id" : { "$numberInt" : "12" }, "other_field" : [ { "$date" : { "$numberLong" : "100" } }, { "$date" : { "$numberLong" : "2657899731608" } } ] }
+ { "_id" : { "$numberInt" : "13" }, "ttl" : true, "other_field" : { "$date" : { "$numberLong" : "-10" } } }
+(6 rows)
+
+SELECT document FROM documentdb_api.collection('ttl_tests', 'coll2');
+                                                                     document                                                                      
+---------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "8" }, "ttl" : true }
+ { "_id" : { "$numberInt" : "9" }, "ttl" : "would not expire" }
+ { "_id" : { "$numberInt" : "10" }, "new_field" : [ { "$date" : { "$numberLong" : "100" } }, { "$date" : { "$numberLong" : "2657899731608" } } ] }
+ { "_id" : { "$numberInt" : "11" }, "new_field" : true }
+(4 rows)
+
+CALL documentdb_api_internal.delete_expired_rows();
+SELECT document FROM documentdb_api.collection('ttl_tests', 'coll1');
+                                           document                                            
+-----------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "4" }, "ttl" : { "$date" : { "$numberLong" : "2657899731608" } } }
+ { "_id" : { "$numberInt" : "8" }, "other_field" : true }
+ { "_id" : { "$numberInt" : "9" }, "other_field" : "would not expire" }
+(3 rows)
+
+SELECT document FROM documentdb_api.collection('ttl_tests', 'coll2');
+                            document                            
+----------------------------------------------------------------
+ { "_id" : { "$numberInt" : "8" }, "ttl" : true }
+ { "_id" : { "$numberInt" : "9" }, "ttl" : "would not expire" }
+ { "_id" : { "$numberInt" : "11" }, "new_field" : true }
+(3 rows)
+
+SELECT drop_collection('ttl_tests', 'coll1');
+ drop_collection 
+-----------------
+ t
+(1 row)
+
+SELECT drop_collection('ttl_tests', 'coll2');
+ drop_collection 
+-----------------
+ t
+(1 row)
+
+-- test with partial filter expression
+SELECT documentdb_api.insert_one('ttl_tests','coll1', '{ "_id" : 1, "ttl" : { "$date": { "$numberLong": "-1000" } }, "a": 1, "b":55 }');
+NOTICE:  creating collection
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+-- should not be pruned since it doesn't match the partial filter expression
+SELECT documentdb_api.insert_one('ttl_tests','coll1', '{ "_id" : 2, "ttl" : { "$date": { "$numberLong": "-1000" } }, "a": 1, "b":54 }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api.insert_one('ttl_tests','coll1', '{ "_id" : 3, "ttl" : { "$date": { "$numberLong": "-1000" } }, "b":55 }');
+                              insert_one                              
+----------------------------------------------------------------------
+ { "n" : { "$numberInt" : "1" }, "ok" : { "$numberDouble" : "1.0" } }
+(1 row)
+
+SELECT documentdb_api_internal.create_indexes_non_concurrently(
+  'ttl_tests',
+  '{
+     "createIndexes": "coll1",
+     "indexes": [
+       {
+         "key": {"ttl": 1},
+         "name": "ttl_pfe_index",
+         "expireAfterSeconds" : 5,
+         "partialFilterExpression":
+         {
+           "$and": [
+             {"b": 55},
+             {"a": {"$exists": true}}
+            ]
+         }
+       }
+     ]
+   }',
+   true
+);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+CALL documentdb_api_internal.delete_expired_rows();
+SELECT document FROM documentdb_api.collection('ttl_tests', 'coll1');
+                                                                      document                                                                      
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "2" }, "ttl" : { "$date" : { "$numberLong" : "-1000" } }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "54" } }
+ { "_id" : { "$numberInt" : "3" }, "ttl" : { "$date" : { "$numberLong" : "-1000" } }, "b" : { "$numberInt" : "55" } }
+(2 rows)
+
+SELECT drop_collection('ttl_tests', 'coll1');
+ drop_collection 
+-----------------
+ t
+(1 row)
+

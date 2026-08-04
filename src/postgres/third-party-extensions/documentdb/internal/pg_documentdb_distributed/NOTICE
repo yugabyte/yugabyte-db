@@ -1,0 +1,6 @@
+This product includes third-party components distributed under various licenses. Full license texts and notices for these components are provided in the 'internal/pg_documentdb_distributed/licenses/' directory.
+
+---------------------------------------------------------
+- citusdata/citus
+ Licensed under the GNU AFFERO GENERAL PUBLIC LICENSE, Version 3, 19 November 2007
+ Copyright (C) 2007 Free Software Foundation, Inc. 

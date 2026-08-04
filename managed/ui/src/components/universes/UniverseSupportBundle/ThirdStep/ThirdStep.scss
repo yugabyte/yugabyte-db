@@ -1,0 +1,139 @@
+.universe-support-bundle-step-three {
+  .creating-bundle {
+    background: #E5EDFF;
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-style: normal;
+    font-weight: 400;
+    font-size: 14px;
+    line-height: 19px;
+
+    .fa-close {
+      cursor: pointer;
+      color: #000;
+      font-weight: normal;
+    }
+
+    .icon {
+      display: inline-block;
+      margin-right: 10px;
+    }
+  }
+
+  .create-bundle {
+    width: 100%;
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 16px;
+  }
+
+  .selection-area {
+    border: 1px solid #E3E3E5;
+    padding: 16px;
+    border-radius: 8px;
+    height: 400px;
+    overflow-y: scroll;
+
+    &.create-bundle-close {
+      height: 455px;
+    }
+
+    th {
+      text-transform: none;
+      width: 140px;
+      font-weight: bold;
+
+      &:last-child {
+        width: 50px;
+      }
+    }
+
+    tbody {
+      tr {
+        border-top: 1px solid #E3E3E5;
+        padding-bottom: 5px;
+
+        &:last-child {
+          border-bottom: 1px solid #E3E3E5;
+        }
+      }
+    }
+
+    td {
+      vertical-align: middle;
+      overflow: visible;
+      width: 150px;
+
+      > * {
+        overflow: visible;
+      }
+
+      &:last-child {
+        width: 50px;
+        text-align: right !important;
+      }
+    }
+
+    .status {
+      display: flex;
+      flex-direction: row;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 10px;
+      border-radius: 6px;
+      width: max-content;
+      font-style: normal;
+      font-weight: 400;
+      font-size: 11.5px;
+      line-height: 16px;
+      margin-bottom: 10px;
+
+      i {
+        margin-left: 6px;
+      }
+
+    }
+
+    .success {
+      background: #CDEFE1;
+      color: #097245;
+    }
+
+    .failed {
+      background: #FDE2E2;
+      color: #8F0000;
+    }
+
+    .creating {
+     background: #CBDAFF;
+      color: #1A44A5;
+    }
+
+    .support-action-dropdown {
+      z-index: 9999;
+      padding: 0;
+      border: none;
+    }
+  }
+}
+
+
+.support-bundle-confirm-delete {
+  .modal-content {
+    top: 200px;
+    width: 557px;
+    left: 93px;
+
+    .modal-body {
+      height: 175px;
+
+      .created-on-date {
+        font-weight: bold;
+      }
+    }
+  }
+}

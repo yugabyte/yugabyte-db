@@ -1,0 +1,51 @@
+YB_HOME="{{ yb_home_dir }}"
+STATE_DIR="${YB_HOME}/.yugabyte"
+CGROUP_TYPE_FILE="${STATE_DIR}/cgroup_type"
+CGROUP_V1_CPU_FILE="${STATE_DIR}/cgroup_v1_cpu"
+
+{% raw %}
+if [ ! -d /sys/fs/cgroup ]; then
+    add_result "Cgroup filesystem" "FAIL" "/sys/fs/cgroup is missing"
+else
+    add_result "Cgroup filesystem" "PASS" "/sys/fs/cgroup is present"
+fi
+
+# Verify cgroup_type state file exists and contains a recognised value.
+if [ ! -f "$CGROUP_TYPE_FILE" ]; then
+    add_result "Cgroup type state file" "FAIL" \
+        "$CGROUP_TYPE_FILE is missing; ConfigureRuntimeCgroups may not have run"
+else
+    cg_type=$(tr -d '\r\n' < "$CGROUP_TYPE_FILE")
+    case "$cg_type" in
+        v1|v2)
+            add_result "Cgroup type state file" "PASS" \
+                "$CGROUP_TYPE_FILE contains $cg_type"
+            ;;
+        unknown)
+            add_result "Cgroup type state file" "FAIL" \
+                "$CGROUP_TYPE_FILE contains unknown; cgroup layout could not be classified"
+            ;;
+        *)
+            add_result "Cgroup type state file" "FAIL" \
+                "$CGROUP_TYPE_FILE contains unexpected value: $cg_type"
+            ;;
+    esac
+
+    # v1-specific: verify cgroup_v1_cpu state file and leaf directory.
+    if [ "$cg_type" = "v1" ]; then
+        if [ ! -f "$CGROUP_V1_CPU_FILE" ]; then
+            add_result "Cgroup v1 cpu state file" "FAIL" \
+                "$CGROUP_V1_CPU_FILE is missing"
+        else
+            v1_cpu=$(tr -d '\r\n' < "$CGROUP_V1_CPU_FILE")
+            if [ -z "$v1_cpu" ] || [ ! -d "$v1_cpu" ]; then
+                add_result "Cgroup v1 cpu state file" "FAIL" \
+                    "$CGROUP_V1_CPU_FILE points to non-existent directory: $v1_cpu"
+            else
+                add_result "Cgroup v1 cpu state file" "PASS" \
+                    "v1 cpu controller at $v1_cpu"
+            fi
+        fi
+    fi
+fi
+{% endraw %}

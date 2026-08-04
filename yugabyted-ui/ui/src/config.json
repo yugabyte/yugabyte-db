@@ -1,0 +1,5 @@
+{
+    "_readme_": "Config file for local development. Will be overwritten during UI build on CI with env-specific values.",
+    "env": "local",
+    "api_url": "/api"
+}

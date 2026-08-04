@@ -1,0 +1,3298 @@
+--
+-- Legacy mode Join Plans
+--
+set client_min_messages = 'warning';
+drop table if exists t1, t2, t2r;
+create table t1 (id int, a int);
+create unique index nonconcurrently i_t1_id on t1 (id asc);
+insert into t1 select i, i / 4 from generate_series(1, 1000) i;
+create table t2 (k1 int, k2 int, k3 int, k4 int, k5 int, v boolean, primary key (k1 hash));
+create unique index nonconcurrently i_t2_k2 on t2 (k2 hash);
+create index nonconcurrently i_t2_k3 on t2 (k3 hash);
+create unique index nonconcurrently i_t2_k4k5 on t2 (k4 hash, k5 asc);
+create index nonconcurrently i_t2_v on t2 (v hash);
+insert into t2 select i, i, i % 10000, i % 10000, (i / 10000) * 10000, (i%2) = 1 from generate_series(1, 50000) i;
+create table t2r (k1 int, k2 int, k3 int, k4 int, k5 int, v boolean, primary key (k1 asc));
+create unique index nonconcurrently i_t2r_k2 on t2r (k2 asc);
+create index nonconcurrently i_t2r_k3 on t2r (k3 asc);
+create unique index nonconcurrently i_t2r_k4k5 on t2r (k4 asc, k5 asc);
+create index nonconcurrently i_t2r_v on t2r (v asc);
+insert into t2r select i, i, i % 10000, i % 10000, (i / 10000) * 10000, (i%2) = 1 from generate_series(1, 50000) i;
+\getenv abs_srcdir PG_ABS_SRCDIR
+\set filename :abs_srcdir '/yb_commands/legacy_join_plan_queries.sql'
+\set costsfilename :abs_srcdir '/yb_commands/legacy_join_plan_queries_with_costs.sql'
+set yb_ignore_bool_cond_for_legacy_estimate = on;
+-- Set GUC parameters to restore PG11 behavior
+set enable_memoize = false;
+set hash_mem_multiplier = 1.0;
+----------------
+-- Unanalyzed --
+----------------
+--
+-- Pre-2024.1 behavior (20.2.x and earlier)
+--
+set yb_enable_cbo = legacy_bnl_mode;
+-- Pre-2024.1 defaults
+set yb_bnl_batch_size = 1;
+set yb_prefer_bnl = off;
+\i :filename
+--
+-- m x n, 1 x n and semijoin on pk, unique secondary and non-unique secondary
+-- indexed column.
+--
+-- hash pk
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k1;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = t1.a)
+(4 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k1;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k1);
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = t1.a)
+(4 rows)
+
+-- unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k2;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k2 on t2
+         Index Cond: (k2 = t1.a)
+(4 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k2;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k2 on t2
+         Index Cond: (k2 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k2);
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2_k2 on t2
+         Index Cond: (k2 = t1.a)
+(4 rows)
+
+-- non-unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k3;
+          QUERY PLAN          
+------------------------------
+ Merge Join
+   Merge Cond: (t1.a = t2.k3)
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+   ->  Sort
+         Sort Key: t2.k3
+         ->  Seq Scan on t2
+(8 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k3;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k3 on t2
+         Index Cond: (k3 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k3);
+            QUERY PLAN            
+----------------------------------
+ Hash Join
+   Hash Cond: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  HashAggregate
+               Group Key: t2.k3
+               ->  Seq Scan on t2
+(7 rows)
+
+-- unique secondary hash index partial key match
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k4;
+          QUERY PLAN          
+------------------------------
+ Merge Join
+   Merge Cond: (t1.a = t2.k4)
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+   ->  Sort
+         Sort Key: t2.k4
+         ->  Seq Scan on t2
+(8 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k4;
+               QUERY PLAN               
+----------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k4k5 on t2
+         Index Cond: (k4 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k4);
+            QUERY PLAN            
+----------------------------------
+ Hash Join
+   Hash Cond: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  HashAggregate
+               Group Key: t2.k4
+               ->  Seq Scan on t2
+(7 rows)
+
+-- pk
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k1;
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = t1.a)
+(4 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k1;
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k1);
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = t1.a)
+(4 rows)
+
+-- unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k2;
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = t1.a)
+(4 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k2;
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k2);
+                   QUERY PLAN                   
+------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = t1.a)
+(4 rows)
+
+-- non-unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k3;
+                QUERY PLAN                 
+-------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k3 = t1.a)
+   ->  Index Scan using i_t2r_k3 on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k3;
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k3 on t2r t2
+         Index Cond: (k3 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k3);
+              QUERY PLAN              
+--------------------------------------
+ Hash Join
+   Hash Cond: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  HashAggregate
+               Group Key: t2.k3
+               ->  Seq Scan on t2r t2
+(7 rows)
+
+-- unique secondary index partial key match
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k4;
+                 QUERY PLAN                  
+---------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k4 = t1.a)
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k4;
+                 QUERY PLAN                  
+---------------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+         Index Cond: (k4 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k4);
+              QUERY PLAN              
+--------------------------------------
+ Hash Join
+   Hash Cond: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  HashAggregate
+               Group Key: t2.k4
+               ->  Seq Scan on t2r t2
+(7 rows)
+
+-- BNL enabled
+set yb_bnl_batch_size = 1024;
+set yb_prefer_bnl = on;
+\i :filename
+--
+-- m x n, 1 x n and semijoin on pk, unique secondary and non-unique secondary
+-- indexed column.
+--
+-- hash pk
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k1;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k1;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k1);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k2 on t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k2 on t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k2);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2_k2 on t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- non-unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k3;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k3 on t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k3;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k3 on t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k3);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Semi Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2_k3 on t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- unique secondary hash index partial key match
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k4;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k4k5 on t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k4;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k4k5 on t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k4);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Semi Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2_k4k5 on t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- pk
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k1;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Seq Scan on t1
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k1;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k1);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Seq Scan on t1
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k2);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- non-unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k3;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2r_k3 on t2r t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k3;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k3 on t2r t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k3);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Semi Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2r_k3 on t2r t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- unique secondary index partial key match
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k4;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k4;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k4);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Semi Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2r_k4k5 on t2r t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+--
+-- 2024.1 and beyond
+--
+set yb_enable_cbo = legacy_mode;
+-- BNL enabled by default since 2024.1
+set yb_bnl_batch_size = 1024;
+set yb_prefer_bnl = on;
+\i :filename
+--
+-- m x n, 1 x n and semijoin on pk, unique secondary and non-unique secondary
+-- indexed column.
+--
+-- hash pk
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k1;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k1;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k1);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k2 on t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k2 on t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k2);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2_k2 on t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- non-unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k3;
+          QUERY PLAN          
+------------------------------
+ Merge Join
+   Merge Cond: (t1.a = t2.k3)
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+   ->  Sort
+         Sort Key: t2.k3
+         ->  Seq Scan on t2
+(8 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k3;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k3 on t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k3);
+            QUERY PLAN            
+----------------------------------
+ Hash Join
+   Hash Cond: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  HashAggregate
+               Group Key: t2.k3
+               ->  Seq Scan on t2
+(7 rows)
+
+-- unique secondary hash index partial key match
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k4;
+          QUERY PLAN          
+------------------------------
+ Merge Join
+   Merge Cond: (t1.a = t2.k4)
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+   ->  Sort
+         Sort Key: t2.k4
+         ->  Seq Scan on t2
+(8 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k4;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k4k5 on t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k4);
+            QUERY PLAN            
+----------------------------------
+ Hash Join
+   Hash Cond: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  HashAggregate
+               Group Key: t2.k4
+               ->  Seq Scan on t2
+(7 rows)
+
+-- pk
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k1;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Seq Scan on t1
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k1;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k1);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Seq Scan on t1
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k2);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- non-unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k3;
+                QUERY PLAN                 
+-------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k3 = t1.a)
+   ->  Index Scan using i_t2r_k3 on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k3;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k3 on t2r t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k3);
+              QUERY PLAN              
+--------------------------------------
+ Hash Join
+   Hash Cond: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  HashAggregate
+               Group Key: t2.k3
+               ->  Seq Scan on t2r t2
+(7 rows)
+
+-- unique secondary index partial key match
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k4;
+                 QUERY PLAN                  
+---------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k4 = t1.a)
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k4;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k4);
+              QUERY PLAN              
+--------------------------------------
+ Hash Join
+   Hash Cond: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  HashAggregate
+               Group Key: t2.k4
+               ->  Seq Scan on t2r t2
+(7 rows)
+
+--------------
+-- Analyzed --
+--------------
+analyze t1;
+analyze t2;
+analyze t2r;
+--
+-- Pre-2024.1 behavior (20.2.x and earlier)
+--
+set yb_enable_cbo = legacy_ignore_stats_bnl_mode;
+-- Pre-2024.1 defaults
+set yb_bnl_batch_size = 1;
+set yb_prefer_bnl = off;
+\i :filename
+--
+-- m x n, 1 x n and semijoin on pk, unique secondary and non-unique secondary
+-- indexed column.
+--
+-- hash pk
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k1;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = t1.a)
+(4 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k1;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k1);
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = t1.a)
+(4 rows)
+
+-- unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k2;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k2 on t2
+         Index Cond: (k2 = t1.a)
+(4 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k2;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k2 on t2
+         Index Cond: (k2 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k2);
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2_k2 on t2
+         Index Cond: (k2 = t1.a)
+(4 rows)
+
+-- non-unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k3;
+          QUERY PLAN          
+------------------------------
+ Merge Join
+   Merge Cond: (t1.a = t2.k3)
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+   ->  Sort
+         Sort Key: t2.k3
+         ->  Seq Scan on t2
+(8 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k3;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k3 on t2
+         Index Cond: (k3 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k3);
+            QUERY PLAN            
+----------------------------------
+ Hash Join
+   Hash Cond: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  HashAggregate
+               Group Key: t2.k3
+               ->  Seq Scan on t2
+(7 rows)
+
+-- unique secondary hash index partial key match
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k4;
+          QUERY PLAN          
+------------------------------
+ Merge Join
+   Merge Cond: (t1.a = t2.k4)
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+   ->  Sort
+         Sort Key: t2.k4
+         ->  Seq Scan on t2
+(8 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k4;
+               QUERY PLAN               
+----------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k4k5 on t2
+         Index Cond: (k4 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k4);
+            QUERY PLAN            
+----------------------------------
+ Hash Join
+   Hash Cond: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  HashAggregate
+               Group Key: t2.k4
+               ->  Seq Scan on t2
+(7 rows)
+
+-- pk
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k1;
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = t1.a)
+(4 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k1;
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k1);
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = t1.a)
+(4 rows)
+
+-- unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k2;
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = t1.a)
+(4 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k2;
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k2);
+                   QUERY PLAN                   
+------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = t1.a)
+(4 rows)
+
+-- non-unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k3;
+                QUERY PLAN                 
+-------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k3 = t1.a)
+   ->  Index Scan using i_t2r_k3 on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k3;
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k3 on t2r t2
+         Index Cond: (k3 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k3);
+              QUERY PLAN              
+--------------------------------------
+ Hash Join
+   Hash Cond: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  HashAggregate
+               Group Key: t2.k3
+               ->  Seq Scan on t2r t2
+(7 rows)
+
+-- unique secondary index partial key match
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k4;
+                 QUERY PLAN                  
+---------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k4 = t1.a)
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k4;
+                 QUERY PLAN                  
+---------------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+         Index Cond: (k4 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k4);
+              QUERY PLAN              
+--------------------------------------
+ Hash Join
+   Hash Cond: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  HashAggregate
+               Group Key: t2.k4
+               ->  Seq Scan on t2r t2
+(7 rows)
+
+set yb_bnl_batch_size = 1024;
+set yb_prefer_bnl = on;
+\i :filename
+--
+-- m x n, 1 x n and semijoin on pk, unique secondary and non-unique secondary
+-- indexed column.
+--
+-- hash pk
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k1;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k1;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k1);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k2 on t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k2 on t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k2);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2_k2 on t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- non-unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k3;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k3 on t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k3;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k3 on t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k3);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Semi Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2_k3 on t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- unique secondary hash index partial key match
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k4;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k4k5 on t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k4;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k4k5 on t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k4);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Semi Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2_k4k5 on t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- pk
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k1;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Seq Scan on t1
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k1;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k1);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Seq Scan on t1
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k2);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- non-unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k3;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2r_k3 on t2r t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k3;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k3 on t2r t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k3);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Semi Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2r_k3 on t2r t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- unique secondary index partial key match
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k4;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k4;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k4);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Semi Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2r_k4k5 on t2r t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+set yb_enable_cbo = legacy_stats_bnl_mode;
+-- Pre-2024.1 defaults
+set yb_bnl_batch_size = 1;
+set yb_prefer_bnl = off;
+\i :filename
+--
+-- m x n, 1 x n and semijoin on pk, unique secondary and non-unique secondary
+-- indexed column.
+--
+-- hash pk
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k1;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = t1.a)
+(4 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k1;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k1);
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = t1.a)
+(4 rows)
+
+-- unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k2;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k2 on t2
+         Index Cond: (k2 = t1.a)
+(4 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k2;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k2 on t2
+         Index Cond: (k2 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k2);
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2_k2 on t2
+         Index Cond: (k2 = t1.a)
+(4 rows)
+
+-- non-unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k3;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k3 on t2
+         Index Cond: (k3 = t1.a)
+(4 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k3;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k3 on t2
+         Index Cond: (k3 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k3);
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop Semi Join
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2_k3 on t2
+         Index Cond: (k3 = t1.a)
+(4 rows)
+
+-- unique secondary hash index partial key match
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k4;
+               QUERY PLAN               
+----------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k4k5 on t2
+         Index Cond: (k4 = t1.a)
+(4 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k4;
+               QUERY PLAN               
+----------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k4k5 on t2
+         Index Cond: (k4 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k4);
+                 QUERY PLAN                  
+---------------------------------------------
+ Nested Loop Semi Join
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2_k4k5 on t2
+         Index Cond: (k4 = t1.a)
+(4 rows)
+
+-- pk
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k1;
+                QUERY PLAN                 
+-------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k1 = t1.a)
+   ->  Index Scan using t2r_pkey on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k1;
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k1);
+                QUERY PLAN                 
+-------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k1 = t1.a)
+   ->  Index Scan using t2r_pkey on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+-- unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k2;
+                QUERY PLAN                 
+-------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k2 = t1.a)
+   ->  Index Scan using i_t2r_k2 on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k2;
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k2);
+                   QUERY PLAN                   
+------------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k2 = t1.a)
+   ->  Index Only Scan using i_t2r_k2 on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+-- non-unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k3;
+                QUERY PLAN                 
+-------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k3 = t1.a)
+   ->  Index Scan using i_t2r_k3 on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k3;
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k3 on t2r t2
+         Index Cond: (k3 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k3);
+                   QUERY PLAN                   
+------------------------------------------------
+ Nested Loop Semi Join
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2r_k3 on t2r t2
+         Index Cond: (k3 = t1.a)
+(4 rows)
+
+-- unique secondary index partial key match
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k4;
+                 QUERY PLAN                  
+---------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k4 = t1.a)
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k4;
+                 QUERY PLAN                  
+---------------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+         Index Cond: (k4 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k4);
+                    QUERY PLAN                    
+--------------------------------------------------
+ Nested Loop Semi Join
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2r_k4k5 on t2r t2
+         Index Cond: (k4 = t1.a)
+(4 rows)
+
+set yb_bnl_batch_size = 1024;
+set yb_prefer_bnl = on;
+\i :filename
+--
+-- m x n, 1 x n and semijoin on pk, unique secondary and non-unique secondary
+-- indexed column.
+--
+-- hash pk
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k1;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k1;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k1);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k2 on t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k2 on t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k2);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2_k2 on t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- non-unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k3;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k3 on t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k3;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k3 on t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k3);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Semi Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2_k3 on t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- unique secondary hash index partial key match
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k4;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k4k5 on t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k4;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k4k5 on t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k4);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Semi Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2_k4k5 on t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- pk
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k1;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Seq Scan on t1
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k1;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k1);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Seq Scan on t1
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k2);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- non-unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k3;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2r_k3 on t2r t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k3;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k3 on t2r t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k3);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Semi Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2r_k3 on t2r t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- unique secondary index partial key match
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k4;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k4;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k4);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Semi Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2r_k4k5 on t2r t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+--
+-- 2024.1 and beyond
+--
+set yb_enable_cbo = off;
+set yb_bnl_batch_size = 1024;
+set yb_prefer_bnl = on;
+\i :filename
+--
+-- m x n, 1 x n and semijoin on pk, unique secondary and non-unique secondary
+-- indexed column.
+--
+-- hash pk
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k1;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k1;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k1);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k2 on t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k2 on t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k2);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2_k2 on t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- non-unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k3;
+          QUERY PLAN          
+------------------------------
+ Merge Join
+   Merge Cond: (t1.a = t2.k3)
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+   ->  Sort
+         Sort Key: t2.k3
+         ->  Seq Scan on t2
+(8 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k3;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k3 on t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k3);
+            QUERY PLAN            
+----------------------------------
+ Hash Join
+   Hash Cond: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  HashAggregate
+               Group Key: t2.k3
+               ->  Seq Scan on t2
+(7 rows)
+
+-- unique secondary hash index partial key match
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k4;
+          QUERY PLAN          
+------------------------------
+ Merge Join
+   Merge Cond: (t1.a = t2.k4)
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+   ->  Sort
+         Sort Key: t2.k4
+         ->  Seq Scan on t2
+(8 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k4;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k4k5 on t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k4);
+            QUERY PLAN            
+----------------------------------
+ Hash Join
+   Hash Cond: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  HashAggregate
+               Group Key: t2.k4
+               ->  Seq Scan on t2
+(7 rows)
+
+-- pk
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k1;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Seq Scan on t1
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k1;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k1);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Seq Scan on t1
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k2);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- non-unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k3;
+                QUERY PLAN                 
+-------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k3 = t1.a)
+   ->  Index Scan using i_t2r_k3 on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k3;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k3 on t2r t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k3);
+              QUERY PLAN              
+--------------------------------------
+ Hash Join
+   Hash Cond: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  HashAggregate
+               Group Key: t2.k3
+               ->  Seq Scan on t2r t2
+(7 rows)
+
+-- unique secondary index partial key match
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k4;
+                 QUERY PLAN                  
+---------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k4 = t1.a)
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k4;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k4);
+              QUERY PLAN              
+--------------------------------------
+ Hash Join
+   Hash Cond: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  HashAggregate
+               Group Key: t2.k4
+               ->  Seq Scan on t2r t2
+(7 rows)
+
+set yb_bnl_batch_size = 1;
+set yb_prefer_bnl = off;
+\i :filename
+--
+-- m x n, 1 x n and semijoin on pk, unique secondary and non-unique secondary
+-- indexed column.
+--
+-- hash pk
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k1;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = t1.a)
+(4 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k1;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k1);
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = t1.a)
+(4 rows)
+
+-- unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k2;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k2 on t2
+         Index Cond: (k2 = t1.a)
+(4 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k2;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k2 on t2
+         Index Cond: (k2 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k2);
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2_k2 on t2
+         Index Cond: (k2 = t1.a)
+(4 rows)
+
+-- non-unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k3;
+          QUERY PLAN          
+------------------------------
+ Merge Join
+   Merge Cond: (t1.a = t2.k3)
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+   ->  Sort
+         Sort Key: t2.k3
+         ->  Seq Scan on t2
+(8 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k3;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k3 on t2
+         Index Cond: (k3 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k3);
+            QUERY PLAN            
+----------------------------------
+ Hash Join
+   Hash Cond: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  HashAggregate
+               Group Key: t2.k3
+               ->  Seq Scan on t2
+(7 rows)
+
+-- unique secondary hash index partial key match
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k4;
+          QUERY PLAN          
+------------------------------
+ Merge Join
+   Merge Cond: (t1.a = t2.k4)
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+   ->  Sort
+         Sort Key: t2.k4
+         ->  Seq Scan on t2
+(8 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k4;
+               QUERY PLAN               
+----------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k4k5 on t2
+         Index Cond: (k4 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k4);
+            QUERY PLAN            
+----------------------------------
+ Hash Join
+   Hash Cond: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  HashAggregate
+               Group Key: t2.k4
+               ->  Seq Scan on t2
+(7 rows)
+
+-- pk
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k1;
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = t1.a)
+(4 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k1;
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k1);
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = t1.a)
+(4 rows)
+
+-- unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k2;
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = t1.a)
+(4 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k2;
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k2);
+                   QUERY PLAN                   
+------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = t1.a)
+(4 rows)
+
+-- non-unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k3;
+                QUERY PLAN                 
+-------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k3 = t1.a)
+   ->  Index Scan using i_t2r_k3 on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k3;
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k3 on t2r t2
+         Index Cond: (k3 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k3);
+              QUERY PLAN              
+--------------------------------------
+ Hash Join
+   Hash Cond: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  HashAggregate
+               Group Key: t2.k3
+               ->  Seq Scan on t2r t2
+(7 rows)
+
+-- unique secondary index partial key match
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k4;
+                 QUERY PLAN                  
+---------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k4 = t1.a)
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k4;
+                 QUERY PLAN                  
+---------------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+         Index Cond: (k4 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k4);
+              QUERY PLAN              
+--------------------------------------
+ Hash Join
+   Hash Cond: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  HashAggregate
+               Group Key: t2.k4
+               ->  Seq Scan on t2r t2
+(7 rows)
+
+set yb_enable_cbo = legacy_stats_mode;
+set yb_bnl_batch_size = 1;
+set yb_prefer_bnl = off;
+\i :filename
+--
+-- m x n, 1 x n and semijoin on pk, unique secondary and non-unique secondary
+-- indexed column.
+--
+-- hash pk
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k1;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = t1.a)
+(4 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k1;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k1);
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = t1.a)
+(4 rows)
+
+-- unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k2;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k2 on t2
+         Index Cond: (k2 = t1.a)
+(4 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k2;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k2 on t2
+         Index Cond: (k2 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k2);
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2_k2 on t2
+         Index Cond: (k2 = t1.a)
+(4 rows)
+
+-- non-unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k3;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k3 on t2
+         Index Cond: (k3 = t1.a)
+(4 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k3;
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k3 on t2
+         Index Cond: (k3 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k3);
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop Semi Join
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2_k3 on t2
+         Index Cond: (k3 = t1.a)
+(4 rows)
+
+-- unique secondary hash index partial key match
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k4;
+               QUERY PLAN               
+----------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k4k5 on t2
+         Index Cond: (k4 = t1.a)
+(4 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k4;
+               QUERY PLAN               
+----------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k4k5 on t2
+         Index Cond: (k4 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k4);
+                 QUERY PLAN                  
+---------------------------------------------
+ Nested Loop Semi Join
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2_k4k5 on t2
+         Index Cond: (k4 = t1.a)
+(4 rows)
+
+-- pk
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k1;
+                QUERY PLAN                 
+-------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k1 = t1.a)
+   ->  Index Scan using t2r_pkey on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k1;
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k1);
+                QUERY PLAN                 
+-------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k1 = t1.a)
+   ->  Index Scan using t2r_pkey on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+-- unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k2;
+                QUERY PLAN                 
+-------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k2 = t1.a)
+   ->  Index Scan using i_t2r_k2 on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k2;
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k2);
+                   QUERY PLAN                   
+------------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k2 = t1.a)
+   ->  Index Only Scan using i_t2r_k2 on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+-- non-unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k3;
+                QUERY PLAN                 
+-------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k3 = t1.a)
+   ->  Index Scan using i_t2r_k3 on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k3;
+                QUERY PLAN                 
+-------------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k3 on t2r t2
+         Index Cond: (k3 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k3);
+                   QUERY PLAN                   
+------------------------------------------------
+ Nested Loop Semi Join
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2r_k3 on t2r t2
+         Index Cond: (k3 = t1.a)
+(4 rows)
+
+-- unique secondary index partial key match
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k4;
+                 QUERY PLAN                  
+---------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k4 = t1.a)
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k4;
+                 QUERY PLAN                  
+---------------------------------------------
+ Nested Loop
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+         Index Cond: (k4 = t1.a)
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k4);
+                    QUERY PLAN                    
+--------------------------------------------------
+ Nested Loop Semi Join
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2r_k4k5 on t2r t2
+         Index Cond: (k4 = t1.a)
+(4 rows)
+
+set yb_bnl_batch_size = 1024;
+set yb_prefer_bnl = on;
+\i :filename
+--
+-- m x n, 1 x n and semijoin on pk, unique secondary and non-unique secondary
+-- indexed column.
+--
+-- hash pk
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k1;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k1;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k1);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Seq Scan on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k2 on t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k2 on t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k2);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2_k2 on t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- non-unique secondary hash index
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k3;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k3 on t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k3;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k3 on t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k3);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Semi Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2_k3 on t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- unique secondary hash index partial key match
+explain (costs off, summary off)
+select * from t1 join t2 on t1.a = t2.k4;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Index Scan using i_t2_k4k5 on t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2 on t1.id = 7 and t1.a = t2.k4;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2_k4k5 on t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2 where t1.a = t2.k4);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Semi Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2_k4k5 on t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- pk
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k1;
+                QUERY PLAN                 
+-------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k1 = t1.a)
+   ->  Index Scan using t2r_pkey on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k1;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k1)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using t2r_pkey on t2r t2
+         Index Cond: (k1 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k1);
+                QUERY PLAN                 
+-------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k1 = t1.a)
+   ->  Index Scan using t2r_pkey on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+-- unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k2;
+                QUERY PLAN                 
+-------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k2 = t1.a)
+   ->  Index Scan using i_t2r_k2 on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k2;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k2)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k2 on t2r t2
+         Index Cond: (k2 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k2);
+                   QUERY PLAN                   
+------------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k2 = t1.a)
+   ->  Index Only Scan using i_t2r_k2 on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+-- non-unique secondary index
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k3;
+                QUERY PLAN                 
+-------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k3 = t1.a)
+   ->  Index Scan using i_t2r_k3 on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k3;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k3 on t2r t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k3);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Semi Join
+   Join Filter: (t1.a = t2.k3)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2r_k3 on t2r t2
+         Index Cond: (k3 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+-- unique secondary index partial key match
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.a = t2.k4;
+                 QUERY PLAN                  
+---------------------------------------------
+ Merge Join
+   Merge Cond: (t2.k4 = t1.a)
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+   ->  Sort
+         Sort Key: t1.a
+         ->  Seq Scan on t1
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 join t2r t2 on t1.id = 7 and t1.a = t2.k4;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Index Scan using i_t1_id on t1
+         Index Cond: (id = 7)
+   ->  Index Scan using i_t2r_k4k5 on t2r t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(6 rows)
+
+explain (costs off, summary off)
+select * from t1 where exists (select 0 from t2r t2 where t1.a = t2.k4);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ YB Batched Nested Loop Semi Join
+   Join Filter: (t1.a = t2.k4)
+   ->  Seq Scan on t1
+   ->  Index Only Scan using i_t2r_k4k5 on t2r t2
+         Index Cond: (k4 = ANY (ARRAY[t1.a, $1, $2, ..., $1023]))
+(5 rows)
+
+--
+-- not only the plans but the cost/row count estimates should never change
+--
+-- Pre-2024.1, BNL enabled
+set yb_enable_cbo = legacy_ignore_stats_bnl_mode;
+set yb_bnl_batch_size = 1024;
+set yb_prefer_bnl = on;
+\i :costsfilename
+explain (costs on, summary off)
+select * from t1 join t2 on t2.k1 = t1.id join t2 t3 on t3.k3 = t1.id
+where t3.k4 in (select t5.k2 from t1 t4 join t2r t5 on t4.id = t5.k3 and t4.id = 222)
+ and t2.v = false and t3.k2 <> 123;
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join  (cost=9.46..32.94 rows=500 width=50)
+   Join Filter: (t1.id = t2.k1)
+   ->  YB Batched Nested Loop Join  (cost=9.46..28.82 rows=500 width=29)
+         Join Filter: (t3.k3 = t1.id)
+         ->  YB Batched Nested Loop Join  (cost=9.46..26.07 rows=500 width=21)
+               Join Filter: (t3.k4 = t5.k2)
+               ->  HashAggregate  (cost=9.46..9.56 rows=10 width=4)
+                     Group Key: t5.k2
+                     ->  Nested Loop  (cost=0.00..9.44 rows=10 width=4)
+                           ->  Index Only Scan using i_t1_id on t1 t4  (cost=0.00..4.11 rows=1 width=4)
+                                 Index Cond: (id = 222)
+                           ->  Index Scan using i_t2r_k3 on t2r t5  (cost=0.00..5.22 rows=10 width=8)
+                                 Index Cond: (k3 = 222)
+               ->  Index Scan using i_t2_k4k5 on t2 t3  (cost=0.00..16.50 rows=100 width=21)
+                     Index Cond: (k4 = ANY (ARRAY[t5.k2, $1, $2, ..., $1023]))
+                     Storage Filter: (k2 <> 123)
+         ->  Index Scan using i_t1_id on t1  (cost=0.00..4.12 rows=1 width=8)
+               Index Cond: (id = ANY (ARRAY[t3.k3, $1025, $1026, ..., $2047]))
+   ->  Index Scan using t2_pkey on t2  (cost=0.00..4.11 rows=1 width=21)
+         Index Cond: (k1 = ANY (ARRAY[t1.id, $2049, $2050, ..., $3071]))
+         Storage Filter: (NOT v)
+(21 rows)
+
+-- 2024.1 and beyond
+set yb_enable_cbo = off;
+\i :costsfilename
+explain (costs on, summary off)
+select * from t1 join t2 on t2.k1 = t1.id join t2 t3 on t3.k3 = t1.id
+where t3.k4 in (select t5.k2 from t1 t4 join t2r t5 on t4.id = t5.k3 and t4.id = 222)
+ and t2.v = false and t3.k2 <> 123;
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join  (cost=9.56..235.58 rows=500 width=50)
+   Join Filter: (t1.id = t2.k1)
+   ->  YB Batched Nested Loop Join  (cost=9.56..173.58 rows=500 width=29)
+         Join Filter: (t3.k3 = t1.id)
+         ->  Hash Semi Join  (cost=9.56..120.25 rows=500 width=21)
+               Hash Cond: (t3.k4 = t5.k2)
+               ->  Seq Scan on t2 t3  (cost=0.00..102.50 rows=1000 width=21)
+                     Storage Filter: (k2 <> 123)
+               ->  Hash  (cost=9.44..9.44 rows=10 width=4)
+                     ->  Nested Loop  (cost=0.00..9.44 rows=10 width=4)
+                           ->  Index Only Scan using i_t1_id on t1 t4  (cost=0.00..4.11 rows=1 width=4)
+                                 Index Cond: (id = 222)
+                           ->  Index Scan using i_t2r_k3 on t2r t5  (cost=0.00..5.22 rows=10 width=8)
+                                 Index Cond: (k3 = 222)
+         ->  Index Scan using i_t1_id on t1  (cost=0.00..0.12 rows=1 width=8)
+               Index Cond: (id = ANY (ARRAY[t3.k3, $1, $2, ..., $1023]))
+   ->  Index Scan using t2_pkey on t2  (cost=0.00..0.11 rows=1 width=21)
+         Index Cond: (k1 = ANY (ARRAY[t1.id, $1025, $1026, ..., $2047]))
+         Storage Filter: (NOT v)
+(19 rows)
+
+drop table t1, t2, t2r;

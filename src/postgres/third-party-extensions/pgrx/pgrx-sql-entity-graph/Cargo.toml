@@ -1,0 +1,45 @@
+#LICENSE Portions Copyright 2019-2021 ZomboDB, LLC.
+#LICENSE
+#LICENSE Portions Copyright 2021-2023 Technology Concepts & Design, Inc.
+#LICENSE
+#LICENSE Portions Copyright 2023-2023 PgCentral Foundation, Inc. <contact@pgcentral.org>
+#LICENSE
+#LICENSE All rights reserved.
+#LICENSE
+#LICENSE Use of this source code is governed by the MIT license that can be found in the LICENSE file.
+ 
+[package]
+name = "pgrx-sql-entity-graph"
+version = "0.14.1"
+authors = ["PgCentral Foundation, Inc. <contact@pgcentral.org>"]
+license = "MIT"
+description = "Sql Entity Graph for `pgrx`"
+homepage = "https://github.com/pgcentralfoundation/pgrx/"
+repository = "https://github.com/pgcentralfoundation/pgrx/"
+documentation = "https://docs.rs/pgrx-sql-entity-graph"
+readme = "README.md"
+edition = "2021"
+include = ["src/**/*", "README.md"]
+
+[features]
+syntax-highlighting = ["dep:syntect", "dep:owo-colors"]
+no-schema-generation = []
+
+[dependencies]
+eyre.workspace = true
+proc-macro2.workspace = true
+quote.workspace = true
+syn.workspace = true
+thiserror.workspace = true
+
+convert_case = "0.8.0"
+petgraph = "0.8.1"
+unescape = "0.1.0" # for escaped-character-handling
+
+# colorized sql output
+owo-colors = { optional = true, workspace = true }
+syntect = { version = "5.2.0", default-features = false, features = ["default-fancy"], optional = true }
+
+[lints.clippy]
+assigning-clones = "allow" # wrong diagnosis and wrong suggestions
+too-many-arguments = "allow" # I argue with myself all the time

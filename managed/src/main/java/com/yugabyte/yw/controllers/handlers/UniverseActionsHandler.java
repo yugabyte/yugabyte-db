@@ -1,0 +1,421 @@
+/*
+ * Copyright 2021 YugabyteDB, Inc. and Contributors
+ *
+ * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+ * may not use this file except in compliance with the License. You
+ * may obtain a copy of the License at
+ *
+ * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+ */
+
+package com.yugabyte.yw.controllers.handlers;
+
+import static play.mvc.Http.Status.BAD_REQUEST;
+
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.PauseUniverse;
+import com.yugabyte.yw.commissioner.tasks.ResumeUniverse;
+import com.yugabyte.yw.commissioner.tasks.upgrade.PauseKubernetesUniverse;
+import com.yugabyte.yw.commissioner.tasks.upgrade.ResumeKubernetesUniverse;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
+import com.yugabyte.yw.forms.AdditionalServicesStateData;
+import com.yugabyte.yw.forms.AlertConfigFormData;
+import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.KmsHistory;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+import javax.annotation.Nullable;
+import javax.inject.Singleton;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.data.Form;
+import play.libs.Json;
+import play.mvc.Http;
+
+@Singleton
+public class UniverseActionsHandler {
+  private static final Logger LOG = LoggerFactory.getLogger(UniverseActionsHandler.class);
+
+  private final Commissioner commissioner;
+  private final RuntimeConfGetter runtimeConfGetter;
+
+  @Inject
+  public UniverseActionsHandler(Commissioner commissioner, RuntimeConfGetter runtimeConfGetter) {
+    this.commissioner = commissioner;
+    this.runtimeConfGetter = runtimeConfGetter;
+  }
+
+  public void setBackupFlag(Universe universe, Boolean value) {
+    Map<String, String> config = new HashMap<>();
+    config.put(Universe.TAKE_BACKUPS, value.toString());
+    universe.updateConfig(config);
+    universe.save();
+  }
+
+  public UUID setUniverseKey(
+      Customer customer, Universe universe, EncryptionAtRestKeyParams taskParams) {
+    try {
+      TaskType taskType = TaskType.SetUniverseKey;
+      taskParams.expectedUniverseVersion = universe.getVersion();
+      UUID taskUUID = commissioner.submit(taskType, taskParams);
+      LOG.info(
+          "Submitted set universe key for {}:{}, task uuid = {}.",
+          universe.getUniverseUUID(),
+          universe.getName(),
+          taskUUID);
+
+      CustomerTask.TaskType customerTaskType = null;
+      CustomerTask.TargetType customerTargetType = CustomerTask.TargetType.Universe;
+      KmsHistory activeKmsHistory = EncryptionAtRestUtil.getActiveKey(universe.getUniverseUUID());
+      switch (taskParams.encryptionAtRestConfig.opType) {
+        case ENABLE:
+          if (universe.getUniverseDetails().encryptionAtRestConfig.encryptionAtRestEnabled) {
+            customerTaskType = CustomerTask.TaskType.RotateEncryptionKey;
+            if (activeKmsHistory != null
+                && !activeKmsHistory
+                    .getConfigUuid()
+                    .equals(taskParams.encryptionAtRestConfig.kmsConfigUUID)) {
+              // Master key rotation case when given config UUID differs from active config UUID.
+              customerTargetType = CustomerTask.TargetType.MasterKey;
+            } else {
+              // Universe key rotation case when given config UUID matches active config UUID.
+              customerTargetType = CustomerTask.TargetType.UniverseKey;
+            }
+          } else {
+            customerTaskType = CustomerTask.TaskType.EnableEncryptionAtRest;
+          }
+          break;
+        case DISABLE:
+          customerTaskType = CustomerTask.TaskType.DisableEncryptionAtRest;
+          break;
+        default:
+        case UNDEFINED:
+          break;
+      }
+
+      // Add this task uuid to the user universe.
+      CustomerTask.create(
+          customer,
+          universe.getUniverseUUID(),
+          taskUUID,
+          customerTargetType,
+          customerTaskType,
+          universe.getName());
+      LOG.info(
+          "Saved task uuid "
+              + taskUUID
+              + " in customer tasks table for universe "
+              + universe.getUniverseUUID()
+              + ":"
+              + universe.getName());
+      return taskUUID;
+    } catch (RuntimeException e) {
+      String errMsg =
+          String.format(
+              "Error occurred attempting to %s the universe encryption key",
+              taskParams.encryptionAtRestConfig.opType.name());
+      LOG.error(errMsg, e);
+      throw new PlatformServiceException(Http.Status.BAD_REQUEST, errMsg);
+    }
+  }
+
+  public void setHelm3Compatible(Universe universe) {
+    // Check if the provider is k8s and that we haven't already marked this universe
+    // as helm compatible.
+    Map<String, String> universeConfig = universe.getConfig();
+    if (universeConfig.containsKey(Universe.HELM2_LEGACY)) {
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST, "Universe was already marked as helm3 compatible.");
+    }
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    if (!primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST, "Only applicable for k8s universes.");
+    }
+
+    Map<String, String> config = new HashMap<>();
+    config.put(Universe.HELM2_LEGACY, Universe.HelmLegacy.V2TO3.toString());
+    universe.updateConfig(config);
+    universe.save();
+  }
+
+  public void configureAlerts(Universe universe, Form<AlertConfigFormData> formData) {
+    Map<String, String> config = new HashMap<>();
+
+    AlertConfigFormData alertConfig = formData.get();
+    long disabledUntilSecs = 0;
+    if (alertConfig.disabled) {
+      if (null == alertConfig.disablePeriodSecs) {
+        disabledUntilSecs = Long.MAX_VALUE;
+      } else {
+        disabledUntilSecs = (System.currentTimeMillis() / 1000) + alertConfig.disablePeriodSecs;
+      }
+      LOG.info(
+          String.format(
+              "Will disable alerts for universe %s until unix time %d [ %s ].",
+              universe.getUniverseUUID(),
+              disabledUntilSecs,
+              Util.unixTimeToString(disabledUntilSecs)));
+    } else {
+      LOG.info(
+          String.format(
+              "Will enable alerts for universe %s [unix time  = %d].",
+              universe.getUniverseUUID(), disabledUntilSecs));
+    }
+    config.put(Universe.DISABLE_ALERTS_UNTIL, Long.toString(disabledUntilSecs));
+    universe.updateConfig(config);
+    universe.save();
+  }
+
+  public UUID pause(Customer customer, Universe universe) {
+    return pause(customer, universe, null);
+  }
+
+  public UUID pause(
+      Customer customer, Universe universe, @Nullable KubernetesResourceDetails resourceDetails) {
+    LOG.info(
+        "Pause universe, customer uuid: {}, universe: {} [ {} ] ",
+        customer.getUuid(),
+        universe.getName(),
+        universe.getUniverseUUID());
+
+    // Determine if the universe is Kubernetes-based
+    boolean isKubernetes = isKubernetesUniverse(universe);
+
+    // Create the Commissioner task to pause the universe.
+    TaskType taskType;
+
+    if (isKubernetes) {
+      PauseKubernetesUniverse.Params kubeParams = new PauseKubernetesUniverse.Params();
+      kubeParams.setUniverseUUID(universe.getUniverseUUID());
+      kubeParams.expectedUniverseVersion = -1;
+      kubeParams.customerUUID = customer.getUuid();
+      if (resourceDetails != null) {
+        kubeParams.setKubernetesResourceDetails(resourceDetails);
+      }
+      taskType = TaskType.PauseKubernetesUniverse;
+      // Submit the task to pause the universe.
+      UUID taskUUID = commissioner.submit(taskType, kubeParams);
+      LOG.info(
+          "Submitted {} for {}, task uuid = {}", taskType, universe.getUniverseUUID(), taskUUID);
+
+      // Add this task uuid to the user universe.
+      CustomerTask.create(
+          customer,
+          universe.getUniverseUUID(),
+          taskUUID,
+          CustomerTask.TargetType.Universe,
+          CustomerTask.TaskType.Pause,
+          universe.getName());
+
+      LOG.info(
+          "Paused Kubernetes universe {} for customer [{}]",
+          universe.getUniverseUUID(),
+          customer.getName());
+      return taskUUID;
+
+    } else {
+      PauseUniverse.Params params = new PauseUniverse.Params();
+      params.setUniverseUUID(universe.getUniverseUUID());
+      params.expectedUniverseVersion = -1;
+      params.customerUUID = customer.getUuid();
+      taskType = TaskType.PauseUniverse;
+      // Submit the task to pause the universe.
+      UUID taskUUID = commissioner.submit(taskType, params);
+      LOG.info(
+          "Submitted {} for {}, task uuid = {}", taskType, universe.getUniverseUUID(), taskUUID);
+
+      // Add this task uuid to the user universe.
+      CustomerTask.create(
+          customer,
+          universe.getUniverseUUID(),
+          taskUUID,
+          CustomerTask.TargetType.Universe,
+          CustomerTask.TaskType.Pause,
+          universe.getName());
+
+      LOG.info(
+          "Paused universe {} for customer [{}]", universe.getUniverseUUID(), customer.getName());
+      return taskUUID;
+    }
+  }
+
+  public UUID resume(Customer customer, Universe universe) throws IOException {
+    return resume(customer, universe, null);
+  }
+
+  public UUID resume(
+      Customer customer, Universe universe, @Nullable KubernetesResourceDetails resourceDetails)
+      throws IOException {
+    LOG.info(
+        "Resume universe, customer uuid: {}, universe: {} [ {} ] ",
+        customer.getUuid(),
+        universe.getName(),
+        universe.getUniverseUUID());
+
+    // Determine if the universe is Kubernetes-based
+    boolean isKubernetes = isKubernetesUniverse(universe);
+    ObjectMapper mapper =
+        Json.mapper()
+            .copy()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+
+    if (isKubernetes) {
+      TaskType taskType;
+      ResumeKubernetesUniverse.Params kubeParams =
+          mapper.readValue(
+              mapper.writeValueAsString(universe.getUniverseDetails()),
+              ResumeKubernetesUniverse.Params.class);
+      kubeParams.setUniverseUUID(universe.getUniverseUUID());
+      kubeParams.expectedUniverseVersion = -1;
+      kubeParams.customerUUID = customer.getUuid();
+      if (resourceDetails != null) {
+        kubeParams.setKubernetesResourceDetails(resourceDetails);
+      }
+      taskType = TaskType.ResumeKubernetesUniverse;
+      UUID taskUUID = commissioner.submit(taskType, kubeParams);
+      LOG.info(
+          "Submitted {} for {}, task uuid = {}", taskType, universe.getUniverseUUID(), taskUUID);
+      // Add this task uuid to the user universe.
+      CustomerTask.create(
+          customer,
+          universe.getUniverseUUID(),
+          taskUUID,
+          CustomerTask.TargetType.Universe,
+          CustomerTask.TaskType.Resume,
+          universe.getName());
+
+      LOG.info(
+          "Resumed Kubernetes universe {} for customer [{}]",
+          universe.getUniverseUUID(),
+          customer.getName());
+      return taskUUID;
+    } else {
+      TaskType taskType;
+      ResumeUniverse.Params params =
+          mapper.readValue(
+              mapper.writeValueAsString(universe.getUniverseDetails()),
+              ResumeUniverse.Params.class);
+      params.expectedUniverseVersion = -1;
+      params.customerUUID = customer.getUuid();
+
+      taskType = TaskType.ResumeUniverse;
+      UUID taskUUID = commissioner.submit(taskType, params);
+      LOG.info(
+          "Submitted {} for {}, task uuid = {}", taskType, universe.getUniverseUUID(), taskUUID);
+
+      // Add this task uuid to the user universe.
+      CustomerTask.create(
+          customer,
+          universe.getUniverseUUID(),
+          taskUUID,
+          CustomerTask.TargetType.Universe,
+          CustomerTask.TaskType.Resume,
+          universe.getName());
+
+      LOG.info(
+          "Resumed universe {} for customer [{}]", universe.getUniverseUUID(), customer.getName());
+      return taskUUID;
+    }
+  }
+
+  public UUID updateLoadBalancerConfig(
+      Customer customer, Universe universe, UniverseDefinitionTaskParams taskParams) {
+    if (!taskParams.getUniverseUUID().equals(universe.getUniverseUUID())) {
+      throw new PlatformServiceException(
+          Http.Status.BAD_REQUEST,
+          "Invalid Universe UUID in json: "
+              + taskParams.getUniverseUUID().toString()
+              + " Expected UUID: "
+              + universe.getUniverseUUID().toString());
+    }
+
+    LOG.info(
+        "Update load balancer config, universe: {} [ {} ] ",
+        universe.getName(),
+        universe.getUniverseUUID());
+    // Set existing LB config
+    taskParams.setExistingLBs(universe.getUniverseDetails().clusters);
+    // Task to update LB config
+    TaskType taskType = TaskType.UpdateLoadBalancerConfig;
+    UUID taskUUID = commissioner.submit(taskType, taskParams);
+    LOG.info(
+        "Submitted update load balancer config for {} : {}, task uuid = {}.",
+        universe.getUniverseUUID(),
+        universe.getName(),
+        taskUUID);
+
+    CustomerTask.create(
+        customer,
+        universe.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.UpdateLoadBalancerConfig,
+        universe.getName());
+    LOG.info(
+        "Saved task uuid {} in customer tasks table for universe {} : {}.",
+        taskUUID,
+        universe.getUniverseUUID(),
+        universe.getName());
+    return taskUUID;
+  }
+
+  public UUID updateAdditionalServicesState(
+      Customer customer, Universe universe, AdditionalServicesStateData data) {
+    boolean enableEarlyoomFeature =
+        runtimeConfGetter.getConfForScope(customer, CustomerConfKeys.enableEarlyoomFeature);
+    if (!enableEarlyoomFeature) {
+      throw new PlatformServiceException(BAD_REQUEST, "Earlyoom feature is disabled");
+    }
+    LOG.info(
+        "Update additional services state: {} {}  ", universe.getUniverseUUID(), Json.toJson(data));
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.setUniverseUUID(universe.getUniverseUUID());
+    params.additionalServicesStateData = data;
+    UUID taskUUID = commissioner.submit(TaskType.UpdateOOMServiceState, params);
+    LOG.info(
+        "Submitted additional services state {} : {}, task uuid = {}.",
+        universe.getUniverseUUID(),
+        universe.getName(),
+        taskUUID);
+    CustomerTask.create(
+        customer,
+        universe.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.UpdateOOMServiceState,
+        universe.getName());
+    LOG.info(
+        "Saved task uuid {} in customer tasks table for universe {} : {}.",
+        taskUUID,
+        universe.getUniverseUUID(),
+        universe.getName());
+    return taskUUID;
+  }
+
+  // Helper method to determine if the universe is Kubernetes-based
+  private boolean isKubernetesUniverse(Universe universe) {
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    return primaryCluster.userIntent.providerType.equals(Common.CloudType.kubernetes);
+  }
+}
