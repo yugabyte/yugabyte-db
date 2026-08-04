@@ -485,6 +485,16 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     lenient().when(cloudAPI.isValidCreds(any())).thenReturn(true);
   }
 
+  // The application wiring below is identical for every test method (a fixed set of mock bindings
+  // held in instance fields), so share one application instance across all of the class' methods.
+  // Per-method isolation is restored by the base class (DB truncation + mock reset). Subclasses
+  // that
+  // need genuinely per-method wiring must override this to return false.
+  @Override
+  protected boolean reusableApplication() {
+    return true;
+  }
+
   @Override
   protected Application provideApplication() {
     return configureApplication(

@@ -20,6 +20,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.test.Helpers.contentAsString;
@@ -91,7 +92,10 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
     Map<String, String> mockQueryParams =
         ImmutableMap.of("name", universe.getUniverseUUID().toString(), "limit", "1");
     // confGetter is not used in class SmartKeyEARService, so we can pass null.
-    when(mockEARManager.getServiceInstance(eq("SMARTKEY")))
+    // Defensive setUp stub only used by some tests; lenient so MockitoJUnitRunner's strict-stub
+    // check does not fail on runs whose ordering leaves it unused.
+    lenient()
+        .when(mockEARManager.getServiceInstance(eq("SMARTKEY")))
         .thenReturn(new SmartKeyEARService(null));
   }
 

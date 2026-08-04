@@ -1088,7 +1088,7 @@ public class CloudProviderHelper {
             throw new PlatformServiceException(
                 BAD_REQUEST,
                 String.format(
-                    "Specify the AMI for the region %s in the image bundle %s",
+                    "Specify the image for the region %s in the image bundle %s",
                     region.getCode(), bundle.getName()));
           }
         }

@@ -76,6 +76,15 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
 
   @InjectMocks private CustomerTaskController controller;
 
+  // The @InjectMocks controller above is wired with this instance's mockCommissioner before any
+  // @Before runs. Reusing the application would then overwrite mockCommissioner with the instance
+  // captured from the class' first method, leaving the controller holding a mock the tests never
+  // stub. Rebuild per method so both point at the same mock.
+  @Override
+  protected boolean reusableApplication() {
+    return false;
+  }
+
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
@@ -560,7 +569,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             100.0);
     Result result =
         doRequestWithAuthToken("GET", "/api/customers/" + customer.getUuid() + "/tasks", authToken);
-    CustomerTask.find.query().where().eq("task_uuid", taskUUID.toString()).findOne();
+    CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOne();
     assertThat(result.status(), is(OK));
     JsonNode json = Json.parse(contentAsString(result));
     JsonNode universeTasks = json.get(universe.getUniverseUUID().toString());
@@ -685,8 +694,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             100.0);
     Result result =
         doRequestWithAuthToken("GET", "/api/customers/" + customer.getUuid() + "/tasks", authToken);
-    CustomerTask ct =
-        CustomerTask.find.query().where().eq("task_uuid", taskUUID.toString()).findOne();
+    CustomerTask ct = CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOne();
     assertThat(result.status(), is(OK));
     assertThat(
         contentAsString(result), allOf(notNullValue(), containsString("Created Universe : Foo")));

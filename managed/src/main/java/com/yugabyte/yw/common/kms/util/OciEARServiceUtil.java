@@ -381,9 +381,13 @@ public class OciEARServiceUtil {
     // getCredentials() via StringUtils.isAnyBlank, so we only need the three below here.
     String vaultOcid = getSafeText(formData, OciKmsAuthConfigField.OCI_VAULT_OCID.fieldName);
     String regionStr = getSafeText(formData, OciKmsAuthConfigField.OCI_REGION.fieldName);
+    String compartmentId =
+        getSafeText(formData, OciKmsAuthConfigField.OCI_COMPARTMENT_OCID.fieldName);
 
     if (StringUtils.isBlank(vaultOcid)) throw new RuntimeException("OCI_VAULT_OCID is required");
     if (StringUtils.isBlank(regionStr)) throw new RuntimeException("OCI_REGION is required");
+    if (StringUtils.isBlank(compartmentId))
+      throw new RuntimeException("OCI_COMPARTMENT_OCID is required");
 
     // Step 2: parse region locally no network call, catches completely invalid strings early.
     Region region;

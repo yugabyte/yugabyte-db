@@ -6,6 +6,7 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import java.nio.file.Files;
@@ -18,7 +19,6 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Before;
@@ -304,8 +304,11 @@ public class SupportBundleUtilTest extends FakeDBApplication {
 
   @Test
   public void testGetServiceAccountName() throws ParseException {
+    // Use a real customer so the provider's customer_uuid FK is satisfied (Postgres enforces it;
+    // H2 previously did not).
+    Customer customer = ModelFactory.testCustomer();
     Provider testProvider =
-        Provider.create(UUID.randomUUID(), Common.CloudType.kubernetes, "testProvider");
+        Provider.create(customer.getUuid(), Common.CloudType.kubernetes, "testProvider");
 
     Map<String, String> provConfig1 = new HashMap<String, String>();
     provConfig1.put("KUBECONFIG_SERVICE_ACCOUNT", "old service account");
