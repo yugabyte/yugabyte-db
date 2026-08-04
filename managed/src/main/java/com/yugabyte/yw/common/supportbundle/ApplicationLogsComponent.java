@@ -22,12 +22,12 @@ import java.nio.file.StandardCopyOption;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -137,10 +137,11 @@ public class ApplicationLogsComponent implements SupportBundleComponent {
     // All the logs file names that we want to keep after filtering within start and end date
     List<String> filteredLogFiles = new ArrayList<>();
 
-    // "application.log" is the latest log file that is being updated at the moment
+    // "application.log" is the latest log file that is being updated at the moment. It holds the
+    // logs from the last rollover till now, so it is required whenever the requested window
+    // extends into the current day.
     Date dateToday = supportBundleUtil.getTodaysDate();
-    if (logFiles.contains("application.log")
-        && supportBundleUtil.checkDateBetweenDates(dateToday, startDate, endDate)) {
+    if (logFiles.contains("application.log") && !endDate.before(dateToday)) {
       filteredLogFiles.add("application.log");
     }
 
@@ -149,23 +150,38 @@ public class ApplicationLogsComponent implements SupportBundleComponent {
         runtimeConfigFactory
             .globalRuntimeConf()
             .getString("yb.support_bundle.application_logs_regex_pattern");
-    logFiles =
-        supportBundleUtil.filterList(logFiles, Arrays.asList(applicationLogsRegexPattern)).stream()
-            .collect(Collectors.toList());
+    List<String> rolledLogFiles =
+        supportBundleUtil.filterList(logFiles, Arrays.asList(applicationLogsRegexPattern));
 
     String applicationLogsSdfPattern =
         runtimeConfigFactory
             .globalRuntimeConf()
             .getString("yb.support_bundle.application_logs_sdf_pattern");
     SimpleDateFormat sdf = new SimpleDateFormat(applicationLogsSdfPattern);
-    // Filters the log files whether it is between startDate and endDate
-    for (String logFile : logFiles) {
+    Map<String, Date> logFileDates = new HashMap<>();
+    for (String logFile : rolledLogFiles) {
       // Sometimes the files might be uncompressed already, check for those files too by stripping
       // the extension from all files.
-      String logFileWithoutType = StringUtils.stripEnd(logFile, ".gz");
-      Date fileDate = sdf.parse(logFileWithoutType);
+      logFileDates.put(logFile, sdf.parse(StringUtils.stripEnd(logFile, ".gz")));
+    }
+
+    // Sort in descending order of the date in the file name, so that the first file found before
+    // the start date is also the newest one before it.
+    rolledLogFiles.sort(
+        Comparator.comparing((String logFile) -> logFileDates.get(logFile)).reversed());
+
+    // Filters the log files whether it is between startDate and endDate
+    for (String logFile : rolledLogFiles) {
+      Date fileDate = logFileDates.get(logFile);
       if (supportBundleUtil.checkDateBetweenDates(fileDate, startDate, endDate)) {
         filteredLogFiles.add(logFile);
+      }
+      // The file name only carries the rollover timestamp, so a file rolled over before the start
+      // date still holds the logs written between that timestamp and the start date. Collect a
+      // single such file for the partial overlap and stop looking at the older ones.
+      else if (fileDate.before(startDate)) {
+        filteredLogFiles.add(logFile);
+        break;
       }
     }
 
