@@ -81,7 +81,7 @@ class IndexReverseMappingReader : public docdb::DocVectorIndexReverseMappingRead
   }
 
   Result<Slice> Fetch(Slice key) override {
-    return std::get<docdb::IntentAwareIteratorPtr>(iter_holder_)->FetchValue(key);
+    return iter_holder_.iter->FetchValue(key);
   }
 
  private:
