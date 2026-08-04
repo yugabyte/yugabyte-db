@@ -2364,8 +2364,10 @@ class PgClientServiceImpl::Impl : public SessionProvider, public SessionRegistry
   Status GetTableDiskSize(
       const PgGetTableDiskSizeRequestPB& req, PgGetTableDiskSizeResponsePB* resp,
       rpc::RpcContext* context) {
-    auto result =
-        client().GetTableDiskSize(PgObjectId::GetYbTableIdFromPB(req.table_id()));
+    const auto table_id = req.has_yb_table_id() && !req.yb_table_id().empty()
+        ? req.yb_table_id()
+        : PgObjectId::GetYbTableIdFromPB(req.table_id());
+    auto result = client().GetTableDiskSize(table_id);
     if (!result.ok()) {
       StatusToPB(result.status(), resp->mutable_status());
     } else {

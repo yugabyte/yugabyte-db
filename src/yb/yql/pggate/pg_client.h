@@ -33,6 +33,7 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/pg_types.h"
+#include "yb/common/entity_ids_types.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
@@ -267,6 +268,8 @@ class PgClient {
   Status ValidatePlacement(tserver::PgValidatePlacementRequestPB* req);
 
   Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
+
+  Result<client::TableSizeInfo> GetTableDiskSizeByYbTableId(const TableId& yb_table_id);
 
   Status InsertSequenceTuple(int64_t db_oid,
                              int64_t seq_oid,
