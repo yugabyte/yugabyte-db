@@ -246,8 +246,8 @@ Status InitDistTraceProvider(const resource_sdk::Resource& resource_attrs) {
 // supplied (through GUC or comment) traceparent header.
 class TraceparentCarrier : public context::propagation::TextMapCarrier {
  public:
-  explicit TraceparentCarrier(nostd::string_view traceparent)
-      : traceparent_(traceparent) {}
+  explicit TraceparentCarrier(nostd::string_view traceparent = {})
+      : traceparent_(traceparent.data(), traceparent.size()) {}
 
   nostd::string_view Get(nostd::string_view key) const noexcept override {
     if (key == trace::propagation::kTraceParent) {
@@ -256,10 +256,16 @@ class TraceparentCarrier : public context::propagation::TextMapCarrier {
     return {};
   }
 
-  void Set(nostd::string_view, nostd::string_view) noexcept override {}
+  void Set(nostd::string_view key, nostd::string_view value) noexcept override {
+    if (key == trace::propagation::kTraceParent) {
+      traceparent_.assign(value.data(), value.size());
+    }
+  }
+
+  const std::string& traceparent() const { return traceparent_; }
 
  private:
-  nostd::string_view traceparent_;
+  std::string traceparent_;
 };
 
 }  // namespace
@@ -332,6 +338,17 @@ trace::SpanContext GetTraceparentSpanContext(const char* traceparent) {
 
   // Return the SpanContext from the parent context.
   return trace::GetSpan(parent_context)->GetContext();
+}
+
+std::string GetActiveTraceparent() {
+  if (!HasActiveContext()) {
+    return {};
+  }
+  TraceparentCarrier carrier;
+  static const auto propagator =
+      context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
+  propagator->Inject(carrier, context::RuntimeContext::GetCurrent());
+  return carrier.traceparent();
 }
 
 bool HasActiveContext() {
