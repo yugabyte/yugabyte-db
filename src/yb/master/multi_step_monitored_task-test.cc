@@ -24,9 +24,13 @@
 #include "yb/master/ysql_ddl_verification_task.h"
 #include "yb/rpc/messenger.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/dist_trace.h"
+#include "yb/util/dist_trace_test_util.h"
+#include "yb/util/flags.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
 
 using namespace std::placeholders;
@@ -308,6 +312,118 @@ TEST(CatalogEntityTaskTest, TestAbortWithInFlightTransactionPoll) {
   yb::SyncPoint::GetInstance()->DisableProcessing();
   messenger->Shutdown();
   thread_pool->Shutdown();
+}
+
+// Two-step task recording the trace context active in each step. Steps run on the async pool.
+class TraceObservingCatalogEntityTask : public MultiStepCatalogEntityTask {
+ public:
+  TraceObservingCatalogEntityTask(
+      CatalogEntityWithTasks& catalog_entity, ThreadPool& async_task_pool,
+      rpc::Messenger& messenger)
+      : MultiStepCatalogEntityTask(
+            [](const LeaderEpoch&) { return Status::OK(); }, async_task_pool, messenger,
+            catalog_entity, leader_epoch) {
+    completion_callback_ = [this](const Status& status) {
+      completion_sync_.AsStatusFunctor()(status);
+    };
+  }
+
+  server::MonitoredTaskType type() const override { return kTaskType; }
+
+  std::string type_name() const override { return "Trace observing task"; }
+
+  std::string description() const override { return "Trace observing task"; }
+
+  Status FirstStep() override {
+    first_step_context_ = dist_trace::GetActiveSpanContext();
+    ScheduleNextStep(std::bind(&TraceObservingCatalogEntityTask::SecondStep, this), "second step");
+    return Status::OK();
+  }
+
+  Status SecondStep() {
+    second_step_context_ = dist_trace::GetActiveSpanContext();
+    Complete();
+    return Status::OK();
+  }
+
+  std::optional<dist_trace::trace::SpanContext> first_step_context_;
+  std::optional<dist_trace::trace::SpanContext> second_step_context_;
+  Synchronizer completion_sync_;
+};
+
+// Enables distributed tracing, pointed at an unreachable collector.
+class CatalogEntityTaskTraceTest : public YBTest {
+ protected:
+  void SetUp() override {
+    YBTest::SetUp();
+    dist_trace::TEST_SetOtelCollectorEndpoint("http://127.0.0.1:1/v1/traces");
+  }
+
+ private:
+  google::FlagSaver flag_saver_;
+};
+
+// Construct a task under an active trace context, then Start() it after the context is gone: the
+// async pool runs both steps under that context.
+TEST_F(CatalogEntityTaskTraceTest, TraceContextCarriedToSteps) {
+  std::unique_ptr<ThreadPool> thread_pool;
+  ThreadPoolBuilder thread_pool_builder("Test");
+  ASSERT_OK(thread_pool_builder.Build(&thread_pool));
+
+  rpc::MessengerBuilder messenger_builder("Test");
+  auto messenger = ASSERT_RESULT(messenger_builder.Build());
+  auto se = ScopeExit([messenger = messenger.get(), thread_pool = thread_pool.get()] {
+    messenger->Shutdown();
+    thread_pool->Shutdown();
+  });
+
+  CatalogEntityWithTasksMock catalog_entity;
+
+  const auto expected = dist_trace::MakeTestSpanContext(0x5a);
+  std::shared_ptr<TraceObservingCatalogEntityTask> task;
+  {
+    auto scope = dist_trace::ActivateParentScope(expected);
+    ASSERT_TRUE(scope != nullptr);
+    task = std::make_shared<TraceObservingCatalogEntityTask>(
+        catalog_entity, *thread_pool.get(), *messenger.get());
+  }
+  task->Start();
+
+  catalog_entity.WaitTasksCompletion();
+  ASSERT_OK(task->completion_sync_.Wait());
+
+  ASSERT_TRUE(task->first_step_context_.has_value());
+  ASSERT_EQ(task->first_step_context_->trace_id(), expected.trace_id());
+  ASSERT_EQ(task->first_step_context_->span_id(), expected.span_id());
+  ASSERT_TRUE(task->second_step_context_.has_value());
+  ASSERT_EQ(task->second_step_context_->trace_id(), expected.trace_id());
+  ASSERT_EQ(task->second_step_context_->span_id(), expected.span_id());
+}
+
+// Construct a task with no active trace context: the async pool runs both steps with none.
+TEST_F(CatalogEntityTaskTraceTest, NoTraceContextCarriedWhenNoneActive) {
+  std::unique_ptr<ThreadPool> thread_pool;
+  ThreadPoolBuilder thread_pool_builder("Test");
+  ASSERT_OK(thread_pool_builder.Build(&thread_pool));
+
+  rpc::MessengerBuilder messenger_builder("Test");
+  auto messenger = ASSERT_RESULT(messenger_builder.Build());
+  auto se = ScopeExit([messenger = messenger.get(), thread_pool = thread_pool.get()] {
+    messenger->Shutdown();
+    thread_pool->Shutdown();
+  });
+
+  CatalogEntityWithTasksMock catalog_entity;
+
+  auto task = std::make_shared<TraceObservingCatalogEntityTask>(
+      catalog_entity, *thread_pool.get(), *messenger.get());
+  task->Start();
+
+  catalog_entity.WaitTasksCompletion();
+  ASSERT_OK(task->completion_sync_.Wait());
+
+  ASSERT_FALSE(task->first_step_context_.has_value());
+  ASSERT_FALSE(task->second_step_context_.has_value());
 }
 
 }  // namespace yb::master

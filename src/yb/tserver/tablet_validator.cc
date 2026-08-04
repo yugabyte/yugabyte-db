@@ -45,6 +45,7 @@
 
 #include "yb/util/background_task.h"
 #include "yb/util/compare_util.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
@@ -93,6 +94,10 @@ struct IndexTableInfo {
   TabletId index_tablet_id;
   TableId  index_table_id;
   TableId  group_id; // Generally contains indexed_table_id.
+
+  // OTel context active when this index was scheduled (the CreateTablet RPC's trace, carried into
+  // OpenTablet by the threadpool). Used to nest the later GetBackfillStatus poll under that trace.
+  std::optional<dist_trace::trace::SpanContext> trace_parent;
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(index_tablet_id, index_table_id, group_id);
@@ -422,10 +427,16 @@ bool TabletMetadataValidator::Impl::ScheduleTabletPropertiesValidation(
     return false;
   }
 
+  // Active OTel context, live here because the threadpool carries it from the CreateTablet RPC into
+  // OpenTablet. Stored per index so the later GetBackfillStatus poll nests under the triggering
+  // trace.
+  const auto trace_parent = dist_trace::GetActiveSpanContext();
+
   // Pick all index tables with retain_delete_markers set to true.
   std::vector<IndexTableInfo> candidates;
   candidates.reserve(meta.GetColocatedTablesCount()); // Let's try to predict the size.
-  meta.IterateColocatedTables([this, &meta, &candidates](const yb::tablet::TableInfo& info){
+  meta.IterateColocatedTables(
+      [this, &meta, &candidates, &trace_parent](const yb::tablet::TableInfo& info){
     VLOG_WITH_PREFIX(4) << "Candidate: " << info.ToString();
     if (info.schema().table_properties().retain_delete_markers()) {
       // For colocation tables info.index_info may not be set and thus it's not possible
@@ -433,7 +444,7 @@ bool TabletMetadataValidator::Impl::ScheduleTabletPropertiesValidation(
       // index table id instead of indexed table id to reuse the same structures.
       auto group_id = info.index_info ? info.index_info->indexed_table_id() : info.table_id;
       candidates.emplace_back(IndexTableInfo{
-          meta.raft_group_id(), info.table_id, std::move(group_id) });
+          meta.raft_group_id(), info.table_id, std::move(group_id), trace_parent });
     }
   });
   if (candidates.empty()) {
@@ -509,6 +520,13 @@ Result<master::GetBackfillStatusResponsePB> TabletMetadataValidator::Impl::SyncW
   for (auto it = index_tablets_to_sync_.begin();
        to_sync.size() < batch_size && it != index_tablets_to_sync_.end(); ++it) {
     to_sync.emplace(it->index_table_id);
+  }
+
+  // First entry wins: one RPC batches many index tables (possibly from different DDLs), but a span
+  // has a single parent. Nest the RPC under the first batched index's captured trace context.
+  dist_trace::SpanWithScopePtr otel_scope;
+  if (!index_tablets_to_sync_.empty()) {
+    otel_scope = dist_trace::ActivateParentScope(index_tablets_to_sync_.begin()->trace_parent);
   }
 
   // Only backfilling status is being synced with the master at the moment.

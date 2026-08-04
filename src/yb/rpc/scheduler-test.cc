@@ -21,8 +21,12 @@
 #include "yb/rpc/scheduler.h"
 
 #include "yb/util/countdown_latch.h"
+#include "yb/util/dist_trace.h"
+#include "yb/util/dist_trace_test_util.h"
+#include "yb/util/flags.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/tostring.h"
+
 
 namespace yb {
 namespace rpc {
@@ -137,6 +141,80 @@ TEST_F(SchedulerTest, Shutdown) {
   }
   ASSERT_EQ(scheduled.load(std::memory_order_acquire), executed.load(std::memory_order_acquire));
 }
+
+namespace dist_trace_hops {
+
+// Enables distributed tracing, pointed at an unreachable collector.
+class SchedulerTraceTest : public SchedulerTest {
+ public:
+  void SetUp() override {
+    dist_trace::TEST_SetOtelCollectorEndpoint("http://127.0.0.1:1/v1/traces");
+    SchedulerTest::SetUp();
+  }
+
+ private:
+  google::FlagSaver flag_saver_;
+};
+
+// Schedule under an active trace context: the io thread runs the task under that context.
+TEST_F(SchedulerTraceTest, TraceContextCarriedToScheduledTask) {
+  const auto expected = dist_trace::MakeTestSpanContext(0x1d);
+
+  std::optional<dist_trace::trace::SpanContext> observed;
+  std::promise<Status> promise;
+  auto future = promise.get_future();
+  {
+    auto scope = dist_trace::ActivateParentScope(expected);
+    ASSERT_TRUE(scope != nullptr);
+    scheduler_->Schedule([&observed, &promise](const Status& status) {
+      observed = dist_trace::GetActiveSpanContext();
+      promise.set_value(status);
+    }, 0s);
+  }
+  ASSERT_OK(future.get());
+
+  ASSERT_TRUE(observed.has_value());
+  ASSERT_EQ(observed->trace_id(), expected.trace_id());
+  ASSERT_EQ(observed->span_id(), expected.span_id());
+}
+
+// Same, over the Schedule overload that passes the task its own id.
+TEST_F(SchedulerTraceTest, TraceContextCarriedToScheduledTaskWithId) {
+  const auto expected = dist_trace::MakeTestSpanContext(0x2e);
+
+  std::optional<dist_trace::trace::SpanContext> observed;
+  std::promise<Status> promise;
+  auto future = promise.get_future();
+  {
+    auto scope = dist_trace::ActivateParentScope(expected);
+    ASSERT_TRUE(scope != nullptr);
+    scheduler_->Schedule([&observed, &promise](ScheduledTaskId task_id, const Status& status) {
+      observed = dist_trace::GetActiveSpanContext();
+      promise.set_value(status);
+    }, 0s);
+  }
+  ASSERT_OK(future.get());
+
+  ASSERT_TRUE(observed.has_value());
+  ASSERT_EQ(observed->trace_id(), expected.trace_id());
+  ASSERT_EQ(observed->span_id(), expected.span_id());
+}
+
+// Schedule with no active trace context: the io thread runs the task with none.
+TEST_F(SchedulerTraceTest, NoTraceContextCarriedWhenNoneActive) {
+  std::optional<dist_trace::trace::SpanContext> observed;
+  std::promise<Status> promise;
+  auto future = promise.get_future();
+  scheduler_->Schedule([&observed, &promise](const Status& status) {
+    observed = dist_trace::GetActiveSpanContext();
+    promise.set_value(status);
+  }, 0s);
+  ASSERT_OK(future.get());
+
+  ASSERT_FALSE(observed.has_value());
+}
+
+} // namespace dist_trace_hops
 
 } // namespace rpc
 } // namespace yb
