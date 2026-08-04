@@ -27,6 +27,14 @@ class StrandTask : public MPSCQueueEntry<StrandTask> {
   // When the thread pool done with a task, i.e. it completed or failed, it invokes Done.
   virtual void Done(const Status& status) = 0;
 
+  const std::optional<dist_trace::trace::SpanContext>& trace_parent() const {
+    return trace_parent_;
+  }
+
+  void set_trace_parent(std::optional<dist_trace::trace::SpanContext> trace_parent) {
+    trace_parent_ = std::move(trace_parent);
+  }
+
   virtual ~StrandTask() = default;
 
  private:
@@ -39,6 +47,7 @@ class StrandTask : public MPSCQueueEntry<StrandTask> {
   }
 
   StrandTask* next_ = nullptr;
+  std::optional<dist_trace::trace::SpanContext> trace_parent_;
 };
 
 template <class F>
