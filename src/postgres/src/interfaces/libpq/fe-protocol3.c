@@ -2239,6 +2239,9 @@ build_startup_packet(const PGconn *conn, char *packet,
 	if (conn->yb_internal_conn_kind && conn->yb_internal_conn_kind[0])
 		ADD_STARTUP_OPTION("yb_internal_conn_kind",
 						   conn->yb_internal_conn_kind);
+	if (conn->yb_dist_traceparent && conn->yb_dist_traceparent[0])
+		ADD_STARTUP_OPTION("yb_dist_traceparent",
+						   conn->yb_dist_traceparent);
 	if (conn->send_appname)
 	{
 		/* Use appname if present, otherwise use fallback */
