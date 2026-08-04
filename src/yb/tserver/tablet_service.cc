@@ -4018,7 +4018,7 @@ void TabletServiceImpl::AdminExecutePgsql(
     const auto& deadline = context.GetClientDeadline();
     auto pg_conn = VERIFY_RESULT(
         server->CreateInternalPGConn(req->database_name(), kDefaultInternalPgUser, false,
-                                     deadline));
+                                     deadline, req->yb_internal_conn_kind()));
     for (const auto& stmt : req->pgsql_statements()) {
       SCHECK_LT(
           CoarseMonoClock::Now(), deadline, TimedOut, "Timed out while executing Ysql statements");

@@ -41,6 +41,8 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
+#include "yb/yql/pgwrapper/libpq_utils.h"
+
 DEFINE_RUNTIME_AUTO_bool(enable_xcluster_api_v2, kExternal, false, true,
     "Allow the usage of v2 xCluster APIs that support DB Scoped replication groups");
 
@@ -1201,7 +1203,8 @@ void XClusterManager::ProcessCleanupTablesPeriodically() {
     WARN_NOT_OK(
         ExecutePgsqlStatements(
             namespace_name, statements, catalog_manager_,
-            CoarseMonoClock::now() + MonoDelta::FromSeconds(60), std::move(callback)),
+            CoarseMonoClock::now() + MonoDelta::FromSeconds(60), std::move(callback),
+            pgwrapper::YbInternalConnKindWireName::kXClusterSetup),
         "Cleanup of xCluster DDL replication tables failed");
   }
 }

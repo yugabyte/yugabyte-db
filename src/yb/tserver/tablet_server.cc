@@ -2357,7 +2357,8 @@ Status TabletServer::CreateXClusterConsumer() {
   };
   auto connect_to_pg = [this](const std::string& database_name, const CoarseTimePoint& deadline) {
     return CreateInternalPGConn(
-        database_name, kDefaultInternalPgUser, /*simple_query_protocol=*/false, deadline);
+        database_name, kDefaultInternalPgUser, /*simple_query_protocol=*/false, deadline,
+        pgwrapper::YbInternalConnKindWireName::kXClusterDdlQueue);
   };
   auto get_namespace_info =
       [this](const TabletId& tablet_id) -> Result<std::pair<NamespaceId, NamespaceName>> {

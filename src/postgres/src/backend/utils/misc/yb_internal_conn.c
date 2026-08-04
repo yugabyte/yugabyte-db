@@ -63,6 +63,30 @@ const YbInternalConnKindDescriptor
 		.use_minimal_preload = false,
 		.preload_lists_in_minimal_mode = false,
 	},
+	[YB_INTERNAL_CONN_KIND_XCLUSTER_DDL_QUEUE] = {
+		.wire_name = "xcluster_ddl_queue",
+		.backend_type = YB_XCLUSTER_DDL_QUEUE_BACKEND,
+		.backend_desc = "yb xcluster ddl queue backend",
+		/*
+		 * The DDL-queue handler is a long-lived connection that replays
+		 * arbitrary DDL against the target, so it needs the full catalog like a
+		 * regular backend rather than minimal preload.
+		 */
+		.use_minimal_preload = false,
+		.preload_lists_in_minimal_mode = false,
+	},
+	[YB_INTERNAL_CONN_KIND_XCLUSTER_SETUP] = {
+		.wire_name = "xcluster_setup",
+		.backend_type = YB_XCLUSTER_SETUP_BACKEND,
+		.backend_desc = "yb xcluster setup backend",
+		/*
+		 * Short-lived connections created by the master to run CREATE/DROP
+		 * EXTENSION and ddl_queue table cleanup. These run real DDL/DML, so
+		 * they preload normally rather than minimally.
+		 */
+		.use_minimal_preload = false,
+		.preload_lists_in_minimal_mode = false,
+	},
 };
 
 YbInternalConnKind
