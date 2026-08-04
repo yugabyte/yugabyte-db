@@ -26,7 +26,9 @@ namespace yb::master {
 
 MultiStepMonitoredTask::MultiStepMonitoredTask(
     ThreadPool& async_task_pool, rpc::Messenger& messenger)
-    : messenger_(messenger), async_task_pool_(async_task_pool) {}
+    : messenger_(messenger),
+      async_task_pool_(async_task_pool),
+      trace_parent_(dist_trace::GetActiveSpanContext()) {}
 
 void MultiStepMonitoredTask::Start() {
   LOG_WITH_PREFIX(INFO) << "Starting task";
@@ -207,6 +209,9 @@ Status MultiStepMonitoredTask::RunInternal() {
 
   RETURN_NOT_OK(ValidateRunnable());
 
+  // Re-activate the triggering trace on this worker/reactor thread so RPCs the step issues nest
+  // under it. No-op when trace_parent_ is empty.
+  auto parent_scope = dist_trace::ActivateParentScope(trace_parent_);
   return step();
 }
 
