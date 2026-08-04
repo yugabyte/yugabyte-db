@@ -2121,24 +2121,18 @@ void VectorLSM<Vector, DistanceResult>::DeleteObsoleteChunks() {
   // approach somewhere, it is good to combine them).
   for (;;) {
     DoDeleteObsoleteChunks();
-    obsolete_files_cleanup_in_progress_ = false;
 
-    if (IsShuttingDown()) {
-      return;
-    }
-
-    // Check if new obsolete files got added.
-    {
+    // Check if new obsolete files got added, keeping the in-progress state. CompleteShutdown()
+    // waits for obsolete_files_cleanup_in_progress_ to be unset and this VectorLSM could be
+    // destroyed right after that, so unsetting the flag must be the last access to the object.
+    bool has_more_files = false;
+    if (!IsShuttingDown()) {
       std::lock_guard lock(cleanup_mutex_);
-      if (obsolete_files_.empty()) {
-        return;
-      }
+      has_more_files = !obsolete_files_.empty();
     }
-
-    // Let's try to move into an in-progress state again.
-    bool in_progress = false;
-    if (!obsolete_files_cleanup_in_progress_.compare_exchange_strong(in_progress, true)) {
-      return; // Another task has already started obsolete files cleanup.
+    if (!has_more_files) {
+      obsolete_files_cleanup_in_progress_ = false;
+      return;
     }
   }
 }
