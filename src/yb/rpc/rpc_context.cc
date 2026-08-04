@@ -147,11 +147,16 @@ RpcContext::RpcContext(std::shared_ptr<YBInboundCall> call,
     RespondRpcFailure(ErrorStatusPB::ERROR_INVALID_REQUEST, s);
     return;
   }
+  call_->CreateServerSpan();
   TRACE_EVENT_ASYNC_BEGIN1("rpc_call", "RPC", this, "call", call_->ToString());
 }
 
 RpcContext::RpcContext(std::shared_ptr<LocalYBInboundCall> call)
     : call_(call), params_(call.get(), boost::null_deleter()) {
+  // Inbound (server-side) span for this local call.
+  if (auto outbound_call = call->outbound_call(); outbound_call) {
+    call_->CreateServerSpan(outbound_call->otel_span_context());
+  }
   TRACE_EVENT_ASYNC_BEGIN1("rpc_call", "RPC", this, "call", call_->ToString());
 }
 

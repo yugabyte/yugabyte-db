@@ -492,6 +492,49 @@ class OtlpHttpCollector {
         Format("Child spans of '$0' in trace '$1'", parent_op_name, trace_id));
   }
 
+  // Waits for a cross-boundary pairing in trace_id: a server span (service_name == server_service,
+  // op name starting with op_prefix, rpc.system == expected_rpc_system) whose parent_span_id is the
+  // span_id of a client span (service_name == client_service, same op_prefix). This proves the
+  // query's trace propagated from caller to callee. Returns the server span on success.
+  Result<Span> WaitForRemoteChildSpan(
+      std::string_view trace_id, std::string_view op_prefix,
+      std::string_view client_service, std::string_view server_service,
+      std::string_view expected_rpc_system) const EXCLUDES(mutex_) {
+    Span server_span;
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          std::lock_guard lock(mutex_);
+          auto it = traces_.find(std::string(trace_id));
+          if (it == traces_.end()) return false;
+          const auto& spans = it->second.spans;
+          for (const auto& server : spans) {
+            if (server.service_name != server_service ||
+                !server.op_name.starts_with(op_prefix) ||
+                server.parent_span_id.empty()) {
+              continue;
+            }
+            auto sys_it = server.str_attrs.find("rpc.system");
+            if (sys_it == server.str_attrs.end() || sys_it->second != expected_rpc_system) {
+              continue;
+            }
+            // The server span's parent must be a client span in the same trace.
+            for (const auto& client : spans) {
+              if (client.service_name == client_service &&
+                  client.op_name.starts_with(op_prefix) &&
+                  client.span_id == server.parent_span_id) {
+                server_span = server;
+                return true;
+              }
+            }
+          }
+          return false;
+        },
+        kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+        Format("Remote child span '$0*' on '$1' linked to '$2' in trace '$3'",
+               op_prefix, server_service, client_service, trace_id)));
+    return server_span;
+  }
+
  private:
   void HandleTraceRequest(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
     if (req.request_method != "POST") {
@@ -1772,6 +1815,25 @@ TEST_F(DistTraceRpcTest, TestRpcSpans) {
       },
       kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
       "RPC span to appear in trace"));
+}
+
+// Cross-boundary: the Perform RPC's trace must reach the tserver. The inbound server span on
+// TabletServer should be a child of the PG backend's (ysql) outbound client span.
+TEST_F(DistTraceRpcTest, TestRpcSpanReachesTabletServer) {
+  ASSERT_OK(CreateTable("rpc_crossing_test", 5));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  ASSERT_OK(conn_->Fetch("SELECT * FROM rpc_crossing_test"));
+
+  auto server_span = ASSERT_RESULT(collector_.WaitForRemoteChildSpan(
+      tp.trace_id, "rpc yb.tserver.PgClientService.Perform",
+      "ysql" /* client_service */, "TabletServer" /* server_service */,
+      "inbound_rpc" /* expected_rpc_system */));
+
+  ASSERT_EQ(server_span.str_attrs["rpc.service"], "yb.tserver.PgClientService");
+  ASSERT_EQ(server_span.str_attrs["rpc.method"], "Perform");
 }
 
 TEST_F(DistTraceRpcTest, TestOtelInternalMessagesAreLogged) {
