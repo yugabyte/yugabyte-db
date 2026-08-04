@@ -3342,6 +3342,12 @@ YbcStatus YBCPgRegisterSnapshotReadTime(
       pgapi->RegisterSnapshotReadTime(read_time, use_read_time), handle ? handle : &tmp_handle);
 }
 
+void YBCPgPublishOldestReadPointHandle(YbcReadPointHandle handle) {
+  if (pgapi) {
+    pgapi->PublishOldestReadPointSerialNo(handle);
+  }
+}
+
 void YBCRecordTempRelationDDL() {
   if (YBCRecordTempRelationDDL_hook) {
     YBCRecordTempRelationDDL_hook();

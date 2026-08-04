@@ -708,6 +708,13 @@ const struct config_enum_entry yb_read_after_commit_visibility_options[] = {
 	{NULL, 0, false}
 };
 
+const struct config_enum_entry yb_db_history_retention_pin_mode_options[] = {
+	{"none", YB_DB_HISTORY_RETENTION_PIN_MODE_NONE, false},
+	{"ddl_only", YB_DB_HISTORY_RETENTION_PIN_MODE_DDL_ONLY, false},
+	{"all", YB_DB_HISTORY_RETENTION_PIN_MODE_ALL, false},
+	{NULL, 0, false}
+};
+
 const struct config_enum_entry yb_sampling_algorithm_options[] = {
 	{"full_table_scan", YB_SAMPLING_ALGORITHM_FULL_TABLE_SCAN, false},
 	{"block_based_sampling", YB_SAMPLING_ALGORITHM_BLOCK_BASED_SAMPLING, false},
@@ -8197,6 +8204,25 @@ static struct config_enum ConfigureNamesEnum[] =
 		YB_STRICT_READ_AFTER_COMMIT_VISIBILITY,
 		yb_read_after_commit_visibility_options,
 		yb_check_no_txn, NULL, NULL
+	},
+
+	{
+		{
+			"yb_db_history_retention_pin_mode", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Controls which transactions pin their read snapshot for history "
+						 "retention."),
+			gettext_noop("A pinned read snapshot holds back the history cutoff cluster-wide, which "
+						 "prevents \"snapshot too old\" errors for long-running statements and "
+						 "transactions (bounded by db_history_retention_pin_max_txn_age_sec). Configure one of:"
+						 " (a) ddl_only: Default. Only DDL transactions publish a pin."
+						 " (b) all: Both DML and DDL transactions publish a pin."
+						 " (c) none: No transaction publishes a pin."),
+			0
+		},
+		&yb_db_history_retention_pin_mode,
+		YB_DB_HISTORY_RETENTION_PIN_MODE_DDL_ONLY,
+		yb_db_history_retention_pin_mode_options,
+		NULL, NULL, NULL
 	},
 
 	{

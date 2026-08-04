@@ -26,6 +26,7 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/consistent_read_point.h"
+#include "yb/common/pg_types.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
@@ -109,6 +110,11 @@ struct PgClientSessionMetrics {
   EventStatsPtr vector_index_reduce_us;
 };
 
+struct PgClientSessionDbHistoryRetentionPin {
+  PgOid db_oid = kPgInvalidOid;
+  HybridTime read_time;
+};
+
 struct PgClientSessionContext {
   // xcluster_context is nullptr on master.
   const TserverXClusterContextIf* xcluster_context;
@@ -150,6 +156,9 @@ class PgClientSession final {
 
   void SetupSharedObjectLocking(PgSessionLockOwnerTagShared& object_lock_shared);
 
+  // Wire the session to the PG-published oldest read-point serial in session shared memory.
+  void SetupOldestReadPointSerialNo(std::atomic<uint64_t>* oldest_read_point_serial_no);
+
   void Perform(
       LWPgPerformRequestPB& req, LWPgPerformResponsePB& resp, rpc::RpcContext&& context,
       const PgTablesQueryResult& tables);
@@ -165,6 +174,19 @@ class PgClientSession final {
   void StartShutdown(bool pg_service_shutting_down);
   bool ReadyToShutdown() const;
   void CompleteShutdown();
+
+  // Returns the read-time pin this session currently contributes to its database's history
+  // retention pin.
+  // Safe to call from another thread without holding the session lock.
+  PgClientSessionDbHistoryRetentionPin GetDbHistoryRetentionPin() const;
+
+  bool HasPublishedOldestReadPointSerial() const;
+
+  void ClearReadTimePin();
+
+  // Map the PG-published SHMEM oldest read-point serial to a HybridTime pin. Caller must hold the
+  // session lock (Perform always calls this; heartbeat uses try_lock).
+  void RefreshHistoryRetentionPinFromSharedMemory();
 
   Result<ReadHybridTime> GetTxnSnapshotReadTime(
       const PgPerformOptionsPB& options, CoarseTimePoint deadline);

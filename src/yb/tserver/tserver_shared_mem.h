@@ -287,6 +287,10 @@ class PgSessionSharedMemoryManager {
 
   [[nodiscard]] PgSessionLockOwnerTagShared& object_locking_data();
 
+  void SetOldestReadPointSerialNo(uint64_t serial_no);
+  // Returns a pointer into session shared memory; valid for the manager's lifetime.
+  [[nodiscard]] std::atomic<uint64_t>* OldestReadPointSerialNoPtr();
+
   static Result<PgSessionSharedMemoryManager> Make(
       const std::string& instance_id, uint64_t session_id, Create create);
 

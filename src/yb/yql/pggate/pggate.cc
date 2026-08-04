@@ -2717,6 +2717,10 @@ YbcReadPointHandle PgApiImpl::GetMaxReadPoint() const {
   return pg_txn_manager_->GetMaxReadPoint();
 }
 
+void PgApiImpl::PublishOldestReadPointSerialNo(uint64_t serial_no) {
+  pg_client_.PublishOldestReadPointSerialNo(serial_no);
+}
+
 Status PgApiImpl::RestoreReadPoint(YbcReadPointHandle read_point) {
   RETURN_NOT_OK(FlushBufferedOperations(PgFlushDebugContext::ChangeTxnSnapshot(read_point)));
   return pg_txn_manager_->RestoreReadPoint(read_point);

@@ -411,6 +411,21 @@ size_t TSManager::NumLiveDescriptors() const {
       [](const auto& entry) -> bool { return entry.second->IsLive(); });
 }
 
+DbOidToHybridTimeMap TSManager::GetClusterYsqlDbOldestPinnedReadTimes() const {
+  DbOidToHybridTimeMap cluster_pins;
+  TSDescriptorVector descs;
+  GetAllLiveDescriptors(&descs);
+  for (const auto& desc : descs) {
+    for (const auto& [db_oid, pin] : desc->GetYsqlDbOldestPinnedReadTimes()) {
+      auto [it, inserted] = cluster_pins.emplace(db_oid, pin);
+      if (!inserted && pin < it->second) {
+        it->second = pin;
+      }
+    }
+  }
+  return cluster_pins;
+}
+
 Status TSManager::MarkUnresponsiveTServers(const LeaderEpoch& epoch) {
   auto current_time = MonoTime::Now();
   {
