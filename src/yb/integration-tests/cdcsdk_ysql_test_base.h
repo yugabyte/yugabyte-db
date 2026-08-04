@@ -145,6 +145,7 @@ DECLARE_bool(cdcsdk_update_restart_time_when_nothing_to_stream);
 DECLARE_string(TEST_cdc_tablet_id_to_stall_state_table_updates);
 DECLARE_bool(TEST_cdc_fail_before_setting_barrier);
 DECLARE_string(ysql_yb_default_replica_identity);
+DECLARE_bool(TEST_cdcsdk_disable_stream_drop_during_db_drop);
 
 namespace yb {
 
@@ -888,6 +889,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
                                         initial_intents_and_intent_sst_file_count);
 
   void TestLagMetricWithConsistentSnapshotStream(bool expire_table);
+
+  void TestStreamsDroppedOnDBDropAndMasterRestart(
+      const string& sync_point_name, bool use_logical_replication);
 
   Status CdcReleaseBarriersOnTablet(const TabletId& tablet_id);
 };

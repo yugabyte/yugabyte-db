@@ -609,6 +609,9 @@ DEFINE_NON_RUNTIME_bool(emergency_repair_mode, false,
 TAG_FLAG(emergency_repair_mode, advanced);
 TAG_FLAG(emergency_repair_mode, unsafe);
 
+DEFINE_test_flag(bool, cdcsdk_disable_stream_drop_during_db_drop, false,
+    "When enabled, the DeleteNamespace workflow won't mark associated CDCSDK streams as DELETING.");
+
 DECLARE_bool(enable_pg_cron);
 DECLARE_bool(enable_truncate_cdcsdk_table);
 DECLARE_bool(TEST_enable_object_locking_for_table_locks);
@@ -9157,29 +9160,55 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
 
   // Lock database before removing content.
   TRACE("Locking database");
-  auto l = database->LockForWrite();
-  SysNamespaceEntryPB &metadata = database->mutable_metadata()->mutable_dirty()->pb;
+  {
+    auto l = database->LockForWrite();
+    SysNamespaceEntryPB &metadata = database->mutable_metadata()->mutable_dirty()->pb;
 
-  // A DELETED Namespace has finished but was tombstoned to avoid immediately reusing the same ID.
-  // We consider a restart enough time, so we just need to remove it from the SysCatalog.
-  if (metadata.state() == SysNamespaceEntryPB::DELETED) {
-    Status s = sys_catalog_->Delete(leader_ready_term(), database);
-    WARN_NOT_OK(s, "SysCatalog DeleteItem for Namespace");
-    if (!s.ok()) {
+    // A DELETED Namespace has finished but was tombstoned to avoid immediately reusing the same ID.
+    // We consider a restart enough time, so we just need to remove it from the SysCatalog.
+    if (metadata.state() == SysNamespaceEntryPB::DELETED) {
+      Status s = sys_catalog_->Delete(leader_ready_term(), database);
+      WARN_NOT_OK(s, "SysCatalog DeleteItem for Namespace");
+      if (!s.ok()) {
+        return;
+      }
+    }
+
+    if (metadata.state() != SysNamespaceEntryPB::DELETING) {
+      LOG(WARNING)
+          << "Keyspace (" << database->name() << ") has invalid state (" << metadata.state()
+          << "), aborting delete";
       return;
     }
   }
 
-  if (metadata.state() != SysNamespaceEntryPB::DELETING) {
-    LOG(WARNING) << "Keyspace (" << database->name() << ") has invalid state (" << metadata.state()
-                 << "), aborting delete";
-    return;
+  if (PREDICT_TRUE(!FLAGS_TEST_cdcsdk_disable_stream_drop_during_db_drop)) {
+    // Dropping all CDCSDK streams for the database.
+    TRACE("Dropping all CDCSDK streams for the YSQL database");
+    auto s = DropAllCDCSDKStreams(database->id());
+    WARN_NOT_OK(s, "DropAllCDCSDKStreams failed");
+
+    if (!s.ok()) {
+      if (s.IsIllegalState() && s.message().ToBuffer() == "Failing for TESTING") {
+        // Simulated failure injected by test. Return immediately.
+        return;
+      }
+      // Move to FAILED so DeleteNamespace can be reissued by the user.
+      auto l = database->LockForWrite();
+      SysNamespaceEntryPB& metadata = database->mutable_metadata()->mutable_dirty()->pb;
+      metadata.set_state(SysNamespaceEntryPB::FAILED);
+      l.Commit();
+      return;
+    }
   }
 
   // Delete all tables in the database.
   TRACE("Delete all tables in YSQL database");
   Status s = DeleteYsqlDBTables(database, epoch);
   WARN_NOT_OK(s, "DeleteYsqlDBTables failed");
+
+  auto l = database->LockForWrite();
+  SysNamespaceEntryPB& metadata = database->mutable_metadata()->mutable_dirty()->pb;
   if (!s.ok()) {
     // Move to FAILED so DeleteNamespace can be reissued by the user.
     metadata.set_state(SysNamespaceEntryPB::FAILED);
@@ -9198,6 +9227,9 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
     return;
   }
   TRACE("Marked keyspace as deleted in sys-catalog");
+
+  TRACE("Committing in-memory state");
+  l.Commit();
 
   // Remove namespace from CatalogManager name mapping.
   {
@@ -9220,8 +9252,6 @@ void CatalogManager::DeleteYsqlDatabaseAsync(
           it->second->id());
     }
   }
-  TRACE("Committing in-memory state");
-  l.Commit();
 
   // DROP completed. Return status.
   LOG(INFO) << "Successfully deleted YSQL database " << database->ToString();
