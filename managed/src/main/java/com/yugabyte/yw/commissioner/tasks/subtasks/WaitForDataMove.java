@@ -61,7 +61,10 @@ public class WaitForDataMove extends UniverseTaskBase {
       log.info("Leader Master UUID={}.", client.getLeaderMasterUUID());
       String taskUUIDString = getTaskUUID().toString();
       while (percent < 100) {
-        waitFor(Duration.ofMillis(getSleepMultiplier() * WAIT_EACH_ATTEMPT_MS));
+        // Always keep a real poll interval. getSleepMultiplier() is 0 when
+        // yb.tasks.disabled_timeouts=true (test conf), and busy-polling getLoadMoveCompletion
+        // starves the catalog-manager BG task that actually drives the load balancer.
+        waitFor(Duration.ofMillis(WAIT_EACH_ATTEMPT_MS));
         GetLoadMovePercentResponse response = client.getLoadMoveCompletion();
         if (response.hasError()) {
           log.warn("{} response has error {}.", getName(), response.errorMessage());

@@ -549,7 +549,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             100.0);
     Result result =
         doRequestWithAuthToken("GET", "/api/customers/" + customer.getUuid() + "/tasks", authToken);
-    CustomerTask.find.query().where().eq("task_uuid", taskUUID.toString()).findOne();
+    CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOne();
     assertThat(result.status(), is(OK));
     JsonNode json = Json.parse(contentAsString(result));
     JsonNode universeTasks = json.get(universe.getUniverseUUID().toString());
@@ -677,8 +677,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             100.0);
     Result result =
         doRequestWithAuthToken("GET", "/api/customers/" + customer.getUuid() + "/tasks", authToken);
-    CustomerTask ct =
-        CustomerTask.find.query().where().eq("task_uuid", taskUUID.toString()).findOne();
+    CustomerTask ct = CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOne();
     assertThat(result.status(), is(OK));
     assertThat(
         contentAsString(result), allOf(notNullValue(), containsString("Created Universe : Foo")));

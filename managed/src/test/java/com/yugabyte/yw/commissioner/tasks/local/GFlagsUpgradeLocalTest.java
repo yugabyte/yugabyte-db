@@ -846,11 +846,9 @@ public class GFlagsUpgradeLocalTest extends LocalProviderUniverseTestBase {
     addRelease(CLI_VALIDATION_DB_VERSION, CLI_VALIDATION_DB_VERSION_URL);
     addRelease(BATCH_RPC_VALIDATION_DB_VERSION, BATCH_RPC_VALIDATION_DB_VERSION_URL);
     localNodeManager.addVersionBinPath(
-        CLI_VALIDATION_DB_VERSION,
-        baseDir + "/yugabyte/yugabyte-" + CLI_VALIDATION_DB_VERSION + "/bin");
+        CLI_VALIDATION_DB_VERSION, deriveYBBinPath(CLI_VALIDATION_DB_VERSION));
     localNodeManager.addVersionBinPath(
-        BATCH_RPC_VALIDATION_DB_VERSION,
-        baseDir + "/yugabyte/yugabyte-" + BATCH_RPC_VALIDATION_DB_VERSION + "/bin");
+        BATCH_RPC_VALIDATION_DB_VERSION, deriveYBBinPath(BATCH_RPC_VALIDATION_DB_VERSION));
     runtimeConfService.setKey(
         customer.getUuid(),
         ScopedRuntimeConfig.GLOBAL_SCOPE_UUID,

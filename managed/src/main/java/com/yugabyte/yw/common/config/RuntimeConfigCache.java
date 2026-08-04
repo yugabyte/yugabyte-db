@@ -63,6 +63,17 @@ public class RuntimeConfigCache {
     }
   }
 
+  /**
+   * Drop all cached values so subsequent reads reload from the DB. Primarily useful for tests that
+   * reuse a single application across methods and mutate runtime config directly (bypassing the
+   * change notifier that would otherwise invalidate this cache).
+   */
+  public void invalidateCache() {
+    for (String key : cachedGlobalKeys) {
+      cache.remove(key);
+    }
+  }
+
   // Get preferably from the cache. If not present, then fetch from the DB.
   public boolean getBoolean(String key) {
     if (!cachedGlobalKeys.contains(key)) {

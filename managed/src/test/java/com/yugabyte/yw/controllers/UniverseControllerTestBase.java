@@ -15,6 +15,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
@@ -136,6 +137,17 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     return applicationBuilder;
   }
 
+  // This hierarchy's application wiring (the mock bindings below) is identical for every test
+  // method, so share one application instance across the class' methods. Per-method isolation is
+  // restored by the base class (DB truncation + reflective mock reset) and by re-applying
+  // per-method
+  // stubbings in setUp(). Subclasses that override appOverrides() with method-varying bindings must
+  // override this to return false.
+  @Override
+  protected boolean reusableApplication() {
+    return true;
+  }
+
   @Override
   protected Application provideApplication() {
     mockCommissioner = mock(Commissioner.class);
@@ -162,21 +174,12 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     mockGFlagsValidation = mock(GFlagsValidation.class);
     mockSoftwareUpgradeHelper = mock(SoftwareUpgradeHelper.class);
 
-    when(mockRuntimeConfig.getString("yb.metrics.scrape_interval")).thenReturn("10s");
-    when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
-    when(mockRuntimeConfig.getBoolean("yb.security.use_oauth")).thenReturn(false);
-    when(mockRuntimeConfig.getInt("yb.fs_stateless.max_files_count_persist")).thenReturn(100);
-    when(mockRuntimeConfig.getBoolean("yb.fs_stateless.suppress_error")).thenReturn(true);
-    when(mockRuntimeConfig.getInt("yb.max_volume_count")).thenReturn(32);
-    when(mockRuntimeConfig.getLong("yb.fs_stateless.max_file_size_bytes")).thenReturn((long) 10000);
-    when(mockRuntimeConfig.getString("yb.storage.path"))
-        .thenReturn("/tmp/" + this.getClass().getSimpleName());
-    when(mockRuntimeConfig.getString("yb.filepaths.tmpDirectory")).thenReturn("/tmp");
-    when(mockRuntimeConfig.getBoolean("yb.ui.feature_flags.enable_earlyoom")).thenReturn(true);
-    when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockRuntimeConfig);
-
-    KubernetesManager kubernetesManager = mock(KubernetesManager.class);
-    when(kubernetesManagerFactory.getManager()).thenReturn(kubernetesManager);
+    // Behavioral stubbing lives in stubMockRuntimeConfig(), invoked from setUp() so it is
+    // re-applied
+    // per method: the application is reused across the class' methods, and the base class resets
+    // all
+    // mock instances between methods (Mockito.reset), which would otherwise wipe these stubs.
+    stubMockRuntimeConfig();
 
     return appOverrides(new GuiceApplicationBuilder())
         .disable(GuiceModule.class)
@@ -209,6 +212,34 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
         .build();
   }
 
+  // Applied both before building the (reused) application - so startup reads see them - and again
+  // in
+  // setUp() for every method, because the base class resets all mock instances between methods.
+  // Marked lenient() because most keys are only consumed during application startup (which happens
+  // once for the whole reused class), so a given method need not exercise every stub.
+  private void stubMockRuntimeConfig() {
+    lenient().when(mockRuntimeConfig.getString("yb.metrics.scrape_interval")).thenReturn("10s");
+    lenient().when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
+    lenient().when(mockRuntimeConfig.getBoolean("yb.security.use_oauth")).thenReturn(false);
+    lenient()
+        .when(mockRuntimeConfig.getInt("yb.fs_stateless.max_files_count_persist"))
+        .thenReturn(100);
+    lenient().when(mockRuntimeConfig.getBoolean("yb.fs_stateless.suppress_error")).thenReturn(true);
+    lenient().when(mockRuntimeConfig.getInt("yb.max_volume_count")).thenReturn(32);
+    lenient()
+        .when(mockRuntimeConfig.getLong("yb.fs_stateless.max_file_size_bytes"))
+        .thenReturn((long) 10000);
+    lenient()
+        .when(mockRuntimeConfig.getString("yb.storage.path"))
+        .thenReturn("/tmp/" + this.getClass().getSimpleName());
+    lenient().when(mockRuntimeConfig.getString("yb.filepaths.tmpDirectory")).thenReturn("/tmp");
+    lenient()
+        .when(mockRuntimeConfig.getBoolean("yb.ui.feature_flags.enable_earlyoom"))
+        .thenReturn(true);
+    lenient().when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockRuntimeConfig);
+    lenient().when(kubernetesManagerFactory.getManager()).thenReturn(mock(KubernetesManager.class));
+  }
+
   static boolean areConfigObjectsEqual(ArrayNode nodeDetailSet, Map<UUID, Integer> azToNodeMap) {
     for (JsonNode nodeDetail : nodeDetailSet) {
       UUID azUUID = UUID.fromString(nodeDetail.get("azUuid").asText());
@@ -219,6 +250,12 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
 
   @Before
   public void setUp() {
+    // Re-apply the runtime-config stubs on the reused mock instances (the base class reset them).
+    stubMockRuntimeConfig();
+    // These two are static (so the base class' per-method mock reset skips them). Under a reused
+    // application they retain invocations from previous methods, which breaks per-method
+    // verify(...) counts, so reset them explicitly before each method.
+    reset(mockCommissioner, mockMetricQueryHelper);
     UUID yugawareUuid = UUID.randomUUID();
     ObjectNode ywMetadata = Json.newObject();
     ywMetadata.put("yugaware_uuid", yugawareUuid.toString());

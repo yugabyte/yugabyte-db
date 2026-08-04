@@ -89,6 +89,15 @@ import play.libs.Json;
 import play.mvc.Result;
 
 public class UniverseApiControllerUpgradeTest extends UniverseTestBase {
+
+  // Binds a per-method @Mock (recreated by the MockitoRule each method) into the application, so
+  // the
+  // application must be rebuilt per method - it cannot be reused across the class' methods.
+  @Override
+  protected boolean reusableApplication() {
+    return false;
+  }
+
   Universe universe;
   Release upgradeRelease;
 

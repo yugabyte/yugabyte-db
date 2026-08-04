@@ -67,6 +67,13 @@ import play.libs.Json;
 @RunWith(MockitoJUnitRunner.class)
 public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
+  // Verified safe to reuse the application across this class' methods (green strict-stubs + green
+  // assertions) despite the strict MockitoJUnitRunner. See reuseAppDespiteStrictMockito().
+  @Override
+  protected boolean reuseAppDespiteStrictMockito() {
+    return true;
+  }
+
   private Universe defaultUniverse;
   private Integer universeVersion = 2;
 
