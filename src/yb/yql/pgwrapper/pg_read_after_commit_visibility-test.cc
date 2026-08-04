@@ -91,10 +91,11 @@ class PgReadAfterCommitVisibilityTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_time_source) = server::SkewedClock::kName;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_replication_factor) = 1;
-    // Support DDL concurrency with object locks.
+    // Run DDLs in the regular transaction block, optionally with DDL
+    // concurrency via object locks.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_ddl_transaction_block_enabled) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_object_locking_for_table_locks) = EnableTableLocks();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_concurrent_ddl) = EnableTableLocks();
     PgMiniTestBase::SetUp();
     SpawnSupervisors();
   }
@@ -114,6 +115,8 @@ class PgReadAfterCommitVisibilityTest : public PgMiniTestBase {
     // One server for a proxy and the other server to host the data.
     return 2;
   }
+
+  virtual bool EnableTableLocks() const { return true; }
 
   void BeforePgProcessStart() override {
     // Identify the tserver index that hosts the MiniCluster postmaster
@@ -539,6 +542,66 @@ TEST_F(PgReadAfterCommitVisibilityTest, DeferredModeHiddenDml) {
     "INSERT INTO kv(k) VALUES (1) RETURNING k"
     ") SELECT k FROM new_kv"
   );
+}
+
+// Fixture without table-level object locks: with them enabled, every DDL
+// statement starts with a lock acquisition request that is not in ddl mode and
+// picks (and defers) the statement read point before the DDL's own requests
+// arrive. Without them, the read point is picked by the DDL's own requests,
+// which exercises the deferral path for ddl mode requests.
+class PgReadAfterCommitVisibilityDdlTest : public PgReadAfterCommitVisibilityTest {
+ protected:
+  bool EnableTableLocks() const override { return false; }
+};
+
+// Deferred mode also applies to DDLs when DDL transaction blocks are enabled
+// (ysql_yb_ddl_transaction_block_enabled, set by this fixture): the DDL runs in
+// the regular transaction block, so pggate requests a deferred read point for
+// it just like for DMLs. The tserver must honor the deferral: a DDL that reads
+// user data picks the global limit as its read time, observes recent commits
+// despite clock skew, and cannot hit a read restart. Regression test for
+// #31461.
+TEST_F(PgReadAfterCommitVisibilityDdlTest, DeferredModeDdl) {
+  auto proxyConn = ASSERT_RESULT(ConnectToProxy());
+  auto hostConn = ASSERT_RESULT(ConnectToDataHost());
+
+  // Create the base table on the data node (the proxy is blacklisted).
+  ASSERT_OK(hostConn.Execute(
+    "CREATE TABLE kv (k INT, v INT, PRIMARY KEY(k HASH)) SPLIT INTO 1 TABLETS"));
+
+  // Populate the catalog cache on the proxy backend so that catalog cache
+  // misses do not interfere with hybrid time propagation.
+  ASSERT_RESULT(proxyConn.FetchRows<int32_t>("SELECT k FROM kv"));
+
+  ASSERT_OK(proxyConn.Execute("SET yb_read_after_commit_visibility = deferred"));
+
+  // Jump the clock of the data node hosting the table into the future.
+  auto skew = 100ms;
+  auto changers = JumpClockDataNodes(skew);
+
+  // Fast path insert via the host connection. The commit timestamp is picked
+  // on the data node whose clock is ahead of the proxy's.
+  ASSERT_OK(hostConn.Execute("INSERT INTO kv(k, v) VALUES (1, 1)"));
+
+  // The tserver logs the message below (pg_client_session.cc, VLOG level 3)
+  // whenever it defers the read point of a request. The tservers run
+  // in-process in this test, so the message is observable via a log sink.
+  // The DDL below is the only deferred-eligible statement until the sink is
+  // checked: the host connection does not use the deferred mode and the
+  // proxy connection issues no other statement in between.
+  google::SetVLOGLevel("pg_client_session*", 3);
+  StringWaiterLogSink log_waiter("Set current read time for deferred mode");
+
+  // Run a DDL that reads the user table from the proxy connection. With the
+  // deferred read point honored, it must observe the recent insert and must
+  // not surface a read restart error.
+  ASSERT_OK(proxyConn.Execute("CREATE TABLE kv_copy AS SELECT k, v FROM kv"));
+  ASSERT_TRUE(log_waiter.IsEventOccurred())
+      << "The DDL did not defer its read point despite "
+         "yb_read_after_commit_visibility = 'deferred'";
+
+  auto count = ASSERT_RESULT(proxyConn.FetchRow<int64_t>("SELECT COUNT(*) FROM kv_copy"));
+  ASSERT_EQ(count, 1);
 }
 
 } // namespace yb::pgwrapper
