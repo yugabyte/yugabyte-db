@@ -83,8 +83,15 @@ using DocReadContextPtr = std::shared_ptr<const DocReadContext>;
 using DocRowwiseIteratorPtr = std::unique_ptr<DocRowwiseIterator>;
 using IntentAwareIteratorPtr = std::unique_ptr<IntentAwareIterator>;
 using IntentAwareIteratorBoundsScopePtr = std::unique_ptr<IntentAwareIteratorBoundsScope>;
-using IntentAwareIteratorWithBounds =
-    std::tuple<IntentAwareIteratorPtr, IntentAwareIteratorBoundsScopePtr>;
+// The bounds scope restores the iterator's previous bounds from its destructor, so it must be torn
+// down while the iterator is still alive. This cannot be a std::tuple: the order in which a tuple
+// destroys its elements is unspecified, and libstdc++ and libc++ pick opposite directions, so a
+// tuple is only correct for one of them. Class members are destroyed in reverse declaration order
+// on every implementation, so `bounds` must stay declared after `iter`.
+struct IntentAwareIteratorWithBounds {
+  IntentAwareIteratorPtr iter;
+  IntentAwareIteratorBoundsScopePtr bounds;
+};
 
 template <typename LockManager>
 using LockBatchEntries = std::vector<LockBatchEntry<LockManager>>;
