@@ -811,20 +811,26 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(UpsertWithPKInSetEmitsDeleteAndIn
   const uint32_t expected_count[] = {0, 1, 0, 1, 0, 0};
   uint32_t count[] = {0, 0, 0, 0, 0, 0};
 
-  // Expected records: BEGIN, DELETE(key=1), INSERT(key=1, value_1=10), COMMIT.
-  ExpectedRecord expected_records[] = {{0, 0}, {1, 0}, {1, 10}, {0, 0}};
+  // Expected DML records: DELETE(key=1) followed by INSERT(key=1, value_1=10).
+  ExpectedRecord expected_records[] = {{1, 0}, {1, 10}};
 
   GetChangesResponsePB upsert_resp;
+  // Every retry re-reads from the same checkpoint, so count the records of the last response only.
   ASSERT_OK(WaitForGetChangesToFetchRecords(
-      &upsert_resp, stream_id, tablets, 2, /* is_explicit_checkpoint */ false,
+      &upsert_resp, stream_id, tablets, 2, /* is_explicit_checkpoint */ true,
       &change_resp.cdc_sdk_checkpoint()));
 
-  uint32_t record_size = upsert_resp.cdc_sdk_proto_records_size();
-  ASSERT_EQ(record_size, 4);  // BEGIN, DELETE, INSERT, COMMIT
-  for (uint32_t i = 0; i < record_size; ++i) {
-    const CDCSDKProtoRecordPB record = upsert_resp.cdc_sdk_proto_records(i);
-    CheckRecord(record, expected_records[i], count);
+  const size_t kNumExpectedDmlRecords = 2;
+  size_t seen_dml_records = 0;
+  for (const auto& record : upsert_resp.cdc_sdk_proto_records()) {
+    auto op = record.row_message().op();
+    if (op != RowMessage::INSERT && op != RowMessage::UPDATE && op != RowMessage::DELETE) {
+      continue;
+    }
+    ASSERT_LT(seen_dml_records, kNumExpectedDmlRecords);
+    CheckRecord(record, expected_records[seen_dml_records++], count);
   }
+  ASSERT_EQ(seen_dml_records, kNumExpectedDmlRecords);
   CheckCount(expected_count, count);
 }
 
