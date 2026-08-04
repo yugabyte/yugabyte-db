@@ -204,6 +204,26 @@ public class UsersControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testDeleteSuperAdminUserAsAdminFails() throws IOException {
+    Users superAdminUser =
+        ModelFactory.testUser(customer1, "superadmin-delete@test.com", Role.SuperAdmin);
+    Http.Cookie adminCookie = Http.Cookie.builder("authToken", authToken1).build();
+    Result result =
+        assertPlatformException(
+            () ->
+                route(
+                    fakeRequest(
+                            "DELETE",
+                            String.format(
+                                "%s/%s",
+                                String.format(baseRoute, customer1.getUuid()),
+                                superAdminUser.getUuid()))
+                        .cookie(adminCookie)));
+    assertEquals(BAD_REQUEST, result.status());
+    assertNotNull(Users.get(superAdminUser.getUuid()));
+  }
+
+  @Test
   public void testRoleChange() throws IOException {
     Users testUser1 = ModelFactory.testUser(customer1, "tc3@test.com", Role.Admin);
     assertEquals(testUser1.getRole(), Role.Admin);

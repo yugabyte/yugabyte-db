@@ -3,6 +3,7 @@
 package com.yugabyte.yw.models;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -11,12 +12,14 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.models.GroupMappingInfo.GroupType;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
 import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.Role.RoleType;
 import com.yugabyte.yw.models.rbac.RoleBinding;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
+import db.migration.default_.common.R__Sync_System_Roles;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
@@ -118,5 +121,33 @@ public class RoleBindingTest extends FakeDBApplication {
       assertTrue(definition.isAllowAll());
       assertEquals(0, definition.getResourceUUIDSet().size());
     }
+  }
+
+  @Test
+  public void testCheckUserHasRoleViaGroupMembership() {
+    R__Sync_System_Roles.syncSystemRoles();
+    Users adminUser = ModelFactory.testUser(customer, "ldap-admin@test.com", Users.Role.Admin);
+    Role superAdminRole = Role.get(customer.getUuid(), Users.Role.SuperAdmin.name());
+    GroupMappingInfo group =
+        GroupMappingInfo.create(
+            customer.getUuid(),
+            superAdminRole.getRoleUUID(),
+            "superadmin-ldap-group",
+            GroupType.LDAP);
+    ResourceGroup resourceGroup =
+        ResourceGroup.getSystemDefaultResourceGroup(customer.getUuid(), adminUser);
+    RoleBinding.create(group, RoleBindingType.Custom, superAdminRole, resourceGroup);
+
+    adminUser.setGroupMemberships(new HashSet<>(Arrays.asList(group.getGroupUUID())));
+    adminUser.save();
+
+    assertFalse(
+        RoleBinding.find
+            .query()
+            .where()
+            .eq("principal_uuid", adminUser.getUuid())
+            .eq("role_uuid", superAdminRole.getRoleUUID())
+            .exists());
+    assertTrue(RoleBinding.checkUserHasRole(adminUser.getUuid(), superAdminRole.getRoleUUID()));
   }
 }
