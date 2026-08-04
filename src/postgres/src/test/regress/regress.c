@@ -1537,6 +1537,7 @@ yb_cacheinfo(PG_FUNCTION_ARGS)
 		TupleDescInitEntry(tupdesc, (AttrNumber) 9, "key4", INT4OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 10, "nbuckets", INT4OID, -1, 0);
 
+		TupleDescFinalize(tupdesc);
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 
 		/*

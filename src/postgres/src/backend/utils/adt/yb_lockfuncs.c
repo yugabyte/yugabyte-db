@@ -43,6 +43,9 @@
 
 /*
  * yb_lock_status - produce a view with one row per held or awaited lock
+ *
+ * This mirrors pg_lock_status in lockfuncs.c; keep it in sync with that
+ * function on PG merges.
  */
 Datum
 yb_lock_status(PG_FUNCTION_ARGS)
@@ -141,6 +144,7 @@ yb_lock_status(PG_FUNCTION_ARGS)
 		TupleDescInitEntry(tupdesc, (AttrNumber) 21, "blocked_by",
 						   UUIDARRAYOID, -1, 0);
 
+		TupleDescFinalize(tupdesc);
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 
 		yb_funcctx = YbNewFuncCallContext(funcctx);

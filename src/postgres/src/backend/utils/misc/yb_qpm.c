@@ -1756,6 +1756,7 @@ yb_pg_stat_plans_get_all_entries(PG_FUNCTION_ARGS)
 		TupleDescInitEntry(tupdesc, (AttrNumber) 12, "avg_est_cost", FLOAT8OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 13, "plan", TEXTOID, -1, 0);
 
+		TupleDescFinalize(tupdesc);
 		attinmeta = TupleDescGetAttInMetadata(tupdesc);
 		funcctx->attinmeta = attinmeta;
 

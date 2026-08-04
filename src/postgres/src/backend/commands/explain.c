@@ -1137,6 +1137,7 @@ YbExplainCommitStats(DestReceiver *dest)
 	tupdesc = CreateTemplateTupleDesc(1);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "COMMIT STATS",
 					   TEXTOID, -1, 0);
+	TupleDescFinalize(tupdesc);
 
 	ExplainBeginOutput(es);
 	ExplainOpenGroup("Commit", NULL, true, es);

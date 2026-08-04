@@ -79,6 +79,7 @@ yb_heap_stats(PG_FUNCTION_ARGS)
 					   "Postgres current allocated bytes", INT8OID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 7,
 					   "PGGate current allocated bytes", INT8OID, -1, 0);
+	TupleDescFinalize(tupdesc);
 	BlessTupleDesc(tupdesc);
 
 	if (yb_enable_memory_tracking)
@@ -138,6 +139,7 @@ yb_getrusage(PG_FUNCTION_ARGS)
 	TupleDescInitEntry(tupdesc, (AttrNumber) 14, "nsignals", INT8OID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 15, "nvcsw", INT8OID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 16, "nivcsw", INT8OID, -1, 0);
+	TupleDescFinalize(tupdesc);
 	BlessTupleDesc(tupdesc);
 
 	/*
