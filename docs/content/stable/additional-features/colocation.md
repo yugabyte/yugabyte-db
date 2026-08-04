@@ -169,6 +169,22 @@ Changing table colocation requires some downtime during the creation of the new 
 
 To view metrics such as table size, use the name of the parent colocation table. The colocation table name is in the format `<colocation table object ID>.colocation.parent.tablename`. All the tables in a colocation share the same metric values and these show under the colocation table for each metric. Table and tablet metrics are available at the YB-TServer endpoint (`<node-ip>:9000`) as well as in YugabyteDB Anywhere in the Metrics section for each Universe.
 
+From YSQL, you can also inspect the shared parent tablet size:
+
+```sql
+-- Per-tablet sizes (including the colocation parent row)
+SELECT relname, tablet_id, tablet_attrs
+FROM yb_tablet_metadata
+WHERE db_name = current_database()
+  AND relname LIKE '%.colocation.parent.tablename';
+
+-- Tablegroup-level convenience (leader SST + WAL bytes)
+SELECT pg_size_pretty(yb_tablegroup_size(tablegroup_oid))
+FROM yb_table_properties('my_table'::regclass);
+```
+
+`pg_table_size()` remains empty for individual colocated tables because they share storage with the parent tablet. Values are leader-replica estimates (same semantics as `pg_table_size` for non-colocated tables); multiply by the replication factor for cluster-wide disk footprint.
+
 ## Limitations and considerations
 
 - Metrics for table metrics such as table size are available for the colocation tablet, not for individual colocated tables that are part of the colocation.
