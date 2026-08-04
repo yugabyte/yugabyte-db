@@ -1869,6 +1869,25 @@ TEST_F(DistTraceRpcTest, TestRpcPerformSpanReportsAsyncError) {
       "Perform server span reporting the injected error"));
 }
 
+// Cross-boundary over shared memory: the Perform shmem exchange's trace must reach the tserver.
+// The inbound server span on TabletServer should be a child of the ysql outbound client span.
+TEST_F(DistTraceTest, TestSharedMemoryPerformReachesTabletServer) {
+  ASSERT_OK(CreateTable("shmem_crossing_test", 5));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+  ASSERT_OK(conn_->Fetch("SELECT * FROM shmem_crossing_test"));
+
+  auto server_span = ASSERT_RESULT(collector_.WaitForRemoteChildSpan(
+      tp.trace_id, "shmem yb.tserver.PgClientService.Perform",
+      "ysql" /* client_service */, "TabletServer" /* server_service */,
+      "inbound_shmem" /* expected_rpc_system */));
+
+  ASSERT_EQ(server_span.str_attrs["rpc.service"], "yb.tserver.PgClientService");
+  ASSERT_EQ(server_span.str_attrs["rpc.method"], "Perform");
+}
+
 TEST_F(DistTraceRpcTest, TestOtelInternalMessagesAreLogged) {
   google::FlagSaver flag_saver;
   dist_trace::TEST_SetOtelCollectorEndpoint(collector_.Url());
