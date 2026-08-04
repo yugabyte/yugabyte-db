@@ -281,6 +281,19 @@ TEST(TabletSnapshotPathTest, RecoverActivePath) {
   ASSERT_NOK(TabletSnapshots::ActiveSnapshotDirFromDeletedSnapshotDir(".7.1234.deleted.tmp"));
 }
 
+TEST_F(TabletSnapshotsTest, DeletesSynchronouslyWhenAsyncCleanupDisabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_async_snapshot_directory_cleanup) = false;
+
+  const auto paths = CreateSnapshotDirectory("snapshot.sync.delete", 1);
+  ASSERT_OK(DeleteSnapshot("snapshot.sync.delete", 1));
+
+  // The active directory is removed synchronously and no tombstone is ever created.
+  ASSERT_FALSE(test_env_->FileExists(paths.active));
+  ASSERT_FALSE(test_env_->FileExists(paths.tombstone));
+  ASSERT_EQ(MetricValue<AtomicGauge<uint64_t>>(METRIC_snapshot_pending_logical_deletions), 0);
+  ASSERT_EQ(MetricValue<AtomicGauge<uint64_t>>(METRIC_snapshot_pending_physical_deletions), 0);
+}
+
 TEST_F(TabletSnapshotsTest, RetainsDeletionUntilCleanupPoolIsInstalled) {
   const auto paths = CreateSnapshotDirectory("snapshot.before.pool", 1);
   ASSERT_OK(DeleteSnapshot("snapshot.before.pool", 1));
