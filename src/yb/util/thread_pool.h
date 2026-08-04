@@ -22,6 +22,7 @@
 #include "yb/gutil/port.h"
 
 #include "yb/util/debug/leakcheck_disabler.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/metrics.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/scope_exit.h"
@@ -54,6 +55,16 @@ class ThreadPoolTask {
     run_token_ = std::move(run_token);
   }
 
+  // Trace context captured at Enqueue (on the submitting thread, where it is still live) and
+  // re-activated around Run() on the worker thread.
+  const dist_trace::trace::SpanContext& trace_parent() const {
+    return trace_parent_;
+  }
+
+  void set_trace_parent(dist_trace::trace::SpanContext trace_parent) {
+    trace_parent_ = std::move(trace_parent);
+  }
+
   void set_submit_time(MonoTime value) {
     submit_time_ = value;
   }
@@ -81,6 +92,7 @@ class ThreadPoolTask {
   // the task completion.
   ThreadPoolTask* next_ = nullptr;
   std::optional<std::weak_ptr<void>> run_token_;
+  dist_trace::trace::SpanContext trace_parent_ = dist_trace::trace::SpanContext::GetInvalid();
   MonoTime submit_time_;
   [[maybe_unused]] Cgroup* task_cgroup_ = nullptr;
 };
@@ -100,6 +112,8 @@ class FunctorThreadPoolTask : public Base {
 
  private:
   void Run() override {
+    // Re-activate the trace context captured at Enqueue
+    auto trace_scope = dist_trace::ActivateParentScope(this->trace_parent());
     f_();
   }
 
@@ -176,18 +190,26 @@ class TaskRecipient {
 
   template <NonReferenceType F>
   bool EnqueueFunctor(const F& f) {
-    return Enqueue(MakeFunctorThreadPoolTask<F, TaskType>(f));
+    return Enqueue(StampTraceContext(MakeFunctorThreadPoolTask<F, TaskType>(f)));
   }
 
   template <NonReferenceType F>
   bool EnqueueFunctor(F&& f) {
-    return Enqueue(MakeFunctorThreadPoolTask<F, TaskType>(std::move(f)));
+    return Enqueue(StampTraceContext(MakeFunctorThreadPoolTask<F, TaskType>(std::move(f))));
   }
 
   // Matches the interface of yb::ThreadPool::Submit.
   template <NonReferenceType F>
   Status Submit(const F& f) {
-    return EnqueueWithStatus(MakeFunctorThreadPoolTask<F, TaskType>(f));
+    return EnqueueWithStatus(StampTraceContext(MakeFunctorThreadPoolTask<F, TaskType>(f)));
+  }
+
+ private:
+  // Sets trace context to carry it across the threads: stamp the active context onto the task
+  template <class Task>
+  Task* StampTraceContext(Task* task) {
+    task->set_trace_parent(dist_trace::GetActiveSpanContext());
+    return task;
   }
 };
 
