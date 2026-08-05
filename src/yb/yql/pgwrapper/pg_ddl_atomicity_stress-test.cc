@@ -225,7 +225,14 @@ Result<bool> PgDdlAtomicityStressTest::DoExecuteWithRetry(
     // over-matching unrelated messages. Note the sqlstate ("pgsql error XX000") is an attached
     // error code, not part of Status::message(), so it must not be included here.
     "' table creation"sv,
-    kDdlVerificationError
+    kDdlVerificationError,
+    // If the transaction is aborted asynchronously by the master, the sys_catalog tablet removes
+    // the provisional intents. If the backend then tries to read pg_attribute for a relation it
+    // just created, it will see 0 rows and fail with this error.
+    "pg_attribute catalog is missing"sv,
+    // Similar to the above, if the backend tries to read pg_class for a relation it just created,
+    // it will see 0 rows and fail with this error.
+    "cache lookup failed for relation"sv
   };
   if (HasSubstring(msg, allowed_msgs)) {
     LOG(INFO) << "Execution of stmt " << stmt << " failed: " << s;
