@@ -15,14 +15,14 @@ showRightNav: true
 
 YSQL supports the following data types for values that represent a date, a time of day, a date-and-time-of-day pair, or a duration. These data types will be referred to jointly as the _date-time_ data types.
 
-| Data type                                                                                   | Purpose                                                                  | Size     | Min                | Max               | Resolution    |
-| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | -------- | ------------------ | ----------------- | ------------- |
-| [date](./date-time-data-types-semantics/type-date/)                                         | date moment (wall-clock)                                                 | 4 bytes  | 4713 BC            | 5874897 AD        | 1 day         |
-| [time](./date-time-data-types-semantics/type-time/)                                         | time moment (wall-clock)                                                 | 8 bytes  | 00:00:00           | 24:00:00          | 1 microsecond |
-| [timetz](#avoid-timetz)                                                                     | time moment (wall-clock) with UTC offset — _[avoid this](#avoid-timetz)_ | 12 bytes | 00:00:00+15:59     | 24:00:00-15:59    | 1 microsecond |
-| [timestamp](./date-time-data-types-semantics/type-timestamp/#the-plain-timestamp-data-type) | date-and-time moment (wall-clock)                                        | 8 bytes  | 4713 BC            | 294276 AD         | 1 microsecond |
-| [timestamptz](./date-time-data-types-semantics/type-timestamp/#the-timestamptz-data-type)   | date-and-time moment (absolute)                                          | 8 bytes  | 4713 BC            | 294276 AD         | 1 microsecond |
-| [interval](./date-time-data-types-semantics/type-interval/)                                 | duration between two moments                                             | 16 bytes | -178000000 years † | 178000000 years † | 1 microsecond |
+| Data type                                                                                         | Purpose                                                                  | Size     | Min                | Max               | Resolution    |
+| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | -------- | ------------------ | ----------------- | ------------- |
+| [date](./date-time-data-types-semantics/type-date/)                                               | date moment (wall-clock)                                                 | 4 bytes  | 4713 BC            | 5874897 AD        | 1 day         |
+| [time](./date-time-data-types-semantics/type-time/) [(p)]                                         | time moment (wall-clock)                                                 | 8 bytes  | 00:00:00           | 24:00:00          | 1 microsecond |
+| [timetz](#avoid-timetz) [(p)]                                                                     | time moment (wall-clock) with UTC offset — _[avoid this](#avoid-timetz)_ | 12 bytes | 00:00:00+15:59     | 24:00:00-15:59    | 1 microsecond |
+| [timestamp](./date-time-data-types-semantics/type-timestamp/#the-plain-timestamp-data-type) [(p)] | date-and-time moment (wall-clock)                                        | 8 bytes  | 4713 BC            | 294276 AD         | 1 microsecond |
+| [timestamptz](./date-time-data-types-semantics/type-timestamp/#the-timestamptz-data-type) [(p)]   | date-and-time moment (absolute)                                          | 8 bytes  | 4713 BC            | 294276 AD         | 1 microsecond |
+| [interval](./date-time-data-types-semantics/type-interval/) [fields] [(p)]                        | duration between two moments                                             | 16 bytes | -178000000 years † | 178000000 years † | 1 microsecond |
 
 † An _interval_ value is represented internally as a three-field _[mm, dd, ss]_ tuple, so its limits are properly expressed field by field. The values shown here express the limit in terms of years only. See [_interval_ value limits](./date-time-data-types-semantics/type-interval/interval-limits/).
 
