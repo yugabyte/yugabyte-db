@@ -2332,8 +2332,7 @@ yb_check_removed_renamed_functions_acl()
 			 log_opts.basedir,
 			 "pg_catalog_removed_renamed_function_acls.txt");
 
-	prep_status("Checking for modified ACLs on pg_catalog functions "
-				"removed or renamed in PG15");
+	prep_status("Checking for modified ACLs on removed catalog functions");
 
 	for (dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
 	{
