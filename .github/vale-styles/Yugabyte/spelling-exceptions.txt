@@ -217,6 +217,7 @@ Elasticsearch
 enablement
 enqueued
 enqueues
+Entra
 enum
 enums
 ETag
