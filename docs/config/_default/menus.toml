@@ -95,7 +95,7 @@
   url = "/"
   [main.params]
     classes = "product-item product-ybdb"
-    description = "The open source distributed SQL database"
+    description = "Open source distributed DB"
     imageUrl = "/icons/database.svg"
 
 [[main]]
