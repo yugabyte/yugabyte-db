@@ -291,7 +291,7 @@ std::string_view GetSharedMemSpanName(tserver::PgSharedExchangeReqType req_type)
 }
 
 // Method name attribute for the outbound shared-memory span, mirroring rpc.method on RPC spans (the
-// service is always PgClientService). Paired with the tserver's SharedMemMethodName.
+// service is always PgClientService).
 const char* GetSharedMemMethodName(tserver::PgSharedExchangeReqType req_type) {
   switch (req_type) {
     case tserver::PgSharedExchangeReqType::PERFORM:
@@ -463,10 +463,8 @@ struct PgClientData : public FetchBigDataCallback {
     }
     if (status.ok()) {
       otel_span->SetStatus(opentelemetry::trace::StatusCode::kOk);
-    } else if (status.IsTimedOut()) {
-      otel_span->SetStatus(opentelemetry::trace::StatusCode::kError, "Call TimedOut");
     } else {
-      otel_span->SetStatus(opentelemetry::trace::StatusCode::kError, "Call ErroredOut");
+      otel_span->SetStatus(opentelemetry::trace::StatusCode::kError, status.ToUserMessage());
     }
     otel_span->End();
     otel_span = nullptr;

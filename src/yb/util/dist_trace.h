@@ -13,9 +13,16 @@
 
 #pragma once
 
+#include <cstdint>
+#include <string>
+#include <string_view>
 #include <thread>
+#include <utility>
+#include <vector>
 
+#include "opentelemetry/common/attribute_value.h"
 #include "opentelemetry/trace/scope.h"
+#include "opentelemetry/trace/span_metadata.h"
 #include "opentelemetry/trace/span_startoptions.h"
 
 #include "yb/util/dist_trace_fwd.h"
@@ -80,7 +87,7 @@ struct SpanWithScope {
 using SpanWithScopePtr = std::shared_ptr<SpanWithScope>;
 
 // OTel service.name for the ysql (postgres backend) process, passed to InitDistTrace at startup.
-inline const std::string kYsqlServiceName = "ysql";
+inline constexpr char kYsqlServiceName[] = "ysql";
 
 void InitDistTrace(
     opentelemetry::nostd::string_view service_name, opentelemetry::nostd::string_view node_uuid);
@@ -89,7 +96,6 @@ nostd::shared_ptr<opentelemetry::trace::Tracer> GetDistTracer();
 bool IsDistTraceEnabled();
 trace::SpanContext GetTraceparentSpanContext(const char* traceparent);
 
-// Get SpanContext of the active span
 trace::SpanContext GetActiveSpanContext();
 
 bool IsSpanContextValidAndRemote(const trace::SpanContext& span_context);
@@ -105,26 +111,9 @@ nostd::shared_ptr<trace::Span> StartSpan(
     const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>& attrs);
 nostd::shared_ptr<trace::Span> StartSpan(std::string_view op_name);
 
-// Starts a child span of the active context, bundled with an activated scope so it
-// becomes current; nullptr when no active context.
-SpanWithScopePtr StartSpanWithScope(
-    std::string_view op_name,
-    const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>& attrs,
-    trace::SpanKind kind = trace::SpanKind::kInternal);
-SpanWithScopePtr StartSpanWithScope(
-    std::string_view op_name, trace::SpanKind kind = trace::SpanKind::kInternal);
-
-// Client span for an outbound RPC; drains pending thread-local attrs onto it.
+// Client span for an outbound RPC, bundled with an activated scope so it becomes current; drains
+// pending thread-local attrs onto it. nullptr when no active context.
 SpanWithScopePtr StartClientSpanWithScope(std::string_view op_name);
-
-// Span as a remote child of parent_context (from an inbound request) + activated scope --
-// the server end of a propagated trace; needs no local active context.
-SpanWithScopePtr StartServerSpanWithScope(
-    std::string_view op_name,
-    const trace::SpanContext& parent_context,
-    const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>& attrs);
-SpanWithScopePtr StartServerSpanWithScope(
-    std::string_view op_name, const trace::SpanContext& parent_context);
 
 // Re-establishes parent_context as this thread's active context WITHOUT a new span, so RPCs built
 // here nest under it -- for RPCs issued off the origin's thread.
