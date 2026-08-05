@@ -389,6 +389,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         canResizeDisk(
             curPlacement, newPlacement, newIntent, curIntent, taskParams().nodeDetailsSet);
     if (!azToDiskSizeChangeMap.isEmpty()) {
+      // Rollback checkpoint: resizing existing pods' disks mutates running servers.
+      createMarkRollbackUnsafeTaskOnce();
       createResizeDiskTask(
           universe.getName(),
           curPlacement,
@@ -519,11 +521,15 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
       // Update master addresses to the latest required ones,
       // We use the original unfiltered mastersToAdd which is determined from pi.
+      // Rollback checkpoint: moving masters mutates the existing master quorum.
+      createMarkRollbackUnsafeTaskOnce();
       createMoveMasterTasks(new ArrayList<>(mastersToAdd), new ArrayList<>(mastersToRemove));
     }
 
     if (CollectionUtils.isNotEmpty(fullMoveMasterAZs)
         || CollectionUtils.isNotEmpty(fullMoveTserverAZs)) {
+      // Rollback checkpoint: a full move replaces existing pods and deletes their PVCs.
+      createMarkRollbackUnsafeTaskOnce();
       if (CollectionUtils.isNotEmpty(fullMoveMasterAZs)) {
         // Ybc is not present on master-only nodes currently
         createFullMoveTasks(
@@ -633,6 +639,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       }
     }
 
+    // Rollback checkpoint: the placement update on the master leader starts data migration /
+    // blacklisting of existing tservers (mirrors the VM EditUniverse checkpoint before
+    // createPlacementInfoTask). New-pod scale-up above stays in the safe window.
+    createMarkRollbackUnsafeTaskOnce();
     // Update the blacklist servers on master leader.
     createPlacementInfoTask(tserversToRemove, taskParams().clusters)
         .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
