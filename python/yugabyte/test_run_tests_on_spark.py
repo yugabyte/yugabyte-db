@@ -11,10 +11,11 @@
 # under the License.
 
 """
-Unit tests for the failed-test re-run orchestration in run_tests_on_spark.py, specifically
-run_tests_job_with_resubmits(): it re-submits the Spark job for test attempts that did not produce
-a result (e.g. because the Spark application was lost while autoscaled workers were shutting down),
-re-creating the Spark context when it was stopped.
+Unit tests for the Spark job submission orchestration in run_tests_on_spark.py, specifically
+run_tests_job_with_resubmits(): it re-submits the Spark job (both the initial test job and the
+failed-test re-run job) for test attempts that did not produce a result (e.g. because the Spark
+application was lost while autoscaled workers were shutting down), re-creating the Spark context
+when it was stopped.
 
 These tests mock out Spark: run_tests_job(), spark_context_is_stopped() and restart_spark_context()
 are patched, so no Spark cluster (or pyspark) is exercised. Only the driver-side orchestration
@@ -83,8 +84,8 @@ def isolate_spark(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(rts, "g_spark_job_cancelled", False)
     # Ensure the test-only fault hooks are off, so the behavioral tests are not perturbed by a
     # developer running with these set in their environment.
-    monkeypatch.delenv("YB_TEST_RERUN_DROP_RESULTS", raising=False)
-    monkeypatch.delenv("YB_TEST_RERUN_STOP_CONTEXT", raising=False)
+    monkeypatch.delenv("YB_TEST_SUBMIT_DROP_RESULTS", raising=False)
+    monkeypatch.delenv("YB_TEST_SUBMIT_STOP_CONTEXT", raising=False)
 
 
 def test_all_attempts_complete_on_first_submission(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -415,25 +416,25 @@ def test_fault_hook_is_noop_without_env(monkeypatch: pytest.MonkeyPatch) -> None
         stop_calls += 1
 
     monkeypatch.setattr(rts, "spark_context", types.SimpleNamespace(stop=fake_stop))
-    out = rts.maybe_inject_rerun_fault(1, results)
+    out = rts.maybe_inject_submit_fault(1, results)
     assert out == results
     assert stop_calls == 0
 
 
 def test_fault_hook_drops_results_on_first_submission_only(monkeypatch: pytest.MonkeyPatch) -> None:
-    """YB_TEST_RERUN_DROP_RESULTS drops the last N results, and only on the first submission."""
+    """YB_TEST_SUBMIT_DROP_RESULTS drops the last N results, and only on the first submission."""
     results = results_for(make_attempts("tests-x/a-test:::A.B", 10))
-    monkeypatch.setenv("YB_TEST_RERUN_DROP_RESULTS", "4")
+    monkeypatch.setenv("YB_TEST_SUBMIT_DROP_RESULTS", "4")
 
-    kept = rts.maybe_inject_rerun_fault(1, results)
+    kept = rts.maybe_inject_submit_fault(1, results)
     assert kept == results[:6]
 
     # A later submission is never faulted, so recovery can complete.
-    assert rts.maybe_inject_rerun_fault(2, results) == results
+    assert rts.maybe_inject_submit_fault(2, results) == results
 
 
 def test_fault_hook_stops_context(monkeypatch: pytest.MonkeyPatch) -> None:
-    """YB_TEST_RERUN_STOP_CONTEXT stops the Spark context after the first submission."""
+    """YB_TEST_SUBMIT_STOP_CONTEXT stops the Spark context after the first submission."""
     results = results_for(make_attempts("tests-x/a-test:::A.B", 3))
     stop_calls = 0
 
@@ -441,14 +442,14 @@ def test_fault_hook_stops_context(monkeypatch: pytest.MonkeyPatch) -> None:
         nonlocal stop_calls
         stop_calls += 1
 
-    monkeypatch.setenv("YB_TEST_RERUN_STOP_CONTEXT", "1")
+    monkeypatch.setenv("YB_TEST_SUBMIT_STOP_CONTEXT", "1")
     monkeypatch.setattr(rts, "spark_context", types.SimpleNamespace(stop=fake_stop))
 
-    out = rts.maybe_inject_rerun_fault(1, results)
+    out = rts.maybe_inject_submit_fault(1, results)
     assert out == results          # STOP alone does not drop results
     assert stop_calls == 1
     # Not stopped again on later submissions.
-    rts.maybe_inject_rerun_fault(2, results)
+    rts.maybe_inject_submit_fault(2, results)
     assert stop_calls == 1
 
 
@@ -486,8 +487,8 @@ def test_fault_hooks_combine_to_drive_recovery(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(rts, "restart_spark_context", record_restart)
     monkeypatch.setattr(rts, "spark_context", types.SimpleNamespace(stop=fake_stop))
     monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: stopped["value"])
-    monkeypatch.setenv("YB_TEST_RERUN_DROP_RESULTS", "3")
-    monkeypatch.setenv("YB_TEST_RERUN_STOP_CONTEXT", "1")
+    monkeypatch.setenv("YB_TEST_SUBMIT_DROP_RESULTS", "3")
+    monkeypatch.setenv("YB_TEST_SUBMIT_STOP_CONTEXT", "1")
 
     results = rts.run_tests_job_with_resubmits(attempts, rerun=True, conf=FAKE_CONF)
 
@@ -495,6 +496,87 @@ def test_fault_hooks_combine_to_drive_recovery(monkeypatch: pytest.MonkeyPatch) 
     assert len(submissions[1]) == 3    # exactly the 3 dropped attempts are re-submitted
     assert restart_count == 1          # context re-created once before the recovery submission
     assert descriptor_strs([r.test_descriptor for r in results]) == descriptor_strs(attempts)
+
+
+def test_initial_job_lost_application_is_resubmitted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    The initial test job (rerun=False) is also submitted through the wrapper. When the whole Spark
+    application is lost before any test produces a result (e.g. the shared cluster is being
+    drained: "Master removed our application: FAILED"), the job must be re-submitted on a fresh
+    context instead of ending the run with zero results.
+    """
+    attempts = make_attempts("tests-x/a-test:::A.B", 5)
+    submissions: List[List[test_descriptor.TestDescriptor]] = []
+    rerun_flags: List[bool] = []
+    restart_count = 0
+    # The context is alive for the first submission and dies with the application.
+    stopped = {"value": False}
+
+    def fake_run_tests_job(
+            pending: List[test_descriptor.TestDescriptor],
+            rerun: bool,
+            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
+        submissions.append(list(pending))
+        rerun_flags.append(rerun)
+        if len(submissions) == 1:
+            # The first submission loses the whole application: no results, dead context.
+            stopped["value"] = True
+            return []
+        return results_for(pending)
+
+    def record_restart(conf: yb_dist_tests.TestConfig) -> None:
+        nonlocal restart_count
+        restart_count += 1
+        stopped["value"] = False
+
+    monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
+    monkeypatch.setattr(rts, "restart_spark_context", record_restart)
+    monkeypatch.setattr(rts, "spark_context_is_stopped", lambda: stopped["value"])
+
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=False, conf=FAKE_CONF)
+
+    assert len(submissions) == 2
+    assert rerun_flags == [False, False]   # the rerun flag is passed through unchanged
+    assert restart_count == 1              # the dead context is re-created before resubmission
+    assert descriptor_strs([r.test_descriptor for r in results]) == descriptor_strs(attempts)
+
+
+def test_failed_attempts_are_not_resubmitted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Mixed outcome on one submission: some attempts pass, some fail (non-zero exit code) and some
+    are lost (no result). Only the lost attempts may be re-submitted; a ran-and-failed attempt
+    already has its result and must flow to the failed-test re-run phase instead.
+    """
+    attempts = make_attempts("tests-x/a-test:::A.B", 6)
+    submissions: List[List[str]] = []
+
+    def fake_run_tests_job(
+            pending: List[test_descriptor.TestDescriptor],
+            rerun: bool,
+            conf: yb_dist_tests.TestConfig) -> List[yb_dist_tests.TestResult]:
+        submissions.append([td.descriptor_str for td in pending])
+        if len(submissions) == 1:
+            # Attempts 1-2 pass, 3-4 fail, 5-6 are lost with the application.
+            return [make_result(td.descriptor_str, exit_code=int(td.attempt_index in (3, 4)))
+                    for td in pending if td.attempt_index <= 4]
+        return results_for(pending)
+
+    monkeypatch.setattr(rts, "run_tests_job", fake_run_tests_job)
+
+    results = rts.run_tests_job_with_resubmits(attempts, rerun=False, conf=FAKE_CONF)
+
+    assert len(submissions) == 2
+    # Only the two lost attempts are re-submitted; the failed ones are not.
+    assert set(submissions[1]) == {
+        "tests-x/a-test:::A.B:::attempt_5",
+        "tests-x/a-test:::A.B:::attempt_6",
+    }
+    # Every attempt has exactly one result, and the failed ones keep their failed result.
+    assert descriptor_strs([r.test_descriptor for r in results]) == descriptor_strs(attempts)
+    assert {r.test_descriptor.descriptor_str for r in results if r.exit_code != 0} == {
+        "tests-x/a-test:::A.B:::attempt_3",
+        "tests-x/a-test:::A.B:::attempt_4",
+    }
 
 
 def test_no_function_shadows_a_module_level_import() -> None:

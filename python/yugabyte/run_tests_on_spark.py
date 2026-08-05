@@ -129,9 +129,8 @@ from yugabyte import artifact_upload  # noqa
 
 REPEAT_FAILURE_LIMIT = 50
 
-# The failed-test re-run job starts right when the main test job finishes, which is exactly when
-# autoscaled Spark workers may be scaling in, and the whole Spark application can be lost to
-# executor churn (symptom: "Master removed our application: FAILED"). Submit the job for the
+# The whole Spark application can be lost to autoscaled worker churn, e.g. while workers are
+# scaling in (symptom: "Master removed our application: FAILED"). Submit the job for the
 # not-yet-completed test attempts up to SPARK_JOB_MAX_SUBMITS times, re-creating the Spark context
 # if needed.
 SPARK_JOB_MAX_SUBMITS = 3
@@ -1321,27 +1320,29 @@ def run_tests_job(test_descriptors: List[yb_dist_tests.TestDescriptor], rerun: b
 
 
 # Test-only fault injection, to exercise the re-submission / context-recovery path without waiting
-# for a real autoscaling accident. Both are gated by environment variables and default to off, so
-# production runs are unaffected. On the FIRST submission only:
-#   YB_TEST_RERUN_DROP_RESULTS=<n>  discard the last <n> results, so those attempts look lost and
-#                                   must be re-submitted (exercises the pending/re-submit path).
-#   YB_TEST_RERUN_STOP_CONTEXT=1    stop the Spark context afterwards, so the next iteration has to
-#                                   re-create it (exercises restart_spark_context end to end).
+# for a real autoscaling accident. Applies to any job routed through run_tests_job_with_resubmits
+# (the initial test job as well as the failed-test re-run job). Both hooks are gated by
+# environment variables and default to off, so production runs are unaffected. On the FIRST
+# submission only:
+#   YB_TEST_SUBMIT_DROP_RESULTS=<n>  discard the last <n> results, so those attempts look lost and
+#                                    must be re-submitted (exercises the pending/re-submit path).
+#   YB_TEST_SUBMIT_STOP_CONTEXT=1    stop the Spark context afterwards, so the next iteration has
+#                                    to re-create it (exercises restart_spark_context end to end).
 # Combine both (drop some results AND stop the context) to drive a full lost-application recovery:
 # the dropped attempts are re-submitted on a freshly re-created context.
-def maybe_inject_rerun_fault(
+def maybe_inject_submit_fault(
         submit_index: int,
         results: List[yb_dist_tests.TestResult]) -> List[yb_dist_tests.TestResult]:
     if submit_index != 1:
         return results
-    drop = int(os.environ.get('YB_TEST_RERUN_DROP_RESULTS', '0'))
+    drop = int(os.environ.get('YB_TEST_SUBMIT_DROP_RESULTS', '0'))
     if drop > 0 and results:
         keep = max(0, len(results) - drop)
-        logging.warning("TEST FAULT (YB_TEST_RERUN_DROP_RESULTS): discarding %d of %d results "
+        logging.warning("TEST FAULT (YB_TEST_SUBMIT_DROP_RESULTS): discarding %d of %d results "
                         "from submission %d", len(results) - keep, len(results), submit_index)
         results = results[:keep]
-    if os.environ.get('YB_TEST_RERUN_STOP_CONTEXT') == '1' and spark_context is not None:
-        logging.warning("TEST FAULT (YB_TEST_RERUN_STOP_CONTEXT): stopping the Spark context "
+    if os.environ.get('YB_TEST_SUBMIT_STOP_CONTEXT') == '1' and spark_context is not None:
+        logging.warning("TEST FAULT (YB_TEST_SUBMIT_STOP_CONTEXT): stopping the Spark context "
                         "after submission %d to force a re-creation", submit_index)
         try:
             spark_context.stop()
@@ -1375,11 +1376,11 @@ def run_tests_job_with_resubmits(test_descriptors: List[yb_dist_tests.TestDescri
             # re-raise the exception.
             if not (isinstance(e, spark_bridge_error_types()) or spark_context_is_stopped()):
                 raise
-            logging.exception("Rerun submission %d could not run on Spark (%s), re-creating the "
+            logging.exception("Submission %d could not run on Spark (%s), re-creating the "
                               "context and re-submitting", submit_index,
                               type(e).__name__)
             results = []
-        results = maybe_inject_rerun_fault(submit_index, results)
+        results = maybe_inject_submit_fault(submit_index, results)
         all_results.extend(results)
         if g_spark_job_cancelled:
             logging.info("Not re-submitting remaining test attempts: the Spark job was cancelled "
@@ -1735,7 +1736,7 @@ def main() -> None:
                 total_num_tests, len(test_descriptors))
 
     if test_descriptors:
-        results = run_tests_job(test_descriptors, rerun=False, conf=conf)
+        results = run_tests_job_with_resubmits(test_descriptors, rerun=False, conf=conf)
     else:
         # Allow running zero tests, for testing the reporting logic.
         results = []
