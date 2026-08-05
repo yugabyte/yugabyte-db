@@ -14,6 +14,7 @@ import SecurityConfiguration from '../config/Security/SecurityConfiguration';
 import AwsLogo from '../config/ConfigProvider/images/aws.svg?img';
 import AzureLogo from '../config/ConfigProvider/images/azure.svg?img';
 import GcpLogo from '../config/ConfigProvider/images/gcp.svg?img';
+import OciLogo from '../../redesign/assets/approved/provider-logo-oci.svg?img';
 import k8sLogo from '../config/ConfigProvider/images/k8s.png';
 import openshiftLogo from '../config/ConfigProvider/images/redhat.png';
 import tanzuLogo from '../config/ConfigProvider/images/tanzu.png';
@@ -41,6 +42,8 @@ import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMap
 import { PerfAdvisorOverview } from '../../redesign/features/PerfAdvisor/PerfAdvisorOverview';
 import { fetchGlobalRunTimeConfigs } from '../../api/admin';
 import { RuntimeConfigKey } from '../../redesign/helpers/constants';
+
+import '../config/ConfigProvider/DataCenterConfiguration.scss';
 
 interface ReactRouterProps {
   location: LocationShape;
@@ -165,6 +168,18 @@ export const DataCenterConfigRedesign = ({
                 >
                   {params.uuid === undefined ? (
                     <InfraProvider providerCode={ProviderCode.AZU} />
+                  ) : (
+                    <ProviderView providerUUID={params.uuid} />
+                  )}
+                </Tab>
+                <Tab
+                  eventKey={ProviderCode.OCI}
+                  title={getTabTitle(ProviderCode.OCI)}
+                  key="oci-tab"
+                  unmountOnExit={true}
+                >
+                  {params.uuid === undefined ? (
+                    <InfraProvider providerCode={ProviderCode.OCI} />
                   ) : (
                     <ProviderView providerUUID={params.uuid} />
                   )}
@@ -307,6 +322,13 @@ const getTabTitle = (providerCode: ProviderCode | KubernetesProviderType) => {
         <div className="title">
           <img src={AzureLogo} alt="Azure" className="azure-logo" />
           <span>{i18next.t(`${I18N_KEY_PREFIX}.azu`)}</span>
+        </div>
+      );
+    case ProviderCode.OCI:
+      return (
+        <div className="title">
+          <img src={OciLogo} alt="OCI" className="oci-logo" />
+          <span>{i18next.t(`${I18N_KEY_PREFIX}.oci`)}</span>
         </div>
       );
     case KubernetesProviderType.TANZU:

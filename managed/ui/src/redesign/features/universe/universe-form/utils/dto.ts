@@ -26,6 +26,7 @@ export enum CloudType {
   aws = 'aws',
   gcp = 'gcp',
   azu = 'azu',
+  oci = 'oci',
   docker = 'docker',
   onprem = 'onprem',
   kubernetes = 'kubernetes',

@@ -123,7 +123,8 @@ const contextualHelpers = ({
   switch (providerCode) {
     case ProviderCode.AWS:
     case ProviderCode.AZU:
-    case ProviderCode.GCP: {
+    case ProviderCode.GCP:
+    case ProviderCode.OCI: {
       const handleViewRegion = (regionField: CloudVendorRegionField) => {
         setRegionSelection(regionField);
         showEditRegionFormModal(RegionOperation.VIEW);

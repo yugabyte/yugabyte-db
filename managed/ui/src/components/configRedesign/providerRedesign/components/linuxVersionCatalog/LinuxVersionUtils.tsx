@@ -225,11 +225,9 @@ export const constructImageBundlePayload = (formValues: any, isAWS = false) => {
  * @returns Whether VM OS patching is enabled.
  */
 export function IsOsPatchingEnabled() {
-  const {
-    data: globalRuntimeConfigs,
-    isLoading: isRuntimeConfigLoading
-  } = useQuery(runtimeConfigQueryKey.globalScope(), () =>
-    fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
+  const { data: globalRuntimeConfigs, isLoading: isRuntimeConfigLoading } = useQuery(
+    runtimeConfigQueryKey.globalScope(),
+    () => fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
   );
 
   const osPatchingEnabled =
@@ -267,11 +265,9 @@ export function ConfigureSSHDetailsMsg() {
  * @returns Whether the provider is in-use edit enabled.
  */
 export function IsImgBundleInUseEditEnabled() {
-  const {
-    data: globalRuntimeConfigs,
-    isLoading: isRuntimeConfigLoading
-  } = useQuery(runtimeConfigQueryKey.globalScope(), () =>
-    fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
+  const { data: globalRuntimeConfigs, isLoading: isRuntimeConfigLoading } = useQuery(
+    runtimeConfigQueryKey.globalScope(),
+    () => fetchGlobalRunTimeConfigs(true).then((res: any) => res.data)
   );
 
   const isImgBundleInUseEditEnabled =

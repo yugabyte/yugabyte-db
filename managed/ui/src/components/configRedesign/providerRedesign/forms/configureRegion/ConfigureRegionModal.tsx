@@ -129,7 +129,9 @@ export const ConfigureRegionModal = ({
     region: 'Region',
     vnet: providerCode === ProviderCode.AZU ? 'Virtual Network Name' : 'VPC ID',
     securityGroupId:
-      providerCode === ProviderCode.AZU ? 'Security Group Name (Optional)' : 'Security Group ID',
+      providerCode === ProviderCode.AZU
+        ? 'Security Group Name (Optional)'
+        : 'Security Group ID',
     ybImage:
       providerCode === ProviderCode.AWS
         ? 'AMI ID'
@@ -145,10 +147,19 @@ export const ConfigureRegionModal = ({
     fieldId: false,
     instanceTemplate: providerCode === ProviderCode.GCP,
     regionData: true,
-    securityGroupId: providerCode !== ProviderCode.GCP && vpcSetupType === VPCSetupType.EXISTING,
+    securityGroupId:
+      providerCode !== ProviderCode.GCP &&
+      providerCode !== ProviderCode.OCI &&
+      vpcSetupType === VPCSetupType.EXISTING,
     sharedSubnet: providerCode === ProviderCode.GCP,
-    vnet: providerCode !== ProviderCode.GCP && vpcSetupType === VPCSetupType.EXISTING,
-    ybImage: !osPatchingEnabled && (providerCode !== ProviderCode.AWS || ybImageType === YBImageType.CUSTOM_AMI),
+    vnet:
+      providerCode !== ProviderCode.GCP &&
+      providerCode !== ProviderCode.OCI &&
+      vpcSetupType === VPCSetupType.EXISTING,
+    ybImage:
+      !osPatchingEnabled &&
+      providerCode !== ProviderCode.OCI &&
+      (providerCode !== ProviderCode.AWS || ybImageType === YBImageType.CUSTOM_AMI),
     zones: providerCode !== ProviderCode.GCP,
     imageBundles: false,
     azuNetworkRGOverride: providerCode === ProviderCode.AZU,
@@ -471,6 +482,7 @@ export const ConfigureRegionModal = ({
                     zoneCodeOptions={selectedRegion?.value?.zoneOptions}
                     isFormDisabled={isFormDisabled}
                     inUseZones={inUseZones}
+                    providerCode={providerCode}
                   />
                   {formMethods.formState.errors.zones?.message && (
                     <FormHelperText error={true}>

@@ -8,6 +8,7 @@ import { AWSProviderEditFormFieldValues } from './aws/AWSProviderEditForm';
 import { AZUProviderEditFormFieldValues } from './azu/AZUProviderEditForm';
 import { GCPProviderEditFormFieldValues } from './gcp/GCPProviderEditForm';
 import { K8sProviderEditFormFieldValues } from './k8s/K8sProviderEditForm';
+import { OCIProviderEditFormFieldValues } from './oci/OCIProviderEditForm';
 import { OnPremProviderEditFormFieldValues } from './onPrem/OnPremProviderEditForm';
 
 export const NTP_SERVER_REGEX = new RegExp(
@@ -18,6 +19,7 @@ export const NonEditableInUseProviderField: {
   [ProviderCode.AWS]: (keyof AWSProviderEditFormFieldValues)[];
   [ProviderCode.AZU]: (keyof AZUProviderEditFormFieldValues)[];
   [ProviderCode.GCP]: (keyof GCPProviderEditFormFieldValues)[];
+  [ProviderCode.OCI]: (keyof OCIProviderEditFormFieldValues)[];
   [ProviderCode.KUBERNETES]: (keyof K8sProviderEditFormFieldValues)[];
   [ProviderCode.ON_PREM]: (keyof OnPremProviderEditFormFieldValues)[];
 } = {
@@ -53,6 +55,18 @@ export const NonEditableInUseProviderField: {
     'sshUser',
     'sshPort',
     'ybFirewallTags',
+    'dbNodePublicInternetAccess',
+    'ntpSetupType',
+    'ntpServers'
+  ],
+  [ProviderCode.OCI]: [
+    'ociTenancyId',
+    'ociUserId',
+    'ociFingerprint',
+    'ociCompartmentId',
+    'ociHostedZoneId',
+    'sshUser',
+    'sshPort',
     'dbNodePublicInternetAccess',
     'ntpSetupType',
     'ntpServers'

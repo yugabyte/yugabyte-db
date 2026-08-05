@@ -26,24 +26,33 @@ export type YBProviderMutation =
   | AWSProviderMutation
   | AZUProviderMutation
   | GCPProviderMutation
+  | OCIProviderMutation
   | K8sProviderMutation
   | OnPremProviderMutation;
 
 /**
  * Provider type excluding write-only fields
  */
-export type YBProvider = AWSProvider | AZUProvider | GCPProvider | K8sProvider | OnPremProvider;
+export type YBProvider =
+  | AWSProvider
+  | AZUProvider
+  | GCPProvider
+  | OCIProvider
+  | K8sProvider
+  | OnPremProvider;
 
 export type YBProviderDetailsMutation =
   | AWSProviderDetailsMutation
   | AZUProviderDetailsMutation
   | GCPProviderDetailsMutation
+  | OCIProviderDetailsMutation
   | K8sProviderDetailsMutation
   | OnPremProviderDetailsMutation;
 export type YBProviderDetails =
   | AWSProviderDetails
   | AZUProviderDetails
   | GCPProviderDetails
+  | OCIProviderDetails
   | K8sProviderDetails
   | OnPremProviderDetails;
 
@@ -51,33 +60,48 @@ export type YBRegionMutation =
   | AWSRegionMutation
   | AZURegionMutation
   | GCPRegionMutation
+  | OCIRegionMutation
   | K8sRegionMutation
   | OnPremRegionMutation;
-export type YBRegion = AWSRegion | AZURegion | GCPRegion | K8sRegion | OnPremRegion;
+export type YBRegion =
+  | AWSRegion
+  | AZURegion
+  | GCPRegion
+  | OCIRegion
+  | K8sRegion
+  | OnPremRegion;
 
 export type YBAvailabilityZoneMutation =
   | AWSAvailabilityZoneMutation
   | AZUAvailabilityZoneMutation
   | GCPAvailabilityZoneMutation
+  | OCIAvailabilityZoneMutation
   | K8sAvailabilityZoneMutation
   | OnPremAvailabilityZoneMutation;
 export type YBAvailabilityZone =
   | AWSAvailabilityZone
   | AZUAvailabilityZone
   | GCPAvailabilityZone
+  | OCIAvailabilityZone
   | K8sAvailabilityZone
   | OnPremAvailabilityZone;
 
-// Cloud Vendor (AWS, GCP, AZU) Union types
+// Cloud Vendor (AWS, GCP, AZU, OCI) Union types
 export type CloudVendorAvailabilityZoneMutation =
   | AWSAvailabilityZoneMutation
   | AZUAvailabilityZoneMutation
-  | GCPAvailabilityZoneMutation;
+  | GCPAvailabilityZoneMutation
+  | OCIAvailabilityZoneMutation;
 export type CloudVendorAvailabilityZone =
   | AWSAvailabilityZone
   | AZUAvailabilityZone
-  | GCPAvailabilityZone;
-export type CloudVendorRegionMutation = AWSRegionMutation | AZURegionMutation | GCPRegionMutation;
+  | GCPAvailabilityZone
+  | OCIAvailabilityZone;
+export type CloudVendorRegionMutation =
+  | AWSRegionMutation
+  | AZURegionMutation
+  | GCPRegionMutation
+  | OCIRegionMutation;
 
 // ---------------------------------------------------------------------------
 // Provider Config
@@ -150,6 +174,20 @@ export interface GCPProvider extends Provider {
   details: GCPProviderDetails;
   imageBundles: ImageBundle[];
   regions: GCPRegion[];
+}
+
+export interface OCIProviderMutation extends ProviderMutationBase {
+  code: typeof ProviderCode.OCI;
+  details: OCIProviderDetailsMutation;
+  regions: OCIRegionMutation[];
+
+  imageBundles?: ImageBundle[];
+}
+export interface OCIProvider extends Provider {
+  code: typeof ProviderCode.OCI;
+  details: OCIProviderDetails;
+  imageBundles: ImageBundle[];
+  regions: OCIRegion[];
 }
 
 export interface K8sProviderMutation extends Omit<ProviderMutationBase, SSHField> {
@@ -302,6 +340,24 @@ interface GCPCloudInfo extends GCPCloudInfoBase {
   gceApplicationCredentialsPath?: string;
 }
 
+interface OCICloudInfoBase {
+  ociTenancyId: string;
+  ociUserId: string;
+  ociFingerprint: string;
+  ociPrivateKeyContent?: string;
+  ociCompartmentId: string;
+  ociRegion: string;
+  ociHostedZoneId?: string;
+}
+type OCICloudInfoMutation = OCICloudInfoBase;
+interface OCICloudInfo extends OCICloudInfoBase {
+  ociPrivateKeyContent: string;
+  ociHostedZoneName: string;
+  // VPCSetupType.HOST_INSTANCE is used only as part of the
+  // client form and doesn't exst in the Java enum.
+  vpcType: Exclude<VPCSetupType, typeof VPCSetupType.HOST_INSTANCE>;
+}
+
 interface K8sCloudInfoBase {
   kubernetesImageRegistry: string;
   kubernetesProvider: string;
@@ -351,6 +407,13 @@ interface GCPProviderDetailsMutation extends ProviderDetailsMutation {
 }
 interface GCPProviderDetails extends ProviderDetails {
   cloudInfo: { [ProviderCode.GCP]: GCPCloudInfo };
+}
+
+interface OCIProviderDetailsMutation extends ProviderDetailsMutation {
+  cloudInfo: { [ProviderCode.OCI]: OCICloudInfoMutation };
+}
+interface OCIProviderDetails extends ProviderDetails {
+  cloudInfo: { [ProviderCode.OCI]: OCICloudInfo };
 }
 
 interface K8sProviderDetailsMutation
@@ -414,6 +477,15 @@ export interface GCPRegionMutation extends RegionMutation {
 export interface GCPRegion extends Region {
   details: { cloudInfo: { [ProviderCode.GCP]: GCPRegionCloudInfo } };
   zones: GCPAvailabilityZone[];
+}
+
+export interface OCIRegionMutation extends RegionMutation {
+  details?: { cloudInfo: Record<string, never> };
+  zones: OCIAvailabilityZoneMutation[];
+}
+export interface OCIRegion extends Region {
+  details: { cloudInfo: Record<string, never> };
+  zones: OCIAvailabilityZone[];
 }
 
 export interface K8sRegionMutation extends RegionMutation {
@@ -521,6 +593,7 @@ export interface AWSAvailabilityZoneMutation extends AvailabilityZoneMutation {
 }
 export type AZUAvailabilityZoneMutation = AvailabilityZoneMutation;
 export type GCPAvailabilityZoneMutation = AvailabilityZoneMutation;
+export type OCIAvailabilityZoneMutation = AvailabilityZoneMutation;
 export interface K8sAvailabilityZoneMutation extends Omit<AvailabilityZoneMutation, 'subnet'> {
   name: string;
   details?: { cloudInfo: { [ProviderCode.KUBERNETES]: K8sAvailabilityZoneCloudInfoMutation } };
@@ -532,6 +605,7 @@ export interface OnPremAvailabilityZoneMutation extends Omit<AvailabilityZoneMut
 export type AWSAvailabilityZone = AvailabilityZone;
 export type AZUAvailabilityZone = AvailabilityZone;
 export type GCPAvailabilityZone = AvailabilityZone;
+export type OCIAvailabilityZone = AvailabilityZone;
 export interface K8sAvailabilityZone extends Omit<AvailabilityZone, 'subnet'> {
   details?: { cloudInfo: { [ProviderCode.KUBERNETES]: K8sAvailabilityZoneCloudInfo } };
 }

@@ -125,6 +125,7 @@ const adaptToListItems = (
           [RegionItemField.VIRTUAL_NETWORK_NAME]: region.details.cloudInfo.azu.vnet
         }))
       };
+    case ProviderCode.OCI:
     case ProviderCode.GCP:
     case ProviderCode.KUBERNETES:
     case ProviderCode.ON_PREM:
