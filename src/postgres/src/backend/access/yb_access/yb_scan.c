@@ -1300,18 +1300,25 @@ ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	}
 
 	/*
-	 * If hash key is not fully set and ybctid is not set either, we must do a
-	 * full-table scan so clear all the scan keys if the hash code was
-	 * explicitly specified as a scan key then we also shouldn't be clearing the
-	 * scan keys.
+	 * TODO(#30756): currently, conditions on hash keys are all or nothing:
+	 * either all hash keys have a condition bound or none of them.
 	 */
-	if (ybScan->hash_code_keys == NIL &&
-		!bms_is_subset(scan_plan->hash_key_cols,
-					   scan_plan->qualified_scan_key_cols) &&
-		!qualified_scan_key_cols_has_ybctid)
+	if (!bms_is_subset(scan_plan->hash_key_cols,
+					   scan_plan->qualified_scan_key_cols))
 	{
-		bms_free(scan_plan->qualified_scan_key_cols);
-		scan_plan->qualified_scan_key_cols = NULL;
+		/* TODO(#11881): delete only hash key cols in all cases. */
+		if (ybScan->hash_code_keys != NIL ||
+			qualified_scan_key_cols_has_ybctid)
+		{
+			scan_plan->qualified_scan_key_cols =
+				bms_del_members(scan_plan->qualified_scan_key_cols,
+								scan_plan->hash_key_cols);
+		}
+		else
+		{
+			bms_free(scan_plan->qualified_scan_key_cols);
+			scan_plan->qualified_scan_key_cols = NULL;
+		}
 	}
 }
 
