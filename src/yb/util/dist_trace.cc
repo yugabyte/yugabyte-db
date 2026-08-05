@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/util/dist_trace.h"
+
 #include "opentelemetry/context/propagation/global_propagator.h"
 #include "opentelemetry/exporters/otlp/otlp_http_exporter_factory.h"
 #include "opentelemetry/exporters/otlp/otlp_http_exporter_options.h"
@@ -21,7 +23,6 @@
 #include "opentelemetry/trace/propagation/http_trace_context.h"
 #include "opentelemetry/trace/provider.h"
 
-#include "yb/util/dist_trace.h"
 #include "yb/util/flag_validators.h"
 #include "yb/util/signal_util.h"
 
@@ -37,17 +38,12 @@ DEFINE_NON_RUNTIME_string(otel_ssl_ca_cert_string, "",
     "CA certificate bundle contents for OTLP HTTPS trace export. Used only when no CA certificate "
     "bundle path is configured.");
 
-DEFINE_NON_RUNTIME_uint32(otel_batch_max_queue_size, 16384,
+DEFINE_NON_RUNTIME_uint32(otel_batch_max_queue_size, 2048,
     "Maximum number of spans that can be buffered in the batch span processor queue. "
     "Spans arriving after this limit are dropped. Must be greater than 0 and at least as "
     "large as otel_batch_max_export_batch_size.");
 
-DEFINE_NON_RUNTIME_uint32(otel_ysql_batch_max_queue_size, 2048,
-    "Like otel_batch_max_queue_size, but used only by the ysql (postgres backend) process, which "
-    "runs one batch span processor per connection. Must be greater than 0 and at least as large as "
-    "otel_batch_max_export_batch_size.");
-
-DEFINE_NON_RUNTIME_uint32(otel_batch_schedule_delay_ms, 500,
+DEFINE_NON_RUNTIME_uint32(otel_batch_schedule_delay_ms, 5000,
     "Time interval in milliseconds between two consecutive batch exports of spans to the "
     "OpenTelemetry collector. Lower values reduce latency but increase export frequency.");
 
@@ -60,9 +56,6 @@ DEFINE_NON_RUNTIME_string(otel_internal_log_level, "info",
     "values are debug, info, warning, error, and none.");
 
 DEFINE_validator(otel_batch_max_queue_size,
-    FLAG_GE_FLAG_VALIDATOR(otel_batch_max_export_batch_size));
-
-DEFINE_validator(otel_ysql_batch_max_queue_size,
     FLAG_GE_FLAG_VALIDATOR(otel_batch_max_export_batch_size));
 
 DEFINE_validator(otel_internal_log_level,
@@ -79,13 +72,7 @@ namespace context = opentelemetry::context;
 namespace {
 
 // Service name for the tracing resource and tracer (e.g. "ysql", "Master", "TabletServer").
-static std::string g_service_name;
-
-// The ysql process gets its own queue-size flag; tserver/master share otel_batch_max_queue_size.
-static uint32_t EffectiveBatchMaxQueueSize() {
-  return g_service_name == kYsqlServiceName ? FLAGS_otel_ysql_batch_max_queue_size
-                                            : FLAGS_otel_batch_max_queue_size;
-}
+std::string g_service_name;
 
 // A batch of pending RPC span attributes, owned as plain (key, value) strings.
 using PendingRpcSpanAttrs = std::vector<std::pair<std::string, std::string>>;
@@ -194,7 +181,7 @@ auto CreateExporter() {
 
 trace_sdk::BatchSpanProcessorOptions MakeBatchProcessorOptions() {
   trace_sdk::BatchSpanProcessorOptions batching_opts;
-  batching_opts.max_queue_size = static_cast<size_t>(EffectiveBatchMaxQueueSize());
+  batching_opts.max_queue_size = static_cast<size_t>(FLAGS_otel_batch_max_queue_size);
   batching_opts.schedule_delay_millis =
       std::chrono::milliseconds(FLAGS_otel_batch_schedule_delay_ms);
   batching_opts.max_export_batch_size = static_cast<size_t>(FLAGS_otel_batch_max_export_batch_size);
@@ -269,7 +256,7 @@ void InitDistTrace(nostd::string_view service_name, nostd::string_view node_uuid
           new trace::propagation::HttpTraceContext()));
 
   LOG(INFO) << "OTEL: Initialized tracing for service: " << g_service_name
-            << "\nBatchSpanProcessor config: max_queue_size=" << EffectiveBatchMaxQueueSize()
+            << "\nBatchSpanProcessor config: max_queue_size=" << FLAGS_otel_batch_max_queue_size
             << ", schedule_delay_ms=" << FLAGS_otel_batch_schedule_delay_ms
             << ", max_export_batch_size=" << FLAGS_otel_batch_max_export_batch_size;
 }
@@ -346,55 +333,17 @@ nostd::shared_ptr<trace::Span> StartSpan(std::string_view op_name) {
   return StartSpan(op_name, {});
 }
 
-SpanWithScopePtr StartSpanWithScope(
-    std::string_view op_name,
-    const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>& attrs,
-    trace::SpanKind kind) {
+SpanWithScopePtr StartClientSpanWithScope(std::string_view op_name) {
+  // Drained even when there is nothing to start, so the attributes cannot leak into a later span.
+  const auto pending = ConsumePendingRpcAttrs();
+
   if (!HasActiveContext()) {
     return nullptr;
   }
+
   trace::StartSpanOptions options;
-  options.kind = kind;
-  return std::make_shared<SpanWithScope>(StartSpan(op_name, attrs, options));
-}
-
-SpanWithScopePtr StartSpanWithScope(std::string_view op_name, trace::SpanKind kind) {
-  return StartSpanWithScope(op_name, {}, kind);
-}
-
-SpanWithScopePtr StartClientSpanWithScope(std::string_view op_name) {
-  const auto pending = ConsumePendingRpcAttrs();
-
-  if (!IsDistTraceEnabled()) {
-    return nullptr;
-  }
-
-  auto current_span = trace::Tracer::GetCurrentSpan();
-  if (current_span && current_span->GetContext().IsValid()) {
-    return StartSpanWithScope(op_name, SpanAttrsView(pending), trace::SpanKind::kClient);
-  }
-
-  return nullptr;
-}
-
-SpanWithScopePtr StartServerSpanWithScope(
-    std::string_view op_name,
-    const trace::SpanContext& parent_context,
-    const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>&
-        attrs) {
-  if (!IsDistTraceEnabled()) {
-    return nullptr;
-  }
-  trace::StartSpanOptions options;
-  options.kind = trace::SpanKind::kServer;
-  options.parent = parent_context;
-  return std::make_shared<SpanWithScope>(GetDistTracer()->StartSpan(
-      nostd::string_view(op_name.data(), op_name.size()), attrs, options));
-}
-
-SpanWithScopePtr StartServerSpanWithScope(
-    std::string_view op_name, const trace::SpanContext& parent_context) {
-  return StartServerSpanWithScope(op_name, parent_context, {});
+  options.kind = trace::SpanKind::kClient;
+  return std::make_shared<SpanWithScope>(StartSpan(op_name, SpanAttrsView(pending), options));
 }
 
 SpanWithScopePtr ActivateParentScope(const trace::SpanContext& parent_context) {

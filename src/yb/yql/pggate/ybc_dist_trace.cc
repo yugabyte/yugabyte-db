@@ -23,7 +23,6 @@
 #include "opentelemetry/trace/tracer.h"
 
 #include "yb/util/dist_trace.h"
-#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 
 #include "yb/yql/pggate/pg_memctx.h"
