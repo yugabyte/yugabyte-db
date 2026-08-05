@@ -1127,7 +1127,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
             "Unhandled encryption at rest change type " + change.getType());
     }
 
-    kubernetesStatusUpdater.createYBUniverseEventStatus(universe, k8ResourceDetails, eventTaskName);
+    kubernetesStatusUpdater.createYBUniverseEventStatus(
+        universe, k8ResourceDetails, TaskType.SetUniverseKey.name());
     if (checkAndHandleUniverseLock(ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
       return true;
     }
@@ -1135,6 +1136,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     EncryptionAtRestKeyParams keyParams = new EncryptionAtRestKeyParams();
     keyParams.setUniverseUUID(universe.getUniverseUUID());
     keyParams.encryptionAtRestConfig = config;
+    // SetUniverseKey closes the action above and moves the universe out of EDITING when it
+    // finishes; it keys off these resource details being set.
     keyParams.setKubernetesResourceDetails(k8ResourceDetails);
     UUID taskUUID = universeActionsHandler.setUniverseKey(cust, universe, keyParams);
     log.info("Submitted {} for universe {}, task {}", eventTaskName, universe.getName(), taskUUID);
