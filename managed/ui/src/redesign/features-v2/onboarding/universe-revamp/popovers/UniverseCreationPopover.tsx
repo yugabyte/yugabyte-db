@@ -1,8 +1,7 @@
 import { FC, MouseEvent, RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { mui, TourPlacement, YBTourSpotlight } from '@yugabyte-ui-library/core';
-
-const { Popper } = mui;
+import { TourPlacement, YBTourSpotlight } from '@yugabyte-ui-library/core';
+import { OnboardingTourPopper } from './OnboardingTourPopper';
 
 /** Skidding shifts the left-placed popover downward along the anchor. */
 const POPOVER_OFFSET: [number, number] = [30, 0];
@@ -85,19 +84,12 @@ export const UniverseCreationPopover: FC<UniverseCreationPopoverProps> = ({
   });
 
   return (
-    <Popper
+    <OnboardingTourPopper
       open={open}
       anchorEl={anchorRef.current}
       placement={TourPlacement.Left}
-      modifiers={[
-        {
-          name: 'offset',
-          options: {
-            offset: POPOVER_OFFSET
-          }
-        }
-      ]}
-      sx={{ zIndex: (theme) => theme.zIndex.modal }}
+      offset={POPOVER_OFFSET}
+      zIndex={(theme) => theme.zIndex.modal}
     >
       <YBTourSpotlight
         title={t('title')}
@@ -109,6 +101,6 @@ export const UniverseCreationPopover: FC<UniverseCreationPopoverProps> = ({
         dataTestId="universe-creation-popover-spotlight"
         onDismiss={onClose}
       />
-    </Popper>
+    </OnboardingTourPopper>
   );
 };

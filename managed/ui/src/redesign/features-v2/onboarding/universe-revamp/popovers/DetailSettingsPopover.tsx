@@ -9,9 +9,8 @@ import {
   useState
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { mui, TourPlacement, YBTourSpotlight } from '@yugabyte-ui-library/core';
-
-const { Popper } = mui;
+import { TourPlacement, YBTourSpotlight } from '@yugabyte-ui-library/core';
+import { OnboardingTourPopper } from './OnboardingTourPopper';
 
 /** Distance below the Settings tab anchor. */
 const POPOVER_OFFSET: [number, number] = [0, 12];
@@ -58,19 +57,11 @@ export const DetailSettingsPopover: FC<DetailSettingsPopoverProps> = ({
   });
 
   return (
-    <Popper
+    <OnboardingTourPopper
       open={open}
       anchorEl={anchorRef.current}
       placement={TourPlacement.Bottom}
-      modifiers={[
-        {
-          name: 'offset',
-          options: {
-            offset: POPOVER_OFFSET
-          }
-        }
-      ]}
-      sx={{ zIndex: 2200 }}
+      offset={POPOVER_OFFSET}
     >
       <YBTourSpotlight
         title={t('title')}
@@ -82,7 +73,7 @@ export const DetailSettingsPopover: FC<DetailSettingsPopoverProps> = ({
         dataTestId="detail-settings-popover-spotlight"
         onDismiss={onClose}
       />
-    </Popper>
+    </OnboardingTourPopper>
   );
 };
 

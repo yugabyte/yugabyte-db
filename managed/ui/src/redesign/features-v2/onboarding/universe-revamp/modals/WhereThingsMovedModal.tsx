@@ -84,7 +84,7 @@ export const WhereThingsMovedModal: FC<WhereThingsMovedModalProps> = ({
       title={t('title')}
       titleSeparator
       size="xl"
-      overrideWidth={800}
+      overrideWidth={'auto'}
       overrideHeight="auto"
       hideCloseBtn={false}
       // Above OnBoardingBanner (2100) and HighlightedStatsPanel (2040).

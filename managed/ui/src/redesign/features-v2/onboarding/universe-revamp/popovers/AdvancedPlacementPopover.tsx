@@ -1,11 +1,10 @@
 import { FC, MouseEvent, RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { mui, TourPlacement, YBTourSpotlight } from '@yugabyte-ui-library/core';
+import { TourPlacement, YBTourSpotlight } from '@yugabyte-ui-library/core';
+import { OnboardingTourPopper } from './OnboardingTourPopper';
 
-const { Popper } = mui;
-
-/** Skidding shifts the left-placed popover downward along the anchor. */
-const POPOVER_OFFSET: [number, number] = [28, 12];
+/** Gap between the dropdown trigger and the left-placed tip. */
+const POPOVER_OFFSET: [number, number] = [0, 8];
 
 export const ADVANCED_PLACEMENT_POPOVER_DISMISS_KEY = 'yb_advanced_placement_popover_dismissed';
 
@@ -67,20 +66,18 @@ export const AdvancedPlacementPopover: FC<AdvancedPlacementPopoverProps> = ({
     keyPrefix: 'onBoarding.advancedPlacementPopover'
   });
 
+  // Anchor to the trigger button — the wrapper span is as wide as the dropdown menu (340px).
+  const dropdownButton =
+    (anchorRef.current?.querySelector(
+      '[data-testid="edit-placement-actions-button"]'
+    ) as HTMLElement | null) ?? anchorRef.current;
+
   return (
-    <Popper
+    <OnboardingTourPopper
       open={open}
-      anchorEl={anchorRef.current}
+      anchorEl={dropdownButton}
       placement={TourPlacement.Left}
-      modifiers={[
-        {
-          name: 'offset',
-          options: {
-            offset: POPOVER_OFFSET
-          }
-        }
-      ]}
-      sx={{ zIndex: 2200 }}
+      offset={POPOVER_OFFSET}
     >
       <YBTourSpotlight
         title={t('title')}
@@ -92,6 +89,6 @@ export const AdvancedPlacementPopover: FC<AdvancedPlacementPopoverProps> = ({
         dataTestId="advanced-placement-popover-spotlight"
         onDismiss={onClose}
       />
-    </Popper>
+    </OnboardingTourPopper>
   );
 };

@@ -910,7 +910,7 @@ class UniverseDetail extends Component {
       ...(isReadOnlyUniverse
         ? []
         : [
-            isAuditLogEnabled && isYSQLEnabledInUniverse && (
+            isAuditLogEnabled && isYSQLEnabledInUniverse && !isV2EditUniverseUIEnabled && (
               <Tab.Pane
                 eventKey={'db-audit-log'}
                 tabtitle="Logs"

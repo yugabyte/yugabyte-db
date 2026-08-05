@@ -2,8 +2,9 @@ import { FC, RefObject, useCallback, useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { mui, TourPlacement, YBTourSpotlight } from '@yugabyte-ui-library/core';
 import { RuntimeConfigKey } from '@app/redesign/helpers/constants';
+import { OnboardingTourPopper } from './OnboardingTourPopper';
 
-const { Box, Link, Popper, Typography, styled } = mui;
+const { Box, Link, Typography, styled } = mui;
 
 const POPOVER_OFFSET: [number, number] = [0, 12];
 
@@ -127,19 +128,11 @@ export const BeforeNewExperiencePopover: FC<BeforeNewExperiencePopoverProps> = (
   );
 
   return (
-    <Popper
+    <OnboardingTourPopper
       open={open}
       anchorEl={anchorRef.current}
       placement={TourPlacement.BottomStart}
-      modifiers={[
-        {
-          name: 'offset',
-          options: {
-            offset: POPOVER_OFFSET
-          }
-        }
-      ]}
-      sx={{ zIndex: 2200 }}
+      offset={POPOVER_OFFSET}
     >
       <WideSpotlight
         title={<GradientTitle component="span">{t('title')}</GradientTitle>}
@@ -151,6 +144,6 @@ export const BeforeNewExperiencePopover: FC<BeforeNewExperiencePopoverProps> = (
         dataTestId="before-new-experience-popover-spotlight"
         onDismiss={onClose}
       />
-    </Popper>
+    </OnboardingTourPopper>
   );
 };

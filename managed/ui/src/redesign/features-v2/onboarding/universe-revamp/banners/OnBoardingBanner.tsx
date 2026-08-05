@@ -1,4 +1,4 @@
-import { FC, useCallback, useEffect, useState } from 'react';
+import { FC, useCallback, useEffect, useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
@@ -11,6 +11,7 @@ import { isV2CreateEditUniverseEnabled } from '@app/redesign/features-v2/univers
 import {
   ONBOARDING_BANNER_DISMISS_KEY,
   isCurrentUserSuperAdmin,
+  isOnboardingNewExperienceEnabled,
   setOnboardingNewExperienceEnabled,
   useOnboardingFullscreenOverlayOpen,
   useOnboardingNewExperienceEnabled
@@ -185,6 +186,7 @@ export const OnBoardingBanner: FC = () => {
   const [showWhatChangedModal, setShowWhatChangedModal] = useState(false);
   const [isBannerDismissed, setIsBannerDismissed] = useState(isOnboardingBannerDismissed);
   const isFullscreenOverlayOpen = useOnboardingFullscreenOverlayOpen();
+  const afterTipTimerRef = useRef<number>();
 
   const {
     open: isBeforePopoverOpen,
@@ -198,6 +200,25 @@ export const OnBoardingBanner: FC = () => {
     setOpen: setAfterPopoverOpen,
     handleClose: handleAfterPopoverClose
   } = useAfterNewExperiencePopover();
+
+  const clearAfterTipTimer = useCallback(() => {
+    if (afterTipTimerRef.current != null) {
+      window.clearTimeout(afterTipTimerRef.current);
+      afterTipTimerRef.current = undefined;
+    }
+  }, []);
+
+  const scheduleAfterTipOpen = useCallback(() => {
+    clearAfterTipTimer();
+    if (isAfterNewExperiencePopoverDismissed()) {
+      return;
+    }
+    setBeforePopoverOpen(false);
+    afterTipTimerRef.current = window.setTimeout(() => {
+      setAfterPopoverOpen(true);
+      afterTipTimerRef.current = undefined;
+    }, TIP_AUTO_OPEN_DELAY_MS);
+  }, [clearAfterTipTimer, setAfterPopoverOpen, setBeforePopoverOpen]);
 
   const currentUserInfo = useSelector((state: any) => state.customer.currentUser.data);
   const isSuperAdmin = isCurrentUserSuperAdmin(currentUserInfo?.role);
@@ -247,6 +268,7 @@ export const OnBoardingBanner: FC = () => {
     if (!isVisible || isV2Enabled || enabled || isBeforeNewExperiencePopoverDismissed()) {
       return;
     }
+    clearAfterTipTimer();
     setAfterPopoverOpen(false);
     const timer = window.setTimeout(() => {
       setBeforePopoverOpen(true);
@@ -254,33 +276,45 @@ export const OnBoardingBanner: FC = () => {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [isVisible, isV2Enabled, enabled, setBeforePopoverOpen, setAfterPopoverOpen]);
+  }, [
+    isVisible,
+    isV2Enabled,
+    enabled,
+    clearAfterTipTimer,
+    setBeforePopoverOpen,
+    setAfterPopoverOpen
+  ]);
 
-  // V2 off + SuperAdmin, toggle already on (e.g. refreshed with tip enabled): After tip.
+  // V2 off + SuperAdmin, toggle already on at first paint: After tip after delay.
+  // Toggle flips while mounted are handled only in handleToggle (avoids effect cleanup
+  // cancelling the timer when `enabled` updates).
   useEffect(() => {
-    if (!isVisible || isV2Enabled || !enabled || isAfterNewExperiencePopoverDismissed()) {
+    if (!isVisible || isV2Enabled || !isOnboardingNewExperienceEnabled()) {
       return;
     }
-    setBeforePopoverOpen(false);
-    setAfterPopoverOpen(true);
-  }, [isVisible, isV2Enabled, enabled, setBeforePopoverOpen, setAfterPopoverOpen]);
+    scheduleAfterTipOpen();
+    return clearAfterTipTimer;
+  }, [isVisible, isV2Enabled, scheduleAfterTipOpen, clearAfterTipTimer]);
 
   const handleToggle = useCallback(
     (_event: unknown, checked: boolean) => {
       setOnboardingNewExperienceEnabled(checked);
       if (checked) {
-        setBeforePopoverOpen(false);
-        if (!isAfterNewExperiencePopoverDismissed()) {
-          setAfterPopoverOpen(true);
-        }
+        scheduleAfterTipOpen();
       } else {
+        clearAfterTipTimer();
         setAfterPopoverOpen(false);
         if (!isBeforeNewExperiencePopoverDismissed()) {
           setBeforePopoverOpen(true);
         }
       }
     },
-    [setAfterPopoverOpen, setBeforePopoverOpen]
+    [
+      clearAfterTipTimer,
+      scheduleAfterTipOpen,
+      setAfterPopoverOpen,
+      setBeforePopoverOpen
+    ]
   );
 
   const handleSeeWhatsChanged = useCallback(() => {

@@ -1,11 +1,12 @@
-import { FC, MouseEvent, RefObject, useCallback, useRef, useState } from 'react';
+import { FC, MouseEvent, RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { mui, TourPlacement, YBTag, YBTourSpotlight } from '@yugabyte-ui-library/core';
 import { DEFAULT_RELEASE_NOTES_URL, GradientTitle } from '../modals/HelperComponent';
 import MapIcon from '@app/redesign/assets/guided-expert-mode/map-icon.svg';
 import CommandIcon from '@app/redesign/assets/guided-expert-mode/command.svg';
+import { OnboardingTourPopper } from './OnboardingTourPopper';
 
-const { Box, Link, Popper, Typography, styled } = mui;
+const { Box, Link, Typography, styled } = mui;
 
 /** Vertical gap between the Guided Mode button and the popover. */
 const POPOVER_OFFSET: [number, number] = [0, 12];
@@ -112,13 +113,28 @@ export const dismissGuidedExpertModePopover = (): void => {
 export const shouldInterceptGuidedExpertModeClick = (): boolean =>
   !isGuidedExpertModePopoverDismissed();
 
+/** Delay before auto-opening the Guided/Expert tip on create-universe. */
+const AUTO_OPEN_DELAY_MS = 700;
+
 /**
  * Auto-opens once on create-universe Placement/Regions until dismissed.
  * Only mount this tip when the new experience is already in use.
  */
 export const useGuidedExpertModePopover = () => {
   const anchorRef = useRef<HTMLSpanElement>(null);
-  const [open, setOpen] = useState(!isGuidedExpertModePopoverDismissed());
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (isGuidedExpertModePopoverDismissed()) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setOpen(true);
+    }, AUTO_OPEN_DELAY_MS);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, []);
 
   const handleGuidedExpertModeClick = useCallback((event: MouseEvent) => {
     if (!shouldInterceptGuidedExpertModeClick()) {
@@ -199,19 +215,12 @@ export const GuidedExpertModePopover: FC<GuidedExpertModePopoverProps> = ({
     ) as HTMLElement | null) ?? anchorRef.current;
 
   return (
-    <Popper
+    <OnboardingTourPopper
       open={open}
       anchorEl={guidedButton}
       placement={TourPlacement.BottomEnd}
-      modifiers={[
-        {
-          name: 'offset',
-          options: {
-            offset: POPOVER_OFFSET
-          }
-        }
-      ]}
-      sx={{ zIndex: (theme) => theme.zIndex.modal }}
+      offset={POPOVER_OFFSET}
+      zIndex={(theme) => theme.zIndex.modal}
     >
       <WideSpotlight
         title=""
@@ -223,6 +232,6 @@ export const GuidedExpertModePopover: FC<GuidedExpertModePopoverProps> = ({
         dataTestId="guided-expert-mode-popover-spotlight"
         onDismiss={onClose}
       />
-    </Popper>
+    </OnboardingTourPopper>
   );
 };

@@ -83,7 +83,6 @@ export const PlacementActionsMenu: FC<PlacementActionsMenuProps> = ({
         onClickCapture={showAdvancedPlacementTip ? handleAdvancedPlacementClick : undefined}
       >
         <YBDropdown
-          sx={{ width: '340px' }}
           dataTestId="edit-placement-actions"
           slotProps={{
             paper: {
