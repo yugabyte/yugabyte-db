@@ -115,6 +115,11 @@ nostd::shared_ptr<trace::Span> StartSpan(std::string_view op_name);
 // pending thread-local attrs onto it. nullptr when no active context.
 SpanWithScopePtr StartClientSpanWithScope(std::string_view op_name);
 
+// Span as a remote child of parent_context (from an inbound request) + activated scope --
+// the server end of a propagated trace; needs no local active context.
+SpanWithScopePtr StartServerSpanWithScope(
+    std::string_view op_name, const trace::SpanContext& parent_context);
+
 // Re-establishes parent_context as this thread's active context WITHOUT a new span, so RPCs built
 // here nest under it -- for RPCs issued off the origin's thread.
 SpanWithScopePtr ActivateParentScope(const trace::SpanContext& parent_context);
