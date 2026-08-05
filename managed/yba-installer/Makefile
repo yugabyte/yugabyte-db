@@ -40,10 +40,10 @@ PA_BINARY_URL := https://releases.yugabyte.com/perf-advisor/$(PA_BINARY_NAME)
 PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
 
 # Prometheus Version
-PROMETHEUS_VERSION ?= 3.12.0
+PROMETHEUS_VERSION ?= 3.13.1
 
 # https://github.com/yugabyte/yba-pg-build/releases/tag/2025-03-05-17-09
-POSTGRES_VERSION ?= 14.22
+POSTGRES_VERSION ?= 14.23
 PG_BINARY_NAME ?= postgres-linux-${POSTGRES_VERSION}.tar.gz
 PG_BINARY_URL := https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/yba-pg-build/${PG_BINARY_NAME}
 
