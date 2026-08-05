@@ -131,6 +131,7 @@
             {{- if and (ne $childLink "/") (ne $childLink "") (strings.Contains $pageUrl $childLink) -}}
               {{ $displayName = .Name }}
               {{ $displayClass = .Params.classes }}
+              {{ $anchorLink = $childLink }}
               {{- break -}}
             {{- end -}}
           {{- end -}}
