@@ -5566,6 +5566,114 @@ TEST_F(CDCSDKConsumptionConsistentChangesTest, TestDropSchemaHidesAssociatedTabl
       std::nullopt /* expected_unqualified_table_ids*/, true /* include_catalog_tables */);
 }
 
+TEST_F(CDCSDKConsumptionConsistentChangesTest, TestUpdatePublicationRefreshTablesOnTableRewrite) {
+  ASSERT_OK(SetUpWithParams(
+      1 /* rf */, 1 /* num_masters */, false /* colocated */,
+      true /* populate_safepoint_record */));
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(test_namespace_name));
+  auto table1 = ASSERT_RESULT(CreateTable(&test_cluster_, test_namespace_name, "test_table"));
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStreamWithReplicationSlot());
+  ASSERT_OK(InitVirtualWAL(
+      stream_id, {table1.table_id()}, kVWALSessionId1, nullptr /* vslot_hash_range */,
+      true /* include_oid_to_relfilenode */));
+
+  // Catch up on the sys-catalog before the rewrite.
+  for (int i = 0; i < 5; i++) {
+    auto resp = ASSERT_RESULT(GetConsistentChangesFromCDC(stream_id));
+    for (const auto& record : resp.cdc_sdk_proto_records()) {
+      if (record.row_message().op() == RowMessage_Op_COMMIT) {
+        auto lsn = record.row_message().pg_lsn();
+        ASSERT_OK(UpdateAndPersistLSN(stream_id, lsn, lsn));
+      }
+    }
+    SleepFor(MonoDelta::FromMilliseconds(100));
+  }
+
+  // Need to hold the master's cdc_state insertion workflow for the rewritten tablet at the
+  // start of PopulateCDCStateTableOnNewTableCreation.
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"CDCTest::ReleaseCdcStateInsert", "PopulateCDCStateTableOnNewTableCreation::Start"}});
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  // A table rewrite DDL (such as TRUNCATE) completes normally since the DDL waits only for the
+  // tablet to be RUNNING and is independent of the entries insertion in cdc_state table.
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE TABLE $0", table1.table_name()));
+  auto table2 = ASSERT_RESULT(GetTable(&test_cluster_, test_namespace_name, table1.table_name()));
+  ASSERT_NE(table1.table_id(), table2.table_id());
+
+  // Wait for the bg task to add table2 to the stream METADATA.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto resp = VERIFY_RESULT(GetDBStreamInfo(stream_id));
+        for (const auto& table_info : resp.table_info()) {
+          if (table_info.table_id() == table2.table_id()) {
+            return true;
+          }
+        }
+        return false;
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting for table2 to be added to stream metadata"));
+
+  const int kNumFreshRows = 50;
+  ASSERT_OK(WriteRowsHelper(
+      0, kNumFreshRows, &test_cluster_, true /* flag */, 2 /* num_cols */,
+      table2.table_name().c_str()));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        for (const auto& record : resp.cdc_sdk_proto_records()) {
+          if (record.row_message().op() == RowMessage_Op_COMMIT) {
+            auto lsn = record.row_message().pg_lsn();
+            RETURN_NOT_OK(UpdateAndPersistLSN(stream_id, lsn, lsn));
+          }
+        }
+        return resp.needs_publication_table_list_refresh();
+      },
+      MonoDelta::FromSeconds(60), "Timed out waiting for the publication refresh signal"));
+
+  // Since we get the pub-refresh signal, we will try to update the publication tables.
+  auto update_publication_status = UpdatePublicationTableList(
+      stream_id, {table2.table_id()}, kVWALSessionId1, true /* include_oid_to_relfilenode */);
+  ASSERT_NOK(update_publication_status);
+
+  TEST_SYNC_POINT("CDCTest::ReleaseCdcStateInsert");
+  SyncPoint::GetInstance()->DisableProcessing();
+
+  // The table2 tablets' entries should be seen in cdc_state table now and so updating publication
+  // tables should be successful now.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto s = UpdatePublicationTableList(
+            stream_id, {table2.table_id()}, kVWALSessionId1, true /* include_oid_to_relfilenode */);
+        if (!s.ok()) {
+          LOG(INFO) << "Publication switch retry not yet successful: " << s;
+          return false;
+        }
+        return true;
+      },
+      MonoDelta::FromSeconds(30), "Timed out retrying the publication switch"));
+
+  int fresh_inserts_streamed = 0;
+  Status wait_status = WaitFor(
+      [&]() -> Result<bool> {
+        auto resp = VERIFY_RESULT(GetConsistentChangesFromCDC(stream_id));
+        for (const auto& record : resp.cdc_sdk_proto_records()) {
+          if (record.row_message().op() == RowMessage_Op_INSERT) {
+            fresh_inserts_streamed++;
+          }
+          if (record.row_message().op() == RowMessage_Op_COMMIT) {
+            auto lsn = record.row_message().pg_lsn();
+            RETURN_NOT_OK(UpdateAndPersistLSN(stream_id, lsn, lsn));
+          }
+        }
+        return fresh_inserts_streamed >= kNumFreshRows;
+      },
+      MonoDelta::FromSeconds(30), "Waiting to stream the fresh rows");
+
+  ASSERT_EQ(fresh_inserts_streamed, kNumFreshRows);
+}
+
 TEST_F(CDCSDKConsumptionConsistentChangesTest, TestUnackRecordsPolledFromHiddenTableOnVWALRestart) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_table_rewrite_for_cdcsdk_table) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_update_restart_time_interval_secs) = 0;

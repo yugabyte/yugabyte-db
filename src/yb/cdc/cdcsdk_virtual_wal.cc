@@ -329,6 +329,51 @@ Status CDCSDKVirtualWAL::InitVirtualWALInternal(
   return Status::OK();
 }
 
+Status CDCSDKVirtualWAL::ValidateTabletListCoverage(
+    const TableId& table_id, const GetTabletListToPollForCDCResponsePB& resp) const {
+  // Uncovered key range is [gap_start_key, gap_end_key) where an empty key denotes the start / end
+  // of the hash range. Error unless it lies entirely outside the slot's hash range.
+  auto check_gap = [&](const std::string& gap_start_key, const std::string& gap_end_key) -> Status {
+    if (FLAGS_ysql_yb_enable_consistent_replication_from_hash_range && slot_hash_range_) {
+      constexpr uint32_t kHashRangeEnd = std::numeric_limits<uint16_t>::max() + 1;
+      const uint32_t gap_start_hash =
+          gap_start_key.empty() ? 0
+                                : dockv::PartitionSchema::DecodeMultiColumnHashValue(gap_start_key);
+      const uint32_t gap_end_hash =
+          gap_end_key.empty() ? kHashRangeEnd
+                              : dockv::PartitionSchema::DecodeMultiColumnHashValue(gap_end_key);
+      if (gap_start_hash >= slot_hash_range_->end_range ||
+          gap_end_hash <= slot_hash_range_->start_range) {
+        return Status::OK();
+      }
+    }
+    return STATUS_FORMAT(
+        TryAgain, "Tablets of table $0 covering the key range [0x$1, 0x$2) are not pollable yet",
+        table_id, Slice(gap_start_key).ToDebugHexString(), Slice(gap_end_key).ToDebugHexString());
+  };
+
+  std::vector<std::pair<std::string, std::string>> ranges;
+  ranges.reserve(resp.tablet_checkpoint_pairs_size());
+  for (const auto& tablet_checkpoint_pair : resp.tablet_checkpoint_pairs()) {
+    const auto& partition = tablet_checkpoint_pair.tablet_locations().partition();
+    ranges.emplace_back(partition.partition_key_start(), partition.partition_key_end());
+  }
+  std::sort(ranges.begin(), ranges.end());
+
+  std::string uncovered_key_start = "";
+  // Each range is [start_key, end_key).
+  for (const auto& [start_key, end_key] : ranges) {
+    if (start_key > uncovered_key_start) {
+      RETURN_NOT_OK(check_gap(uncovered_key_start, start_key));
+    }
+    if (end_key.empty()) {
+      return Status::OK();
+    }
+    uncovered_key_start = std::max(uncovered_key_start, end_key);
+  }
+  return check_gap(uncovered_key_start, "");
+}
+
 Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
     const TableId table_id, const HostPort hostport, const CoarseTimePoint deadline,
     const TabletId& parent_tablet_id) {
@@ -400,6 +445,8 @@ Status CDCSDKVirtualWAL::GetTabletListAndCheckpoint(
     RETURN_NOT_OK(UpdateTabletMapsOnSplit(parent_tablet_id, children_tablet_to_next_req_info));
     return Status::OK();
   }
+
+  RETURN_NOT_OK(ValidateTabletListCoverage(table_id, resp));
 
   for (const auto& tablet_checkpoint_pair : resp.tablet_checkpoint_pairs()) {
     auto tablet_id = tablet_checkpoint_pair.tablet_locations().tablet_id();
