@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
@@ -63,6 +64,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.PlatformInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -131,6 +133,7 @@ import io.yugabyte.operator.v1alpha1.storageconfigspec.Data;
 import io.yugabyte.operator.v1alpha1.storageconfigspec.GcsCredentialsJsonSecret;
 import io.yugabyte.operator.v1alpha1.ybproviderspec.Regions;
 import io.yugabyte.operator.v1alpha1.ybproviderspec.regions.Zones;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.EncryptionAtRest;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.ReadReplica;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YbcThrottleParameters;
 import java.nio.file.Paths;
@@ -151,6 +154,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -1018,7 +1023,119 @@ public class OperatorUtils {
     log.trace("certificate mismatch: {}", mismatch);
     mismatch = mismatch || shouldToggleTls(currentUserIntent, ybUniverse);
     log.trace("tls parameters mismatch: {}", mismatch);
+    mismatch = mismatch || shouldUpdateEncryptionAtRest(u, ybUniverse);
+    log.trace("encryption at rest mismatch: {}", mismatch);
     return mismatch;
+  }
+
+  /** Whether encryption at rest is on in the spec. Defaults to true when unset, as does the CRD. */
+  public static boolean earEnabled(EncryptionAtRest ear) {
+    return ear.getEnabled() == null || ear.getEnabled();
+  }
+
+  /** What the universe CR's encryptionAtRest block asks for, relative to the live universe. */
+  public enum EarChangeType {
+    /** The universe is already in the requested state. */
+    NONE,
+    /** Turn encryption at rest on, or point it at a different KMS config. */
+    ENABLE,
+    /** Turn encryption at rest off. */
+    DISABLE,
+    /** EAR is requested, but the KMS config CR it names is missing or not Ready yet. */
+    KMS_CONFIG_NOT_READY
+  }
+
+  /** The outcome of {@link #getEncryptionAtRestChange}. */
+  @Getter
+  @AllArgsConstructor
+  public static class EarChange {
+    private final EarChangeType type;
+
+    /** The KMS config the spec names, null when it names none or it could not be resolved. */
+    private final UUID desiredConfigUUID;
+
+    /** The KMS config the universe's active key is held under, null when there is none. */
+    private final UUID currentConfigUUID;
+
+    /** Why the KMS config could not be resolved. Null unless the type is KMS_CONFIG_NOT_READY. */
+    private final String kmsConfigError;
+
+    /** Whether this change needs a task submitted for it. */
+    public boolean isActionable() {
+      return type == EarChangeType.ENABLE || type == EarChangeType.DISABLE;
+    }
+
+    /**
+     * Whether applying this change re-encrypts the universe key under a different master key. True
+     * for a rotation between two KMS configs, and also when re-enabling EAR under a config other
+     * than the one the universe's still-active key was left under.
+     */
+    public boolean rotatesMasterKey() {
+      return desiredConfigUUID != null
+          && currentConfigUUID != null
+          && !desiredConfigUUID.equals(currentConfigUUID);
+    }
+  }
+
+  /**
+   * Works out the encryption at rest change a universe CR is asking for: EAR off to on, on to off,
+   * a different KMS config (master key rotation), or nothing.
+   *
+   * <p>This is the one place that decision is made. Two callers act on it: shouldUpdateUniverse
+   * uses it to decide whether an edit is queued at all (a spec change touching only
+   * encryptionAtRest is otherwise treated as a No-Op and dropped), and
+   * YBUniverseReconciler.handleEncryptionAtRestChange uses it to build and submit the task. They
+   * have to agree - queueing an edit the handler then declines to act on requeues the resource
+   * forever - which is why they read the same answer instead of each deriving their own.
+   */
+  public EarChange getEncryptionAtRestChange(Universe u, YBUniverse ybUniverse) {
+    EncryptionAtRest ear = ybUniverse.getSpec().getEncryptionAtRest();
+    if (ear == null) {
+      // No EAR block: leave the universe's EAR state unchanged (disable is via enabled=false).
+      return new EarChange(EarChangeType.NONE, null, null, null);
+    }
+    UniverseDefinitionTaskParams details = u.getUniverseDetails();
+    boolean currentlyEnabled =
+        details.encryptionAtRestConfig != null
+            && details.encryptionAtRestConfig.encryptionAtRestEnabled;
+    KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(u.getUniverseUUID());
+    UUID currentConfigUUID = activeKey == null ? null : activeKey.getConfigUuid();
+    boolean desiredEnabled = StringUtils.isNotBlank(ear.getKmsConfig()) && earEnabled(ear);
+
+    if (!desiredEnabled) {
+      return new EarChange(
+          currentlyEnabled ? EarChangeType.DISABLE : EarChangeType.NONE,
+          null,
+          currentConfigUUID,
+          null);
+    }
+
+    UUID desiredConfigUUID;
+    try {
+      desiredConfigUUID =
+          resolveReadyKmsConfigUuid(ear.getKmsConfig(), ybUniverse.getMetadata().getNamespace());
+    } catch (Exception e) {
+      // The KMS config CR is missing or not Ready yet. The caller decides what to do about it:
+      // queueing an edit that cannot complete would only flip the universe to ERROR_UPDATING on
+      // every resync and block unrelated edits. Once the KMS config goes Ready, a resync picks
+      // this up.
+      log.warn(
+          "Encryption at rest change for universe {} needs KMS config '{}', which is unusable: {}",
+          u.getName(),
+          ear.getKmsConfig(),
+          e.getMessage());
+      return new EarChange(
+          EarChangeType.KMS_CONFIG_NOT_READY, null, currentConfigUUID, e.getMessage());
+    }
+    if (currentlyEnabled && desiredConfigUUID.equals(currentConfigUUID)) {
+      return new EarChange(EarChangeType.NONE, desiredConfigUUID, currentConfigUUID, null);
+    }
+    return new EarChange(EarChangeType.ENABLE, desiredConfigUUID, currentConfigUUID, null);
+  }
+
+  /** Whether the universe CR's encryptionAtRest block calls for an edit to the universe. */
+  public boolean shouldUpdateEncryptionAtRest(Universe u, YBUniverse ybUniverse) {
+    return getEncryptionAtRestChange(u, ybUniverse).isActionable();
   }
 
   /*--- Release related help methods ---*/

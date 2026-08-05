@@ -21,7 +21,6 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.helm.HelmUtils;
-import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.helpers.OperatorPlacementInfoHelper;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
@@ -62,7 +61,6 @@ import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
-import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Provider.UsabilityState;
 import com.yugabyte.yw.models.TaskInfo;
@@ -1081,60 +1079,52 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       Universe universe,
       YBUniverse ybUniverse,
       KubernetesResourceDetails k8ResourceDetails) {
-    EncryptionAtRest ear = ybUniverse.getSpec().getEncryptionAtRest();
-    if (ear == null) {
-      // No EAR block: leave the universe's EAR state unchanged (disable is via enabled=false).
-      return false;
-    }
-
-    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
-    boolean currentlyEnabled =
-        details.encryptionAtRestConfig != null
-            && details.encryptionAtRestConfig.encryptionAtRestEnabled;
-    KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(universe.getUniverseUUID());
-    UUID currentConfigUUID = activeKey == null ? null : activeKey.getConfigUuid();
-
-    boolean desiredEnabled = StringUtils.isNotBlank(ear.getKmsConfig()) && earEnabled(ear);
-
-    EncryptionAtRestConfig config = new EncryptionAtRestConfig();
+    OperatorUtils.EarChange change = operatorUtils.getEncryptionAtRestChange(universe, ybUniverse);
+    EncryptionAtRestConfig config;
     String eventTaskName;
-    if (desiredEnabled) {
-      UUID desiredConfigUUID;
-      try {
-        desiredConfigUUID = resolveReadyKmsConfigUuid(ybUniverse, ear.getKmsConfig());
-      } catch (Exception e) {
-        // Never disrupt a running universe with an unusable KMS config. Surface an error and
-        // requeue so it self-heals once the KMS config becomes Ready.
-        log.error(
-            "Cannot resolve KMS config '{}' for EAR change on universe {}: {}",
-            ear.getKmsConfig(),
-            universe.getName(),
-            e.getMessage());
-        kubernetesStatusUpdater.updateUniverseState(
-            k8ResourceDetails, UniverseState.ERROR_UPDATING);
-        workqueue.requeue(
-            OperatorWorkQueue.getWorkQueueKey(ybUniverse.getMetadata()),
-            OperatorWorkQueue.ResourceAction.NO_OP,
-            false);
-        return true;
-      }
-      if (currentlyEnabled && desiredConfigUUID.equals(currentConfigUUID)) {
-        // Already enabled with the same config: nothing to do.
+    switch (change.getType()) {
+      case NONE:
         return false;
-      }
-      config.opType = OpType.ENABLE;
-      config.kmsConfigUUID = desiredConfigUUID;
-      config.encryptionAtRestEnabled = true;
-      eventTaskName = currentlyEnabled ? "MasterKeyRotation" : "EnableEncryptionAtRest";
-    } else {
-      if (!currentlyEnabled) {
-        // Desired disabled and already disabled: nothing to do.
-        return false;
-      }
-      config.opType = OpType.DISABLE;
-      config.encryptionAtRestEnabled = false;
-      config.kmsConfigUUID = currentConfigUUID;
-      eventTaskName = "DisableEncryptionAtRest";
+      case KMS_CONFIG_NOT_READY:
+        {
+          // Never disrupt a running universe with an unusable KMS config. Surface the reason on
+          // the CR and requeue so it self-heals once the KMS config becomes Ready.
+          String errorMessage =
+              String.format(
+                  "Cannot apply encryption at rest change to universe %s: KMS config '%s' is not"
+                      + " usable: %s",
+                  universe.getName(),
+                  ybUniverse.getSpec().getEncryptionAtRest().getKmsConfig(),
+                  change.getKmsConfigError());
+          log.error(errorMessage);
+          kubernetesStatusUpdater.updateUniverseState(
+              k8ResourceDetails, UniverseState.ERROR_UPDATING);
+          kubernetesStatusUpdater.doKubernetesEventUpdate(k8ResourceDetails, errorMessage);
+          workqueue.requeue(
+              OperatorWorkQueue.getWorkQueueKey(ybUniverse.getMetadata()),
+              OperatorWorkQueue.ResourceAction.NO_OP,
+              false);
+          return true;
+        }
+      case ENABLE:
+        config = new EncryptionAtRestConfig();
+        config.opType = OpType.ENABLE;
+        config.kmsConfigUUID = change.getDesiredConfigUUID();
+        config.encryptionAtRestEnabled = true;
+        // An active universe key held under a KMS config other than the desired one gets
+        // re-encrypted under the desired one: name the event accordingly.
+        eventTaskName = change.rotatesMasterKey() ? "MasterKeyRotation" : "EnableEncryptionAtRest";
+        break;
+      case DISABLE:
+        config = new EncryptionAtRestConfig();
+        config.opType = OpType.DISABLE;
+        config.encryptionAtRestEnabled = false;
+        config.kmsConfigUUID = change.getCurrentConfigUUID();
+        eventTaskName = "DisableEncryptionAtRest";
+        break;
+      default:
+        throw new IllegalStateException(
+            "Unhandled encryption at rest change type " + change.getType());
     }
 
     kubernetesStatusUpdater.createYBUniverseEventStatus(universe, k8ResourceDetails, eventTaskName);
@@ -1145,6 +1135,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     EncryptionAtRestKeyParams keyParams = new EncryptionAtRestKeyParams();
     keyParams.setUniverseUUID(universe.getUniverseUUID());
     keyParams.encryptionAtRestConfig = config;
+    keyParams.setKubernetesResourceDetails(k8ResourceDetails);
     UUID taskUUID = universeActionsHandler.setUniverseKey(cust, universe, keyParams);
     log.info("Submitted {} for universe {}, task {}", eventTaskName, universe.getName(), taskUUID);
     universeTaskMap.put(OperatorWorkQueue.getWorkQueueKey(ybUniverse.getMetadata()), taskUUID);
@@ -1516,7 +1507,9 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     // yet resolvable (Creating/Error/missing), we throw so the create is retried until it is Ready
     // rather than silently creating an unencrypted universe.
     EncryptionAtRest ear = ybUniverse.getSpec().getEncryptionAtRest();
-    if (ear != null && StringUtils.isNotBlank(ear.getKmsConfig()) && earEnabled(ear)) {
+    if (ear != null
+        && StringUtils.isNotBlank(ear.getKmsConfig())
+        && OperatorUtils.earEnabled(ear)) {
       try {
         UUID kmsConfigUUID = resolveReadyKmsConfigUuid(ybUniverse, ear.getKmsConfig());
         taskParams.encryptionAtRestConfig = new EncryptionAtRestConfig();
@@ -1537,11 +1530,6 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     }
 
     return taskParams;
-  }
-
-  private static boolean earEnabled(EncryptionAtRest ear) {
-    // Defaults to true when unset, matching the CRD default.
-    return ear.getEnabled() == null || ear.getEnabled();
   }
 
   // Resolves a KMSConfig CR (by name, in the ybUniverse's namespace) to its YBA config UUID. Throws

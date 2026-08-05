@@ -94,6 +94,7 @@ import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.resource
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.resource.master.Limits;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -621,33 +622,41 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     Mockito.verifyNoInteractions(universeCRUDHandler);
   }
 
+  // Stubs both routes to a Ready KMS config CR: the reconciler's own client (used when creating a
+  // universe) and OperatorUtils (used when deciding on an EAR change to an existing universe).
   @SuppressWarnings({"unchecked", "rawtypes"})
-  private void stubReadyKmsConfigCr(UUID configUuid) {
+  private void stubReadyKmsConfigCr(UUID configUuid) throws Exception {
     MixedOperation kmsMixed = Mockito.mock(MixedOperation.class);
     NonNamespaceOperation kmsInNs = Mockito.mock(NonNamespaceOperation.class);
     io.fabric8.kubernetes.client.dsl.Resource kmsResource =
         Mockito.mock(io.fabric8.kubernetes.client.dsl.Resource.class);
-    Mockito.when(client.resources(KMSConfig.class)).thenReturn(kmsMixed);
-    Mockito.when(kmsMixed.inNamespace(anyString())).thenReturn(kmsInNs);
-    Mockito.when(kmsInNs.withName(anyString())).thenReturn(kmsResource);
+    Mockito.lenient().when(client.resources(KMSConfig.class)).thenReturn(kmsMixed);
+    Mockito.lenient().when(kmsMixed.inNamespace(anyString())).thenReturn(kmsInNs);
+    Mockito.lenient().when(kmsInNs.withName(anyString())).thenReturn(kmsResource);
     KMSConfig cr = new KMSConfig();
     KMSConfigStatus status = new KMSConfigStatus();
     status.setState("Ready");
     status.setResourceUUID(configUuid.toString());
     cr.setStatus(status);
-    Mockito.when(kmsResource.get()).thenReturn(cr);
+    Mockito.lenient().when(kmsResource.get()).thenReturn(cr);
+    Mockito.doReturn(configUuid)
+        .when(operatorUtils)
+        .resolveReadyKmsConfigUuid(anyString(), anyString());
   }
 
   @SuppressWarnings({"unchecked", "rawtypes"})
-  private void stubMissingKmsConfigCr() {
+  private void stubMissingKmsConfigCr() throws Exception {
     MixedOperation kmsMixed = Mockito.mock(MixedOperation.class);
     NonNamespaceOperation kmsInNs = Mockito.mock(NonNamespaceOperation.class);
     io.fabric8.kubernetes.client.dsl.Resource kmsResource =
         Mockito.mock(io.fabric8.kubernetes.client.dsl.Resource.class);
-    Mockito.when(client.resources(KMSConfig.class)).thenReturn(kmsMixed);
-    Mockito.when(kmsMixed.inNamespace(anyString())).thenReturn(kmsInNs);
-    Mockito.when(kmsInNs.withName(anyString())).thenReturn(kmsResource);
-    Mockito.when(kmsResource.get()).thenReturn(null);
+    Mockito.lenient().when(client.resources(KMSConfig.class)).thenReturn(kmsMixed);
+    Mockito.lenient().when(kmsMixed.inNamespace(anyString())).thenReturn(kmsInNs);
+    Mockito.lenient().when(kmsInNs.withName(anyString())).thenReturn(kmsResource);
+    Mockito.lenient().when(kmsResource.get()).thenReturn(null);
+    Mockito.doThrow(new Exception("KMS config CR not found"))
+        .when(operatorUtils)
+        .resolveReadyKmsConfigUuid(anyString(), anyString());
   }
 
   // Marks the universe as currently having encryption at rest enabled, so the reconciler sees a
@@ -663,6 +672,36 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     ear.setKmsConfig(kmsConfigName);
     ear.setEnabled(enabled);
     return ear;
+  }
+
+  @Test
+  public void testEncryptionAtRestOnlySpecChangeIsUniverseMismatch() throws Exception {
+    String universeName = "test-ear-mismatch-universe";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    // createTaskParams leaves the node set null - the create task is what fills it in - while
+    // universeAndSpecMismatch walks the universe's nodes to diff gflags.
+    taskParams.nodeDetailsSet = new HashSet<>();
+    Universe universe = Universe.create(taskParams, defaultCustomer.getId());
+    UserIntent incomingIntent = taskParams.getPrimaryCluster().userIntent;
+
+    // Baseline: the CR the universe was created from must not look like an update.
+    assertFalse(
+        operatorUtils.universeAndSpecMismatch(
+            defaultCustomer, universe, ybUniverse, incomingIntent, null));
+
+    Mockito.doReturn(UUID.randomUUID())
+        .when(operatorUtils)
+        .resolveReadyKmsConfigUuid(anyString(), anyString());
+    ybUniverse.getSpec().setEncryptionAtRest(earSpec("my-kms", true));
+
+    // An EAR-only edit has to report a mismatch. Without it the No-Op reconcile never promotes the
+    // change to an Update action, and the enable/rotate/disable only happens the next time the
+    // operator restarts and re-runs editUniverse from the Create path.
+    assertTrue(
+        operatorUtils.universeAndSpecMismatch(
+            defaultCustomer, universe, ybUniverse, incomingIntent, null));
   }
 
   @Test

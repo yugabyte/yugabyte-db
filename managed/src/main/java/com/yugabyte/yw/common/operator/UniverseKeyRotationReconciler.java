@@ -9,6 +9,7 @@ import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
@@ -103,14 +104,24 @@ public class UniverseKeyRotationReconciler extends AbstractReconciler<UniverseKe
         return;
       }
 
-      // Universe key rotation requires encryption at rest to already be enabled. Fail fast (rather
-      // than hang) when it is not, or when the active KMS config is missing/invalid.
+      // A disabled universe keeps its active universe key, so check the EAR flag on its own.
+      UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+      if (details.encryptionAtRestConfig == null
+          || !details.encryptionAtRestConfig.encryptionAtRestEnabled) {
+        updateStatus(
+            rotation,
+            STATE_FAILED,
+            "Universe '" + universeName + "' does not have encryption at rest enabled",
+            null,
+            true);
+        return;
+      }
       KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(universe.getUniverseUUID());
       if (activeKey == null) {
         updateStatus(
             rotation,
             STATE_FAILED,
-            "Universe '" + universeName + "' does not have encryption at rest enabled",
+            "Universe '" + universeName + "' does not have an active universe key",
             null,
             true);
         return;
@@ -135,6 +146,7 @@ public class UniverseKeyRotationReconciler extends AbstractReconciler<UniverseKe
       keyParams.encryptionAtRestConfig.opType = OpType.ENABLE;
       keyParams.encryptionAtRestConfig.kmsConfigUUID = kmsConfigUUID;
       keyParams.encryptionAtRestConfig.encryptionAtRestEnabled = true;
+      keyParams.setKubernetesResourceDetails(KubernetesResourceDetails.fromResource(rotation));
 
       UUID taskUUID = universeActionsHandler.setUniverseKey(cust, universe, keyParams);
       log.info("Universe key rotation {} triggered with task: {}", resourceName, taskUUID);

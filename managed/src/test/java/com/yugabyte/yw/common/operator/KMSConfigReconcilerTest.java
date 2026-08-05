@@ -187,14 +187,20 @@ public class KMSConfigReconcilerTest extends FakeDBApplication {
 
     doReturn(Json.newObject()).when(mockOperatorUtils).getKMSConfigFormDataFromCr(any());
     when(mockKmsConfigHelper.createKMSConfig(
-            eq(testCustomer.getUuid()), eq(KeyProvider.HASHICORP), any(ObjectNode.class)))
+            eq(testCustomer.getUuid()),
+            eq(KeyProvider.HASHICORP),
+            any(ObjectNode.class),
+            eq(KubernetesResourceDetails.fromResource(kmsConfig))))
         .thenReturn(taskUUID);
 
     kmsConfigReconciler.createActionReconcile(kmsConfig, testCustomer);
 
     verify(mockKmsConfigHelper, times(1))
         .createKMSConfig(
-            eq(testCustomer.getUuid()), eq(KeyProvider.HASHICORP), any(ObjectNode.class));
+            eq(testCustomer.getUuid()),
+            eq(KeyProvider.HASHICORP),
+            any(ObjectNode.class),
+            eq(KubernetesResourceDetails.fromResource(kmsConfig)));
     assertEquals(taskUUID, kmsConfigReconciler.getKMSConfigTaskMapValue(workQueueKey(kmsConfig)));
   }
 
@@ -205,14 +211,20 @@ public class KMSConfigReconcilerTest extends FakeDBApplication {
 
     doReturn(Json.newObject()).when(mockOperatorUtils).getKMSConfigFormDataFromCr(any());
     when(mockKmsConfigHelper.createKMSConfig(
-            eq(testCustomer.getUuid()), eq(KeyProvider.HASHICORP), any(ObjectNode.class)))
+            eq(testCustomer.getUuid()),
+            eq(KeyProvider.HASHICORP),
+            any(ObjectNode.class),
+            eq(KubernetesResourceDetails.fromResource(kmsConfig))))
         .thenReturn(taskUUID);
 
     kmsConfigReconciler.createActionReconcile(kmsConfig, testCustomer);
 
     verify(mockKmsConfigHelper, times(1))
         .createKMSConfig(
-            eq(testCustomer.getUuid()), eq(KeyProvider.HASHICORP), any(ObjectNode.class));
+            eq(testCustomer.getUuid()),
+            eq(KeyProvider.HASHICORP),
+            any(ObjectNode.class),
+            eq(KubernetesResourceDetails.fromResource(kmsConfig)));
     assertEquals(taskUUID, kmsConfigReconciler.getKMSConfigTaskMapValue(workQueueKey(kmsConfig)));
   }
 
@@ -223,13 +235,20 @@ public class KMSConfigReconcilerTest extends FakeDBApplication {
 
     doReturn(Json.newObject()).when(mockOperatorUtils).getKMSConfigFormDataFromCr(any());
     when(mockKmsConfigHelper.createKMSConfig(
-            eq(testCustomer.getUuid()), eq(KeyProvider.AZU), any(ObjectNode.class)))
+            eq(testCustomer.getUuid()),
+            eq(KeyProvider.AZU),
+            any(ObjectNode.class),
+            eq(KubernetesResourceDetails.fromResource(kmsConfig))))
         .thenReturn(taskUUID);
 
     kmsConfigReconciler.createActionReconcile(kmsConfig, testCustomer);
 
     verify(mockKmsConfigHelper, times(1))
-        .createKMSConfig(eq(testCustomer.getUuid()), eq(KeyProvider.AZU), any(ObjectNode.class));
+        .createKMSConfig(
+            eq(testCustomer.getUuid()),
+            eq(KeyProvider.AZU),
+            any(ObjectNode.class),
+            eq(KubernetesResourceDetails.fromResource(kmsConfig)));
     assertEquals(taskUUID, kmsConfigReconciler.getKMSConfigTaskMapValue(workQueueKey(kmsConfig)));
   }
 
@@ -239,7 +258,8 @@ public class KMSConfigReconcilerTest extends FakeDBApplication {
     kmsConfig.getMetadata().setFinalizers(Collections.emptyList());
 
     doReturn(Json.newObject()).when(mockOperatorUtils).getKMSConfigFormDataFromCr(any());
-    when(mockKmsConfigHelper.createKMSConfig(any(), any(), any(ObjectNode.class)))
+    when(mockKmsConfigHelper.createKMSConfig(
+            any(), any(), any(ObjectNode.class), any(KubernetesResourceDetails.class)))
         .thenReturn(UUID.randomUUID());
 
     kmsConfigReconciler.createActionReconcile(kmsConfig, testCustomer);
@@ -267,7 +287,8 @@ public class KMSConfigReconcilerTest extends FakeDBApplication {
       kmsConfigReconciler.createActionReconcile(kmsConfig, testCustomer);
     }
 
-    verify(mockKmsConfigHelper, never()).createKMSConfig(any(), any(), any(ObjectNode.class));
+    verify(mockKmsConfigHelper, never())
+        .createKMSConfig(any(), any(), any(ObjectNode.class), any());
     assertEquals("Ready", kmsConfig.getStatus().getState());
   }
 
@@ -279,7 +300,8 @@ public class KMSConfigReconcilerTest extends FakeDBApplication {
 
     kmsConfigReconciler.createActionReconcile(kmsConfig, testCustomer);
 
-    verify(mockKmsConfigHelper, never()).createKMSConfig(any(), any(), any(ObjectNode.class));
+    verify(mockKmsConfigHelper, never())
+        .createKMSConfig(any(), any(), any(ObjectNode.class), any());
     assertNull(kmsConfigReconciler.getKMSConfigTaskMapValue(workQueueKey(kmsConfig)));
     assertEquals("Error", kmsConfig.getStatus().getState());
     String msg = kmsConfig.getStatus().getMessage();
@@ -296,7 +318,7 @@ public class KMSConfigReconcilerTest extends FakeDBApplication {
     kmsConfigReconciler.updateActionReconcile(kmsConfig, testCustomer);
 
     verify(mockKmsConfigHelper, never())
-        .editKMSConfig(any(), any(), any(), anyString(), any(ObjectNode.class));
+        .editKMSConfig(any(), any(), any(), anyString(), any(ObjectNode.class), any());
   }
 
   // --- NO_OP tests ---
@@ -310,7 +332,8 @@ public class KMSConfigReconcilerTest extends FakeDBApplication {
     kmsConfigReconciler.noOpActionReconcile(kmsConfig, testCustomer);
 
     assertNull(kmsConfigReconciler.getKMSConfigTaskMapValue(workQueueKey(kmsConfig)));
-    verify(mockKmsConfigHelper, never()).createKMSConfig(any(), any(), any(ObjectNode.class));
+    verify(mockKmsConfigHelper, never())
+        .createKMSConfig(any(), any(), any(ObjectNode.class), any());
   }
 
   // --- DELETE tests ---

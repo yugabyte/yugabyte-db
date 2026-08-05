@@ -229,7 +229,10 @@ public class KMSConfigReconciler extends AbstractReconciler<KMSConfig> {
           } else {
             UUID taskUUID =
                 kmsConfigHelper.deleteKMSConfig(
-                    cust.getUuid(), configUuid, kmsConfigModel.getKeyProvider());
+                    cust.getUuid(),
+                    configUuid,
+                    kmsConfigModel.getKeyProvider(),
+                    KubernetesResourceDetails.fromResource(kmsConfig));
             if (taskUUID != null) {
               kmsConfigTaskMap.put(mapKey, taskUUID);
             }
@@ -271,7 +274,12 @@ public class KMSConfigReconciler extends AbstractReconciler<KMSConfig> {
       }
       KeyProvider provider = operatorUtils.getKMSConfigProvider(kmsConfig);
       ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
-      UUID taskUUID = kmsConfigHelper.createKMSConfig(customer.getUuid(), provider, formData);
+      UUID taskUUID =
+          kmsConfigHelper.createKMSConfig(
+              customer.getUuid(),
+              provider,
+              formData,
+              KubernetesResourceDetails.fromResource(kmsConfig));
       log.debug("KMS config creation triggered with task: {}", taskUUID);
       if (taskUUID != null) {
         kmsConfigTaskMap.put(OperatorWorkQueue.getWorkQueueKey(kmsConfig.getMetadata()), taskUUID);
@@ -295,7 +303,12 @@ public class KMSConfigReconciler extends AbstractReconciler<KMSConfig> {
     ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
     UUID taskUUID =
         kmsConfigHelper.editKMSConfig(
-            customer.getUuid(), model.getConfigUUID(), provider, model.getName(), formData);
+            customer.getUuid(),
+            model.getConfigUUID(),
+            provider,
+            model.getName(),
+            formData,
+            KubernetesResourceDetails.fromResource(kmsConfig));
     log.debug("KMS config edit triggered with task: {}", taskUUID);
     if (taskUUID != null) {
       kmsConfigTaskMap.put(OperatorWorkQueue.getWorkQueueKey(kmsConfig.getMetadata()), taskUUID);
