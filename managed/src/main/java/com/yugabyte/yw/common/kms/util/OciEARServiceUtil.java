@@ -39,15 +39,15 @@ public class OciEARServiceUtil {
   private static final Logger LOG = LoggerFactory.getLogger(OciEARServiceUtil.class);
 
   public enum OciKmsAuthConfigField {
-    TENANCY_OCID("TENANCY_OCID", true, false),
-    USER_OCID("USER_OCID", true, false),
-    FINGERPRINT("FINGERPRINT", true, false),
-    PRIVATE_KEY("PRIVATE_KEY", true, false),
-    OCI_COMPARTMENT_OCID("OCI_COMPARTMENT_OCID", true, false),
-    OCI_VAULT_OCID("OCI_VAULT_OCID", false, false),
-    OCI_REGION("OCI_REGION", false, true),
-    OCI_KEY_NAME("OCI_KEY_NAME", false, true),
-    OCI_KEY_OCID("OCI_KEY_OCID", false, false);
+    ociTenancyId("ociTenancyId", true, false),
+    ociUserId("ociUserId", true, false),
+    ociFingerprint("ociFingerprint", true, false),
+    ociPrivateKeyContent("ociPrivateKeyContent", true, false),
+    ociCompartmentId("ociCompartmentId", true, false),
+    ociVaultId("ociVaultId", false, false),
+    ociRegion("ociRegion", false, true),
+    ociKeyName("ociKeyName", false, true),
+    ociKeyOcid("ociKeyOcid", false, false);
 
     public final String fieldName;
     public final boolean isEditable;
@@ -82,10 +82,11 @@ public class OciEARServiceUtil {
   }
 
   public SimpleAuthenticationDetailsProvider getCredentials(ObjectNode authConfig) {
-    String tenancyOcid = authConfig.path(OciKmsAuthConfigField.TENANCY_OCID.fieldName).asText();
-    String userOcid = authConfig.path(OciKmsAuthConfigField.USER_OCID.fieldName).asText();
-    String fingerprint = authConfig.path(OciKmsAuthConfigField.FINGERPRINT.fieldName).asText();
-    String privateKey = authConfig.path(OciKmsAuthConfigField.PRIVATE_KEY.fieldName).asText();
+    String tenancyOcid = authConfig.path(OciKmsAuthConfigField.ociTenancyId.fieldName).asText();
+    String userOcid = authConfig.path(OciKmsAuthConfigField.ociUserId.fieldName).asText();
+    String fingerprint = authConfig.path(OciKmsAuthConfigField.ociFingerprint.fieldName).asText();
+    String privateKey =
+        authConfig.path(OciKmsAuthConfigField.ociPrivateKeyContent.fieldName).asText();
 
     if (StringUtils.isAnyBlank(tenancyOcid, userOcid, fingerprint, privateKey)) {
       throw new RuntimeException("Missing required OCI credentials");
@@ -109,7 +110,7 @@ public class OciEARServiceUtil {
       return null;
     }
 
-    String regionStr = authConfig.path(OciKmsAuthConfigField.OCI_REGION.fieldName).asText();
+    String regionStr = authConfig.path(OciKmsAuthConfigField.ociRegion.fieldName).asText();
     Region region = Region.fromRegionId(regionStr);
 
     return KmsVaultClient.builder().region(region).build(provider);
@@ -122,7 +123,7 @@ public class OciEARServiceUtil {
     }
 
     KmsVaultClient kmsVaultClient = getKmsVaultClient(configUUID, authConfig);
-    String vaultId = authConfig.path(OciKmsAuthConfigField.OCI_VAULT_OCID.fieldName).asText();
+    String vaultId = authConfig.path(OciKmsAuthConfigField.ociVaultId.fieldName).asText();
     Vault vault = getVaultFromId(kmsVaultClient, vaultId);
     KmsManagementClient kmsManagementClient =
         KmsManagementClient.builder().endpoint(vault.getManagementEndpoint()).build(provider);
@@ -135,7 +136,7 @@ public class OciEARServiceUtil {
       return null;
     }
 
-    String vaultOcid = authConfig.path(OciKmsAuthConfigField.OCI_VAULT_OCID.fieldName).asText();
+    String vaultOcid = authConfig.path(OciKmsAuthConfigField.ociVaultId.fieldName).asText();
 
     KmsVaultClient kmsVaultClient = getKmsVaultClient(configUUID, authConfig);
     Vault vault = getVaultFromId(kmsVaultClient, vaultOcid);
@@ -146,7 +147,33 @@ public class OciEARServiceUtil {
 
   public String getKeyOcid(UUID configUUID) {
     ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
-    return authConfig.path(OciKmsAuthConfigField.OCI_KEY_OCID.fieldName).asText();
+    return resolveKeyOcid(configUUID, authConfig);
+  }
+
+  /**
+   * Resolves the OCI key OCID from the auth config, treating OCI_KEY_NAME as the single source of
+   * truth. If a cached OCI_KEY_OCID is already present it is returned as-is. Otherwise the OCID is
+   * looked up from OCI_KEY_NAME via {@link #getKeyOcidByName}, the key is created if it does not
+   * yet exist, and the resolved OCID is cached back into the supplied auth config.
+   */
+  public String resolveKeyOcid(UUID configUUID, ObjectNode authConfig) {
+    String keyOcid = getSafeText(authConfig, OciKmsAuthConfigField.ociKeyOcid.fieldName);
+    if (StringUtils.isNotBlank(keyOcid)) {
+      return keyOcid;
+    }
+
+    String keyName = getSafeText(authConfig, OciKmsAuthConfigField.ociKeyName.fieldName);
+    if (StringUtils.isBlank(keyName)) {
+      throw new RuntimeException("OCI_KEY_NAME is required to resolve the OCI KMS key.");
+    }
+
+    String foundOcid = getKeyOcidByName(configUUID, authConfig, keyName);
+    if (StringUtils.isBlank(foundOcid)) {
+      CreateKeyResponse resp = createKey(configUUID, authConfig, keyName);
+      foundOcid = resp.getKey().getId();
+    }
+    authConfig.put(OciKmsAuthConfigField.ociKeyOcid.fieldName, foundOcid);
+    return foundOcid;
   }
 
   public CreateKeyResponse createKey(UUID configUUID, ObjectNode authConfig, String displayName) {
@@ -156,7 +183,7 @@ public class OciEARServiceUtil {
     }
 
     String compartmentId =
-        authConfig.path(OciKmsAuthConfigField.OCI_COMPARTMENT_OCID.fieldName).asText();
+        authConfig.path(OciKmsAuthConfigField.ociCompartmentId.fieldName).asText();
     if (StringUtils.isBlank(compartmentId)) {
       throw new RuntimeException("OCI_COMPARTMENT_OCID is required to lookup key by name.");
     }
@@ -184,7 +211,7 @@ public class OciEARServiceUtil {
       throw new RuntimeException("Failed to create KMS crypto client");
     }
 
-    String keyOcid = authConfig.path(OciKmsAuthConfigField.OCI_KEY_OCID.fieldName).asText();
+    String keyOcid = resolveKeyOcid(configUUID, authConfig);
 
     EncryptDataDetails encryptDetails =
         EncryptDataDetails.builder()
@@ -209,7 +236,7 @@ public class OciEARServiceUtil {
       throw new RuntimeException("Failed to create KMS crypto client");
     }
 
-    String keyOcid = authConfig.path(OciKmsAuthConfigField.OCI_KEY_OCID.fieldName).asText();
+    String keyOcid = resolveKeyOcid(configUUID, authConfig);
 
     DecryptDataDetails decryptDetails =
         DecryptDataDetails.builder()
@@ -309,7 +336,7 @@ public class OciEARServiceUtil {
     }
 
     String compartmentId =
-        authConfig.path(OciKmsAuthConfigField.OCI_COMPARTMENT_OCID.fieldName).asText();
+        authConfig.path(OciKmsAuthConfigField.ociCompartmentId.fieldName).asText();
     if (StringUtils.isBlank(compartmentId)) {
       throw new RuntimeException("OCI_COMPARTMENT_OCID is required to lookup key by name.");
     }
@@ -379,11 +406,9 @@ public class OciEARServiceUtil {
     // Step 1: fail fast on blank fields not already covered by getCredentials().
     // Credential fields (TENANCY_OCID, USER_OCID, FINGERPRINT, PRIVATE_KEY) are checked inside
     // getCredentials() via StringUtils.isAnyBlank, so we only need the three below here.
-    String vaultOcid = getSafeText(formData, OciKmsAuthConfigField.OCI_VAULT_OCID.fieldName);
-    String regionStr = getSafeText(formData, OciKmsAuthConfigField.OCI_REGION.fieldName);
-    String compartmentId =
-        getSafeText(formData, OciKmsAuthConfigField.OCI_COMPARTMENT_OCID.fieldName);
-
+    String vaultOcid = getSafeText(formData, OciKmsAuthConfigField.ociVaultId.fieldName);
+    String regionStr = getSafeText(formData, OciKmsAuthConfigField.ociRegion.fieldName);
+    String compartmentId = getSafeText(formData, OciKmsAuthConfigField.ociCompartmentId.fieldName);
     if (StringUtils.isBlank(vaultOcid)) throw new RuntimeException("OCI_VAULT_OCID is required");
     if (StringUtils.isBlank(regionStr)) throw new RuntimeException("OCI_REGION is required");
     if (StringUtils.isBlank(compartmentId))
@@ -443,20 +468,21 @@ public class OciEARServiceUtil {
           "Failed to access OCI vault '" + vaultOcid + "': " + e.getMessage(), e);
     }
 
-    // Step 5: validate key OCID if provided.
-    // checkKeyExists returns false on 404, throws on 403 or unexpected errors.
-    // validateKeySettings checks lifecycle state (must be Enabled) and algorithm (must be AES).
-    String keyOcid = getSafeText(formData, OciKmsAuthConfigField.OCI_KEY_OCID.fieldName);
-    if (StringUtils.isNotBlank(keyOcid)) {
-      if (!checkKeyExists(formData, keyOcid)) {
-        throw new RuntimeException("OCI_KEY_OCID '" + keyOcid + "' does not exist.");
-      }
-      if (!validateKeySettings(formData, keyOcid)) {
-        throw new RuntimeException(
-            "OCI key '"
-                + keyOcid
-                + "' has invalid settings: it must be in Enabled state and use AES algorithm.");
-      }
+    // Step 5: validate the key by name (the single source of truth).
+    // OCI_KEY_NAME is required. If a key with this display name already exists, validate its
+    // settings (lifecycle state must be Enabled and algorithm must be AES). A non-existent name is
+    // allowed here; the key will be created at config-create time. getKeyOcidByName throws if
+    // multiple keys share the same display name.
+    String keyName = getSafeText(formData, OciKmsAuthConfigField.ociKeyName.fieldName);
+    if (StringUtils.isBlank(keyName)) {
+      throw new RuntimeException("OCI_KEY_NAME is required");
+    }
+    String keyOcid = getKeyOcidByName(null, formData, keyName);
+    if (StringUtils.isNotBlank(keyOcid) && !validateKeySettings(formData, keyOcid)) {
+      throw new RuntimeException(
+          "OCI key '"
+              + keyName
+              + "' has invalid settings: it must be in Enabled state and use AES algorithm.");
     }
   }
 

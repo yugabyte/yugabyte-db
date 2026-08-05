@@ -346,20 +346,15 @@ class KeyManagementConfiguration extends Component {
 
       switch (kmsProvider.value) {
         case KmsProvider.OCI:
-  data['TENANCY_OCID'] = values.TENANCY_OCID;
-  data['USER_OCID'] = values.USER_OCID;
-  data['FINGERPRINT'] = values.FINGERPRINT;
-  data['PRIVATE_KEY'] = values.PRIVATE_KEY;
+  data['ociTenancyId'] = values.TENANCY_OCID;
+  data['ociUserId'] = values.USER_OCID;
+  data['ociFingerprint'] = values.FINGERPRINT;
+  data['ociPrivateKeyContent'] = values.PRIVATE_KEY;
   
-  data['OCI_REGION'] = values.OCI_REGION.value;
-  data['OCI_COMPARTMENT_OCID'] = values.OCI_COMPARTMENT_OCID;
-  data['OCI_VAULT_OCID'] = values.OCI_VAULT_OCID;
-  if (values.OCI_KEY_NAME) {
-    data['OCI_KEY_NAME'] = values.OCI_KEY_NAME;
-  }
-  if (values.OCI_KEY_OCID) {
-    data['OCI_KEY_OCID'] = values.OCI_KEY_OCID;
-  }
+  data['ociRegion'] = values.OCI_REGION.value;
+  data['ociCompartmentId'] = values.OCI_COMPARTMENT_OCID;
+  data['ociVaultId'] = values.OCI_VAULT_OCID;
+  data['ociKeyName'] = values.OCI_KEY_NAME;
   break;
         case KmsProvider.AWS:
           if (values.AWS_KMS_ENDPOINT) data['AWS_KMS_ENDPOINT'] = values.AWS_KMS_ENDPOINT;
@@ -1409,30 +1404,10 @@ getOciForm = () => {
   <Col lg={1} className="config-zone-tooltip">
     <YBInfoTip
       title="Key Name"
-      content="Display name of an existing OCI Vault key. If a key with this name exists, YBA will use it; otherwise it will create one."
+      content="Display name of the OCI Vault key. If a key with this name exists, YBA will use it; otherwise it will create one."
     />
   </Col>
 </Row>
-<Row className="config-provider-row" key={'oci-key-ocid-field'}>
-        <Col lg={3}>
-          <div className="form-item-custom-label">Key OCID</div>
-        </Col>
-        <Col lg={7}>
-          <Field
-            name={'OCI_KEY_OCID'}
-            component={YBFormInput}
-            placeholder={'ocid1.key.oc1..aaaaaaa...'}
-            className={'kube-provider-input-field'}
-            disabled={isEdit}
-          />
-        </Col>
-        <Col lg={1} className="config-zone-tooltip">
-          <YBInfoTip
-            title="Key OCID"
-            content="OCID of the KMS key that will be used for encryption."
-          />
-        </Col>
-      </Row>
 
     </>
   );

@@ -140,9 +140,9 @@ public class EncryptionAtRestController extends AuthenticatedController {
           ociEARServiceUtil.validateKMSProviderConfigFormData(formData);
           LOG.info(
               "Finished validating OCI provider config form data for vault = "
-                  + formData.path(OciKmsAuthConfigField.OCI_VAULT_OCID.fieldName).asText()
-                  + ", key OCID = "
-                  + formData.path(OciKmsAuthConfigField.OCI_KEY_OCID.fieldName).asText());
+                  + formData.path(OciKmsAuthConfigField.ociVaultId.fieldName).asText()
+                  + ", key name = "
+                  + formData.path(OciKmsAuthConfigField.ociKeyName.fieldName).asText());
         } catch (Exception e) {
           LOG.warn("Could not finish validating OCI provider config form data.");
           throw new PlatformServiceException(BAD_REQUEST, e.toString());
