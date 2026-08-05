@@ -414,7 +414,7 @@ func InitViper() {
 	viper.SetDefault("prometheus.scrapeConfig.yugabyte.scheme", "http")
 	// PerfAdvisor defaults (always set, will be overridden by config file if present)
 	// InitViper initializes the legacy config file, so we need to set the defaults here.
-	viper.SetDefault("perfAdvisor.enabled", false)
+	viper.SetDefault("perfAdvisor.enabled", true)
 	viper.SetDefault("perfAdvisor.port", 8443)
 	viper.SetDefault("perfAdvisor.restartSeconds", 10)
 	viper.SetDefault("perfAdvisor.callhome.enabled", true)

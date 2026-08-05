@@ -262,7 +262,7 @@ nodeExporter:
    authPassword: ""       # basic auth password
 
 perfAdvisor:
-   enabled: false
+   enabled: true
    port: 8443
    restartSeconds: 10
    # Ok to leave empty

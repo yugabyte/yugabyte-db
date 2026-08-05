@@ -38,6 +38,11 @@ var reconfigureCmd = &cobra.Command{
 			log.Fatal("invalid reconfigure: " + err.Error())
 		}
 
+		// Set any necessary config values due to changes
+		if err := common.FixConfigValues(); err != nil {
+			log.Fatal(fmt.Sprintf("Error changing default config values: %s", err.Error()))
+		}
+
 		// Handle PerfAdvisor service installation/uninstallation if enabled flag changed
 		perfAdvisorWasEnabled := state.Services.PerfAdvisor
 		perfAdvisorNowEnabled := viper.GetBool("perfAdvisor.enabled")
@@ -105,11 +110,6 @@ var reconfigureCmd = &cobra.Command{
 		// Change into the dir we are in so that we can specify paths relative to ourselves
 		// TODO(minor): probably not a good idea in the long run
 		os.Chdir(common.GetBinaryDir())
-
-		// Set any necessary config values due to changes
-		if err := common.FixConfigValues(); err != nil {
-			log.Fatal(fmt.Sprintf("Error changing default config values: %s", err.Error()))
-		}
 
 		for service := range serviceManager.Services() {
 			if err := service.Reconfigure(); err != nil {
