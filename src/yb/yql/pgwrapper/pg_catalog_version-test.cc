@@ -4056,5 +4056,173 @@ TEST_F(
       << "Cache miss after recovery: cache should be warm after failure injection was cleared";
 }
 
+// Test CREATE TABLE (global + breaking via event-trigger REVOKE + ALTER ROLE)
+// executed inside a plpgsql function, racing with a concurrent non-breaking
+// ANALYZE.
+//
+// Customer-shaped race:
+//   1. Function starts; session local catalog version is x.
+//   2. Concurrent ANALYZE commits version x + 1 (non-breaking).
+//   3. CREATE TABLE inside the function increments all DB catalog versions as
+//      breaking and gets x + 2 back instead of x + 1.
+//   4. YbCheckNewLocalCatalogVersionOptimization refuses to jump x -> x + 2
+//      (would skip x + 1's inval messages), so local stays at x
+//      ("skipped optimization, local catalog version ... kept at x, new ... x+2").
+//   5. Still inside the function, following DML sends RPCs with version x.
+//
+// Behavior depends on whether object locking / transactional DDL are enabled
+// (and thus whether AcceptInvalidationMessages can mid-txn refresh):
+//
+// * Debug builds (object locking off by default): no mid-txn catalog refresh.
+//   YBCheckSharedCatalogCacheVersion is a no-op inside a transaction. Local
+//   stays at x; tservers reject following DML with breaking version x + 2
+//   (the session's own CREATE TABLE), e.g.
+//   "The catalog snapshot used for this transaction has been invalidated".
+//
+// * Release builds (object locking and transactional DDL on): lock acquisition
+//   calls AcceptInvalidationMessages, which can mid-txn refresh local x -> x + 1
+//   from ANALYZE before/around CREATE TABLE's bump. CREATE TABLE then gets
+//   x + 2 with local already at x + 1, so
+//   YbCheckNewLocalCatalogVersionOptimization applies (no "skipped optimization"
+//   log) and following DML succeeds.
+TEST_F(PgCatalogVersionTest, CreateTableGlobalBreakingRaceWithAnalyze) {
+  RestartClusterWithInvalMessageEnabled({"--ysql_enable_auto_analyze=false"});
+
+  auto* ts = cluster_->tablet_server(0);
+  pg_ts = ts;
+  auto conn = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+
+  ASSERT_OK(conn.Execute("SET yb_enable_replication_commands = true"));
+  ASSERT_OK(conn.Execute("CREATE PUBLICATION app_cdc_publication"));
+  ASSERT_OK(conn.Execute("CREATE ROLE test_trigger_role"));
+  ASSERT_OK(conn.Execute("CREATE TABLE dml_target(id INT PRIMARY KEY, val TEXT)"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO dml_target SELECT i, 'v' FROM generate_series(1, 10) i"));
+
+  // Event trigger: REVOKE => breaking, ALTER ROLE IN DATABASE => global, so the
+  // outer CREATE TABLE becomes a global + breaking catalog version increment.
+  ASSERT_OK(conn.Execute(R"#(
+CREATE OR REPLACE FUNCTION auto_add_table_to_publication()
+RETURNS event_trigger AS $$
+DECLARE
+    obj RECORD;
+    cur_user TEXT;
+    cur_db TEXT;
+BEGIN
+    SELECT session_user, current_database() INTO cur_user, cur_db;
+
+    FOR obj IN SELECT * FROM pg_event_trigger_ddl_commands()
+               WHERE command_tag = 'CREATE TABLE'
+               AND object_type = 'table' LOOP
+
+        IF obj.schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+        THEN
+            RAISE NOTICE 'Executing REVOKE and ALTER ROLE on % inside event trigger',
+                         obj.object_identity;
+
+            -- 1. REVOKE sets is_breaking = true
+            EXECUTE format('REVOKE ALL ON TABLE %s FROM test_trigger_role',
+                           obj.object_identity);
+
+            -- 2. ALTER ROLE IN DATABASE sets is_global = true (pg_db_role_setting)
+            EXECUTE format(
+                'ALTER ROLE %I IN DATABASE %I SET work_mem = ''64MB''',
+                cur_user, cur_db);
+
+            -- 3. Add to publication
+            EXECUTE format('ALTER PUBLICATION app_cdc_publication ADD TABLE %s',
+                           obj.object_identity);
+        END IF;
+
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+  )#"));
+
+  ASSERT_OK(conn.Execute(R"#(
+CREATE TABLE orders_partitioned (
+    order_id INT,
+    order_date DATE,
+    amount NUMERIC,
+    PRIMARY KEY (order_id, order_date)
+) PARTITION BY RANGE (order_date);
+  )#"));
+
+  ASSERT_OK(conn.Execute(R"#(
+CREATE EVENT TRIGGER trg_auto_add_table_to_pub
+ON ddl_command_end
+WHEN TAG IN ('CREATE TABLE')
+EXECUTE FUNCTION auto_add_table_to_publication();
+  )#"));
+
+  // plpgsql function that runs CREATE TABLE then DML in the same call.
+  // ANALYZE must finish *before* CREATE TABLE starts: overlapping ANALYZE with
+  // CREATE TABLE's open DDL commit contends on pg_yb_catalog_version and yields
+  // "could not serialize access due to concurrent update" instead of the
+  // catalog version mismatch. Sleep first so ANALYZE can commit x+1; then
+  // CREATE TABLE (local still x, no mid-txn refresh) gets x+2 back.
+  const int kSleepSec = 5 * kTimeMultiplier;
+  const std::string create_partition_sql =
+R"#(
+CREATE OR REPLACE FUNCTION create_partition_and_dml()
+RETURNS void AS $$
+DECLARE
+    cnt INT;
+BEGIN
+    -- LOG (not NOTICE): NOTICE is below default log_min_messages=WARNING.
+    RAISE LOG 'create_partition_and_dml: waiting for concurrent ANALYZE';
+    PERFORM pg_sleep()#" + std::to_string(kSleepSec) +
+R"#();
+    CREATE TABLE orders_y2026m08 PARTITION OF orders_partitioned
+        FOR VALUES FROM ('2026-08-01') TO ('2026-09-01');
+
+    -- DML still uses local catalog version x; tservers already have breaking
+    -- version x+2 from the CREATE TABLE above.
+    SELECT count(*) INTO cnt FROM dml_target;
+    INSERT INTO dml_target VALUES (100 + cnt, 'from_function');
+    INSERT INTO orders_y2026m08 VALUES (1, '2026-08-15', 10.0);
+    PERFORM count(*) FROM orders_y2026m08;
+END;
+$$ LANGUAGE plpgsql;
+)#";
+  ASSERT_OK(conn.Execute(create_partition_sql));
+
+  auto conn_create = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  auto conn_analyze = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(conn_create.Execute("SET yb_max_query_layer_retries = 0"));
+
+  TestThreadHolder thread_holder;
+  Status fn_status;
+  auto waiter = LogWaiter(ts, "create_partition_and_dml: waiting for concurrent ANALYZE");
+  thread_holder.AddThreadFunctor([&conn_create, &fn_status] {
+    // Use Fetch: SELECT returns a row; Execute rejects PGRES_TUPLES_OK.
+    fn_status = ResultToStatus(conn_create.Fetch("SELECT create_partition_and_dml()"));
+  });
+
+  // Wait until the function is inside pg_sleep (before CREATE TABLE), then run
+  // ANALYZE so it commits x+1 with no open DDL txn to conflict with.
+  ASSERT_OK(waiter.WaitFor(30s));
+  ASSERT_OK(conn_analyze.Execute("ANALYZE dml_target"));
+  // Let ANALYZE's non-breaking x+1 commit/propagate before CREATE TABLE runs.
+  SleepFor(1s * kTimeMultiplier);
+
+  thread_holder.Stop();
+  if (IsObjectLockingEnabled()) {
+    // Object locking refreshes the local catalog version on each lock acquisition,
+    // which absorbs ANALYZE's x + 1 before/around CREATE TABLE's bump.
+    ASSERT_OK(fn_status);
+
+    auto row_count = ASSERT_RESULT(
+        conn_create.FetchRow<PGUint64>("SELECT count(*) FROM orders_y2026m08"));
+    ASSERT_EQ(row_count, 1);
+  } else {
+    // Without object locking, there is no mid-txn refresh and the DML after
+    // CREATE TABLE fails with a catalog version mismatch.
+    ASSERT_NOK_STR_CONTAINS(
+        fn_status,
+        "The catalog snapshot used for this transaction has been invalidated");
+  }
+}
+
 } // namespace pgwrapper
 } // namespace yb
