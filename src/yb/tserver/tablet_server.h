@@ -43,7 +43,6 @@
 #include <vector>
 
 #include "yb/common/common_util.h"
-#include "yb/common/hybrid_time.h"
 #include "yb/common/pg_catversions.h"
 
 #include "yb/consensus/metadata.pb.h"
@@ -481,19 +480,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id) override;
 
-  // Per-database oldest read HybridTime pinned by live PG sessions on this tserver.
-  master::DbOidToHybridTimeMap GetYsqlDbOldestPinnedReadTimes();
-
-  // Stores the cluster-wide per-database history retention pins aggregated by the master across
-  // all live tservers and returned in the heartbeat response locally.
-  void UpdateClusterYsqlDbOldestPinnedReadTimes(const master::TSHeartbeatResponsePB& resp)
-      EXCLUDES(cluster_ysql_db_oldest_pinned_read_times_mutex_);
-
-  // Returns the cluster-wide history retention pin for the given database, or HybridTime::kInvalid
-  // if none is known (e.g. no live transaction is pinning a read time for that database).
-  HybridTime GetClusterYsqlDbOldestPinnedReadTime(PgOid db_oid) const
-      EXCLUDES(cluster_ysql_db_oldest_pinned_read_times_mutex_);
-
   Result<std::string> GetUniverseUuid() const override;
 
   void TEST_SetIsCronLeader(bool is_cron_leader);
@@ -593,13 +579,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   uint64_t ysql_catalog_version_ GUARDED_BY(lock_) = 0;
   uint64_t ysql_last_breaking_catalog_version_ GUARDED_BY(lock_) = 0;
   tserver::DbOidToCatalogVersionInfoMap ysql_db_catalog_version_map_ GUARDED_BY(lock_);
-
-  // Cluster-wide per-database history retention pins, aggregated by the master across all live
-  // tservers and refreshed on every heartbeat response. Map[db_oid] -> oldest read HybridTime that
-  // any live transaction in the cluster may still need for that database.
-  mutable rw_spinlock cluster_ysql_db_oldest_pinned_read_times_mutex_;
-  master::DbOidToHybridTimeMap cluster_ysql_db_oldest_pinned_read_times_
-      GUARDED_BY(cluster_ysql_db_oldest_pinned_read_times_mutex_);
 
   // This map represents an extended history of pg_yb_invalidation_messages except message_time
   // (i.e., db_oid, current_version, inval messages). For each db_oid, it stores a queue of

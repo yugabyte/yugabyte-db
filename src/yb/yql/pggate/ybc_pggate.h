@@ -1059,10 +1059,6 @@ YbcStatus YBCPgRestoreReadPoint(YbcReadPointHandle read_point);
 YbcStatus YBCPgRegisterSnapshotReadTime(
     uint64_t read_time, bool use_read_time, YbcReadPointHandle* handle);
 
-// Publishes the oldest live snapshot read-point serial into session shared memory for tserver
-// history-retention-pin aggregation. Requires pg_client_use_shared_memory.
-void YBCPgPublishOldestReadPointHandle(YbcReadPointHandle handle);
-
 // Records the current statement as a temporary relation DDL statement.
 void YBCRecordTempRelationDDL();
 

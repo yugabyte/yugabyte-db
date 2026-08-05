@@ -264,7 +264,6 @@ YbcConstSliceVector
 YbcCreateMemoryContextFn
 YbcCstringToTextWithLenFn
 YbcDbCatalogCacheMetricVisitor
-YbcDbHistoryRetentionPinModeEnum
 YbcDeleteMemoryContextFn
 YbcFlushDebugContext
 YbcGetTableKeyRangesCallback

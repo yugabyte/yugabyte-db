@@ -339,9 +339,6 @@ DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 DECLARE_bool(qos_compaction_per_db_cgroups);
 DECLARE_bool(qos_consensus_per_db_cgroups);
 DECLARE_bool(qos_system_dbs_use_shared_pool);
-DECLARE_int32(timestamp_history_retention_interval_sec);
-DECLARE_int32(db_history_retention_pin_max_txn_age_sec);
-DECLARE_bool(enable_db_history_retention_pins);
 DECLARE_uint32(vector_index_num_compactions_limit);
 
 namespace yb::tserver {
@@ -3691,28 +3688,6 @@ HybridTime TSTabletManager::TEST_LastSnapshotHybridTime(
   return it != snapshot_schedule_info_.end() ? it->second.last_snapshot_ht : HybridTime::kMin;
 }
 
-HybridTime TSTabletManager::ComputeDbHistoryRetentionPinCutoff(
-    HybridTime now, uint32_t db_oid, tablet::RaftGroupMetadata* metadata) const {
-
-  const auto safety_window_cutoff =
-      now.AddSeconds(-FLAGS_timestamp_history_retention_interval_sec);
-  const auto hard_cap_cutoff = now.AddSeconds(-FLAGS_db_history_retention_pin_max_txn_age_sec);
-  const auto pin = server_->GetClusterYsqlDbOldestPinnedReadTime(db_oid);
-  // Without a pin, only the default safety window governs this database.
-  HybridTime db_cutoff = pin.is_valid() ? pin : safety_window_cutoff;
-  // Minimum safety window (retain at least timestamp_history_retention_interval_sec).
-  db_cutoff.MakeAtMost(safety_window_cutoff);
-  // Hard cap (retain at most db_history_retention_pin_max_txn_age_sec).
-  db_cutoff.MakeAtLeast(hard_cap_cutoff);
-
-  VLOG(1) << "DB history retention pin cutoff: " << db_cutoff << " (pin: " << pin
-          << ", safety window: " << safety_window_cutoff
-          << ", hard cap: " << hard_cap_cutoff << ") for tablet: "
-          << metadata->raft_group_id();
-
-  return db_cutoff;
-}
-
 docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata) {
   HybridTime result = HybridTime::kMax;
   // CDC SDK safe time
@@ -3791,35 +3766,6 @@ docdb::HistoryCutoff TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMeta
       WARN_NOT_OK(metadata->Flush(), "Failed to flush metadata");
     }
   }
-  // Apply the cluster-wide per-database history retention pin (aggregated by the master across
-  // all live tservers) on YSQL tables. The pin is bounded by:
-  //  * minimum safety window: never collapse history newer than now -
-  //    timestamp_history_retention_interval_sec, even if the pin would allow it.
-  //  * hard cap: always allow compaction of history older than now -
-  //    db_history_retention_pin_max_txn_age_sec, even if a pin is still protecting it
-  //    (so a single long-running transaction cannot block compaction forever).
-  // When neither bound binds, compact based on the pin: history older than the pin is compactable,
-  // history at or after the pin is retained.
-  //
-  // In the event where a transaction runs longer than the hard cap and gets forcefully compacted,
-  // the session's published pin is not cleared until the transaction ends. However, with the
-  // snapshot gone, the transaction should fail with snapshot too old error, which aborts and calls
-  // FinishTransaction, where the pin will be cleared.
-  if (FLAGS_enable_db_history_retention_pins && metadata->table_type() == PGSQL_TABLE_TYPE &&
-      !metadata->namespace_id().empty()) {
-    auto db_oid_result = GetPgsqlDatabaseOid(metadata->namespace_id());
-    if (db_oid_result.ok()) {
-      const auto now = server_->Clock()->Now();
-
-      const auto db_cutoff = ComputeDbHistoryRetentionPinCutoff(now, *db_oid_result, metadata);
-      result.MakeAtMost(db_cutoff);
-    } else {
-      YB_LOG_EVERY_N_SECS(WARNING, 30)
-          << "Unable to resolve db_oid for namespace " << metadata->namespace_id()
-          << " on tablet " << metadata->raft_group_id() << ": " << db_oid_result.status();
-    }
-  }
-
   VLOG(1) << "Setting the allowed history cutoff: " << result
           << " for tablet: " << metadata->raft_group_id();
   return {.cotables_cutoff_ht = HybridTime::kInvalid, .primary_cutoff_ht = result};

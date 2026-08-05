@@ -746,12 +746,6 @@ class PgClient::Impl : public BigDataFetcher {
 
   uint64_t SessionID() { return session_id_; }
 
-  void PublishOldestReadPointSerialNo(uint64_t serial_no) {
-    if (session_shared_mem_) {
-      session_shared_mem_->SetOldestReadPointSerialNo(serial_no);
-    }
-  }
-
   void Heartbeat(bool create) {
     {
       bool expected = false;
@@ -2179,10 +2173,6 @@ void PgClient::SetLockTimeout(int lock_timeout_ms) {
 }
 
 uint64_t PgClient::SessionID() const { return impl_->SessionID(); }
-
-void PgClient::PublishOldestReadPointSerialNo(uint64_t serial_no) {
-  impl_->PublishOldestReadPointSerialNo(serial_no);
-}
 
 Result<PgTableDescPtr> PgClient::OpenTable(
     const PgObjectId& table_id, bool reopen, uint64_t min_ysql_catalog_version,

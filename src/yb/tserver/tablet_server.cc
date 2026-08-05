@@ -2755,34 +2755,6 @@ Result<PgTxnSnapshot> TabletServer::GetLocalPgTxnSnapshot(const PgTxnSnapshotLoc
   return pg_client_service->impl.GetLocalPgTxnSnapshot(snapshot_id);
 }
 
-master::DbOidToHybridTimeMap TabletServer::GetYsqlDbOldestPinnedReadTimes() {
-  auto pg_client_service = pg_client_service_.lock();
-  if (!pg_client_service) {
-    return {};
-  }
-  return pg_client_service->impl.GetDatabasePins();
-}
-
-void TabletServer::UpdateClusterYsqlDbOldestPinnedReadTimes(
-  const master::TSHeartbeatResponsePB& resp) {
-  master::DbOidToHybridTimeMap pins;
-  pins.reserve(resp.cluster_ysql_db_oldest_pinned_read_times().size());
-  for (const auto& [db_oid, db_pins] : resp.cluster_ysql_db_oldest_pinned_read_times()) {
-    auto pin = HybridTime::FromPB(db_pins.db_level_oldest_read_time());
-    if (pin.is_valid()) {
-      pins.emplace(static_cast<PgOid>(db_oid), pin);
-    }
-  }
-  std::lock_guard lock(cluster_ysql_db_oldest_pinned_read_times_mutex_);
-  cluster_ysql_db_oldest_pinned_read_times_ = std::move(pins);
-}
-
-HybridTime TabletServer::GetClusterYsqlDbOldestPinnedReadTime(PgOid db_oid) const {
-  SharedLock l(cluster_ysql_db_oldest_pinned_read_times_mutex_);
-  auto it = cluster_ysql_db_oldest_pinned_read_times_.find(db_oid);
-  return it != cluster_ysql_db_oldest_pinned_read_times_.end() ? it->second : HybridTime::kInvalid;
-}
-
 Result<std::string> TabletServer::GetUniverseUuid() const {
   return fs_manager_->GetUniverseUuidFromTserverInstanceMetadata();
 }

@@ -236,7 +236,7 @@ struct SessionData {
 
 struct SetupSessionResult {
   SessionData session_data;
-  PgClientSessionKind kind = PgClientSessionKind::kPlain;
+  bool is_plain = false;
 };
 
 class PrefixLogger {
@@ -1345,16 +1345,6 @@ class ReadPointHistory {
     min_ = std::max(min_, min);
   }
 
-  // Returns the read time saved for `read_time_serial_no`, or an invalid HybridTime if it is no
-  // longer retained (cleaned up) or was never saved.
-  HybridTime GetReadTime(uint64_t read_time_serial_no) const {
-    if (read_time_serial_no < min_) {
-      return HybridTime::kInvalid;
-    }
-    const auto it = read_points_.find(read_time_serial_no);
-    return it != read_points_.end() ? it->second.read_time().read : HybridTime::kInvalid;
-  }
-
  private:
   const PrefixLogger& LogPrefix() const { return prefix_logger_; }
 
@@ -1826,10 +1816,6 @@ class PgClientSession::Impl {
     transaction_provider_.SetupSharedObjectLocking(object_lock_shared);
   }
 
-  void SetupOldestReadPointSerialNo(std::atomic<uint64_t>* oldest_read_point_serial_no) {
-    oldest_read_point_serial_no_ = oldest_read_point_serial_no;
-  }
-
   Status CreateTable(
       const PgCreateTableRequestPB& req, PgCreateTableResponsePB* resp, rpc::RpcContext* context) {
     VLOG_WITH_FUNC(2) << "req: " << req.DebugString();
@@ -2108,8 +2094,7 @@ class PgClientSession::Impl {
       const PgPerformOptionsPB& options, CoarseTimePoint deadline) {
     auto setup_session_result = VERIFY_RESULT(SetupSession(
         options, deadline, /* arena= */ nullptr));
-    RSTATUS_DCHECK(setup_session_result.kind == PgClientSessionKind::kPlain,
-        IllegalState, "Unexpected session is prepared");
+    RSTATUS_DCHECK(setup_session_result.is_plain, IllegalState, "Unexpected session is prepared");
     return setup_session_result.session_data.session->read_point()->GetReadTime();
   }
 
@@ -3197,7 +3182,6 @@ class PgClientSession::Impl {
 
   void StartShutdown(bool pg_service_shutting_down) {
     VLOG(2) << "StartShutdown for session id: " << id();
-    ClearReadTimePin();
     if (!pg_service_shutting_down) {
       WARN_NOT_OK(CleanupObjectLocks(), "Error cleaning up object locks");
 
@@ -3225,51 +3209,6 @@ class PgClientSession::Impl {
     big_shared_mem_expiration_task_.CompleteShutdown();
   }
 
-  // Lock-free read of the last published pin HT. Call RefreshHistoryRetentionPinFromSharedMemory()
-  // under the session lock first when a fresher SHMEM serial should be applied.
-  PgClientSessionDbHistoryRetentionPin GetDbHistoryRetentionPin() const {
-    return PgClientSessionDbHistoryRetentionPin{
-        .db_oid = database_oid_,
-        .read_time = HybridTime::FromPB(
-          history_retention_pin_read_time_.load(std::memory_order_acquire))};
-  }
-
-  bool HasPublishedOldestReadPointSerial() const {
-    return oldest_read_point_serial_no_ &&
-           oldest_read_point_serial_no_->load(std::memory_order_acquire) != 0;
-  }
-
-  void ClearReadTimePin() {
-    history_retention_pin_read_time_.store(0, std::memory_order_release);
-  }
-
-  // Map the PG-published oldest serial from session SHMEM into history_retention_pin_read_time_.
-  //
-  // snapmgr gates whether a pin is published (GUC + DDL mode) and writes the oldest live serial
-  // (or 0 when pinning is off / no live snapshot). Resolution:
-  //   - older serial: look up ReadPointHistory
-  //   - current serial: use the plain/DDL session read point
-  //   - serial 0: clear the pin
-  void RefreshHistoryRetentionPinFromSharedMemory() {
-    if (database_oid_ == kInvalidOid || !oldest_read_point_serial_no_) {
-      return;
-    }
-    const auto serial = oldest_read_point_serial_no_->load(std::memory_order_acquire);
-    if (serial == applied_oldest_read_point_serial_no_.load(std::memory_order_acquire)) {
-      return;
-    }
-    if (serial == 0) {
-      ClearReadTimePin();
-      return;
-    }
-    const auto read_time = ResolveReadTimeForPinSerial(serial);
-    if (!read_time.is_valid()) {
-      return;
-    }
-    history_retention_pin_read_time_.store(read_time.ToPB(), std::memory_order_release);
-    applied_oldest_read_point_serial_no_.store(serial, std::memory_order_release);
-  }
-
  private:
   const TserverXClusterContextIf* xcluster_context() const {
     return context_.xcluster_context;
@@ -3281,43 +3220,6 @@ class PgClientSession::Impl {
 
   PgMutationCounter* pg_node_level_mutation_counter() const {
     return context_.pg_node_level_mutation_counter;
-  }
-
-  HybridTime ResolveReadTimeForPinSerial(uint64_t pin_read_time_serial_no) {
-    if (pin_read_time_serial_no == 0) {
-      return HybridTime::kInvalid;
-    }
-    // History may already hold the HT saved after FlushAsync (including for the current serial).
-    if (const auto from_history = read_point_history_.GetReadTime(pin_read_time_serial_no);
-        from_history.is_valid()) {
-      return from_history;
-    }
-    for (const auto kind :
-         {PgClientSessionKind::kPlain, PgClientSessionKind::kAutonomousDdl}) {
-      const auto& session = GetSessionData(kind).session;
-      if (!session) {
-        continue;
-      }
-      const auto read_time = session->read_point()->GetReadTime().read;
-      if (read_time.is_valid() &&
-          (kind == PgClientSessionKind::kAutonomousDdl ||
-           pin_read_time_serial_no == read_time_serial_no_)) {
-        return read_time;
-      }
-    }
-    // Non-txn path: used read time may be pending until the next Perform applies it,
-    // directly read from read_time.pending_update.
-    if (pin_read_time_serial_no == read_time_serial_no_ &&
-        plain_session_used_read_time_.pending_update) {
-      std::lock_guard guard(plain_session_used_read_time_.value.lock);
-      if (plain_session_used_read_time_.value.data) {
-        const auto& read_time = plain_session_used_read_time_.value.data->value.read;
-        if (read_time.is_valid()) {
-          return read_time;
-        }
-      }
-    }
-    return HybridTime::kInvalid;
   }
 
   const scoped_refptr<ClockBase>& clock() const {
@@ -3602,8 +3504,7 @@ class PgClientSession::Impl {
       }
     }
 
-    if (const auto* read_point = setup_session_result.kind == PgClientSessionKind::kPlain
-            ? session->read_point() : nullptr;
+    if (const auto* read_point = setup_session_result.is_plain ? session->read_point() : nullptr;
         read_point && read_point->GetReadTime()) {
       VLOG_WITH_PREFIX(3) << "Saving read time that is already picked";
       read_point_history_.Save(*read_point, read_time_serial_no_);
@@ -3629,7 +3530,6 @@ class PgClientSession::Impl {
         Trace::DumpTraceIfNecessary(trace.get(), FLAGS_txn_print_trace_every_n, must_log_trace);
       }
     });
-    RefreshHistoryRetentionPinFromSharedMemory();
     return Status::OK();
   }
 
@@ -3797,7 +3697,9 @@ class PgClientSession::Impl {
 
     session.ResetArena(arena);
 
-    return SetupSessionResult{.session_data = session_data, .kind = kind};
+    return SetupSessionResult{
+        .session_data = session_data,
+        .is_plain = (kind == PgClientSessionKind::kPlain)};
   }
 
   template <class OptionsPB>
@@ -4324,11 +4226,6 @@ class PgClientSession::Impl {
         is_ddl_mode && req.ddl_mode().use_regular_transaction_block();
     const auto kind =
         GetSessionKindBasedOnDDLOptions(is_ddl_mode, ddl_use_regular_transaction_block);
-    // Clear any history retention pin published by this transaction (plain or autonomous DDL) as it
-    // finishes.
-    if (kind == PgClientSessionKind::kPlain || kind == PgClientSessionKind::kAutonomousDdl) {
-      ClearReadTimePin();
-    }
     const auto deadline = context_owner->GetClientDeadline();
     auto& txn = GetSessionData(kind).transaction;
     if (!txn) {
@@ -4519,7 +4416,7 @@ class PgClientSession::Impl {
 
   UsedReadTimeApplier MakeUsedReadTimeApplier(const SetupSessionResult& result) {
     auto* read_point = result.session_data.session->read_point();
-    if (result.kind != PgClientSessionKind::kPlain ||
+    if (!result.is_plain ||
         result.session_data.transaction ||
         (read_point && read_point->GetReadTime())) {
       return {};
@@ -4678,12 +4575,6 @@ class PgClientSession::Impl {
 
   PgOid database_oid_ = kInvalidOid;
   std::optional<SubTransactionId> subtxn_with_session_object_locks_;
-
-  std::atomic<uint64_t> history_retention_pin_read_time_{0};
-  // Points into PgSessionSharedHeader when session shared memory is active; null otherwise.
-  std::atomic<uint64_t>* oldest_read_point_serial_no_ = nullptr;
-  // Last SHMEM serial applied into history_retention_pin_read_time_.
-  std::atomic<uint64_t> applied_oldest_read_point_serial_no_{0};
 };
 
 PgClientSession::PgClientSession(
@@ -4706,11 +4597,6 @@ void PgClientSession::SetupSharedObjectLocking(PgSessionLockOwnerTagShared& obje
   impl_->SetupSharedObjectLocking(object_lock_shared);
 }
 
-void PgClientSession::SetupOldestReadPointSerialNo(
-    std::atomic<uint64_t>* oldest_read_point_serial_no) {
-  impl_->SetupOldestReadPointSerialNo(oldest_read_point_serial_no);
-}
-
 void PgClientSession::Perform(
     PgPerformRequestMsg& req, PgPerformResponseMsg& resp, rpc::RpcContext&& context,
     const PgTablesQueryResult& tables) {
@@ -4725,22 +4611,6 @@ void PgClientSession::ProcessSharedRequest(
 
 size_t PgClientSession::SaveData(const RefCntBuffer& buffer, WriteBuffer&& sidecars) {
   return impl_->SaveData(buffer, std::move(sidecars));
-}
-
-PgClientSessionDbHistoryRetentionPin PgClientSession::GetDbHistoryRetentionPin() const {
-  return impl_->GetDbHistoryRetentionPin();
-}
-
-bool PgClientSession::HasPublishedOldestReadPointSerial() const {
-  return impl_->HasPublishedOldestReadPointSerial();
-}
-
-void PgClientSession::ClearReadTimePin() {
-  impl_->ClearReadTimePin();
-}
-
-void PgClientSession::RefreshHistoryRetentionPinFromSharedMemory() {
-  impl_->RefreshHistoryRetentionPinFromSharedMemory();
 }
 
 std::pair<uint64_t, std::byte*> PgClientSession::ObtainBigSharedMemorySegment(size_t size) {

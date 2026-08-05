@@ -267,8 +267,6 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
     return hybrid_time_;
   }
 
-  DbOidToHybridTimeMap GetYsqlDbOldestPinnedReadTimes() const;
-
   MonoDelta heartbeat_rtt() const {
     SharedLock<decltype(mutex_)> l(mutex_);
     return heartbeat_rtt_;
@@ -468,9 +466,6 @@ class TSDescriptor : public MetadataCowWrapper<PersistentTServerInfo> {
   // State reflecting that the tserver might be unaware of the leader rebalancing
   // due to leader blacklist.
   std::atomic<uint32> pending_leader_drain_notification_{0};
-
-  // Per-database oldest read HybridTime pinned by live PG transactions on this tserver.
-  DbOidToHybridTimeMap ts_ysql_db_oldest_pinned_read_times_ GUARDED_BY(mutex_);
 
   std::string placement_id_ GUARDED_BY(mutex_);
 
