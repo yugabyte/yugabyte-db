@@ -5940,6 +5940,12 @@ Result<RetrieveFullDocKeyResult> RetrieveFullDocKey(
 
   for (; data_entry.Valid(); data_entry = MoveIterator<direction>(data_iter)) {
     VLOG_WITH_FUNC(2) << log_prefix << "data_entry.key: " << data_entry.key.ToDebugHexString();
+    if (direction == Direction::kBackward && !end_bound.empty() && data_entry.key < end_bound) {
+      // The doc key prefix of data_entry.key is also below end_bound, so nothing left to return.
+      // RocksDB records of the doc key equal to end_bound sort above it (they have a hybrid time
+      // suffix) and are excluded by the decoded key check below.
+      return RetrieveFullDocKeyResult::kReachedEnd;
+    }
     // Use encoded doc key to avoid breaking data related to the same row into halves.
     const auto doc_key_size_result =
         dockv::DocKey::EncodedSize(data_entry.key, dockv::DocKeyPart::kWholeDocKey);
@@ -6219,6 +6225,13 @@ Status Tablet::GetTabletKeyRanges(
 
   RSTATUS_DCHECK(
       use_empty_as_last_key.has_value(), InternalError, "use_empty_as_last_key is not set");
+
+  // Regular DB metadata records (see IsRegularDBMetaKeyType) sort before all user table rows and
+  // are not valid doc keys, so start from the minimum possible table row key instead.
+  const Slice table_rows_start(&dockv::kMinRegularDbTableRowFirstByte, 1);
+  if (lower_bound_key < table_rows_start) {
+    lower_bound_key = table_rows_start;
+  }
 
   VLOG_WITH_PREFIX_AND_FUNC(2) << "lower_bound_key: " << lower_bound_key.ToDebugHexString()
                                << " upper_bound_key: " << upper_bound_key.ToDebugHexString()

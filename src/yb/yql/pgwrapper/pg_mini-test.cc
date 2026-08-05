@@ -13,6 +13,7 @@
 
 #include <atomic>
 #include <fstream>
+#include <limits>
 #include <optional>
 #include <thread>
 #include <string_view>
@@ -30,6 +31,7 @@
 #include "yb/common/common_flags.h"
 #include "yb/common/pgsql_error.h"
 
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/integration-tests/mini_cluster.h"
@@ -3642,6 +3644,138 @@ $procedure$
 
   thread_holder.WaitAndStop(kWaitTime);
   ASSERT_GT(num_read_restarts, 0);
+}
+
+class PgMiniKeyRangesTest : public PgMiniTest {
+ protected:
+  static constexpr auto kDecodingFailedMessage = "Failed to get encoded size of key";
+
+  size_t NumTabletServers() override { return 1; }
+
+  void SetUp() override {
+    // Use small data blocks so vector index reverse mapping entries span multiple data blocks and
+    // SST index entries point inside the regular DB metadata section.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_db_block_size_bytes) = 4_KB;
+    PgMiniTest::SetUp();
+  }
+
+  // Runs GetTabletKeyRanges with empty bounds in both directions on every tablet of the test
+  // table and verifies returned boundaries are valid user doc keys and the iterator never visited
+  // regular DB metadata records.
+  void VerifyKeyRangesSkipRegularDbMetadataSection(size_t expected_num_tablets) {
+    auto peers = ASSERT_RESULT(
+        ListTabletPeersForTableName(cluster_.get(), "test", ListPeersFilter::kLeaders));
+    ASSERT_EQ(peers.size(), expected_num_tablets);
+
+    StringWaiterLogSink log_sink(kDecodingFailedMessage);
+
+    for (const auto& peer : peers) {
+      auto tablet = ASSERT_RESULT(peer->shared_tablet());
+      for (auto direction : {tablet::Direction::kForward, tablet::Direction::kBackward}) {
+        LOG(INFO) << "tablet: " << peer->tablet_id() << " direction: " << AsString(direction);
+        std::vector<std::string> boundaries;
+        ASSERT_OK(tablet->TEST_GetTabletKeyRanges(
+            /* lower_bound_key = */ Slice(), /* upper_bound_key = */ Slice(),
+            /* max_num_ranges = */ std::numeric_limits<uint64_t>::max(),
+            /* range_size_bytes = */ 4_KB, direction, /* max_key_length = */ 1024,
+            [&boundaries](Slice key) { boundaries.push_back(key.ToBuffer()); }));
+        ASSERT_GT(boundaries.size(), 1);
+        for (const auto& key : boundaries) {
+          if (key.empty()) {
+            continue;
+          }
+          ASSERT_FALSE(dockv::IsRegularDBMetaKeyType(dockv::DecodeKeyEntryType(key[0])))
+              << "Range boundary inside regular DB metadata section: "
+              << Slice(key).ToDebugHexString();
+          ASSERT_OK(dockv::DocKey::EncodedSize(key, dockv::DocKeyPart::kWholeDocKey));
+        }
+      }
+    }
+
+    ASSERT_EQ(log_sink.GetEventCount(), 0)
+        << "GetTabletKeyRanges iterated over regular DB metadata records";
+  }
+
+  // End-to-end variant: drives GetTabletKeyRanges through actual parallel scans (PG parallel
+  // workers -> pggate GetTableKeyRanges -> PgClientService -> Read RPC) in both directions and
+  // verifies query results are correct and the scans never visited regular DB metadata records.
+  void VerifyParallelScanSkipsRegularDbMetadataSection(int64_t expected_num_rows) {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("ANALYZE test"));
+    ASSERT_OK(conn.Execute("SET yb_enable_parallel_scan_range_sharded = true"));
+    ASSERT_OK(conn.Execute("SET yb_enable_cbo = on"));
+    // Produce more parallel ranges from the small test table.
+    ASSERT_OK(conn.Execute("SET yb_parallel_range_rows = 1"));
+    ASSERT_OK(conn.Execute("SET yb_parallel_range_size = 1024"));
+
+    StringWaiterLogSink log_sink(kDecodingFailedMessage);
+
+    // Forward parallel scan. The plan check makes sure the query actually runs in parallel,
+    // otherwise the test is vacuously green.
+    ASSERT_STR_CONTAINS(
+        ASSERT_RESULT(conn.FetchAllAsString(
+            "/*+ Parallel(test 2 hard) */ EXPLAIN (COSTS OFF) SELECT COUNT(*) FROM test")),
+        "Parallel");
+    const auto count = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+        "/*+ Parallel(test 2 hard) */ SELECT COUNT(*) FROM test"));
+    ASSERT_EQ(count, expected_num_rows);
+
+    // Backward parallel scan. Also verifies ranges don't overlap or miss rows: a duplicate or
+    // lost range boundary would show up as a duplicate or missing id.
+    ASSERT_STR_CONTAINS(
+        ASSERT_RESULT(conn.FetchAllAsString(
+            "/*+ Parallel(test 2 hard) */ EXPLAIN (COSTS OFF)"
+            " SELECT id FROM test ORDER BY id DESC")),
+        "Parallel Index Scan Backward");
+    const auto ids = ASSERT_RESULT(conn.FetchRows<int64_t>(
+        "/*+ Parallel(test 2 hard) */ SELECT id FROM test ORDER BY id DESC"));
+    ASSERT_EQ(ids.size(), static_cast<size_t>(expected_num_rows));
+    for (int64_t i = 0; i < expected_num_rows; ++i) {
+      ASSERT_EQ(ids[i], expected_num_rows - i);
+    }
+
+    ASSERT_EQ(log_sink.GetEventCount(), 0)
+        << "Parallel scan iterated over regular DB metadata records";
+  }
+
+  // Creates a range-sharded table with a vector index, fills it with num_rows rows and flushes
+  // reverse mapping entries to SSTs. The index is created before inserting rows, so reverse
+  // mapping entries are written by the DML path and no backfill is involved.
+  Status CreateIndexedTableAndFill(const std::string& create_table_suffix, int64_t num_rows) {
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.Execute("CREATE EXTENSION vector"));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TABLE test (id bigint, embedding vector(3), PRIMARY KEY (id ASC))$0",
+        create_table_suffix));
+    RETURN_NOT_OK(conn.Execute("CREATE INDEX ON test USING ybhnsw (embedding vector_l2_ops)"));
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "INSERT INTO test SELECT i, ARRAY[i, i + 1, i + 2]::vector"
+        " FROM generate_series(1, $0) i",
+        num_rows));
+    // Wait for all intents are applied and flush tablets.
+    RETURN_NOT_OK(WaitForAllIntentsApplied(cluster_.get()));
+    return cluster_->FlushTablets();
+  }
+};
+
+TEST_F_EX(PgMiniTest, GetTabletKeyRangesSkipsRegularDbMetadataSection, PgMiniKeyRangesTest) {
+  // Single-tablet table: partition key start is empty, so the forward scan starts from the very
+  // beginning of the regular DB.
+  constexpr auto kNumRows = 2000;
+  ASSERT_OK(CreateIndexedTableAndFill(/* create_table_suffix = */ "", kNumRows));
+  ASSERT_NO_FATALS(VerifyParallelScanSkipsRegularDbMetadataSection(kNumRows));
+  ASSERT_NO_FATALS(VerifyKeyRangesSkipRegularDbMetadataSection(/* expected_num_tablets = */ 1));
+}
+
+TEST_F_EX(
+    PgMiniTest, GetTabletKeyRangesSkipsRegularDbMetadataSectionPreSplit, PgMiniKeyRangesTest) {
+  // Pre-split table: middle/last tablets have a non-empty partition key start, but each tablet's
+  // regular DB still has its own metadata section below the partition start. The backward scan
+  // shouldn't go below the partition start.
+  constexpr auto kNumRows = 2000;
+  ASSERT_OK(CreateIndexedTableAndFill(" SPLIT AT VALUES ((700), (1400))", kNumRows));
+  ASSERT_NO_FATALS(VerifyParallelScanSkipsRegularDbMetadataSection(kNumRows));
+  ASSERT_NO_FATALS(VerifyKeyRangesSkipRegularDbMetadataSection(/* expected_num_tablets = */ 3));
 }
 
 }  // namespace yb::pgwrapper
