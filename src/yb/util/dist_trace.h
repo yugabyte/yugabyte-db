@@ -61,6 +61,10 @@ nostd::shared_ptr<trace::Span> StartSpan(std::string_view op_name);
 // off or no context is active. Not made current -- use ScopedAdoptSpan where that is needed.
 nostd::shared_ptr<trace::Span> StartClientSpan(std::string_view op_name);
 
+// Server span as a remote child of parent_context; needs no local active context.
+nostd::shared_ptr<trace::Span> StartServerSpan(
+    std::string_view op_name, const trace::SpanContext& parent_context);
+
 // Thread-local attribute buffer for the next RPC span. Producers (e.g. PgSession) add
 // attributes here; the OutboundCall Span consumes them when started.
 void AddPendingRpcStringAttr(std::string key, std::string value);
