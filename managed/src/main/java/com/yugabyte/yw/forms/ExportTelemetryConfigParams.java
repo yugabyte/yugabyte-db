@@ -10,6 +10,9 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.telemetry.ExportType;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +30,8 @@ import lombok.extern.slf4j.Slf4j;
 public class ExportTelemetryConfigParams extends UpgradeTaskParams {
 
   private TelemetryConfig telemetryConfig;
+
+  private List<ExportType> modifiedExportTypes = new ArrayList<>();
 
   /** Delay in seconds between master server restarts (rolling upgrade). Default 0. */
   public Integer delayBetweenMasterServers = 0;
