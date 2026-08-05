@@ -57,6 +57,7 @@
 #include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/rpc_service.h"
 #include "yb/rpc/rpc_util.h"
+#include "yb/rpc/service_queue_monitor.h"
 #include "yb/rpc/tcp_stream.h"
 #include "yb/rpc/yb_rpc.h"
 
@@ -206,12 +207,15 @@ void Messenger::Shutdown() {
   std::vector<Reactor*> reactors;
   std::unique_ptr<Acceptor> acceptor;
   std::unique_ptr<ReactorMonitor> reactor_monitor;
+  std::unique_ptr<ServiceQueueMonitor> service_queue_monitor;
   {
     std::lock_guard guard(lock_);
 
     acceptor.swap(acceptor_);
 
     reactor_monitor.swap(reactor_monitor_);
+
+    service_queue_monitor.swap(service_queue_monitor_);
 
     for (const auto& reactor : reactors_) {
       reactors.push_back(reactor.get());
@@ -225,6 +229,11 @@ void Messenger::Shutdown() {
   if (reactor_monitor) {
     reactor_monitor->Shutdown();
     reactor_monitor.reset();
+  }
+
+  if (service_queue_monitor) {
+    service_queue_monitor->Shutdown();
+    service_queue_monitor.reset();
   }
 
   for (auto* reactor : reactors) {
@@ -448,6 +457,13 @@ Status Messenger::RegisterService(
     const std::string& service_name, const scoped_refptr<RpcService>& service) {
   DCHECK(service);
   rpc_services_.emplace(service_name, service);
+  {
+    std::lock_guard guard(lock_);
+    if (!service_queue_monitor_) {
+      service_queue_monitor_ = std::make_unique<ServiceQueueMonitor>(name_);
+    }
+    service_queue_monitor_->Track(service_name, service);
+  }
   return Status::OK();
 }
 

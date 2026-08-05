@@ -429,4 +429,14 @@ void RenderAllThreadStacks(std::ostream& output);
 size_t CountManagedThreads();
 size_t CountStartedThreads();
 
+// Identifies a live thread registered with the global thread manager, in a form suitable for
+// collecting its stack via ThreadStacks() and attributing it in diagnostic output.
+struct ThreadIdAndName {
+  ThreadIdForStack tid_for_stack;
+  std::string name;
+};
+
+// Lists all live threads registered with the global thread manager.
+std::vector<ThreadIdAndName> ListThreadsForStackTrace();
+
 } // namespace yb

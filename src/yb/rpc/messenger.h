@@ -474,6 +474,10 @@ class Messenger : public ProxyContext {
 
   std::unique_ptr<ReactorMonitor> reactor_monitor_ GUARDED_BY(lock_);
 
+  // Watchdog that dumps thread stacks to the log when the queue of a registered RPC service
+  // stays at or above a configured threshold. See service_queue_monitor.h.
+  std::unique_ptr<ServiceQueueMonitor> service_queue_monitor_ GUARDED_BY(lock_);
+
   std::unique_ptr<CallStateListenerFactory> call_state_listener_factory_;
   std::unique_ptr<MetadataSerializerFactory> metadata_serializer_factory_;
 

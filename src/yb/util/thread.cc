@@ -284,6 +284,7 @@ class ThreadMgr {
   void RemoveThread(ThreadDescriptor* descriptor);
 
   void RenderThreadGroup(const std::string& group, std::ostream& output) EXCLUDES(mutex_);
+  std::vector<ThreadIdAndName> ListThreads() EXCLUDES(mutex_);
   uint64_t ReadThreadsRunning();
   uint64_t ReadThreadsStarted();
 
@@ -624,6 +625,22 @@ void ThreadMgr::RenderThreadCategoryRows(
 void ThreadMgr::RenderThreadGroup(const std::string& group, std::ostream& output) {
   std::lock_guard lock(mutex_);
   RenderThreadGroupUnlocked(group, output);
+}
+
+std::vector<ThreadIdAndName> ThreadMgr::ListThreads() {
+  std::vector<ThreadIdAndName> result;
+  std::lock_guard lock(mutex_);
+  for (const auto& [_, category] : thread_categories_) {
+    for (const auto& descriptor : category) {
+#if defined(__linux__)
+      auto tid_for_stack = descriptor.thread_id;
+#else
+      auto tid_for_stack = descriptor.pthread_id;
+#endif
+      result.push_back(ThreadIdAndName{tid_for_stack, descriptor.name});
+    }
+  }
+  return result;
 }
 
 void ThreadMgr::RenderThreadGroupUnlocked(const std::string& group, std::ostream& output) {
@@ -1088,6 +1105,10 @@ Result<std::string> Thread::ThreadName(int64_t thread_id) {
 
 void RenderAllThreadStacks(std::ostream& output) {
   thread_manager->RenderThreadGroup(kAllGroups, output);
+}
+
+std::vector<ThreadIdAndName> ListThreadsForStackTrace() {
+  return thread_manager->ListThreads();
 }
 
 size_t CountManagedThreads() {

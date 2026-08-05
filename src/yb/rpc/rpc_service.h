@@ -31,6 +31,8 @@
 //
 #pragma once
 
+#include <stddef.h>
+
 #include "yb/rpc/rpc_fwd.h"
 
 namespace yb {
@@ -55,6 +57,10 @@ class RpcService : public RefCountedThreadSafe<RpcService> {
 
   // Wait until RPC sevrice shutdown completes.
   virtual void CompleteShutdown() = 0;
+
+  // Returns the number of calls currently queued for processing by this service.
+  // Services that do not maintain a queue report 0.
+  virtual size_t QueuedCalls() const { return 0; }
 
   void Shutdown() {
     StartShutdown();
