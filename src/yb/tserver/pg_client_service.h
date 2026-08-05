@@ -21,6 +21,9 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/common/hybrid_time.h"
+#include "yb/common/pg_types.h"
+
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/rpc_fwd.h"
@@ -158,6 +161,13 @@ class PgClientServiceImpl : public PgClientServiceIf {
   void InvalidateTableCache(const std::unordered_map<uint32_t, uint64_t>& db_oids_updated,
                             const std::unordered_set<uint32_t>& db_oids_deleted);
   Result<PgTxnSnapshot> GetLocalPgTxnSnapshot(const PgTxnSnapshotLocalId& snapshot_id);
+
+  // Returns the current per-database read-time pins registered by local PG sessions,
+  // map[db_oid] -> read_time.
+  // The pin for a database is the oldest read time any live local transaction may still need,
+  // any history below it must be retained.
+  // Intended to be exported to the master in the tserver heartbeat.
+  std::unordered_map<PgOid, HybridTime> GetDatabasePins();
 
   size_t TEST_SessionsCount();
 

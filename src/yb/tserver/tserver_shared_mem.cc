@@ -233,6 +233,10 @@ namespace {
 struct PgSessionSharedHeader {
   PgSessionLockOwnerTagShared object_locking_data;
 
+  // Oldest live PG snapshot read-point serial published by the backend (0 = none).
+  // Written by postgres via pggate; read by tserver when resolving history retention pins.
+  std::atomic<uint64_t> oldest_read_point_serial_no{0};
+
   // This must be the last field, since it uses a zero length array.
   SharedExchangeHeader exchange_header;
 };
@@ -586,6 +590,14 @@ class PgSessionSharedMemoryManager::Impl {
     return header().object_locking_data;
   }
 
+  void SetOldestReadPointSerialNo(uint64_t serial_no) {
+    header().oldest_read_point_serial_no.store(serial_no, std::memory_order_release);
+  }
+
+  std::atomic<uint64_t>* OldestReadPointSerialNoPtr() {
+    return &header().oldest_read_point_serial_no;
+  }
+
  private:
   static Result<InterprocessSharedMemoryObject> MakeSharedMemoryObject(
       bool owner, std::string_view instance_id, uint64_t session_id) {
@@ -611,6 +623,10 @@ class PgSessionSharedMemoryManager::Impl {
     return *static_cast<PgSessionSharedHeader*>(mapped_region_.get_address());
   }
 
+  const PgSessionSharedHeader& header() const {
+    return *static_cast<const PgSessionSharedHeader*>(mapped_region_.get_address());
+  }
+
   const std::string instance_id_;
   const uint64_t session_id_;
   const bool owner_;
@@ -631,6 +647,14 @@ PgSessionSharedMemoryManager::~PgSessionSharedMemoryManager() = default;
 
 PgSessionSharedMemoryManager& PgSessionSharedMemoryManager::operator=(
     PgSessionSharedMemoryManager&&) = default;
+
+void PgSessionSharedMemoryManager::SetOldestReadPointSerialNo(uint64_t serial_no) {
+  impl_->SetOldestReadPointSerialNo(serial_no);
+}
+
+std::atomic<uint64_t>* PgSessionSharedMemoryManager::OldestReadPointSerialNoPtr() {
+  return impl_->OldestReadPointSerialNoPtr();
+}
 
 Result<PgSessionSharedMemoryManager> PgSessionSharedMemoryManager::Make(
     const std::string& instance_id, uint64_t session_id, Create create) {

@@ -481,6 +481,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
  private:
   FRIEND_TEST(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered);
+  friend class ComputeDbHistoryRetentionPinCutoffTest;
   friend class ::yb::XClusterSafeTimeTest;
 
   // Flag specified when registering a TabletPeer.
@@ -506,6 +507,16 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
     uint32_t change_seq;
   };
   typedef std::unordered_map<std::string, TabletReportState> DirtyMap;
+
+  // Bounds a per-database history cutoff derived from the cluster-global history retention pin.
+  // The returned cutoff is the timestamp below which history is compactable (history at or
+  // after it is retained). It is bounded so that:
+  //   * we never compact history newer than the minimum safety window (cutoff <= safety_window)
+  //   * we always allow compaction of history older than the hard cap (cutoff >= hard_cap), so a
+  //     single long-running transaction cannot block history retention forever.
+  // When there is no pin, only the safety window applies.
+  HybridTime ComputeDbHistoryRetentionPinCutoff(
+    HybridTime now, uint32_t db_oid, tablet::RaftGroupMetadata* metadata) const;
 
   // Returns Status::OK() iff state_ == MANAGER_RUNNING.
   Status CheckRunningUnlocked(std::optional<TabletServerErrorPB::Code>* error_code) const

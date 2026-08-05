@@ -170,6 +170,7 @@ DEFINE_test_flag(bool, pause_get_lock_status, false,
 DECLARE_uint64(cdc_intent_retention_ms);
 DECLARE_uint64(transaction_heartbeat_usec);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
+DECLARE_int32(db_history_retention_pin_min_txn_age_sec);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DECLARE_bool(ysql_enable_auto_analyze);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
@@ -441,7 +442,10 @@ class LockablePgClientSession {
   Status StartExchange(const std::string& instance_id, YBThreadPool& thread_pool) {
     shared_mem_manager_ = VERIFY_RESULT(PgSessionSharedMemoryManager::Make(
         instance_id, id(), Create::kTrue));
-    session_.SetupSharedObjectLocking(shared_mem_manager_.object_locking_data());
+    session_.SetupSharedData({
+        .object_lock = shared_mem_manager_.object_locking_data(),
+        .oldest_read_point_serial_no = *shared_mem_manager_.OldestReadPointSerialNoPtr(),
+    });
     exchange_runnable_ = std::make_shared<SharedExchangeRunnable>(
         shared_mem_manager_.exchange(), shared_mem_manager_.session_id(),
         [this](size_t size) {
@@ -504,6 +508,26 @@ class LockablePgClientSession {
 
   CoarseTimePoint expiration() const {
     return expiration_.load(std::memory_order_acquire);
+  }
+
+  // Returns the read-time pin this session holds, used by GetDatabasePins.
+  //
+  // First performs an atomic check if there is a non zero serial number published by PG's snapshot
+  // manager. If not, immediately reset the pins and return an invalid pin to prevent idle
+  // transactions from holding off compaction.
+  // Otherwise, attempt to (best-effort) refresh the pin from the PG serial number published in
+  // SHMEM. Since GetDatabasePins is called from the heartbeat, we cannot afford to busy wait for
+  // the session lock.
+  // The perform RPC guarantees to refresh the pin from the PG serial number, so the pin will be
+  // updated within a reasonable window as long as the transaction is active.
+  PgClientSessionDbHistoryRetentionPin GetDbHistoryRetentionPin() {
+    if (!session_.ClearNonPublishedOldestReadPointSerial()) {
+      std::unique_lock lock(mutex_, std::try_to_lock);
+      if (lock.owns_lock()) {
+        session_.RefreshHistoryRetentionPinFromSharedMemory();
+      }
+    }
+    return session_.GetDbHistoryRetentionPin();
   }
 
   void SetExpiration(CoarseTimePoint value) {
@@ -3111,6 +3135,32 @@ class PgClientServiceImpl::Impl : public SessionProvider {
     return sessions_.size();
   }
 
+  std::unordered_map<PgOid, HybridTime> GetDatabasePins() {
+    const uint64_t min_txn_age_micros =
+        static_cast<uint64_t>(FLAGS_db_history_retention_pin_min_txn_age_sec) * 1000000;
+    const auto now_micros = static_cast<uint64_t>(GetCurrentTimeMicros());
+
+    std::unordered_map<PgOid, HybridTime> result;
+    // Per-session pin HT is an atomic; we best-effort refresh it from the PG-published SHMEM
+    // serial under a session try_lock. The snapshot may be slightly stale if a session is busy.
+    SharedLock lock(mutex_);
+    for (const auto& session_info : sessions_) {
+      const auto pin = session_info->session().GetDbHistoryRetentionPin();
+      if (!pin.read_time.is_valid() || pin.db_oid == kPgInvalidOid) {
+        continue;
+      }
+      const uint64_t pin_micros = pin.read_time.GetPhysicalValueMicros();
+      if (now_micros <= pin_micros || now_micros - pin_micros < min_txn_age_micros) {
+        continue;
+      }
+      auto [it, inserted] = result.emplace(pin.db_oid, pin.read_time);
+      if (!inserted) {
+        it->second.MakeAtMost(pin.read_time);
+      }
+    }
+    return result;
+  }
+
   size_t TEST_ExchangeThreadPoolWorkersCreated() {
     return exchange_thread_pool_ ? exchange_thread_pool_->TEST_NumWorkersCreated() : 0;
   }
@@ -3387,6 +3437,10 @@ void PgClientServiceImpl::InvalidateTableCache(
 Result<PgTxnSnapshot> PgClientServiceImpl::GetLocalPgTxnSnapshot(
     const PgTxnSnapshotLocalId& snapshot_id) {
   return impl_->GetLocalPgTxnSnapshot(snapshot_id);
+}
+
+std::unordered_map<PgOid, HybridTime> PgClientServiceImpl::GetDatabasePins() {
+  return impl_->GetDatabasePins();
 }
 
 size_t PgClientServiceImpl::TEST_SessionsCount() { return impl_->TEST_SessionsCount(); }

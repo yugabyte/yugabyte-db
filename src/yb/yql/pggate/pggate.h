@@ -905,6 +905,7 @@ class PgApiImpl {
   [[nodiscard]] YbcReadPointHandle GetMaxReadPoint() const;
   Status RestoreReadPoint(YbcReadPointHandle read_point);
   Result<YbcReadPointHandle> RegisterSnapshotReadTime(uint64_t read_time, bool use_read_time);
+  void PublishOldestReadPointSerialNo(uint64_t serial_no);
 
   void DdlEnableForceCatalogModification();
 

@@ -138,6 +138,7 @@ DECLARE_bool(enable_register_ts_from_raft);
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 DECLARE_int32(heartbeat_rpc_timeout_ms);
 DECLARE_bool(skip_tserver_version_checks);
+DECLARE_bool(enable_db_history_retention_pins);
 
 namespace yb::master {
 
@@ -272,6 +273,12 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
 
   void PopulatePgCatalogVersionInfo(const TSHeartbeatRequestPB& req,
                                     TSHeartbeatResponsePB& resp);
+
+  // Populate global cluster-wide database pins in the tserver heartbeat response.
+  //
+  // Since there can be other ongoing sessions that involves DBs on a tserver but the tserver
+  // itself is unaware of, every global database pin need to be included in the response.
+  void PopulateYsqlDbOldestPinnedReadTimes(TSHeartbeatResponsePB& resp);
 };
 
 Status MasterHeartbeatServiceImpl::CheckUniverseUuidMatchFromTserver(
@@ -399,6 +406,20 @@ void MasterHeartbeatServiceImpl::PopulatePgCatalogVersionInfo(
     << resp.db_catalog_version_data().ShortDebugString()
     << ") db inval messages: "
     << tserver::CatalogInvalMessagesDataDebugString(resp);
+}
+
+// TODO: On master failover, the new master can temporarily return incomplete pins until every
+// tserver heartbeats master once. Need to add guard against master failover in follow-up.
+void MasterHeartbeatServiceImpl::PopulateYsqlDbOldestPinnedReadTimes(TSHeartbeatResponsePB& resp) {
+  if (!FLAGS_enable_db_history_retention_pins) {
+    return;
+  }
+  DbOidToHybridTimeMap cluster_pins =
+    server_->ts_manager()->GetClusterYsqlDbOldestPinnedReadTimes();
+  for (const auto& [db_oid, pin] : cluster_pins) {
+    (*resp.mutable_cluster_ysql_db_oldest_pinned_read_times())[db_oid]
+      .set_db_level_oldest_read_time(pin.ToPB());
+  }
 }
 
 void MasterHeartbeatServiceImpl::TSHeartbeat(
@@ -560,6 +581,8 @@ void MasterHeartbeatServiceImpl::TSHeartbeat(
       *resp->mutable_auto_flags_config() = server_->GetAutoFlagsConfig();
     }
   }
+
+  PopulateYsqlDbOldestPinnedReadTimes(*resp);
 
   PopulatePgCatalogVersionInfo(*req, *resp);
 
