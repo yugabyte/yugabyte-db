@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include <stdint.h>
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 #ifdef __cplusplus
 
@@ -43,9 +43,9 @@ pg_result* PgResultFromPB(const PgResultPB& result_pb);
 extern "C" {
 #endif
 
-// Deserializes a serialized PgResultPB byte buffer into a PGresult*.
-// Caller owns the returned PGresult and must free it with PQclear().
-struct pg_result* YBCPgResultFromPB(const uint8_t* buf, size_t size);
+// Builds a PGresult from the given protobuf (borrowed, not consumed).
+// Returns NULL on failure. Free the result with PQclear().
+struct pg_result* YBCPgResultFromPB(YbcPgResultPB pb);
 
 #ifdef __cplusplus
 }  // extern "C"

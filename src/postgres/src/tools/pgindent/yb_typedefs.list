@@ -308,6 +308,7 @@ YbcPgOid
 YbcPgPrepareParameters
 YbcPgReplicaIdentityDescriptor
 YbcPgReplicationSlotSnapshotAction
+YbcPgResultPB
 YbcPgRowMessage
 YbcPgRowMessageAction
 YbcPgServerMetricsInfo
@@ -342,7 +343,6 @@ YbcReadAfterCommitVisibilityEnum
 YbcReadHybridTime
 YbcReadPointHandle
 YbcRecordTempRelationDDL_hook_type
-YbcRemotePgExecResult
 YbcReplicationInfo
 YbcReplicationSlotDescriptor
 YbcReplicationSlotHashRange
