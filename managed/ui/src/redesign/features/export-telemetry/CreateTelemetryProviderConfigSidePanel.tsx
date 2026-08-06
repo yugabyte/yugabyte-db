@@ -209,11 +209,12 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
       <>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
           <YBLabel>{t('dataDogApiKey')}</YBLabel>
-          <YBInputField
+          <YBPasswordField
             control={control}
             name="config.apiKey"
             fullWidth
             disabled={isViewMode}
+            hidePasswordButton={isViewMode}
             inputProps={{
               'data-testid': 'DatadogForm-APIKey'
             }}
@@ -288,11 +289,12 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
               <img src={InfoIcon} />
             </YBTooltip>
           </YBLabel>
-          <YBInputField
+          <YBPasswordField
             control={control}
             name="config.token"
             fullWidth
             disabled={isViewMode}
+            hidePasswordButton={isViewMode}
             inputProps={{
               'data-testid': 'SplunkForm-Token'
             }}
@@ -436,11 +438,12 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
         </Box>
         <Box display="flex" flexDirection="column" width="100%" mt={3}>
           <YBLabel>{t('lokiPassword')}</YBLabel>
-          <YBInputField
+          <YBPasswordField
             control={control}
             name="config.basicAuth.password"
             fullWidth
             disabled={isViewMode}
+            hidePasswordButton={isViewMode}
             inputProps={{
               'data-testid': 'LokiForm-Password'
             }}
@@ -470,12 +473,13 @@ export const CreateTelemetryProviderConfigSidePanel: FC<CreateTelemetryProviderC
         </Box>
         <Box display={'flex'} flexDirection={'column'} width={'100%'} mt={3}>
           <YBLabel>{t('awsSecretKey')}</YBLabel>
-          <YBInputField
+          <YBPasswordField
             control={control}
             rules={{ required: 'This field is required' }}
             name="config.secretKey"
             fullWidth
             disabled={isViewMode}
+            hidePasswordButton={isViewMode}
             inputProps={{
               'data-testid': 'AWSWatchForm-SecretKey'
             }}
