@@ -242,11 +242,11 @@ DEFINE_validator(max_disk_throughput_mbps, FLAG_GT_VALUE_VALIDATOR(0));
 DEFINE_validator(reject_writes_min_disk_space_check_interval_sec, FLAG_GT_VALUE_VALIDATOR(0));
 
 DEFINE_RUNTIME_uint64(cdc_intent_retention_ms, 8 * 3600 * 1000,
-    "Interval up to which CDC consumer's checkpoint is considered for retaining intents."
-    "If we haven't received an updated checkpoint from CDC consumer within the interval "
-    "specified by cdc_checkpoint_opid_interval, then CDC does not consider that "
-    "consumer while determining which op IDs to delete from the intent. NOTE: Must be no larger "
-    "than cdc_wal_retention_time_secs * 1000.");
+    "Maximum downtime allowed for a CDC client, in milliseconds, to retain transaction intents "
+    "A successful GetChanges poll refreshes a tablet-stream's active time. If no successful "
+    "poll occurs within this period, the tablet-stream is considered expired and its CDC "
+    "checkpoint no longer prevents garbage collection of unconsumed transaction intents. "
+    "Must be no larger than cdc_wal_retention_time_secs * 1000.");
 TAG_FLAG(cdc_intent_retention_ms, advanced);
 
 DEFINE_RUNTIME_uint32(cdc_wal_retention_time_secs, 8 * 3600,
