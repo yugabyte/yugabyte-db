@@ -2102,6 +2102,8 @@ Maximum in-memory size in megabytes for a single output chunk built during Vecto
 
 This flag takes priority over `vector_index_compaction_chunk_max_mem_store_size_percentage`. When concurrent compactions are allowed (`vector_index_num_compactions_limit` is not 1), operators should set this flag instead of relying on the percentage-based limit.
 
+For more information, see [Vector LSM](../../../architecture/docdb/vector-lsm/) and [#31542](https://github.com/yugabyte/yugabyte-db/issues/31542).
+
 ##### --vector_index_compaction_chunk_max_mem_store_size_percentage
 
 {{% tags/wrap %}}
@@ -2117,6 +2119,8 @@ This flag is ignored when:
 - Concurrent compactions are allowed (`vector_index_num_compactions_limit` is not 1)
 
 When both this flag and the MB-based limit are at their defaults, chunked compaction is enabled with output chunks capped at 60% of the vector index block cache capacity, which reduces the risk of out-of-memory (OOM) errors during compaction.
+
+For more information, see [Vector LSM](../../../architecture/docdb/vector-lsm/) and [#32922](https://github.com/yugabyte/yugabyte-db/issues/32922).
 
 ### Concurrency control flags
 
