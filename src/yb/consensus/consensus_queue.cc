@@ -71,6 +71,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/tostring.h"
+#include "yb/util/unique_lock.h"
 #include "yb/util/url-coding.h"
 
 using namespace std::literals;
@@ -1090,61 +1091,53 @@ Result<const PeerMessageQueue::TrackedPeer*> PeerMessageQueue::FindClosestPeerFo
 
 Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
                                                           StartRemoteBootstrapRequestPB* req) {
-  std::optional<TrackedPeer> rbs_source;
-  int64_t current_term;
-  OpId pending_config_op_id;
-  {
-    LockGuard lock(queue_lock_);
-    DCHECK_EQ(queue_state_.state, State::kQueueOpen);
-    DCHECK_NE(uuid, local_peer_uuid_);
-    TrackedPeer* peer = FindPtrOrNull(peers_map_, uuid);
-    if (PREDICT_FALSE(peer == nullptr || queue_state_.mode == Mode::NON_LEADER)) {
-      return STATUS(NotFound, "Peer not tracked or queue not in leader mode.");
-    }
-
-    if (PREDICT_FALSE(!peer->needs_remote_bootstrap)) {
-      return STATUS(IllegalState, "Peer does not need to remotely bootstrap", uuid);
-    }
-
-    if (peer->member_type == PeerMemberType::VOTER ||
-        peer->member_type == PeerMemberType::OBSERVER) {
-      LOG(INFO) << "Remote bootstrapping peer " << uuid << " with type "
-                << PeerMemberType_Name(peer->member_type);
-    }
-
-    // Check if a closest follower can serve as the RBS source.
-    auto rbs_from_leader_only =
-        FLAGS_remote_bootstrap_from_leader_only ||
-        !peer->cloud_info.has_value() ||
-        peer->failed_bootstrap_attempts_from_non_leader >=
-            FLAGS_max_remote_bootstrap_attempts_from_non_leader;
-
-    const TrackedPeer* rbs_source_ptr =
-        rbs_from_leader_only ? local_peer_ : VERIFY_RESULT(FindClosestPeerForBootstrap(peer));
-    rbs_source.emplace(*rbs_source_ptr);
-    current_term = queue_state_.current_term;
-    pending_config_op_id = queue_state_.pending_config_op_id;
-
-    // Acess/Edit peer's fields within queue_lock_'s scope to avoid race. For instance, this peer's
-    // information could be accessed while finding RBS source for another newly added peer.
-    peer->needs_remote_bootstrap = false;
-    if (PREDICT_FALSE(FLAGS_TEST_assert_remote_bootstrap_happens_from_same_zone)) {
-      CHECK_EQ(
-          TablespaceParser::GetLocalityLevel(
-              rbs_source->cloud_info.value(), peer->cloud_info.value()),
-          LocalityLevel::kZone)
-          << "Expected rbs source to be in same zone as new peer";
-    }
+  // The whole request is populated under queue_lock_: rbs_source points into peers_map_, and
+  // UntrackPeer deletes those objects under the same lock.
+  UniqueLock<LockType> lock(queue_lock_);
+  DCHECK_EQ(queue_state_.state, State::kQueueOpen);
+  DCHECK_NE(uuid, local_peer_uuid_);
+  TrackedPeer* peer = FindPtrOrNull(peers_map_, uuid);
+  if (PREDICT_FALSE(peer == nullptr || queue_state_.mode == Mode::NON_LEADER)) {
+    return STATUS(NotFound, "Peer not tracked or queue not in leader mode.");
   }
 
-  TEST_SYNC_POINT("PeerMessageQueue::GetRemoteBootstrapRequestForPeer:AfterQueueLockReleased");
+  if (PREDICT_FALSE(!peer->needs_remote_bootstrap)) {
+    return STATUS(IllegalState, "Peer does not need to remotely bootstrap", uuid);
+  }
+
+  if (peer->member_type == PeerMemberType::VOTER ||
+      peer->member_type == PeerMemberType::OBSERVER) {
+    LOG(INFO) << "Remote bootstrapping peer " << uuid << " with type "
+              << PeerMemberType_Name(peer->member_type);
+  }
+
+  // Check if a closest follower can serve as the RBS source.
+  auto rbs_from_leader_only =
+      FLAGS_remote_bootstrap_from_leader_only ||
+      !peer->cloud_info.has_value() ||
+      peer->failed_bootstrap_attempts_from_non_leader >=
+          FLAGS_max_remote_bootstrap_attempts_from_non_leader;
+
+  const TrackedPeer* rbs_source =
+      rbs_from_leader_only ? local_peer_ : VERIFY_RESULT(FindClosestPeerForBootstrap(peer));
+
+  // Acess/Edit peer's fields within queue_lock_'s scope to avoid race. For instance, this peer's
+  // information could be accessed while finding RBS source for another newly added peer.
+  peer->needs_remote_bootstrap = false;
+  if (PREDICT_FALSE(FLAGS_TEST_assert_remote_bootstrap_happens_from_same_zone)) {
+    CHECK_EQ(
+        TablespaceParser::GetLocalityLevel(
+            rbs_source->cloud_info.value(), peer->cloud_info.value()),
+        LocalityLevel::kZone)
+        << "Expected rbs source to be in same zone as new peer";
+  }
 
   req->Clear();
   req->set_dest_uuid(uuid);
   req->set_tablet_id(tablet_id_);
   // can use leader's current term as the bootstrap request is served by the leader or any other
   // closest peer that is in the same term (when FLAGS_remote_bootstrap_from_leader_only is false).
-  req->set_caller_term(current_term);
+  req->set_caller_term(queue_state_.current_term);
   // populate req with the closest peer's info for remote bootstrapping the tracked peer
   req->set_bootstrap_source_peer_uuid(rbs_source->uuid);
   *req->mutable_bootstrap_source_private_addr() = {
@@ -1154,8 +1147,8 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
   if (rbs_source->cloud_info.has_value()) {
     *req->mutable_bootstrap_source_cloud_info() = rbs_source->cloud_info.value();
   }
-  if (pending_config_op_id.is_valid_not_empty()) {
-    pending_config_op_id.ToPB(req->mutable_pending_config_op_id());
+  if (queue_state_.pending_config_op_id.is_valid_not_empty()) {
+    queue_state_.pending_config_op_id.ToPB(req->mutable_pending_config_op_id());
   }
 
   if (rbs_source->uuid != local_peer_uuid_) {
@@ -1168,6 +1161,9 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
   } else {
     req->set_is_served_by_tablet_leader(true);
   }
+
+  lock.unlock();
+  TEST_SYNC_POINT("PeerMessageQueue::GetRemoteBootstrapRequestForPeer:AfterQueueLockReleased");
 
   return Status::OK();
 }

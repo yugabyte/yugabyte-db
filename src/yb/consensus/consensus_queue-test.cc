@@ -1092,7 +1092,7 @@ TEST_F(ConsensusQueueTest, TestRemoteBootstrapSourceUntrackedAfterQueueLockRelea
   ASSERT_OK(queue_->RequestForPeer(kPeerUuid, &request, &refs, &needs_remote_bootstrap));
   ASSERT_TRUE(needs_remote_bootstrap);
 
-  // Delete peer-2 right after the queue lock is released, before its fields are read.
+  // Delete peer-2 as soon as the queue lock is released.
   auto* sync_point = SyncPoint::GetInstance();
   sync_point->SetCallBack(
       "PeerMessageQueue::GetRemoteBootstrapRequestForPeer:AfterQueueLockReleased",
@@ -1106,7 +1106,6 @@ TEST_F(ConsensusQueueTest, TestRemoteBootstrapSourceUntrackedAfterQueueLockRelea
   StartRemoteBootstrapRequestPB rb_req;
   ASSERT_OK(queue_->GetRemoteBootstrapRequestForPeer(kPeerUuid, &rb_req));
 
-  // Without the fix these read the freed TrackedPeer.
   ASSERT_TRUE(rb_req.IsInitialized()) << rb_req.ShortDebugString();
   ASSERT_EQ(kTestTablet, rb_req.tablet_id());
   ASSERT_EQ(kRbsSourceUuid, rb_req.bootstrap_source_peer_uuid());
