@@ -159,9 +159,13 @@ public class UniverseInfoHandler {
   }
 
   public List<Details> healthCheck(UUID universeUUID) {
+    return healthCheck(universeUUID, null);
+  }
+
+  public List<Details> healthCheck(UUID universeUUID, Integer limit) {
     List<Details> detailsList = new ArrayList<>();
     try {
-      List<HealthCheck> checks = HealthCheck.getAll(universeUUID);
+      List<HealthCheck> checks = HealthCheck.getAll(universeUUID, limit);
       for (HealthCheck check : checks) {
         detailsList.add(check.getDetailsJson());
       }

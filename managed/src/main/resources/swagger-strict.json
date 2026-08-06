@@ -43263,6 +43263,15 @@
             "name" : "uniUUID",
             "required" : true,
             "type" : "string"
+          },
+          {
+            "default" : 10,
+            "description" : "Maximum number of most recent health check entries to return. Defaults to 10.",
+            "format" : "int32",
+            "in" : "query",
+            "name" : "limit",
+            "required" : false,
+            "type" : "integer"
           }
         ],
         "responses" : {
