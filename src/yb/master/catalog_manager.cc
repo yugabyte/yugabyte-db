@@ -591,9 +591,11 @@ DEFINE_NON_RUNTIME_bool(enable_heartbeat_pg_catalog_versions_cache, true,
 
 DEFINE_test_flag(string, block_alter_table, "",
     "If non-empty, the specified alter table step is blocked. Possible values are "
-    "\"alter_schema\" (blocks the schema from being altered), \"sys_catalog_write\" (blocks "
-    "after mutex_ is released and before the sys-catalog write starts), and \"completion\" "
-    "(blocks the service completion of the alter table request)");
+    "\"alter_schema\" (blocks the schema from being altered), \"post_name_reservation\" (blocks "
+    "a rename after its new name is reserved and before the table's COW write lock is taken), "
+    "\"sys_catalog_write\" (blocks after the COW write lock is taken and before the sys-catalog "
+    "write starts), and \"completion\" (blocks the service completion of the alter table "
+    "request)");
 
 DECLARE_bool(master_enable_universe_uuid_heartbeat_check);
 
@@ -8213,7 +8215,7 @@ Status CatalogManager::AlterTableWithBatchTracker(
 
   while (FLAGS_TEST_block_alter_table == "alter_schema") {
     constexpr auto kSleepFor = 100ms;
-    LOG(INFO) << Format("Blocking $0 for $1ms", __func__, kSleepFor);
+    LOG(INFO) << Format("Blocking $0 at alter_schema for $1ms", __func__, kSleepFor);
     SleepFor(kSleepFor);
   }
 
@@ -8225,9 +8227,58 @@ Status CatalogManager::AlterTableWithBatchTracker(
         xcluster_manager_.get()->IsNamespaceInAutomaticDDLMode(table->namespace_id());
   }
 
-  // todo(GH29185): too much happens here under the cm mutex.
-  UniqueLock lock(mutex_);
-  VLOG_WITH_FUNC(3) << "Acquired the catalog manager lock";
+  // A rename acquires the new name in the by-name map here, before the table's COW write lock
+  // is taken, so mutex_ is never held together with that lock and never across IO. The entry
+  // points at this table, so a concurrent create or rename that targets the name fails against
+  // it, and lookups resolve through it. The table is visible under both names until the alter
+  // commits or rolls back. CreateTable has the same uncommitted-name window. A follow-up is to
+  // revalidate the resolved name against the committed pb at the delete and lookup choke points.
+  bool reserved_new_name = false;
+  // Postgres handles name uniqueness constraints in its own layer.
+  if (req->has_new_table_name() && table->GetTableType() != PGSQL_TABLE_TYPE) {
+    LockGuard map_lock(mutex_);
+    TRACE("Acquired catalog manager lock");
+    // Verify that the table does not exist.
+    scoped_refptr<TableInfo> other_table = FindPtrOrNull(
+        table_names_map_, {namespace_id, req->new_table_name()});
+    if (other_table != nullptr) {
+      Status s = STATUS_SUBSTITUTE(AlreadyPresent,
+          "Object '$0.$1' already exists",
+          GetNamespaceNameUnlocked(namespace_id), other_table->name());
+      LOG(WARNING) << "Found table: " << other_table->ToStringWithState()
+                   << ". Failed alterring table with error: "
+                   << s.ToString() << " Request:\n" << req->DebugString();
+      return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
+    }
+
+    // Acquire the new table name (now we have 2 names for the same table).
+    table_names_map_[{namespace_id, req->new_table_name()}] = table;
+    reserved_new_name = true;
+  }
+
+  // Erase the reservation if the alter fails before its sys-catalog write commits the rename.
+  // The guard is declared before the COW write lock below is taken, so on any failure return it
+  // runs after that lock is released, which keeps mutex_ from being acquired while the COW lock
+  // is held.
+  auto name_reservation_guard = CancelableScopeExit(
+      [this, &namespace_id, req, reserved_new_name] {
+        if (!reserved_new_name) {
+          return;
+        }
+        LockGuard map_lock(mutex_);
+        // Tolerate an entry that is already absent. Neither mutex_ nor the COW lock is held for
+        // the whole span since the reservation, so a concurrent mutation could have removed it.
+        if (table_names_map_.erase({namespace_id, req->new_table_name()}) != 1) {
+          LOG(WARNING) << "ALTER TABLE rollback: reserved new name " << namespace_id << "."
+                       << req->new_table_name() << " was already absent from the by-name map";
+        }
+      });
+
+  while (FLAGS_TEST_block_alter_table == "post_name_reservation") {
+    constexpr auto kSleepFor = 100ms;
+    LOG(INFO) << Format("Blocking $0 at post_name_reservation for $1ms", __func__, kSleepFor);
+    SleepFor(kSleepFor);
+  }
 
   TRACE("Locking table");
   auto l = table->LockForWrite();
@@ -8288,41 +8339,10 @@ Status CatalogManager::AlterTableWithBatchTracker(
     has_changes = true;
   }
 
-  // Try to acquire the new table name.
   if (req->has_new_table_name()) {
-
-    // Postgres handles name uniqueness constraints in it's own layer.
-    if (l->table_type() != PGSQL_TABLE_TYPE) {
-      // Verify that the table does not exist.
-      scoped_refptr<TableInfo> other_table = FindPtrOrNull(
-          table_names_map_, {namespace_id, new_table_name});
-      if (other_table != nullptr) {
-        Status s = STATUS_SUBSTITUTE(AlreadyPresent,
-            "Object '$0.$1' already exists",
-            GetNamespaceNameUnlocked(namespace_id), other_table->name());
-        LOG(WARNING) << "Found table: " << other_table->ToStringWithState()
-                     << ". Failed alterring table with error: "
-                     << s.ToString() << " Request:\n" << req->DebugString();
-        return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
-      }
-
-      // Acquire the new table name (now we have 2 name for the same table).
-      table_names_map_[{namespace_id, new_table_name}] = table;
-    }
-
     table_pb.set_name(new_table_name);
     has_changes = true;
   }
-
-  // Release mutex_. The collision check and name reservation above are the last steps that need
-  // it. Everything below operates on the table's COW state or performs IO. The failure rollback
-  // and the deferred old-name erase below re-acquire mutex_ only after the COW lock is released,
-  // which preserves the lock order between mutex_ and the COW lock. While the sys-catalog write
-  // runs, a YCQL rename is visible to concurrent RPCs under both names. Anything that resolves
-  // the table still serializes on its COW lock and sees the outcome at commit or rollback.
-  // CreateTable already has the same uncommitted-name window. A follow-up is to revalidate the
-  // resolved name against the committed pb at the delete and lookup choke points.
-  lock.unlock();
 
   // Check if there has been any changes to the placement policies for this table.
   if (req->has_replication_info()) {
@@ -8444,26 +8464,13 @@ Status CatalogManager::AlterTableWithBatchTracker(
 
   while (FLAGS_TEST_block_alter_table == "sys_catalog_write") {
     constexpr auto kSleepFor = 100ms;
-    LOG(INFO) << Format("Blocking $0 for $1ms", __func__, kSleepFor);
+    LOG(INFO) << Format("Blocking $0 at sys_catalog_write for $1ms", __func__, kSleepFor);
     SleepFor(kSleepFor);
   }
 
-  Status update_status = UpdateSysCatalogWithNewSchema(table, ddl_log_entries, epoch, resp);
-  if (!update_status.ok()) {
-    // The write failed. Discard the staged COW changes and drop the reserved new name. The old
-    // name was never erased, so the table stays reachable by it.
-    l.Unlock();
-    if (table->GetTableType() != PGSQL_TABLE_TYPE && req->has_new_table_name()) {
-      LockGuard map_lock(mutex_);
-      // Tolerate an entry that is already absent. Both mutex_ and the COW lock were released
-      // above, so a concurrent mutation could have removed it.
-      if (table_names_map_.erase({namespace_id, new_table_name}) != 1) {
-        LOG(WARNING) << "ALTER TABLE rollback: reserved new name " << namespace_id << "."
-                     << new_table_name << " was already absent from the by-name map";
-      }
-    }
-    return update_status;
-  }
+  // If the write fails, the WriteLock destructor will discard the staged COW changes and the
+  // CancelableScopeExit will remove the name reservation in table_names_map_ if necessary.
+  RETURN_NOT_OK(UpdateSysCatalogWithNewSchema(table, ddl_log_entries, epoch, resp));
 
   // Update the in-memory state.
   TRACE("Committing in-memory state");
@@ -8471,11 +8478,16 @@ Status CatalogManager::AlterTableWithBatchTracker(
                     << " after the after table operation is: " << table_pb.DebugString();
   l.Commit();
 
+  // The alter is committed. If a rename reserved a new name, that name is the table's live name
+  // now, so dismiss the guard that would erase it. The dismissal must stay directly after the
+  // commit. A failure return between the two would run the guard and erase the live name.
+  name_reservation_guard.Cancel();
+
   // A committed rename erases its old name here rather than before the write, so that a failed
   // write leaves the table reachable by the old name. Tolerate an entry that is already absent.
   // Both mutex_ and the COW lock were released above, so a concurrent mutation could have
   // removed it.
-  if (table->GetTableType() != PGSQL_TABLE_TYPE && req->has_new_table_name()) {
+  if (reserved_new_name) {
     LockGuard map_lock(mutex_);
     if (table_names_map_.erase({namespace_id, table_name}) != 1) {
       LOG(WARNING) << "ALTER TABLE: old name " << namespace_id << "." << table_name
@@ -8510,7 +8522,7 @@ Status CatalogManager::AlterTableWithBatchTracker(
 
   while (FLAGS_TEST_block_alter_table == "completion") {
     constexpr auto kSleepFor = 100ms;
-    LOG(INFO) << Format("Blocking $0 for $1ms", __func__, kSleepFor);
+    LOG(INFO) << Format("Blocking $0 at completion for $1ms", __func__, kSleepFor);
     SleepFor(kSleepFor);
   }
 
