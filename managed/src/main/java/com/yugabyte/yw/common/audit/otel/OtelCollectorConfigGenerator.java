@@ -129,7 +129,8 @@ public class OtelCollectorConfigGenerator {
   private static final String K8S_OTEL_DIR = "/mnt/disk0/otel-collector";
   // The otel sidecar shares the pod network namespace, so all scrape targets are pod-local.
   private static final String K8S_POD_LOCAL_ADDRESS = "127.0.0.1";
-  private static final int K8S_OTEL_METRICS_PORT = 8889;
+  // Fallback only, for universes created before the port was tracked in communicationPorts.
+  private static final int K8S_OTEL_METRICS_PORT_DEFAULT = 8889;
 
   // Processor prefixes
   private static final String PROCESSOR_PREFIX_ATTRIBUTES = "attributes/";
@@ -839,6 +840,17 @@ public class OtelCollectorConfigGenerator {
   }
 
   /**
+   * Port the collector sidecar serves its own metrics on inside a K8s pod. Read from the universe's
+   * communication ports (seeded from the provider conf key otelCollectorMetricsPort at create time)
+   * rather than hardcoded, so that the port the sidecar listens on is the same one SwamperHelper
+   * writes into the Prometheus target file for that pod.
+   */
+  private static int getK8sOtelMetricsPort(Universe universe) {
+    int port = universe.getUniverseDetails().communicationPorts.otelCollectorMetricsPort;
+    return port > 0 ? port : K8S_OTEL_METRICS_PORT_DEFAULT;
+  }
+
+  /**
    * Builds the complete OpenTelemetry collector config for a K8s universe and returns it as a YAML
    * string (for the chart's spec.config passthrough) plus the secret env entries the chart wires
    * into the sidecar.
@@ -1003,7 +1015,7 @@ public class OtelCollectorConfigGenerator {
     telemetry.setLogs(logsConfig);
     OtelCollectorConfigFormat.MetricsConfig metricsConfig =
         new OtelCollectorConfigFormat.MetricsConfig();
-    metricsConfig.setAddress("0.0.0.0:" + K8S_OTEL_METRICS_PORT);
+    metricsConfig.setAddress("0.0.0.0:" + getK8sOtelMetricsPort(universe));
     telemetry.setMetrics(metricsConfig);
     service.setTelemetry(telemetry);
 
@@ -1217,7 +1229,8 @@ public class OtelCollectorConfigGenerator {
     }
     if (scrapeTargets.contains(ScrapeConfigTargetType.OTEL_EXPORT)) {
       scrapeConfigs.add(
-          createOtelCollectorScrapeConfig(K8S_POD_LOCAL_ADDRESS, universe, K8S_OTEL_METRICS_PORT));
+          createOtelCollectorScrapeConfig(
+              K8S_POD_LOCAL_ADDRESS, universe, getK8sOtelMetricsPort(universe)));
     }
     prometheusConfig.setScrape_configs(scrapeConfigs);
     receiver.setConfig(prometheusConfig);

@@ -71,6 +71,10 @@ public class KubernetesConfigureExportTelemetryConfig extends KubernetesUpgradeT
               universe.getUniverseDetails().getYbcSoftwareVersion());
 
           updateAndPersistExportTelemetryConfigTask();
+
+          // Update the swamper target file. Must run after the persist task above, since the
+          // otel targets are gated on universeDetails.otelCollectorEnabled which it sets.
+          createSwamperTargetUpdateTask(false /* removeFile */);
         });
   }
 }
