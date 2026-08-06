@@ -1327,7 +1327,10 @@ class ReadPointHistory {
       // Potentially read time could be set to same read_time_serial_no multiple times.
       // It is expected that read time is the same or fresher (due to possible restart)
       // but not older.
-      DCHECK(read_time.read >= ipair.first->second.read_time().read);
+      DCHECK(read_time.read >= ipair.first->second.read_time().read)
+          << "Overwriting read_time_serial_no=" << read_time_serial_no
+          << " with an older read time, given: " << AsString(read_time)
+          << ", existing: " << AsString(ipair.first->second.read_time());
       ipair.first->second = std::move(momento);
     }
   }
@@ -3550,7 +3553,7 @@ class PgClientSession::Impl {
     }
     ADOPT_TRACE(trace.get());
 
-    data->used_read_time_applier = MakeUsedReadTimeApplier(setup_session_result);
+    data->used_read_time_applier = MakeUsedReadTimeApplier(setup_session_result, data->req);
     data->used_in_txn_limit = in_txn_limit;
     data->transaction = std::move(transaction);
     data->pg_node_level_mutation_counter = pg_node_level_mutation_counter();
@@ -4511,11 +4514,17 @@ class PgClientSession::Impl {
     return docdb::TxnBlockedTableLockRequests::kTrue;
   }
 
-  UsedReadTimeApplier MakeUsedReadTimeApplier(const SetupSessionResult& result) {
+  UsedReadTimeApplier MakeUsedReadTimeApplier(
+      const SetupSessionResult& result, const LWPgPerformRequestPB& req) {
     auto* read_point = result.session_data.session->read_point();
     if (result.kind != PgClientSessionKind::kPlain ||
         result.session_data.transaction ||
-        (read_point && read_point->GetReadTime())) {
+        (read_point && read_point->GetReadTime()) ||
+        HybridTime::FromPB(req.write_time())) {
+      // For index backfill, req.write_time carries the backfill write time
+      // which is later patched to also become the read time in async_rpc.cc
+      // Any read time saved to read point history from current state is not
+      // useful, so disabling the read time applier here.
       return {};
     }
 

@@ -3349,11 +3349,12 @@ class PgIndexBackfillColumnProjectionTest : public PgIndexBackfillRpcStatsTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgIndexBackfillRpcStatsTest::UpdateMiniClusterOptions(options);
     const bool projection_enabled = GetParam();
-    options->extra_tserver_flags.push_back(Format(
-        "--ysql_pg_conf_csv=yb_enable_pg_stat_statements_rpc_stats=true,"
-        "yb_fetch_size_limit=$0,"
-        "yb_enable_index_backfill_scan_optimization=$1",
-        kFetchSizeLimit, projection_enabled ? "true" : "false"));
+    AppendCsvFlagValue(
+        options->extra_tserver_flags, "ysql_pg_conf_csv",
+        Format("yb_enable_pg_stat_statements_rpc_stats=true,"
+               "yb_fetch_size_limit=$0,"
+               "yb_enable_index_backfill_scan_optimization=$1",
+               kFetchSizeLimit, projection_enabled ? "true" : "false"));
   }
 
   Status CreateWideTable(const std::string& table_name, const std::string& pk_def = "id") {
@@ -3434,8 +3435,7 @@ TEST_P(PgIndexBackfillColumnProjectionTest, SingleColumnPartialDifferentColumn) 
 }
 
 // Multi column index with HASH and ASC
-TEST_P(PgIndexBackfillColumnProjectionTest,
-       YB_DISABLE_TEST_IN_SANITIZERS(MultiColumnHashAsc)) {
+TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnHashAsc) {
   ASSERT_OK(CreateWideTable(kTableName));
   ASSERT_OK(InsertTestData(kTableName));
   auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
@@ -3444,8 +3444,7 @@ TEST_P(PgIndexBackfillColumnProjectionTest,
 }
 
 // Multi column index with compound hash key
-TEST_P(PgIndexBackfillColumnProjectionTest,
-       YB_DISABLE_TEST_IN_SANITIZERS(MultiColumnCompoundHash)) {
+TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnCompoundHash) {
   ASSERT_OK(CreateWideTable(kTableName));
   ASSERT_OK(InsertTestData(kTableName));
   auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
@@ -3454,8 +3453,7 @@ TEST_P(PgIndexBackfillColumnProjectionTest,
 }
 
 // Multi column index where col2 appears in both compound hash and range - fetched only once
-TEST_P(PgIndexBackfillColumnProjectionTest,
-       YB_DISABLE_TEST_IN_SANITIZERS(MultiColumnDuplicateColumn)) {
+TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnDuplicateColumn) {
   ASSERT_OK(CreateWideTable(kTableName));
   ASSERT_OK(InsertTestData(kTableName));
   auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
@@ -3464,8 +3462,7 @@ TEST_P(PgIndexBackfillColumnProjectionTest,
 }
 
 // Index columns in different order than table definition (table: col1, col2, col3)
-TEST_P(PgIndexBackfillColumnProjectionTest,
-       YB_DISABLE_TEST_IN_SANITIZERS(MultiColumnOutOfOrder)) {
+TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnOutOfOrder) {
   ASSERT_OK(CreateWideTable(kTableName));
   ASSERT_OK(InsertTestData(kTableName));
   auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
@@ -3474,8 +3471,7 @@ TEST_P(PgIndexBackfillColumnProjectionTest,
 }
 
 // Index on (col1, col2) where PK is (col2, col3, col1) - tests column order independence
-TEST_P(PgIndexBackfillColumnProjectionTest,
-       YB_DISABLE_TEST_IN_SANITIZERS(MultiColumnNonDefaultPkOrder)) {
+TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnNonDefaultPkOrder) {
   ASSERT_OK(CreateWideTable(kTableName, "col2, col3, col1"));
   ASSERT_OK(InsertTestData(kTableName));
   auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs("CREATE INDEX idx ON t (col1, col2)"));
@@ -3483,8 +3479,7 @@ TEST_P(PgIndexBackfillColumnProjectionTest,
 }
 
 // Multi column expression index - f(col1, col2) and g(col2), col2 fetched once
-TEST_P(PgIndexBackfillColumnProjectionTest,
-       YB_DISABLE_TEST_IN_SANITIZERS(MultiColumnExpression)) {
+TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnExpression) {
   ASSERT_OK(CreateWideTable(kTableName));
   ASSERT_OK(InsertTestData(kTableName));
   auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
@@ -3493,14 +3488,71 @@ TEST_P(PgIndexBackfillColumnProjectionTest,
 }
 
 // Multi column expression index with partial predicate using col2
-TEST_P(PgIndexBackfillColumnProjectionTest,
-       YB_DISABLE_TEST_IN_SANITIZERS(MultiColumnExpressionPartial)) {
+TEST_P(PgIndexBackfillColumnProjectionTest, MultiColumnExpressionPartial) {
   ASSERT_OK(CreateWideTable(kTableName));
   ASSERT_OK(InsertTestData(kTableName));
   auto rpcs = ASSERT_RESULT(BuildIndexAndGetRpcs(
       "CREATE INDEX idx ON t ((col1 + LENGTH(col2)) HASH, UPPER(col2) ASC) "
       "WHERE col2 > 'text_100'"));
   ASSERT_OK(ValidateRpcs(rpcs));
+}
+
+
+class PgIndexBackfillReadPointHistoryTest : public PgIndexBackfillColumnProjectionTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillColumnProjectionTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back("--backfill_index_write_batch_size=100");
+    // A small batch size makes the index write batch flush in the middle of a backfill chunk.
+    AppendCsvFlagValue(
+        options->extra_tserver_flags, "ysql_pg_conf_csv", "ysql_session_max_batch_size=10");
+  }
+};
+
+INSTANTIATE_TEST_CASE_P(, PgIndexBackfillReadPointHistoryTest, ::testing::Values(true));
+
+// Repro for GH #30372: multiple sequential BACKFILL chunks on the same backfill worker
+// session reuse the same read_time_serial_no. The non-transactional index write batch has
+// no read time, so the batcher picks Now() for the multi-tablet fan-out and that time gets
+// saved to ReadPointHistory under the scan's serial no. The next chunk's scan then saves
+// the older explicit backfill read time and fails
+// DCHECK(read_time.read >= ipair.first->second.read_time().read).
+//
+// Also verifies that index backfill respects write batching at the pggate layer, i.e. that
+// the number of write RPCs is not proportional to the number of rows (no flush per row).
+TEST_P(PgIndexBackfillReadPointHistoryTest, SaveOlderReadTime) {
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE TABLE $0 ("
+      "  id SERIAL,"
+      "  col1 INT,"
+      "  col2 TEXT,"
+      "  col3 BOOLEAN,"
+      "  padding TEXT,"
+      "  PRIMARY KEY (id)"
+      ") SPLIT INTO 1 TABLETS", kTableName));
+  ASSERT_OK(InsertTestData(kTableName));
+  // The index must have multiple tablets: the fan-out of a non-transactional write batch
+  // across tablets is what makes the batcher pick a read time for the index writes.
+  ASSERT_OK(conn_->ExecuteFormat(
+      "CREATE INDEX idx ON $0 ((col1, col2) HASH, col3 ASC) SPLIT INTO 3 TABLETS", kTableName));
+
+  // pg_stat_statements is per node and the backfill worker runs on the tserver hosting the
+  // main table's tablet leader, so aggregate the stats across all tservers.
+  int64_t write_rpcs = 0;
+  int64_t write_ops = 0;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    auto conn = ASSERT_RESULT(ConnectToTs(*cluster_->tablet_server(i)));
+    const auto [rpcs, ops] = ASSERT_RESULT((conn.FetchRow<int64_t, int64_t>(
+        "SELECT COALESCE(sum(docdb_write_rpcs)::int8, 0),"
+        "       COALESCE(sum(docdb_write_operations)::int8, 0) "
+        "FROM pg_stat_statements(true) "
+        "WHERE query LIKE 'BACKFILL%'")));
+    write_rpcs += rpcs;
+    write_ops += ops;
+  }
+  ASSERT_EQ(write_ops, kNumRows);
+  ASSERT_GT(write_rpcs, 1);
+  ASSERT_LE(write_rpcs, kNumRows / 5);
 }
 
 // Multi column index on partitioned table
