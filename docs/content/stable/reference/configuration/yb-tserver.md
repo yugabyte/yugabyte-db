@@ -2088,6 +2088,36 @@ Default: `50`
 
 Assigns an extra priority to automatic (minor) compactions when automatic tablet splitting is enabled. This deprioritizes post-split compactions and ensures that smaller compactions are not starved. Suggested values are between 0 and 50.
 
+### Vector Index LSM compaction flags
+
+##### --vector_index_compaction_chunk_max_mem_store_size_mb
+
+{{% tags/wrap %}}
+
+Default: `0`
+
+{{% /tags/wrap %}}
+
+Maximum in-memory size in megabytes for a single output chunk built during Vector LSM compaction. When set to `0` (the default), there is no limit and a single output chunk is produced. When set to a non-zero value, this flag enables chunked compaction, allowing the output to be split into multiple chunks bounded by the specified memory budget.
+
+This flag takes priority over `vector_index_compaction_chunk_max_mem_store_size_percentage`. When concurrent compactions are allowed (`vector_index_num_compactions_limit` is not 1), operators should set this flag instead of relying on the percentage-based limit.
+
+##### --vector_index_compaction_chunk_max_mem_store_size_percentage
+
+{{% tags/wrap %}}
+
+Default: `60`
+
+{{% /tags/wrap %}}
+
+Maximum in-memory size for a single output chunk built during Vector LSM compaction, expressed as a percentage of the vector index block cache capacity. A value of `0` means no limit (single output chunk). Values above `100` are treated as `100`.
+
+This flag is ignored when:
+- `vector_index_compaction_chunk_max_mem_store_size_mb` is set to a non-zero value
+- Concurrent compactions are allowed (`vector_index_num_compactions_limit` is not 1)
+
+When both this flag and the MB-based limit are at their defaults, chunked compaction is enabled with output chunks capped at 60% of the vector index block cache capacity, which reduces the risk of out-of-memory (OOM) errors during compaction.
+
 ### Concurrency control flags
 
 To learn about Wait-on-Conflict concurrency control, see [Concurrency control](../../../architecture/transactions/concurrency-control/).
