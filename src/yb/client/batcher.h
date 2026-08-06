@@ -368,7 +368,7 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   void HandleAsyncWriteResponse(
       const LWOpIdPB& async_write_op_id, const RemoteTablet& tablet,
-      const std::shared_ptr<const YBTable>& table);
+      const std::shared_ptr<const YBTable>& table, const ash::WaitStateInfoPtr& wait_state);
 
   BatcherState state_ = BatcherState::kGatheringOps;
 

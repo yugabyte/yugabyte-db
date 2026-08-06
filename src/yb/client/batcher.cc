@@ -815,7 +815,8 @@ void Batcher::ProcessReadResponse(const ReadRpc &rpc, const Status &s) {
   if (s.ok()) {
     const auto& resp = rpc.resp();
     if (resp.has_async_write_op_id()) {
-      HandleAsyncWriteResponse(resp.async_write_op_id(), rpc.tablet(), rpc.table());
+      HandleAsyncWriteResponse(
+          resp.async_write_op_id(), rpc.tablet(), rpc.table(), rpc.wait_state());
     }
   }
 }
@@ -826,7 +827,8 @@ void Batcher::ProcessWriteResponse(const WriteRpc &rpc, const Status &s) {
   if (s.ok()) {
     const auto& resp = rpc.resp();
     if (resp.has_async_write_op_id()) {
-      HandleAsyncWriteResponse(resp.async_write_op_id(), rpc.tablet(), rpc.table());
+      HandleAsyncWriteResponse(
+          resp.async_write_op_id(), rpc.tablet(), rpc.table(), rpc.wait_state());
     }
 
     if (resp.has_propagated_hybrid_time()) {
@@ -915,7 +917,7 @@ void Batcher::WaitForAsyncWrites(const TabletId& tablet_id, StdStatusCallback&& 
 
 void Batcher::HandleAsyncWriteResponse(
     const LWOpIdPB& async_write_op_id, const RemoteTablet& tablet,
-    const std::shared_ptr<const YBTable>& table) {
+    const std::shared_ptr<const YBTable>& table, const ash::WaitStateInfoPtr& wait_state) {
   // We have a async write. Record the OpId, and send a async RPC to track its completion.
   // At time of final commit, we will wait for all these async writes to complete.
   auto transaction = this->transaction();
@@ -931,7 +933,7 @@ void Batcher::HandleAsyncWriteResponse(
     // We need to be able to track this tablet across splits, so pass in the tablet's key_start.
     auto wait_for_async_write_rpc = std::make_shared<WaitForAsyncWriteRpc>(
         shared_from_this(), tablet.tablet_id(), tablet.partition().partition_key_start(), table,
-        op_id);
+        op_id, wait_state);
     wait_for_async_write_rpc->SendRpc();
   }
 }

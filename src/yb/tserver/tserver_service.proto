@@ -53,7 +53,9 @@ service TabletServerService {
     option (yb.rpc.send_metadata) = true;
     option (yb.rpc.lightweight_method).sides = BOTH;
   }
-  rpc WaitForAsyncWrite(WaitForAsyncWriteRequestPB) returns (WaitForAsyncWriteResponsePB);
+  rpc WaitForAsyncWrite(WaitForAsyncWriteRequestPB) returns (WaitForAsyncWriteResponsePB) {
+    option (yb.rpc.send_metadata) = true;
+  }
   rpc Read(ReadRequestPB) returns (ReadResponsePB) {
     option (yb.rpc.send_metadata) = true;
     option (yb.rpc.lightweight_method).sides = BOTH;
