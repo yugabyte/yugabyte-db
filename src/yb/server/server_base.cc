@@ -33,6 +33,7 @@
 #include "yb/server/server_base.h"
 
 #include <algorithm>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -71,6 +72,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/cgroups.h"
 #include "yb/util/concurrent_value.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
@@ -166,6 +168,11 @@ struct CommonMemTrackers {
 };
 
 std::unique_ptr<CommonMemTrackers> common_mem_trackers;
+
+// Several servers (tserver, CQL, Redis) can share a process, and tracing is process-wide: it is set
+// up by the first of them to initialize and torn down by the last one to shut down.
+std::mutex dist_trace_mutex;
+int dist_trace_servers = 0;
 
 } // anonymous namespace
 
@@ -555,6 +562,15 @@ Status RpcAndWebServerBase::Init() {
     return STATUS(NetworkError, "Simulated port conflict error");
   }
 
+  // Set up distributed tracing before the RPC server below, so it is ready for the first call.
+  if (dist_trace::IsDistTraceEnabled()) {
+    std::lock_guard lock(dist_trace_mutex);
+    if (dist_trace_servers++ == 0) {
+      dist_trace::InitDistTrace(name_, fs_manager_->uuid());
+    }
+    dist_trace_initialized_ = true;
+  }
+
   RETURN_NOT_OK(RpcServerBase::Init());
 
   return Status::OK();
@@ -766,6 +782,16 @@ Status RpcAndWebServerBase::Start() {
 void RpcAndWebServerBase::Shutdown() {
   RpcServerBase::Shutdown();
   web_server_->Stop();
+
+  // Tear tracing down after the messenger above, so that no inbound call can still be looking up
+  // the tracer.
+  if (dist_trace_initialized_) {
+    dist_trace_initialized_ = false;
+    std::lock_guard lock(dist_trace_mutex);
+    if (--dist_trace_servers == 0) {
+      dist_trace::ShutdownDistTrace();
+    }
+  }
 }
 
 std::string TEST_RpcAddress(size_t index, Private priv) {
