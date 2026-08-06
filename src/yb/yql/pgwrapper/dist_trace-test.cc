@@ -640,16 +640,15 @@ class DistTraceTest : public LibPqTestBase {
   }
 
   virtual void ConfigureDistTraceOptions(ExternalMiniClusterOptions* options) {
-    AppendFlagToAllowedPreviewFlagsCsv(options->extra_tserver_flags,
-        "otel_collector_traces_endpoint");
-    options->extra_tserver_flags.push_back(
-        Format("--otel_collector_traces_endpoint=$0", collector_.Url()));
-    options->extra_tserver_flags.push_back(
-        Format("--otel_batch_schedule_delay_ms=$0", kOtelBatchScheduleDelayMs));
-    options->extra_tserver_flags.push_back(
-        Format("--otel_batch_max_export_batch_size=$0", kOtelBatchMaxExportBatchSize));
-    options->extra_tserver_flags.push_back(
-        Format("--otel_batch_max_queue_size=$0", kOtelBatchMaxQueueSize));
+    // Export from tservers and masters both, so spans that cross to the master reach the collector.
+    for (auto* flags : {&options->extra_tserver_flags, &options->extra_master_flags}) {
+      AppendFlagToAllowedPreviewFlagsCsv(*flags, "otel_collector_traces_endpoint");
+      flags->push_back(Format("--otel_collector_traces_endpoint=$0", collector_.Url()));
+      flags->push_back(Format("--otel_batch_schedule_delay_ms=$0", kOtelBatchScheduleDelayMs));
+      flags->push_back(
+          Format("--otel_batch_max_export_batch_size=$0", kOtelBatchMaxExportBatchSize));
+      flags->push_back(Format("--otel_batch_max_queue_size=$0", kOtelBatchMaxQueueSize));
+    }
   }
 
   int GetNumTabletServers() const override {
@@ -1817,9 +1816,9 @@ TEST_F(DistTraceRpcTest, TestRpcSpans) {
       "RPC span to appear in trace"));
 }
 
-// Cross-boundary: the Perform RPC's trace must reach the tserver. The inbound server span on
-// TabletServer should be a child of the PG backend's (ysql) outbound client span.
-TEST_F(DistTraceRpcTest, TestRpcSpanReachesTabletServer) {
+// Runs a traced SELECT and a traced CREATE TABLE, and checks that the Perform span on TabletServer
+// is a child of the ysql client span, and the master RPC span a child of the tserver client span.
+TEST_F(DistTraceRpcTest, TestRpcSpanReachesTabletServerAndMaster) {
   ASSERT_OK(CreateTable("rpc_crossing_test", 5));
 
   auto tp = GenerateTraceparent();
@@ -1834,6 +1833,47 @@ TEST_F(DistTraceRpcTest, TestRpcSpanReachesTabletServer) {
 
   ASSERT_EQ(server_span.str_attrs["rpc.service"], "yb.tserver.PgClientService");
   ASSERT_EQ(server_span.str_attrs["rpc.method"], "Perform");
+
+  // CREATE TABLE runs the master RPC synchronously on the tserver's handler thread.
+  ASSERT_OK(conn_->Execute(
+      "CREATE TABLE master_crossing_test (id int PRIMARY KEY, val text)"));
+
+  auto master_span = ASSERT_RESULT(collector_.WaitForRemoteChildSpan(
+      tp.trace_id, "rpc yb.master.",
+      "TabletServer" /* client_service */, "Master" /* server_service */,
+      "inbound_rpc" /* expected_rpc_system */));
+
+  ASSERT_STR_CONTAINS(master_span.str_attrs["rpc.service"], "yb.master.");
+}
+
+// Runs a traced INSERT with TEST_perform_async_error set, which fails Perform after its handler
+// returned success, and checks that the Perform span on TabletServer reports that error.
+TEST_F(DistTraceRpcTest, TestRpcPerformSpanReportsAsyncError) {
+  static constexpr auto kTableName = "rpc_async_error_test";
+  ASSERT_OK(CreateTable(kTableName, 1));
+
+  auto tp = GenerateTraceparent();
+  ASSERT_OK(conn_->ExecuteFormat(
+      "SET yb_dist_tracecontext = 'traceparent=''$0'''", tp.full));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_perform_async_error", "true"));
+  ASSERT_NOK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (100, 'failed')", kTableName));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_perform_async_error", "false"));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        for (const auto& span : collector_.FindSpansByNamePrefix(
+                 tp.trace_id, "rpc yb.tserver.PgClientService.Perform")) {
+          if (span.service_name == "TabletServer" &&
+              span.status_code == otlp_trace::Status::STATUS_CODE_ERROR &&
+              span.status_message.find("TEST_perform_async_error") != std::string::npos) {
+            return true;
+          }
+        }
+        return false;
+      },
+      kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+      "Perform server span reporting the injected error"));
 }
 
 TEST_F(DistTraceRpcTest, TestOtelInternalMessagesAreLogged) {
