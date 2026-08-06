@@ -23,8 +23,10 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
+import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil.GcpKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
@@ -2549,7 +2551,8 @@ public class OperatorUtils {
    * plus the provider-specific auth-config fields expected by the backend EncryptionAtRest services
    * (the same shape the REST API accepts as the request body).
    *
-   * <p>HASHICORP (Vault) is implemented with TOKEN and APPROLE auth, and AZU with a service
+   * <p>HASHICORP (Vault) is implemented with TOKEN and APPROLE auth, AWS with static credentials or
+   * the host IAM profile, GCP with a service account credentials JSON, and AZU with a service
    * principal or managed identity; every other provider throws {@link
    * UnsupportedOperationException} as an explicit placeholder for future support.
    */
@@ -2563,6 +2566,12 @@ public class OperatorUtils {
       case HASHICORP:
         buildHashicorpAuthConfig(formData, spec.get("vault"), resourceNamespace);
         break;
+      case AWS:
+        buildAwsAuthConfig(formData, spec.get("aws"), resourceNamespace);
+        break;
+      case GCP:
+        buildGcpAuthConfig(formData, spec.get("gcp"), resourceNamespace);
+        break;
       case AZU:
         buildAzureAuthConfig(formData, spec.get("azure"), resourceNamespace);
         break;
@@ -2572,6 +2581,91 @@ public class OperatorUtils {
                 "%s KMS is not yet supported via the Kubernetes operator", provider.name()));
     }
     return formData;
+  }
+
+  private void buildAwsAuthConfig(ObjectNode formData, JsonNode aws, String resourceNamespace) {
+    if (aws == null || aws.isNull()) {
+      throw new RuntimeException("aws configuration is required for AWS KMS");
+    }
+    formData.put(AwsKmsAuthConfigField.REGION.fieldName, aws.get("region").asText());
+
+    // The host IAM profile authenticates through the default AWS credential chain and omits the
+    // static credentials; otherwise both of them are required.
+    boolean useIAMProfile = aws.hasNonNull("useIAMProfile") && aws.get("useIAMProfile").asBoolean();
+    if (!useIAMProfile) {
+      JsonNode accessKeyIdSecret = aws.get("accessKeyIdSecret");
+      JsonNode secretAccessKeySecret = aws.get("secretAccessKeySecret");
+      if (accessKeyIdSecret == null
+          || accessKeyIdSecret.isNull()
+          || secretAccessKeySecret == null
+          || secretAccessKeySecret.isNull()) {
+        throw new RuntimeException(
+            "accessKeyIdSecret and secretAccessKeySecret are required for AWS KMS unless"
+                + " useIAMProfile is true");
+      }
+      formData.put(
+          AwsKmsAuthConfigField.ACCESS_KEY_ID.fieldName,
+          resolveSecretRef(accessKeyIdSecret, resourceNamespace));
+      formData.put(
+          AwsKmsAuthConfigField.SECRET_ACCESS_KEY.fieldName,
+          resolveSecretRef(secretAccessKeySecret, resourceNamespace));
+    }
+
+    // cmkID and endpoint are optional. When cmkID is omitted YBA creates a CMK on the customer's
+    // behalf; when endpoint is omitted the default AWS KMS endpoint is used.
+    String cmkId = getTextOrDefault(aws, "cmkID", null);
+    if (cmkId != null) {
+      formData.put(AwsKmsAuthConfigField.CMK_ID.fieldName, cmkId);
+    }
+    String endpoint = getTextOrDefault(aws, "endpoint", null);
+    if (endpoint != null) {
+      formData.put(AwsKmsAuthConfigField.ENDPOINT.fieldName, endpoint);
+    }
+
+    // Optional custom CMK policy document, used by the backend only when it creates the CMK
+    // (cmkID unset). Held in a Secret because it is a multi-line JSON document.
+    JsonNode cmkPolicySecret = aws.get("cmkPolicySecret");
+    if (cmkPolicySecret != null && !cmkPolicySecret.isNull()) {
+      formData.put(
+          AwsKmsAuthConfigField.CMK_POLICY.fieldName,
+          resolveSecretRef(cmkPolicySecret, resourceNamespace));
+    }
+  }
+
+  private void buildGcpAuthConfig(ObjectNode formData, JsonNode gcp, String resourceNamespace) {
+    if (gcp == null || gcp.isNull()) {
+      throw new RuntimeException("gcp configuration is required for GCP KMS");
+    }
+    formData.put(
+        GcpKmsAuthConfigField.LOCATION_ID.fieldName, getTextOrDefault(gcp, "location", "global"));
+    formData.put(GcpKmsAuthConfigField.KEY_RING_ID.fieldName, gcp.get("keyRingName").asText());
+    formData.put(GcpKmsAuthConfigField.CRYPTO_KEY_ID.fieldName, gcp.get("cryptoKeyName").asText());
+    formData.put(
+        GcpKmsAuthConfigField.PROTECTION_LEVEL.fieldName,
+        getTextOrDefault(gcp, "protectionLevel", "HSM"));
+
+    String endpoint = getTextOrDefault(gcp, "endpoint", null);
+    if (endpoint != null) {
+      formData.put(GcpKmsAuthConfigField.GCP_KMS_ENDPOINT.fieldName, endpoint);
+    }
+
+    // The service account credentials JSON is stored as a nested object under GCP_CONFIG. The
+    // project ID is read from this JSON (GCP_CONFIG.project_id) with no other source, so the
+    // credentials are required.
+    JsonNode credentialsSecret = gcp.get("credentialsSecret");
+    if (credentialsSecret == null || credentialsSecret.isNull()) {
+      throw new RuntimeException("credentialsSecret is required for GCP KMS");
+    }
+    String credentialsJson = resolveSecretRef(credentialsSecret, resourceNamespace);
+    formData.set(GcpKmsAuthConfigField.GCP_CONFIG.fieldName, readJson(credentialsJson));
+  }
+
+  private JsonNode readJson(String json) {
+    try {
+      return objectMapper.readTree(json);
+    } catch (Exception e) {
+      throw new RuntimeException("GCP credentials Secret does not contain valid JSON", e);
+    }
   }
 
   private void buildAzureAuthConfig(ObjectNode formData, JsonNode azure, String resourceNamespace) {

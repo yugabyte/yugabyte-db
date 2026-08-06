@@ -31,7 +31,9 @@ import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil.GcpKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupRequestParams;
@@ -65,9 +67,15 @@ import io.fabric8.mockwebserver.ServerRequest;
 import io.fabric8.mockwebserver.ServerResponse;
 import io.yugabyte.operator.v1alpha1.KMSConfig;
 import io.yugabyte.operator.v1alpha1.KMSConfigSpec;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.Aws;
 import io.yugabyte.operator.v1alpha1.kmsconfigspec.Azure;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.Gcp;
 import io.yugabyte.operator.v1alpha1.kmsconfigspec.Vault;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.aws.AccessKeyIdSecret;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.aws.CmkPolicySecret;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.aws.SecretAccessKeySecret;
 import io.yugabyte.operator.v1alpha1.kmsconfigspec.azure.ClientSecretSecret;
+import io.yugabyte.operator.v1alpha1.kmsconfigspec.gcp.CredentialsSecret;
 import io.yugabyte.operator.v1alpha1.kmsconfigspec.vault.AppRole;
 import io.yugabyte.operator.v1alpha1.kmsconfigspec.vault.TokenSecret;
 import io.yugabyte.operator.v1alpha1.kmsconfigspec.vault.approle.SecretIdSecret;
@@ -1302,6 +1310,132 @@ public class OperatorUtilsTest extends FakeDBApplication {
   }
 
   @Test
+  public void testGetKMSConfigFormDataAwsStaticCredentials() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.AWS);
+    Aws aws = new Aws();
+    aws.setRegion("us-west-2");
+    aws.setCmkID("cmk-1234");
+    aws.setEndpoint("https://kms.us-west-2.amazonaws.com");
+    AccessKeyIdSecret accessKeyIdSecret = new AccessKeyIdSecret();
+    accessKeyIdSecret.setName("aws-access-key");
+    accessKeyIdSecret.setKey("access-key-id");
+    aws.setAccessKeyIdSecret(accessKeyIdSecret);
+    SecretAccessKeySecret secretAccessKeySecret = new SecretAccessKeySecret();
+    secretAccessKeySecret.setName("aws-secret-key");
+    secretAccessKeySecret.setKey("secret-access-key");
+    aws.setSecretAccessKeySecret(secretAccessKeySecret);
+    kmsConfig.getSpec().setAws(aws);
+
+    doReturn(new Secret()).when(operatorUtils).getSecret(anyString(), nullable(String.class));
+    doReturn("resolved-secret")
+        .when(operatorUtils)
+        .parseSecretForKey(any(Secret.class), anyString());
+
+    ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
+
+    assertEquals("us-west-2", field(formData, AwsKmsAuthConfigField.REGION.fieldName));
+    assertEquals("resolved-secret", field(formData, AwsKmsAuthConfigField.ACCESS_KEY_ID.fieldName));
+    assertEquals(
+        "resolved-secret", field(formData, AwsKmsAuthConfigField.SECRET_ACCESS_KEY.fieldName));
+    assertEquals("cmk-1234", field(formData, AwsKmsAuthConfigField.CMK_ID.fieldName));
+    assertEquals(
+        "https://kms.us-west-2.amazonaws.com",
+        field(formData, AwsKmsAuthConfigField.ENDPOINT.fieldName));
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataAwsCmkPolicy() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.AWS);
+    Aws aws = new Aws();
+    aws.setRegion("us-west-2");
+    aws.setUseIAMProfile(true);
+    CmkPolicySecret cmkPolicySecret = new CmkPolicySecret();
+    cmkPolicySecret.setName("cmk-policy");
+    cmkPolicySecret.setKey("policy.json");
+    aws.setCmkPolicySecret(cmkPolicySecret);
+    kmsConfig.getSpec().setAws(aws);
+
+    doReturn(new Secret()).when(operatorUtils).getSecret(anyString(), nullable(String.class));
+    doReturn("{\"Version\":\"2012-10-17\"}")
+        .when(operatorUtils)
+        .parseSecretForKey(any(Secret.class), anyString());
+
+    ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
+
+    assertEquals(
+        "{\"Version\":\"2012-10-17\"}",
+        field(formData, AwsKmsAuthConfigField.CMK_POLICY.fieldName));
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataAwsIamProfileOmitsCredentials() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.AWS);
+    Aws aws = new Aws();
+    aws.setRegion("us-east-1");
+    aws.setUseIAMProfile(true);
+    kmsConfig.getSpec().setAws(aws);
+
+    ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
+
+    assertEquals("us-east-1", field(formData, AwsKmsAuthConfigField.REGION.fieldName));
+    // With the host IAM profile no static credentials are emitted; the backend falls back to the
+    // default AWS credential chain.
+    assertFalse(formData.has(AwsKmsAuthConfigField.ACCESS_KEY_ID.fieldName));
+    assertFalse(formData.has(AwsKmsAuthConfigField.SECRET_ACCESS_KEY.fieldName));
+    // cmkID, endpoint and cmkPolicy are optional and were not set.
+    assertFalse(formData.has(AwsKmsAuthConfigField.CMK_ID.fieldName));
+    assertFalse(formData.has(AwsKmsAuthConfigField.ENDPOINT.fieldName));
+    assertFalse(formData.has(AwsKmsAuthConfigField.CMK_POLICY.fieldName));
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataGcpWithCredentials() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.GCP);
+    Gcp gcp = new Gcp();
+    gcp.setLocation("us-east1");
+    gcp.setKeyRingName("yb-key-ring");
+    gcp.setCryptoKeyName("yb-crypto-key");
+    gcp.setProtectionLevel(Gcp.ProtectionLevel.HSM);
+    gcp.setEndpoint("https://cloudkms.googleapis.com");
+    CredentialsSecret credentialsSecret = new CredentialsSecret();
+    credentialsSecret.setName("gcp-creds");
+    credentialsSecret.setKey("credentials.json");
+    gcp.setCredentialsSecret(credentialsSecret);
+    kmsConfig.getSpec().setGcp(gcp);
+
+    doReturn(new Secret()).when(operatorUtils).getSecret(anyString(), nullable(String.class));
+    doReturn("{\"type\":\"service_account\",\"project_id\":\"my-project\"}")
+        .when(operatorUtils)
+        .parseSecretForKey(any(Secret.class), anyString());
+
+    ObjectNode formData = operatorUtils.getKMSConfigFormDataFromCr(kmsConfig);
+
+    assertEquals("us-east1", field(formData, GcpKmsAuthConfigField.LOCATION_ID.fieldName));
+    assertEquals("yb-key-ring", field(formData, GcpKmsAuthConfigField.KEY_RING_ID.fieldName));
+    assertEquals("yb-crypto-key", field(formData, GcpKmsAuthConfigField.CRYPTO_KEY_ID.fieldName));
+    assertEquals("HSM", field(formData, GcpKmsAuthConfigField.PROTECTION_LEVEL.fieldName));
+    assertEquals(
+        "https://cloudkms.googleapis.com",
+        field(formData, GcpKmsAuthConfigField.GCP_KMS_ENDPOINT.fieldName));
+    // The credentials JSON is stored as a nested object, not a string.
+    JsonNode gcpConfig = formData.get(GcpKmsAuthConfigField.GCP_CONFIG.fieldName);
+    assertTrue(gcpConfig.isObject());
+    assertEquals("my-project", gcpConfig.get("project_id").asText());
+  }
+
+  @Test
+  public void testGetKMSConfigFormDataGcpMissingCredentialsThrows() {
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.GCP);
+    Gcp gcp = new Gcp();
+    gcp.setKeyRingName("yb-key-ring");
+    gcp.setCryptoKeyName("yb-crypto-key");
+    kmsConfig.getSpec().setGcp(gcp);
+
+    // credentialsSecret is required for GCP (the project ID is read from the credentials JSON).
+    assertThrows(RuntimeException.class, () -> operatorUtils.getKMSConfigFormDataFromCr(kmsConfig));
+  }
+
+  @Test
   public void testGetKMSConfigFormDataAzureServicePrincipal() {
     KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.AZU);
     Azure azure = new Azure();
@@ -1360,7 +1494,7 @@ public class OperatorUtilsTest extends FakeDBApplication {
 
   @Test
   public void testGetKMSConfigFormDataUnsupportedProviderThrows() {
-    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.AWS);
+    KMSConfig kmsConfig = baseKmsConfigCr(KMSConfigSpec.Provider.OCI);
     assertThrows(
         UnsupportedOperationException.class,
         () -> operatorUtils.getKMSConfigFormDataFromCr(kmsConfig));

@@ -154,9 +154,9 @@ public class KMSConfigReconcilerTest extends FakeDBApplication {
     return kmsConfig;
   }
 
-  // AWS is not implemented by the operator; used to exercise the unsupported-provider path.
-  private KMSConfig createAwsCr(String name) {
-    return baseCr(name, KMSConfigSpec.Provider.AWS);
+  // OCI is not implemented by the operator; used to exercise the unsupported-provider path.
+  private KMSConfig createUnsupportedProviderCr(String name) {
+    return baseCr(name, KMSConfigSpec.Provider.OCI);
   }
 
   private KMSConfig baseCr(String name, KMSConfigSpec.Provider provider) {
@@ -229,6 +229,54 @@ public class KMSConfigReconcilerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateNewKMSConfigAws() throws Exception {
+    KMSConfig kmsConfig = baseCr("test-kms-aws", KMSConfigSpec.Provider.AWS);
+    UUID taskUUID = UUID.randomUUID();
+
+    doReturn(Json.newObject()).when(mockOperatorUtils).getKMSConfigFormDataFromCr(any());
+    when(mockKmsConfigHelper.createKMSConfig(
+            eq(testCustomer.getUuid()),
+            eq(KeyProvider.AWS),
+            any(ObjectNode.class),
+            eq(KubernetesResourceDetails.fromResource(kmsConfig))))
+        .thenReturn(taskUUID);
+
+    kmsConfigReconciler.createActionReconcile(kmsConfig, testCustomer);
+
+    verify(mockKmsConfigHelper, times(1))
+        .createKMSConfig(
+            eq(testCustomer.getUuid()),
+            eq(KeyProvider.AWS),
+            any(ObjectNode.class),
+            eq(KubernetesResourceDetails.fromResource(kmsConfig)));
+    assertEquals(taskUUID, kmsConfigReconciler.getKMSConfigTaskMapValue(workQueueKey(kmsConfig)));
+  }
+
+  @Test
+  public void testCreateNewKMSConfigGcp() throws Exception {
+    KMSConfig kmsConfig = baseCr("test-kms-gcp", KMSConfigSpec.Provider.GCP);
+    UUID taskUUID = UUID.randomUUID();
+
+    doReturn(Json.newObject()).when(mockOperatorUtils).getKMSConfigFormDataFromCr(any());
+    when(mockKmsConfigHelper.createKMSConfig(
+            eq(testCustomer.getUuid()),
+            eq(KeyProvider.GCP),
+            any(ObjectNode.class),
+            eq(KubernetesResourceDetails.fromResource(kmsConfig))))
+        .thenReturn(taskUUID);
+
+    kmsConfigReconciler.createActionReconcile(kmsConfig, testCustomer);
+
+    verify(mockKmsConfigHelper, times(1))
+        .createKMSConfig(
+            eq(testCustomer.getUuid()),
+            eq(KeyProvider.GCP),
+            any(ObjectNode.class),
+            eq(KubernetesResourceDetails.fromResource(kmsConfig)));
+    assertEquals(taskUUID, kmsConfigReconciler.getKMSConfigTaskMapValue(workQueueKey(kmsConfig)));
+  }
+
+  @Test
   public void testCreateNewKMSConfigAzu() throws Exception {
     KMSConfig kmsConfig = baseCr("test-kms-azu", KMSConfigSpec.Provider.AZU);
     UUID taskUUID = UUID.randomUUID();
@@ -294,7 +342,7 @@ public class KMSConfigReconcilerTest extends FakeDBApplication {
 
   @Test
   public void testCreateUnsupportedProviderSetsError() throws Exception {
-    KMSConfig kmsConfig = createAwsCr("test-kms-aws");
+    KMSConfig kmsConfig = createUnsupportedProviderCr("test-kms-oci");
     // Let the real form-data builder run so the unsupported-provider path throws.
     when(mockKmsConfigResource.get()).thenReturn(kmsConfig);
 

@@ -146,11 +146,27 @@ spec:
                         - rule: self == oldSelf
                           message: "cmkID is immutable"
                     endpoint:
-                      description: Optional custom AWS KMS endpoint. Immutable.
+                      description: Optional custom AWS KMS endpoint. Editable.
                       type: string
-                      x-kubernetes-validations:
-                        - rule: self == oldSelf
-                          message: "endpoint is immutable"
+                    cmkPolicySecret:
+                      description: >
+                        Optional Secret holding a custom CMK policy document (JSON). Applied only
+                        when YBA creates the CMK (i.e. cmkID is not set); ignored once the config
+                        exists. If omitted, the default CMK policy is used.
+                      type: object
+                      properties:
+                        name:
+                          description: Name of the Secret.
+                          type: string
+                        namespace:
+                          description: Namespace of the Secret. Defaults to the resource namespace.
+                          type: string
+                        key:
+                          description: Key within the Secret data holding the policy JSON.
+                          type: string
+                      required:
+                        - name
+                        - key
                   required:
                     - region
 
@@ -160,8 +176,8 @@ spec:
                   properties:
                     credentialsSecret:
                       description: >
-                        Secret holding the GCP service account credentials JSON.
-                        Editable. Omit when using workload identity.
+                        Secret holding the GCP service account credentials JSON. Required; the
+                        project ID is read from this JSON. Editable (rotatable).
                       type: object
                       properties:
                         name:
@@ -212,6 +228,7 @@ spec:
                         - rule: self == oldSelf
                           message: "endpoint is immutable"
                   required:
+                    - credentialsSecret
                     - keyRingName
                     - cryptoKeyName
 
