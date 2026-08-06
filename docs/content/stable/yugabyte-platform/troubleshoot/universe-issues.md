@@ -109,7 +109,7 @@ The focus is to ensure that support bundle generation is successful in most case
 
 ### Perf Advisor Collector
 
-{{<tags/feature/ea idea="1428">}} The Perf Advisor (PA) collector is a YugabyteDB Anywhere component that collects performance monitoring data locally on the YugabyteDB Anywhere host. It lets you generate support bundles that include [Perf Advisor metadata](#perf-advisor-metadata), which you can share with {{% support-platform %}} for anomaly detection and cluster load analysis.
+{{<tags/feature/ea idea="1428">}} The Perf Advisor (PA) collector collects performance monitoring data locally on the YugabyteDB Anywhere host. Use it to generate support bundles that include [Perf Advisor metadata](#perf-advisor-metadata), which you can share with {{% support-platform %}} for anomaly detection and cluster load analysis.
 
 {{< note title="YBA installer registration" >}}
 Starting in YugabyteDB Anywhere v2026.1.1.0, the [YBA installer](../../install-yugabyte-platform/install-software/installer/) automatically registers a Perf Advisor collector service during installation. The service is registered by default, but you must enable the collector for each universe before it begins collecting metadata.
@@ -119,11 +119,13 @@ To enable the PA collector for a universe:
 
 1. Open the universe and click **Actions > More > Enable Perf Advisor Collector**.
 
-1. Confirm the **Are you sure you want to enable Performance Monitoring?** action in the dialog, and select **Apply changes**.
+1. Confirm the **Are you sure you want to enable Performance Monitoring?** action, and select **Apply changes**.
 
-After you enable the collector, it runs in the background and gathers metadata for that universe, such as PostgreSQL Statement Statistics (PGSS) hash data. To disable collection, click **Actions > More > Disable Perf Advisor Collector**.
+After you enable the collector, it runs in the background and gathers metadata for that universe, such as PostgreSQL Statement Statistics (PGSS) hash data.
 
-When you create a support bundle, select the **Perf Advisor metadata** component to include this data in the archive. If the PA collector is not enabled for a universe, the **Perf Advisor metadata** option does not appear in the support bundle UI. For more information about the component, see [Perf Advisor metadata](#perf-advisor-metadata).
+To disable collection, click **Actions > More > Disable Perf Advisor Collector**.
+
+When you create a support bundle, select the **Perf Advisor metadata** component to include this data in the archive. Note that if the PA collector is not enabled for the universe, the **Perf Advisor metadata** option is not displayed. For more information about the component, see [Perf Advisor metadata](#perf-advisor-metadata).
 
 For performance recommendations based on live cluster metrics, see [Performance Advisor](../../alerts-monitoring/performance-advisor/).
 
@@ -305,7 +307,7 @@ You can also create "Custom Queries" by providing PromQL expressions; their resu
 
 #### Perf Advisor metadata
 
-{{<tags/feature/ea idea="1428">}} Performance monitoring metadata collected from the Perf Advisor (PA) collector registered with YugabyteDB Anywhere. This component is available only when the PA collector is enabled for the universe (**Actions > More > Enable Perf Advisor Collector**). If the collector is not enabled, **Perf Advisor metadata** does not appear in the support bundle component list.
+{{<tags/feature/ea idea="1428">}} Performance monitoring metadata collected from the [Perf Advisor (PA) collector](#perf-advisor-collector) registered with YugabyteDB Anywhere. This component is available only when the PA collector is enabled for the universe (**Actions > More > Enable Perf Advisor Collector**). If the collector is not enabled, **Perf Advisor metadata** does not appear in the support bundle component list.
 
 When selected, YugabyteDB Anywhere requests a Perf Advisor support bundle dump for the specified date range and includes the results in the archive under `support_bundle/YBA/pa/`. Share this data with {{% support-platform %}} to help analyze anomalies and cluster load patterns.
 
