@@ -37,6 +37,10 @@ The following table describes the columns of the `yb_tablet_metadata` view.
 | end_hash_code | int | Ending hash code (exclusive) for the tablet. (NULL for range-sharded tables.) |
 | leader | text | IP address, port of the leader node for the tablet. |
 | replicas | text[] | A list of replica IP addresses and port (includes leader) associated with the tablet. |
+| start_range | text | Decoded start key for range-sharded tablets. (NULL for hash-sharded tables.) |
+| end_range | text | Decoded end key for range-sharded tablets. (NULL for hash-sharded tables.) |
+| tablet_attrs | jsonb | Leader-replica disk size fields when available: `sst_bytes`, `wal_bytes`, `uncompressed_sst_bytes`, `total_bytes` (SST+WAL), and optionally `vector_index_bytes`. NULL when sizes are unavailable or the row is privilege-masked. |
+| tablet_state | text | Master-side tablet lifecycle state (for example, RUNNING). |
 
 ## Examples
 
