@@ -2102,7 +2102,7 @@ Maximum in-memory size in megabytes for a single output chunk built during Vecto
 
 This flag takes priority over `vector_index_compaction_chunk_max_mem_store_size_percentage`. When concurrent compactions are allowed (`vector_index_num_compactions_limit` is not 1), operators should set this flag instead of relying on the percentage-based limit.
 
-For more information, see [Vector LSM](../../../architecture/docdb/vector-lsm/) and [#31542](https://github.com/yugabyte/yugabyte-db/issues/31542).
+For more information, see [Vector LSM](../../../architecture/docdb/vector-lsm/).
 
 ##### --vector_index_compaction_chunk_max_mem_store_size_percentage
 
@@ -2115,12 +2115,51 @@ Default: `60`
 Maximum in-memory size for a single output chunk built during Vector LSM compaction, expressed as a percentage of the vector index block cache capacity. A value of `0` means no limit (single output chunk). Values above `100` are treated as `100`.
 
 This flag is ignored when:
+
 - `vector_index_compaction_chunk_max_mem_store_size_mb` is set to a non-zero value
 - Concurrent compactions are allowed (`vector_index_num_compactions_limit` is not 1)
 
 When both this flag and the MB-based limit are at their defaults, chunked compaction is enabled with output chunks capped at 60% of the vector index block cache capacity, which reduces the risk of out-of-memory (OOM) errors during compaction.
 
-For more information, see [Vector LSM](../../../architecture/docdb/vector-lsm/) and [#32922](https://github.com/yugabyte/yugabyte-db/issues/32922).
+For more information, see [Vector LSM](../../../architecture/docdb/vector-lsm/).
+
+##### --vector_index_num_compactions_limit
+
+{{% tags/wrap %}}
+
+Default: `1`
+
+{{% /tags/wrap %}}
+
+Maximum number of concurrent Vector LSM compactions per tablet server. Set to `0` for no per-tserver limit.
+
+When this flag is not `1` (concurrent compactions are allowed), [`--vector_index_compaction_chunk_max_mem_store_size_percentage`](#vector-index-compaction-chunk-max-mem-store-size-percentage) is ignored. Set an absolute limit with [`--vector_index_compaction_chunk_max_mem_store_size_mb`](#vector-index-compaction-chunk-max-mem-store-size-mb) instead, and account for total memory across concurrent merges.
+
+For more information, see [Vector LSM](../../../architecture/docdb/vector-lsm/).
+
+##### --vector_index_files_number_compaction_trigger
+
+{{% tags/wrap %}}
+
+Default: `5`
+
+{{% /tags/wrap %}}
+
+Number of Vector LSM chunk files that triggers a background compaction.
+
+For more information, see [Vector LSM](../../../architecture/docdb/vector-lsm/).
+
+##### --vector_index_compaction_always_include_size_threshold
+
+{{% tags/wrap %}}
+
+Default: `67108864` (64MB)
+
+{{% /tags/wrap %}}
+
+Always include Vector LSM chunks of this size or smaller in a compaction by size ratio.
+
+For more information, see [Vector LSM](../../../architecture/docdb/vector-lsm/).
 
 ### Concurrency control flags
 
