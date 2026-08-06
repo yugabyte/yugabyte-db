@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.annotations.BlockYnpManagedProvider;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.AccessKeyHandler;
@@ -128,6 +129,7 @@ public class AccessKeyController extends AuthenticatedController {
   })
   @Deprecated
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
+  @BlockYnpManagedProvider(operation = "Adding an access key")
   public Result create(UUID customerUUID, UUID providerUUID, Http.Request request) {
     final Provider provider = Provider.getOrBadRequest(providerUUID);
     AccessKeyFormData formData =
@@ -164,6 +166,7 @@ public class AccessKeyController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.0.0")
+  @BlockYnpManagedProvider(operation = "Editing an access key")
   public Result edit(UUID customerUUID, UUID providerUUID, String keyCode, Http.Request request) {
     // As part of access key edit we will be creating a new access key
     // so that if the old key is associated with some universes remains
@@ -193,6 +196,7 @@ public class AccessKeyController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @BlockYnpManagedProvider(operation = "Deleting an access key")
   public Result delete(UUID customerUUID, UUID providerUUID, String keyCode, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);

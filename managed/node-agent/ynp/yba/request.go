@@ -17,9 +17,10 @@ import (
 
 func getAuthHeaders(token string) map[string]string {
 	return map[string]string{
-		"Accept":              "application/json",
-		"X-AUTH-YW-API-TOKEN": token,
-		"Content-Type":        "application/json",
+		"Accept":                      "application/json",
+		util.PlatformApiTokenHeader:   token,
+		util.PlatformYnpRequestHeader: "true",
+		"Content-Type":                "application/json",
 	}
 }
 

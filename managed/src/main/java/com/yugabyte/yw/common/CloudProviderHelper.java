@@ -32,6 +32,7 @@ import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.helpers.provider.OCICloudInfo;
+import com.yugabyte.yw.models.helpers.provider.OnPremCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.ProviderValidator;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
 import io.fabric8.kubernetes.api.model.Config;
@@ -1012,6 +1013,10 @@ public class CloudProviderHelper {
     }
     if (provider.getCloudCode() == CloudType.onprem) {
       editProviderReq.validateInstanceTypeMountPoints(provider.getInstanceTypes());
+      // ynpManaged is internal - it is set once by YNP when it creates the provider and an edit
+      // can never turn it on or off, whoever makes the edit.
+      OnPremCloudInfo editOnPremCloudInfo = CloudInfoInterface.get(editProviderReq);
+      editOnPremCloudInfo.ynpManaged = provider.isYnpManaged();
     }
     CloudInfoInterface.mergeSensitiveFields(provider, editProviderReq);
     // Validate the provider request so as to ensure we only allow editing of fields

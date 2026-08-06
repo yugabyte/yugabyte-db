@@ -39,6 +39,9 @@ const (
 	DefaultShell             = "/bin/bash"
 	PlatformApiTokenHeader   = "X-AUTH-YW-API-TOKEN"
 	PlatformJwtTokenHeader   = "X-AUTH-YW-API-JWT"
+	// Marks a YBA API call as made by YNP so that YBA can tell YNP driven changes to a
+	// YNP managed provider apart from user driven ones.
+	PlatformYnpRequestHeader = "X-YBA-YNP-REQUEST"
 	JwtUserIdClaim           = "userId"
 	JwtClientIdClaim         = "clientId"
 	JwtClientTypeClaim       = "clientType"
