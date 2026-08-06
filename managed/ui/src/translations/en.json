@@ -4683,7 +4683,9 @@
             "logParameter": "pgaudit.log_parameter",
             "logRelation": "pgaudit.log_relation",
             "logStatement": "pgaudit.log_statement",
-            "logStatementOnce": "pgaudit.log_statement_once"
+            "logStatementOnce": "pgaudit.log_statement_once",
+            "retainAuditLogArchive": "Retain audit log archive on database nodes",
+            "logRetentionDays": "Retention period (days)"
           },
           "tooltips": {
             "read": "Log SELECT and COPY when the source is a relation or a query.",
@@ -4699,7 +4701,12 @@
             "logParameter": "Include parameters passed with the statement. Parameters are provided in .csv format after the statement text.",
             "logRelation": "Create separate log entries for each relation (TABLE, VIEW, etc.) referenced in a SELECT or DML statement. This is a shortcut for exhaustive logging without using object audit logging.",
             "logStatement": "Include statement text with every log entry.",
-            "logStatementOnce": "Statement text (and, if enabled, parameters) are included with every log entry. Enable this option to only include them with the first log entry for a statement or sub-statement combination. This results in less verbose logging, but can make it more difficult to determine the statement that generated a log entry."
+            "logStatementOnce": "Statement text (and, if enabled, parameters) are included with every log entry. Enable this option to only include them with the first log entry for a statement or sub-statement combination. This results in less verbose logging, but can make it more difficult to determine the statement that generated a log entry.",
+            "retainAuditLogArchive": "Saves audit records in separate compressed archives on each database node so they can be retained independently of regular PostgreSQL logs.",
+            "logRetentionDays": "Number of days to keep the compressed audit log archives on each database node."
+          },
+          "validation": {
+            "logRetentionDaysMin": "Enter an integer of at least 1"
           },
           "confirmation": {
             "title": "Confirm Configuration Change",
