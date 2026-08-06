@@ -87,14 +87,18 @@ class ObjectLockSharedState {
 
   void Shutdown() PARENT_PROCESS_ONLY;
 
-  size_t ConsumePendingLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY;
+  // Returns whether any lock requests were consumed.
+  bool ConsumePendingLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY;
 
-  size_t ConsumeAndAcquireExclusiveLockIntents(
+  // Returns whether any lock requests were consumed.
+  bool ConsumeAndAcquireExclusiveLockIntents(
       const FastLockRequestConsumer& consume,
       std::span<const LockBatchEntry<ObjectLockManager>*> lock_entries) PARENT_PROCESS_ONLY;
 
   void ReleaseExclusiveLockIntent(const ObjectLockPrefix& object_id, LockState lock_state)
       PARENT_PROCESS_ONLY;
+
+  size_t CumulativeLockRequestCount() const;
 
   [[nodiscard]] bool TEST_has_exclusive_intents() PARENT_PROCESS_ONLY;
 

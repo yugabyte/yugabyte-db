@@ -38,7 +38,9 @@ struct FastpathLockRequestEntry {
 
 class PendingLockRequests {
  public:
-  bool AddLockRequest(const ObjectLockFastpathRequest& request) {
+  // One fastpath request can correspond to multiple actual locks (num_real_locks); we use this
+  // count for metrics accounting to match ObjectLockManager metrics.
+  bool AddLockRequest(const ObjectLockFastpathRequest& request, size_t num_real_locks) {
     size_t index = SHARED_MEMORY_LOAD(next_);
     if (index >= requests_.size()) {
       return false;
@@ -48,11 +50,15 @@ class PendingLockRequests {
     std::memcpy(&r.request, &request, sizeof(ObjectLockFastpathRequest));
     TEST_CRASH_POINT("ObjectLockSharedState::AddLockRequest:unfinalized");
 
-    // If we crash before this line, next_ has not been incremented, so future requests will just
-    // overwrite the request that we were filling out, and consuming requests will not reach
-    // the incomplete request object.
+    // If we crash before this line, next_ has not been incremented so consuming requests will not
+    // reach the incomplete request object. This state is per-session, so there will not be any
+    // future requests added either.
     SHARED_MEMORY_STORE(next_, index + 1);
     TEST_CRASH_POINT("ObjectLockSharedState::AddLockRequest:finalized");
+
+    // This may not get updated in event of crash. This is for metrics only, so some inaccuracy
+    // is acceptable, and we don't force update at same instruction as next_ for simplicity.
+    SHARED_MEMORY_STORE(num_real_locks_, SHARED_MEMORY_LOAD(num_real_locks_) + num_real_locks);
 
     return true;
   }
@@ -61,19 +67,26 @@ class PendingLockRequests {
     SHARED_MEMORY_STORE(next_, 0);
   }
 
-  size_t ConsumeLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY {
+  size_t CumulativeLockRequestCount() const {
+    return SHARED_MEMORY_LOAD(num_real_locks_);
+  }
+
+  bool ConsumeLockRequests(const FastLockRequestConsumer& consume) PARENT_PROCESS_ONLY {
     size_t end = next_.Get();
     for (size_t i = 0; i < end; ++i) {
       auto& entry = requests_[i];
       consume(entry.request);
     }
     SHARED_MEMORY_STORE(next_, 0);
-    return end;
+    return end > 0;
   }
 
  private:
   std::array<FastpathLockRequestEntry, kMaxFastpathRequests> requests_;
   ChildProcessRW<size_t> next_ = 0;
+
+  // Counter for metrics. This may not be completely accurate in event of crash.
+  ChildProcessRW<size_t> num_real_locks_ = 0;
 };
 
 constexpr size_t kSharedWriteLockStateBits = 2 * kIntentTypeBits;
@@ -196,7 +209,8 @@ class ObjectLockSharedState::Impl {
     }
 
     const auto& lock_states = SHARED_MEMORY_LOAD(lock_states_);
-    for (const auto& [entry_type, intent_type] : GetEntriesForFastpathLockType(request.lock_type)) {
+    auto entries = GetEntriesForFastpathLockType(request.lock_type);
+    for (const auto& [entry_type, intent_type] : entries) {
       ObjectLockPrefix object_id(
           request.database_oid, request.relation_oid, request.object_oid, request.object_sub_oid,
           entry_type);
@@ -210,7 +224,7 @@ class ObjectLockSharedState::Impl {
       }
     }
 
-    if (!shared_requests_.AddLockRequest(request)) {
+    if (!shared_requests_.AddLockRequest(request, entries.size())) {
       LOG(WARNING) << AsString(request) << ": too many active fastpath requests, "
                    << "adjust object_locking_num_fastpath_requests";
       return false;
@@ -244,13 +258,13 @@ class ObjectLockSharedState::Impl {
     VLOG_WITH_FUNC(1) << "done";
   }
 
-  size_t ConsumePendingLockRequests(const FastLockRequestConsumer& consume)
+  bool ConsumePendingLockRequests(const FastLockRequestConsumer& consume)
       EXCLUDES(mutex_) PARENT_PROCESS_ONLY {
     std::lock_guard lock(mutex_);
     return ConsumePendingLockRequestsUnlocked(consume);
   }
 
-  size_t ConsumeAndAcquireExclusiveLockIntents(
+  bool ConsumeAndAcquireExclusiveLockIntents(
       const FastLockRequestConsumer& consume,
       std::span<const LockBatchEntry<ObjectLockManager>*> lock_entries) PARENT_PROCESS_ONLY {
     std::lock_guard lock(mutex_);
@@ -269,6 +283,11 @@ class ObjectLockSharedState::Impl {
     const auto sub = LockStateToSharedWriteLockState(lock_state);
     [[maybe_unused]] auto value = group_entry.exclusive_intents.fetch_sub(sub);
     DCHECK_GE(value, sub);
+  }
+
+  size_t CumulativeLockRequestCount() const {
+    std::lock_guard lock(mutex_);
+    return shared_requests_.CumulativeLockRequestCount();
   }
 
   [[nodiscard]] bool TEST_has_exclusive_intents() PARENT_PROCESS_ONLY {
@@ -291,7 +310,7 @@ class ObjectLockSharedState::Impl {
     group_entry.exclusive_intents.fetch_add(lock_state);
   }
 
-  size_t ConsumePendingLockRequestsUnlocked(const FastLockRequestConsumer& consume)
+  bool ConsumePendingLockRequestsUnlocked(const FastLockRequestConsumer& consume)
       REQUIRES(mutex_) PARENT_PROCESS_ONLY {
     return shared_requests_.ConsumeLockRequests(consume);
   }
@@ -334,7 +353,7 @@ void ObjectLockSharedState::Shutdown() {
   impl_->Shutdown();
 }
 
-size_t ObjectLockSharedState::ConsumeAndAcquireExclusiveLockIntents(
+bool ObjectLockSharedState::ConsumeAndAcquireExclusiveLockIntents(
     const FastLockRequestConsumer& consume,
     std::span<const LockBatchEntry<ObjectLockManager>*> lock_entries) {
   return impl_->ConsumeAndAcquireExclusiveLockIntents(consume, lock_entries);
@@ -345,8 +364,12 @@ void ObjectLockSharedState::ReleaseExclusiveLockIntent(
   impl_->ReleaseExclusiveLockIntent(object_id, lock_state);
 }
 
-size_t ObjectLockSharedState::ConsumePendingLockRequests(const FastLockRequestConsumer& consume) {
+bool ObjectLockSharedState::ConsumePendingLockRequests(const FastLockRequestConsumer& consume) {
   return impl_->ConsumePendingLockRequests(consume);
+}
+
+size_t ObjectLockSharedState::CumulativeLockRequestCount() const {
+  return impl_->CumulativeLockRequestCount();
 }
 
 bool ObjectLockSharedState::TEST_has_exclusive_intents() {

@@ -23,7 +23,14 @@
 
 #include "yb/docdb/object_lock_shared_state.h"
 
+#include "yb/util/metrics.h"
 #include "yb/util/unique_lock.h"
+
+METRIC_DEFINE_gauge_uint64(server, object_locking_fastpath_acquires,
+    "Number of object locking fast path lock acquires",
+    yb::MetricUnit::kRequests,
+    "Number of object locking fast path lock acquires",
+    yb::EXPOSE_AS_COUNTER);
 
 namespace yb::docdb {
 
@@ -110,6 +117,16 @@ ObjectLockSharedStateHolder::~ObjectLockSharedStateHolder() {
   }
 }
 
+ObjectLockSharedStateManager::ObjectLockSharedStateManager(
+    std::shared_ptr<ObjectLockTracker> object_lock_tracker,
+    const MetricEntityPtr& metric_entity)
+    : object_lock_tracker_(std::move(object_lock_tracker)) {
+  METRIC_object_locking_fastpath_acquires.InstantiateFunctionGauge(
+      metric_entity,
+      Bind(&ObjectLockSharedStateManager::CumulativeLockRequestCount, Unretained(this)))
+    ->AutoDetachToLastValue(&metric_detacher_);
+}
+
 void ObjectLockSharedStateManager::SetupShared(SharedMemoryBackingAllocator& allocator) {
   {
     std::lock_guard lock(mutex_);
@@ -133,6 +150,11 @@ Result<ObjectLockSharedStateHolder> ObjectLockSharedStateManager::AllocateShared
 
 void ObjectLockSharedStateManager::ReleaseShared(ObjectLockSharedState& state) {
   UniqueLock lock(mutex_);
+  ParentProcessGuard g;
+
+  state.Disable();
+  num_lock_requests_ += state.CumulativeLockRequestCount();
+
   // TODO: this could be shared_states_.erase(...) except our compilers currently don't support
   // heterogeneous erasure overloads for associative containers.
   auto iter = shared_states_.find(&state);
@@ -168,21 +190,19 @@ void ObjectLockSharedStateManager::Stop() {
   }
 }
 
-size_t ObjectLockSharedStateManager::ConsumePendingSharedLockRequests(
+void ObjectLockSharedStateManager::ConsumePendingSharedLockRequests(
     const LockRequestConsumer& consume) {
   std::lock_guard lock(mutex_);
   ParentProcessGuard g;
-  size_t count = 0;
   for (auto& state : shared_states_) {
-    count += CallWithRequestConsumer(
+    CallWithRequestConsumer(
         *state,
         [&state](auto&& c) PARENT_PROCESS_ONLY { return state->ConsumePendingLockRequests(c); },
         consume);
   }
-  return count;
 }
 
-size_t ObjectLockSharedStateManager::ConsumeAndAcquireExclusiveLockIntents(
+void ObjectLockSharedStateManager::ConsumeAndAcquireExclusiveLockIntents(
     const LockRequestConsumer& consume,
     std::span<const LockBatchEntry<ObjectLockManager>*> lock_entries) {
   std::lock_guard lock(mutex_);
@@ -192,16 +212,14 @@ size_t ObjectLockSharedStateManager::ConsumeAndAcquireExclusiveLockIntents(
   }
 
   ParentProcessGuard g;
-  size_t count = 0;
   for (auto& state : shared_states_) {
-    count += CallWithRequestConsumer(
+    CallWithRequestConsumer(
         *state,
         [&state, lock_entries](auto&& c) PARENT_PROCESS_ONLY {
           return state->ConsumeAndAcquireExclusiveLockIntents(c, lock_entries);
         },
         consume);
   }
-  return count;
 }
 
 void ObjectLockSharedStateManager::ReleaseExclusiveLockIntent(
@@ -220,6 +238,15 @@ void ObjectLockSharedStateManager::ReleaseExclusiveLockIntent(
   }
 }
 
+uint64_t ObjectLockSharedStateManager::CumulativeLockRequestCount() const {
+  std::lock_guard lock(mutex_);
+  uint64_t count = num_lock_requests_;
+  for (const auto& state : shared_states_) {
+    count += state->CumulativeLockRequestCount();
+  }
+  return count;
+}
+
 TransactionId ObjectLockSharedStateManager::TEST_last_owner() const {
   std::lock_guard lock(mutex_);
   return TEST_last_owner_;
@@ -235,7 +262,7 @@ bool ObjectLockSharedStateManager::TEST_has_exclusive_intents() const {
 }
 
 template<typename ConsumeMethod>
-size_t ObjectLockSharedStateManager::CallWithRequestConsumer(
+void ObjectLockSharedStateManager::CallWithRequestConsumer(
     ObjectLockSharedState& shared, ConsumeMethod&& method, const LockRequestConsumer& consume) {
   auto owner_info = registry_.GetOwnerInfo(shared);
   auto consume_fastpath_request = [this, &owner_info, &consume](ObjectLockFastpathRequest request) {
@@ -263,11 +290,9 @@ size_t ObjectLockSharedStateManager::CallWithRequestConsumer(
   };
 
   ParentProcessGuard g;
-  size_t consumed = method(make_lw_function(consume_fastpath_request));
-  if (consumed) {
+  if (method(make_lw_function(consume_fastpath_request))) {
     TEST_last_owner_ = owner_info->txn_id;
   }
-  return consumed;
 }
 
 } // namespace yb::docdb

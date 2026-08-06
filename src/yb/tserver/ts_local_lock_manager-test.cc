@@ -48,6 +48,9 @@ DECLARE_bool(TEST_olm_skip_sending_wait_for_probes);
 DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(enable_ysql);
 
+METRIC_DECLARE_counter(object_locking_lock_acquires);
+METRIC_DECLARE_gauge_uint64(object_locking_fastpath_acquires);
+
 using namespace std::literals;
 
 using yb::docdb::DocDBTableLocksConflictMatrixTest;
@@ -932,6 +935,42 @@ TEST_F_EX(TSLocalLockManager, TestLockBeforeSharedMemorySetup,
       kTxn3.txn_id, kTxn3.subtxn_id, kDatabase1, kObject2,
       ObjectLockFastpathLockType::kRowExclusive)));
   ASSERT_OK(ReleaseLocksForOwner(kTxn3));
+}
+
+TEST_F(TSLocalLockManagerTest, TestAcquireMetrics) {
+  auto& metric_entity = mini_server_->metric_entity();
+  {
+    auto txn1 = ASSERT_RESULT(RegisterTransaction(kTxn1.txn_id));
+    auto txn2 = ASSERT_RESULT(RegisterTransaction(kTxn2.txn_id));
+
+    ASSERT_TRUE(ASSERT_RESULT(LockRelationPgFastpath(
+        kTxn1.txn_id, kTxn1.subtxn_id, kDatabase1, kObject1,
+        ObjectLockFastpathLockType::kRowExclusive)));
+    ASSERT_TRUE(ASSERT_RESULT(LockRelationPgFastpath(
+        kTxn2.txn_id, kTxn2.subtxn_id, kDatabase1, kObject1,
+        ObjectLockFastpathLockType::kAccessShare)));
+    ASSERT_TRUE(ASSERT_RESULT(LockRelationPgFastpath(
+        kTxn2.txn_id, kTxn2.subtxn_id, kDatabase1, kObject1,
+        ObjectLockFastpathLockType::kRowShare)));
+    ASSERT_OK(LockRelation(kTxn2, kDatabase1, kObject1, TableLockType::ROW_EXCLUSIVE));
+    ASSERT_OK(LockRelation(kTxn3, kDatabase1, kObject1, TableLockType::ROW_EXCLUSIVE));
+
+    ASSERT_EQ(4, metric_entity.FindOrNull<Counter>(METRIC_object_locking_lock_acquires)->value());
+    ASSERT_EQ(4, metric_entity.FindOrNull<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_acquires)->value());
+
+    ASSERT_OK(ReleaseLocksForOwner(kTxn3));
+    ASSERT_OK(ReleaseLocksForOwner(kTxn2));
+    ASSERT_OK(ReleaseLocksForOwner(kTxn1));
+  }
+
+  // Shared states released; this should result in per-session counters being added to the
+  // ObjectLockSharedStateManager counter before destruction.
+  shared_mem_states_.clear();
+
+  ASSERT_EQ(4, metric_entity.FindOrNull<Counter>(METRIC_object_locking_lock_acquires)->value());
+  ASSERT_EQ(4, metric_entity.FindOrNull<FunctionGauge<uint64_t>>(
+      METRIC_object_locking_fastpath_acquires)->value());
 }
 
 } // namespace yb::tserver

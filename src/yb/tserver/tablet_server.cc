@@ -411,7 +411,7 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       xcluster_context_(new TserverXClusterContext()),
       object_lock_tracker_(std::make_shared<ObjectLockTracker>()),
       object_lock_shared_state_manager_(
-          new docdb::ObjectLockSharedStateManager(object_lock_tracker_))
+          new docdb::ObjectLockSharedStateManager(object_lock_tracker_, metric_entity()))
 #ifdef __linux__
       ,
       cgroup_manager_(FLAGS_enable_qos ? new TServerCgroupManager() : nullptr)

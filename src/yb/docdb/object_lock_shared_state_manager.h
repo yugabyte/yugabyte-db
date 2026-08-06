@@ -31,6 +31,7 @@
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/util/lw_function.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/std_util.h"
 #include "yb/util/tostring.h"
 
@@ -111,8 +112,9 @@ class [[nodiscard]] ObjectLockSharedStateHolder {
 
 class ObjectLockSharedStateManager {
  public:
-  explicit ObjectLockSharedStateManager(std::shared_ptr<ObjectLockTracker> object_lock_tracker)
-      : object_lock_tracker_(std::move(object_lock_tracker)) {}
+  ObjectLockSharedStateManager(
+      std::shared_ptr<ObjectLockTracker> object_lock_tracker,
+      const MetricEntityPtr& metric_entity);
 
   void SetupShared(SharedMemoryBackingAllocator& allocator);
 
@@ -129,13 +131,15 @@ class ObjectLockSharedStateManager {
 
   [[nodiscard]] ObjectLockOwnerRegistry& registry() { return registry_; }
 
-  size_t ConsumePendingSharedLockRequests(const LockRequestConsumer& consume);
+  void ConsumePendingSharedLockRequests(const LockRequestConsumer& consume);
 
-  size_t ConsumeAndAcquireExclusiveLockIntents(
+  void ConsumeAndAcquireExclusiveLockIntents(
       const LockRequestConsumer& consume,
       std::span<const LockBatchEntry<ObjectLockManager>*> lock_entries);
 
   void ReleaseExclusiveLockIntent(const ObjectLockPrefix& object_id, LockState lock_state);
+
+  uint64_t CumulativeLockRequestCount() const;
 
   TransactionId TEST_last_owner() const;
 
@@ -146,7 +150,7 @@ class ObjectLockSharedStateManager {
   void ReleaseShared(ObjectLockSharedState& state);
 
   template<typename ConsumeMethod>
-  size_t CallWithRequestConsumer(
+  void CallWithRequestConsumer(
       ObjectLockSharedState& state, ConsumeMethod&& m, const LockRequestConsumer& consume)
       REQUIRES(mutex_);
 
@@ -163,7 +167,11 @@ class ObjectLockSharedStateManager {
   PointerUnorderedSet<SharedMemoryUniquePtr<ObjectLockSharedState>>
       shared_states_ GUARDED_BY(mutex_);
 
+  size_t num_lock_requests_ = 0;
+
   TransactionId TEST_last_owner_ GUARDED_BY(mutex_);
+
+  std::shared_ptr<void> metric_detacher_;
 };
 
 } // namespace yb::docdb
