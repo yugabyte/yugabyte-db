@@ -46,8 +46,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.function.Consumer;
@@ -74,8 +75,27 @@ public class Commissioner {
 
   private final TaskQueue taskQueue;
 
-  // A map of task UUIDs to latches for currently paused tasks.
-  private final Map<UUID, CountDownLatch> pauseLatches = new ConcurrentHashMap<>();
+  // A map of task UUIDs to the pause gate of the currently active listener generation. The gate is
+  // used by resume/abort/isTaskPaused to locate the pause point; blocked subtasks wait on the gate
+  // captured in their own listener closure (see getBeforeTaskConsumer), not on this map entry.
+  private final Map<UUID, PauseGate> pauseGates = new ConcurrentHashMap<>();
+
+  /**
+   * A single pause point, owned by one listener generation. Both directions of the pause/resume
+   * handshake are {@link CompletableFuture}s whose completed state is sticky, so a resume can never
+   * be "lost": a subtask that reads a stale (still-pausing) listener and reaches the pause consumer
+   * after the resume has already fired waits on the same {@code released} future, sees it already
+   * completed, and proceeds instead of parking on a fresh latch that nobody would ever release.
+   */
+  private static final class PauseGate {
+    // Completed by the first subtask that parks here so isTaskPaused/waitForTaskPaused can observe
+    // that the task has actually reached the pause point.
+    private final CompletableFuture<Void> reached = new CompletableFuture<>();
+    // Completed by resume/abort to release every waiter on this gate - both those already parked
+    // and
+    // any straggler that joins later.
+    private final CompletableFuture<Void> released = new CompletableFuture<>();
+  }
 
   private final ProviderEditRestrictionManager providerEditRestrictionManager;
 
@@ -267,10 +287,10 @@ public class Commissioner {
       log.warn("Task {} is not in running state", taskUUID);
       return false;
     }
-    CountDownLatch latch = pauseLatches.get(taskUUID);
-    if (latch != null) {
-      // Resume if it is already paused to abort faster.
-      latch.countDown();
+    PauseGate gate = pauseGates.get(taskUUID);
+    if (gate != null) {
+      // Release if it is already paused to abort faster.
+      gate.released.complete(null);
     }
     Optional<TaskInfo> optional = taskExecutor.abort(taskUUID, force);
     boolean success = optional.isPresent();
@@ -290,27 +310,19 @@ public class Commissioner {
    */
   public boolean resumeTask(UUID taskUUID) {
     TaskInfo.getOrBadRequest(taskUUID);
-    CountDownLatch latch = pauseLatches.get(taskUUID);
-    if (latch == null) {
+    PauseGate current = pauseGates.get(taskUUID);
+    if (current == null || current.released.isDone()) {
       return false;
     }
+    // Arm the next pause point first by installing a fresh listener generation. Its own gate is
+    // registered as the current one once a subtask reaches it (see getBeforeTaskConsumer).
     Optional<RunnableTask> optional = taskExecutor.maybeGetRunnableTask(taskUUID);
-    if (optional.isPresent()) {
-      optional.get().setTaskExecutionListener(getTaskExecutionListener());
-    }
-    latch.countDown();
-    // Wait for the task to come out of the wait and starts running.
-    while (true) {
-      try {
-        CountDownLatch currentLatch = pauseLatches.get(taskUUID);
-        if (currentLatch == null || currentLatch != latch) {
-          break;
-        }
-        Thread.sleep(10);
-      } catch (InterruptedException e) {
-        throw new RuntimeException(e);
-      }
-    }
+    optional.ifPresent(
+        runnableTask -> runnableTask.setTaskExecutionListener(getTaskExecutionListener()));
+    // Release everyone on the outgoing gate - both subtasks already parked and any straggler still
+    // running the previous (pausing) listener that reaches the pause consumer later. Completion is
+    // sticky, so the wakeup can never be missed.
+    current.released.complete(null);
     return true;
   }
 
@@ -490,7 +502,8 @@ public class Commissioner {
   }
 
   public boolean isTaskPaused(UUID taskUuid) {
-    return pauseLatches.containsKey(taskUuid);
+    PauseGate gate = pauseGates.get(taskUuid);
+    return gate != null && gate.reached.isDone() && !gate.released.isDone();
   }
 
   public boolean isTaskRunning(UUID taskUuid) {
@@ -602,22 +615,35 @@ public class Commissioner {
           };
     }
     if (subTaskPausePosition >= 0) {
+      // One gate per listener generation. It is captured by-value here, so every subtask that runs
+      // THIS listener's beforeTask waits on THIS gate, independent of any later listener swap done
+      // by resumeTask. This is what makes the stale-listener/shared-position straggler race safe.
+      final PauseGate gate = new PauseGate();
       // Handle pause of subtask.
       Consumer<TaskInfo> pauseConsumer =
           taskInfo -> {
             if (taskInfo.getPosition() >= subTaskPausePosition) {
               log.debug("Pausing task {} at position {}", taskInfo, taskInfo.getPosition());
               final UUID parentTaskUUID = taskInfo.getParentUuid();
+              // Register as the current gate so resume/abort/isTaskPaused can find this pause
+              // point.
+              pauseGates.put(parentTaskUUID, gate);
+              // Idempotent; lets waitForTaskPaused observe that the pause point was reached.
+              gate.reached.complete(null);
               try {
-                // Insert if absent and get the latch.
-                pauseLatches.computeIfAbsent(parentTaskUUID, k -> new CountDownLatch(1)).await();
-              } catch (InterruptedException e) {
+                // Sticky wait: if resume/abort already completed this gate, returns immediately
+                // instead of parking on a latch that nobody would ever release.
+                gate.released.get();
+              } catch (InterruptedException | ExecutionException e) {
                 throw new CancellationException("Subtask cancelled: " + e.getMessage());
-              } finally {
-                pauseLatches.remove(parentTaskUUID);
               }
-              // Resume can set a new listener.
-              RunnableTask runnableTask = taskExecutor.getRunnableTask(taskInfo.getParentUuid());
+              // Resume installs a new listener generation carrying the abort/pause position set for
+              // this resume. Re-apply it to this same subtask before it runs so a newly-set abort
+              // position takes effect at exactly this position (and stepping can re-pause). The new
+              // listener owns its own gate, so a straggler that reaches this point after resume
+              // cannot be stranded - it waited on this gate (already released) and now re-checks
+              // against the current listener.
+              RunnableTask runnableTask = taskExecutor.getRunnableTask(parentTaskUUID);
               TaskExecutionListener listener = runnableTask.getTaskExecutionListener();
               if (listener != null) {
                 listener.beforeTask(taskInfo);
@@ -633,6 +659,9 @@ public class Commissioner {
     return taskInfo -> {
       if (taskInfo.getParentUuid() == null) {
         log.debug("Parent task {} has completed", taskInfo.getTaskType());
+        // The parent task is done; drop its pause gate so the map does not grow over the lifetime
+        // of this singleton.
+        pauseGates.remove(taskInfo.getUuid());
         try {
           taskQueue.dequeue(
               taskExecutor.getRunnableTask(taskInfo.getUuid()), (t, p) -> execute(t, p));
