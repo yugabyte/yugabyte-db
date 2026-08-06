@@ -86,6 +86,7 @@ DECLARE_bool(use_priority_thread_pool_for_flushes);
 DECLARE_bool(use_priority_thread_pool_for_compactions);
 DECLARE_bool(collect_end_to_end_traces);
 DECLARE_bool(ysql_catalog_preload_additional_tables);
+DECLARE_bool(ysql_enable_write_pipelining);
 DECLARE_string(ysql_catalog_preload_additional_table_list);
 
 DEFINE_test_flag(bool, verify_pull, false,
@@ -731,6 +732,10 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
     }
 
+    if (code_to_look_for_ == ash::WaitStateCode::kRaft_WaitingForPipelinedReplication) {
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_write_pipelining) = true;
+    }
+
     const auto code_class =
         ash::Class(std::to_underlying(code_to_look_for_) >> YB_ASH_CLASS_POSITION);
     do_compactions_ = (code_class == ash::Class::kRocksDB);
@@ -785,6 +790,7 @@ class AshTestVerifyOccurrenceBase : public AshTestWithCompactions {
   size_t NumTabletServers() override {
     switch (code_to_look_for_) {
       case ash::WaitStateCode::kRaft_WaitingForReplication:
+      case ash::WaitStateCode::kRaft_WaitingForPipelinedReplication:
       case ash::WaitStateCode::kRaft_ApplyingEdits:
       case ash::WaitStateCode::kReplicaState_TakeUpdateLock:
         return 3;
@@ -1004,6 +1010,7 @@ INSTANTIATE_TEST_SUITE_P(
       ash::WaitStateCode::kConflictResolution_ResolveConflicts,
       ash::WaitStateCode::kConflictResolution_WaitOnConflictingTxns,
       ash::WaitStateCode::kRaft_WaitingForReplication,
+      ash::WaitStateCode::kRaft_WaitingForPipelinedReplication,
       ash::WaitStateCode::kRaft_ApplyingEdits,
       ash::WaitStateCode::kReplicaState_TakeUpdateLock,
       ash::WaitStateCode::kWAL_Append,

@@ -943,7 +943,8 @@ void ReadRpc::NotifyBatcher(const Status& status) {
 
 WaitForAsyncWriteRpc::WaitForAsyncWriteRpc(
     const BatcherPtr& batcher, TabletId tracking_tablet_id, PartitionKey partition_key,
-    const std::shared_ptr<const YBTable>& table, const OpId& op_id)
+    const std::shared_ptr<const YBTable>& table, const OpId& op_id,
+    const ash::WaitStateInfoPtr& issuing_wait_state)
     : Rpc(batcher->deadline(), batcher->messenger(), &batcher->proxy_cache()),
       tracking_tablet_id_(std::move(tracking_tablet_id)),
       partition_key_(std::move(partition_key)),
@@ -953,11 +954,18 @@ WaitForAsyncWriteRpc::WaitForAsyncWriteRpc(
       tablet_invoker_(
           /*local_tserver_only=*/false,
           /*consistent_prefix=*/false, batcher->client_, this, this,
-          /*tablet=*/nullptr, table, mutable_retrier(), trace_.get()) {
+          /*tablet=*/nullptr, table, mutable_retrier(), trace_.get()),
+      wait_state_(ash::WaitStateInfo::CreateIfAshIsEnabled<ash::WaitStateInfo>()) {
   TRACE_TO(trace_, "WaitForAsyncWrite initiated");
   VTRACE_TO(
       1, trace_, "Tracking tablet $0, op_id $1, partition_key $2", tracking_tablet_id_,
       op_id_.ToString(), Slice(partition_key_).ToDebugHexString());
+
+  // Only copy the metadata since this RPC outlives the issuing statement (don't want to mutate
+  // that statement's wait state).
+  if (wait_state_ && issuing_wait_state) {
+    wait_state_->UpdateMetadata(issuing_wait_state->metadata());
+  }
 
   op_id_.ToPB(req_.mutable_op_id());
 }
@@ -985,6 +993,7 @@ void WaitForAsyncWriteRpc::OnKeyLookup(const Result<internal::RemoteTabletPtr>& 
 }
 
 void WaitForAsyncWriteRpc::SendRpcToTserver(int attempt_num) {
+  ADOPT_WAIT_STATE(wait_state_);
   auto proxy = tablet_invoker_.proxy();
   proxy->WaitForAsyncWriteAsync(
       req_, &resp_, PrepareController(), [this] { Finished(Status::OK()); });
