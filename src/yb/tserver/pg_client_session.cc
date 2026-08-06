@@ -2873,7 +2873,7 @@ class PgClientSession::Impl {
         ? TrackSharedMemoryPgMethodExecution<T>(wait_state, query.ash_metadata())
         : std::nullopt;
 
-    // Fix span attibutes for shared memory exchange.
+    // Start the inbound span for this shared memory request, as a child of the propagated context.
     dist_trace::SpanWithScopePtr trace_scope;
     const auto& trace_context = query.trace_context();
     if (dist_trace::IsDistTraceEnabled() && trace_context.has_span_id()) {
