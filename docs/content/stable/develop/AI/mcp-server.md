@@ -22,13 +22,13 @@ With the YugabyteDB MCP Server, developers can:
 - Map authenticated users to database roles via OIDC identity mapping
 - Integrate instantly with AI coding agents such as Claude Desktop, Cursor, and Windsurf
 
-Learn more about the YugabyteDB MCP Server:
+<!--Learn more about the YugabyteDB MCP Server:
 
 - [Introducing the YugabyteDB MCP Server](https://www.yugabyte.com/blog/yugabytedb-mcp-server/)
 - [Unlock AI-Driven Data Experiences with YugabyteDB MCP Server](https://www.yugabyte.com/blog/yugabytedb-mcp-server-on-aws-marketplace/)
 - [YugabyteDB Joins Google's MCP Toolbox for AI Agent Development](https://www.yugabyte.com/blog/yugabytedb-joins-googles-mcp-toolbox/)
 - [Build a Retail Agent with MCP Toolbox, YugabyteDB, and Google ADK](https://www.yugabyte.com/blog/build-a-retail-agent/)
-- [How to Integrate the YugabyteDB MCP Server with Visual Studio Code](https://www.yugabyte.com/blog/integrate-yugabytedb-mcp-server-with-vs-code/)
+- [How to Integrate the YugabyteDB MCP Server with Visual Studio Code](https://www.yugabyte.com/blog/integrate-yugabytedb-mcp-server-with-vs-code/) -->
 
 ## YugabyteDB Agent Skills
 
