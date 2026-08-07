@@ -703,10 +703,16 @@
       },
       "reprovisionNodesWithYnpModal": {
         "title": "Reprovision Universe Nodes",
-        "instructions": "Nodes will be provisioned in a rolling manner.",
+        "description": "This re-applies host setup on the selected nodes, including OS configuration, required packages, and Node Agent installation.",
+        "learnMoreAboutOperationalConsiderations": "Learn more about operational considerations",
+        "rollingRestartNoteRF3": "<bold>Note!</bold> Reprovisioning nodes will require a <bold>rolling restart</bold> of <bold>{{universeName}}</bold>. The universe will remain online and available throughout.",
+        "rollingRestartNoteRF3SelectedNode": "<bold>Note!</bold> Reprovisioning will require a <bold>restart</bold> of <bold>{{nodeName}}</bold>. The universe will remain online and available throughout.",
+        "rollingRestartNoteLowRF": "<bold>Note!</bold> Reprovisioning nodes will require a <bold>restart</bold> of <bold>{{universeName}}</bold>. The universe won't be available for reads and writes during the restart.",
+        "rollingRestartNoteLowRFSelectedNode": "<bold>Note!</bold> Reprovisioning will require a <bold>restart</bold> of <bold>{{nodeName}}</bold>. The universe won't be available for reads and writes during the restart.",
         "reprovisionNodesFor": "Reprovision nodes for:",
         "allNodeInUniverse": "All nodes in this Universe",
         "selectedNode": "Selected node",
+        "selectedNodeDisabledSingleNodeUniverse": "This universe only has one node.",
         "confirmButton": "Reprovision Universe Nodes",
         "error": {
           "requestFailureLabel": "Reprovision Universe Nodes request failed",
