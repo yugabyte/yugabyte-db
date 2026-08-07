@@ -295,9 +295,9 @@ TEST_F(TabletSplitITest, ParentTabletCleanup) {
 
 // Checks that applying a tablet split leaves the split parent's consensus metadata file alone.
 TEST_F(TabletSplitITest, ParentConsensusMetadataPreservedAcrossSplit) {
+  google::FlagSaver flag_saver;
   // Keep the parent around so its cmeta file is not deleted before we can re-read it.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
-
   CreateSingleTablet();
   const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kDefaultNumRows));
 
