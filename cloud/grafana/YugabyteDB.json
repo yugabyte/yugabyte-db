@@ -1881,39 +1881,39 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(log_sync_latency_count{node_prefix=\"$dbcluster\",export_type=\"master_export\"}[5m])))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(log_sync_latency_count{node_prefix=\"$dbcluster\",export_type=\"master_export\"}[5m])))",
           "interval": "",
           "legendFormat": "Total Avg - Sync",
           "refId": "D"
         },
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(log_group_commit_latency_count{node_prefix=\"$dbcluster\",export_type=\"master_export\"}[5m])))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(log_group_commit_latency_count{node_prefix=\"$dbcluster\",export_type=\"master_export\"}[5m])))",
           "interval": "",
           "legendFormat": "Total Avg - Commit",
           "refId": "E"
         },
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(log_append_latency_count{node_prefix=\"$dbcluster\",export_type=\"master_export\"}[5m])))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(log_append_latency_count{node_prefix=\"$dbcluster\",export_type=\"master_export\"}[5m])))",
           "interval": "",
           "legendFormat": "Total Avg  - Append",
           "refId": "F"
         },
         {
-          "expr": "avg by (exported_instance) (sum without (table_id, table_name) (rate(log_sync_latency_count{node_prefix=\"$dbcluster\",export_type=\"master_export\"}[5m])))",
+          "expr": "avg by (exported_instance) (sum without (table_id, table_name, pgschema_name) (rate(log_sync_latency_count{node_prefix=\"$dbcluster\",export_type=\"master_export\"}[5m])))",
           "hide": false,
           "interval": "",
           "legendFormat": "{{exported_instance}} - Sync",
           "refId": "A"
         },
         {
-          "expr": "avg by (exported_instance) (sum without (table_id, table_name) (rate(log_group_commit_latency_count{node_prefix=\"$dbcluster\",export_type=\"master_export\"}[5m])))",
+          "expr": "avg by (exported_instance) (sum without (table_id, table_name, pgschema_name) (rate(log_group_commit_latency_count{node_prefix=\"$dbcluster\",export_type=\"master_export\"}[5m])))",
           "hide": false,
           "interval": "",
           "legendFormat": "{{exported_instance}} - Commit",
           "refId": "B"
         },
         {
-          "expr": "avg by (exported_instance) (sum without (table_id, table_name) (rate(log_append_latency_count{node_prefix=\"$dbcluster\",export_type=\"master_export\"}[5m])))",
+          "expr": "avg by (exported_instance) (sum without (table_id, table_name, pgschema_name) (rate(log_append_latency_count{node_prefix=\"$dbcluster\",export_type=\"master_export\"}[5m])))",
           "hide": false,
           "interval": "",
           "legendFormat": "{{exported_instance}} - Append",
@@ -2120,28 +2120,28 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (log_reader_bytes_read{node_prefix=\"$dbcluster\",export_type=\"master_export\"})) / 1024",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (log_reader_bytes_read{node_prefix=\"$dbcluster\",export_type=\"master_export\"})) / 1024",
           "hide": false,
           "interval": "",
           "legendFormat": "Total Avg - Log Bytes Read",
           "refId": "D"
         },
         {
-          "expr": "avg(sum without (table_id, table_name) (log_cache_size{node_prefix=\"$dbcluster\",export_type=\"master_export\"})) / 1024",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (log_cache_size{node_prefix=\"$dbcluster\",export_type=\"master_export\"})) / 1024",
           "hide": false,
           "interval": "",
           "legendFormat": "Total Avg - Log Cache Size",
           "refId": "E"
         },
         {
-          "expr": "avg by (exported_instance) (sum without (table_id, table_name) (log_reader_bytes_read{node_prefix=\"$dbcluster\",export_type=\"master_export\"})) / 1024",
+          "expr": "avg by (exported_instance) (sum without (table_id, table_name, pgschema_name) (log_reader_bytes_read{node_prefix=\"$dbcluster\",export_type=\"master_export\"})) / 1024",
           "hide": false,
           "interval": "",
           "legendFormat": "{{exported_instance}} - Log Bytes Read",
           "refId": "A"
         },
         {
-          "expr": "avg by (exported_instance) (sum without (table_id, table_name) (log_cache_size{node_prefix=\"$dbcluster\",export_type=\"master_export\"})) / 1024",
+          "expr": "avg by (exported_instance) (sum without (table_id, table_name, pgschema_name) (log_cache_size{node_prefix=\"$dbcluster\",export_type=\"master_export\"})) / 1024",
           "hide": false,
           "interval": "",
           "legendFormat": "{{exported_instance}} - Log Cache Size",
@@ -2238,14 +2238,14 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(log_bytes_logged{node_prefix=\"$dbcluster\",export_type=\"master_export\"}[5m])))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(log_bytes_logged{node_prefix=\"$dbcluster\",export_type=\"master_export\"}[5m])))",
           "hide": false,
           "interval": "",
           "legendFormat": "Total Avg - Log Bytes Logged",
           "refId": "B"
         },
         {
-          "expr": "avg by (exported_instance) (sum without (table_id, table_name) (rate(log_bytes_logged{node_prefix=\"$dbcluster\",export_type=\"master_export\"}[5m])))",
+          "expr": "avg by (exported_instance) (sum without (table_id, table_name, pgschema_name) (rate(log_bytes_logged{node_prefix=\"$dbcluster\",export_type=\"master_export\"}[5m])))",
           "hide": false,
           "interval": "",
           "legendFormat": "{{exported_instance}} - Log Bytes Logged",
@@ -2451,13 +2451,13 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(log_reader_bytes_read{node_prefix=\"$dbcluster\",export_type=\"master_export\"}[5m])))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(log_reader_bytes_read{node_prefix=\"$dbcluster\",export_type=\"master_export\"}[5m])))",
           "interval": "",
           "legendFormat": "Total Avg - Log Bytes Read",
           "refId": "B"
         },
         {
-          "expr": "avg by (exported_instance) (sum without (table_id, table_name) (rate(log_reader_bytes_read{node_prefix=\"$dbcluster\",export_type=\"master_export\"}[5m])))",
+          "expr": "avg by (exported_instance) (sum without (table_id, table_name, pgschema_name) (rate(log_reader_bytes_read{node_prefix=\"$dbcluster\",export_type=\"master_export\"}[5m])))",
           "hide": false,
           "interval": "",
           "legendFormat": "{{exported_instance}} - Log Bytes Read",
@@ -2651,14 +2651,14 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (log_cache_num_ops{node_prefix=\"$dbcluster\",export_type=\"master_export\"}))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (log_cache_num_ops{node_prefix=\"$dbcluster\",export_type=\"master_export\"}))",
           "hide": false,
           "interval": "",
           "legendFormat": "Total Avg - Num Ops",
           "refId": "D"
         },
         {
-          "expr": "avg by (exported_instance) (sum without (table_id, table_name) (log_cache_num_ops{node_prefix=\"$dbcluster\",export_type=\"master_export\"})) / 1024",
+          "expr": "avg by (exported_instance) (sum without (table_id, table_name, pgschema_name) (log_cache_num_ops{node_prefix=\"$dbcluster\",export_type=\"master_export\"})) / 1024",
           "hide": false,
           "interval": "",
           "legendFormat": "{{exported_instance}} - Num Ops",
@@ -6751,13 +6751,13 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(log_bytes_logged{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"}[5m])))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(log_bytes_logged{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"}[5m])))",
           "interval": "",
           "legendFormat": "Total Avg - Log Bytes Logged",
           "refId": "B"
         },
         {
-          "expr": "avg by (exported_instance) (sum without (table_id, table_name) (rate(log_bytes_logged{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"}[5m])))",
+          "expr": "avg by (exported_instance) (sum without (table_id, table_name, pgschema_name) (rate(log_bytes_logged{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"}[5m])))",
           "hide": false,
           "interval": "",
           "legendFormat": "{{exported_instance}} - Log Bytes Logged",
@@ -6854,13 +6854,13 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(log_reader_bytes_read{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"}[5m])))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(log_reader_bytes_read{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"}[5m])))",
           "interval": "",
           "legendFormat": "Total Avg - Log Bytes Read",
           "refId": "B"
         },
         {
-          "expr": "avg by (exported_instance) (sum without (table_id, table_name) (rate(log_reader_bytes_read{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"}[5m])))",
+          "expr": "avg by (exported_instance) (sum without (table_id, table_name, pgschema_name) (rate(log_reader_bytes_read{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"}[5m])))",
           "hide": false,
           "interval": "",
           "legendFormat": "{{exported_instance}} - Log Bytes Read",
@@ -6958,39 +6958,39 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(log_sync_latency_count{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"}[5m])))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(log_sync_latency_count{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"}[5m])))",
           "interval": "",
           "legendFormat": "Total Avg - Sync",
           "refId": "D"
         },
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(log_group_commit_latency_count{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"}[5m])))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(log_group_commit_latency_count{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"}[5m])))",
           "interval": "",
           "legendFormat": "Total Avg - Commit",
           "refId": "E"
         },
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(log_append_latency_count{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"}[5m])))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(log_append_latency_count{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"}[5m])))",
           "interval": "",
           "legendFormat": "Total Avg  - Append",
           "refId": "F"
         },
         {
-          "expr": "avg by (exported_instance) (sum without (table_id, table_name) (rate(log_sync_latency_count{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"}[5m])))",
+          "expr": "avg by (exported_instance) (sum without (table_id, table_name, pgschema_name) (rate(log_sync_latency_count{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"}[5m])))",
           "hide": false,
           "interval": "",
           "legendFormat": "{{exported_instance}} - Sync",
           "refId": "A"
         },
         {
-          "expr": "avg by (exported_instance) (sum without (table_id, table_name) (rate(log_group_commit_latency_count{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"}[5m])))",
+          "expr": "avg by (exported_instance) (sum without (table_id, table_name, pgschema_name) (rate(log_group_commit_latency_count{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"}[5m])))",
           "hide": false,
           "interval": "",
           "legendFormat": "{{exported_instance}} - Commit",
           "refId": "B"
         },
         {
-          "expr": "avg by (exported_instance) (sum without (table_id, table_name) (rate(log_append_latency_count{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"}[5m])))",
+          "expr": "avg by (exported_instance) (sum without (table_id, table_name, pgschema_name) (rate(log_append_latency_count{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"}[5m])))",
           "hide": false,
           "interval": "",
           "legendFormat": "{{exported_instance}} - Append",
@@ -7191,28 +7191,28 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (log_reader_bytes_read{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"})) / 1024",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (log_reader_bytes_read{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"})) / 1024",
           "hide": false,
           "interval": "",
           "legendFormat": "Total Avg - Log Bytes Read",
           "refId": "D"
         },
         {
-          "expr": "avg(sum without (table_id, table_name) (log_cache_size{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"})) / 1024",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (log_cache_size{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"})) / 1024",
           "hide": false,
           "interval": "",
           "legendFormat": "Total Avg - Log Cache Size",
           "refId": "E"
         },
         {
-          "expr": "avg by (exported_instance) (sum without (table_id, table_name) (log_reader_bytes_read{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"})) / 1024",
+          "expr": "avg by (exported_instance) (sum without (table_id, table_name, pgschema_name) (log_reader_bytes_read{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"})) / 1024",
           "hide": false,
           "interval": "",
           "legendFormat": "{{exported_instance}} - Log Bytes Read",
           "refId": "A"
         },
         {
-          "expr": "avg by (exported_instance) (sum without (table_id, table_name) (log_cache_size{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"})) / 1024",
+          "expr": "avg by (exported_instance) (sum without (table_id, table_name, pgschema_name) (log_cache_size{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"})) / 1024",
           "hide": false,
           "interval": "",
           "legendFormat": "{{exported_instance}} - Log Cache Size",
@@ -7310,14 +7310,14 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (log_cache_num_ops{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"}))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (log_cache_num_ops{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"}))",
           "hide": false,
           "interval": "",
           "legendFormat": "Total Avg - Num Ops",
           "refId": "D"
         },
         {
-          "expr": "avg by (exported_instance) (sum without (table_id, table_name) (log_cache_num_ops{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"})) / 1024",
+          "expr": "avg by (exported_instance) (sum without (table_id, table_name, pgschema_name) (log_cache_num_ops{node_prefix=\"$dbcluster\",export_type=\"tserver_export\"})) / 1024",
           "hide": false,
           "interval": "",
           "legendFormat": "{{exported_instance}} - Num Ops",
@@ -7669,13 +7669,13 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(rocksdb_number_db_seek{node_prefix=\"$dbcluster\"}[5m])))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(rocksdb_number_db_seek{node_prefix=\"$dbcluster\"}[5m])))",
           "interval": "",
           "legendFormat": "Seek",
           "refId": "A"
         },
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(rocksdb_number_db_next{node_prefix=\"$dbcluster\"}[5m])))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(rocksdb_number_db_next{node_prefix=\"$dbcluster\"}[5m])))",
           "hide": false,
           "interval": "",
           "legendFormat": "Next",
@@ -7772,7 +7772,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(rocksdb_number_db_seek{node_prefix=\"$dbcluster\"}[5m])))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(rocksdb_number_db_seek{node_prefix=\"$dbcluster\"}[5m])))",
           "interval": "",
           "legendFormat": "Seek",
           "refId": "A"
@@ -7868,7 +7868,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (rocksdb_current_version_sst_files_size{node_prefix=\"$dbcluster\"})) / 1073741824",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rocksdb_current_version_sst_files_size{node_prefix=\"$dbcluster\"})) / 1073741824",
           "hide": false,
           "interval": "",
           "legendFormat": "Size of SSTables",
@@ -7966,7 +7966,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (rocksdb_current_version_num_sst_files{node_prefix=\"$dbcluster\"}))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rocksdb_current_version_num_sst_files{node_prefix=\"$dbcluster\"}))",
           "hide": false,
           "interval": "",
           "legendFormat": "Average SSTables / Node",
@@ -8063,14 +8063,14 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(rocksdb_bloom_filter_checked{node_prefix=\"$dbcluster\"}[5m])))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(rocksdb_bloom_filter_checked{node_prefix=\"$dbcluster\"}[5m])))",
           "hide": false,
           "interval": "",
           "legendFormat": "Blooms checked",
           "refId": "A"
         },
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(rocksdb_bloom_filter_useful{node_prefix=\"$dbcluster\"}[5m]))) ",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(rocksdb_bloom_filter_useful{node_prefix=\"$dbcluster\"}[5m]))) ",
           "hide": false,
           "interval": "",
           "legendFormat": "Blooms useful",
@@ -8167,7 +8167,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(rocksdb_db_get_micros_sum{node_prefix=\"$dbcluster\"}[5m]))) / avg(sum without (table_id, table_name) (rate(rocksdb_db_get_micros_count{node_prefix=\"$dbcluster\"}[5m]))\r)",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(rocksdb_db_get_micros_sum{node_prefix=\"$dbcluster\"}[5m]))) / avg(sum without (table_id, table_name, pgschema_name) (rate(rocksdb_db_get_micros_count{node_prefix=\"$dbcluster\"}[5m]))\r)",
           "hide": false,
           "interval": "",
           "legendFormat": "Get",
@@ -8263,7 +8263,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(rocksdb_db_write_micros_sum{node_prefix=\"$dbcluster\"}[5m]))) / avg(sum without (table_id, table_name) (rate(rocksdb_db_write_micros_count{node_prefix=\"$dbcluster\"}[5m]))\r)",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(rocksdb_db_write_micros_sum{node_prefix=\"$dbcluster\"}[5m]))) / avg(sum without (table_id, table_name, pgschema_name) (rate(rocksdb_db_write_micros_count{node_prefix=\"$dbcluster\"}[5m]))\r)",
           "hide": false,
           "interval": "",
           "legendFormat": "Write",
@@ -8359,7 +8359,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(rocksdb_db_seek_micros_sum{node_prefix=\"$dbcluster\"}[5m]))) / avg(sum without (table_id, table_name) (rate(rocksdb_db_seek_micros_count{node_prefix=\"$dbcluster\"}[5m]))\r)",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(rocksdb_db_seek_micros_sum{node_prefix=\"$dbcluster\"}[5m]))) / avg(sum without (table_id, table_name, pgschema_name) (rate(rocksdb_db_seek_micros_count{node_prefix=\"$dbcluster\"}[5m]))\r)",
           "hide": false,
           "interval": "",
           "legendFormat": "Seek ",
@@ -8455,7 +8455,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(rocksdb_db_mutex_wait_micros{node_prefix=\"$dbcluster\"}[5m])))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(rocksdb_db_mutex_wait_micros{node_prefix=\"$dbcluster\"}[5m])))",
           "hide": false,
           "interval": "",
           "legendFormat": "Mutex",
@@ -8551,13 +8551,13 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(rocksdb_block_cache_hit{node_prefix=\"$dbcluster\"}[5m])))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(rocksdb_block_cache_hit{node_prefix=\"$dbcluster\"}[5m])))",
           "interval": "",
           "legendFormat": "Hit",
           "refId": "A"
         },
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(rocksdb_block_cache_miss{node_prefix=\"$dbcluster\"}[5m])))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(rocksdb_block_cache_miss{node_prefix=\"$dbcluster\"}[5m])))",
           "hide": false,
           "interval": "",
           "legendFormat": "Miss",
@@ -8757,20 +8757,20 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(rocksdb_block_cache_add{node_prefix=\"$dbcluster\"}[5m])))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(rocksdb_block_cache_add{node_prefix=\"$dbcluster\"}[5m])))",
           "interval": "",
           "legendFormat": "Add",
           "refId": "A"
         },
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(rocksdb_block_cache_single_touch_add{node_prefix=\"$dbcluster\"}[5m])))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(rocksdb_block_cache_single_touch_add{node_prefix=\"$dbcluster\"}[5m])))",
           "hide": false,
           "interval": "",
           "legendFormat": "Single Touch Add",
           "refId": "B"
         },
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(rocksdb_block_cache_multi_touch_add{node_prefix=\"$dbcluster\"}[5m])))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(rocksdb_block_cache_multi_touch_add{node_prefix=\"$dbcluster\"}[5m])))",
           "interval": "",
           "legendFormat": "Multi Touch Add",
           "refId": "C"
@@ -8866,7 +8866,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(rocksdb_stall_micros{node_prefix=\"$dbcluster\"}[5m])))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(rocksdb_stall_micros{node_prefix=\"$dbcluster\"}[5m])))",
           "interval": "",
           "legendFormat": "Stalls",
           "refId": "A"
@@ -8962,7 +8962,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(majority_sst_files_rejections{node_prefix=\"$dbcluster\"}[5m])))",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(majority_sst_files_rejections{node_prefix=\"$dbcluster\"}[5m])))",
           "interval": "",
           "legendFormat": "Rejections",
           "refId": "A"
@@ -9058,7 +9058,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(rocksdb_flush_write_bytes{node_prefix=\"$dbcluster\"}[5m]))) / 1048576",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(rocksdb_flush_write_bytes{node_prefix=\"$dbcluster\"}[5m]))) / 1048576",
           "hide": false,
           "interval": "",
           "legendFormat": "Flush",
@@ -9155,14 +9155,14 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(rocksdb_compact_read_bytes{node_prefix=\"$dbcluster\"}[5m]))) / 1048576",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(rocksdb_compact_read_bytes{node_prefix=\"$dbcluster\"}[5m]))) / 1048576",
           "hide": false,
           "interval": "",
           "legendFormat": "Bytes Read",
           "refId": "A"
         },
         {
-          "expr": "avg(sum without (table_id, table_name) (rate(rocksdb_compact_write_bytes{node_prefix=\"$dbcluster\"}[5m]))) / 1048576",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (rate(rocksdb_compact_write_bytes{node_prefix=\"$dbcluster\"}[5m]))) / 1048576",
           "interval": "",
           "legendFormat": "Bytes Written",
           "refId": "B"
@@ -9258,7 +9258,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (irate(rocksdb_numfiles_in_singlecompaction_sum{node_prefix=\"$dbcluster\"}[5m]))) / avg(sum without (table_id, table_name) (irate(rocksdb_numfiles_in_singlecompaction_count{node_prefix=\"$dbcluster\"}[5m]))\r)",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (irate(rocksdb_numfiles_in_singlecompaction_sum{node_prefix=\"$dbcluster\"}[5m]))) / avg(sum without (table_id, table_name, pgschema_name) (irate(rocksdb_numfiles_in_singlecompaction_count{node_prefix=\"$dbcluster\"}[5m]))\r)",
           "hide": false,
           "interval": "",
           "legendFormat": "Avg",
@@ -9354,7 +9354,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "avg(sum without (table_id, table_name) (irate(rocksdb_compaction_times_micros_sum{node_prefix=\"$dbcluster\"}[5m]))) / avg(sum without (table_id, table_name) (irate(rocksdb_compaction_times_micros_count{node_prefix=\"$dbcluster\"}[5m]))\r)",
+          "expr": "avg(sum without (table_id, table_name, pgschema_name) (irate(rocksdb_compaction_times_micros_sum{node_prefix=\"$dbcluster\"}[5m]))) / avg(sum without (table_id, table_name, pgschema_name) (irate(rocksdb_compaction_times_micros_count{node_prefix=\"$dbcluster\"}[5m]))\r)",
           "hide": false,
           "interval": "",
           "legendFormat": "Avg",

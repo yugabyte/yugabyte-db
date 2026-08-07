@@ -207,6 +207,12 @@ AggregationLevels MetricEntity::ReconstructPrometheusAttributesUnlocked() {
     prometheus_attributes_["namespace_name"] =
         EscapePrometheusLabelValue(attributes_["namespace_name"]);
     {
+      auto it = attributes_.find("pgschema_name");
+      if (it != attributes_.end() && !it->second.empty()) {
+        prometheus_attributes_["pgschema_name"] = EscapePrometheusLabelValue(it->second);
+      }
+    }
+    {
       auto it = attributes_.find("database_oid");
       if (it != attributes_.end() && !it->second.empty()) {
         prometheus_attributes_["database_oid"] = it->second;
@@ -224,6 +230,12 @@ AggregationLevels MetricEntity::ReconstructPrometheusAttributesUnlocked() {
     prometheus_attributes_["table_type"] = attributes_["table_type"];
     prometheus_attributes_["namespace_name"] =
         EscapePrometheusLabelValue(attributes_["namespace_name"]);
+    {
+      auto it = attributes_.find("pgschema_name");
+      if (it != attributes_.end() && !it->second.empty()) {
+        prometheus_attributes_["pgschema_name"] = EscapePrometheusLabelValue(it->second);
+      }
+    }
     prometheus_attributes_["stream_id"] = aggregation_id_for_pre_aggregation_;
     default_aggregation_level = kStreamLevel;
   } else if (prototype_type == kCdcsdkMetricEntityName) {
@@ -469,6 +481,8 @@ std::string MetricEntity::LogPrefix() const {
 
 void MetricEntity::SetAttributes(const AttributeMap& attrs) {
   std::lock_guard l(lock_);
+  // Replaces the full attribute map. Callers must include every attribute that should be preserved;
+  // out-of-band attributes added after construction will be dropped.
   attributes_ = attrs;
   ReconstructPrometheusAttributesUnlocked();
   auto s = metrics_aggregator_->ReplaceAttributes(
@@ -500,6 +514,7 @@ void ConvertToServerLevelAttributes(MetricEntity::AttributeMap* non_server_level
   non_server_level_attributes->erase("table_name");
   non_server_level_attributes->erase("table_type");
   non_server_level_attributes->erase("namespace_name");
+  non_server_level_attributes->erase("pgschema_name");
 }
 
 void AssertAttributesMatchExpectation(
