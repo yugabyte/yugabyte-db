@@ -980,6 +980,8 @@ extern bool yb_whitelist_extra_stmts_for_pl_speculative_execution;
 
 extern bool yb_enable_docdb_vector_type;
 
+extern bool yb_enable_decimal_infinity_nan;
+
 /*
  * Deprecated no-op; kept so existing postgresql.conf / init scripts that set this
  * parameter still load. Advisory locking ignores this variable (see lockfuncs.c).

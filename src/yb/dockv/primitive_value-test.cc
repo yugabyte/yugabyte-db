@@ -28,6 +28,7 @@
 
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/decimal.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
@@ -710,6 +711,48 @@ TEST(PrimitiveValueTest, RandomQLValuePBToKeyEntryEncoding) {
       auto encoded_slice = EncodedKeyEntryValue(arena, value, sorting_type);
       ASSERT_EQ(key_bytes.AsSlice(), encoded_slice) << "Value: " << AsString(value);
     }
+  }
+}
+
+// ASC: -Infinity < finite < +Infinity < NaN. DESC type bytes reverse that order.
+TEST(PrimitiveValueTest, DecimalSpecialKeyOrdering) {
+  const auto neg_inf = util::Decimal::NegInfinity().EncodeToComparable();
+  const auto neg_one = util::Decimal("-1").EncodeToComparable();
+  const auto zero = util::Decimal("0").EncodeToComparable();
+  const auto pos_one = util::Decimal("1").EncodeToComparable();
+  const auto pos_inf = util::Decimal::PosInfinity().EncodeToComparable();
+  const auto nan = util::Decimal::NaN().EncodeToComparable();
+
+  auto asc = [](const std::string& enc) {
+    return KeyEntryValue::Decimal(enc, SortOrder::kAscending).ToKeyBytes();
+  };
+  auto desc = [](const std::string& enc) {
+    return KeyEntryValue::Decimal(enc, SortOrder::kDescending).ToKeyBytes();
+  };
+
+  EXPECT_LT(asc(neg_inf).AsSlice(), asc(neg_one).AsSlice());
+  EXPECT_LT(asc(neg_one).AsSlice(), asc(zero).AsSlice());
+  EXPECT_LT(asc(zero).AsSlice(), asc(pos_one).AsSlice());
+  EXPECT_LT(asc(pos_one).AsSlice(), asc(pos_inf).AsSlice());
+  EXPECT_LT(asc(pos_inf).AsSlice(), asc(nan).AsSlice());
+
+  // DESC RocksDB order: NaN < +Inf < finite < -Inf.
+  EXPECT_LT(desc(nan).AsSlice(), desc(pos_inf).AsSlice());
+  EXPECT_LT(desc(pos_inf).AsSlice(), desc(pos_one).AsSlice());
+  EXPECT_LT(desc(pos_one).AsSlice(), desc(zero).AsSlice());
+  EXPECT_LT(desc(zero).AsSlice(), desc(neg_one).AsSlice());
+  EXPECT_LT(desc(neg_one).AsSlice(), desc(neg_inf).AsSlice());
+
+  // Round-trip specials through key encode/decode.
+  for (const auto& enc : {neg_inf, pos_inf, nan}) {
+    KeyBytes kb = KeyEntryValue::Decimal(enc, SortOrder::kAscending).ToKeyBytes();
+    Slice slice = kb.AsSlice();
+    KeyEntryValue decoded;
+    ASSERT_OK(KeyEntryValue::DecodeKey(&slice, &decoded));
+    EXPECT_TRUE(slice.empty());
+    QLValuePB ql;
+    decoded.ToQLValuePB(QLType::Create(DataType::DECIMAL), &ql);
+    EXPECT_EQ(enc, ql.decimal_value());
   }
 }
 
