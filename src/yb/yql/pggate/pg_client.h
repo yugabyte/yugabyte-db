@@ -305,6 +305,8 @@ class PgClient {
       SubTransactionId subtxn_id, const YbcObjectLockId& lock_id,
       docdb::ObjectLockFastpathLockType lock_type);
 
+  bool TryReleaseAllObjectLocksInSharedMemory();
+
   Status AcquireObjectLock(
       tserver::PgPerformOptionsPB* options, const YbcObjectLockId& lock_id, YbcObjectLockMode mode,
       bool is_session_lock, std::optional<PgTablespaceOid> tablespace_oid);

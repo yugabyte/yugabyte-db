@@ -58,8 +58,8 @@ struct ObjectLockOwner {
 // oid, an 'ObjectLockPrefix' in formed which is then passed to the ObjectLockManager.
 struct ObjectLockPrefix {
   ObjectLockPrefix(
-      uint64_t database_oid_, uint64_t relation_oid_, uint64_t object_oid_,
-      uint64_t object_sub_oid_, dockv::KeyEntryType lock_type_)
+      uint32_t database_oid_, uint32_t relation_oid_, uint32_t object_oid_,
+      uint32_t object_sub_oid_, dockv::KeyEntryType lock_type_)
       : database_oid(database_oid_), relation_oid(relation_oid_), object_oid(object_oid_),
         object_sub_oid(object_sub_oid_), lock_type(lock_type_) {}
 
@@ -72,10 +72,10 @@ struct ObjectLockPrefix {
 
   auto operator<=>(const ObjectLockPrefix&) const = default;
 
-  uint64_t database_oid;
-  uint64_t relation_oid;
-  uint64_t object_oid;
-  uint64_t object_sub_oid;
+  uint32_t database_oid;
+  uint32_t relation_oid;
+  uint32_t object_oid;
+  uint32_t object_sub_oid;
   dockv::KeyEntryType lock_type;
 };
 

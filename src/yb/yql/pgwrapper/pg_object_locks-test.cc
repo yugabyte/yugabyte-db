@@ -68,6 +68,13 @@ DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 DECLARE_bool(TEST_pause_session_lock_before_release);
 DECLARE_bool(TEST_pause_session_lock_after_release);
 
+METRIC_DECLARE_counter(object_locking_lock_acquires);
+METRIC_DECLARE_counter(object_locking_lock_releases);
+METRIC_DECLARE_gauge_uint64(object_locking_fastpath_pg_acquires);
+METRIC_DECLARE_gauge_uint64(object_locking_fastpath_pg_releases);
+METRIC_DECLARE_gauge_uint64(object_locking_fastpath_tserver_acquires);
+METRIC_DECLARE_gauge_uint64(object_locking_fastpath_tserver_releases);
+
 using namespace std::literals;
 
 namespace yb::pgwrapper {
@@ -1825,39 +1832,147 @@ class PgObjectLocksFastpathTest : public PgObjectLocksTestRF1 {
     PgObjectLocksTestRF1::SetUp();
     auto& shared_object = *TServerSharedObject().get();
     ASSERT_OK(shared_object.WaitAllocatorsInitialized());
+
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE TABLE test(k INT)"));
   }
 
-  TransactionId LastOwner() {
-    return ObjectLockSharedStateManager().TEST_last_owner();
+  template<typename Metric>
+  auto ExpectMetricIncrease(const auto& prototype, auto delta) {
+    auto& metric_entity = cluster_->mini_tablet_server(0)->metric_entity();
+    auto metric = metric_entity.FindOrNull<Metric>(prototype);
+    auto initial = metric->value();
+    return ScopeExit([initial, delta, metric = std::move(metric)] {
+      auto value = metric->value();
+      EXPECT_EQ(value - initial, delta)
+          << "Expected delta of " << delta << ", actual: " << (value - initial)
+          << ", change from " << initial << " to " << value;
+    });
   }
 };
 
-TEST_F(PgObjectLocksFastpathTest, TestSimple) {
-  CreateTestTable();
-
+TEST_F(PgObjectLocksFastpathTest, TestReadOnlyTransaction) {
   auto conn = ASSERT_RESULT(Connect());
+
+  // Get catalog reads out of the way since they acquire a bunch of unrelated locks.
   ASSERT_OK(conn.Fetch("SELECT * FROM test"));
 
-  auto txn_id = LastOwner();
+  // Test postgres "read-only" transactions (including single-shard writes) acquire and release
+  // entirely on postgres side.
 
-  ASSERT_OK(conn.Fetch("SELECT * FROM test"));
-  ASSERT_EQ(LastOwner(), txn_id);
+  // Read statement.
+  {
+    auto g1 = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_pg_acquires, /*delta=*/1);
+    auto g2 = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_pg_releases, /*delta=*/1);
+    ASSERT_OK(conn.Fetch("SELECT * FROM test"));
+  }
 
-  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (101, 1)"));
-  ASSERT_EQ(LastOwner(), txn_id);
+  // Single-shard write.
+  {
+    auto g1 = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_pg_acquires, /*delta=*/2);
+    auto g2 = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_pg_releases, /*delta=*/1);
+    ASSERT_OK(conn.Execute("INSERT INTO test VALUES(1)"));
+  }
 
+  // Transaction that only reads.
   ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  ASSERT_OK(conn.Fetch("SELECT * FROM test"));
-  ASSERT_EQ(LastOwner(), txn_id);
+  {
+    auto g = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_pg_acquires, /*delta=*/1);
+    ASSERT_OK(conn.Fetch("SELECT * FROM test"));
+  }
+  {
+    auto g = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_pg_releases, /*delta=*/1);
+    ASSERT_OK(conn.CommitTransaction());
+  }
+}
+
+TEST_F(PgObjectLocksFastpathTest, TestTServerSharedMemAcquire) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Consume the plain transaction.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES(1)"));
   ASSERT_OK(conn.CommitTransaction());
 
-  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (102, 2)"));
-  ASSERT_EQ(LastOwner(), txn_id);
-  ASSERT_OK(conn.CommitTransaction());
+  // This needs to go to TServer for a new transaction, but otherwise can use shared memory. It
+  // should not prevent postgres-side release.
+  {
+    auto g1 = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_tserver_acquires, /*delta=*/2);
+    auto g2 = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_pg_releases, /*delta=*/1);
+    ASSERT_OK(conn.Execute("INSERT INTO test VALUES(1)"));
+  }
+}
 
+TEST_F(PgObjectLocksFastpathTest, TestTServerSharedMemRelease) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  // Get catalog reads out of the way since they acquire a bunch of unrelated locks.
   ASSERT_OK(conn.Fetch("SELECT * FROM test"));
-  ASSERT_NE(LastOwner(), txn_id);
+
+  // Test case where we release as part of FinishTransaction, but do not need to involve
+  // ObjectLockManager since all locks are in shared memory.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  {
+    auto g = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_pg_acquires, /*delta=*/2);
+    ASSERT_OK(conn.Execute("INSERT INTO test VALUES(1)"));
+  }
+  {
+    auto g = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_tserver_releases, /*delta=*/1);
+    ASSERT_OK(conn.CommitTransaction());
+  }
+}
+
+TEST_F(PgObjectLocksFastpathTest, TestTServerLockManagerRelease) {
+  auto conn1 = ASSERT_RESULT(Connect());
+
+  // Get catalog reads out of the way since they acquire a bunch of unrelated locks.
+  ASSERT_OK(conn1.Fetch("SELECT * FROM test"));
+
+  // Block conn1 from taking anything greater than ACCESS SHARE.
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn2.Execute("LOCK TABLE test IN EXCLUSIVE MODE"));
+
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  // ACCESS SHARE can use fastpath.
+  {
+    auto g = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_pg_acquires, /*delta=*/1);
+    ASSERT_OK(conn1.Execute("LOCK TABLE test IN ACCESS SHARE MODE"));
+  }
+
+  // ROW SHARE should go to ObjectLockManager (and block until conn2 commits).
+  {
+    std::jthread t([&] {
+      std::this_thread::sleep_for(2s);
+      ASSERT_OK(conn2.CommitTransaction());
+    });
+    auto g = ExpectMetricIncrease<Counter>(METRIC_object_locking_lock_acquires, /*delta=*/1);
+    ASSERT_OK(conn1.Execute("LOCK TABLE test IN ROW SHARE MODE"));
+  }
+
+  // ROW EXCLUSIVE can use fastpath since conn2 has committed.
+  {
+    auto g = ExpectMetricIncrease<FunctionGauge<uint64_t>>(
+        METRIC_object_locking_fastpath_pg_acquires, /*delta=*/2);
+    ASSERT_OK(conn1.Execute("LOCK TABLE test IN ROW EXCLUSIVE MODE"));
+  }
+
+  // We must release via ObjectLockManager so that the transaction entry is cleaned up properly.
+  {
+    auto g = ExpectMetricIncrease<Counter>(METRIC_object_locking_lock_releases, /*delta=*/1);
+    ASSERT_OK(conn1.CommitTransaction());
+  }
 }
 
 class PgObjectLocksWithConcurrentDdl : public PgObjectLocksTest {

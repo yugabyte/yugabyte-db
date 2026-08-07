@@ -162,6 +162,7 @@ DEFINE_test_flag(uint64, shared_exchange_big_response_delay_ms, 0,
 DECLARE_bool(enable_qos);
 #endif
 
+DECLARE_bool(enable_object_lock_fastpath);
 DECLARE_bool(vector_index_dump_stats);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_bool(ysql_serializable_isolation_for_ddl_txn);
@@ -3137,6 +3138,16 @@ class PgClientSession::Impl {
     DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK(
         "PgClientSession::Impl::DoAcquireObjectLock", &txn_meta_res->transaction_id);
 
+    // It's possible that locking in shared memory is now possible (because transaction has now been
+    // created, or because a conflicting exclusive lock was released, etc.). Prefer doing that over
+    // locking with ObjectLockManager, since lock release fastpath depends on all lock acquires
+    // being done via shared memory.
+    if (TryAcquireObjectLockInSharedMemory(active_subtxn_id, data->req)) {
+      client::FlushStatus flush_status;
+      data->FlushDone(&flush_status);
+      return Status::OK();
+    }
+
     auto callback = [data](const Status& s) {
       client::FlushStatus flush_status;
       flush_status.status = s;
@@ -3176,6 +3187,24 @@ class PgClientSession::Impl {
           return Status::OK();
         });
     return Status::OK();
+  }
+
+  bool TryAcquireObjectLockInSharedMemory(
+      SubTransactionId subtxn_id, const PgAcquireObjectLockRequestMsg& req) {
+    if (FLAGS_enable_object_lock_fastpath && object_lock_shared_state_ && !req.is_session_lock()) {
+      if (auto fastpath_lock_type =
+          docdb::MakeObjectLockFastpathLockType(TableLockType(req.lock_type()))) {
+        ParentProcessGuard g;
+        return (*object_lock_shared_state_)->TServerLock({
+            .subtxn_id = subtxn_id,
+            .database_oid = req.lock_oid().database_oid(),
+            .relation_oid = req.lock_oid().relation_oid(),
+            .object_oid = req.lock_oid().object_oid(),
+            .object_sub_oid = req.lock_oid().object_sub_oid(),
+            .lock_type = *fastpath_lock_type});
+      }
+    }
+    return false;
   }
 
   void AcquireObjectLock(
@@ -4645,6 +4674,12 @@ class PgClientSession::Impl {
         << " locks for txn " << txn_id << " subtxn_id " << AsString(subtxn_id)
         << " ash_meta: " << (wait_state ? wait_state->metadata().ToString() : "n/a");
     if (!use_global_release_path) {
+      if (FLAGS_enable_object_lock_fastpath && object_lock_shared_state_) {
+        ParentProcessGuard g;
+        if ((*object_lock_shared_state_)->TServerUnlockAll()) {
+          return docdb::TxnBlockedTableLockRequests::kFalse;
+        }
+      }
       return ts_lock_manager()->ReleaseObjectLocks(
           ReleaseRequestFor<tserver::ReleaseObjectLockRequestPB>(
               instance_uuid(), txn_id, subtxn_id),

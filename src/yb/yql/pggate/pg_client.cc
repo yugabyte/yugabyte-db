@@ -1215,28 +1215,23 @@ class PgClient::Impl : public BigDataFetcher {
   bool TryAcquireObjectLockInSharedMemory(
       SubTransactionId subtxn_id, const YbcObjectLockId& lock_id,
       docdb::ObjectLockFastpathLockType lock_type) {
-    if (!FLAGS_enable_object_lock_fastpath) {
-      return false;
+    if (auto lock_shared = GetObjectLockSharedState()) {
+      return (*lock_shared)->Lock({
+          .subtxn_id = subtxn_id,
+          .database_oid = lock_id.db_oid,
+          .relation_oid = lock_id.relation_oid,
+          .object_oid = lock_id.object_oid,
+          .object_sub_oid = lock_id.object_sub_oid,
+          .lock_type = lock_type});
     }
+    return false;
+  }
 
-    if (!session_shared_mem_) {
-      LOG(WARNING) << "Not using object locking fastpath: session shared memory not ready";
-      return false;
+  bool TryReleaseAllObjectLocksInSharedMemory() {
+    if (auto lock_shared = GetObjectLockSharedState()) {
+      return (*lock_shared)->UnlockAll();
     }
-
-    auto lock_shared = session_shared_mem_->object_locking_data().get();
-    if (!lock_shared) {
-      LOG(WARNING) << "Not using object locking fastpath: locking shared memory not ready";
-      return false;
-    }
-
-    return lock_shared->Lock({
-        .subtxn_id = subtxn_id,
-        .database_oid = lock_id.db_oid,
-        .relation_oid = lock_id.relation_oid,
-        .object_oid = lock_id.object_oid,
-        .object_sub_oid = lock_id.object_sub_oid,
-        .lock_type = lock_type});
+    return false;
   }
 
   void FetchBigData(uint64_t data_id, FetchBigDataCallback* callback) override {
@@ -2111,6 +2106,26 @@ class PgClient::Impl : public BigDataFetcher {
         PrepareController<Req>(std::forward<Args>(args)...), wait_event);
   }
 
+  std::optional<RobustLentObjectReference<docdb::ObjectLockSharedState>>
+  GetObjectLockSharedState() {
+    if (!FLAGS_enable_object_lock_fastpath) {
+      return std::nullopt;
+    }
+
+    if (!session_shared_mem_) {
+      LOG(WARNING) << "Not using object locking fastpath: session shared memory not ready";
+      return std::nullopt;
+    }
+
+    auto lock_shared = session_shared_mem_->object_locking_data().get();
+    if (!lock_shared) {
+      LOG(WARNING) << "Not using object locking fastpath: locking shared memory not ready";
+      return std::nullopt;
+    }
+
+    return std::make_optional(std::move(lock_shared));
+  }
+
   struct ClusterConfig {
     std::atomic<int32_t> version{kUnknownClusterConfigVersion};
     std::mutex mutex;
@@ -2368,6 +2383,10 @@ bool PgClient::TryAcquireObjectLockInSharedMemory(
     SubTransactionId subtxn_id, const YbcObjectLockId& pg_lock_id,
     docdb::ObjectLockFastpathLockType lock_type) {
   return impl_->TryAcquireObjectLockInSharedMemory(subtxn_id, pg_lock_id, lock_type);
+}
+
+bool PgClient::TryReleaseAllObjectLocksInSharedMemory() {
+  return impl_->TryReleaseAllObjectLocksInSharedMemory();
 }
 
 Status PgClient::AcquireObjectLock(
