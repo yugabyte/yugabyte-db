@@ -952,7 +952,7 @@ Support for the following YugabyteDB data types will be enabled in future releas
 
 Before using the connector to monitor the changes on a YugabyteDB server, you need to ensure the following:
 
-* You have a change data stream created on the database you want to monitor the changes for. The stream can be created in one of the following ways:
+* You have a change data stream created on the database you want to monitor the changes for. You can create the stream in the following ways:
   * {{<tags/feature/ea idea="2762">}}Using the PostgreSQL replication slot syntax with the `yb_grpc` plugin (YugabyteDB v2026.1.1.0 or later). You then pass the slot name and a publication to the connector using the `slot.name` and `publication.name` properties. Refer to [Using a replication slot and publication](#using-a-replication-slot-and-publication).
   * Using the [yb-admin create_change_data_stream](../../../../admin/yb-admin/#create-change-data-stream) command. You then pass the generated stream ID to the connector using the `database.streamid` property.
 * The table to be monitored should have a primary key. Only tables which have a primary key can be streamed.
@@ -996,7 +996,7 @@ You can choose to produce events for a subset of the schemas and tables in a dat
 1. The address of this YugabyteDB server.
 1. The port number of the YugabyteDB YSQL process.
 1. List of comma separated values of master nodes of the YugabyteDB server. Usually in the form `host`:`port`.
-1. The DB stream ID created using the PostgreSQL replication-slot interface (`yb_stream_id` from `pg_replication_slots`) or [yb-admin](../../../../admin/yb-admin/#change-data-capture-cdc-commands). See [Create a gRPC CDC stream](../cdc-get-started/#create-a-grpc-cdc-stream).
+1. The DB stream ID created using the PostgreSQL replication slot interface (`yb_stream_id` from `pg_replication_slots`) or [yb-admin](../../../../admin/yb-admin/#change-data-capture-cdc-commands). See [Create a gRPC CDC stream](../cdc-get-started/#create-a-grpc-cdc-stream).
 1. The name of the YugabyteDB user having the privileges to connect to the database.
 1. The password for the above specified YugabyteDB user.
 1. The name of the YugabyteDB database to connect to.
@@ -1022,15 +1022,17 @@ See [Transformers](#transformers).
 
 ### Using a replication slot and publication
 
-{{<tags/feature/ea idea="2762">}}Starting in YugabyteDB v2026.1.1.0, you can create a gRPC CDC stream using the PostgreSQL replication slot syntax with the `yb_grpc` plugin (instead of using yb-admin):
+{{<tags/feature/ea idea="2762">}}Starting in YugabyteDB v2026.1.1.0, you can create a gRPC CDC stream using the PostgreSQL replication slot syntax with the `yb_grpc` plugin:
 
 ```sql
 SELECT * FROM pg_create_logical_replication_slot('my_slot', 'yb_grpc');
 ```
 
-Streams created this way appear in `pg_replication_slots` with `yb_grpc` as the plugin, and derive the before image behavior of each table from its [replica identity](../../using-logical-replication/key-concepts/#replica-identity), analogous to logical replication streams. Streams created using yb-admin continue to rely on the `record_type` stream option.
+Streams created this way appear in `pg_replication_slots` with `yb_grpc` as the plugin, and derive the before image behavior of each table from its [replica identity](../../using-logical-replication/key-concepts/#replica-identity), analogous to logical replication streams. (Streams created using yb-admin continue to rely on the `record_type` stream option.)
 
-You can consume such a stream (using connector version `dz.1.9.5.yb.grpc.2026.1.1` or later) in one of two ways:
+You can consume these streams using connector version `dz.1.9.5.yb.grpc.2026.1.1` or later.
+
+Consume the stream in one of the following ways:
 
 * **Using the stream ID**: Obtain the stream ID from the `yb_stream_id` column of `pg_replication_slots` and set it as `database.streamid`, exactly as you would for a stream created using yb-admin.
 * **Using the slot name and a publication**: Set `slot.name`, `publication.name`, and `plugin.name` instead of `database.streamid`. Note that this option comes with the limitations described in this section.

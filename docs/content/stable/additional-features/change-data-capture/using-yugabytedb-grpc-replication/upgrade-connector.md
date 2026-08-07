@@ -97,19 +97,21 @@ To re-snapshot:
 
 1. Create a new stream ID.
 
-    {{<tags/feature/ea idea="2762">}}Prefer the PostgreSQL replication-slot interface with the `yb_grpc` plugin (see [Create a gRPC CDC stream](../cdc-get-started/#create-a-grpc-cdc-stream)):
+    {{<tags/feature/ea idea="2762">}}In v2026.1.1.0 and later, use the PostgreSQL replication slot interface with the `yb_grpc` plugin:
 
     ```sql
     SELECT * FROM pg_create_logical_replication_slot('my_grpc_slot', 'yb_grpc');
     SELECT yb_stream_id FROM pg_replication_slots WHERE slot_name = 'my_grpc_slot';
     ```
 
-    Alternatively, use [yb-admin](../../../../admin/yb-admin/#create-change-data-stream) (deprecated; use EXPLICIT checkpointing mode):
+    Alternatively, use [yb-admin](../../../../admin/yb-admin/#create-change-data-stream) (use EXPLICIT checkpointing mode):
 
     ```sh
     yb-admin --master_addresses <master-addresses> \
         create_change_data_stream ysql.<database-name>
     ```
+
+    For more information, see [Create a gRPC CDC stream](../cdc-get-started/#create-a-grpc-cdc-stream).
 
 1. Deploy the new connector version with the new `database.streamid`, following the same registration steps as a new deployment (see [Deploy the YugabyteDB gRPC Connector](../cdc-get-started/#deploy-the-yugabytedb-grpc-connector)).
 

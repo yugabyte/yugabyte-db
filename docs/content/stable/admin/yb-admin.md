@@ -1917,7 +1917,7 @@ Create a change data capture (CDC) DB stream for the specified namespace using t
 
 {{< warning title="Deprecated" >}}
 
-`yb-admin create_change_data_stream` is deprecated. Prefer creating gRPC CDC streams with the PostgreSQL replication-slot interface and the `yb_grpc` output plugin; for example, `SELECT * FROM pg_create_logical_replication_slot('<slot>', 'yb_grpc');`. See [Create a gRPC CDC stream](../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/#create-a-grpc-cdc-stream).
+`yb-admin create_change_data_stream` will be deprecated in a future release. In YugabyteDB v2026.1.1.0 and later, create gRPC CDC streams using the PostgreSQL replication slot interface and the `yb_grpc` output plugin {{<tags/feature/ea idea="2762">}}; for example, `SELECT * FROM pg_create_logical_replication_slot('<slot>', 'yb_grpc');`. See [Create a gRPC CDC stream](../../additional-features/change-data-capture/using-yugabytedb-grpc-replication/cdc-get-started/#create-a-grpc-cdc-stream).
 
 {{< /warning >}}
 
