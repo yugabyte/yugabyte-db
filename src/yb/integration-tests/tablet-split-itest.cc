@@ -11,8 +11,10 @@
 // under the License.
 //
 
+#include <algorithm>
 #include <chrono>
 #include <limits>
+#include <unordered_map>
 #include <thread>
 
 #include <gtest/gtest.h>
@@ -31,6 +33,7 @@
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
+#include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log.messages.h"
@@ -288,6 +291,89 @@ TEST_F(TabletSplitITest, ParentTabletCleanup) {
 
   // This will make client first try to access deleted tablet and that should be handled correctly.
   ASSERT_OK(CheckRowsCount(kNumRows));
+}
+
+// Checks that applying a tablet split leaves the split parent's consensus metadata file alone.
+TEST_F(TabletSplitITest, ParentConsensusMetadataPreservedAcrossSplit) {
+  google::FlagSaver flag_saver;
+  // Keep the parent around so its cmeta file is not deleted before we can re-read it.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
+  CreateSingleTablet();
+  const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kDefaultNumRows));
+
+  const auto parent_tablet_id =
+      ASSERT_RESULT(GetSingleTestTabletInfo(ASSERT_RESULT(catalog_manager())))->id();
+
+  struct MetaSnapshot {
+    int64_t current_term;
+    bool has_voted_for;
+    std::string voted_for;
+
+    bool operator <=(const MetaSnapshot& other) const {
+      if (current_term != other.current_term) {
+        return current_term < other.current_term;
+      }
+      return !has_voted_for || (other.has_voted_for && voted_for == other.voted_for);
+    }
+
+    std::string ToString() const {
+      return Format("{ term: $0, voted_for: $1 }", current_term,
+                    has_voted_for ? voted_for : "<none>");
+    }
+  };
+
+  // Keyed by tserver uuid.
+  using MetaSnapshots = std::unordered_map<std::string, MetaSnapshot>;
+
+  // Reads the parent cmeta straight off disk on every tserver that has one. ConsensusMetadata is
+  // written via a temp file plus atomic rename, so this is safe to do while the peer is running.
+  auto read_parent_cmeta = [this, &parent_tablet_id]() -> Result<MetaSnapshots> {
+    MetaSnapshots result;
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      auto& fs_manager = cluster_->mini_tablet_server(i)->fs_manager();
+      std::unique_ptr<consensus::ConsensusMetadata> cmeta;
+      auto status = consensus::ConsensusMetadata::Load(
+          &fs_manager, parent_tablet_id, fs_manager.uuid(), &cmeta);
+      if (status.IsNotFound()) {
+        // This tserver does not host a replica of the parent tablet.
+        continue;
+      }
+      RETURN_NOT_OK(status);
+      result.emplace(
+          fs_manager.uuid(),
+          MetaSnapshot{
+              .current_term = cmeta->current_term(),
+              .has_voted_for = cmeta->has_voted_for(),
+              .voted_for = cmeta->has_voted_for() ? cmeta->voted_for() : std::string(),
+          });
+    }
+    return result;
+  };
+
+  const auto before = ASSERT_RESULT(read_parent_cmeta());
+  ASSERT_FALSE(before.empty()) << "No parent cmeta found on disk on any tserver";
+
+  // At least one replica must have a recorded vote.
+  ASSERT_TRUE(std::any_of(before.begin(), before.end(), [](const auto& entry) {
+    return entry.second.has_voted_for;
+  })) << "No replica had voted_for set before the split; test would not be meaningful";
+
+  ASSERT_OK(SplitSingleTablet(split_hash_code));
+  ASSERT_OK(WaitForTabletSplitCompletion(
+      /* expected_non_split_tablets = */ 2, /* expected_split_tablets = */ 1));
+
+  const auto after = ASSERT_RESULT(read_parent_cmeta());
+
+  // Make sure that the parent cmeta is still consistent across all tservers.
+  for (const auto& [ts_uuid, before_snapshot] : before) {
+    auto it = after.find(ts_uuid);
+    ASSERT_NE(it, after.end()) << "Parent cmeta disappeared on TS " << ts_uuid;
+    const auto& after_snapshot = it->second;
+
+    ASSERT_TRUE(before_snapshot <= after_snapshot)
+        << "cmeta unexpected: parent " << parent_tablet_id << " TS: " << ts_uuid
+        << " before: " << before_snapshot.ToString() << " after: " << after_snapshot.ToString();
+  }
 }
 
 // Test for #31936, ensure that marking all_tablets as stale forces a full tablet lookup, even if
