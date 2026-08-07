@@ -13,7 +13,7 @@ aliases:
   - /stable/yugabyte-voyager/overview/
 menu:
   stable_yugabyte-voyager:
-    name: "Overview"
+    name: "YugabyteDB Voyager"
     identifier: yugabyte-voyager
     parent: yugabytedb-voyager
     weight: 99
