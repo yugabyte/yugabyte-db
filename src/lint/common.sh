@@ -18,6 +18,26 @@
 
 export LC_ALL=C
 
+# Sets the global $merge_base variable to the divergence point between HEAD and
+# its upstream tracking branch. If no upstream tracking branch is configured,
+# emits a warning and returns 1.
+set_merge_base() {
+  local upstream branch
+  upstream=$(git rev-parse --abbrev-ref --symbolic-full-name @{upstream})
+
+  if [ -n "$upstream" ]; then
+    merge_base=$(git merge-base HEAD "${upstream}" || git rev-parse HEAD)
+    return
+  fi
+
+  branch=$(git rev-parse --abbrev-ref HEAD)
+  echo "warning:upstream_not_configured:\
+Branch '${branch}' has no upstream tracking branch and committed changes \
+will not be linted. Fix by running \
+git branch --set-upstream-to=origin/<target-branch> ${branch}::"
+  return 1
+}
+
 check_ctags() {
   if ! which ctags >/dev/null || \
      ! grep -q "Exuberant Ctags" <<<"$(ctags --version)"; then
