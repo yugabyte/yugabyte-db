@@ -110,6 +110,18 @@ fn process_copy_from_parquet(
 
     validate_copy_from_options(p_stmt);
 
+    // Our ProcessUtility hook intercepts the COPY before any chained
+    // ProcessUtility hooks (e.g. pgaudit) get a chance to push their per-
+    // statement state. CopyFrom internally calls ExecCheckRTPerms, which
+    // fires ExecutorCheckPerms_hook. pgaudit's hook then dereferences its
+    // (empty) audit-event stack and segfaults. Temporarily disarm that
+    // hook for the duration of our COPY FROM and restore it in finally.
+    let prev_check_perms_hook = unsafe {
+        let saved = pg_sys::ExecutorCheckPerms_hook;
+        pg_sys::ExecutorCheckPerms_hook = None;
+        saved
+    };
+
     PgTryBuilder::new(|| execute_copy_from(p_stmt, query_string, query_env, &uri_info))
         .catch_others(|cause| {
             // make sure to pop the parquet reader context
@@ -118,6 +130,9 @@ fn process_copy_from_parquet(
             pop_parquet_reader_context(throw_error);
 
             cause.rethrow()
+        })
+        .finally(|| {
+            unsafe { pg_sys::ExecutorCheckPerms_hook = prev_check_perms_hook };
         })
         .execute()
 }
@@ -139,6 +154,9 @@ extern "C-unwind" fn parquet_copy_hook(
     let params = unsafe { PgBox::from_pg(params) };
     let query_env = unsafe { PgBox::from_pg(query_env) };
     let mut completion_tag = unsafe { PgBox::from_pg(completion_tag) };
+
+    let utility_stmt = unsafe { (*p_stmt.as_ptr()).utilityStmt };
+    crate::fdw::handle_utility_statement_for_fdw(utility_stmt);
 
     if is_copy_to_parquet_stmt(&p_stmt) {
         let nprocessed = process_copy_to_parquet(&p_stmt, query_string, &params, &query_env);
