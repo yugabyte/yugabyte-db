@@ -16,12 +16,13 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
-#include <thread>
 #include <utility>
 #include <vector>
 
 #include "opentelemetry/common/attribute_value.h"
-#include "opentelemetry/trace/scope.h"
+#include "opentelemetry/context/runtime_context.h"
+#include "opentelemetry/nostd/unique_ptr.h"
+#include "opentelemetry/trace/span.h"
 #include "opentelemetry/trace/span_metadata.h"
 #include "opentelemetry/trace/span_startoptions.h"
 
@@ -30,15 +31,18 @@
 
 namespace yb::dist_trace {
 
+namespace context = opentelemetry::context;
 namespace nostd = opentelemetry::nostd;
 namespace trace = opentelemetry::trace;
 
-// Bundles a span with an activated (thread-local) scope so work started after it inherits it as
-// parent; DropScope on the constructing thread before hopping threads. End() is safe from any
-// thread.
+// Bundles a span with a context token attached to the constructing thread, so work started after it
+// inherits the span as parent. DropScope detaches the token, End ends the span; the two are
+// independent, so either may run first and from any thread.
 struct SpanWithScope {
   explicit SpanWithScope(nostd::shared_ptr<trace::Span> s)
-      : span(std::move(s)), scope(span) {}
+      : span(std::move(s)),
+        token(context::RuntimeContext::Attach(
+            context::RuntimeContext::GetCurrent().SetValue(trace::kSpanKey, span))) {}
 
   ~SpanWithScope() { End(); }
 
@@ -63,25 +67,24 @@ struct SpanWithScope {
     return span ? span->GetContext() : trace::SpanContext::GetInvalid();
   }
 
-  // Releases the thread-local scope. Must be called on the thread that constructed this object.
+  // Detaches the token from the context stack. Only the thread that attached it can pop it, so call
+  // this on the constructing thread; elsewhere it is a no-op. The token itself outlives the call.
   void DropScope() {
-    scope.reset();
-    owner_thread = {};
+    if (token) {
+      const bool detached = context::RuntimeContext::Detach(*token);
+      CHECK(detached) << "SpanWithScope token is not on this thread's context stack";
+    }
   }
 
   void End() {
     if (span && span->IsRecording()) {
-      // The scope must be dropped on its creating thread; catch an unintended thread hop.
-      DCHECK(owner_thread == std::thread::id() || std::this_thread::get_id() == owner_thread)
-          << "SpanWithScope scope released off its creating thread";
-      scope.reset();
       span->End();
     }
   }
 
   nostd::shared_ptr<trace::Span> span;
-  std::optional<trace::Scope> scope;
-  std::thread::id owner_thread = std::this_thread::get_id();
+  // Destroying it re-runs Detach, which is a no-op once DropScope has popped it.
+  nostd::unique_ptr<context::Token> token;
 };
 
 using SpanWithScopePtr = std::unique_ptr<SpanWithScope>;
