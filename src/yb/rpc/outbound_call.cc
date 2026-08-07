@@ -283,13 +283,13 @@ OutboundCall::OutboundCall(const RemoteMethod& remote_method,
     // InvokeCallbackSync restores it around the callback so follow-on work nests as a sibling.
     trace_parent_ = dist_trace::GetActiveSpanContext();
 
-    otel_span_ = dist_trace::StartClientSpanWithScope(Format("rpc $0", remote_method_.ToString()));
+    // Not attached: the wire header and the local inbound call both take this span from
+    // GetContext().
+    otel_span_ = dist_trace::StartClientSpanWithScope(
+        Format("rpc $0", remote_method_.ToString()), /*attach=*/false);
     if (otel_span_) {
       otel_span_->SetAttribute("rpc.system", "yb_rpc");
       otel_span_->SetAttribute("rpc.call_id", call_id_);
-      // Detach right away, while the token is still top of stack. The span needs no ambient
-      // context: both the wire header and the local inbound call take it from GetContext().
-      otel_span_->DropScope();
     }
   }
 }

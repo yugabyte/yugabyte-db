@@ -347,7 +347,7 @@ nostd::shared_ptr<trace::Span> StartSpan(std::string_view op_name) {
   return StartSpan(op_name, {});
 }
 
-SpanWithScopePtr StartClientSpanWithScope(std::string_view op_name) {
+SpanWithScopePtr StartClientSpanWithScope(std::string_view op_name, bool attach) {
   // Drained even when there is nothing to start, so the attributes cannot leak into a later span.
   const auto pending = ConsumePendingRpcAttrs();
 
@@ -357,7 +357,8 @@ SpanWithScopePtr StartClientSpanWithScope(std::string_view op_name) {
 
   trace::StartSpanOptions options;
   options.kind = trace::SpanKind::kClient;
-  return std::make_unique<SpanWithScope>(StartSpan(op_name, SpanAttrsView(pending), options));
+  return std::make_unique<SpanWithScope>(
+      StartSpan(op_name, SpanAttrsView(pending), options), attach);
 }
 
 SpanWithScopePtr StartServerSpanWithScope(
