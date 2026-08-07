@@ -252,7 +252,7 @@ tserver:
       effect: NoSchedule
 ```
 
-## Deploy immutable YB Contoller (YBC)
+## Deploy immutable YB Controller (YBC)
 
 By default, YugabyteDB Anywhere deploys YBC on Kubernetes universes by copying the YBC package from YugabyteDB Anywhere to the database pods and extracting it. While this approach ensures a stable YBC version, it has some limitations:
 
@@ -438,7 +438,7 @@ Keep in mind the following:
 - Scope Utilization: Services with a defined scope will adhere to that scope, as long as it's supported.
 - Namespaced scope: For Namespaced-scoped services, a service lifecycle is tied to the lifecycle of the universe.
 - Namespace deletion: When a namespace is deleted, all services associated with that namespace that were created by Helm are removed as well.
-- Service configuration changes: Existing services can have their serviceType, ports, and annotations updated.
+- Service configuration changes: Existing services can have their `serviceType`, ports, and annotations updated.
 
 #### Migrating service type from AZ to Namespaced scope
 
@@ -458,7 +458,7 @@ After creating a service scope, you can't change it directly. To migrate a servi
 
 To create a universe with Namespaced scope services by default, do the following:
 
-1. When you [configure Helm overrides](#helm-overrides), use serviceEndpoint overrides without explicitly defining scope, or define scope as "Namespaced":
+1. When you [configure Helm overrides](#helm-overrides), use `serviceEndpoint` overrides without explicitly defining scope, or define scope as "Namespaced":
 
     ```yaml
     serviceEndpoints:
