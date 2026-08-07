@@ -57,6 +57,7 @@
 #include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/rpc_service.h"
 #include "yb/rpc/rpc_util.h"
+#include "yb/rpc/service_queue_monitor.h"
 #include "yb/rpc/tcp_stream.h"
 #include "yb/rpc/yb_rpc.h"
 
@@ -196,12 +197,22 @@ void Messenger::Shutdown() {
   }
   VLOG_WITH_PREFIX(1) << "shutting down messenger";
 
+  // Since we're shutting down, it's OK to block.
+  ThreadRestrictions::ScopedAllowWait allow_wait;
+
+  std::unique_ptr<ServiceQueueMonitor> service_queue_monitor;
+  {
+    std::lock_guard guard(lock_);
+    service_queue_monitor.swap(service_queue_monitor_);
+  }
+  if (service_queue_monitor) {
+    service_queue_monitor->Shutdown();
+    service_queue_monitor.reset();
+  }
+
   ShutdownThreadPools();
   ShutdownAcceptor();
   UnregisterAllServices();
-
-  // Since we're shutting down, it's OK to block.
-  ThreadRestrictions::ScopedAllowWait allow_wait;
 
   std::vector<Reactor*> reactors;
   std::unique_ptr<Acceptor> acceptor;
@@ -446,8 +457,21 @@ Result<ThreadPoolPtr> Messenger::TaggedThreadPool(TaggedThreadPools::Tag tag) {
 // Register a new RpcService to handle inbound requests.
 Status Messenger::RegisterService(
     const std::string& service_name, const scoped_refptr<RpcService>& service) {
+  return RegisterService(service_name, service, ServicePriority::kNormal);
+}
+
+Status Messenger::RegisterService(
+    const std::string& service_name, const scoped_refptr<RpcService>& service,
+    ServicePriority priority) {
   DCHECK(service);
   rpc_services_.emplace(service_name, service);
+  {
+    std::lock_guard guard(lock_);
+    if (!service_queue_monitor_) {
+      service_queue_monitor_ = std::make_unique<ServiceQueueMonitor>(name_);
+    }
+    service_queue_monitor_->Track(service_name, service, priority);
+  }
   return Status::OK();
 }
 
