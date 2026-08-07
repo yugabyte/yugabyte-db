@@ -287,6 +287,8 @@ OutboundCall::OutboundCall(const RemoteMethod& remote_method,
     otel_span_->SetAttribute("rpc.service", remote_method_.service_name());
     otel_span_->SetAttribute("rpc.method", remote_method_.method_name());
     otel_span_->SetAttribute("rpc.call_id", call_id_);
+    // Detach right away, while the token is still top of stack. The span needs no ambient context:
+    // both the wire header and the local inbound call take it from GetContext().
     otel_span_->DropScope();
   }
 }

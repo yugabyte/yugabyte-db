@@ -463,7 +463,6 @@ void YBInboundCall::RespondSuccess(AnyMessageConstPtr response) {
   if (span_) {
     span_->SetStatus(opentelemetry::trace::StatusCode::kOk);
     span_->End();
-    span_.reset();
   }
   Respond(response, /*is_success=*/true);
 }
@@ -475,7 +474,6 @@ void YBInboundCall::RespondFailure(ErrorStatusPB::RpcErrorCodePB error_code,
   if (span_) {
     span_->SetStatus(opentelemetry::trace::StatusCode::kError, status.ToUserMessage());
     span_->End();
-    span_.reset();
   }
 
   // Release memory early and prevent building an oversized error response.
