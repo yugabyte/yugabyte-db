@@ -98,6 +98,8 @@ class SnapshotCleanupTestEnv : public EnvWrapper {
 
   int delete_calls() const { return delete_calls_.load(std::memory_order_acquire); }
 
+  int sync_calls() const { return sync_calls_.load(std::memory_order_acquire); }
+
   Status IsDirectory(const std::string& path, bool* is_dir) override {
     if (IsSnapshotPath(path) && ConsumeFailure(&directory_check_failures_)) {
       return STATUS(IOError, "Injected snapshot directory check failure");
@@ -113,8 +115,11 @@ class SnapshotCleanupTestEnv : public EnvWrapper {
   }
 
   Status SyncDir(const std::string& path) override {
-    if (IsSnapshotPath(path) && ConsumeFailure(&sync_failures_)) {
-      return STATUS(IOError, "Injected snapshot parent sync failure");
+    if (IsSnapshotPath(path)) {
+      sync_calls_.fetch_add(1, std::memory_order_acq_rel);
+      if (ConsumeFailure(&sync_failures_)) {
+        return STATUS(IOError, "Injected snapshot parent sync failure");
+      }
     }
     return target()->SyncDir(path);
   }
@@ -165,6 +170,7 @@ class SnapshotCleanupTestEnv : public EnvWrapper {
   std::atomic<int> sync_failures_{0};
   std::atomic<int> delete_failures_{0};
   std::atomic<int> delete_calls_{0};
+  std::atomic<int> sync_calls_{0};
 
   mutable std::mutex mutex_;
   std::condition_variable condition_;
@@ -470,6 +476,45 @@ TEST_F(TabletSnapshotsTest, SharedPoolBoundsCleanupConcurrency) {
     tablet_harness->tablet()->StartShutdown(DisableFlushOnShutdown::kFalse, AbortOps::kFalse);
     tablet_harness->tablet()->CompleteShutdown();
   }
+}
+
+TEST_F(TabletSnapshotsTest, SkipsTombstonePhaseDuringCleanupWhenLogicallyDeleted) {
+  InstallCleanupPool();
+  const auto initial_syncs = test_env_->sync_calls();
+
+  const auto paths = CreateSnapshotDirectory("snapshot.happy.path", 7);
+  ASSERT_OK(DeleteSnapshot("snapshot.happy.path", 7));
+  ASSERT_OK(WaitForRemoved(paths));
+  ASSERT_OK(WaitFor(
+      [this] {
+        return MetricValue<AtomicGauge<uint64_t>>(METRIC_snapshot_pending_physical_deletions) ==
+               0;
+      },
+      10s, "Wait for pending deletion to complete"));
+
+  // Exactly two parent syncs: one while tombstoning and one after the recursive deletion. The
+  // cleanup pass must not re-run the tombstone phase (and its extra fsync) once logical deletion
+  // has already durably completed.
+  ASSERT_EQ(test_env_->sync_calls() - initial_syncs, 2);
+}
+
+TEST_F(TabletSnapshotsTest, ToleratesTombstoneRemovedOutOfBand) {
+  const auto paths = CreateSnapshotDirectory("snapshot.out.of.band", 8);
+  ASSERT_OK(DeleteSnapshot("snapshot.out.of.band", 8));
+  ASSERT_FALSE(test_env_->FileExists(paths.active));
+  ASSERT_TRUE(test_env_->FileExists(paths.tombstone));
+
+  // Remove the tombstone out of band while the pending deletion still references it. The cleanup
+  // pass skips the tombstone-phase existence checks when logical deletion already completed, so
+  // it must tolerate the tombstone being gone rather than retrying forever.
+  ASSERT_OK(test_env_->DeleteRecursively(paths.tombstone));
+  InstallCleanupPool();
+  ASSERT_OK(WaitFor(
+      [this] {
+        return MetricValue<AtomicGauge<uint64_t>>(METRIC_snapshot_pending_physical_deletions) ==
+               0;
+      },
+      10s, "Wait for pending deletion to complete"));
 }
 
 TEST_F(TabletSnapshotsTest, ShutdownWaitsForRunningCleanup) {

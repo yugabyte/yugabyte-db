@@ -895,10 +895,9 @@ TabletSnapshots::TombstoneState TabletSnapshots::TryTombstoneSnapshotDir(
         metrics_->tombstone_failures->Increment();
       }
       LOG_WITH_PREFIX(WARNING) << "Cannot tombstone snapshot dir " << deletion->active_dir << " as "
-                               << deletion->tombstone_dir << ": " << rename_status;
+                               << deletion->tombstone_dir << ", Rename status: " << rename_status;
       return TombstoneState::kRetry;
     }
-    deletion->logical_pending = false;
     deletion->physical_pending = true;
     if (metrics_) {
       metrics_->tombstone_successes->Increment();
@@ -941,20 +940,38 @@ bool TabletSnapshots::CleanupTombstonedSnapshot(PendingSnapshotDeletion* deletio
     return !deletion->logical_pending;
   }
 
-  const auto tombstone_state = TryTombstoneSnapshotDir(deletion);
-  PublishPendingDeletionState(*deletion);
-  if (tombstone_state == TombstoneState::kComplete) {
-    return true;
-  }
-  if (tombstone_state == TombstoneState::kRetry) {
-    return false;
+  // Skip re-running the tombstone phase (and its checkpoint lock plus parent fsync) when logical
+  // deletion already completed durably. logical_pending only becomes false after a successful
+  // rename and parent sync, and the startup scan resets it to true, so no needed work is skipped.
+  if (deletion->logical_pending) {
+    const auto tombstone_state = TryTombstoneSnapshotDir(deletion);
+    PublishPendingDeletionState(*deletion);
+    if (tombstone_state == TombstoneState::kComplete) {
+      return true;
+    }
+    if (tombstone_state == TombstoneState::kRetry) {
+      return false;
+    }
+  } else {
+    // Cheap lock-free existence check: an earlier pass may already have removed the tombstone but
+    // had its completion discarded because a coalesced duplicate request bumped the epoch. On a
+    // check failure fall through and let DeleteRecursively surface the error.
+    const auto tombstone_dir_exists = DirectoryExists(env(), deletion->tombstone_dir);
+    if (tombstone_dir_exists.ok() && !*tombstone_dir_exists) {
+      deletion->physical_pending = false;
+      PublishPendingDeletionState(*deletion);
+      return true;
+    }
   }
 
   TEST_PAUSE_IF_FLAG(TEST_pause_after_tombstoning_snapshot);
   {
     SCOPED_WAIT_STATUS(Snapshot_CleanupSnapshotDir);
+    // NotFound means the tombstone is already gone (e.g. a previous pass removed it but its
+    // completion was discarded due to an epoch bump); treat it as removed and continue to the
+    // parent sync.
     const Status deletion_status = env().DeleteRecursively(deletion->tombstone_dir);
-    if (PREDICT_FALSE(!deletion_status.ok())) {
+    if (PREDICT_FALSE(!deletion_status.ok() && !deletion_status.IsNotFound())) {
       deletion->physical_pending = true;
       if (metrics_) {
         metrics_->cleanup_failures->Increment();
