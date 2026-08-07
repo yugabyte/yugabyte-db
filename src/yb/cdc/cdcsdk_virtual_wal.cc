@@ -88,6 +88,12 @@ DEFINE_test_flag(uint64, cdcsdk_publication_list_refresh_interval_micros, 300000
     "Interval in micro seconds at which the table list in the publication will be refreshed. This "
     "will be used only when cdcsdk_use_microseconds_refresh_interval is set to true");
 
+DEFINE_test_flag(uint64, cdcsdk_publication_list_refresh_interval_ht_delta, 0,
+    "When non-zero, the publication refresh interval is this raw HybridTime delta and the interval "
+    "flags above are ignored. Unlike a microseconds based interval, this lets tests place the "
+    "publication refresh record exactly at a transaction's commit time, including its logical "
+    "component.");
+
 DEFINE_RUNTIME_bool(cdcsdk_enable_dynamic_table_support, true,
     "This flag can be used to switch the dynamic addition of tables ON or OFF.");
 
@@ -1505,7 +1511,11 @@ Status CDCSDKVirtualWAL::PushNextPublicationRefreshRecord() {
 
   auto last_decided_pub_refresh_time_hybrid = HybridTime(last_decided_pub_refresh_time.first);
   HybridTime hybrid_sum;
-  if (FLAGS_TEST_cdcsdk_use_microseconds_refresh_interval) {
+  if (FLAGS_TEST_cdcsdk_publication_list_refresh_interval_ht_delta > 0) {
+    hybrid_sum = HybridTime(
+        last_decided_pub_refresh_time.first +
+        FLAGS_TEST_cdcsdk_publication_list_refresh_interval_ht_delta);
+  } else if (FLAGS_TEST_cdcsdk_use_microseconds_refresh_interval) {
     hybrid_sum = last_decided_pub_refresh_time_hybrid.AddMicroseconds(
         FLAGS_TEST_cdcsdk_publication_list_refresh_interval_micros);
   } else {
