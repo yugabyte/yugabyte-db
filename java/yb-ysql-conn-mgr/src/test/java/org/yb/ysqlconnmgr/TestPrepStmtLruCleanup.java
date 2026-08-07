@@ -203,7 +203,8 @@ public class TestPrepStmtLruCleanup extends BaseYsqlConnMgr {
       }
     }
 
-    int numBackends = getTotalPhysicalConnections("yugabyte", "yugabyte", 0);
+    int numBackends = getTotalPhysicalConnections("yugabyte", "yugabyte",
+        STATS_UPDATE_INTERVAL + 2);
     LOG.info("Pool has {} physical backend(s)", numBackends);
 
     // Validation: query pg_prepared_statements on each backend via a new
@@ -314,7 +315,8 @@ public class TestPrepStmtLruCleanup extends BaseYsqlConnMgr {
         }
       }
 
-      int numBackends = getTotalPhysicalConnections("yugabyte", "yugabyte", 0);
+      int numBackends = getTotalPhysicalConnections("yugabyte", "yugabyte",
+          STATS_UPDATE_INTERVAL + 2);
       LOG.info("Pool has {} physical backend(s)", numBackends);
 
       // Dirty search_path. With ysql_conn_mgr_optimized_session_parameters
@@ -432,7 +434,8 @@ public class TestPrepStmtLruCleanup extends BaseYsqlConnMgr {
       }
     }
 
-    int numBackends = getTotalPhysicalConnections("yugabyte", "yugabyte", 0);
+    int numBackends = getTotalPhysicalConnections("yugabyte", "yugabyte",
+        STATS_UPDATE_INTERVAL + 2);
     LOG.info("Pool has {} physical backend(s)", numBackends);
 
     for (int b = 0; b < numBackends; b++) {
