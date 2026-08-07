@@ -105,6 +105,7 @@
 #include "yb/util/cgroups.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/metric_entity.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/ntp_clock.h"
@@ -187,6 +188,10 @@ DEFINE_NON_RUNTIME_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit"
 
 DEFINE_NON_RUNTIME_bool(tserver_enable_metrics_snapshotter, false,
     "Should metrics snapshotter be enabled");
+
+DEFINE_RUNTIME_bool(enable_active_table_metrics_filtering, false,
+    "Filter table-level Prometheus metrics using active table leases supplied through "
+    "SetActiveTableMetrics. When disabled, all table metrics are exported.");
 
 DEFINE_test_flag(uint64, pg_auth_key, 0, "Forces an auth key for the postgres user when non-zero");
 
@@ -428,6 +433,25 @@ std::string TabletServer::ToString() const {
   return strings::Substitute("TabletServer : rpc=$0, uuid=$1",
                              yb::ToString(first_rpc_address()),
                              fs_manager_->uuid());
+}
+
+void TabletServer::SetActiveTableMetrics(
+    std::unordered_set<std::string> table_ids, MonoDelta lease_duration) {
+  std::lock_guard lock(active_table_metrics_mutex_);
+  active_table_ids_ =
+      std::make_shared<const std::unordered_set<std::string>>(std::move(table_ids));
+  active_table_metrics_lease_expiration_ = CoarseMonoClock::Now() + lease_duration;
+}
+
+void TabletServer::ConfigurePrometheusMetricsOptions(MetricPrometheusOptions* options) const {
+  if (!FLAGS_enable_active_table_metrics_filtering) {
+    return;
+  }
+  std::lock_guard lock(active_table_metrics_mutex_);
+  if (active_table_ids_ &&
+      CoarseMonoClock::Now() < active_table_metrics_lease_expiration_) {
+    options->active_table_ids = active_table_ids_;
+  }
 }
 
 MonoDelta TabletServer::default_client_timeout() {

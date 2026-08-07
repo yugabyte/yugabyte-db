@@ -33,6 +33,7 @@ PrometheusWriter::PrometheusWriter(std::stringstream* output,
           std::chrono::system_clock::now().time_since_epoch()).count()),
       export_help_and_type_(opts.export_help_and_type),
       prometheus_metric_filter_(CreatePrometheusMetricFilter(opts)),
+      active_table_ids_(opts.active_table_ids),
       remaining_allowed_entries_(opts.max_metric_entries) {}
 
 PrometheusWriter::~PrometheusWriter() {}
@@ -45,12 +46,6 @@ Status PrometheusWriter::FlushScrapeTimeAggregatedValues() {
       continue;
     }
     auto& aggregated_values = metric_info.scrape_time_aggregated_values_;
-    if (remaining_allowed_entries_ < aggregated_values.size()) {
-      num_of_entries_cut_off_ += aggregated_values.size();
-      continue;
-    }
-    remaining_allowed_entries_ -= aggregated_values.size();
-
     const auto& metric_entity_type = metric_info.metric_entity_type_;
     auto attributes_by_aggregation_id_it =
         attributes_by_metric_entity_type_and_aggregation_id_.find(metric_entity_type);
@@ -63,6 +58,20 @@ Status PrometheusWriter::FlushScrapeTimeAggregatedValues() {
 
     const auto& metric_help = metric_info.help_and_type_.help;
     const auto& metric_type = metric_info.help_and_type_.type;
+    size_t num_output_entries = 0;
+    for (const auto& [aggregation_id, value] : aggregated_values) {
+      auto attributes_it = attributes_by_aggregation_id.find(aggregation_id);
+      if (attributes_it != attributes_by_aggregation_id.end() &&
+          ShouldExportTableMetrics(attributes_it->second)) {
+        ++num_output_entries;
+      }
+    }
+    if (remaining_allowed_entries_ < num_output_entries) {
+      num_of_entries_cut_off_ += num_output_entries;
+      continue;
+    }
+    remaining_allowed_entries_ -= num_output_entries;
+
     for (const auto& [aggregation_id, value] : aggregated_values) {
       auto attributes_it = attributes_by_aggregation_id.find(aggregation_id);
       if (attributes_it == attributes_by_aggregation_id.end()) {
@@ -70,11 +79,23 @@ Status PrometheusWriter::FlushScrapeTimeAggregatedValues() {
             Format("No attributes stored for metric with entity type $0 and aggregation id $1",
                 metric_entity_type, aggregation_id));
       }
+      if (!ShouldExportTableMetrics(attributes_it->second)) {
+        continue;
+      }
       FlushHelpAndTypeIfRequested(metric_name, metric_help, metric_type);
       RETURN_NOT_OK(FlushSingleEntry(attributes_it->second, metric_name, value));
     }
   }
   return Status::OK();
+}
+
+bool PrometheusWriter::ShouldExportTableMetrics(
+    const MetricEntity::AttributeMap& attributes) const {
+  if (!active_table_ids_) {
+    return true;
+  }
+  const auto table_id = attributes.find("table_id");
+  return table_id == attributes.end() || active_table_ids_->contains(table_id->second);
 }
 
 Status PrometheusWriter::Finish(const MetricsAggregator& metrics_aggregator) {
@@ -207,9 +228,11 @@ Status PrometheusWriter::WriteSingleEntry(
 
   if (aggregation_levels & kTableLevel) {
     DCHECK(table_id_it != attributes.end());
-    AddScrapeTimeAggregatedEntry(
-        table_id_it->second, type, description, attributes, name, value,
-        aggregation_function, metric_entity_type, metric_prototype_holder);
+    if (ShouldExportTableMetrics(attributes)) {
+      AddScrapeTimeAggregatedEntry(
+          table_id_it->second, type, description, attributes, name, value,
+          aggregation_function, metric_entity_type, metric_prototype_holder);
+    }
   }
 
   if (aggregation_levels & kServerLevel) {
@@ -273,17 +296,6 @@ Status PrometheusWriter::FlushPreAggregatedValues(
     bool need_table_or_stream_level_values = aggregation_levels & kTableLevel ||
                                              aggregation_levels & kStreamLevel;
 
-    // Make sure we have enough space to write all the entries.
-    auto num_output_entries = (need_table_or_stream_level_values)
-                              ? metric_info.num_aggregated_value_holders()
-                              : 0;
-    num_output_entries += (need_server_level_values) ? 1 : 0;
-    if (remaining_allowed_entries_ < num_output_entries) {
-      num_of_entries_cut_off_ += num_output_entries;
-      continue;
-    }
-    remaining_allowed_entries_ -= num_output_entries;
-
     // Retrieve attributes_ptr_by_aggregation_id map.
     auto attributes_ptr_by_aggregation_id_it =
         attributes_ptr_by_metric_entity_type_and_aggregation_id.find(
@@ -300,6 +312,20 @@ Status PrometheusWriter::FlushPreAggregatedValues(
     const auto& metric_type = metric_info.help_and_type_.type;
     const auto pre_aggregated_values = metric_info.GetPreAggregatedValues(
         need_server_level_values, need_table_or_stream_level_values);
+    size_t num_output_entries = 0;
+    for (const auto& [aggregation_id, value] : pre_aggregated_values) {
+      auto attributes_ptr_it = attributes_ptr_by_aggregation_id.find(aggregation_id);
+      if (attributes_ptr_it != attributes_ptr_by_aggregation_id.end() &&
+          ShouldExportTableMetrics(*attributes_ptr_it->second)) {
+        ++num_output_entries;
+      }
+    }
+    if (remaining_allowed_entries_ < num_output_entries) {
+      num_of_entries_cut_off_ += num_output_entries;
+      continue;
+    }
+    remaining_allowed_entries_ -= num_output_entries;
+
     for (const auto& [aggregation_id, value] : pre_aggregated_values) {
       auto attributes_ptr_it = attributes_ptr_by_aggregation_id.find(aggregation_id);
       if (attributes_ptr_it == attributes_ptr_by_aggregation_id.end()) {
@@ -307,6 +333,9 @@ Status PrometheusWriter::FlushPreAggregatedValues(
             "No server-level attributes stored for metric with entity type $0, aggregation id $1",
             metric_info.metric_entity_type_, aggregation_id));
         // This can happen when a new tablet is added during the flush.
+        continue;
+      }
+      if (!ShouldExportTableMetrics(*attributes_ptr_it->second)) {
         continue;
       }
 

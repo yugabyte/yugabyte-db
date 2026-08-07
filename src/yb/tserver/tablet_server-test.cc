@@ -34,6 +34,8 @@
 #include "yb/common/schema_pbutil.h"
 #include "yb/consensus/log-test-base.h"
 
+#include "yb/client/yb_table_name.h"
+
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/strings/escaping.h"
@@ -88,6 +90,7 @@ DECLARE_int32(metrics_retirement_age_ms);
 DECLARE_string(block_manager);
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(disable_clock_sync_error);
+DECLARE_bool(enable_active_table_metrics_filtering);
 DECLARE_string(metric_node_name);
 
 // Declare these metrics prototypes for simpler unit testing of their behavior.
@@ -141,6 +144,63 @@ TEST_F(TabletServerTest, TestPingServer) {
   server::PingResponsePB resp;
   RpcController controller;
   ASSERT_OK(generic_proxy_->Ping(req, &resp, &controller));
+}
+
+TEST_F(TabletServerTest, ActiveTableMetricsLease) {
+  EasyCurl curl;
+  const auto url = Format(
+      "http://$0/prometheus-metrics?show_help=false",
+      yb::ToString(mini_server_->bound_http_addr()));
+  auto Scrape = [&]() {
+    faststring buffer;
+    CHECK_OK(curl.FetchURL(url, &buffer));
+    return buffer.ToString();
+  };
+  const auto table_label = Format(R"#(table_id="$0")#", kTableName.table_name());
+
+  // The default behavior is unchanged before the first lease, even after filtering is enabled.
+  ASSERT_STR_CONTAINS(Scrape(), table_label);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_active_table_metrics_filtering) = true;
+  ASSERT_STR_CONTAINS(Scrape(), table_label);
+
+  SetActiveTableMetricsRequestPB req;
+  SetActiveTableMetricsResponsePB resp;
+  req.set_lease_duration_ms(10'000);
+  req.add_table_ids("another-table");
+  RpcController controller;
+  ASSERT_OK(proxy_->SetActiveTableMetrics(req, &resp, &controller));
+  ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
+  ASSERT_STR_NOT_CONTAINS(Scrape(), table_label);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_active_table_metrics_filtering) = false;
+  ASSERT_STR_CONTAINS(Scrape(), table_label);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_active_table_metrics_filtering) = true;
+  ASSERT_STR_NOT_CONTAINS(Scrape(), table_label);
+
+  req.clear_table_ids();
+  req.add_table_ids(kTableName.table_name());
+  resp.Clear();
+  controller.Reset();
+  ASSERT_OK(proxy_->SetActiveTableMetrics(req, &resp, &controller));
+  ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
+  ASSERT_STR_CONTAINS(Scrape(), table_label);
+
+  req.clear_table_ids();
+  req.set_lease_duration_ms(10'000);
+  resp.Clear();
+  controller.Reset();
+  ASSERT_OK(proxy_->SetActiveTableMetrics(req, &resp, &controller));
+  ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
+  ASSERT_STR_NOT_CONTAINS(Scrape(), table_label);
+
+  req.set_lease_duration_ms(20);
+  resp.Clear();
+  controller.Reset();
+  ASSERT_OK(proxy_->SetActiveTableMetrics(req, &resp, &controller));
+  ASSERT_FALSE(resp.has_error()) << resp.error().DebugString();
+  SleepFor(MonoDelta::FromMilliseconds(100 * kTimeMultiplier));
+  // Expired leases also restore the existing export-all behavior.
+  ASSERT_STR_CONTAINS(Scrape(), table_label);
 }
 
 TEST_F(TabletServerTest, TestServerClock) {
