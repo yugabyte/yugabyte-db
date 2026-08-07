@@ -57,6 +57,14 @@ DEFINE_test_flag(uint32, ysql_conn_mgr_auth_delay_ms, 0,
 DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_superuser_sticky, true,
     "If enabled, make superuser connections sticky in Ysql Connection Manager.");
 
+DEFINE_NON_RUNTIME_bool(ysql_conn_mgr_use_auth_backend, false,
+    "Enable the use of the auth-backend for authentication of logical connections. "
+    "When false, the auth-passthrough implementation is used. Auth Backend mode involves "
+    "spawning a fresh PG backend to perform authentication for each incoming auth request."
+    "Auth Passthrough mode allows reusing spawned 'control backends' to authenticate clients "
+    "and thus is faster as it skips needing to spawn a new backend process each time."
+    );
+
 DEFINE_NON_RUNTIME_int32(ysql_conn_mgr_max_query_size, 4096,
     "Maximum size of the query which connection manager can process in the deploy phase or while"
     "forwarding the client query");
@@ -253,6 +261,7 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .TEST_ysql_enable_db_logical_client_version_mode =
           &FLAGS_TEST_ysql_enable_db_logical_client_version_mode,
       .ysql_conn_mgr_superuser_sticky = &FLAGS_ysql_conn_mgr_superuser_sticky,
+      .ysql_conn_mgr_use_auth_backend = &FLAGS_ysql_conn_mgr_use_auth_backend,
       .TEST_ysql_log_perdb_allocated_new_objectid =
           &FLAGS_TEST_ysql_log_perdb_allocated_new_objectid,
       .ysql_block_dangerous_roles = &FLAGS_ysql_block_dangerous_roles,

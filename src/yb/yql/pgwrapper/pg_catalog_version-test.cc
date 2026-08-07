@@ -15,6 +15,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/util/env_util.h"
+#include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
@@ -231,6 +232,29 @@ class PgCatalogVersionTest : public LibPqTestBase {
       }
     }
     return result;
+  }
+
+  // Return the shared memory catalog version of 'db_oid' at the tserver at 'tablet_index'.
+  Result<Version> GetShmDBCatalogVersion(size_t tablet_index, Oid db_oid) {
+    auto* ts = cluster_->tablet_server(tablet_index);
+    tserver::SharedMemoryManager shared_mem_manager;
+    RETURN_NOT_OK(shared_mem_manager.InitializePgBackend(ts->instance_id().permanent_uuid()));
+    auto tserver_shared_data = shared_mem_manager.SharedData();
+
+    rpc::RpcController controller;
+    controller.set_timeout(30s);
+    auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(ts);
+    tserver::GetTserverCatalogVersionInfoRequestPB req;
+    tserver::GetTserverCatalogVersionInfoResponsePB resp;
+    req.set_db_oid(db_oid);
+    RETURN_NOT_OK(proxy.GetTserverCatalogVersionInfo(req, &resp, &controller));
+    if (resp.has_error()) {
+      return StatusFromPB(resp.error().status());
+    }
+    SCHECK_EQ(resp.entries_size(), 1, IllegalState, "expected one entry");
+    const auto& entry = resp.entries(0);
+    SCHECK(entry.has_shm_index(), IllegalState, "missing shm_index");
+    return tserver_shared_data->ysql_db_catalog_version(entry.shm_index());
   }
 
   struct CatalogVersionMatcher {
@@ -3186,6 +3210,11 @@ class PgCatalogVersionConnManagerTest
 INSTANTIATE_TEST_CASE_P(, PgCatalogVersionConnManagerTest,
                         ::testing::Values(false, true));
 
+/* Tests that are only meaningful with connection manager enabled. */
+class PgCatalogVersionConnManagerOnlyTest : public PgCatalogVersionConnManagerTest {};
+
+INSTANTIATE_TEST_CASE_P(, PgCatalogVersionConnManagerOnlyTest, ::testing::Values(true));
+
 TEST_P(PgCatalogVersionConnManagerTest,
        YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestConnectionManagerRpcCount)) {
   const bool enable_ysql_conn_mgr = GetParam();
@@ -3494,6 +3523,76 @@ TEST_P(PgCatalogVersionConnManagerTest,
     // see the expected error immediately.
     ASSERT_NOK_STR_CONTAINS(ConnectToDBAsUser("test_db", "test_user"), expected_error);
   }
+}
+
+// Sometimes, a DDL that starts at local catalog version x and commits at version x + 2
+// (because a concurrent DDL from another node produced version x + 1 that has
+// not reached this node's shared memory yet). In this case, we want to ensure that
+// a DDL run under YSQL conn mgr waits until x + 2 is published in local shared memory.
+// Test disables object locking because in that case, all DDL changes are propagated
+// on commit anyway, so there's nothing to test.
+TEST_P(PgCatalogVersionConnManagerOnlyTest,
+       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestConnectionManagerDdlVersionGapWait)) {
+  cluster_->Shutdown();
+  for (size_t i = 0; i != cluster_->num_masters(); ++i) {
+    cluster_->master(i)->mutable_flags()->push_back(
+        "--enable_object_locking_for_table_locks=false");
+  }
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    cluster_->tablet_server(i)->mutable_flags()->push_back(
+        "--enable_object_locking_for_table_locks=false");
+  }
+  ASSERT_OK(cluster_->Restart());
+
+  pg_ts = cluster_->tablet_server(0);
+  auto conn_gap = ASSERT_RESULT(Connect());
+  auto conn_watcher = ASSERT_RESULT(Connect());
+  ASSERT_RESULT(conn_gap.FetchRow<int32_t>("SELECT 1"));
+  ASSERT_RESULT(conn_watcher.FetchRow<int32_t>("SELECT 1"));
+  const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_watcher, kYugabyteDatabase));
+  const auto version_x = ASSERT_RESULT(GetCatalogVersion(&conn_watcher));
+
+  // Freeze catalog refresh on ts-0 so that a version increment from another
+  // node does not reach ts-0's shared memory.
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(0),
+      "TEST_tserver_disable_catalog_refresh_on_heartbeat", "true"));
+
+  // Increment the catalog version to x + 1 from ts-1. Its shared memory
+  // publish is local to ts-1, so ts-0 stays at x.
+  pg_ts = cluster_->tablet_server(1);
+  auto conn_bump = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn_bump.Execute("CREATE TABLE gap_table1(id INT)"));
+
+  // This DDL runs on ts-0 at local catalog version x and commits at x + 2.
+  // The DDL must not return before ts-0's shared memory has version x + 2,
+  // which can only happen after the freeze is lifted below.
+  TestThreadHolder thread_holder;
+  thread_holder.AddThreadFunctor([this, &conn_gap, version_x, yugabyte_db_oid] {
+    const auto start = MonoTime::Now();
+    ASSERT_OK(conn_gap.Execute("CREATE TABLE gap_table2(id INT)"));
+    const auto shm_version_at_return = ASSERT_RESULT(
+        GetShmDBCatalogVersion(0 /* tablet_index */, yugabyte_db_oid));
+    LOG(INFO) << "CREATE TABLE gap_table2 took " << MonoTime::Now() - start
+              << ", shared memory version at return: " << shm_version_at_return;
+    ASSERT_GE(shm_version_at_return, version_x + 2);
+  });
+  // Hold the freeze longer than the 2 * heartbeat_interval_ms that the DDL
+  // commit path used to sleep for. A DDL that returns after a fixed sleep, or
+  // without waiting at all, returns while ts-0's shared memory is still
+  // frozen at x and fails the assertion above; only waiting for the version
+  // itself is correct.
+  SleepFor(5s);
+  ASSERT_OK(cluster_->SetFlag(cluster_->tablet_server(0),
+      "TEST_tserver_disable_catalog_refresh_on_heartbeat", "false"));
+  thread_holder.JoinAll();
+
+  // Any logical connection (routed to any physical backend) sees both tables
+  // right away.
+  ASSERT_RESULT(conn_watcher.FetchRow<PGUint64>("SELECT COUNT(*) FROM gap_table1"));
+  ASSERT_RESULT(conn_watcher.FetchRow<PGUint64>("SELECT COUNT(*) FROM gap_table2"));
+
+  const auto version_after = ASSERT_RESULT(GetCatalogVersion(&conn_watcher));
+  ASSERT_EQ(version_after, version_x + 2);
 }
 
 TEST_F(PgCatalogVersionTest, NewConnectionRelCachePreloadTest) {
