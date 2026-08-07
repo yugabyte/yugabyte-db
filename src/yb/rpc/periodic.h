@@ -24,6 +24,7 @@
 #include <gtest/gtest_prod.h>
 
 #include "yb/gutil/macros.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random.h"
@@ -171,6 +172,9 @@ class PeriodicTimer : public std::enable_shared_from_this<PeriodicTimer> {
 
   // User-defined task functor.
   RunTaskFunctor functor_;
+
+  // Trace context captured at construction
+  const dist_trace::trace::SpanContext trace_parent_;
 
   // User-specified task period.
   const MonoDelta period_;
