@@ -474,7 +474,8 @@ static void get_special_variable(Node *node, deparse_context *context,
 static void resolve_special_varno(Node *node, deparse_context *context,
 								  rsv_callback callback, void *callback_arg);
 static Node *find_param_referent(Param *param, deparse_context *context,
-								 deparse_namespace **dpns_p, ListCell **ancestor_cell_p);
+								 deparse_namespace **dpns_p, ListCell **ancestor_cell_p,
+								 bool *yb_bnl_filler_p);
 static SubPlan *find_param_generator(Param *param, deparse_context *context,
 									 int *column_p);
 static SubPlan *find_param_generator_initplan(Param *param, Plan *plan,
@@ -8858,7 +8859,8 @@ get_name_for_var_field(Var *var, int fieldno,
 		Param	   *param = (Param *) var;
 		ListCell   *ancestor_cell;
 
-		expr = find_param_referent(param, context, &dpns, &ancestor_cell);
+		expr = find_param_referent(param, context, &dpns, &ancestor_cell,
+								   NULL /* yb_bnl_filler_p */ );
 		if (expr)
 		{
 			/* Found a match, so recurse to decipher the field name */
@@ -9262,14 +9264,22 @@ get_name_for_var_field(Var *var, int fieldno,
  * If successful, return the expression and set *dpns_p and *ancestor_cell_p
  * appropriately for calling push_ancestor_plan().  If no referent can be
  * found, return NULL.
+ *
+ * YB: if yb_bnl_filler_p is non-NULL, set *yb_bnl_filler_p when paramid falls
+ * in a reserved BNL batch span (paramno, paramno+yb_batch_size) of an ancestor
+ * NestLoopParam. Only the first slot has a NestLoopParam referent.
  */
 static Node *
 find_param_referent(Param *param, deparse_context *context,
-					deparse_namespace **dpns_p, ListCell **ancestor_cell_p)
+					deparse_namespace **dpns_p, ListCell **ancestor_cell_p,
+					bool *yb_bnl_filler_p)
 {
 	/* Initialize output parameters to prevent compiler warnings */
 	*dpns_p = NULL;
 	*ancestor_cell_p = NULL;
+
+	if (yb_bnl_filler_p)
+		*yb_bnl_filler_p = false;
 
 	/*
 	 * If it's a PARAM_EXEC parameter, look for a matching NestLoopParam or
@@ -9309,6 +9319,18 @@ find_param_referent(Param *param, deparse_context *context,
 						*ancestor_cell_p = lc;
 						return (Node *) nlp->paramval;
 					}
+
+					/*
+					 * YB: BNL reserves yb_batch_size consecutive PARAM_EXEC
+					 * slots per nestParam; only the first slot has a
+					 * NestLoopParam referent. Report ids in the reserved span
+					 * so the caller can tell batch fillers from orphaned
+					 * params.
+					 */
+					if (yb_bnl_filler_p &&
+						param->paramid > nlp->paramno &&
+						param->paramid < nlp->paramno + nlp->yb_batch_size)
+						*yb_bnl_filler_p = true;
 				}
 			}
 
@@ -9503,13 +9525,14 @@ get_parameter(Param *param, deparse_context *context)
 	ListCell   *ancestor_cell;
 	SubPlan    *subplan;
 	int			column;
+	bool		yb_bnl_filler;
 
 	/*
 	 * If it's a PARAM_EXEC parameter, try to locate the expression from which
 	 * the parameter was computed.  This stanza handles only cases in which
 	 * the Param represents an input to the subplan we are currently in.
 	 */
-	expr = find_param_referent(param, context, &dpns, &ancestor_cell);
+	expr = find_param_referent(param, context, &dpns, &ancestor_cell, &yb_bnl_filler);
 	if (expr)
 	{
 		/* Found a match, so print it */
@@ -9628,8 +9651,12 @@ get_parameter(Param *param, deparse_context *context)
 	 *
 	 * It's a bug if we get here for anything except PARAM_EXTERN Params, but
 	 * in production builds printing $N seems more useful than failing.
+	 *
+	 * YB: BNL batch fillers are PARAM_EXEC slots with no NestLoopParam
+	 * referent (except the first one). EXPLAIN intentionally prints placeholder
+	 * values as $N when describing these slots (e.g. ARRAY[r.a, $1, $2, ... $1023]).
 	 */
-	Assert(param->paramkind == PARAM_EXTERN);
+	Assert(param->paramkind == PARAM_EXTERN || yb_bnl_filler);
 
 	appendStringInfo(context->buf, "$%d", param->paramid);
 }
@@ -10510,7 +10537,8 @@ get_rule_expr(Node *node, deparse_context *context,
 					ListCell   *ancestor_cell;
 
 					expr = find_param_referent((Param *) arg, context, &dpns,
-											   &ancestor_cell);
+											   &ancestor_cell,
+											   NULL /* yb_bnl_filler_p */ );
 					if (!expr && ((Param *) arg)->paramkind == PARAM_EXEC)
 					{
 						yb_skip_deparsing_fieldname_for_param = true;
