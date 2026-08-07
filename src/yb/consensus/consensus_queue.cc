@@ -69,9 +69,7 @@
 #include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
-#include "yb/util/sync_point.h"
 #include "yb/util/tostring.h"
-#include "yb/util/unique_lock.h"
 #include "yb/util/url-coding.h"
 
 using namespace std::literals;
@@ -1093,7 +1091,7 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
                                                           StartRemoteBootstrapRequestPB* req) {
   // The whole request is populated under queue_lock_: rbs_source points into peers_map_, and
   // UntrackPeer deletes those objects under the same lock.
-  UniqueLock<LockType> lock(queue_lock_);
+  LockGuard lock(queue_lock_);
   DCHECK_EQ(queue_state_.state, State::kQueueOpen);
   DCHECK_NE(uuid, local_peer_uuid_);
   TrackedPeer* peer = FindPtrOrNull(peers_map_, uuid);
@@ -1121,8 +1119,6 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
   const TrackedPeer* rbs_source =
       rbs_from_leader_only ? local_peer_ : VERIFY_RESULT(FindClosestPeerForBootstrap(peer));
 
-  // Acess/Edit peer's fields within queue_lock_'s scope to avoid race. For instance, this peer's
-  // information could be accessed while finding RBS source for another newly added peer.
   peer->needs_remote_bootstrap = false;
   if (PREDICT_FALSE(FLAGS_TEST_assert_remote_bootstrap_happens_from_same_zone)) {
     CHECK_EQ(
@@ -1161,9 +1157,6 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
   } else {
     req->set_is_served_by_tablet_leader(true);
   }
-
-  lock.unlock();
-  TEST_SYNC_POINT("PeerMessageQueue::GetRemoteBootstrapRequestForPeer:AfterQueueLockReleased");
 
   return Status::OK();
 }
