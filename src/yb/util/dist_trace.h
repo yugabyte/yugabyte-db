@@ -39,10 +39,13 @@ namespace trace = opentelemetry::trace;
 // inherits the span as parent. DropScope detaches the token, End ends the span; the two are
 // independent, so either may run first and from any thread.
 struct SpanWithScope {
-  explicit SpanWithScope(nostd::shared_ptr<trace::Span> s)
-      : span(std::move(s)),
-        token(context::RuntimeContext::Attach(
-            context::RuntimeContext::GetCurrent().SetValue(trace::kSpanKey, span))) {}
+  explicit SpanWithScope(nostd::shared_ptr<trace::Span> s, bool attach = true)
+      : span(std::move(s)) {
+    if (attach) {
+      token = context::RuntimeContext::Attach(
+          context::RuntimeContext::GetCurrent().SetValue(trace::kSpanKey, span));
+    }
+  }
 
   ~SpanWithScope() { End(); }
 
@@ -115,8 +118,9 @@ nostd::shared_ptr<trace::Span> StartSpan(
 nostd::shared_ptr<trace::Span> StartSpan(std::string_view op_name);
 
 // Client span for an outbound RPC, bundled with an activated scope so it becomes current; drains
-// pending thread-local attrs onto it. nullptr when no active context.
-SpanWithScopePtr StartClientSpanWithScope(std::string_view op_name);
+// pending thread-local attrs onto it. nullptr when no active context. Pass attach=false when the
+// span is never made current -- consumers then read it through GetContext().
+SpanWithScopePtr StartClientSpanWithScope(std::string_view op_name, bool attach = true);
 
 // Span as a remote child of parent_context (from an inbound request) + activated scope --
 // the server end of a propagated trace; needs no local active context.
