@@ -369,7 +369,7 @@ SpanWithScopePtr StartServerSpanWithScope(
   trace::StartSpanOptions options;
   options.kind = trace::SpanKind::kServer;
   options.parent = parent_context;
-  return std::make_shared<SpanWithScope>(GetDistTracer()->StartSpan(
+  return std::make_unique<SpanWithScope>(GetDistTracer()->StartSpan(
       nostd::string_view(op_name.data(), op_name.size()), {}, options));
 }
 
