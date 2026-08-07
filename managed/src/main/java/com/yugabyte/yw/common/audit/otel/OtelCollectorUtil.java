@@ -1,5 +1,6 @@
 package com.yugabyte.yw.common.audit.otel;
 
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.ScrapeConfigTargetType;
@@ -12,6 +13,31 @@ import org.slf4j.LoggerFactory;
 public class OtelCollectorUtil {
 
   private static final Logger LOG = LoggerFactory.getLogger(OtelCollectorUtil.class);
+
+  // Version gate for the K8s otel chart contract. Charts at/after these versions accept the full
+  // collector config via spec.config passthrough
+  // (OtelCollectorConfigGenerator.getOtelColConfigK8s);
+  // older charts assemble the config from structured Helm values and read the misspelled
+  // "recievers" key (OtelCollectorConfigGenerator.getOtelHelmValues).
+  public static final String OTEL_HELM_CONFIG_PASSTHROUGH_STABLE_VERSION = "2026.1.2.0";
+  public static final String OTEL_HELM_CONFIG_PASSTHROUGH_PREVIEW_VERSION = "2.31.0.0";
+
+  /**
+   * Whether the chart for the given YBDB version accepts the full collector config via spec.config
+   * passthrough. Versions at/after the gate use getOtelColConfigK8s; older versions fall back to
+   * the structured getOtelHelmValues.
+   */
+  public static boolean supportsOtelConfigPassthrough(String ybSoftwareVersion) {
+    if (ybSoftwareVersion == null) {
+      return true;
+    }
+    return Util.compareYBVersions(
+            ybSoftwareVersion,
+            OTEL_HELM_CONFIG_PASSTHROUGH_STABLE_VERSION,
+            OTEL_HELM_CONFIG_PASSTHROUGH_PREVIEW_VERSION,
+            true)
+        >= 0;
+  }
 
   public static boolean isAuditLogEnabledInUniverse(AuditLogConfig config) {
     if (config == null) {

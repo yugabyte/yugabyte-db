@@ -332,6 +332,7 @@ public class OtelCollectorConfigFormat {
   public static class StorageExtension extends Extension {
     private String directory;
     private String timeout;
+    private Boolean create_directory;
     private StorageCompaction compaction;
   }
 
@@ -342,6 +343,13 @@ public class OtelCollectorConfigFormat {
     private boolean on_rebound;
     private int rebound_needed_threshold_mib;
     private int rebound_trigger_threshold_mib;
+  }
+
+  @Data
+  @EqualsAndHashCode(callSuper = true)
+  public static class HealthCheckExtension extends Extension {
+    private String endpoint;
+    private String path;
   }
 
   @Data

@@ -8,7 +8,6 @@ import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistExportTelemetryConfig;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -74,7 +73,7 @@ public class ConfigureExportTelemetryConfig extends UpgradeTaskBase {
           }
 
           // Update the export telemetry config in the PG DB table and sync to universe details.
-          createUpdateAndPersistExportTelemetryConfigTask();
+          updateAndPersistExportTelemetryConfigTask();
 
           // Update the swamper target file.
           createSwamperTargetUpdateTask(false /* removeFile */);
@@ -177,15 +176,5 @@ public class ConfigureExportTelemetryConfig extends UpgradeTaskBase {
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());
     return task;
-  }
-
-  public void createUpdateAndPersistExportTelemetryConfigTask() {
-    TaskExecutor.SubTaskGroup subTaskGroup =
-        createSubTaskGroup("UpdateAndPersistExportTelemetryConfig");
-    UpdateAndPersistExportTelemetryConfig task =
-        createTask(UpdateAndPersistExportTelemetryConfig.class);
-    task.initialize(taskParams());
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 }

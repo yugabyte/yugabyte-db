@@ -3,7 +3,11 @@
 package com.yugabyte.yw.common.audit.otel;
 
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.not;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
@@ -652,6 +656,86 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
+  }
+
+  @Test
+  public void getOtelColConfigK8sAuditAndQueryPlusAWS() {
+    AWSCloudWatchConfig awsConfig = new AWSCloudWatchConfig();
+    awsConfig.setType(ProviderType.AWS_CLOUDWATCH);
+    awsConfig.setEndpoint("endpoint");
+    awsConfig.setAccessKey("access_key");
+    awsConfig.setSecretKey("secret_key");
+    awsConfig.setLogGroup("logGroup");
+    awsConfig.setLogStream("logStream");
+    awsConfig.setRegion("us-west2");
+
+    TelemetryProvider awsTp =
+        createTelemetryProvider(
+            new UUID(0, 0), "AWS", ImmutableMap.of("provTag", "provVal"), awsConfig);
+    AuditLogConfig auditLogConfig =
+        createAuditLogConfigWithYSQL(awsTp.getUuid(), ImmutableMap.of());
+    QueryLogConfig queryLogConfig =
+        createQueryLogConfig(
+            awsTp.getUuid(),
+            ImmutableMap.of("qTag", "qVal"),
+            YSQLQueryLogConfig.YSQLLogStatement.ALL,
+            YSQLQueryLogConfig.YSQlLogMinErrorStatement.ERROR,
+            YSQLQueryLogConfig.YSQLLogErrorVerbosity.DEFAULT,
+            true,
+            false,
+            true,
+            false,
+            500);
+
+    OtelCollectorConfigGenerator.K8sOtelConfig result =
+        generator.getOtelColConfigK8s(provider, auditLogConfig, queryLogConfig, "%m [%p] ");
+
+    assertTrue("config should be enabled", result.isEnabled());
+    String config = result.getConfig();
+
+    // Both receivers, on the K8s mount path.
+    assertThat(config, containsString("filelog/ysql"));
+    assertThat(config, containsString("filelog/query_logs_ysql"));
+    assertThat(config, containsString("/mnt/disk0/yb-data/tserver/logs/postgresql-*.log"));
+    // Extensions the chart no longer assembles.
+    assertThat(config, containsString("file_storage/queue"));
+    assertThat(config, containsString("health_check"));
+    // Both pipelines + transform + K8s host attribute.
+    assertThat(config, containsString("logs/" + awsTp.getUuid()));
+    assertThat(config, containsString("logs/query_logs_" + awsTp.getUuid()));
+    assertThat(config, containsString("transform/replace"));
+    assertThat(config, containsString("${POD_NAME}"));
+    // addCommonAdditionalAttributes merges provider tags and per-exporter additionalTags into the
+    // attributes processor (parity with the VM path).
+    assertThat(config, containsString("provTag"));
+    assertThat(config, containsString("qTag"));
+    // K8s audit receiver emits BOTH the legacy un-prefixed "audit_log_type" (for existing K8s
+    // consumers) and the VM-parity "yugabyte.audit_log_type". Strip the prefixed key first, then
+    // assert the bare one still remains (so this passes only if the un-prefixed key is present).
+    assertThat(config, containsString("yugabyte.audit_log_type"));
+    assertThat(
+        "K8s audit receiver must keep the legacy un-prefixed audit_log_type",
+        config.replace("yugabyte.audit_log_type", ""),
+        containsString("audit_log_type"));
+    // Query logs are new on K8s (no legacy consumer) -> only the prefixed key, no bare one.
+    assertThat(
+        "query receiver should not carry a bare query_log_type",
+        config.replace("yugabyte.query_log_type", ""),
+        not(containsString("query_log_type")));
+    // file_storage queue dir must be auto-created, else the collector crash-loops on startup.
+    assertThat(config, containsString("create_directory: true"));
+    // Clean YAML: no SnakeYAML Java class tags leaking into the collector config.
+    assertThat(config, not(containsString("!!com.yugabyte")));
+    // AWS credentials surfaced as secretEnv for the chart to wire into the sidecar env.
+    assertFalse("secretEnv should carry AWS creds", result.getSecretEnv().isEmpty());
+  }
+
+  @Test
+  public void getOtelColConfigK8sDisabledWhenNoActiveExport() {
+    OtelCollectorConfigGenerator.K8sOtelConfig result =
+        generator.getOtelColConfigK8s(provider, null, null, "%m [%p] ");
+    assertFalse("no active export -> disabled", result.isEnabled());
+    assertTrue("no secretEnv when disabled", result.getSecretEnv().isEmpty());
   }
 
   @Test

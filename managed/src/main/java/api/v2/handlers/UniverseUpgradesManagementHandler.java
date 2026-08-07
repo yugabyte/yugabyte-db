@@ -48,6 +48,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.export.ExportTelemetryConfigMapper;
@@ -88,7 +89,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
 import play.mvc.Http.Request;
 
 @Singleton
@@ -415,21 +415,7 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
       throw new PlatformServiceException(BAD_REQUEST, errorMessage);
     }
 
-    // Verify if exporter config is set to export active.
-    if (v1Params.getMetricsExportConfig().isExportActive()) {
-      // If exporter config is set to export active, verify if any exporter is configured.
-      if (CollectionUtils.isEmpty(
-          v1Params.getMetricsExportConfig().getUniverseMetricsExporterConfig())) {
-        String errorMessage =
-            String.format(
-                "Metrics export config is set to export active, but no exporter configured on"
-                    + " universe '%s'.",
-                universe.getUniverseUUID());
-        log.error(errorMessage);
-        throw new PlatformServiceException(BAD_REQUEST, errorMessage);
-      }
-
-      // If exporter config is set to export active, verify if given exporter uuid(s) are empty.
+    if (OtelCollectorUtil.isMetricsExportEnabledInUniverse(v1Params.getMetricsExportConfig())) {
       for (UniverseMetricsExporterConfig exporterConfig :
           v1Params.getMetricsExportConfig().getUniverseMetricsExporterConfig()) {
         UUID exporterUUID = exporterConfig.getExporterUuid();
@@ -477,7 +463,8 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     v1Params.verifyParams(universe, true);
 
     ExportTelemetryConfigParams exportParams =
-        v1Handler.buildExportTelemetryConfigParamsFromUniverse(universe);
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toExportTelemetryConfigParams(
+            universeDetails, request);
     // Override the metrics export config in the export params with the requested config.
     exportParams.setTelemetryConfig(
         TelemetryConfig.of(
@@ -516,7 +503,8 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
     // Fill the params from universe details first and then override with the requested config.
     api.v2.models.TelemetryConfig telemetryConfig = reqBody.getTelemetryConfig();
     ExportTelemetryConfigParams params =
-        v1Handler.buildExportTelemetryConfigParamsFromUniverse(universe);
+        UniverseDefinitionTaskParamsMapper.INSTANCE.toExportTelemetryConfigParams(
+            universe.getUniverseDetails(), request);
     ExportTelemetryConfigMapper.fillParams(telemetryConfig, params);
     ExportTelemetryConfigMapper.applyUpgradeOptions(reqBody.getUpgradeOptions(), params);
 
@@ -533,7 +521,6 @@ public class UniverseUpgradesManagementHandler extends ApiControllerUtils {
               + "'.");
     }
 
-    // Submit the task to configure the export telemetry configs.
     UUID taskUUID = v1Handler.submitExportTelemetryConfigs(params, customer, universe);
     log.info(
         "Submitted ConfigureExportTelemetryConfig for {} : {}, task uuid = {}.",
