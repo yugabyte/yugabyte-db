@@ -701,18 +701,18 @@
         }
       },
       "reprovisionNodesWithYnpModal": {
-        "title": "Reprovision Nodes with YNP",
+        "title": "Reprovision Universe Nodes",
         "instructions": "Nodes will be provisioned in a rolling manner.",
         "reprovisionNodesFor": "Reprovision nodes for:",
         "allNodeInUniverse": "All nodes in this Universe",
         "selectedNode": "Selected node",
-        "confirmButton": "Reprovision Nodes with YNP",
+        "confirmButton": "Reprovision Universe Nodes",
         "error": {
-          "requestFailureLabel": "Reprovision nodes with YNP request failed",
-          "taskFailure": "Failed to reprovision nodes with YNP."
+          "requestFailureLabel": "Reprovision Universe Nodes request failed",
+          "taskFailure": "Failed to Reprovision Universe Nodes."
         },
         "success": {
-          "requestSuccess": "Reprovision nodes with YNP started.",
+          "requestSuccess": "Reprovision Universe Nodes started.",
           "taskSuccess": "Reprovisioned nodes with YNP."
         }
       }
@@ -4749,7 +4749,7 @@
           "auditLogExport": "audit log export"
         }
       },
-        "telemetryExport": {
+      "telemetryExport": {
         "title": "Telemetry Export",
         "subtitle": "Export metrics and logs to external observability tools.",
         "k8sUnsupportedAuditExportVersion": "Requires database version {{stableVersion}} (stable) or {{previewVersion}} (preview) or later.",

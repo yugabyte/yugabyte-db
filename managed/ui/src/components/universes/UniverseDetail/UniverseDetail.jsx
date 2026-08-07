@@ -1808,7 +1808,7 @@ class UniverseDetail extends Component {
                             onClick={showReprovisionNodesWithYnpModal}
                           >
                             <YBLabelWithIcon icon="fa fa-refresh">
-                              Reprovision Nodes with YNP
+                              Reprovision Universe Nodes
                             </YBLabelWithIcon>
                           </YBMenuItem>
                         </RbacValidator>
