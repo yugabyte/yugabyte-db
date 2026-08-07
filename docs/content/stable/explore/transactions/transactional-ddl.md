@@ -63,8 +63,26 @@ yugabyte=# SELECT * FROM foo;
 
 ## Limitations
 
-- [Concurrent DDLs](../../../best-practices-operations/administration/#concurrent-ddl-during-a-ddl-operation) on the same database are unsupported and will lead to conflict and read restart required errors. Your applications must handle these by retrying the statements.
-
 - [Savepoints](/stable/develop/learn/transactions/transactions-retries-ysql/#savepoints) are unsupported for DDL statements. As a result, you cannot create a savepoint in a transaction block that has executed a DDL statement. Similarly, you cannot execute a DDL statement in a transaction block in which a savepoint has been created.
+
+- [Concurrent DDLs](../../../best-practices-operations/administration/#concurrent-ddl-during-a-ddl-operation) on the same database both outside and inside a transaction block can result in undefined behavior or catalog corruption with/ without any error. This situation also applies to DDLs that are run concurrently without transactional DDL enabled. The difference is that, with transactional DDL enabled, it is easier for such behavior to occur when using READ COMMITTED isolation level. With transactional DDL in REPEATABLE READ isolation level, the chances of such an issue occurring are slim (similar to when transactional DDL is disabled).
+
+  For example, in the following sequence, the column `a` added by Session 1 is missing after Session 2 commits:
+
+    ```sql
+    -- Session 1                                  -- Session 2
+
+    BEGIN;
+                                                   BEGIN;
+    ALTER TABLE test ADD COLUMN a INT;
+                                                   ALTER TABLE test ALTER COLUMN v TYPE SMALLINT;
+                                                   -- waiting....
+    COMMIT;
+                                                   COMMIT;
+
+    SELECT * FROM test;  -- Column "a" is missing
+    ```
+
+- When Auto Analyze runs with transactional DDL enabled, and a user DDL is executed concurrently in a transaction block (also with transactional DDL enabled), it can lead to a serialization error either on the user DDL or on the COMMIT of the transaction block containing the user DDL.
 
 For an overview of common concepts used in YugabyteDB's implementation of distributed transactions, see [Distributed transactions](../distributed-transactions-ysql/).
