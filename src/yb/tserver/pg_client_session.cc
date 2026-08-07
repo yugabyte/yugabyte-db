@@ -3904,9 +3904,10 @@ class PgClientSession::Impl {
     RETURN_NOT_OK(
         UpdateReadPointForXClusterConsistentReads(options, deadline, session.read_point()));
 
-    if (!options.ddl_mode() && !options.use_legacy_catalog_session() &&
-        read_time_options.defer_read_point()) {
-      // For DMLs, only fast path writes cannot be deferred.
+    if (!options.use_legacy_catalog_session() && read_time_options.defer_read_point()) {
+      // Among DMLs, only fast path writes cannot be deferred. DDLs can also request
+      // deferral, but only when they run in the regular transaction block (see
+      // PgTxnManager::CalculateIsolation).
       RETURN_NOT_OK(session.read_point()->TrySetDeferredCurrentReadTime());
       VLOG_WITH_PREFIX(3) << "Set current read time for deferred mode "
           << session.read_point()->GetReadTime();
