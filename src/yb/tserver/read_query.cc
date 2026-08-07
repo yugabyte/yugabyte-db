@@ -146,9 +146,19 @@ class ReadQuery : public std::enable_shared_from_this<ReadQuery>, public rpc::Th
   // Picks read based for specified read context.
   Status DoPickReadTime(server::Clock* clock);
 
+  // Returns the tablet safe time, waiting for it to reach min_allowed if necessary.
+  Result<HybridTime> SafeTime(HybridTime min_allowed = HybridTime::kMin) const;
+
+  // Waits for the tablet safe time to reach the read time.
+  // Fails for follower reads that avoid waiting, to redirect them to the leader.
+  Status WaitForSafeTime();
+
   bool transactional() const;
 
   tablet::Tablet* tablet() const;
+
+  // Returns tablet metrics, or nullptr for system tablets.
+  tablet::TabletMetrics* metrics() const;
 
   ReadRestartInfo FormReadRestartInfo(const ReadRestartData& read_restart_data) const;
 
@@ -212,6 +222,40 @@ bool ReadQuery::transactional() const {
 
 tablet::Tablet* ReadQuery::tablet() const {
   return down_cast<tablet::Tablet*>(abstract_tablet_.get());
+}
+
+tablet::TabletMetrics* ReadQuery::metrics() const {
+  return abstract_tablet_->system() ? nullptr : tablet()->metrics();
+}
+
+Result<HybridTime> ReadQuery::SafeTime(HybridTime min_allowed) const {
+  return abstract_tablet_->SafeTime(require_lease_, min_allowed, context_.GetClientDeadline());
+}
+
+Status ReadQuery::WaitForSafeTime() {
+  if (safe_ht_to_read_ < read_time_.read) {
+    if (!allow_retry_ && IsPgsqlFollowerReadAtAFollower() &&
+        FLAGS_ysql_follower_reads_avoid_waiting_for_safe_time) {
+      // The read time was specified by the client, so it could retry at the leader instead of
+      // waiting for the safe time to catch up, which may be better for follower reads.
+      // When the read time was picked on this tserver (allow_retry_), the client has nothing to
+      // retry with, so wait even at a follower.
+      return STATUS(IllegalState, "Requested read time is not safe at this follower.");
+    }
+    auto* metrics = this->metrics();
+    MonoTime start_time;
+    if (metrics) {
+      start_time = MonoTime::Now();
+    }
+    safe_ht_to_read_ = VERIFY_RESULT(SafeTime(read_time_.read));
+    if (metrics) {
+      auto safe_time_wait = MonoTime::Now() - start_time;
+      metrics->Increment(
+          tablet::TabletEventStats::kReadTimeWait,
+          make_unsigned(safe_time_wait.ToMicroseconds()));
+    }
+  }
+  return Status::OK();
 }
 
 ReadQuery::ReadRestartInfo ReadQuery::FormReadRestartInfo(
@@ -477,15 +521,9 @@ Status ReadQuery::DoPerform() {
 }
 
 Status ReadQuery::DoPickReadTime(server::Clock* clock) {
-  auto* metrics = abstract_tablet_->system() ? nullptr : tablet()->metrics();
-  MonoTime start_time;
-  if (metrics) {
-    start_time = MonoTime::Now();
-  }
-
   const auto read_time_was_empty = !read_time_;
+  safe_ht_to_read_ = VERIFY_RESULT(SafeTime());
   if (read_time_was_empty) {
-    safe_ht_to_read_ = VERIFY_RESULT(abstract_tablet_->SafeTime(require_lease_));
     // If the read time is not specified, then it is a single-shard read.
     // So we should restart it in server in case of failure.
     read_time_.read = safe_ht_to_read_;
@@ -498,36 +536,16 @@ Status ReadQuery::DoPickReadTime(server::Clock* clock) {
       read_time_.local_limit = read_time_.read;
       read_time_.global_limit = read_time_.read;
     }
-  } else {
-    HybridTime current_safe_time = VERIFY_RESULT(abstract_tablet_->SafeTime(
-      require_lease_, HybridTime::kMin, context_.GetClientDeadline()));
-    // Read query is allowed to ignore ambiguity window for writes that
-    // occur after this moment.
-    if (current_safe_time < read_time_.local_limit) {
-      read_time_.local_limit = current_safe_time;
-    }
-    if (IsPgsqlFollowerReadAtAFollower()) {
-      if (FLAGS_ysql_follower_reads_avoid_waiting_for_safe_time &&
-          current_safe_time < read_time_.read) {
-        // We are given a read time. However, for Follower reads, it may be better
-        // to redirect the query to the Leader instead of waiting on it.
-        return STATUS(IllegalState, "Requested read time is not safe at this follower.");
-      }
-    }
-    safe_ht_to_read_ =
-        (current_safe_time > read_time_.read
-             ? current_safe_time
-             : VERIFY_RESULT(abstract_tablet_->SafeTime(
-                   require_lease_, read_time_.read, context_.GetClientDeadline())));
-  }
-  if (metrics) {
-    auto safe_time_wait = MonoTime::Now() - start_time;
-    metrics->Increment(
-         tablet::TabletEventStats::kReadTimeWait,
-         make_unsigned(safe_time_wait.ToMicroseconds()));
-    if (read_time_was_empty) {
+    if (auto* metrics = this->metrics()) {
       metrics->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
     }
+  } else {
+    // Read query is allowed to ignore ambiguity window for writes that
+    // occur after this moment.
+    if (safe_ht_to_read_ < read_time_.local_limit) {
+      read_time_.local_limit = safe_ht_to_read_;
+    }
+    RETURN_NOT_OK(WaitForSafeTime());
   }
   return Status::OK();
 }
@@ -581,6 +599,11 @@ Status ReadQuery::Complete() {
       TRACE("Read timed out");
       return STATUS(TimedOut, "Read timed out");
     }
+
+    // The restart read time could be taken from a transaction commit time, which could be above
+    // the tablet safe time. Wait for the safe time to reach the restart read time, otherwise the
+    // retried read could miss replicated but not yet applied writes with lower hybrid times.
+    RETURN_NOT_OK(WaitForSafeTime());
   }
   // Set here since the loop above clears resp_ on each attempt.
   if (!async_write_op_id_.empty()) {
