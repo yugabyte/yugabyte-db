@@ -126,7 +126,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   Status SetupPerformOptions(SetupPerformOptionsAccessorTag tag,
       tserver::PgPerformOptionsPB& options, NonTransactionalWrites ops_has_non_transactional_writes,
-      std::optional<ReadTimeAction> read_time_action = {});
+      std::optional<ReadTimeAction> read_time_action = {},
+      IsLocalObjectLockOp is_local_object_lock_op = IsLocalObjectLockOp::kFalse);
 
   double GetTransactionPriority() const;
   YbcTxnPriorityRequirement GetTransactionPriorityType() const;
