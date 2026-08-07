@@ -158,9 +158,15 @@ class TabletSnapshots : public TabletComponent {
   Result<docdb::CotableIdsMap> GetCotableIdsMap(const std::string& snapshot_dir);
 
   enum class TombstoneState {
+    // Neither the active nor the tombstone directory exists: deletion is fully finished.
     kComplete,
+    // The active directory was renamed to the tombstone and the parent directory was synced:
+    // logical deletion is durable, and only physical cleanup of the tombstone remains.
     kTombstoned,
+    // Both the active and the tombstone directory exist (e.g. a stale tombstone from an earlier
+    // attempt): the tombstone must be removed before the active directory can be renamed.
     kBothPresent,
+    // A transient failure (directory check, rename, or parent sync) occurred: retry later.
     kRetry,
   };
 
@@ -168,8 +174,15 @@ class TabletSnapshots : public TabletComponent {
     std::string active_dir;
     std::string tombstone_dir;
     MonoTime first_pending_at = MonoTime::Now();
+    // True until the active directory is durably tombstoned (renamed and parent-synced).
     bool logical_pending = true;
+    // True while the tombstone directory still needs physical removal, including the parent sync
+    // that makes the removal durable.
     bool physical_pending = false;
+    // True when the tombstone directory was recursively deleted but the parent-directory fsync
+    // that makes the removal durable still needs to be redone. Only the cleanup phase needs this
+    // flag: a failed parent sync while tombstoning leaves logical_pending set, and the retry
+    // re-drives that sync inside TryTombstoneSnapshotDir.
     bool parent_sync_pending = false;
     uint64_t epoch = 0;
   };
