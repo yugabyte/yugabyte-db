@@ -1254,6 +1254,15 @@ YbcStatus YBCPgGetTableProperties(YbcPgTableDesc table_desc,
   return YBCStatusOK();
 }
 
+YbcStatus YBCPgGetTableOid(YbcPgTableDesc desc,
+                           YbcPgOid *YbcPgTableoid){
+  if (!desc || !YbcPgTableoid) {
+    return YBCStatusOK();
+  }
+  *YbcPgTableoid = desc->pg_table_id().object_oid;
+  return YBCStatusOK();
+}
+
 // table_desc is expected to be a PgTableDesc of a range-partitioned table.
 // split_datums are expected to have an allocated size:
 // num_splits * num_range_key_columns, and it is used to

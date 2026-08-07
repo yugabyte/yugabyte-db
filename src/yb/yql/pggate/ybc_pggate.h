@@ -402,6 +402,9 @@ YbcStatus YBCPgGetColumnInfo(YbcPgTableDesc table_desc,
 YbcStatus YBCPgGetTableProperties(YbcPgTableDesc table_desc,
                                   YbcTableProperties properties);
 
+YbcStatus YBCPgGetTableOid(YbcPgTableDesc desc,
+                           YbcPgOid *YbcPgTableoid);
+
 YbcStatus YBCPgDmlModifiesRow(YbcPgStatement handle, bool *modifies_row);
 
 YbcStatus YBCPgSetIsSysCatalogVersionChange(YbcPgStatement handle);
