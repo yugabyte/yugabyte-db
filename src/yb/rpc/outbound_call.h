@@ -77,6 +77,7 @@
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/slice.h"
+#include "yb/util/status.h"
 #include "yb/util/trace.h"
 
 using namespace std::literals;
