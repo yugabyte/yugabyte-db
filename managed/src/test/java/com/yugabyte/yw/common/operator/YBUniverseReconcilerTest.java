@@ -3,6 +3,8 @@ package com.yugabyte.yw.common.operator;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -16,10 +18,12 @@ import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.utils.KubernetesClientFactory;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
@@ -33,6 +37,7 @@ import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
+import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.KubernetesToggleImmutableYbcParams;
@@ -51,6 +56,7 @@ import com.yugabyte.yw.models.AvailabilityZoneDetails;
 import com.yugabyte.yw.models.AvailabilityZoneDetails.AZCloudInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.ExportTelemetryConfig;
 import com.yugabyte.yw.models.OperatorResource;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails.CloudInfo;
@@ -60,10 +66,13 @@ import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.MetricCollectionLevel;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.exporters.metrics.ScrapeConfigTargetType;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
+import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import io.fabric8.kubernetes.api.model.IntOrString;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -74,14 +83,25 @@ import io.fabric8.kubernetes.client.informers.cache.Indexer;
 import io.fabric8.kubernetes.client.utils.Serialization;
 import io.yugabyte.operator.v1alpha1.YBUniverse;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.KubernetesOverrides;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.Telemetry;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.Resource;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.resource.Master;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.kubernetesoverrides.resource.master.Limits;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.AuditLogs;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.MasterLogs;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.Metrics;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.QueryLogs;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.TserverLogs;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.auditlogs.YcqlAuditConfig;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.auditlogs.YsqlAuditConfig;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.querylogs.YsqlQueryLogConfig;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.BiConsumer;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.After;
 import org.junit.Before;
@@ -1662,6 +1682,722 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     Mockito.verify(kubernetesStatusUpdator, Mockito.atLeastOnce())
         .updateUniverseState(
             any(KubernetesResourceDetails.class), eq(UniverseState.ERROR_UPDATING));
+  }
+
+  /*--- Telemetry export tests (PLAT-21300) ---*/
+
+  private static final String TELEMETRY_PROVIDER_CR = "datadog-prod";
+
+  /**
+   * Resolves every exporter's {@code telemetryProvider} CR reference to one Ready provider UUID.
+   * OperatorUtils looks TelemetryProvider CRs up through its own Kubernetes client, which this
+   * suite does not wire up, so the lookup is stubbed on the spy.
+   */
+  private UUID stubReadyTelemetryProviderCr() throws Exception {
+    UUID providerUuid = UUID.randomUUID();
+    Mockito.doReturn(providerUuid)
+        .when(operatorUtils)
+        .resolveReadyTelemetryProviderUuid(anyString(), anyString());
+    return providerUuid;
+  }
+
+  private void stubUnresolvableTelemetryProviderCr() throws Exception {
+    Mockito.doThrow(
+            new Exception(
+                "Telemetry provider CR '"
+                    + TELEMETRY_PROVIDER_CR
+                    + "' is not ready (state: Error)"))
+        .when(operatorUtils)
+        .resolveReadyTelemetryProviderUuid(anyString(), anyString());
+  }
+
+  // --- CR-side telemetry fixtures. Each builder takes a `changed` flag that flips exactly one
+  // authored field of that section, which is what the per-section trigger tests vary.
+
+  private static io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.auditlogs.Exporters
+      crAuditExporter() {
+    io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.auditlogs.Exporters exporter =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.auditlogs.Exporters();
+    exporter.setTelemetryProvider(TELEMETRY_PROVIDER_CR);
+    return exporter;
+  }
+
+  private static io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.querylogs.Exporters
+      crQueryExporter() {
+    io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.querylogs.Exporters exporter =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.querylogs.Exporters();
+    exporter.setTelemetryProvider(TELEMETRY_PROVIDER_CR);
+    return exporter;
+  }
+
+  private static io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.metrics.Exporters
+      crMetricsExporter() {
+    io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.metrics.Exporters exporter =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.metrics.Exporters();
+    exporter.setTelemetryProvider(TELEMETRY_PROVIDER_CR);
+    return exporter;
+  }
+
+  private static io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.masterlogs.Exporters
+      crMasterExporter() {
+    io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.masterlogs.Exporters exporter =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.masterlogs.Exporters();
+    exporter.setTelemetryProvider(TELEMETRY_PROVIDER_CR);
+    return exporter;
+  }
+
+  private static io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.tserverlogs.Exporters
+      crTserverExporter() {
+    io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.tserverlogs.Exporters exporter =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.telemetry.tserverlogs.Exporters();
+    exporter.setTelemetryProvider(TELEMETRY_PROVIDER_CR);
+    return exporter;
+  }
+
+  private static AuditLogs crAuditLogs(boolean changed) {
+    AuditLogs auditLogs = new AuditLogs();
+    YsqlAuditConfig ysql = new YsqlAuditConfig();
+    ysql.setClasses(List.of(YsqlAuditConfig.Classes.WRITE, YsqlAuditConfig.Classes.DDL));
+    ysql.setLogParameter(true);
+    ysql.setLogCatalog(changed);
+    auditLogs.setYsqlAuditConfig(ysql);
+    auditLogs.setExporters(List.of(crAuditExporter()));
+    return auditLogs;
+  }
+
+  private static QueryLogs crQueryLogs(boolean changed) {
+    QueryLogs queryLogs = new QueryLogs();
+    YsqlQueryLogConfig ysql = new YsqlQueryLogConfig();
+    ysql.setLogConnections(true);
+    ysql.setLogDisconnections(changed);
+    queryLogs.setYsqlQueryLogConfig(ysql);
+    queryLogs.setExporters(List.of(crQueryExporter()));
+    return queryLogs;
+  }
+
+  private static Metrics crMetrics(boolean changed) {
+    Metrics metrics = new Metrics();
+    metrics.setCollectionLevel(
+        changed ? Metrics.CollectionLevel.ALL : Metrics.CollectionLevel.NORMAL);
+    metrics.setExporters(List.of(crMetricsExporter()));
+    return metrics;
+  }
+
+  private static MasterLogs crMasterLogs(boolean changed) {
+    MasterLogs masterLogs = new MasterLogs();
+    masterLogs.setMinLevel(changed ? MasterLogs.MinLevel.ERROR : MasterLogs.MinLevel.INFO);
+    masterLogs.setExporters(List.of(crMasterExporter()));
+    return masterLogs;
+  }
+
+  private static TserverLogs crTserverLogs(boolean changed) {
+    TserverLogs tserverLogs = new TserverLogs();
+    tserverLogs.setMinLevel(changed ? TserverLogs.MinLevel.ERROR : TserverLogs.MinLevel.WARNING);
+    tserverLogs.setExporters(List.of(crTserverExporter()));
+    return tserverLogs;
+  }
+
+  /** One telemetry section, in the two shapes the per-section trigger tests need. */
+  private static final class TelemetrySection {
+    private final ExportType exportType;
+    private final BiConsumer<Telemetry, Boolean> author;
+
+    TelemetrySection(ExportType exportType, BiConsumer<Telemetry, Boolean> author) {
+      this.exportType = exportType;
+      this.author = author;
+    }
+
+    /** A telemetry block containing only this section. */
+    Telemetry only(boolean changed) {
+      Telemetry telemetry = new Telemetry();
+      author.accept(telemetry, changed);
+      return telemetry;
+    }
+
+    /** Slug for building a unique universe name per section. */
+    String slug() {
+      return exportType.name().toLowerCase().replace('_', '-');
+    }
+  }
+
+  private static List<TelemetrySection> telemetrySections() {
+    return List.of(
+        new TelemetrySection(
+            ExportType.AUDIT_LOGS, (t, changed) -> t.setAuditLogs(crAuditLogs(changed))),
+        new TelemetrySection(
+            ExportType.QUERY_LOGS, (t, changed) -> t.setQueryLogs(crQueryLogs(changed))),
+        new TelemetrySection(ExportType.METRICS, (t, changed) -> t.setMetrics(crMetrics(changed))),
+        new TelemetrySection(
+            ExportType.MASTER_LOGS, (t, changed) -> t.setMasterLogs(crMasterLogs(changed))),
+        new TelemetrySection(
+            ExportType.TSERVER_LOGS, (t, changed) -> t.setTserverLogs(crTserverLogs(changed))));
+  }
+
+  /** A telemetry block with every Kubernetes-supported export type configured. */
+  private static Telemetry crAllTelemetrySections() {
+    Telemetry telemetry = new Telemetry();
+    for (TelemetrySection section : telemetrySections()) {
+      section.author.accept(telemetry, false);
+    }
+    return telemetry;
+  }
+
+  private Universe createUniverseForTelemetryEdit(YBUniverse ybUniverse) throws Exception {
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    // createTaskParams leaves the node set null - the create task is what fills it in - while the
+    // gflags predicate, which sits immediately before the telemetry branch on the edit chain, walks
+    // the universe's nodes.
+    taskParams.nodeDetailsSet = new HashSet<>();
+    Universe universe = Universe.create(taskParams, defaultCustomer.getId());
+    Mockito.when(
+            confGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.rollingOpsWaitAfterEachPodMs)))
+        .thenReturn(10000);
+    return universe;
+  }
+
+  /**
+   * Applies a dispatched telemetry config the way {@code UpdateAndPersistExportTelemetryConfig}
+   * does: normalize the audit/query {@code exportActive} flags, write the export_telemetry_config
+   * row (the source of truth) and mirror audit/query/metrics into the primary cluster userIntent.
+   * Convergence has to be measured against this state, not against the request the reconciler sent.
+   */
+  private Universe applyDispatchedTelemetry(Universe universe, TelemetryConfig dispatched) {
+    TelemetryConfig config = dispatched != null ? dispatched : new TelemetryConfig();
+    if (config.getAuditLogConfig() != null) {
+      config.getAuditLogConfig().normalizeExportActive();
+    }
+    if (config.getQueryLogConfig() != null) {
+      config.getQueryLogConfig().normalizeExportActive();
+    }
+    ExportTelemetryConfig row =
+        ExportTelemetryConfig.getForUniverse(universe.getUniverseUUID())
+            .orElseGet(
+                () -> {
+                  ExportTelemetryConfig created = new ExportTelemetryConfig();
+                  created.setUniverseUuid(universe.getUniverseUUID());
+                  return created;
+                });
+    row.setTelemetryConfig(config);
+    row.save();
+    return Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.otelCollectorEnabled = true;
+          UserIntent userIntent = details.getPrimaryCluster().userIntent;
+          userIntent.auditLogConfig = config.getAuditLogConfig();
+          userIntent.queryLogConfig = config.getQueryLogConfig();
+          userIntent.metricsExportConfig = config.getMetricsExportConfig();
+          u.setUniverseDetails(details);
+        });
+  }
+
+  /**
+   * The convergence check: reconcile a CR with telemetry, apply what it dispatched, then reconcile
+   * the identical CR twice more and assert nothing further is submitted. A predicate that still
+   * reports "changed" after a successful apply re-fires on every reconcile pass, and the Kubernetes
+   * telemetry task always helm-upgrades the master and tserver pods - so this is the test standing
+   * between the feature and a rolling restart of the universe on every pass.
+   */
+  private void assertTelemetryConverges(String nameSuffix, Telemetry telemetry) throws Exception {
+    YBUniverse ybUniverse =
+        ModelFactory.createYbUniverse("tel-converge-" + nameSuffix, defaultProvider);
+    ybUniverse.getSpec().setTelemetry(telemetry);
+    Universe universe = createUniverseForTelemetryEdit(ybUniverse);
+    stubReadyTelemetryProviderCr();
+
+    ybUniverseReconciler.editUniverse(defaultCustomer, universe, ybUniverse);
+    ArgumentCaptor<ExportTelemetryConfigParams> captor =
+        ArgumentCaptor.forClass(ExportTelemetryConfigParams.class);
+    Mockito.verify(upgradeUniverseHandler, Mockito.times(1))
+        .submitExportTelemetryConfigs(captor.capture(), eq(defaultCustomer), any(Universe.class));
+
+    Universe applied = applyDispatchedTelemetry(universe, captor.getValue().getTelemetryConfig());
+
+    ybUniverseReconciler.editUniverse(defaultCustomer, applied, ybUniverse);
+    Mockito.verify(upgradeUniverseHandler, Mockito.times(1))
+        .submitExportTelemetryConfigs(any(), any(), any());
+
+    // A third pass, re-reading the universe, so a converging-then-diverging predicate cannot hide.
+    ybUniverseReconciler.editUniverse(
+        defaultCustomer, Universe.getOrBadRequest(applied.getUniverseUUID()), ybUniverse);
+    Mockito.verify(upgradeUniverseHandler, Mockito.times(1))
+        .submitExportTelemetryConfigs(any(), any(), any());
+  }
+
+  @Test
+  public void testTelemetryConvergesForAuditLogs() throws Exception {
+    Telemetry telemetry = new Telemetry();
+    telemetry.setAuditLogs(crAuditLogs(false));
+    assertTelemetryConverges("audit", telemetry);
+  }
+
+  @Test
+  public void testTelemetryConvergesForQueryLogs() throws Exception {
+    Telemetry telemetry = new Telemetry();
+    telemetry.setQueryLogs(crQueryLogs(false));
+    assertTelemetryConverges("query", telemetry);
+  }
+
+  @Test
+  public void testTelemetryConvergesForMetrics() throws Exception {
+    Telemetry telemetry = new Telemetry();
+    telemetry.setMetrics(crMetrics(false));
+    assertTelemetryConverges("metrics", telemetry);
+  }
+
+  @Test
+  public void testTelemetryConvergesForMasterLogs() throws Exception {
+    Telemetry telemetry = new Telemetry();
+    telemetry.setMasterLogs(crMasterLogs(false));
+    assertTelemetryConverges("master", telemetry);
+  }
+
+  @Test
+  public void testTelemetryConvergesForTserverLogs() throws Exception {
+    Telemetry telemetry = new Telemetry();
+    telemetry.setTserverLogs(crTserverLogs(false));
+    assertTelemetryConverges("tserver", telemetry);
+  }
+
+  @Test
+  public void testTelemetryConvergesForAllSectionsAtOnce() throws Exception {
+    assertTelemetryConverges("all", crAllTelemetrySections());
+  }
+
+  @Test
+  public void testTelemetryConvergesWhenCrOmitsDerivedFields() throws Exception {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("tel-derived", defaultProvider);
+    // Nothing server-derived is authored here: no exportActive, no per-section enabled flag, and no
+    // metrics interval / timeout / collectionLevel / scrapeConfigTargets.
+    AuditLogs auditLogs = new AuditLogs();
+    YsqlAuditConfig ysqlAudit = new YsqlAuditConfig();
+    ysqlAudit.setClasses(List.of(YsqlAuditConfig.Classes.WRITE));
+    auditLogs.setYsqlAuditConfig(ysqlAudit);
+    YcqlAuditConfig ycqlAudit = new YcqlAuditConfig();
+    ycqlAudit.setIncludedCategories(List.of(YcqlAuditConfig.IncludedCategories.DML));
+    auditLogs.setYcqlAuditConfig(ycqlAudit);
+    auditLogs.setExporters(List.of(crAuditExporter()));
+    QueryLogs queryLogs = new QueryLogs();
+    queryLogs.setYsqlQueryLogConfig(new YsqlQueryLogConfig());
+    queryLogs.setExporters(List.of(crQueryExporter()));
+    Metrics metrics = new Metrics();
+    metrics.setExporters(List.of(crMetricsExporter()));
+    Telemetry telemetry = new Telemetry();
+    telemetry.setAuditLogs(auditLogs);
+    telemetry.setQueryLogs(queryLogs);
+    telemetry.setMetrics(metrics);
+    ybUniverse.getSpec().setTelemetry(telemetry);
+
+    Universe universe = createUniverseForTelemetryEdit(ybUniverse);
+    UUID providerUuid = stubReadyTelemetryProviderCr();
+
+    ybUniverseReconciler.editUniverse(defaultCustomer, universe, ybUniverse);
+    ArgumentCaptor<ExportTelemetryConfigParams> captor =
+        ArgumentCaptor.forClass(ExportTelemetryConfigParams.class);
+    Mockito.verify(upgradeUniverseHandler, Mockito.times(1))
+        .submitExportTelemetryConfigs(captor.capture(), eq(defaultCustomer), any(Universe.class));
+
+    // The shared mapper populated every derived field even though the manifest authored none of
+    // them, which is exactly the state the comparison has to be immune to.
+    TelemetryConfig dispatched = captor.getValue().getTelemetryConfig();
+    assertTrue(dispatched.getAuditLogConfig().isExportActive());
+    assertTrue(dispatched.getAuditLogConfig().getYsqlAuditConfig().isEnabled());
+    assertTrue(dispatched.getAuditLogConfig().getYcqlAuditConfig().isEnabled());
+    assertTrue(dispatched.getQueryLogConfig().isExportActive());
+    assertTrue(dispatched.getQueryLogConfig().getYsqlQueryLogConfig().isEnabled());
+    assertEquals(
+        Integer.valueOf(30), dispatched.getMetricsExportConfig().getScrapeIntervalSeconds());
+    assertEquals(
+        Integer.valueOf(20), dispatched.getMetricsExportConfig().getScrapeTimeoutSeconds());
+    assertEquals(
+        MetricCollectionLevel.NORMAL, dispatched.getMetricsExportConfig().getCollectionLevel());
+    assertEquals(
+        OtelCollectorUtil.K8S_SUPPORTED_SCRAPE_TARGETS,
+        dispatched.getMetricsExportConfig().getScrapeConfigTargets());
+    assertEquals(
+        providerUuid,
+        dispatched.getAuditLogConfig().getUniverseLogsExporterConfig().get(0).getExporterUuid());
+
+    // ...and the CR that authored none of them still converges against the stored result.
+    Universe applied = applyDispatchedTelemetry(universe, dispatched);
+    ybUniverseReconciler.editUniverse(defaultCustomer, applied, ybUniverse);
+    Mockito.verify(upgradeUniverseHandler, Mockito.times(1))
+        .submitExportTelemetryConfigs(any(), any(), any());
+  }
+
+  @Test
+  public void testTelemetryDoesNotDispatchWhenOnlyDerivedFieldsDifferInTheStoredConfig()
+      throws Exception {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("tel-derived-stored", defaultProvider);
+    Telemetry telemetry = new Telemetry();
+    telemetry.setAuditLogs(crAuditLogs(false));
+    telemetry.setQueryLogs(crQueryLogs(false));
+    telemetry.setMetrics(crMetrics(false));
+    ybUniverse.getSpec().setTelemetry(telemetry);
+    Universe universe = createUniverseForTelemetryEdit(ybUniverse);
+    stubReadyTelemetryProviderCr();
+
+    // Stored state that is authored-equivalent to the CR but carries different server-derived
+    // values: the shape a config configured out of band, or written by an older code path, actually
+    // has. None of these are expressible in the manifest, so none of them may trigger a task - a
+    // comparison that read them raw would re-fire (and re-roll the pods) on every reconcile pass.
+    TelemetryConfig stored = operatorUtils.getDesiredTelemetryConfig(ybUniverse);
+    stored.getAuditLogConfig().setExportActive(false);
+    stored.getQueryLogConfig().setExportActive(false);
+    stored.getAuditLogConfig().getUniverseLogsExporterConfig().get(0).setAdditionalTags(null);
+    stored
+        .getMetricsExportConfig()
+        .getUniverseMetricsExporterConfig()
+        .get(0)
+        .setMetricsPrefix(null);
+    ExportTelemetryConfig row = new ExportTelemetryConfig();
+    row.setUniverseUuid(universe.getUniverseUUID());
+    row.setTelemetryConfig(stored);
+    row.save();
+
+    ybUniverseReconciler.editUniverse(
+        defaultCustomer, Universe.getOrBadRequest(universe.getUniverseUUID()), ybUniverse);
+
+    Mockito.verify(upgradeUniverseHandler, Mockito.never())
+        .submitExportTelemetryConfigs(any(), any(), any());
+  }
+
+  @Test
+  public void testTelemetryConvergesAgainstTheUserIntentMirrorWithNoTableRow() throws Exception {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("tel-userintent", defaultProvider);
+    Telemetry telemetry = new Telemetry();
+    telemetry.setAuditLogs(crAuditLogs(false));
+    telemetry.setQueryLogs(crQueryLogs(false));
+    telemetry.setMetrics(crMetrics(false));
+    ybUniverse.getSpec().setTelemetry(telemetry);
+    Universe universe = createUniverseForTelemetryEdit(ybUniverse);
+    stubReadyTelemetryProviderCr();
+
+    // audit, query and metrics are also mirrored into the primary cluster userIntent by paths that
+    // never write export_telemetry_config (e.g. edit universe), so a universe can have those
+    // sections applied with no table row at all.
+    TelemetryConfig stored = operatorUtils.getDesiredTelemetryConfig(ybUniverse);
+    Universe applied =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              UserIntent userIntent = details.getPrimaryCluster().userIntent;
+              userIntent.auditLogConfig = stored.getAuditLogConfig();
+              userIntent.queryLogConfig = stored.getQueryLogConfig();
+              userIntent.metricsExportConfig = stored.getMetricsExportConfig();
+              u.setUniverseDetails(details);
+            });
+    assertFalse(
+        "this test is only meaningful without a table row",
+        ExportTelemetryConfig.getForUniverse(applied.getUniverseUUID()).isPresent());
+
+    ybUniverseReconciler.editUniverse(defaultCustomer, applied, ybUniverse);
+
+    // Reading export_telemetry_config directly rather than through
+    // OtelCollectorUtil.getCurrentTelemetryConfig would see "no exports configured" here and
+    // re-dispatch on every pass, rolling the pods each time.
+    Mockito.verify(upgradeUniverseHandler, Mockito.never())
+        .submitExportTelemetryConfigs(any(), any(), any());
+  }
+
+  @Test
+  public void testAddingEachTelemetrySectionDispatchesExactlyOnce() throws Exception {
+    for (TelemetrySection section : telemetrySections()) {
+      Mockito.clearInvocations(upgradeUniverseHandler);
+      YBUniverse ybUniverse =
+          ModelFactory.createYbUniverse("tel-add-" + section.slug(), defaultProvider);
+      Universe universe = createUniverseForTelemetryEdit(ybUniverse);
+      stubReadyTelemetryProviderCr();
+
+      // No telemetry on either side yet.
+      ybUniverseReconciler.editUniverse(defaultCustomer, universe, ybUniverse);
+      Mockito.verify(upgradeUniverseHandler, Mockito.never())
+          .submitExportTelemetryConfigs(any(), any(), any());
+
+      ybUniverse.getSpec().setTelemetry(section.only(false));
+      ybUniverseReconciler.editUniverse(defaultCustomer, universe, ybUniverse);
+
+      ArgumentCaptor<ExportTelemetryConfigParams> captor =
+          ArgumentCaptor.forClass(ExportTelemetryConfigParams.class);
+      Mockito.verify(upgradeUniverseHandler, Mockito.times(1))
+          .submitExportTelemetryConfigs(captor.capture(), eq(defaultCustomer), any(Universe.class));
+      assertNotNull(
+          "adding " + section.exportType + " must carry that section in the dispatched params",
+          captor.getValue().getTelemetryConfig().section(section.exportType));
+      // The handler computes modifiedExportTypes by diffing against the stored config; the
+      // reconciler must not pre-empt it.
+      assertTrue(
+          "modifiedExportTypes is the handler's to compute",
+          captor.getValue().getModifiedExportTypes().isEmpty());
+    }
+  }
+
+  @Test
+  public void testChangingEachTelemetrySectionDispatchesExactlyOnce() throws Exception {
+    for (TelemetrySection section : telemetrySections()) {
+      Mockito.clearInvocations(upgradeUniverseHandler);
+      YBUniverse ybUniverse =
+          ModelFactory.createYbUniverse("tel-change-" + section.slug(), defaultProvider);
+      ybUniverse.getSpec().setTelemetry(section.only(false));
+      Universe universe = createUniverseForTelemetryEdit(ybUniverse);
+      stubReadyTelemetryProviderCr();
+
+      ybUniverseReconciler.editUniverse(defaultCustomer, universe, ybUniverse);
+      ArgumentCaptor<ExportTelemetryConfigParams> captor =
+          ArgumentCaptor.forClass(ExportTelemetryConfigParams.class);
+      Mockito.verify(upgradeUniverseHandler, Mockito.times(1))
+          .submitExportTelemetryConfigs(captor.capture(), any(Customer.class), any(Universe.class));
+      Universe applied = applyDispatchedTelemetry(universe, captor.getValue().getTelemetryConfig());
+
+      // One authored field of that section changes.
+      ybUniverse.getSpec().setTelemetry(section.only(true));
+      ybUniverseReconciler.editUniverse(defaultCustomer, applied, ybUniverse);
+
+      ArgumentCaptor<ExportTelemetryConfigParams> afterChange =
+          ArgumentCaptor.forClass(ExportTelemetryConfigParams.class);
+      Mockito.verify(upgradeUniverseHandler, Mockito.times(2))
+          .submitExportTelemetryConfigs(
+              afterChange.capture(), any(Customer.class), any(Universe.class));
+
+      // The changed section converges once applied - a change must not leave the branch armed.
+      Universe reapplied =
+          applyDispatchedTelemetry(applied, afterChange.getAllValues().get(1).getTelemetryConfig());
+      ybUniverseReconciler.editUniverse(defaultCustomer, reapplied, ybUniverse);
+      Mockito.verify(upgradeUniverseHandler, Mockito.times(2))
+          .submitExportTelemetryConfigs(any(), any(), any());
+    }
+  }
+
+  @Test
+  public void testRemovingEachTelemetrySectionDispatchesExactlyOnceWithANullSection()
+      throws Exception {
+    for (TelemetrySection section : telemetrySections()) {
+      Mockito.clearInvocations(upgradeUniverseHandler);
+      YBUniverse ybUniverse =
+          ModelFactory.createYbUniverse("tel-remove-" + section.slug(), defaultProvider);
+      ybUniverse.getSpec().setTelemetry(section.only(false));
+      Universe universe = createUniverseForTelemetryEdit(ybUniverse);
+      stubReadyTelemetryProviderCr();
+
+      ybUniverseReconciler.editUniverse(defaultCustomer, universe, ybUniverse);
+      ArgumentCaptor<ExportTelemetryConfigParams> captor =
+          ArgumentCaptor.forClass(ExportTelemetryConfigParams.class);
+      Mockito.verify(upgradeUniverseHandler, Mockito.times(1))
+          .submitExportTelemetryConfigs(captor.capture(), any(Customer.class), any(Universe.class));
+      Universe applied = applyDispatchedTelemetry(universe, captor.getValue().getTelemetryConfig());
+
+      // Deleting the section from the manifest is how that export gets disabled.
+      ybUniverse.getSpec().setTelemetry(new Telemetry());
+      ybUniverseReconciler.editUniverse(defaultCustomer, applied, ybUniverse);
+
+      ArgumentCaptor<ExportTelemetryConfigParams> afterRemoval =
+          ArgumentCaptor.forClass(ExportTelemetryConfigParams.class);
+      Mockito.verify(upgradeUniverseHandler, Mockito.times(2))
+          .submitExportTelemetryConfigs(
+              afterRemoval.capture(), any(Customer.class), any(Universe.class));
+      TelemetryConfig removal = afterRemoval.getAllValues().get(1).getTelemetryConfig();
+      assertNull(
+          "removing " + section.exportType + " must send a null section, not an empty object",
+          removal.section(section.exportType));
+      assertFalse(
+          "removing the only configured section must leave no exports at all",
+          removal.hasAnyConfig());
+
+      // The removal converges too.
+      Universe cleared = applyDispatchedTelemetry(applied, removal);
+      ybUniverseReconciler.editUniverse(defaultCustomer, cleared, ybUniverse);
+      Mockito.verify(upgradeUniverseHandler, Mockito.times(2))
+          .submitExportTelemetryConfigs(any(), any(), any());
+    }
+  }
+
+  @Test
+  public void testMetricsWithoutScrapeConfigTargetsDispatchesOnlyK8sSupportedTargets()
+      throws Exception {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("tel-targets", defaultProvider);
+    Metrics metrics = new Metrics();
+    metrics.setExporters(List.of(crMetricsExporter()));
+    // scrapeConfigTargets deliberately unset. The shared mapper would default it to
+    // EnumSet.allOf(ScrapeConfigTargetType.class), which adds the two VM-only targets that
+    // ExportTelemetryConfigParams.verifyParams rejects on a Kubernetes universe - i.e. every
+    // reconcile would 400.
+    Telemetry telemetry = new Telemetry();
+    telemetry.setMetrics(metrics);
+    ybUniverse.getSpec().setTelemetry(telemetry);
+    Universe universe = createUniverseForTelemetryEdit(ybUniverse);
+    stubReadyTelemetryProviderCr();
+
+    ybUniverseReconciler.editUniverse(defaultCustomer, universe, ybUniverse);
+
+    ArgumentCaptor<ExportTelemetryConfigParams> captor =
+        ArgumentCaptor.forClass(ExportTelemetryConfigParams.class);
+    Mockito.verify(upgradeUniverseHandler, Mockito.times(1))
+        .submitExportTelemetryConfigs(captor.capture(), eq(defaultCustomer), any(Universe.class));
+    Set<ScrapeConfigTargetType> targets =
+        captor.getValue().getMetricsExportConfig().getScrapeConfigTargets();
+    assertEquals(OtelCollectorUtil.K8S_SUPPORTED_SCRAPE_TARGETS, targets);
+    assertFalse(
+        "NODE_EXPORT is not reachable from inside the DB pods",
+        targets.contains(ScrapeConfigTargetType.NODE_EXPORT));
+    assertFalse(
+        "NODE_AGENT_EXPORT is not reachable from inside the DB pods",
+        targets.contains(ScrapeConfigTargetType.NODE_AGENT_EXPORT));
+    assertTrue(
+        "the dispatched targets must be accepted on a Kubernetes universe",
+        OtelCollectorUtil.getUnsupportedK8sScrapeTargets(captor.getValue().getMetricsExportConfig())
+            .isEmpty());
+  }
+
+  @Test
+  public void testTelemetryWithUnresolvableProviderDoesNotDispatch() throws Exception {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("tel-bad-provider", defaultProvider);
+    Telemetry telemetry = new Telemetry();
+    telemetry.setTserverLogs(crTserverLogs(false));
+    ybUniverse.getSpec().setTelemetry(telemetry);
+    Universe universe = createUniverseForTelemetryEdit(ybUniverse);
+    stubUnresolvableTelemetryProviderCr();
+
+    ybUniverseReconciler.editUniverse(defaultCustomer, universe, ybUniverse);
+
+    // An exporter naming a TelemetryProvider CR that is missing or not Ready must not queue an edit
+    // that cannot complete: it would flip the universe to ERROR_UPDATING on every resync and block
+    // unrelated edits. A later resync picks it up once the provider CR goes Ready.
+    Mockito.verify(upgradeUniverseHandler, Mockito.never())
+        .submitExportTelemetryConfigs(any(), any(), any());
+    Mockito.verify(kubernetesStatusUpdator, Mockito.never())
+        .updateUniverseState(
+            any(KubernetesResourceDetails.class), eq(UniverseState.ERROR_UPDATING));
+  }
+
+  @Test
+  public void testTelemetryDispatchFailsLoudlyWhenTheProviderCannotBeResolved() throws Exception {
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse("tel-race-provider", defaultProvider);
+    Telemetry telemetry = new Telemetry();
+    telemetry.setTserverLogs(crTserverLogs(false));
+    ybUniverse.getSpec().setTelemetry(telemetry);
+    Universe universe = createUniverseForTelemetryEdit(ybUniverse);
+
+    // The predicate saw a change, but resolving the exporter then failed - the provider CR was
+    // deleted between the two calls. Dispatching a config with an unresolved exporter would be
+    // worse than failing, so the reconciler must surface the reason.
+    Mockito.doReturn(true)
+        .when(operatorUtils)
+        .shouldUpdateTelemetry(any(Universe.class), any(YBUniverse.class));
+    Mockito.doThrow(
+            new Exception(
+                "Telemetry provider CR '"
+                    + TELEMETRY_PROVIDER_CR
+                    + "' not found in namespace 'test-namespace'"))
+        .when(operatorUtils)
+        .getDesiredTelemetryConfig(any(YBUniverse.class));
+
+    RuntimeException ex =
+        assertThrows(
+            RuntimeException.class,
+            () -> ybUniverseReconciler.editUniverse(defaultCustomer, universe, ybUniverse));
+    assertTrue(
+        "expected the resolution failure in the message, got: " + ex.getMessage(),
+        ex.getMessage().contains("Failed to resolve the desired telemetry config")
+            && ex.getMessage().contains(TELEMETRY_PROVIDER_CR));
+    Mockito.verify(upgradeUniverseHandler, Mockito.never())
+        .submitExportTelemetryConfigs(any(), any(), any());
+    Mockito.verify(kubernetesStatusUpdator, Mockito.times(1))
+        .updateUniverseState(
+            any(KubernetesResourceDetails.class), eq(UniverseState.ERROR_UPDATING));
+  }
+
+  @Test
+  public void testUnrelatedEditDoesNotClearUserIntentTelemetryMirror() throws Exception {
+    String universeName = "test-telemetry-mirror-preserved";
+    YBUniverse ybUniverse = ModelFactory.createYbUniverse(universeName, defaultProvider);
+    // Telemetry that the universe already has applied, so the telemetry branch - which sits before
+    // the structural edit on the chain - converges and the volume change is what gets dispatched.
+    Telemetry telemetry = new Telemetry();
+    telemetry.setAuditLogs(crAuditLogs(false));
+    telemetry.setQueryLogs(crQueryLogs(false));
+    telemetry.setMetrics(crMetrics(false));
+    ybUniverse.getSpec().setTelemetry(telemetry);
+
+    // The unrelated edit: a tserver volume resize.
+    ybUniverse.getSpec().setDeviceInfo(null);
+    io.yugabyte.operator.v1alpha1.ybuniversespec.TserverVolume tserverVolume =
+        new io.yugabyte.operator.v1alpha1.ybuniversespec.TserverVolume();
+    tserverVolume.setVolumeSize(100L);
+    tserverVolume.setNumVolumes(3L);
+    tserverVolume.setStorageClass("fast-ssd");
+    ybUniverse.getSpec().setTserverVolume(tserverVolume);
+
+    Region region = Region.create(defaultProvider, "region-1", "Region 1", "default-image");
+    AvailabilityZone az = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
+
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize = 50;
+    taskParams.getPrimaryCluster().userIntent.deviceInfo.numVolumes = 1;
+    Universe existingUniverse = Universe.create(taskParams, defaultCustomer.getId());
+    existingUniverse = ModelFactory.addNodesToUniverse(existingUniverse.getUniverseUUID(), 3);
+    Universe.saveDetails(
+        existingUniverse.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          Map<UUID, Integer> azToNumNodesMap = new HashMap<>();
+          for (NodeDetails node : details.nodeDetailsSet) {
+            if (node.isInPlacement(details.getPrimaryCluster().uuid)) {
+              node.azUuid = az.getUuid();
+              node.cloudInfo.az = az.getCode();
+              node.cloudInfo.region = region.getCode();
+              azToNumNodesMap.put(node.azUuid, azToNumNodesMap.getOrDefault(node.azUuid, 0) + 1);
+            }
+          }
+          if (!azToNumNodesMap.isEmpty()) {
+            details.getPrimaryCluster().placementInfo =
+                ModelFactory.constructPlacementInfoObject(azToNumNodesMap);
+          }
+          u.setUniverseDetails(details);
+        });
+
+    UUID providerUuid = stubReadyTelemetryProviderCr();
+    // Seed the applied state from the CR itself - what a completed telemetry task leaves behind.
+    existingUniverse =
+        applyDispatchedTelemetry(
+            Universe.getOrBadRequest(existingUniverse.getUniverseUUID()),
+            operatorUtils.getDesiredTelemetryConfig(ybUniverse));
+    assertNotNull(
+        existingUniverse.getUniverseDetails().getPrimaryCluster().userIntent.auditLogConfig);
+
+    Mockito.when(
+            confGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.rollingOpsWaitAfterEachPodMs)))
+        .thenReturn(10000);
+
+    ybUniverseReconciler.editUniverse(defaultCustomer, existingUniverse, ybUniverse);
+
+    // Telemetry converged, so this pass is a plain structural edit.
+    Mockito.verify(upgradeUniverseHandler, Mockito.never())
+        .submitExportTelemetryConfigs(any(), any(), any());
+    ArgumentCaptor<UniverseConfigureTaskParams> captor =
+        ArgumentCaptor.forClass(UniverseConfigureTaskParams.class);
+    Mockito.verify(universeCRUDHandler, Mockito.times(1))
+        .update(eq(defaultCustomer), any(Universe.class), captor.capture());
+    UserIntent edited = captor.getValue().getPrimaryCluster().userIntent;
+    assertEquals(100, edited.deviceInfo.volumeSize.intValue());
+    // The edit path mutates currentUserIntent field by field, so the audit/query/metrics mirror
+    // rides along untouched. A refactor that replaced the intent wholesale would silently disable
+    // the universe's telemetry export on the next unrelated edit, which is why this is pinned.
+    assertNotNull(
+        "userIntent.auditLogConfig must survive an unrelated edit", edited.auditLogConfig);
+    assertNotNull(
+        "userIntent.queryLogConfig must survive an unrelated edit", edited.queryLogConfig);
+    assertNotNull(
+        "userIntent.metricsExportConfig must survive an unrelated edit",
+        edited.metricsExportConfig);
+    assertEquals(
+        providerUuid,
+        edited.auditLogConfig.getUniverseLogsExporterConfig().get(0).getExporterUuid());
   }
 
   @Test

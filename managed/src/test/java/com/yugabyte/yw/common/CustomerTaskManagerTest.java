@@ -259,6 +259,59 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
     assertEquals(0, autoRetryableTaskUuids.size());
   }
 
+  // Retryability is decided in two independent places: the @ITask.Retryable annotation, which
+  // drives
+  // the retryable flag in the task API and therefore the Retry button, and the switch in
+  // retryCustomerTask that rebuilds task params. A task type annotated but missing from the switch
+  // renders a Retry button that always fails with "Invalid task type", so both halves are asserted
+  // here. testAutoRetryAbortedTasks covers only the annotation half - it supplies its own retry
+  // function and never reaches the switch.
+  @Test
+  public void testConfigureExportTelemetryConfigRetryRebuildsParams() {
+    when(mockCommissioner.getTaskParams(any())).thenReturn(Json.newObject());
+    for (TaskType taskType :
+        List.of(
+            TaskType.ConfigureExportTelemetryConfig,
+            TaskType.KubernetesConfigureExportTelemetryConfig)) {
+      assertTrue(
+          taskType + " must be annotated @ITask.Retryable",
+          Commissioner.isTaskTypeRetryable(taskType));
+      assertFalse(
+          taskType + " is missing a case in retryCustomerTask",
+          retryFailsWithUnmappedTaskType(taskType));
+    }
+  }
+
+  private boolean retryFailsWithUnmappedTaskType(TaskType taskType) {
+    TaskInfo taskInfo = new TaskInfo(taskType, null);
+    taskInfo.setTaskParams(Json.newObject());
+    taskInfo.setOwner("");
+    taskInfo.setYbaVersion(Util.getYbaVersion());
+    taskInfo.setTaskState(TaskInfo.State.Failure);
+    taskInfo.save();
+    Pair<CustomerTask.TaskType, CustomerTask.TargetType> pair =
+        Iterables.getFirst(taskType.getCustomerTaskIds(), null);
+    CustomerTask cTask =
+        CustomerTask.create(
+            customer,
+            UUID.randomUUID(),
+            taskInfo.getUuid(),
+            pair.getSecond(),
+            pair.getFirst(),
+            "FakeTarget");
+    cTask.setCompletionTime(new Date());
+    cTask.save();
+    try {
+      taskManager.retryCustomerTask(customer.getUuid(), taskInfo.getUuid());
+      return false;
+    } catch (Exception e) {
+      // Other failures are expected with these synthetic fixtures (no such universe,
+      // updatingTaskUUID
+      // mismatch); only an unmapped task type is the defect under test.
+      return e.getMessage() != null && e.getMessage().contains("Invalid task type");
+    }
+  }
+
   @Test
   public void testUpdateUniverseSoftwareUpgradeStateSetMarksInProgressAzFailed() {
     universe = ModelFactory.createUniverse(customer.getId());

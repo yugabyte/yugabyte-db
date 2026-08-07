@@ -136,6 +136,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.ModifyQueryLoggingConfig,
           TaskType.ModifyMetricsExportConfig,
           TaskType.ConfigureExportTelemetryConfig,
+          TaskType.KubernetesConfigureExportTelemetryConfig,
           TaskType.StartMasterOnNode,
           TaskType.MasterFailover,
           TaskType.SyncMasterAddresses,

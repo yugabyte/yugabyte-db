@@ -30,6 +30,7 @@ import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
+import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
@@ -894,6 +895,22 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                   ybUniverse,
                   incomingIntent.specificGFlags,
                   false /* isRerun */);
+          // Handle telemetry export config. Placed next to gflags because telemetry is
+          // gflag-adjacent: audit and query log settings are delivered as ysql_pg_conf_csv entries.
+          // The chain applies one operation per pass, so a manifest that changes both gflags and
+          // telemetry performs two sequential rolling operations.
+        } else if (operatorUtils.shouldUpdateTelemetry(universe, ybUniverse)) {
+          log.info("Updating telemetry export config");
+          kubernetesStatusUpdater.createYBUniverseEventStatus(
+              universe,
+              k8ResourceDetails,
+              TaskType.KubernetesConfigureExportTelemetryConfig.name());
+          if (checkAndHandleUniverseLock(
+              ybUniverse, universe, OperatorWorkQueue.ResourceAction.NO_OP)) {
+            return;
+          }
+          kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
+          taskUUID = updateTelemetryYbUniverse(universeDetails, cust, ybUniverse);
         } else if (!currentUserIntent.ybSoftwareVersion.equals(incomingIntent.ybSoftwareVersion)) {
           log.info("Upgrading software");
           kubernetesStatusUpdater.createYBUniverseEventStatus(
@@ -1088,6 +1105,43 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
 
     log.info("Upgrade universe with new GFlags");
     return upgradeUniverseHandler.upgradeGFlags(requestParams, cust, oldUniverse);
+  }
+
+  private UUID updateTelemetryYbUniverse(
+      UniverseDefinitionTaskParams taskParams, Customer cust, YBUniverse ybUniverse) {
+    ObjectMapper mapper =
+        Json.mapper()
+            .copy()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+            .configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+    ExportTelemetryConfigParams requestParams = new ExportTelemetryConfigParams();
+    try {
+      requestParams =
+          mapper.readValue(
+              mapper.writeValueAsString(taskParams), ExportTelemetryConfigParams.class);
+    } catch (Exception e) {
+      log.error("Failed at creating export telemetry config params", e);
+      throw new RuntimeException("Failed to create export telemetry config params", e);
+    }
+    // The full desired state for every export type, with each exporter's TelemetryProvider CR name
+    // resolved to a YBA UUID. modifiedExportTypes is deliberately left alone: the handler computes
+    // it by diffing this against the universe's currently stored config.
+    try {
+      requestParams.setTelemetryConfig(operatorUtils.getDesiredTelemetryConfig(ybUniverse));
+    } catch (Exception e) {
+      log.error("Failed to resolve the desired telemetry config from the universe CR", e);
+      throw new RuntimeException(
+          "Failed to resolve the desired telemetry config: " + e.getMessage(), e);
+    }
+
+    Universe oldUniverse = resolveExistingUniverseQuietly(cust, ybUniverse).orElse(null);
+    if (oldUniverse == null) {
+      throw new RuntimeException("Universe not found: " + getUniverseName(ybUniverse));
+    }
+
+    requestParams.setUniverseUUID(oldUniverse.getUniverseUUID());
+    log.info("Configuring telemetry export for universe {}", oldUniverse.getName());
+    return upgradeUniverseHandler.submitExportTelemetryConfigs(requestParams, cust, oldUniverse);
   }
 
   private UUID upgradeYBUniverse(

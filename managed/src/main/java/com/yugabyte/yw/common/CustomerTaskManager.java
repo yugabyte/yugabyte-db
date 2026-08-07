@@ -1003,6 +1003,7 @@ public class CustomerTaskManager {
         taskParams = Json.fromJson(oldTaskParams, MetricsExportConfigParams.class);
         break;
       case ConfigureExportTelemetryConfig:
+      case KubernetesConfigureExportTelemetryConfig:
         taskParams = Json.fromJson(oldTaskParams, ExportTelemetryConfigParams.class);
         break;
       case AddNodeToUniverse:
