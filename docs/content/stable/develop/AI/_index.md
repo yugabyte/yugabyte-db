@@ -21,6 +21,14 @@ Learn more about developing GenAI and RAG applications with YugabyteDB:
 - [How to Build a RAG Workflow for Agentic AI without Code](https://www.yugabyte.com/blog/build-a-rag-workflow-for-agentic-ai-without-codev/)
 - [From RAG to Riches: AI That Knows Your Support Stack](https://www.yugabyte.com/blog/rag-ai-that-knows-your-support-stack/)
 
+## YugabyteDB MCP server and skills
+
+The YugabyteDB MCP Server is a lightweight, Python-based server that enables agents to securely connect to access, query, analyze, and interpret data in your YugabyteDB database using natural language prompts. Complement the MCP server with YugabyteDB Agent Skills. These structured skill packages give AI coding agents native YugabyteDB expertise for schema design, API usage, operations, and RAG workflows.
+
+{{<lead link="mcp-server/">}}
+Install skills and connect to the [MCP server](mcp-server/).
+{{</lead>}}
+
 ## Get started
 
 {{<tip>}}
