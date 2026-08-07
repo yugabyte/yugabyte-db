@@ -630,14 +630,15 @@ void ThreadMgr::RenderThreadGroup(const std::string& group, std::ostream& output
 std::vector<ThreadIdAndName> ThreadMgr::ListThreads() {
   std::vector<ThreadIdAndName> result;
   std::lock_guard lock(mutex_);
-  for (const auto& [_, category] : thread_categories_) {
+  result.reserve(descriptors_by_id_.size());
+  for (const auto& [category_name, category] : thread_categories_) {
     for (const auto& descriptor : category) {
 #if defined(__linux__)
       auto tid_for_stack = descriptor.thread_id;
 #else
       auto tid_for_stack = descriptor.pthread_id;
 #endif
-      result.push_back(ThreadIdAndName{tid_for_stack, descriptor.name});
+      result.push_back(ThreadIdAndName{tid_for_stack, descriptor.name, category_name});
     }
   }
   return result;

@@ -30,6 +30,7 @@
 // under the License.
 //
 
+#include <algorithm>
 #include <string>
 
 #include <gtest/gtest.h>
@@ -42,16 +43,21 @@
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/yb_rpc.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 
-DECLARE_int32(rpc_queue_stack_dump_min_polls);
+DECLARE_int32(rpc_queue_stack_dump_max_interval_ms);
+DECLARE_int32(rpc_queue_stack_dump_min_interval_ms);
 DECLARE_int32(rpc_queue_stack_dump_poll_interval_ms);
 DECLARE_int64(rpc_queue_stack_dump_threshold);
 
@@ -64,6 +70,37 @@ using namespace std::literals;
 
 namespace yb {
 namespace rpc {
+
+class BlockingCalculatorService : public GenericCalculatorService {
+ public:
+  explicit BlockingCalculatorService(size_t num_workers) : workers_blocked_(num_workers) {}
+
+  void Handle(InboundCallPtr incoming) override {
+    workers_blocked_.CountDown();
+    release_workers_.Wait();
+    GenericCalculatorService::Handle(std::move(incoming));
+  }
+
+  bool WaitForWorkers(MonoDelta timeout) const {
+    return workers_blocked_.WaitFor(timeout);
+  }
+
+  void ReleaseWorkers() {
+    release_workers_.CountDown();
+  }
+
+ private:
+  CountDownLatch workers_blocked_;
+  CountDownLatch release_workers_{1};
+};
+
+class QueueSizeRpcService : public RpcService {
+ public:
+  void FillEndpoints(RpcEndpointMap*) override {}
+  void Process(InboundCallPtr, Queue) override {}
+  void StartShutdown() override {}
+  void CompleteShutdown() override {}
+};
 
 class MultiThreadedRpcTest : public RpcTestBase {
  public:
@@ -102,36 +139,39 @@ class MultiThreadedRpcTest : public RpcTestBase {
     }
   }
 
-  // Starts a server whose only service has a tiny queue served by a worker pool with no workers,
-  // then saturates it so that the service queue depth stays at its maximum until shutdown. When
-  // enabled is true, verifies that the RPC queue depth monitor dumps thread stacks to the log
-  // and that repeated dumps are suppressed with an exponentially growing backoff. When enabled
-  // is false, verifies that no dump is produced while the queue stays full.
-  void VerifyQueueStackDump(bool enabled);
+  // Blocks all RPC workers, fills the service queue, and verifies the queue monitor behavior.
+  void VerifyQueueStackDump(bool enabled, bool enable_after_queue_buildup = false);
 };
 
-void MultiThreadedRpcTest::VerifyQueueStackDump(bool enabled) {
-  const size_t kMaxConcurrency = 2;
+void MultiThreadedRpcTest::VerifyQueueStackDump(bool enabled, bool enable_after_queue_buildup) {
+  constexpr size_t kNumWorkers = 2;
+  constexpr size_t kQueueSize = 2;
+  constexpr size_t kNumCalls = kNumWorkers + kQueueSize;
 
   // Register the log sinks before the monitor has any chance to log.
   StringWaiterLogSink dump_sink("Dumping thread stacks");
+  StringWaiterLogSink fallback_sink("falling back to all managed threads");
   StringWaiterLogSink stacks_sink("thread(s) with stack");
-  // With a 100 ms poll interval and 2 consecutive polls required, the suppression interval is
-  // 200 ms after the first dump and doubles to 400 ms after the second one.
-  StringWaiterLogSink first_dump_sink("Suppressing further dumps for 200 ms.");
-  StringWaiterLogSink second_dump_sink("Suppressing further dumps for 400 ms.");
+  RegexWaiterLogSink worker_stacks_sink(
+      "[\\s\\S]*2 thread\\(s\\) with stack \\["
+      "(messenger1_1_worker-[0-9]+, messenger1_2_worker-[0-9]+|"
+      "messenger1_2_worker-[0-9]+, messenger1_1_worker-[0-9]+)"
+      "\\]:[\\s\\S]*");
+  RegexWaiterLogSink first_dump_sink(
+      "[\\s\\S]*Suppressing further dumps for (2[0-4][0-9]|250) ms\\.[\\s\\S]*");
+  RegexWaiterLogSink second_dump_sink(
+      "[\\s\\S]*Suppressing further dumps for (4[0-4][0-9]|450) ms\\.[\\s\\S]*");
 
-  // The monitor thread starts when the service is registered below, so it is safe to assign
-  // the flags directly here.
-  FLAGS_rpc_queue_stack_dump_poll_interval_ms = 100;
-  FLAGS_rpc_queue_stack_dump_min_polls = 2;
-  if (enabled) {
-    FLAGS_rpc_queue_stack_dump_threshold = 1;
-  }
+  FLAGS_rpc_queue_stack_dump_max_interval_ms = 1000;
+  FLAGS_rpc_queue_stack_dump_min_interval_ms = 200;
+  FLAGS_rpc_queue_stack_dump_poll_interval_ms = 50;
+  FLAGS_rpc_queue_stack_dump_threshold =
+      enabled && !enable_after_queue_buildup ? kQueueSize : 0;
 
   MessengerBuilder bld("messenger1");
-  bld.set_num_reactors(kMaxConcurrency);
+  bld.set_num_reactors(1);
   bld.set_metric_entity(metric_entity());
+  bld.set_thread_pool_options(kNumWorkers);
   std::unique_ptr<Messenger> server_messenger = ASSERT_RESULT(bld.Build());
 
   Endpoint server_addr;
@@ -139,39 +179,51 @@ void MultiThreadedRpcTest::VerifyQueueStackDump(bool enabled) {
       CreateConnectionContextFactory<YBInboundConnectionContext>(),
       Endpoint(), &server_addr));
 
-  std::unique_ptr<ServiceIf> service(new GenericCalculatorService());
+  std::unique_ptr<ServiceIf> service(new BlockingCalculatorService(kNumWorkers));
+  auto* blocking_service = down_cast<BlockingCalculatorService*>(service.get());
   auto service_name = service->service_name();
-  ThreadPoolPtr thread_pool = std::make_shared<ThreadPool>(
-      ThreadPoolOptions {
-        .name = "bogus_pool",
-        .max_workers = 0
-      });
   scoped_refptr<ServicePool> service_pool(new ServicePool(
-      kMaxConcurrency, [thread_pool](auto) { return thread_pool; },
+      kQueueSize,
+      [messenger = server_messenger.get()](auto) {
+        return messenger->ThreadPoolPtr(ServicePriority::kNormal);
+      },
       &server_messenger->scheduler(), std::move(service), metric_entity()));
   ASSERT_OK(server_messenger->RegisterService(service_name, service_pool));
   ASSERT_OK(server_messenger->StartAcceptor());
 
-  // Two calls get stuck in the service queue forever because the worker pool has no workers,
-  // and the third one fails immediately due to queue overflow, which counts down the latch.
-  // From that point the service queue depth stays at kMaxConcurrency until shutdown.
-  scoped_refptr<yb::Thread> threads[3];
-  Status status[3];
-  CountDownLatch latch(1);
-  for (int i = 0; i < 3; i++) {
-    ASSERT_OK(yb::Thread::Create("test", strings::Substitute("t$0", i),
-      &MultiThreadedRpcTest::SingleCall, this, HostPort::FromBoundEndpoint(server_addr),
-      CalculatorServiceMethods::AddMethod(), &status[i], &latch, &threads[i]));
+  TestThreadHolder call_threads;
+  auto release_workers = ScopeExit([blocking_service] { blocking_service->ReleaseWorkers(); });
+  Status statuses[kNumCalls];
+  CountDownLatch calls_done(kNumCalls);
+  const auto host_port = HostPort::FromBoundEndpoint(server_addr);
+  auto start_call = [&](size_t index) {
+    call_threads.AddThread([&, index] {
+      SingleCall(
+          host_port, CalculatorServiceMethods::AddMethod(), &statuses[index], &calls_done);
+    });
+  };
+
+  for (size_t i = 0; i != kNumWorkers; ++i) {
+    start_call(i);
   }
-  latch.Wait();
+  ASSERT_TRUE(blocking_service->WaitForWorkers(MonoDelta::FromSeconds(60)));
+  for (size_t i = kNumWorkers; i != kNumCalls; ++i) {
+    start_call(i);
+  }
+  ASSERT_OK(WaitFor(
+      [&] { return service_pool->QueueSize() == kQueueSize; }, MonoDelta::FromSeconds(60),
+      "RPC service queue to fill"));
+
+  if (enable_after_queue_buildup) {
+    ASSERT_OK(SET_FLAG(rpc_queue_stack_dump_threshold, static_cast<int64_t>(kQueueSize)));
+  }
 
   if (enabled) {
     ASSERT_OK(first_dump_sink.WaitFor(MonoDelta::FromSeconds(60)));
-    ASSERT_OK(stacks_sink.WaitFor(MonoDelta::FromSeconds(60)));
-    // The queue stays over the threshold, so the monitor keeps dumping, with a doubled
-    // suppression interval.
+    ASSERT_OK(worker_stacks_sink.WaitFor(MonoDelta::FromSeconds(60)));
     ASSERT_OK(second_dump_sink.WaitFor(MonoDelta::FromSeconds(60)));
     ASSERT_GE(dump_sink.GetEventCount(), 2);
+    ASSERT_EQ(fallback_sink.GetEventCount(), 0);
   } else {
     // Give the monitor ample time to poll the full queue.
     SleepFor(MonoDelta::FromSeconds(2));
@@ -179,14 +231,13 @@ void MultiThreadedRpcTest::VerifyQueueStackDump(bool enabled) {
     ASSERT_EQ(stacks_sink.GetEventCount(), 0);
   }
 
-  server_messenger->UnregisterAllServices();
-  service_pool->Shutdown();
-  thread_pool->Shutdown();
-  server_messenger->Shutdown();
-
-  for (const auto& thread : threads) {
-    ASSERT_OK(ThreadJoiner(thread.get()).warn_every(500ms).Join());
+  blocking_service->ReleaseWorkers();
+  ASSERT_TRUE(calls_done.WaitFor(MonoDelta::FromSeconds(60)));
+  call_threads.JoinAll();
+  for (const auto& status : statuses) {
+    ASSERT_OK(status);
   }
+  server_messenger->Shutdown();
 }
 
 // Test that sustained RPC service queue buildup triggers a thread stack dump in the log when
@@ -200,6 +251,30 @@ TEST_F(MultiThreadedRpcTest, QueueStackDumpOnSustainedQueueBuildup) {
 // rpc_queue_stack_dump_threshold is left at its default of 0 (disabled).
 TEST_F(MultiThreadedRpcTest, NoQueueStackDumpWhenDisabled) {
   VerifyQueueStackDump(/* enabled= */ false);
+}
+
+TEST_F(MultiThreadedRpcTest, QueueStackDumpCanBeEnabledAtRuntime) {
+  VerifyQueueStackDump(/* enabled= */ true, /* enable_after_queue_buildup= */ true);
+}
+
+TEST_F(MultiThreadedRpcTest, QueueStackDumpUsesOneProcessGlobalMonitor) {
+  std::unique_ptr<Messenger> messenger1 = ASSERT_RESULT(MessengerBuilder("messenger1").Build());
+  std::unique_ptr<Messenger> messenger2 = ASSERT_RESULT(MessengerBuilder("messenger2").Build());
+  auto shutdown = ScopeExit([&] {
+    messenger1->Shutdown();
+    messenger2->Shutdown();
+  });
+
+  ASSERT_OK(messenger1->RegisterService("service1", RpcServicePtr(new QueueSizeRpcService)));
+  ASSERT_OK(messenger2->RegisterService("service2", RpcServicePtr(new QueueSizeRpcService)));
+  ASSERT_OK(WaitFor(
+      [] {
+        const auto threads = ListThreadsForStackTrace();
+        return std::count_if(threads.begin(), threads.end(), [](const auto& thread) {
+          return thread.category == "rpc_queue";
+        }) == 1;
+      },
+      MonoDelta::FromSeconds(60), "single process-wide RPC queue monitor"));
 }
 
 static void AssertShutdown(yb::Thread* thread, const Status* status) {

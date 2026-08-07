@@ -434,6 +434,7 @@ size_t CountStartedThreads();
 struct ThreadIdAndName {
   ThreadIdForStack tid_for_stack;
   std::string name;
+  std::string category;
 };
 
 // Lists all live threads registered with the global thread manager.

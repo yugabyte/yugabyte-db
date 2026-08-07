@@ -58,9 +58,9 @@ class RpcService : public RefCountedThreadSafe<RpcService> {
   // Wait until RPC sevrice shutdown completes.
   virtual void CompleteShutdown() = 0;
 
-  // Returns the number of calls currently queued for processing by this service.
-  // Services that do not maintain a queue report 0.
-  virtual size_t QueuedCalls() const { return 0; }
+  // Returns a best-effort snapshot of calls admitted to this service whose processing has not
+  // started. Actively executing calls are excluded. Services that do not maintain a queue report 0.
+  virtual size_t QueueSize() const { return 0; }
 
   void Shutdown() {
     StartShutdown();

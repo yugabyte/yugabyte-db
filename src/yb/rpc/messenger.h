@@ -246,6 +246,9 @@ class Messenger : public ProxyContext {
 
   // Register a new RpcService to handle inbound requests.
   Status RegisterService(const std::string& service_name, const RpcServicePtr& service);
+  Status RegisterService(
+      const std::string& service_name, const RpcServicePtr& service,
+      ServicePriority priority);
 
   void UnregisterAllServices();
 

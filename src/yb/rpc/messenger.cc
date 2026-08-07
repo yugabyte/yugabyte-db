@@ -197,25 +197,32 @@ void Messenger::Shutdown() {
   }
   VLOG_WITH_PREFIX(1) << "shutting down messenger";
 
+  // Since we're shutting down, it's OK to block.
+  ThreadRestrictions::ScopedAllowWait allow_wait;
+
+  std::unique_ptr<ServiceQueueMonitor> service_queue_monitor;
+  {
+    std::lock_guard guard(lock_);
+    service_queue_monitor.swap(service_queue_monitor_);
+  }
+  if (service_queue_monitor) {
+    service_queue_monitor->Shutdown();
+    service_queue_monitor.reset();
+  }
+
   ShutdownThreadPools();
   ShutdownAcceptor();
   UnregisterAllServices();
 
-  // Since we're shutting down, it's OK to block.
-  ThreadRestrictions::ScopedAllowWait allow_wait;
-
   std::vector<Reactor*> reactors;
   std::unique_ptr<Acceptor> acceptor;
   std::unique_ptr<ReactorMonitor> reactor_monitor;
-  std::unique_ptr<ServiceQueueMonitor> service_queue_monitor;
   {
     std::lock_guard guard(lock_);
 
     acceptor.swap(acceptor_);
 
     reactor_monitor.swap(reactor_monitor_);
-
-    service_queue_monitor.swap(service_queue_monitor_);
 
     for (const auto& reactor : reactors_) {
       reactors.push_back(reactor.get());
@@ -229,11 +236,6 @@ void Messenger::Shutdown() {
   if (reactor_monitor) {
     reactor_monitor->Shutdown();
     reactor_monitor.reset();
-  }
-
-  if (service_queue_monitor) {
-    service_queue_monitor->Shutdown();
-    service_queue_monitor.reset();
   }
 
   for (auto* reactor : reactors) {
@@ -455,6 +457,12 @@ Result<ThreadPoolPtr> Messenger::TaggedThreadPool(TaggedThreadPools::Tag tag) {
 // Register a new RpcService to handle inbound requests.
 Status Messenger::RegisterService(
     const std::string& service_name, const scoped_refptr<RpcService>& service) {
+  return RegisterService(service_name, service, ServicePriority::kNormal);
+}
+
+Status Messenger::RegisterService(
+    const std::string& service_name, const scoped_refptr<RpcService>& service,
+    ServicePriority priority) {
   DCHECK(service);
   rpc_services_.emplace(service_name, service);
   {
@@ -462,7 +470,7 @@ Status Messenger::RegisterService(
     if (!service_queue_monitor_) {
       service_queue_monitor_ = std::make_unique<ServiceQueueMonitor>(name_);
     }
-    service_queue_monitor_->Track(service_name, service);
+    service_queue_monitor_->Track(service_name, service, priority);
   }
   return Status::OK();
 }
