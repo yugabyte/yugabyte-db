@@ -14,8 +14,11 @@ YugabyteDB offers the familiarity and extensibility of PostgreSQL, while also de
 
 Using the [pgvector](../../additional-features/pg-extensions/extension-pgvector/) PostgreSQL extension, YugabyteDB functions as a highly performant vector database, with enterprise scale and resilience. This means you can use YugabyteDB to support Retrieval-augmented generation (RAG) workloads, providing AI agents with knowledge of your unstructured data, while its scalability allows it to store and search billions of vectors.
 
+For integrated document preprocessing and embedding generation from SQL, use the [pg_dist_rag](distributed-rag/) extension {{<tags/feature/tp>}} (YugabyteDB {{<release "2025.2">}} or later). It registers document sources, coordinates distributed chunking and embedding pipelines, and stores vectors in pgvector indexes—without building external ETL.
+
 Learn more about developing GenAI and RAG applications with YugabyteDB:
 
+- [Beyond RAG: Using YugabyteDB as the Foundation for Reliable AI Decisions](https://www.yugabyte.com/blog/using-yugabytedb-for-reliable-ai-decisions/)
 - [Introducing New YugabyteDB Functionality for Ultra-Resilient AI Apps](https://www.yugabyte.com/blog/new-yugabytedb-functionality-for-ultra-resilient-ai-apps/)
 - [Introducing the YugabyteDB MCP Server](https://www.yugabyte.com/blog/yugabytedb-mcp-server/)
 - [How to Build a RAG Workflow for Agentic AI without Code](https://www.yugabyte.com/blog/build-a-rag-workflow-for-agentic-ai-without-codev/)
@@ -24,7 +27,7 @@ Learn more about developing GenAI and RAG applications with YugabyteDB:
 ## Get started
 
 {{<tip>}}
-Use YugabyteDB {{<release "2025.2">}} or later to get the latest vector indexing capabilities and MCP features.
+Use YugabyteDB {{<release "2025.2">}} or later to get the latest vector indexing capabilities, pg_dist_rag pipelines, and MCP features.
 
 No cluster? No problem. Run the [latest YugabyteDB version locally](https://download.yugabyte.com) on macOS (using Docker or the yugabyted binary) or any Linux VM to try these tutorials.
 {{</tip>}}
@@ -55,6 +58,7 @@ Explore the following tutorials to see how YugabyteDB integrates with different 
 | [YugabyteDB MCP server](mcp-server/) | Enable LLMs to interact directly with YugabyteDB using natural language. | Claude / Cursor | External |
 | [LlamaIndex](ai-llamaindex-openai/) | Connect LLMs to structured and unstructured data using LlamaIndex. | OpenAI / LlamaIndex | External |
 | [LangChain](ai-langchain-openai/) | Build a natural language interface to query your database without writing SQL. | OpenAI / LangChain | External |
+| [Distributed RAG](distributed-rag/) | Build distributed RAG pipelines with integrated document preprocessing and embedding generation from SQL. | OpenAI / LangChain / Unstructured.io | External |
 
 <!--
 ## Retrieval-augmented generation
