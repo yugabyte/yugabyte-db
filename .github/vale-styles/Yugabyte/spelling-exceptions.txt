@@ -102,6 +102,8 @@ canonicalized
 captcha
 CentOS
 Certbot
+cgroup
+cgroups
 chai
 changeset
 changesets
@@ -426,6 +428,7 @@ Monokai
 monorepo
 monorepos
 multiline
+multitenancy
 mutex
 nameserver
 nameservers
