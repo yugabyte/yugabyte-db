@@ -102,6 +102,10 @@ nostd::shared_ptr<opentelemetry::trace::Tracer> GetDistTracer();
 bool IsDistTraceEnabled();
 trace::SpanContext GetTraceparentSpanContext(const char* traceparent);
 
+// Serializes the active span into a W3C traceparent string via the global propagator (inverse of
+// GetTraceparentSpanContext); hands the context to another process. Empty when disabled/no context.
+std::string GetActiveTraceparent();
+
 trace::SpanContext GetActiveSpanContext();
 
 bool IsSpanContextValidAndRemote(const trace::SpanContext& span_context);
