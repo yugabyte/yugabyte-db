@@ -25,6 +25,7 @@
 #include "yb/tserver/backup.proxy.h"
 
 #include "yb/util/async_task_util.h"
+#include "yb/util/dist_trace.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/metrics_fwd.h"
 #include "yb/util/result.h"
@@ -245,6 +246,10 @@ class RetryingRpcTask : public server::RunnableMonitoredTask {
 
   virtual int num_max_retries();
   virtual int max_delay_ms();
+
+  // Trace context active when this task was created, re-activated at the top of Run() so the task's
+  // RPCs nest under it. Invalid (no-op) when created outside a traced origin.
+  dist_trace::trace::SpanContext trace_parent_ = dist_trace::trace::SpanContext::GetInvalid();
 };
 
 // A background task which continuously retries sending an RPC to master server.
