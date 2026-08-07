@@ -42,8 +42,8 @@ struct SpanWithScope {
 
   ~SpanWithScope() { End(); }
 
-  SpanWithScope(SpanWithScope&&) = default;
-  SpanWithScope& operator=(SpanWithScope&&) = default;
+  SpanWithScope(SpanWithScope&&) = delete;
+  SpanWithScope& operator=(SpanWithScope&&) = delete;
   SpanWithScope(const SpanWithScope&) = delete;
   SpanWithScope& operator=(const SpanWithScope&) = delete;
 
@@ -84,7 +84,7 @@ struct SpanWithScope {
   std::thread::id owner_thread = std::this_thread::get_id();
 };
 
-using SpanWithScopePtr = std::shared_ptr<SpanWithScope>;
+using SpanWithScopePtr = std::unique_ptr<SpanWithScope>;
 
 // OTel service.name for the ysql (postgres backend) process, passed to InitDistTrace at startup.
 inline constexpr char kYsqlServiceName[] = "ysql";

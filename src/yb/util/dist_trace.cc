@@ -343,7 +343,7 @@ SpanWithScopePtr StartClientSpanWithScope(std::string_view op_name) {
 
   trace::StartSpanOptions options;
   options.kind = trace::SpanKind::kClient;
-  return std::make_shared<SpanWithScope>(StartSpan(op_name, SpanAttrsView(pending), options));
+  return std::make_unique<SpanWithScope>(StartSpan(op_name, SpanAttrsView(pending), options));
 }
 
 SpanWithScopePtr ActivateParentScope(const trace::SpanContext& parent_context) {
@@ -351,7 +351,7 @@ SpanWithScopePtr ActivateParentScope(const trace::SpanContext& parent_context) {
     return nullptr;
   }
   // A non-recording span that merely carries parent_context.
-  return std::make_shared<SpanWithScope>(
+  return std::make_unique<SpanWithScope>(
       nostd::shared_ptr<trace::Span>(new trace::DefaultSpan(parent_context)));
 }
 
