@@ -51,6 +51,7 @@
 
 #include "yb/tablet/operations/operation.h"
 
+#include "yb/util/dist_trace.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/trace.h"
@@ -268,6 +269,9 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // Trace object for tracing any operations started by this driver.
   scoped_refptr<Trace> trace_;
   const ash::WaitStateInfoPtr wait_state_;
+
+  // OpenTelemetry trace context of the submitting thread
+  const dist_trace::trace::SpanContext otel_parent_ = dist_trace::trace::SpanContext::GetInvalid();
 
   const MonoTime start_time_;
 
