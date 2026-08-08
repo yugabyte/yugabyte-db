@@ -1201,6 +1201,21 @@ ThereAreNoReadyPortals(void)
 }
 
 /*
+ * YB: invoke callback on every existing portal.
+ */
+void
+YbForEachPortal(void (*callback) (Portal portal))
+{
+	HASH_SEQ_STATUS status;
+	PortalHashEnt *hentry;
+
+	hash_seq_init(&status, PortalHashTable);
+
+	while ((hentry = (PortalHashEnt *) hash_seq_search(&status)) != NULL)
+		callback(hentry->portal);
+}
+
+/*
  * Hold all pinned portals.
  *
  * When initiating a COMMIT or ROLLBACK inside a procedure, this must be

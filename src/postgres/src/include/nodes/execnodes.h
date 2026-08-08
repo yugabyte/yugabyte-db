@@ -775,6 +775,8 @@ typedef struct EState
 
 	/* YB: Indicates that execution state allows nodes to apply read ahead optimization (if any) */
 	bool yb_read_ahead_allowed;
+
+	bool		yb_dist_trace_has_node_spans;
 } EState;
 
 /*
@@ -1216,6 +1218,12 @@ typedef struct PlanState
 	bool		outeropsset;
 	bool		inneropsset;
 	bool		resultopsset;
+
+	/*
+	 * YB : handle to this node's live span; kept across calls so scope can be
+	 * pushed/popped per call - one span per node, not per tuple
+	 */
+	YbcOtelNodeSpan yb_dist_trace_node_span;
 } PlanState;
 
 /* ----------------
