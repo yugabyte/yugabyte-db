@@ -24,6 +24,10 @@ Use the `DROP INDEX` statement to remove an index from the database.
 
 ## Semantics
 
+#### CONCURRENTLY
+
+Drop the index without blocking concurrent reads and writes on its table. Only one index can be specified, `CASCADE` is not supported, and the statement cannot run inside a transaction block. Indexes on partitioned tables cannot be dropped concurrently.
+
 #### *if_exists*
 
 Under normal operation, an error is raised if the index does not exist.  Adding `IF EXISTS` will quietly ignore any non-existent indexes specified.

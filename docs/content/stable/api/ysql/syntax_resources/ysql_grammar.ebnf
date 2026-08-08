@@ -1073,7 +1073,7 @@ drop_table = 'DROP' 'TABLE' [ 'IF' 'EXISTS' ] table_name { ',' table_name}
                   [ 'CASCADE' | 'RESTRICT' ] ;
 
 (* 'DROP' 'INDEX' *)
-drop_index = 'DROP' 'INDEX' [ 'IF' 'EXISTS' ] index_name [ 'CASCADE' | 'RESTRICT' ] ;
+drop_index = 'DROP' 'INDEX' [ 'CONCURRENTLY' ] [ 'IF' 'EXISTS' ] index_name [ 'CASCADE' | 'RESTRICT' ] ;
 
 index_name = name ;
 

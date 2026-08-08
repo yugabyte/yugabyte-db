@@ -7368,7 +7368,6 @@ DropStmt:	DROP object_type_any_name IF_P EXISTS any_name_list opt_drop_behavior
 				}
 			| DROP INDEX CONCURRENTLY any_name_list opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "DROP INDEX CONCURRENTLY");
 					DropStmt *n = makeNode(DropStmt);
 
 					n->removeType = OBJECT_INDEX;
@@ -7380,7 +7379,6 @@ DropStmt:	DROP object_type_any_name IF_P EXISTS any_name_list opt_drop_behavior
 				}
 			| DROP INDEX CONCURRENTLY IF_P EXISTS any_name_list opt_drop_behavior
 				{
-					parser_ybc_not_support(@1, "DROP INDEX CONCURRENTLY");
 					DropStmt *n = makeNode(DropStmt);
 
 					n->removeType = OBJECT_INDEX;
