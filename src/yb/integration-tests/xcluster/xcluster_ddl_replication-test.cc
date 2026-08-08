@@ -4042,8 +4042,12 @@ TEST_F(XClusterDDLReplicationTest, AnalyzeTable) {
   ASSERT_OK(SetUpClustersAndReplication());
 
   ASSERT_OK(producer_conn_->Execute("CREATE TABLE tbl1(id int PRIMARY KEY, col1 int, col2 text)"));
+  // The replicated statement embeds column values, which can be any text at all, including
+  // something that looks like the dollar quoting tag used to wrap it. Such a value must not be able
+  // to close that block early and change what the target ends up executing.
   ASSERT_OK(producer_conn_->Execute(
-      "INSERT INTO tbl1 SELECT g, g % 5, 'value' || (g % 7) FROM generate_series(1, 100) g"));
+      "INSERT INTO tbl1 SELECT g, g % 5, '$yb_xcluster_analyze$ value' || (g % 7) "
+      "FROM generate_series(1, 100) g"));
   // Expression indexes get their own pg_statistic rows, so they exercise the index path.
   ASSERT_OK(producer_conn_->Execute("CREATE INDEX tbl1_expr_idx ON tbl1((col1 + 1))"));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
@@ -4072,7 +4076,8 @@ TEST_F(XClusterDDLReplicationTest, AnalyzeTable) {
 
   // Re-analyzing after the data changed should refresh the target's statistics as well.
   ASSERT_OK(producer_conn_->Execute(
-      "INSERT INTO tbl1 SELECT g, g % 5, 'value' || (g % 7) FROM generate_series(101, 500) g"));
+      "INSERT INTO tbl1 SELECT g, g % 5, '$yb_xcluster_analyze$ value' || (g % 7) "
+      "FROM generate_series(101, 500) g"));
   ASSERT_OK(producer_conn_->Execute("ANALYZE"));
   ASSERT_OK(WaitForSafeTimeToAdvanceToNow());
 

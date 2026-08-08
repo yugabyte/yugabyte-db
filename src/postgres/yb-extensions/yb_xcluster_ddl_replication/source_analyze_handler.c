@@ -29,12 +29,8 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
-/*
- * Dollar quoting tag used to wrap the generated statements. The generated body
- * only ever contains single quoted string literals, so it can never contain
- * this tag.
- */
-#define ANALYZE_STATS_QUOTE_TAG "$yb_xcluster_analyze$"
+/* Prefix of the dollar quoting tag used to wrap the generated statements. */
+#define ANALYZE_STATS_QUOTE_TAG_PREFIX "$yb_xcluster_analyze"
 
 /* Columns of kRelationsQuery. */
 #define RELATIONS_NSPNAME_COLUMN_ID		  1
@@ -303,27 +299,49 @@ BuildRestoreStatsQuery(Oid relid)
 										 RELATIONS_RELALLVISIBLE_COLUMN_ID);
 	}
 
-	/*
-	 * Wrap everything in a DO block: the ddl_queue handler on the target
-	 * executes the query with a client that rejects result rows, and the
-	 * pg_restore_*_stats functions return a boolean.
-	 */
-	StringInfoData buf;
+	StringInfoData body;
 
-	initStringInfo(&buf);
-	appendStringInfoString(&buf, "DO " ANALYZE_STATS_QUOTE_TAG " BEGIN\n");
+	initStringInfo(&body);
 
 	for (int row = 0; row < num_rels; row++)
 	{
 		if (!rels[row].nspname || !rels[row].relname)
 			continue;
 
-		AppendRelationStats(&buf, &rels[row]);
-		AppendAttributeStats(&buf, &rels[row]);
+		AppendRelationStats(&body, &rels[row]);
+		AppendAttributeStats(&body, &rels[row]);
 	}
 
-	appendStringInfoString(&buf, "END " ANALYZE_STATS_QUOTE_TAG ";");
-
 	pfree(rels);
+
+	/*
+	 * Wrap everything in a DO block: the ddl_queue handler on the target
+	 * executes the query with a client that rejects result rows, and the
+	 * pg_restore_*_stats functions return a boolean.
+	 *
+	 * Dollar quoting is scanned lexically, so the single quotes around the
+	 * values embedded in the body do not hide anything from it. The body
+	 * contains column values, which can be any text at all, including something
+	 * that looks like our tag, so pick a tag that does not occur in the body,
+	 * the same way pg_get_functiondef() does for function bodies. Checking for
+	 * the tag prefix rather than the whole tag is conservative but keeps this
+	 * obviously correct.
+	 */
+	StringInfoData tag;
+
+	initStringInfo(&tag);
+	appendStringInfoString(&tag, ANALYZE_STATS_QUOTE_TAG_PREFIX);
+	while (strstr(body.data, tag.data) != NULL)
+		appendStringInfoChar(&tag, 'x');
+	appendStringInfoChar(&tag, '$');
+
+	StringInfoData buf;
+
+	initStringInfo(&buf);
+	appendStringInfo(&buf, "DO %s BEGIN\n%sEND %s;", tag.data, body.data,
+					 tag.data);
+
+	pfree(tag.data);
+	pfree(body.data);
 	return buf.data;
 }

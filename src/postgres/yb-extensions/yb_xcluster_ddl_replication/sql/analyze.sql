@@ -1,7 +1,11 @@
 CALL TEST_reset();
 
 CREATE TABLE analyze_foo(i int PRIMARY KEY, j text);
-INSERT INTO analyze_foo SELECT g, 'value' || (g % 3) FROM generate_series(1, 20) g;
+-- The captured query embeds column values, which can be any text at all,
+-- including something that looks like the dollar quoting tag used to wrap the
+-- generated statements. Such a value must not be able to close the block early.
+INSERT INTO analyze_foo
+  SELECT g, '$yb_xcluster_analyze$ value' || (g % 3) FROM generate_series(1, 20) g;
 CREATE TEMP TABLE analyze_temp_foo(i int PRIMARY KEY);
 
 ANALYZE analyze_foo;
@@ -9,10 +13,12 @@ ANALYZE analyze_temp_foo;  -- temp relations are not replicated
 
 -- Only the permanent relation should have been captured, and the captured query
 -- should be the statistics import statement rather than the ANALYZE itself.
+-- The quote tag must have been extended, since the plain one occurs in the data.
 SELECT yb_data->>'command_tag' AS command_tag,
        yb_data->>'query' LIKE '%pg_restore_relation_stats%' AS has_relation_stats,
        yb_data->>'query' LIKE '%pg_restore_attribute_stats%' AS has_attribute_stats,
-       yb_data->>'query' LIKE '%analyze_temp_foo%' AS has_temp_relation
+       yb_data->>'query' LIKE '%analyze_temp_foo%' AS has_temp_relation,
+       yb_data->>'query' LIKE 'DO $yb_xcluster_analyzex$%' AS has_extended_quote_tag
   FROM yb_xcluster_ddl_replication.ddl_queue
   WHERE yb_data->>'command_tag' = 'ANALYZE'
   ORDER BY ddl_end_time;
