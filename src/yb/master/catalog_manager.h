@@ -2169,19 +2169,30 @@ class CatalogManager : public CatalogManagerIf, public SnapshotCoordinatorContex
       CMPerTableLoadState* per_table_state, CMGlobalLoadState* global_state,
       const std::set<TabletServerId>& preferred_replicas = {});
 
+  // Prototype (follow-table index): where one tablet of a followed base table currently
+  // lives.
+  struct FollowTableBasePlacement {
+    // Tservers hosting any replica of the base tablet.
+    std::set<TabletServerId> replicas;
+    // Tserver hosting the base tablet's leader, or empty if it has no known leader.
+    // Reads of an index entry's base row go to the base leader, so this is the placement
+    // that actually determines whether the follow-up lookup stays on the same host.
+    TabletServerId leader;
+  };
+
   // Prototype (follow-table index): maps each of the base table's hash partition range
-  // starts to the set of tserver uuids currently hosting that tablet. Because a follower
-  // index shares its base table's HASH key, the two have the same encoded partition-key
-  // space, so an index tablet's partition_key_start selects the base tablet covering
-  // exactly its hash range. Used as a soft placement preference so index tablets
-  // co-locate with their base tablets.
+  // starts to where that tablet currently lives. Because a follower index shares its base
+  // table's HASH key, the two have the same encoded partition-key space, so an index
+  // tablet's partition_key_start selects the base tablet covering exactly its hash range.
+  // Used as a soft placement preference so index tablets co-locate with their base
+  // tablets, and their leaders with the base leaders.
   //
   // Built once per table rather than looked up per tablet: callers iterate every tablet
   // of the index, and a per-tablet scan of the base table's tablet list would be
   // quadratic and would re-lock every base tablet each time. Empty if the base table
   // cannot be found.
-  Result<std::unordered_map<std::string, std::set<TabletServerId>>>
-      GetFollowTableReplicasByPartitionKey(const TableId& base_table_id);
+  Result<std::unordered_map<std::string, FollowTableBasePlacement>>
+      GetFollowTableBasePlacements(const TableId& base_table_id);
 
   // Select and assign a tablet server as the protege 'config'. This protege is selected from the
   // set of tservers in 'global_state' that have the lowest current protege load.

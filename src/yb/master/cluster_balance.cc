@@ -127,6 +127,12 @@ DEFINE_test_flag(int32, load_balancer_wait_after_count_pending_tasks_ms, 0,
                  "For testing purposes, number of milliseconds to wait after counting and "
                  "finding pending tasks.");
 
+DEFINE_RUNTIME_bool(follow_table_index_leader_affinity, true,
+    "Prototype: for secondary indexes created with SPLIT FOLLOWING TABLE, let the cluster "
+    "balancer step an index tablet's leader onto the tserver already hosting the leader of the "
+    "matching base tablet, once leader load is otherwise balanced. Only has an effect when "
+    "ysql_yb_enable_follow_table_index is set.");
+
 DECLARE_int32(min_leader_stepdown_retry_interval_ms);
 DECLARE_bool(enable_ysql_tablespaces_for_placement);
 DECLARE_bool(ysql_yb_enable_follow_table_index);
@@ -911,9 +917,10 @@ Status ClusterLoadBalancer::AnalyzeTablets(const TableInfoPtr& table) {
   }
 
   // Prototype (follow-table index): if this table follows a base table, record for each index
-  // tablet the tservers that currently host the matching base tablet. GetTabletToMove uses this
-  // as a soft co-placement preference so index tablets drift toward their base tablet's nodes
-  // over successive balancer passes. Best-effort: any lookup failure just leaves the entry empty.
+  // tablet where the matching base tablet currently lives -- the tservers hosting its replicas
+  // (a soft co-placement preference for GetTabletToMove) and the tserver hosting its leader (the
+  // target for GetLeaderToMoveForFollowTable). Index tablets drift toward their base tablet's
+  // nodes over successive balancer passes. Best-effort: any lookup failure leaves both empty.
   if (FLAGS_ysql_yb_enable_follow_table_index) {
     TableId base_table_id;
     {
@@ -923,13 +930,19 @@ Status ClusterLoadBalancer::AnalyzeTablets(const TableInfoPtr& table) {
       }
     }
     if (!base_table_id.empty()) {
-      auto base_replicas = catalog_manager_->GetFollowTableReplicasByPartitionKey(base_table_id);
-      if (base_replicas.ok()) {
+      auto base_placements = catalog_manager_->GetFollowTableBasePlacements(base_table_id);
+      if (base_placements.ok()) {
         for (const auto& tablet : tablets) {
-          auto it = base_replicas->find(
+          auto it = base_placements->find(
               tablet->LockForRead()->pb.partition().partition_key_start());
-          if (it != base_replicas->end() && !it->second.empty()) {
-            state_->follow_table_preferred_ts_[tablet->id()] = it->second;
+          if (it == base_placements->end()) {
+            continue;
+          }
+          if (!it->second.replicas.empty()) {
+            state_->follow_table_preferred_ts_[tablet->id()] = it->second.replicas;
+          }
+          if (!it->second.leader.empty()) {
+            state_->follow_table_preferred_leader_ts_[tablet->id()] = it->second.leader;
           }
         }
       }
@@ -1473,15 +1486,47 @@ Result<std::optional<ClusterLoadBalancer::LeaderMoveDetails>>
       // Find the leaders on the higher loaded TS that have running peers on the lower loaded TS.
       // If there are, we have a candidate we want, so fill in the output params and return.
       const std::set<TabletId>& leaders = state_->per_ts_meta_[high_load_uuid].leaders;
-      for (const auto& [tablet_id, path] : GetLeadersOnTSToMove(
-               global_state_->drive_aware_, leaders, state_->per_ts_meta_[low_load_uuid])) {
+      auto candidates = GetLeadersOnTSToMove(
+          global_state_->drive_aware_, leaders, state_->per_ts_meta_[low_load_uuid]);
 
+      // Prototype (follow-table index): the move above is happening regardless; all that is left
+      // to decide is which of the candidates to move. Order them into three groups:
+      //   1. the base tablet's leader is on the destination -- moving this one co-locates it,
+      //   2. no opinion,
+      //   3. the base tablet's leader is on the source -- this one is already co-located, and
+      //      moving it would break that.
+      // Every candidate here produces the same load change, so none of this trades away balance.
+      // Group 3 is what makes co-placement accumulate instead of drifting: without it, ordinary
+      // churn is as likely to destroy co-location as to create it.
+      if (FLAGS_ysql_yb_enable_follow_table_index && FLAGS_follow_table_index_leader_affinity &&
+          !state_->follow_table_preferred_leader_ts_.empty()) {
+        auto base_leader_is_on = [this](const TabletId& tablet_id, const TabletServerId& ts_uuid) {
+          auto it = state_->follow_table_preferred_leader_ts_.find(tablet_id);
+          return it != state_->follow_table_preferred_leader_ts_.end() && it->second == ts_uuid;
+        };
+        // Sink the candidates that would break co-location behind everything else, then float the
+        // ones that would gain it to the front of what is left.
+        auto keep_end = std::stable_partition(
+            candidates.begin(), candidates.end(),
+            [&](const std::pair<TabletId, std::string>& candidate) {
+              return !base_leader_is_on(candidate.first, high_load_uuid);
+            });
+        std::stable_partition(
+            candidates.begin(), keep_end,
+            [&](const std::pair<TabletId, std::string>& candidate) {
+              return base_leader_is_on(candidate.first, low_load_uuid);
+            });
+      }
+
+      for (const auto& [tablet_id, path] : candidates) {
         auto move_details = LeaderMoveDetails {
           .tablet_id = tablet_id,
           .from_ts = high_load_uuid,
           .to_ts = low_load_uuid,
           .to_ts_path = path,
-          .reason = std::move(reason),
+          // Copied, not moved: a later candidate may be reached via the stepdown-backoff
+          // `continue` below and would otherwise get an empty reason.
+          .reason = reason,
         };
 
         VLOG(3) << "For leader balancing found tablet " << tablet_id << " to move from "
@@ -1668,6 +1713,117 @@ Result<std::optional<ClusterLoadBalancer::LeaderMoveDetails>>
   return std::nullopt;
 }
 
+Result<std::optional<ClusterLoadBalancer::LeaderMoveDetails>>
+    ClusterLoadBalancer::GetLeaderToMoveForFollowTable() {
+  if (!FLAGS_ysql_yb_enable_follow_table_index ||
+      !FLAGS_follow_table_index_leader_affinity ||
+      state_->follow_table_preferred_leader_ts_.empty()) {
+    return std::nullopt;
+  }
+
+  // Index each tserver by its affinitized priority (its position in sorted_leader_load_). Moves
+  // are only considered within one priority: crossing priorities is the job of
+  // GetLeaderToMoveAcrossAffinitizedPriorities, which has already run and declined, so a move
+  // this pass made across priorities would be fighting the preferred-zone configuration.
+  std::unordered_map<TabletServerId, size_t> priority_by_ts;
+  for (size_t priority = 0; priority < state_->sorted_leader_load_.size(); ++priority) {
+    for (const auto& ts_uuid : state_->sorted_leader_load_[priority]) {
+      priority_by_ts[ts_uuid] = priority;
+    }
+  }
+
+  const auto current_time = MonoTime::Now();
+  std::optional<LeaderMoveDetails> best;
+  ssize_t best_gain = 0;
+
+  for (const auto& [tablet_id, want_ts] : state_->follow_table_preferred_leader_ts_) {
+    auto tablet_meta_it = state_->per_tablet_meta_.find(tablet_id);
+    if (tablet_meta_it == state_->per_tablet_meta_.end()) {
+      continue;
+    }
+    // Note this already accounts for in-flight stepdowns: AnalyzeTablets replays pending leader
+    // stepdown tasks into the state before we get here.
+    const TabletServerId& from_ts = tablet_meta_it->second.leader_uuid;
+    if (from_ts.empty() || from_ts == want_ts) {
+      // No leader to step down, or the leader is already where we want it.
+      continue;
+    }
+
+    // The destination must be a tserver this table's state knows about, and must be eligible to
+    // hold leaders at all.
+    auto want_meta_it = state_->per_ts_meta_.find(want_ts);
+    if (want_meta_it == state_->per_ts_meta_.end() ||
+        global_state_->leader_blacklisted_servers_.contains(want_ts)) {
+      continue;
+    }
+    auto want_priority = priority_by_ts.find(want_ts);
+    auto from_priority = priority_by_ts.find(from_ts);
+    if (want_priority == priority_by_ts.end() || from_priority == priority_by_ts.end() ||
+        want_priority->second != from_priority->second) {
+      continue;
+    }
+
+    // Never make the leader spread worse. A strictly lower destination load means that after the
+    // move (destination +1, source -1) the gap between the two is no wider than it was, so the
+    // load-driven passes have no reason to move this leader back.
+    ssize_t from_load = state_->GetLeaderLoad(from_ts);
+    ssize_t want_load = state_->GetLeaderLoad(want_ts);
+    if (want_load >= from_load) {
+      continue;
+    }
+
+    // Same requirement against the cluster-wide leader counts. Without this, a move that helps
+    // this table could widen the global spread enough for the global leader balancing branch of
+    // GetLeaderToMove to move the leader straight back, and the two passes would trade it back
+    // and forth.
+    if (global_state_->GetGlobalLeaderLoad(want_ts) >=
+        global_state_->GetGlobalLeaderLoad(from_ts)) {
+      continue;
+    }
+
+    // The destination must already host a running peer of this tablet. Reusing the leader-move
+    // helper with a singleton set gives us that check and the drive-aware path in one call.
+    auto peers = GetLeadersOnTSToMove(
+        global_state_->drive_aware_, {tablet_id}, want_meta_it->second);
+    if (peers.empty()) {
+      continue;
+    }
+
+    // Respect the stepdown backoff, so a tablet that keeps failing to step down onto want_ts is
+    // not retried on every pass.
+    const auto& stepdown_failures = tablet_meta_it->second.leader_stepdown_failures;
+    auto failure_it = stepdown_failures.find(want_ts);
+    if (failure_it != stepdown_failures.end() &&
+        (current_time - failure_it->second).ToMilliseconds() <
+            FLAGS_min_leader_stepdown_retry_interval_ms) {
+      continue;
+    }
+
+    // Iteration order over an unordered_map carries no meaning, so choose deterministically:
+    // the move that relieves the most leader load, ties broken by tablet id.
+    ssize_t gain = from_load - want_load;
+    if (best && (gain < best_gain || (gain == best_gain && tablet_id >= best->tablet_id))) {
+      continue;
+    }
+    best = LeaderMoveDetails {
+      .tablet_id = tablet_id,
+      .from_ts = from_ts,
+      .to_ts = want_ts,
+      .to_ts_path = peers.front().second,
+      .reason = Format(
+          "Destination hosts the leader of this follow-table index tablet's base tablet, and has "
+          "fewer leaders for this table than the source ($0 < $1)", want_load, from_load),
+    };
+    best_gain = gain;
+  }
+
+  if (best) {
+    VLOG(3) << "Follow-table leader affinity found tablet " << best->tablet_id << " to move from "
+            << best->from_ts << " to " << best->to_ts;
+  }
+  return best;
+}
+
 Result<bool> ClusterLoadBalancer::HandleLeaderMoves(
     TabletId* out_tablet_id, TabletServerId* out_from_ts, TabletServerId* out_to_ts) {
   // If the user sets 'transaction_tables_use_preferred_zones' gflag to 0 and the tablet
@@ -1679,6 +1835,13 @@ Result<bool> ClusterLoadBalancer::HandleLeaderMoves(
   }
   if (!move_details) {
     move_details = VERIFY_RESULT(GetLeaderToMoveWithinAffinitizedPriorities());
+  }
+  if (!move_details) {
+    // Prototype (follow-table index): leader load is balanced as far as the passes above care,
+    // so any remaining freedom in leader placement is free to spend on co-locating index leaders
+    // with their base tablet leaders. Deliberately last, so co-placement never delays a move
+    // that is actually correcting load.
+    move_details = VERIFY_RESULT(GetLeaderToMoveForFollowTable());
   }
   if (!move_details) {
     return false;

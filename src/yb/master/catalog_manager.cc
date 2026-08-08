@@ -60,6 +60,7 @@
 #include <atomic>
 #include <chrono>
 #include <functional>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -3755,10 +3756,13 @@ Status CatalogManager::ReconcileFollowTableIndexSplits(
     const auto& index_tablets = *index_tablets_res;
     const auto& base_tablets = *base_tablets_res;
 
-    // Boundaries (partition_key_start) the index tablets already have.
-    std::set<std::string> index_starts;
+    // Index tablets keyed by partition_key_start. Built once per index, because it answers both
+    // questions the loop below asks: whether the index already has a given boundary, and which
+    // index tablet covers a given hash range. Doing the latter with a scan per base boundary
+    // would be quadratic and would re-lock every index tablet each time.
+    std::map<std::string, TabletInfoPtr> index_by_start;
     for (const auto& t : index_tablets) {
-      index_starts.insert(t->LockForRead()->pb.partition().partition_key_start());
+      index_by_start.emplace(t->LockForRead()->pb.partition().partition_key_start(), t);
     }
 
     // For each interior base boundary the index still lacks, force a matching 2-way split
@@ -3770,27 +3774,53 @@ Status CatalogManager::ReconcileFollowTableIndexSplits(
         break;
       }
       std::string boundary = base_tablet->LockForRead()->pb.partition().partition_key_start();
-      if (boundary.empty() || index_starts.count(boundary)) {
+      if (boundary.empty() || index_by_start.count(boundary)) {
         continue;  // first tablet (no interior boundary) or index already split here.
       }
 
-      // Find the index tablet whose range [start, end) covers 'boundary'. Locks are taken
-      // and released per tablet: we must not hold any tablet lock across DoSplitTablet, which
-      // acquires mutex_ (the required lock order is mutex_ -> table -> tablet).
-      TabletInfoPtr covering;
-      for (const auto& it : index_tablets) {
-        std::string s, e;
+      // The index tablet covering 'boundary' is the one with the greatest start <= boundary:
+      // index tablets tile the hash key space contiguously, so that tablet's range necessarily
+      // contains the boundary and its end need not be consulted. upper_bound cannot return
+      // begin() here, since the first index tablet's start is empty and sorts before every
+      // boundary, but treat it as "no covering tablet" rather than rely on that.
+      auto covering_it = index_by_start.upper_bound(boundary);
+      if (covering_it == index_by_start.begin()) {
+        continue;
+      }
+      --covering_it;
+      const TabletInfoPtr& covering = covering_it->second;
+      // One split per index tablet per pass. A tablet that fails validation below is left in
+      // this set deliberately, so a covering tablet that cannot be split is not re-checked once
+      // per base boundary it covers.
+      if (!queued_index_tablets.insert(covering->tablet_id()).second) {
+        continue;
+      }
+
+      // DoSplitTablet below passes ManualSplit::kTrue, which waives the per-tablet disabled list
+      // and the TTL check in addition to the table-level lists pre-checked above. Following the
+      // base table is not a reason to override those either, so run the tablet-level validation
+      // explicitly. The tablet read lock is scoped tightly: it must not be held across
+      // GetTabletInfo, which takes mutex_ (required order is mutex_ -> table -> tablet).
+      TabletInfoPtr split_parent;
+      {
+        TabletId parent_id;
         {
-          auto il = it->LockForRead();
-          s = il->pb.partition().partition_key_start();
-          e = il->pb.partition().partition_key_end();
+          auto cl = covering->LockForRead();
+          parent_id = cl->pb.split_parent_tablet_id();
         }
-        if (s <= boundary && (e.empty() || boundary < e)) {
-          covering = it;
-          break;
+        if (!parent_id.empty()) {
+          auto parent_res = GetTabletInfo(parent_id);
+          if (parent_res.ok()) {
+            split_parent = *parent_res;
+          }
         }
       }
-      if (!covering || !queued_index_tablets.insert(covering->tablet_id()).second) {
+      auto tablet_validation = master_->tablet_split_manager().ValidateSplitCandidateTablet(
+          *covering, split_parent, IgnoreTtlValidation::kFalse, IgnoreDisabledList::kFalse);
+      if (!tablet_validation.ok()) {
+        YB_LOG_EVERY_N_SECS(INFO, 300)
+            << "Follow-table reconciler: skipping index tablet " << covering->tablet_id()
+            << " (index " << table->id() << "): " << tablet_validation;
         continue;
       }
 
@@ -12244,7 +12274,7 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
   // Prototype (follow-table index): if this table follows a base table, precompute for each
   // tablet the tservers hosting the matching base tablet, to use as a soft placement
   // preference below. Do this BEFORE taking tablet write locks so the catalog mutex (acquired
-  // by GetTableInfo/GetFollowTableReplicasByPartitionKey) is taken in the documented order
+  // by GetTableInfo/GetFollowTableBasePlacements) is taken in the documented order
   // (mutex_ -> table -> tablet). Empty for non-following tables.
   std::unordered_map<TabletId, std::set<TabletServerId>> follow_preferred_by_tablet;
   if (FLAGS_ysql_yb_enable_follow_table_index) {
@@ -12257,13 +12287,13 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
     }
     if (!base_table_id.empty()) {
       // Best-effort: any lookup failure just leaves the preferences empty.
-      auto base_replicas = GetFollowTableReplicasByPartitionKey(base_table_id);
-      if (base_replicas.ok()) {
+      auto base_placements = GetFollowTableBasePlacements(base_table_id);
+      if (base_placements.ok()) {
         for (const TabletInfoPtr& tablet : tablets) {
-          auto it = base_replicas->find(
+          auto it = base_placements->find(
               tablet->LockForRead()->pb.partition().partition_key_start());
-          if (it != base_replicas->end() && !it->second.empty()) {
-            follow_preferred_by_tablet[tablet->tablet_id()] = it->second;
+          if (it != base_placements->end() && !it->second.replicas.empty()) {
+            follow_preferred_by_tablet[tablet->tablet_id()] = it->second.replicas;
           }
         }
       }
@@ -12823,15 +12853,15 @@ shared_ptr<TSDescriptor> CatalogManager::SelectReplica(
   return found_ts;
 }
 
-Result<std::unordered_map<std::string, std::set<TabletServerId>>>
-CatalogManager::GetFollowTableReplicasByPartitionKey(const TableId& base_table_id) {
-  std::unordered_map<std::string, std::set<TabletServerId>> replicas_by_partition_key;
+Result<std::unordered_map<std::string, CatalogManager::FollowTableBasePlacement>>
+CatalogManager::GetFollowTableBasePlacements(const TableId& base_table_id) {
+  std::unordered_map<std::string, FollowTableBasePlacement> placements;
   if (base_table_id.empty()) {
-    return replicas_by_partition_key;
+    return placements;
   }
   auto base_table = GetTableInfo(base_table_id);
   if (!base_table) {
-    return replicas_by_partition_key;
+    return placements;
   }
   auto base_tablets = VERIFY_RESULT(base_table->GetTablets());
   for (const auto& base_tablet : base_tablets) {
@@ -12839,13 +12869,16 @@ CatalogManager::GetFollowTableReplicasByPartitionKey(const TableId& base_table_i
     if (!replicas) {
       continue;
     }
-    auto& preferred =
-        replicas_by_partition_key[base_tablet->LockForRead()->pb.partition().partition_key_start()];
-    for (const auto& entry : *replicas) {
-      preferred.insert(entry.first);
+    auto& placement =
+        placements[base_tablet->LockForRead()->pb.partition().partition_key_start()];
+    for (const auto& [ts_uuid, replica] : *replicas) {
+      placement.replicas.insert(ts_uuid);
+      if (replica.role == PeerRole::LEADER) {
+        placement.leader = ts_uuid;
+      }
     }
   }
-  return replicas_by_partition_key;
+  return placements;
 }
 
 void CatalogManager::SelectReplicas(

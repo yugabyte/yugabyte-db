@@ -377,9 +377,13 @@ DEFINE_RUNTIME_bool(ysql_enable_auto_analyze, false,
 DEFINE_RUNTIME_PG_FLAG(bool, yb_enable_follow_table_index, false,
     "Prototype: enable follow-table secondary indexes. When true, a hash-partitioned "
     "secondary index whose hash key matches its base table's may be created with "
-    "'CREATE INDEX ... SPLIT FOLLOWING TABLE', which makes the index eventually track the "
-    "base table's tablet split boundaries and placement. When false, that syntax is "
-    "rejected. Defaults to false.");
+    "'CREATE INDEX ... SPLIT FOLLOWING TABLE'. Split boundaries are then actively kept in step: "
+    "the index is split to match new boundaries in the base table. Placement is only a "
+    "best-effort preference: the cluster balancer steers replica and leader moves toward the "
+    "matching base tablet when it can do so without disturbing load balance, and never at the "
+    "cost of it. Co-location is therefore not guaranteed, and in a settled cluster an index "
+    "tablet's leader will frequently sit on a different node than its base tablet's leader. "
+    "When false, the syntax is rejected. Defaults to false.");
 
 DEFINE_NON_RUNTIME_bool(enable_qos, false, "Enable the QoS feature.");
 
