@@ -450,6 +450,13 @@ DEFINE_RUNTIME_int64(tablet_force_split_threshold_bytes, 100_GB,
     "tablets from forming in your cluster even if both automatic splitting phases have "
     "been finished.");
 
+DEFINE_RUNTIME_uint32(follow_table_index_max_splits_per_pass, 8,
+    "Maximum number of tablet splits the follow-table index reconciler may issue in one "
+    "background pass, across all follow-table indexes. These are forced splits, so they "
+    "are not covered by outstanding_tablet_split_limit; this bounds how much split work a "
+    "single pass can queue when an index is far behind its base table. Convergence "
+    "continues on later passes. 0 disables the reconciler's splitting.");
+
 DEFINE_test_flag(bool, crash_server_on_sys_catalog_leader_affinity_move, false,
     "When set, crash the master process if it performs a sys catalog leader affinity "
     "move.");
@@ -3696,22 +3703,47 @@ Status CatalogManager::ReconcileFollowTableIndexSplits(
   if (!FLAGS_ysql_yb_enable_follow_table_index) {
     return Status::OK();
   }
+  uint32_t splits_remaining = FLAGS_follow_table_index_max_splits_per_pass;
   for (const auto& table : tables) {
+    if (splits_remaining == 0) {
+      break;
+    }
     TableId base_table_id;
     PartitionSchemaPB index_partition_schema_pb;
     {
       auto l = table->LockForRead();
-      if (l->pb.follow_table_mode() == FOLLOW_TABLE_NONE || !l->is_running()) {
+      if (!l->follows_table() || !l->is_running()) {
         continue;
       }
       base_table_id = l->indexed_table_id();
       index_partition_schema_pb = l->pb.partition_schema();
     }
-    if (base_table_id.empty()) {
+    // A colocated index has no tablets of its own; it shares its colocation parent's
+    // tablet, which must never be split on this index's behalf. CreateTable rejects the
+    // combination, so this only guards against catalog entries that predate that check.
+    if (base_table_id.empty() || table->colocated()) {
       continue;
     }
     auto base_table = GetTableInfo(base_table_id);
     if (!base_table) {
+      continue;
+    }
+
+    // The splits below are issued as manual/forced splits, which waive the disabled lists,
+    // PITR coverage, TTL and tablet-replica-limit protections. Following the base table is
+    // not a good enough reason to override an operator who has disabled splitting or a
+    // restore that is in flight, so ask here whether the index would be splittable on all
+    // those other grounds -- suppressing only the follow-table exclusion itself, which
+    // exists precisely to route these splits through this reconciler.
+    auto validation = master_->tablet_split_manager().ValidateSplitCandidateTable(
+        table, IgnoreDisabledList::kFalse, IgnoreVectorIndexesValidation::kFalse,
+        IgnoreFollowTableExclusion::kTrue);
+    if (!validation.ok()) {
+      YB_LOG_EVERY_N_SECS(INFO, 300)
+          << "Follow-table reconciler: skipping index " << table->id() << ": " << validation;
+      continue;
+    }
+    if (!XReplValidateSplitCandidateTable(table->id()).ok()) {
       continue;
     }
 
@@ -3734,6 +3766,9 @@ Status CatalogManager::ReconcileFollowTableIndexSplits(
     // pass keeps this idempotent and eventually convergent across passes.
     std::set<std::string> queued_index_tablets;
     for (const auto& base_tablet : base_tablets) {
+      if (splits_remaining == 0) {
+        break;
+      }
       std::string boundary = base_tablet->LockForRead()->pb.partition().partition_key_start();
       if (boundary.empty() || index_starts.count(boundary)) {
         continue;  // first tablet (no interior boundary) or index already split here.
@@ -3761,8 +3796,11 @@ Status CatalogManager::ReconcileFollowTableIndexSplits(
 
       auto encoded = PartitionSchema::GetEncodedPartitionKey(boundary, index_partition_schema_pb);
       if (!encoded.ok()) {
-        LOG(WARNING) << "Follow-table reconciler: failed to encode split key for index "
-                     << table->id() << ": " << encoded.status();
+        // Rate-limited: this runs on every background pass, and a partition schema that
+        // cannot encode one boundary generally cannot encode any of them.
+        YB_LOG_EVERY_N_SECS(WARNING, 300)
+            << "Follow-table reconciler: failed to encode split key for index "
+            << table->id() << ": " << encoded.status();
         continue;
       }
       std::vector<std::string> split_partition_keys{boundary};
@@ -3772,14 +3810,15 @@ Status CatalogManager::ReconcileFollowTableIndexSplits(
       // index tablet's own mid-point so boundaries converge to match the base.
       auto s = DoSplitTablet(
           covering, split_encoded_keys, split_partition_keys, ManualSplit::kTrue, epoch);
+      --splits_remaining;
       if (s.ok()) {
         LOG(INFO) << "Follow-table reconciler: queued split of index tablet "
                   << covering->tablet_id() << " (index " << table->id()
                   << ") to match base table " << base_table_id << " boundary.";
       } else {
-        WARN_NOT_OK(s, Format("Follow-table reconciler: split of index tablet $0 (index $1) "
-                              "to match base boundary failed",
-                              covering->tablet_id(), table->id()));
+        YB_LOG_EVERY_N_SECS(WARNING, 300)
+            << "Follow-table reconciler: split of index tablet " << covering->tablet_id()
+            << " (index " << table->id() << ") to match base boundary failed: " << s;
       }
     }
   }
@@ -4541,10 +4580,12 @@ bool EnableTableOwnedVectorReverseMapping() {
 // The stronger semantic property (each index hash column is exactly the base table's
 // corresponding hash key column, in order, so a row and its index entry hash into the
 // same bucket) is checked here only for YCQL, where IndexInfoPB.indexed_hash_column_ids
-// is populated. For YSQL that field is not populated at the master (index maintenance
-// lives in the PG layer), so exact column identity is trusted from the user's explicit
-// opt-in for now and re-verified when partition following compares live ranges in a
-// later phase. Returns OK when eligible, else InvalidArgument explaining why.
+// is populated. For YSQL that field is not populated at the master -- the PGSQL create
+// path supplies only the base table's id, not a column mapping (see
+// IndexInfoBuilder::ApplyColumnMapping, which it skips) -- so column identity is checked
+// in the PG layer instead, by YbValidateFollowTableHashKey in yb_cmds.c. The count checks
+// below are the master's authoritative backstop for both languages.
+// Returns OK when eligible, else InvalidArgument explaining why.
 Status ValidateFollowTableEligibility(
     const IndexInfoPB& index_info, const Schema& index_schema, const Schema& base_schema) {
   const size_t base_hash_count = base_schema.num_hash_key_columns();
@@ -4710,6 +4751,15 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   SCHECK(
       !colocated || req.has_table_id(), InvalidArgument,
       "Colocated table should specify a table ID");
+
+  // Prototype: a colocated index has no tablets of its own -- it shares its colocation
+  // parent's single tablet -- so there is nothing to follow, and the split reconciler
+  // must never be pointed at that shared tablet. The same is true of a vector index,
+  // which is copartitioned with the indexed table. Reject rather than silently persist a
+  // mode nothing will act on. (This check needs `colocated`, which is only known here.)
+  SCHECK(
+      req.follow_table_mode() == FOLLOW_TABLE_NONE || !colocated, InvalidArgument,
+      "SPLIT FOLLOWING TABLE is not supported for colocated or vector indexes");
 
   // If ysql_enable_colocated_tables_with_tablespaces is not enabled then tablespaces cannot be
   // specified for indexes on colocated tables. Vector indexes are exempt: they are copartitioned
@@ -12194,24 +12244,27 @@ Status CatalogManager::ProcessPendingAssignmentsPerTable(
   // Prototype (follow-table index): if this table follows a base table, precompute for each
   // tablet the tservers hosting the matching base tablet, to use as a soft placement
   // preference below. Do this BEFORE taking tablet write locks so the catalog mutex (acquired
-  // by GetTableInfo/GetFollowTablePreferredReplicas) is taken in the documented order
+  // by GetTableInfo/GetFollowTableReplicasByPartitionKey) is taken in the documented order
   // (mutex_ -> table -> tablet). Empty for non-following tables.
   std::unordered_map<TabletId, std::set<TabletServerId>> follow_preferred_by_tablet;
   if (FLAGS_ysql_yb_enable_follow_table_index) {
     TableId base_table_id;
     if (auto index_table = GetTableInfo(table_id)) {
       auto l = index_table->LockForRead();
-      if (l->pb.follow_table_mode() != FOLLOW_TABLE_NONE) {
+      if (l->follows_table()) {
         base_table_id = l->indexed_table_id();
       }
     }
     if (!base_table_id.empty()) {
-      for (const TabletInfoPtr& tablet : tablets) {
-        std::string partition_key_start =
-            tablet->LockForRead()->pb.partition().partition_key_start();
-        auto pref = GetFollowTablePreferredReplicas(base_table_id, partition_key_start);
-        if (pref.ok() && !pref->empty()) {
-          follow_preferred_by_tablet[tablet->tablet_id()] = std::move(*pref);
+      // Best-effort: any lookup failure just leaves the preferences empty.
+      auto base_replicas = GetFollowTableReplicasByPartitionKey(base_table_id);
+      if (base_replicas.ok()) {
+        for (const TabletInfoPtr& tablet : tablets) {
+          auto it = base_replicas->find(
+              tablet->LockForRead()->pb.partition().partition_key_start());
+          if (it != base_replicas->end() && !it->second.empty()) {
+            follow_preferred_by_tablet[tablet->tablet_id()] = it->second;
+          }
         }
       }
     }
@@ -12770,32 +12823,29 @@ shared_ptr<TSDescriptor> CatalogManager::SelectReplica(
   return found_ts;
 }
 
-Result<std::set<TabletServerId>> CatalogManager::GetFollowTablePreferredReplicas(
-    const TableId& base_table_id, const std::string& partition_key_start) {
-  std::set<TabletServerId> preferred;
+Result<std::unordered_map<std::string, std::set<TabletServerId>>>
+CatalogManager::GetFollowTableReplicasByPartitionKey(const TableId& base_table_id) {
+  std::unordered_map<std::string, std::set<TabletServerId>> replicas_by_partition_key;
   if (base_table_id.empty()) {
-    return preferred;
+    return replicas_by_partition_key;
   }
   auto base_table = GetTableInfo(base_table_id);
   if (!base_table) {
-    return preferred;
+    return replicas_by_partition_key;
   }
-  // Identical hash key => identical encoded partition-key space, so the base tablet that
-  // starts at the same partition_key_start covers exactly this index tablet's hash range.
-  auto base_tablets = VERIFY_RESULT(base_table->GetTablets(GetTabletsMode::kOrderByPartitions));
+  auto base_tablets = VERIFY_RESULT(base_table->GetTablets());
   for (const auto& base_tablet : base_tablets) {
-    if (base_tablet->LockForRead()->pb.partition().partition_key_start() != partition_key_start) {
+    auto replicas = base_tablet->GetReplicaLocations();
+    if (!replicas) {
       continue;
     }
-    auto replicas = base_tablet->GetReplicaLocations();
-    if (replicas) {
-      for (const auto& entry : *replicas) {
-        preferred.insert(entry.first);
-      }
+    auto& preferred =
+        replicas_by_partition_key[base_tablet->LockForRead()->pb.partition().partition_key_start()];
+    for (const auto& entry : *replicas) {
+      preferred.insert(entry.first);
     }
-    break;
   }
-  return preferred;
+  return replicas_by_partition_key;
 }
 
 void CatalogManager::SelectReplicas(

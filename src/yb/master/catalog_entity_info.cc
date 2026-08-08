@@ -551,10 +551,6 @@ bool TableInfo::is_vector_index() const {
   return l->is_vector_index();
 }
 
-YbFollowTableMode TableInfo::follow_table_mode() const {
-  return LockForRead()->pb.follow_table_mode();
-}
-
 Result<uint32_t> TableInfo::GetPgRelfilenodeOid() const {
   return GetPgsqlTableOid(id());
 }

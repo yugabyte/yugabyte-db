@@ -918,18 +918,19 @@ Status ClusterLoadBalancer::AnalyzeTablets(const TableInfoPtr& table) {
     TableId base_table_id;
     {
       auto l = table->LockForRead();
-      if (l->pb.follow_table_mode() != FOLLOW_TABLE_NONE) {
+      if (l->follows_table()) {
         base_table_id = l->indexed_table_id();
       }
     }
     if (!base_table_id.empty()) {
-      for (const auto& tablet : tablets) {
-        std::string partition_key_start =
-            tablet->LockForRead()->pb.partition().partition_key_start();
-        auto preferred =
-            catalog_manager_->GetFollowTablePreferredReplicas(base_table_id, partition_key_start);
-        if (preferred.ok() && !preferred->empty()) {
-          state_->follow_table_preferred_ts_[tablet->id()] = std::move(*preferred);
+      auto base_replicas = catalog_manager_->GetFollowTableReplicasByPartitionKey(base_table_id);
+      if (base_replicas.ok()) {
+        for (const auto& tablet : tablets) {
+          auto it = base_replicas->find(
+              tablet->LockForRead()->pb.partition().partition_key_start());
+          if (it != base_replicas->end() && !it->second.empty()) {
+            state_->follow_table_preferred_ts_[tablet->id()] = it->second;
+          }
         }
       }
     }
