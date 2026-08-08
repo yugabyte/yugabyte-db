@@ -174,6 +174,11 @@ class CDCStateTable {
   Result<std::optional<CDCStateTableEntry>> TryFetchEntry(
       const CDCStateTableKey& key, CDCStateTableEntrySelector&& field_filter = {}) EXCLUDES(mutex_);
 
+  // Get all rows for a given hash key (tablet_id). This avoids scanning the entire table and
+  // returns all clustering rows (streams) for that tablet_id.
+  Result<std::vector<CDCStateTableEntry>> FetchEntriesForTablet(
+      const TabletId& tablet_id, CDCStateTableEntrySelector&& field_filter = {}) EXCLUDES(mutex_);
+
   void Shutdown();
 
  private:
