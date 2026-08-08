@@ -27,7 +27,7 @@ To set up YugabyteDB for use with the YugabyteDB gRPC connector, do the followin
 
     You can also create a stream using the [yb-admin](../../../../admin/yb-admin/#create-change-data-stream) `create_change_data_stream` command.
 
-     See [Create a gRPC CDC stream](#create-a-grpc-cdc-stream).
+    See [Create a gRPC CDC stream](#create-a-grpc-cdc-stream).
 
     Note that CDC currently only supports YSQL tables.
 
@@ -85,9 +85,9 @@ CREATE_REPLICATION_SLOT my_grpc_slot LOGICAL yb_grpc;
 
 ### Using yb-admin
 
-{{< note title="Note" >}}
+{{< note title="Legacy workflow" >}}
 
-For v2026.1.1.0 and later, PostgreSQL replication slot syntax is recommended for creating streams.
+Use `yb-admin create_change_data_stream` to create streams in versions earlier than v2026.1.1.0. For v2026.1.1.0 and later, PostgreSQL replication slot syntax is recommended for creating streams.
 
 {{< /note >}}
 
@@ -181,7 +181,7 @@ To use the [protobuf](http://protobuf.dev) format for the serialization/de-seria
 
 Before image refers to the state of the row _before_ the change event occurred. The YugabyteDB connector sends the before image of the row when the stream is configured for it. It is populated for UPDATE and DELETE events. For INSERT events, before image doesn't make sense as the change record itself is in the context of new row insertion.
 
-How you enable before image depends on how the stream was created:
+How you enable before image depends on how the [stream was created](#create-a-grpc-cdc-stream):
 
 - **PostgreSQL replication slot syntax (`yb_grpc`)**: Before-image format is driven by each table's [replica identity](../../using-logical-replication/key-concepts/#replica-identity) at stream creation time (captured in the stream's `replica_identity_map`). Set the desired replica identity on tables before you create the slot (for example, `ALTER TABLE ... REPLICA IDENTITY FULL`).
 - **yb-admin `create_change_data_stream`**: Before image is controlled by the stream-level `record_type` (before-image mode) you pass when creating the stream. See [Before image modes](#before-image-modes) and [Enabling before image](../../../../admin/yb-admin/#enabling-before-image).
