@@ -67,7 +67,7 @@ The following assumes you have set up Primary and Standby universes. Refer to [S
    A full copy is needed here: it is not sufficient to just set up the same schemas on both sides via DDLs, even if there is no data. That will not properly set up some internal metadata including Postgres OIDs.
    {{< /note >}}
 
-1. Enable [point in time restore (PITR)](../../../../manage/backup-restore/point-in-time-recovery/) on the database(s) on both the Primary and Standby universes:
+1. Enable [point-in-time recovery (PITR)](../../../../manage/backup-restore/point-in-time-recovery/enable-pitr/) on the database(s) on both the Primary and Standby universes:
 
     ```sh
     ./bin/yugabyted configure point_in_time_recovery \

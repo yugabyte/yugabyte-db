@@ -17,11 +17,11 @@ type: docs
 
 {{<api-tabs>}}
 
-Point-in-time recovery (PITR) allows you to restore the state of your cluster's data and [certain types](../../../manage/backup-restore/point-in-time-recovery/#limitations) of metadata from a specific point in time. This can be relative, such as "three hours ago", or an absolute timestamp.
+[Rewind to PIT](../../../manage/backup-restore/point-in-time-recovery/rewind/) allows you to rewind the state of your cluster's data and [certain types](../../../manage/backup-restore/point-in-time-recovery/rewind/#limitations) of metadata to a specific point in time. This can be relative, such as "three hours ago", or an absolute timestamp.
 
 For more information, see [Point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/). For details on the yb-admin commands, refer to the [Backup and snapshot commands](../../../admin/yb-admin/#backup-and-snapshot-commands) section of the yb-admin documentation.
 
-The following examples show how you can use the PITR feature by creating a database and populating it, creating a snapshot schedule, and restoring from a snapshot on the schedule.
+The following examples show how you can use Rewind by creating a database and populating it, creating a snapshot schedule, and rewinding from a snapshot on the schedule.
 
 Note that the examples are deliberately simplified. In many of the scenarios, you could drop the index or table to recover. Consider the examples as part of an effort to undo a larger schema change, such as a database migration, which has performed several operations.
 
@@ -31,9 +31,9 @@ The examples run on a local multi-node YugabyteDB universe. To create a universe
 
 ## Undo data changes
 
-The process of undoing data changes involves creating and taking a snapshot of a table, and then performing a restore from either an absolute or relative time.
+The process of undoing data changes involves creating and taking a snapshot of a table, and then performing a rewind from either an absolute or relative time.
 
-Before attempting a restore, you need to confirm that there is no restore in progress for the subject keyspace or table; if multiple restore commands are issued, the data might enter an inconsistent state. For details, see [Restore to a point in time](../../../manage/backup-restore/point-in-time-recovery/#restore-to-a-point-in-time).
+Before attempting a rewind, you need to confirm that there is no rewind or restore in progress for the subject keyspace or table; if multiple rewind commands are issued, the data might enter an inconsistent state. For details, see [Rewind to PIT](../../../manage/backup-restore/point-in-time-recovery/rewind/).
 
 ### Create a table
 
