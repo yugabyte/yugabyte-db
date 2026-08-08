@@ -7,10 +7,11 @@ test: create_drop_index
 
 test: mixed_temporary_and_persistent
 test: truncate
-test: analyze
 test: materialized_views
 
 test: colocated_setup
 test: create_colocated_table
 
 test: table_rewrite
+
+test: analyze

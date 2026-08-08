@@ -683,7 +683,8 @@ Status XClusterDDLQueueHandler::RunDdlQueueHandlerPrepareQueries(pgwrapper::PGCo
   // Skip any data loads on the target since those records will be replicated (note that concurrent
   // index backfill uses a different flow). Skip sequence restart for TRUNCATE TABLE.
   query << "SET yb_xcluster_automatic_mode_target_ddl=true;";
-  // Prepare replicated_ddls insert for manually replicated ddls.
+  // Prepare replicated_ddls insert for manually replicated ddls and for non DDL queries, which do
+  // not record themselves via the ddl_command_end event trigger.
   query << "PREPARE " << kDDLPrepStmtReplicatedDdlsInsert << "(bigint, bigint, text) AS "
         << "INSERT INTO " << kReplicatedDDLsFullTableName << " VALUES ($1, $2, $3::jsonb);";
   // Prepare replicated_ddls select query.
