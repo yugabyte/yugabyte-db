@@ -1341,6 +1341,10 @@ YbcStatus YBCPgCreateIndexSetNumTablets(YbcPgStatement handle, int32_t num_table
   return ToYBCStatus(pgapi->CreateIndexSetNumTablets(handle, num_tablets));
 }
 
+YbcStatus YBCPgCreateIndexSetFollowTable(YbcPgStatement handle) {
+  return ToYBCStatus(pgapi->CreateIndexSetFollowTable(handle));
+}
+
 YbcStatus YBCPgCreateIndexSetVectorOptions(YbcPgStatement handle, YbcPgVectorIdxOptions *options) {
   return ToYBCStatus(pgapi->CreateIndexSetVectorOptions(handle, options));
 }

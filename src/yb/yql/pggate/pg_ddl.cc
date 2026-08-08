@@ -254,6 +254,11 @@ Status PgCreateTableBase::SetNumTablets(int32_t num_tablets) {
   return Status::OK();
 }
 
+Status PgCreateTableBase::SetFollowTable() {
+  req_.set_follow_table_mode(tserver::FOLLOW_TABLE_EVENTUAL);
+  return Status::OK();
+}
+
 Status PgCreateTableBase::SetVectorOptions(YbcPgVectorIdxOptions* options) {
   auto options_pb = req_.mutable_vector_idx_options();
   options_pb->set_dist_type(static_cast<PgVectorDistanceType>(options->dist_type));
