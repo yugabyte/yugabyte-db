@@ -114,7 +114,7 @@ const char* kDDLJsonTypeInfo = "type_info";
 const char* kDDLJsonSequenceInfo = "sequence_info";
 const char* kDDLJsonVariableMap = "variables";
 const char* kDDLJsonManualReplication = "manual_replication";
-const char* kDDLPrepStmtManualInsert = "manual_replication_insert";
+const char* kDDLPrepStmtReplicatedDdlsInsert = "replicated_ddls_insert";
 const char* kDDLPrepStmtAlreadyProcessed = "already_processed_row";
 const char* kDDLPrepStmtCommitTimesUpsert = "commit_times_insert";
 const char* kDDLPrepStmtCommitTimesSelect = "commit_times_select";
@@ -143,6 +143,7 @@ const std::unordered_set<std::string> kSupportedCommandTags {
     "ALTER SEQUENCE",
     "TRUNCATE TABLE",
     "REFRESH MATERIALIZED VIEW",
+    "ANALYZE",
     // Pass thru DDLs
     "CREATE ACCESS METHOD",
     "CREATE AGGREGATE",
@@ -224,6 +225,16 @@ const std::unordered_set<std::string> kSupportedCommandTags {
     "REVOKE",
     "IMPORT FOREIGN SCHEMA",
     "SECURITY LABEL",
+};
+
+// Command tags whose replicated query is not actually a DDL and so does not fire the
+// ddl_command_end event trigger on the target. The extension records every DDL it executes in
+// replicated_ddls from that trigger; for these we have to do it ourselves, otherwise the entry
+// would be reprocessed.
+const std::unordered_set<std::string> kNonDdlCommandTags{
+    // ANALYZE is replicated as a set of pg_restore_relation_stats /
+    // pg_restore_attribute_stats calls wrapped in a DO block.
+    "ANALYZE",
 };
 
 bool IsAllowedGucVariable(const std::string& name) {
@@ -585,6 +596,13 @@ Status XClusterDDLQueueHandler::ProcessDDLQuery(const XClusterDDLQueryInfo& quer
       // The SELECT here can't be last; otherwise, RunAndLogQuery complains that rows are returned.
       RunAndLogQuery(
           "SELECT pg_catalog.yb_xcluster_set_next_oid_assignments('{}');SET ROLE NONE;"));
+
+  // DDLs record themselves in replicated_ddls from the extension's ddl_command_end event trigger.
+  // Queries that are not DDLs never fire that trigger, so do it here instead.
+  if (kNonDdlCommandTags.contains(query_info.command_tag)) {
+    RETURN_NOT_OK(InsertIntoReplicatedDDLs(query_info, /* is_manual_execution */ false));
+  }
+
   return Status::OK();
 }
 
@@ -624,15 +642,22 @@ Status XClusterDDLQueueHandler::CheckForFailedQuery() {
 
 Status XClusterDDLQueueHandler::ProcessManualExecutionQuery(
     const XClusterDDLQueryInfo& query_info) {
+  return InsertIntoReplicatedDDLs(query_info, /* is_manual_execution */ true);
+}
+
+Status XClusterDDLQueueHandler::InsertIntoReplicatedDDLs(
+    const XClusterDDLQueryInfo& query_info, bool is_manual_execution) {
   rapidjson::Document doc;
   doc.SetObject();
   doc.AddMember(
       rapidjson::StringRef(kDDLJsonQuery),
       rapidjson::Value(query_info.query.c_str(), doc.GetAllocator()), doc.GetAllocator());
-  doc.AddMember(rapidjson::StringRef(kDDLJsonManualReplication), true, doc.GetAllocator());
+  if (is_manual_execution) {
+    doc.AddMember(rapidjson::StringRef(kDDLJsonManualReplication), true, doc.GetAllocator());
+  }
 
   RETURN_NOT_OK(RunAndLogQuery(Format(
-      "EXECUTE $0($1, $2, $3)", kDDLPrepStmtManualInsert, query_info.ddl_end_time,
+      "EXECUTE $0($1, $2, $3)", kDDLPrepStmtReplicatedDdlsInsert, query_info.ddl_end_time,
       query_info.query_id, pgwrapper::PqEscapeLiteral(common::WriteRapidJsonToString(doc)))));
   return Status::OK();
 }
@@ -658,8 +683,9 @@ Status XClusterDDLQueueHandler::RunDdlQueueHandlerPrepareQueries(pgwrapper::PGCo
   // Skip any data loads on the target since those records will be replicated (note that concurrent
   // index backfill uses a different flow). Skip sequence restart for TRUNCATE TABLE.
   query << "SET yb_xcluster_automatic_mode_target_ddl=true;";
-  // Prepare replicated_ddls insert for manually replicated ddls.
-  query << "PREPARE " << kDDLPrepStmtManualInsert << "(bigint, bigint, text) AS "
+  // Prepare replicated_ddls insert for manually replicated ddls and for non DDL queries, which do
+  // not record themselves via the ddl_command_end event trigger.
+  query << "PREPARE " << kDDLPrepStmtReplicatedDdlsInsert << "(bigint, bigint, text) AS "
         << "INSERT INTO " << kReplicatedDDLsFullTableName << " VALUES ($1, $2, $3::jsonb);";
   // Prepare replicated_ddls select query.
   query << "PREPARE " << kDDLPrepStmtAlreadyProcessed << "(bigint, bigint) AS "
