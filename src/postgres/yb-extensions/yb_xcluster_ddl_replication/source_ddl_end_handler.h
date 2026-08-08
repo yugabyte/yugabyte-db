@@ -51,4 +51,17 @@ extern void ProcessSourceEventTriggerTableRewrite();
 
 extern void ClearRewrittenTableOidList();
 
+/*
+ * Returns whether an ANALYZE of this relation is worth telling the target
+ * about. Temporary relations, system catalogs and the extension's own tables
+ * are skipped.
+ */
+extern bool ShouldReplicateAnalyzedRelation(Oid relid);
+
+/*
+ * Records the analyzed relation in the ddl_queue entry being built, and returns
+ * the ANALYZE statement naming it (or NULL if the relation has gone away).
+ */
+extern char *PushAnalyzedRelation(JsonbParseState *state, Oid relid);
+
 #endif

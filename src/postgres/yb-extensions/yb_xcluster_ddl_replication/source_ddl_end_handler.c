@@ -17,6 +17,7 @@
 
 #include "postgres.h"
 
+#include "catalog/catalog.h"
 #include "catalog/namespace.h"
 #include "catalog/partition.h"
 #include "catalog/pg_am_d.h"
@@ -24,6 +25,7 @@
 #include "catalog/pg_amproc_d.h"
 #include "catalog/pg_attrdef_d.h"
 #include "catalog/pg_cast_d.h"
+#include "catalog/pg_class.h"
 #include "catalog/pg_collation_d.h"
 #include "catalog/pg_constraint_d.h"
 #include "catalog/pg_conversion_d.h"
@@ -65,6 +67,7 @@
 #include "utils/lsyscache.h"
 #include "utils/palloc.h"
 #include "utils/rel.h"
+#include "utils/syscache.h"
 
 #define DDL_END_CLASSID_COLUMN_ID	  1
 #define DDL_END_OBJID_COLUMN_ID		  2
@@ -1191,4 +1194,69 @@ ClearRewrittenTableOidList()
 {
 	list_free(rewritten_table_oid_list);
 	rewritten_table_oid_list = NIL;
+}
+
+bool
+ShouldReplicateAnalyzedRelation(Oid relid)
+{
+	HeapTuple	tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(relid));
+
+	if (!HeapTupleIsValid(tuple))
+		return false;
+
+	Form_pg_class relform = (Form_pg_class) GETSTRUCT(tuple);
+	Oid			relnamespace = relform->relnamespace;
+	bool		is_temp = (relform->relpersistence == RELPERSISTENCE_TEMP);
+
+	ReleaseSysCache(tuple);
+
+	/* Temporary relations are session local and are never replicated. */
+	if (is_temp)
+		return false;
+
+	/*
+	 * System catalogs (which includes information_schema) are maintained
+	 * independently by each universe.
+	 */
+	if (IsCatalogRelationOid(relid))
+		return false;
+
+	/*
+	 * The extension's own tables are replicated as ordinary data; there is no
+	 * point in refreshing statistics for them on the target.
+	 */
+	char	   *nspname = get_namespace_name(relnamespace);
+
+	if (nspname && strcmp(nspname, EXTENSION_NAME) == 0)
+		return false;
+
+	return true;
+}
+
+/*
+ * Records the analyzed relation under an "analyze_rels" key, and returns the
+ * ANALYZE statement naming it.
+ *
+ * The target does not run that statement, it only uses the relation to find
+ * which of its own tables to mark as needing an ANALYZE. The statement is
+ * recorded so that a ddl_queue entry is still readable on its own.
+ */
+char *
+PushAnalyzedRelation(JsonbParseState *state, Oid relid)
+{
+	char	   *relname = get_rel_name(relid);
+	char	   *nspname = get_namespace_name(get_rel_namespace(relid));
+
+	if (!relname || !nspname)
+		return NULL;
+
+	AddJsonKey(state, "analyze_rels");
+	(void) pushJsonbValue(&state, WJB_BEGIN_ARRAY, NULL);
+	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
+	AddStringJsonEntry(state, "rel_name", relname);
+	AddStringJsonEntry(state, "rel_namespace", nspname);
+	(void) pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+	(void) pushJsonbValue(&state, WJB_END_ARRAY, NULL);
+
+	return psprintf("ANALYZE %s", quote_qualified_identifier(nspname, relname));
 }

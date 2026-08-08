@@ -21,6 +21,7 @@
 #include "catalog/pg_type_d.h"
 #include "commands/event_trigger.h"
 #include "commands/extension.h"
+#include "commands/vacuum.h"
 #include "executor/spi.h"
 #include "extension_util.h"
 #include "json_util.h"
@@ -80,6 +81,7 @@ char *current_extension_name = NULL;
  * Util functions.
  */
 static void RecordTempRelationDDL();
+static void XClusterAnalyzeRelEnd(Oid relid);
 static void XClusterProcessUtility(PlannedStmt *pstmt,
 								   const char *queryString,
 								   bool readOnlyTree,
@@ -103,6 +105,7 @@ static bool yb_should_replicate_ddl = false;
 
 static YbcRecordTempRelationDDL_hook_type prev_YBCRecordTempRelationDDL = NULL;
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
+static YbAnalyzeRelEnd_hook_type prev_YbAnalyzeRelEnd = NULL;
 
 /*
  * The GUC variables `enable_manual_ddl_replication` and
@@ -187,6 +190,8 @@ _PG_init(void)
 	prev_ProcessUtility = ProcessUtility_hook;
 	ProcessUtility_hook = XClusterProcessUtility;
 
+	prev_YbAnalyzeRelEnd = YbAnalyzeRelEnd_hook;
+	YbAnalyzeRelEnd_hook = XClusterAnalyzeRelEnd;
 }
 
 void
@@ -719,6 +724,98 @@ handle_table_rewrite(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_NULL();
+}
+
+/*
+ * ANALYZE is not a DDL, so it does not fire the ddl_command_end event trigger.
+ * Instead the YbAnalyzeRelEnd hook calls us once per analyzed relation, and we
+ * queue an entry naming it.
+ *
+ * The target does not run the ANALYZE. It marks its own copy of the relation as
+ * having changed enough to need one, and lets the auto analyze service pick it
+ * up. Sampling on the target is what keeps the statistics consistent with the
+ * data it has actually applied, and it is also what gives it extended
+ * statistics, which have no import function to replicate them with.
+ */
+static void
+HandleSourceAnalyzeEnd(Oid relid)
+{
+	/* Create memory context for handling json creation + query execution. */
+	MemoryContext context_new,
+				context_old;
+	Oid			save_userid;
+	int			save_sec_context;
+
+	INIT_MEM_CONTEXT_AND_SPI_CONNECT("yb_xcluster_ddl_replication.HandleSourceAnalyzeEnd context");
+
+	JsonbParseState *state = NULL;
+
+	(void) pushJsonbValue(&state, WJB_BEGIN_OBJECT, NULL);
+	(void) AddNumericJsonEntry(state, "version", 1);
+
+	char	   *analyze_query = PushAnalyzedRelation(state, relid);
+
+	if (analyze_query)
+	{
+		(void) AddStringJsonEntry(state, "query", analyze_query);
+		(void) AddStringJsonEntry(state, "command_tag",
+								  GetCommandTagName(CMDTAG_ANALYZE));
+
+		const char *current_user = GetUserNameFromId(save_userid, false);
+
+		if (current_user)
+			(void) AddStringJsonEntry(state, "user", current_user);
+
+		JsonbValue *jsonb_val = pushJsonbValue(&state, WJB_END_OBJECT, NULL);
+		Jsonb	   *jsonb = JsonbValueToJsonb(jsonb_val);
+
+		TimestampTz epoch_time = (GetCurrentTimestamp() - SetEpochTimestamp());
+		int64		query_id = random();
+
+		InsertIntoTable(DDL_QUEUE_TABLE_NAME, epoch_time, query_id, jsonb);
+
+		/*
+		 * Also insert into the replicated_ddls table to handle switchovers, see
+		 * HandleSourceDDLEnd for details.
+		 */
+		InsertIntoReplicatedDDLs(epoch_time, query_id);
+	}
+
+	CLOSE_MEM_CONTEXT_AND_SPI;
+}
+
+static void
+XClusterAnalyzeRelEnd(Oid relid)
+{
+	if (prev_YbAnalyzeRelEnd)
+		prev_YbAnalyzeRelEnd(relid);
+
+	/*
+	 * ANALYZE is only captured on the source of an automatic mode replication.
+	 *
+	 * Unlike the DDL paths, we do not error out when the role cannot be
+	 * fetched. Statistics are only a planner input, so failing to tell the
+	 * target about an ANALYZE leaves it with stale statistics but is otherwise
+	 * harmless, and ANALYZE should not start failing because of it.
+	 */
+	int			role = (replication_role_override != XCLUSTER_ROLE_UNSPECIFIED ?
+						replication_role_override :
+						YBCGetXClusterRole(MyDatabaseId));
+
+	if (role != XCLUSTER_ROLE_AUTOMATIC_SOURCE)
+		return;
+
+	/*
+	 * In manual mode the user is responsible for running the DDLs, and hence
+	 * ANALYZE, on the target themselves.
+	 */
+	if (enable_manual_ddl_replication)
+		return;
+
+	if (!ShouldReplicateAnalyzedRelation(relid))
+		return;
+
+	HandleSourceAnalyzeEnd(relid);
 }
 
 static void
