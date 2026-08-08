@@ -103,6 +103,7 @@
 #include "yb/yql/pggate/ybc_dist_trace.h"
 #include "yb/yql/pggate/ybc_gflags.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb_dist_trace.h"
 #include "yb_tcmalloc_utils.h"
 #include "yb_ysql_conn_mgr_helper.h"
 #include <arpa/inet.h>
@@ -1708,6 +1709,7 @@ exec_simple_query(const char *query_string)
 	if (save_log_statement_stats)
 		ShowUsage("QUERY STATISTICS");
 
+	YbDistTraceEndOpenNodeSpans();
 	YB_DIST_TRACE_END_SPAN();
 	TRACE_POSTGRESQL_QUERY_DONE(query_string);
 
@@ -2760,6 +2762,7 @@ exec_execute_message(const char *portal_name, long max_rows)
 	if (save_log_statement_stats)
 		ShowUsage("EXECUTE MESSAGE STATISTICS");
 
+	YbDistTraceEndOpenNodeSpans();
 	YB_DIST_TRACE_END_SPAN(); /* ext.execute */
 
 	debug_query_string = NULL;

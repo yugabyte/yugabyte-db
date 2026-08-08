@@ -772,6 +772,8 @@ typedef struct EState
 	 * FK relation. Used by YBCBuildYBTupleIdDescriptor().
 	 */
 	List	   *yb_es_pk_proutes;
+
+	bool		yb_dist_trace_has_node_spans;
 } EState;
 
 /*
@@ -1213,6 +1215,12 @@ typedef struct PlanState
 	bool		outeropsset;
 	bool		inneropsset;
 	bool		resultopsset;
+
+	/*
+	 * YB : handle to this node's live span; kept across calls so scope can be
+	 * pushed/popped per call - one span per node, not per tuple
+	 */
+	YbcOtelNodeSpan yb_dist_trace_node_span;
 } PlanState;
 
 /* ----------------
