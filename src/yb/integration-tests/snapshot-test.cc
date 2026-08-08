@@ -1131,17 +1131,26 @@ TEST_F_EX(SnapshotTest, CrashAfterFlushedFrontierSaved, SnapshotExternalMiniClus
 
     // Give some time for process to exit in case of crash.
     SleepFor(500ms * kTimeMultiplier);
-    ASSERT_OK(RestartIfNotAlive(ts1, log_prefix));
 
     // Wait for local bootstrap to complete and pending operations to be applied.
+    // A fault injected just before the flag was reset could still be tearing the process down, so
+    // restart ts1 whenever it is found dead and retry until it stays up and answers.
     ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(master_proxy, &client->proxy_cache()));
     auto* ts1_details = ts_map[ts1->uuid()].get();
-    for (const auto& tablet_id : tablet_ids) {
-      ASSERT_OK(WaitUntilTabletRunning(ts1_details, tablet_id, kTimeout));
-      ASSERT_OK(WaitForServerToBeQuiet(
-          kTimeout, {ts1_details}, tablet_id,
-          /* last_logged_opid = */ nullptr, itest::MustBeCommitted::kTrue));
-    }
+    ASSERT_OK(LoggedWaitFor(
+        [&]() -> Result<bool> {
+          RETURN_NOT_OK(RestartIfNotAlive(ts1, log_prefix));
+          for (const auto& tablet_id : tablet_ids) {
+            if (!WaitUntilTabletRunning(ts1_details, tablet_id, 2s * kTimeMultiplier).ok() ||
+                !WaitForServerToBeQuiet(
+                     2s * kTimeMultiplier, {ts1_details}, tablet_id,
+                     /* last_logged_opid = */ nullptr, itest::MustBeCommitted::kTrue).ok()) {
+              return false;
+            }
+          }
+          return ts1->IsProcessAlive();
+        },
+        kTimeout * 3, log_prefix + "Wait for ts1 tablets to be running and quiet"));
 
     ClusterVerifier cluster_verifier(cluster_.get());
     cluster_verifier.SetVerificationTimeout(kTimeout);
