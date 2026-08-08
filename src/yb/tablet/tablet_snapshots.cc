@@ -1053,7 +1053,6 @@ void TabletSnapshots::ScheduleRetry() {
   if (metrics_) {
     metrics_->cleanup_retries->Increment();
   }
-  UpdatePendingMetricsUnlocked();
   retry_task_tracker_.Schedule([this](const Status& status) {
     if (!status.ok()) {
       return;
