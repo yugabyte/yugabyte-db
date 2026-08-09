@@ -1,5 +1,6 @@
 test: fk-partitioned-1
 test: propagate-lock-delete
+test: yb.port.drop-index-concurrently-1
 test: multiple-cic
 test: alter-table-2
 test: alter-table-3

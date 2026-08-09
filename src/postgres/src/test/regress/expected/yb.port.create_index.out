@@ -229,6 +229,43 @@ NOTICE:  making create index for table "concur_heap" nonconcurrent
 DETAIL:  Create index in transaction block cannot be concurrent.
 HINT:  Consider running it outside of a transaction block. See https://github.com/yugabyte/yugabyte-db/issues/6240.
 COMMIT;
+-- Temporary indexes use the non-concurrent drop path.
+CREATE TEMP TABLE concur_temp (f1 int, f2 text) ON COMMIT PRESERVE ROWS;
+CREATE INDEX CONCURRENTLY concur_temp_ind ON concur_temp(f1);
+DROP INDEX CONCURRENTLY concur_temp_ind;
+SELECT to_regclass('pg_temp.concur_temp_ind') IS NULL AS dropped;
+ dropped 
+---------
+ t
+(1 row)
+
+DROP TABLE concur_temp;
+-- Try some concurrent index drops.
+DROP INDEX CONCURRENTLY "concur_index2";
+DROP INDEX CONCURRENTLY IF EXISTS "concur_index2";
+NOTICE:  index "concur_index2" does not exist, skipping
+-- failures
+DROP INDEX CONCURRENTLY "concur_index2", "concur_index3";
+ERROR:  DROP INDEX CONCURRENTLY does not support dropping multiple objects
+DROP INDEX CONCURRENTLY "concur_index5" CASCADE;
+ERROR:  DROP INDEX CONCURRENTLY does not support CASCADE
+BEGIN;
+DROP INDEX CONCURRENTLY "concur_index5";
+ERROR:  DROP INDEX CONCURRENTLY cannot run inside a transaction block
+ROLLBACK;
+-- successes
+DROP INDEX CONCURRENTLY IF EXISTS "concur_index3";
+DROP INDEX CONCURRENTLY "concur_index4";
+DROP INDEX CONCURRENTLY "concur_index5";
+DROP INDEX CONCURRENTLY "concur_index1";
+DROP INDEX CONCURRENTLY "concur_heap_expr_idx";
+SELECT indexname FROM pg_indexes
+  WHERE tablename = 'concur_heap' ORDER BY indexname;
+ indexname 
+-----------
+ std_index
+(1 row)
+
 -- Failed builds are left invalid by VACUUM FULL, fixed by REINDEX
 -- YB note: VACUUM and REINDEX TABLE are not yet supported
 VACUUM FULL concur_heap;
@@ -238,6 +275,7 @@ ERROR:  REINDEX TABLE not supported yet
 LINE 1: REINDEX TABLE concur_heap;
                 ^
 HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+DROP TABLE concur_heap;
 --
 -- Test ADD CONSTRAINT USING INDEX
 --

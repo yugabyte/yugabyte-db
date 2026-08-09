@@ -113,6 +113,7 @@ typedef struct
 
 /* non-export function prototypes */
 static bool relationHasPrimaryKey(Relation rel);
+static void YbCommitIndexDropStateChange(const char *phase);
 static TupleDesc ConstructTupleDescriptor(Relation heapRelation,
 										  IndexInfo *indexInfo,
 										  List *indexColNames,
@@ -2385,112 +2386,165 @@ index_drop(Oid indexId, bool concurrent, bool concurrent_lock_mode)
 	if (concurrent)
 	{
 		/*
-		 * We must commit our transaction in order to make the first pg_index
-		 * state update visible to other sessions.  If the DROP machinery has
-		 * already performed any other actions (removal of other objects,
-		 * pg_depend entries, etc), the commit would make those actions
-		 * permanent, which would leave us with inconsistent catalog state if
-		 * we fail partway through the following sequence.  Since DROP INDEX
-		 * CONCURRENTLY is restricted to dropping just one index that has no
-		 * dependencies, we should get here before anything's been done ---
-		 * but let's check that to be sure.  We can verify that the current
-		 * transaction has not executed any transactional updates by checking
-		 * that no XID has been assigned.
+		 * YB: Change the backend type to YB_INDEX_BACKFILL_DDL for the
+		 * duration of the two WaitForLockers calls below.  A
+		 * YB_INDEX_BACKFILL_DDL backend is ignored by the
+		 * WaitForYsqlBackendsCatalogVersion query logic, so a DROP INDEX
+		 * CONCURRENTLY blocked on old transactions does not appear as a
+		 * lagging backend and time out other concurrent index DDLs (see the
+		 * corresponding logic for CREATE INDEX CONCURRENTLY in DefineIndex).
+		 * Unlike CREATE INDEX CONCURRENTLY, this applies in legacy mode for
+		 * catalog ops too because YbCommitIndexDropStateChange waits for
+		 * backend catalog-version convergence in both modes.
 		 */
-		if (GetTopTransactionIdIfAny() != InvalidTransactionId)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("DROP INDEX CONCURRENTLY must be first action in transaction")));
 
-		/*
-		 * Mark index invalid by updating its pg_index entry
-		 */
-		index_set_state_flags(indexId, INDEX_DROP_CLEAR_VALID);
+		/* Use volatile to ensure variables survive a siglongjmp */
+		volatile BackendType old_type = MyBackendType;
+		volatile bool yb_type_changed = false;
 
-		/*
-		 * Invalidate the relcache for the table, so that after this commit
-		 * all sessions will refresh any cached plans that might reference the
-		 * index.
-		 */
-		CacheInvalidateRelcache(userHeapRelation);
+		if (IsYugaByteEnabled() &&
+			(MyBackendType == B_BACKEND || MyBackendType == YB_YSQL_CONN_MGR))
+		{
+			MyBackendType = YB_INDEX_BACKFILL_DDL;
+			if (MyBEEntry)
+				MyBEEntry->st_backendType = MyBackendType;
+			yb_type_changed = true;
+		}
 
-		/* save lockrelid and locktag for below, then close but keep locks */
-		heaprelid = userHeapRelation->rd_lockInfo.lockRelId;
-		SET_LOCKTAG_RELATION(heaplocktag, heaprelid.dbId, heaprelid.relId);
-		indexrelid = userIndexRelation->rd_lockInfo.lockRelId;
+		PG_TRY();
+		{
+			/*
+			 * We must commit our transaction in order to make the first pg_index
+			 * state update visible to other sessions.  If the DROP machinery has
+			 * already performed any other actions (removal of other objects,
+			 * pg_depend entries, etc), the commit would make those actions
+			 * permanent, which would leave us with inconsistent catalog state if
+			 * we fail partway through the following sequence.  Since DROP INDEX
+			 * CONCURRENTLY is restricted to dropping just one index that has no
+			 * dependencies, we should get here before anything's been done ---
+			 * but let's check that to be sure.  We can verify that the current
+			 * transaction has not executed any transactional updates by checking
+			 * that no XID has been assigned.
+			 */
+			if (GetTopTransactionIdIfAny() != InvalidTransactionId)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("DROP INDEX CONCURRENTLY must be first action in transaction")));
 
-		table_close(userHeapRelation, NoLock);
-		index_close(userIndexRelation, NoLock);
+			/*
+			 * Mark index invalid by updating its pg_index entry
+			 */
+			index_set_state_flags(indexId, INDEX_DROP_CLEAR_VALID);
 
-		/*
-		 * We must commit our current transaction so that the indisvalid
-		 * update becomes visible to other transactions; then start another.
-		 * Note that any previously-built data structures are lost in the
-		 * commit.  The only data we keep past here are the relation IDs.
-		 *
-		 * Before committing, get a session-level lock on the table, to ensure
-		 * that neither it nor the index can be dropped before we finish. This
-		 * cannot block, even if someone else is waiting for access, because
-		 * we already have the same lock within our transaction.
-		 */
-		LockRelationIdForSession(&heaprelid, ShareUpdateExclusiveLock);
-		LockRelationIdForSession(&indexrelid, ShareUpdateExclusiveLock);
+			/*
+			 * Invalidate the relcache for the table, so that after this commit
+			 * all sessions will refresh any cached plans that might reference the
+			 * index.
+			 */
+			CacheInvalidateRelcache(userHeapRelation);
 
-		PopActiveSnapshot();
-		CommitTransactionCommand();
-		StartTransactionCommand();
+			/* save lockrelid and locktag for below, then close but keep locks */
+			heaprelid = userHeapRelation->rd_lockInfo.lockRelId;
+			SET_LOCKTAG_RELATION(heaplocktag, heaprelid.dbId, heaprelid.relId);
+			indexrelid = userIndexRelation->rd_lockInfo.lockRelId;
 
-		/*
-		 * Now we must wait until no running transaction could be using the
-		 * index for a query.  Use AccessExclusiveLock here to check for
-		 * running transactions that hold locks of any kind on the table. Note
-		 * we do not need to worry about xacts that open the table for reading
-		 * after this point; they will see the index as invalid when they open
-		 * the relation.
-		 *
-		 * Note: the reason we use actual lock acquisition here, rather than
-		 * just checking the ProcArray and sleeping, is that deadlock is
-		 * possible if one of the transactions in question is blocked trying
-		 * to acquire an exclusive lock on our table.  The lock code will
-		 * detect deadlock and error out properly.
-		 *
-		 * Note: we report progress through WaitForLockers() unconditionally
-		 * here, even though it will only be used when we're called by REINDEX
-		 * CONCURRENTLY and not when called by DROP INDEX CONCURRENTLY.
-		 */
-		WaitForLockers(heaplocktag, AccessExclusiveLock, true);
+			table_close(userHeapRelation, NoLock);
+			index_close(userIndexRelation, NoLock);
 
-		/* Finish invalidation of index and mark it as dead */
-		index_concurrently_set_dead(heapId, indexId);
+			/*
+			 * We must commit our current transaction so that the indisvalid
+			 * update becomes visible to other transactions; then start another.
+			 * Note that any previously-built data structures are lost in the
+			 * commit.  The only data we keep past here are the relation IDs.
+			 *
+			 * Before committing, get a session-level lock on the table, to ensure
+			 * that neither it nor the index can be dropped before we finish. This
+			 * cannot block, even if someone else is waiting for access, because
+			 * we already have the same lock within our transaction.
+			 */
+			LockRelationIdForSession(&heaprelid, ShareUpdateExclusiveLock);
+			LockRelationIdForSession(&indexrelid, ShareUpdateExclusiveLock);
 
-		/*
-		 * Again, commit the transaction to make the pg_index update visible
-		 * to other sessions.
-		 */
-		CommitTransactionCommand();
-		StartTransactionCommand();
+			PopActiveSnapshot();
+			if (IsYugaByteEnabled())
+				YbCommitIndexDropStateChange("drop_indisvalid");
+			else
+			{
+				CommitTransactionCommand();
+				StartTransactionCommand();
+			}
 
-		/*
-		 * Wait till every transaction that saw the old index state has
-		 * finished.  See above about progress reporting.
-		 */
-		WaitForLockers(heaplocktag, AccessExclusiveLock, true);
+			/*
+			 * Now we must wait until no running transaction could be using the
+			 * index for a query.  Use AccessExclusiveLock here to check for
+			 * running transactions that hold locks of any kind on the table. Note
+			 * we do not need to worry about xacts that open the table for reading
+			 * after this point; they will see the index as invalid when they open
+			 * the relation.
+			 *
+			 * Note: the reason we use actual lock acquisition here, rather than
+			 * just checking the ProcArray and sleeping, is that deadlock is
+			 * possible if one of the transactions in question is blocked trying
+			 * to acquire an exclusive lock on our table.  The lock code will
+			 * detect deadlock and error out properly.
+			 *
+			 * Note: we report progress through WaitForLockers() unconditionally
+			 * here, even though it will only be used when we're called by REINDEX
+			 * CONCURRENTLY and not when called by DROP INDEX CONCURRENTLY.
+			 */
+			WaitForLockers(heaplocktag, AccessExclusiveLock, true);
 
-		/*
-		 * Re-open relations to allow us to complete our actions.
-		 *
-		 * At this point, nothing should be accessing the index, but lets
-		 * leave nothing to chance and grab AccessExclusiveLock on the index
-		 * before the physical deletion.
-		 */
-		userHeapRelation = table_open(heapId, ShareUpdateExclusiveLock);
-		userIndexRelation = index_open(indexId, AccessExclusiveLock);
+			/* Finish invalidation of index and mark it as dead */
+			index_concurrently_set_dead(heapId, indexId);
+
+			/*
+			 * Again, commit the transaction to make the pg_index update visible
+			 * to other sessions.
+			 */
+			if (IsYugaByteEnabled())
+				YbCommitIndexDropStateChange("drop_indislive");
+			else
+			{
+				CommitTransactionCommand();
+				StartTransactionCommand();
+			}
+
+			/*
+			 * Wait till every transaction that saw the old index state has
+			 * finished.  See above about progress reporting.
+			 */
+			WaitForLockers(heaplocktag, AccessExclusiveLock, true);
+
+			/*
+			 * Re-open relations to allow us to complete our actions.
+			 *
+			 * At this point, nothing should be accessing the index, but lets
+			 * leave nothing to chance and grab AccessExclusiveLock on the index
+			 * before the physical deletion.
+			 */
+			userHeapRelation = table_open(heapId, ShareUpdateExclusiveLock);
+			userIndexRelation = index_open(indexId, AccessExclusiveLock);
+		}
+		PG_FINALLY();
+		{
+			if (yb_type_changed)
+			{
+				MyBackendType = old_type;
+				if (MyBEEntry)
+					MyBEEntry->st_backendType = old_type;
+			}
+		}
+		PG_END_TRY();
 	}
 	else
 	{
 		/* Not concurrent, so just transfer predicate locks and we're good */
 		TransferPredicateLocksToHeapRelation(userIndexRelation);
 	}
+
+	if (concurrent && IsYBRelation(userIndexRelation) &&
+		!userIndexRelation->rd_index->indisprimary)
+		YBCDropIndex(userIndexRelation);
 
 	/*
 	 * Schedule physical removal of the files (if any)
@@ -2575,6 +2629,48 @@ index_drop(Oid indexId, bool concurrent, bool concurrent_lock_mode)
 		UnlockRelationIdForSession(&heaprelid, ShareUpdateExclusiveLock);
 		UnlockRelationIdForSession(&indexrelid, ShareUpdateExclusiveLock);
 	}
+}
+
+/*
+ * YB: Commit a pg_index state-change transaction of DROP INDEX CONCURRENTLY
+ * and wait until every backend in the cluster has caught up to the resulting
+ * catalog version, so that no backend can still be planning or executing
+ * queries against the old index state when the caller proceeds.
+ *
+ * The commit must preserve the YB DDL state of the overall DROP INDEX
+ * statement across the intermediate transaction boundary.  In legacy mode
+ * for catalog ops, YbCommitTransactionCommandIntermediate does not restore
+ * that state (it only does so when DDL transaction block support is
+ * enabled), so explicitly re-wind and re-establish the DDL nesting level and
+ * original-statement state around the commit, mirroring YbDefineIndexHelper.
+ *
+ * "phase" identifies the just-committed pg_index transition for the
+ * yb_test_fail_index_state_change and yb_test_block_index_phase test hooks.
+ */
+static void
+YbCommitIndexDropStateChange(const char *phase)
+{
+	if (YBCIsLegacyModeForCatalogOps())
+	{
+		YbDdlOriginalStmtState ddl_stmt_state;
+		YbDdlMode	ddl_mode = YBGetCurrentDdlMode();
+
+		YBGetDdlOriginalStmtState(&ddl_stmt_state);
+		YBDecrementDdlNestingLevel();
+		CommitTransactionCommand();
+		StartTransactionCommand();
+		YBIncrementDdlNestingLevel(ddl_mode);
+		YBSetDdlOriginalStmtState(&ddl_stmt_state);
+	}
+	else
+		YbCommitTransactionCommandIntermediate();
+
+	YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, phase);
+	if (yb_test_block_index_phase[0] != '\0')
+		YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
+									phase, "concurrent index drop state change");
+
+	YbWaitForBackendsCatalogVersion();
 }
 
 /* ----------------------------------------------------------------
