@@ -34,6 +34,7 @@ set(VECTOR_INDEX_SRCS
   index_wrapper_base.cc
   vector_id.cc
   vector_lsm.cc
+  vector_lsm_merger.cc
   vector_lsm_metadata.cc
   vector_lsm_metrics.cc
   )
