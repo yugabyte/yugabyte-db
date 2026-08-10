@@ -8,9 +8,11 @@ import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.kms.KMSConfigHelper;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.CiphertrustEARServiceUtil.CipherTrustKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil.GcpKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.common.kms.util.OciEARServiceUtil.OciKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.operator.utils.OperatorUtils;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
@@ -42,16 +44,22 @@ import org.apache.commons.collections4.CollectionUtils;
  * KMSConfigHelper} and tracked by task UUID. The CR status ({@code resourceUUID}, {@code state},
  * {@code message}, {@code taskUUID}) is written back from the reconciler once tasks complete.
  *
- * <p>The HASHICORP (Vault), AWS, GCP and AZU (Azure Key Vault) providers are supported; other
- * providers are gated behind {@link UnsupportedOperationException} placeholders in {@link
- * OperatorUtils} and surface as an {@code Error} state on the CR.
+ * <p>The HASHICORP (Vault), AWS, GCP, AZU (Azure Key Vault), CIPHERTRUST and OCI providers are
+ * supported; other providers are gated behind {@link UnsupportedOperationException} placeholders in
+ * {@link OperatorUtils} and surface as an {@code Error} state on the CR.
  */
 @Slf4j
 public class KMSConfigReconciler extends AbstractReconciler<KMSConfig> {
 
   // Providers implemented by the operator (create/edit/delete). Others surface as an Error state.
   private static final Set<KeyProvider> SUPPORTED_PROVIDERS =
-      EnumSet.of(KeyProvider.HASHICORP, KeyProvider.AWS, KeyProvider.GCP, KeyProvider.AZU);
+      EnumSet.of(
+          KeyProvider.HASHICORP,
+          KeyProvider.AWS,
+          KeyProvider.GCP,
+          KeyProvider.AZU,
+          KeyProvider.CIPHERTRUST,
+          KeyProvider.OCI);
 
   private final KMSConfigHelper kmsConfigHelper;
   private final Map<String, UUID> kmsConfigTaskMap;
@@ -378,6 +386,21 @@ public class KMSConfigReconciler extends AbstractReconciler<KMSConfig> {
         return fieldChanged(desired, current, AzuKmsAuthConfigField.CLIENT_ID.fieldName)
             || fieldChanged(desired, current, AzuKmsAuthConfigField.CLIENT_SECRET.fieldName)
             || fieldChanged(desired, current, AzuKmsAuthConfigField.TENANT_ID.fieldName);
+      case CIPHERTRUST:
+        // The auth type and its credentials are editable; the manager URL and key settings are not.
+        return fieldChanged(desired, current, CipherTrustKmsAuthConfigField.AUTH_TYPE.fieldName)
+            || fieldChanged(desired, current, CipherTrustKmsAuthConfigField.USERNAME.fieldName)
+            || fieldChanged(desired, current, CipherTrustKmsAuthConfigField.PASSWORD.fieldName)
+            || fieldChanged(
+                desired, current, CipherTrustKmsAuthConfigField.REFRESH_TOKEN.fieldName);
+      case OCI:
+        // The API-key credentials (user/tenancy/fingerprint/private key) and compartment are
+        // editable; region, vault, key name, key OCID and the auth type are not.
+        return fieldChanged(desired, current, OciKmsAuthConfigField.ociUserId.fieldName)
+            || fieldChanged(desired, current, OciKmsAuthConfigField.ociTenancyId.fieldName)
+            || fieldChanged(desired, current, OciKmsAuthConfigField.ociFingerprint.fieldName)
+            || fieldChanged(desired, current, OciKmsAuthConfigField.ociPrivateKeyContent.fieldName)
+            || fieldChanged(desired, current, OciKmsAuthConfigField.ociCompartmentId.fieldName);
       default:
         return false;
     }

@@ -25,9 +25,12 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.CiphertrustEARServiceUtil.CipherTrustKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil.GcpKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.common.kms.util.OciEARServiceUtil.OciKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.OciEARServiceUtil.OciKmsAuthType;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
@@ -2552,9 +2555,10 @@ public class OperatorUtils {
    * (the same shape the REST API accepts as the request body).
    *
    * <p>HASHICORP (Vault) is implemented with TOKEN and APPROLE auth, AWS with static credentials or
-   * the host IAM profile, GCP with a service account credentials JSON, and AZU with a service
-   * principal or managed identity; every other provider throws {@link
-   * UnsupportedOperationException} as an explicit placeholder for future support.
+   * the host IAM profile, GCP with a service account credentials JSON, AZU with a service principal
+   * or managed identity, CIPHERTRUST with user credentials or a refresh token, and OCI with API-key
+   * authentication; every other provider throws {@link UnsupportedOperationException} as an
+   * explicit placeholder for future support.
    */
   public ObjectNode getKMSConfigFormDataFromCr(KMSConfig kmsConfig) {
     ObjectNode spec = objectMapper.valueToTree(kmsConfig.getSpec());
@@ -2574,6 +2578,12 @@ public class OperatorUtils {
         break;
       case AZU:
         buildAzureAuthConfig(formData, spec.get("azure"), resourceNamespace);
+        break;
+      case CIPHERTRUST:
+        buildCiphertrustAuthConfig(formData, spec.get("cipherTrust"), resourceNamespace);
+        break;
+      case OCI:
+        buildOciAuthConfig(formData, spec.get("oci"), resourceNamespace);
         break;
       default:
         throw new UnsupportedOperationException(
@@ -2704,6 +2714,115 @@ public class OperatorUtils {
       return defaultValue;
     }
     return value.asInt();
+  }
+
+  private void buildCiphertrustAuthConfig(
+      ObjectNode formData, JsonNode cipherTrust, String resourceNamespace) {
+    if (cipherTrust == null || cipherTrust.isNull()) {
+      throw new RuntimeException("cipherTrust configuration is required for CIPHERTRUST KMS");
+    }
+    formData.put(
+        CipherTrustKmsAuthConfigField.CIPHERTRUST_MANAGER_URL.fieldName,
+        cipherTrust.get("managerURL").asText());
+    formData.put(
+        CipherTrustKmsAuthConfigField.KEY_NAME.fieldName, cipherTrust.get("keyName").asText());
+    formData.put(
+        CipherTrustKmsAuthConfigField.KEY_ALGORITHM.fieldName,
+        getTextOrDefault(cipherTrust, "keyAlgorithm", "AES"));
+    formData.put(
+        CipherTrustKmsAuthConfigField.KEY_SIZE.fieldName,
+        getIntOrDefault(cipherTrust, "keySize", 256));
+
+    String authType = getTextOrDefault(cipherTrust, "authType", null);
+    if ("USER_CREDENTIALS".equals(authType)) {
+      JsonNode userCredentials = cipherTrust.get("userCredentials");
+      if (userCredentials == null || userCredentials.isNull()) {
+        throw new RuntimeException(
+            "userCredentials is required for CIPHERTRUST KMS with USER_CREDENTIALS auth");
+      }
+      // The backend represents user-credentials auth as the PASSWORD auth type.
+      formData.put(CipherTrustKmsAuthConfigField.AUTH_TYPE.fieldName, "PASSWORD");
+      formData.put(
+          CipherTrustKmsAuthConfigField.USERNAME.fieldName,
+          userCredentials.get("username").asText());
+      JsonNode passwordSecret = userCredentials.get("passwordSecret");
+      if (passwordSecret == null || passwordSecret.isNull()) {
+        throw new RuntimeException(
+            "passwordSecret is required for CIPHERTRUST KMS with USER_CREDENTIALS auth");
+      }
+      formData.put(
+          CipherTrustKmsAuthConfigField.PASSWORD.fieldName,
+          resolveSecretRef(passwordSecret, resourceNamespace));
+    } else if ("REFRESH_TOKEN".equals(authType)) {
+      JsonNode refreshTokenSecret = cipherTrust.get("refreshTokenSecret");
+      if (refreshTokenSecret == null || refreshTokenSecret.isNull()) {
+        throw new RuntimeException(
+            "refreshTokenSecret is required for CIPHERTRUST KMS with REFRESH_TOKEN auth");
+      }
+      formData.put(CipherTrustKmsAuthConfigField.AUTH_TYPE.fieldName, "REFRESH_TOKEN");
+      formData.put(
+          CipherTrustKmsAuthConfigField.REFRESH_TOKEN.fieldName,
+          resolveSecretRef(refreshTokenSecret, resourceNamespace));
+    } else {
+      throw new UnsupportedOperationException(
+          "Unsupported auth type for CIPHERTRUST KMS via the Kubernetes operator: " + authType);
+    }
+  }
+
+  // OCI is exposed with API-key authentication (the default when ociAuthType is absent) and with
+  // the OCI Instance Principal of the YBA host.
+  private void buildOciAuthConfig(ObjectNode formData, JsonNode oci, String resourceNamespace) {
+    if (oci == null || oci.isNull()) {
+      throw new RuntimeException("oci configuration is required for OCI KMS");
+    }
+    formData.put(OciKmsAuthConfigField.ociRegion.fieldName, oci.get("region").asText());
+    formData.put(
+        OciKmsAuthConfigField.ociCompartmentId.fieldName, oci.get("compartmentOCID").asText());
+    formData.put(OciKmsAuthConfigField.ociVaultId.fieldName, oci.get("vaultOCID").asText());
+    formData.put(
+        OciKmsAuthConfigField.ociKeyName.fieldName,
+        getTextOrDefault(oci, "keyName", "yba-master-key"));
+
+    // The instance principal is resolved from the host metadata service and omits the API-key
+    // credentials; otherwise all four of them are required.
+    boolean useInstancePrincipal =
+        oci.hasNonNull("useInstancePrincipal") && oci.get("useInstancePrincipal").asBoolean();
+    if (useInstancePrincipal) {
+      formData.put(
+          OciKmsAuthConfigField.ociAuthType.fieldName, OciKmsAuthType.INSTANCE_PRINCIPAL.name());
+    } else {
+      JsonNode userOcid = oci.get("userOCID");
+      JsonNode tenancyOcid = oci.get("tenancyOCID");
+      JsonNode fingerprint = oci.get("fingerprint");
+      JsonNode privateKeySecret = oci.get("privateKeySecret");
+      if (userOcid == null
+          || userOcid.isNull()
+          || tenancyOcid == null
+          || tenancyOcid.isNull()
+          || fingerprint == null
+          || fingerprint.isNull()
+          || privateKeySecret == null
+          || privateKeySecret.isNull()) {
+        throw new RuntimeException(
+            "userOCID, tenancyOCID, fingerprint and privateKeySecret are required for OCI KMS"
+                + " unless useInstancePrincipal is true");
+      }
+      // ociAuthType is deliberately left unset for API_KEY: it is the backend default when the
+      // field is blank, so configs created before instance-principal support keep an identical
+      // auth config and do not look changed to the reconciler.
+      formData.put(OciKmsAuthConfigField.ociUserId.fieldName, userOcid.asText());
+      formData.put(OciKmsAuthConfigField.ociTenancyId.fieldName, tenancyOcid.asText());
+      formData.put(OciKmsAuthConfigField.ociFingerprint.fieldName, fingerprint.asText());
+      formData.put(
+          OciKmsAuthConfigField.ociPrivateKeyContent.fieldName,
+          resolveSecretRef(privateKeySecret, resourceNamespace));
+    }
+
+    // keyOCID is optional: when omitted YBA creates a key with keyName in the vault.
+    String keyOcid = getTextOrDefault(oci, "keyOCID", null);
+    if (keyOcid != null) {
+      formData.put(OciKmsAuthConfigField.ociKeyOcid.fieldName, keyOcid);
+    }
   }
 
   private void buildHashicorpAuthConfig(

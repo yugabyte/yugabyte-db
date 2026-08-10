@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -154,11 +155,6 @@ public class KMSConfigReconcilerTest extends FakeDBApplication {
     return kmsConfig;
   }
 
-  // OCI is not implemented by the operator; used to exercise the unsupported-provider path.
-  private KMSConfig createUnsupportedProviderCr(String name) {
-    return baseCr(name, KMSConfigSpec.Provider.OCI);
-  }
-
   private KMSConfig baseCr(String name, KMSConfigSpec.Provider provider) {
     KMSConfig kmsConfig = new KMSConfig();
     ObjectMeta metadata = new ObjectMeta();
@@ -301,6 +297,54 @@ public class KMSConfigReconcilerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testCreateNewKMSConfigCiphertrust() throws Exception {
+    KMSConfig kmsConfig = baseCr("test-kms-ciphertrust", KMSConfigSpec.Provider.CIPHERTRUST);
+    UUID taskUUID = UUID.randomUUID();
+
+    doReturn(Json.newObject()).when(mockOperatorUtils).getKMSConfigFormDataFromCr(any());
+    when(mockKmsConfigHelper.createKMSConfig(
+            eq(testCustomer.getUuid()),
+            eq(KeyProvider.CIPHERTRUST),
+            any(ObjectNode.class),
+            eq(KubernetesResourceDetails.fromResource(kmsConfig))))
+        .thenReturn(taskUUID);
+
+    kmsConfigReconciler.createActionReconcile(kmsConfig, testCustomer);
+
+    verify(mockKmsConfigHelper, times(1))
+        .createKMSConfig(
+            eq(testCustomer.getUuid()),
+            eq(KeyProvider.CIPHERTRUST),
+            any(ObjectNode.class),
+            eq(KubernetesResourceDetails.fromResource(kmsConfig)));
+    assertEquals(taskUUID, kmsConfigReconciler.getKMSConfigTaskMapValue(workQueueKey(kmsConfig)));
+  }
+
+  @Test
+  public void testCreateNewKMSConfigOci() throws Exception {
+    KMSConfig kmsConfig = baseCr("test-kms-oci", KMSConfigSpec.Provider.OCI);
+    UUID taskUUID = UUID.randomUUID();
+
+    doReturn(Json.newObject()).when(mockOperatorUtils).getKMSConfigFormDataFromCr(any());
+    when(mockKmsConfigHelper.createKMSConfig(
+            eq(testCustomer.getUuid()),
+            eq(KeyProvider.OCI),
+            any(ObjectNode.class),
+            eq(KubernetesResourceDetails.fromResource(kmsConfig))))
+        .thenReturn(taskUUID);
+
+    kmsConfigReconciler.createActionReconcile(kmsConfig, testCustomer);
+
+    verify(mockKmsConfigHelper, times(1))
+        .createKMSConfig(
+            eq(testCustomer.getUuid()),
+            eq(KeyProvider.OCI),
+            any(ObjectNode.class),
+            eq(KubernetesResourceDetails.fromResource(kmsConfig)));
+    assertEquals(taskUUID, kmsConfigReconciler.getKMSConfigTaskMapValue(workQueueKey(kmsConfig)));
+  }
+
+  @Test
   public void testCreateSetsFinalizer() throws Exception {
     KMSConfig kmsConfig = createHashicorpTokenCr("test-kms");
     kmsConfig.getMetadata().setFinalizers(Collections.emptyList());
@@ -341,10 +385,15 @@ public class KMSConfigReconcilerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreateUnsupportedProviderSetsError() throws Exception {
-    KMSConfig kmsConfig = createUnsupportedProviderCr("test-kms-oci");
-    // Let the real form-data builder run so the unsupported-provider path throws.
+  public void testCreateUnsupportedOperationSetsError() throws Exception {
+    // Every CR-enum provider is now implemented, so simulate an UnsupportedOperationException from
+    // the form-data builder (e.g. an auth type the operator does not expose) and verify it surfaces
+    // as Error.
+    KMSConfig kmsConfig = createHashicorpTokenCr("test-kms");
     when(mockKmsConfigResource.get()).thenReturn(kmsConfig);
+    doThrow(new UnsupportedOperationException("not yet supported via the Kubernetes operator"))
+        .when(mockOperatorUtils)
+        .getKMSConfigFormDataFromCr(any());
 
     kmsConfigReconciler.createActionReconcile(kmsConfig, testCustomer);
 
