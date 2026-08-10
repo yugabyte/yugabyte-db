@@ -502,13 +502,7 @@ class OciCloudAdmin:
             self.set_region(region)
 
         comp_id = compartment_id or self.compartment_id
-        if get_all:
-            instances = self.compute_client.list_instances(comp_id)
-        else:
-            instances = self.compute_client.list_instances(
-                comp_id,
-                lifecycle_state=OCI_INSTANCE_RUNNING
-            )
+        instances = self.compute_client.list_instances(comp_id)
 
         results = []
         subnet_cache = {}
