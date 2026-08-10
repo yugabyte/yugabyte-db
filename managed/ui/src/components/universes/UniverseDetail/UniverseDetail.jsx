@@ -708,6 +708,9 @@ class UniverseDetail extends Component {
     const isSupportBundleDisabled =
       this.isUniverseDeleting() || isActionFrozen(allowedTasks, UNIVERSE_TASKS.SUPPORT_BUNDLES);
     const isBackupsDisabled = isUniverseStatusPending || isK8ActionsDisabled;
+    const isUniverseRegisteredToPa =
+      universePaRegistrationStatus?.data?.success && isNonEmptyArray(ybaToPaServiceDetails?.data);
+    const isPerfAdvisorActionDisabled = isUniverseStatusPending;
     const isPauseUniverseDisabled =
       (universePaused && isUniverseStatusPending) ||
       this.isUniverseDeleting() ||
@@ -1697,7 +1700,7 @@ class UniverseDetail extends Component {
                         <RbacValidator
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...ApiPermissionMap.GET_UNIVERSE_PERF_ADVISOR
+                            ...ApiPermissionMap.UNIVERSE_CONFIGURE_YSQL
                           }}
                           isControl
                         >
@@ -1851,13 +1854,17 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...ApiPermissionMap.GET_UNIVERSE_PERF_ADVISOR_STATUS
+                            ...(isUniverseRegisteredToPa
+                              ? ApiPermissionMap.UNREGISTER_UNIVERSE_FROM_PERF_ADVISOR
+                              : ApiPermissionMap.REGISTER_UNIVERSE_TO_PERF_ADVISOR)
                           }}
                         >
-                          <YBMenuItem onClick={showEnablePerfAdvisorModal}>
+                          <YBMenuItem
+                            disabled={isPerfAdvisorActionDisabled}
+                            onClick={showEnablePerfAdvisorModal}
+                          >
                             <YBLabelWithIcon icon="fa fa-trash-o fa-fw">
-                              {universePaRegistrationStatus?.data?.success &&
-                              isNonEmptyArray(ybaToPaServiceDetails?.data)
+                              {isUniverseRegisteredToPa
                                 ? 'Disable Perf Advisor Collector'
                                 : 'Enable Perf Advisor Collector'}
                             </YBLabelWithIcon>
@@ -1872,10 +1879,13 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...ApiPermissionMap.GET_UNIVERSE_PERF_ADVISOR_STATUS
+                            ...ApiPermissionMap.REGISTER_UNIVERSE_TO_PERF_ADVISOR
                           }}
                         >
-                          <YBMenuItem onClick={showEnableAdvancedObservabilityModal}>
+                          <YBMenuItem
+                            disabled={isPerfAdvisorActionDisabled}
+                            onClick={showEnableAdvancedObservabilityModal}
+                          >
                             <YBLabelWithIcon icon="fa fa-line-chart fa-fw">
                               Enable Advanced Observability
                             </YBLabelWithIcon>
@@ -1890,10 +1900,13 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...ApiPermissionMap.GET_UNIVERSE_PERF_ADVISOR_STATUS
+                            ...ApiPermissionMap.REGISTER_UNIVERSE_TO_PERF_ADVISOR
                           }}
                         >
-                          <YBMenuItem onClick={showDisableAdvancedObservabilityModal}>
+                          <YBMenuItem
+                            disabled={isPerfAdvisorActionDisabled}
+                            onClick={showDisableAdvancedObservabilityModal}
+                          >
                             <YBLabelWithIcon icon="fa fa-line-chart fa-fw">
                               Disable Advanced Observability
                             </YBLabelWithIcon>
