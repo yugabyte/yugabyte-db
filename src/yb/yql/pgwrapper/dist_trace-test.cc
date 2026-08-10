@@ -530,6 +530,36 @@ class OtlpHttpCollector {
         Format("Child spans of '$0' in trace '$1'", parent_op_name, trace_id));
   }
 
+  // Waits for a span in trace_id matching child_matches whose parent in the same trace matches
+  // parent_matches. Returns the child span.
+  template <class ChildMatcher, class ParentMatcher>
+  Result<Span> WaitForParentedSpan(
+      std::string_view trace_id, const ChildMatcher& child_matches,
+      const ParentMatcher& parent_matches, const std::string& description) const EXCLUDES(mutex_) {
+    Span child_span;
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          std::lock_guard lock(mutex_);
+          auto it = traces_.find(std::string(trace_id));
+          if (it == traces_.end()) return false;
+          const auto& spans = it->second.spans;
+          for (const auto& child : spans) {
+            if (child.parent_span_id.empty() || !child_matches(child)) {
+              continue;
+            }
+            for (const auto& parent : spans) {
+              if (parent.span_id == child.parent_span_id && parent_matches(parent)) {
+                child_span = child;
+                return true;
+              }
+            }
+          }
+          return false;
+        },
+        kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms, description));
+    return child_span;
+  }
+
   // Waits for a cross-boundary pairing in trace_id: a server-kind span (service_name ==
   // server_service, op name starting with op_prefix) whose parent_span_id is the span_id of a
   // client-kind span (service_name == client_service, same op_prefix). This proves the query's
@@ -537,37 +567,20 @@ class OtlpHttpCollector {
   Result<Span> WaitForRemoteChildSpan(
       std::string_view trace_id, std::string_view op_prefix,
       std::string_view client_service, std::string_view server_service) const EXCLUDES(mutex_) {
-    Span server_span;
-    RETURN_NOT_OK(WaitFor(
-        [&]() -> Result<bool> {
-          std::lock_guard lock(mutex_);
-          auto it = traces_.find(std::string(trace_id));
-          if (it == traces_.end()) return false;
-          const auto& spans = it->second.spans;
-          for (const auto& server : spans) {
-            if (server.service_name != server_service ||
-                server.kind != otlp_trace::Span::SPAN_KIND_SERVER ||
-                !server.op_name.starts_with(op_prefix) ||
-                server.parent_span_id.empty()) {
-              continue;
-            }
-            // The server span's parent must be a client span in the same trace.
-            for (const auto& client : spans) {
-              if (client.service_name == client_service &&
-                  client.kind == otlp_trace::Span::SPAN_KIND_CLIENT &&
-                  client.op_name.starts_with(op_prefix) &&
-                  client.span_id == server.parent_span_id) {
-                server_span = server;
-                return true;
-              }
-            }
-          }
-          return false;
+    return WaitForParentedSpan(
+        trace_id,
+        [&](const Span& server) {
+          return server.service_name == server_service &&
+                 server.kind == otlp_trace::Span::SPAN_KIND_SERVER &&
+                 server.op_name.starts_with(op_prefix);
         },
-        kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+        [&](const Span& client) {
+          return client.service_name == client_service &&
+                 client.kind == otlp_trace::Span::SPAN_KIND_CLIENT &&
+                 client.op_name.starts_with(op_prefix);
+        },
         Format("Remote child span '$0*' on '$1' linked to '$2' in trace '$3'",
-               op_prefix, server_service, client_service, trace_id)));
-    return server_span;
+               op_prefix, server_service, client_service, trace_id));
   }
 
   // Waits for three spans in trace_id, each the parent of the next, all with op names starting
@@ -629,33 +642,18 @@ class OtlpHttpCollector {
       std::string_view trace_id, std::string_view parent_service,
       std::string_view parent_op_prefix, std::string_view child_service,
       std::string_view child_query_prefix) const EXCLUDES(mutex_) {
-    Span child_span;
-    RETURN_NOT_OK(WaitFor(
-        [&]() -> Result<bool> {
-          std::lock_guard lock(mutex_);
-          auto it = traces_.find(std::string(trace_id));
-          if (it == traces_.end()) return false;
-          const auto& spans = it->second.spans;
-          for (const auto& child : spans) {
-            if (child.service_name != child_service || child.parent_span_id.empty() ||
-                !child.query_text.starts_with(child_query_prefix)) {
-              continue;
-            }
-            for (const auto& parent : spans) {
-              if (parent.service_name == parent_service &&
-                  parent.op_name.starts_with(parent_op_prefix) &&
-                  parent.span_id == child.parent_span_id) {
-                child_span = child;
-                return true;
-              }
-            }
-          }
-          return false;
+    return WaitForParentedSpan(
+        trace_id,
+        [&](const Span& child) {
+          return child.service_name == child_service &&
+                 child.query_text.starts_with(child_query_prefix);
         },
-        kOtelBatchScheduleDelayMs * kTimeMultiplier * 50ms,
+        [&](const Span& parent) {
+          return parent.service_name == parent_service &&
+                 parent.op_name.starts_with(parent_op_prefix);
+        },
         Format("Span on '$0' for '$1*' parented by a '$2' span '$3*' in trace '$4'",
-               child_service, child_query_prefix, parent_service, parent_op_prefix, trace_id)));
-    return child_span;
+               child_service, child_query_prefix, parent_service, parent_op_prefix, trace_id));
   }
 
  private:
