@@ -336,6 +336,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Allow users to override default Gflags values",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> skipPrechecksForNonRollingGFlagsUpgrade =
+      new ConfKeyInfo<>(
+          "yb.gflags.skip_prechecks_for_non_rolling_upgrade",
+          ScopeType.UNIVERSE,
+          "Skip Prechecks for Non-Rolling GFlags Upgrade",
+          "Skip cluster consistency, node data directory disk space, consistency table, and "
+              + "ValidateGFlags checks during a non-rolling gflags upgrade",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableTriggerAPI =
       new ConfKeyInfo<>(
           "yb.health.trigger_api.enabled",
