@@ -1271,6 +1271,47 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
   }
 
   @Test
+  public void getOtelColConfigK8sGoldenFile() {
+    // Golden file for the K8s collector config. The K8s and VM paths share one generator but pin
+    // their collector versions independently - a Java constant here, a Helm image tag in the charts
+    // repo - so a change valid on one side can silently be rejected by the other. Only the VM
+    // output was golden-tested, which is how the awss3 s3_partition -> s3_partition_format rename
+    // reached the K8s path unnoticed. S3 and metrics export are covered here specifically because
+    // they carry the keys that moved: s3_partition_format and service::telemetry::metrics::readers.
+    S3Config s3Config = new S3Config();
+    s3Config.setType(ProviderType.S3);
+    s3Config.setBucket("bucket");
+    s3Config.setAccessKey("access_key");
+    s3Config.setSecretKey("secret_key");
+    s3Config.setRegion("us-west2");
+
+    TelemetryProvider s3Tp =
+        createTelemetryProvider(new UUID(0, 0), "S3", ImmutableMap.of("tag", "value"), s3Config);
+    when(mockTelemetryProviderService.getOrBadRequest(s3Tp.getUuid())).thenReturn(s3Tp);
+
+    AuditLogConfig auditLogConfig =
+        createAuditLogConfigWithYSQL(
+            s3Tp.getUuid(), ImmutableMap.of("additionalTag", "otherValue"));
+    MetricsExportConfig metricsExportConfig =
+        createMetricsExportConfig(
+            s3Tp.getUuid(), ImmutableMap.of("env", "prod"), 15, 10, MetricCollectionLevel.NORMAL);
+
+    OtelCollectorConfigGenerator.K8sOtelConfig result =
+        generator.getOtelColConfigK8s(
+            provider,
+            universe,
+            TelemetryConfig.builder()
+                .auditLogConfig(auditLogConfig)
+                .metricsExportConfig(metricsExportConfig)
+                .build(),
+            null,
+            "%m [%p] ");
+
+    assertTrue("config should be enabled", result.isEnabled());
+    assertThat(result.getConfig(), equalTo(TestUtils.readResource("audit/k8s_otel_config.yml")));
+  }
+
+  @Test
   public void getOtelColConfigK8sTserverLogs() {
     TelemetryProvider awsTp =
         createTelemetryProvider(new UUID(0, 0), "AWS", ImmutableMap.of(), awsCloudWatch());
@@ -1479,6 +1520,10 @@ public class OtelCollectorConfigGeneratorTest extends FakeDBApplication {
     config.setType(ProviderType.OTLP);
     config.setEndpoint("http://otlp:3100");
     config.setAuthType(AuthType.NoAuth);
+    // Per-signal endpoints are HTTP-only - the gRPC exporter has no logs_endpoint/metrics_endpoint
+    // fields and rejects a config carrying them. OTLPConfig#validateConfigFields enforces this, so
+    // leaving the default gRPC protocol here would build a combination the API cannot produce.
+    config.setProtocol(OTLPConfig.Protocol.HTTP);
     config.setLogsEndpoint("http://otlp:3000/logs");
     config.setMetricsEndpoint("http://otlp:3000/metrics");
 
