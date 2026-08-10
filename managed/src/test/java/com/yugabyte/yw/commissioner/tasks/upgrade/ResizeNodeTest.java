@@ -32,6 +32,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DoCapacityReservation;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
@@ -555,6 +556,19 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         .applyRound()
         .addTasks(TaskType.UpdateAndPersistGFlags)
         .verifyTasks(taskInfo.getSubTasks());
+  }
+
+  @Test
+  public void testNonRollingOnlyGFlagRejectedForResize() {
+    ResizeNodeParams taskParams = createResizeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.clusters.get(0).userIntent.specificGFlags =
+        SpecificGFlags.construct(Map.of("emergency_repair_mode", "true"), Map.of());
+
+    PlatformServiceException exception =
+        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
+
+    assertThat(exception.getMessage(), containsString("NON_ROLLING_UPGRADE"));
   }
 
   @Test

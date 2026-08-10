@@ -1222,6 +1222,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
+  protected boolean isSkipUpdateConsistencyCheck() {
+    return false;
+  }
+
   /**
    * This method locks the universe, runs {@link #createPrecheckTasks(Universe)}, and freezes the
    * universe with the given txnCallback. By freezing, the association between the task and the
@@ -1275,7 +1279,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     try {
       initAndAddPrecheckTasks(universe);
       TaskType taskType = getTaskExecutor().getTaskType(getClass());
-      if (!SKIP_CONSISTENCY_CHECK_TASKS.contains(taskType)
+      if (!isSkipUpdateConsistencyCheck()
+          && !SKIP_CONSISTENCY_CHECK_TASKS.contains(taskType)
           && confGetter.getConfForScope(universe, UniverseConfKeys.enableConsistencyCheck)) {
         log.info("Creating consistency check task for task {}", taskType);
         checkAndCreateConsistencyCheckTableTask(universe.getUniverseDetails().getPrimaryCluster());
