@@ -5708,6 +5708,12 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaLessChangeMetadataOpsWi
       MonoDelta::FromSeconds(60) * kTimeMultiplier,
       "Waiting for the added colocated table to appear in tablet metadata"));
 
+  // Write a schema-carrying alter op for test3 to the shared tablet's WAL before the drop.
+  // Without this, the only source of such an op is the wal_retention_secs AlterTable sent by
+  // the CDCSDK dynamic table addition background task, which races with test3's sub-second
+  // lifetime, so the dropped-table alter op path below would usually go unexercised.
+  ASSERT_OK(conn.Execute("ALTER TABLE test3 ADD COLUMN extra INT"));
+
   ASSERT_OK(conn.Execute("DROP TABLE test3"));
 
   // Wait for the REMOVE_TABLE change metadata op to apply so that it is in the WAL before the
