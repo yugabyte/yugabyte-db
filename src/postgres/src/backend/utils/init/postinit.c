@@ -1130,7 +1130,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	/* Connect to YugaByte cluster. */
 	YBInitPostgresBackend("postgres", yb_init_info);
 
-	if (IsYugaByteEnabled() && !bootstrap && MyProcPort != NULL &&
+	if (!bootstrap && MyProcPort != NULL &&
 		MyProcPort->yb_dist_traceparent != NULL &&
 		MyProcPort->yb_dist_traceparent[0] != '\0')
 	{
@@ -1142,8 +1142,8 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		/* Warn instead of failing the connection when the value is rejected. */
 		(void) set_config_option("yb_dist_tracecontext", tracecontext,
 								 PGC_BACKEND, PGC_S_CLIENT, GUC_ACTION_SET,
-								 true /* changeVal */, WARNING,
-								 false /* is_reload */);
+								 true /* changeVal */ , WARNING,
+								 false /* is_reload */ );
 	}
 
 	if (IsYugaByteEnabled() && !bootstrap)
