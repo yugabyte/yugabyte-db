@@ -121,7 +121,7 @@ To enable the PA collector for a universe:
 
 1. Confirm the **Are you sure you want to enable Performance Monitoring?** action, and select **Apply changes**.
 
-After you enable the collector, it runs in the background and gathers metadata for that universe, such as PostgreSQL Statement Statistics (PGSS) hash data.
+After you enable the collector, it runs in the background and gathers metadata for that universe, such as PostgreSQL Statement Statistics (PGSS) and ASH data.
 
 To disable collection, click **Actions > More > Disable Perf Advisor Collector**.
 
