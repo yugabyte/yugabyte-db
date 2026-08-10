@@ -125,6 +125,7 @@ public class Util {
 
   public static final UUID NULL_UUID = UUID.fromString("00000000-0000-0000-0000-000000000000");
   public static final String YSQL_PASSWORD_KEYWORD = "PASSWORD";
+  public static final String REDACTED_YSQL_QUERY = "<YSQL query>";
   public static final String DEFAULT_YSQL_USERNAME = "yugabyte";
   public static final String DEFAULT_YSQL_PASSWORD = "yugabyte";
   public static final String DEFAULT_YSQL_ADMIN_ROLE_NAME = "yb_superuser";
