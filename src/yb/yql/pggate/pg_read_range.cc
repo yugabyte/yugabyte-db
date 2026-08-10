@@ -224,9 +224,11 @@ void PgReadRange::ApplyLowerBound(LWPgsqlReadRequestPB& req) const {
       return;
     }
 
-    if (diff == 0 && !lower_bound_is_inclusive_) {
-      // The bound may be already exclusive, but assignment won't hurt.
-      req.mutable_lower_bound()->set_is_inclusive(false);
+    if (diff == 0) {
+      // Keys are equal, update only inclusivity if necessary.
+      if (!lower_bound_is_inclusive_) {
+        req.mutable_lower_bound()->set_is_inclusive(false);
+      }
       return;
     }
   }
@@ -250,9 +252,11 @@ void PgReadRange::ApplyUpperBound(LWPgsqlReadRequestPB& req) const {
       return;
     }
 
-    if (diff == 0 && !upper_bound_is_inclusive_) {
-      // The bound may be already exclusive, but assignment won't hurt.
-      req.mutable_upper_bound()->set_is_inclusive(false);
+    if (diff == 0) {
+      // Keys are equal, update only inclusivity if necessary.
+      if (!upper_bound_is_inclusive_) {
+        req.mutable_upper_bound()->set_is_inclusive(false);
+      }
       return;
     }
   }
