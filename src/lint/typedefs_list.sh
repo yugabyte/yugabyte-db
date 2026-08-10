@@ -43,7 +43,7 @@ if [[ "$1" == */yb_typedefs.list ]]; then
   done
   
   # Find all header files in pggate that contain YB_DEFINE_HANDLE_TYPE
-  git grep -l YB_DEFINE_HANDLE_TYPE src/yb/yql/pggate | \
+  lint_git_grep -lF YB_DEFINE_HANDLE_TYPE src/yb/yql/pggate | \
     # Extract the handle type names
     xargs grep -ho 'YB_DEFINE_HANDLE_TYPE([A-Z][a-zA-Z0-9_]*)' | \
     # Remove the macro name and parentheses

@@ -52,3 +52,22 @@ check_ctags() {
     return 1
   fi
 }
+
+# Wrappers for the git commands these linters parse.
+
+# Diff a commit against the working tree.  diff-index is a plumbing command, so
+# unlike git diff its output is not reshaped by color.ui, color.diff,
+# diff.external, or diff.mnemonicPrefix.  It does not detect renames, so a
+# renamed file shows up as an addition.
+lint_git_diff() {
+  git diff-index -p "$@"
+}
+
+# git grep has no plumbing counterpart, so pin the settings that reshape its
+# output: color.ui and color.grep, grep.lineNumber, grep.column, grep.fullName,
+# and grep.patternType, which decides whether the pattern is a basic or
+# extended regular expression.  A caller passing -E, -F, -P, or -n later still
+# wins, since git takes the last one given.
+lint_git_grep() {
+  git grep --no-color --no-line-number --no-column --no-full-name -G "$@"
+}

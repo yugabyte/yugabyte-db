@@ -30,13 +30,13 @@ set_merge_base || exit 0
 # 1 otherwise. Modifications to existing migration files do not change the
 # migration version and therefore do not require a pg_yb_migration.dat update.
 is_newly_added() {
-  git diff "$merge_base" --diff-filter=A --name-only -- "$1" | grep -q .
+  lint_git_diff "$merge_base" --diff-filter=A --name-only -- "$1" | grep -q .
 }
 
 # Returns 0 if pg_yb_migration.dat was modified anywhere on this branch
 # (committed or staged), 1 otherwise.
 migration_dat_updated() {
-  git diff "$merge_base" -- "$MIGRATION_DAT" | grep -q '^+'
+  lint_git_diff "$merge_base" -- "$MIGRATION_DAT" | grep -q '^+'
 }
 
 if ! is_newly_added "$1"; then

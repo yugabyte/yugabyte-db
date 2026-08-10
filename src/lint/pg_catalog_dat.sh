@@ -31,13 +31,13 @@ set_merge_base || exit 0
 # Returns 0 if YB_LAST_USED_OID was bumped anywhere on this branch
 # (committed or staged), 1 otherwise.
 catalog_h_bumped() {
-  git diff "$merge_base" -- "$CATALOG_H" | grep -q '^+.*YB_LAST_USED_OID'
+  lint_git_diff "$merge_base" -- "$CATALOG_H" | grep -q '^+.*YB_LAST_USED_OID'
 }
 
 # Returns 0 if at least one new file was added to the migrations directory
 # anywhere on this branch (committed or staged), 1 otherwise.
 migration_added() {
-  git diff "$merge_base" --name-only --diff-filter=A -- "$MIGRATIONS_DIR" | grep -q .
+  lint_git_diff "$merge_base" --name-only --diff-filter=A -- "$MIGRATIONS_DIR" | grep -q .
 }
 
 # Each check emits its own file-level warning (no line number).
