@@ -2577,19 +2577,22 @@ OpId RaftGroupMetadata::MinUnflushedChangeMetadataOpId() const {
   return min_unflushed_change_metadata_op_id_;
 }
 
-Status RaftGroupMetadata::OnBackfillDone(const TableId& table_id) {
+Status RaftGroupMetadata::OnBackfillDone(
+    const TableId& table_id, uint64_t birth_time) {
   std::lock_guard lock(data_mutex_);
-  return OnBackfillDoneUnlocked(table_id);
+  return OnBackfillDoneUnlocked(table_id, birth_time);
 }
 
-Status RaftGroupMetadata::OnBackfillDone(const OpId& op_id, const TableId& table_id) {
+Status RaftGroupMetadata::OnBackfillDone(
+    const OpId& op_id, const TableId& table_id, uint64_t birth_time) {
   std::lock_guard lock(data_mutex_);
-  RETURN_NOT_OK(OnBackfillDoneUnlocked(table_id));
+  RETURN_NOT_OK(OnBackfillDoneUnlocked(table_id, birth_time));
   OnChangeMetadataOperationAppliedUnlocked(op_id);
   return Status::OK();
 }
 
-Status RaftGroupMetadata::OnBackfillDoneUnlocked(const TableId& table_id) {
+Status RaftGroupMetadata::OnBackfillDoneUnlocked(
+    const TableId& table_id, uint64_t birth_time) {
   if (FLAGS_TEST_skip_metadata_backfill_done) {
     LOG_WITH_PREFIX(INFO) << "Skipping RaftGroupMetadata::OnBackfillDoneUnlocked()";
     return Status::OK();
@@ -2605,6 +2608,13 @@ Status RaftGroupMetadata::OnBackfillDoneUnlocked(const TableId& table_id) {
   new_schema.SetRetainDeleteMarkers(false);
 
   TableInfoPtr new_table_info = std::make_shared<TableInfo>(*it->second, new_schema);
+  // Persist the index birth time in the index_info if provided.
+  if (birth_time != 0 && new_table_info->index_info) {
+    IndexInfoPB index_info_pb;
+    new_table_info->index_info->ToPB(&index_info_pb);
+    index_info_pb.set_birth_time(birth_time);
+    new_table_info->index_info.reset(new qlexpr::IndexInfo(index_info_pb));
+  }
   VLOG_WITH_PREFIX(1) << raft_group_id_ << " Updating table " << target_table_id
                       << " to Schema version " << new_table_info->schema_version
                       << " from \n" << AsString(it->second)

@@ -519,7 +519,8 @@ class Tablet : public AbstractTablet,
 
   // Used to update the tablets on the index table that the index has been backfilled.
   // This means that full compactions can now garbage collect delete markers.
-  Status MarkBackfillDone(const OpId& op_id, const TableId& table_id = "");
+  Status MarkBackfillDone(
+      const OpId& op_id, const TableId& table_id = "", uint64_t birth_time = 0);
 
   // Change wal_retention_secs in the metadata.
   Status AlterWalRetentionSecs(ChangeMetadataOperation* operation);
@@ -1468,6 +1469,10 @@ class Tablet : public AbstractTablet,
   // Function to get min schema version for a table needed for xCluster.
   std::function<uint32_t(const TableId&, const ColocationId&)>
       get_min_xcluster_schema_version_ = nullptr;
+
+  // Used to schedule retain_delete_markers validation when colocated indexes are added
+  // to an already-open tablet.
+  std::function<void(const RaftGroupMetadata&)> schedule_tablet_metadata_validation_;
 
   simple_spinlock operation_filters_mutex_;
 

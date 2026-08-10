@@ -759,7 +759,9 @@ Tablet::Tablet(const TabletInitData& data)
       full_compaction_pool_(data.full_compaction_pool),
       admin_triggered_compaction_pool_(data.admin_triggered_compaction_pool),
       ts_post_split_compaction_added_(std::move(data.post_split_compaction_added)),
-      get_min_xcluster_schema_version_(std::move(data.get_min_xcluster_schema_version)) {
+      get_min_xcluster_schema_version_(std::move(data.get_min_xcluster_schema_version)),
+      schedule_tablet_metadata_validation_(
+          std::move(data.schedule_tablet_metadata_validation)) {
   CHECK(schema()->has_column_ids());
   LOG_WITH_PREFIX(INFO) << "Schema version for " << metadata_->table_name() << " is "
                         << metadata_->primary_table_schema_version();
@@ -3101,6 +3103,11 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
         *table_info_ptr, indexed_table_info, state_ == State::kBootstrapping));
   }
 
+  // Analogous to ScheduleValidation on tablet open for non-colocated index tablets.
+  if (schedule_tablet_metadata_validation_) {
+    schedule_tablet_metadata_validation_(*metadata_);
+  }
+
   return Status::OK();
 }
 
@@ -3133,9 +3140,10 @@ Status Tablet::RemoveTable(const std::string& table_id, const OpId& op_id) {
   return Status::OK();
 }
 
-Status Tablet::MarkBackfillDone(const OpId& op_id, const TableId& table_id) {
+Status Tablet::MarkBackfillDone(
+    const OpId& op_id, const TableId& table_id, uint64_t birth_time) {
   LOG_WITH_PREFIX(INFO) << "Setting backfill as done";
-  auto status = metadata_->OnBackfillDone(op_id, table_id);
+  auto status = metadata_->OnBackfillDone(op_id, table_id, birth_time);
   if (!status.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Triggering backfill done failed: " << status;
     return status;

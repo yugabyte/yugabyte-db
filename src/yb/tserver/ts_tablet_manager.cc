@@ -2333,6 +2333,10 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
           return VectorIndexCompactionToken();
         },
         .vector_index_block_cache = vector_index_block_cache_,
+        .schedule_tablet_metadata_validation =
+            [this](const tablet::RaftGroupMetadata& metadata) {
+              tablet_metadata_validator_->ScheduleValidation(metadata);
+            },
     };
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,

@@ -14,12 +14,16 @@
 #include "yb/tserver/read_query.h"
 
 #include "yb/common/row_mark.h"
+#include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 
+#include "yb/common/transaction_error.h"
 #include "yb/dockv/doc_key.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/master/sys_catalog_constants.h"
+
+#include "yb/qlexpr/index.h"
 
 #include "yb/rpc/sidecars.h"
 
@@ -68,6 +72,9 @@ DEFINE_RUNTIME_bool(ysql_follower_reads_avoid_waiting_for_safe_time, true,
     "should be rejected. This will force them to go to the leader, which will likely be "
     "faster than waiting for safe time to catch up.");
 TAG_FLAG(ysql_follower_reads_avoid_waiting_for_safe_time, advanced);
+
+DEFINE_test_flag(bool, disable_index_birth_time_check, false,
+    "If set, don't reject reads at ysql index when read time < index birth time.");
 
 DECLARE_bool(backfill_index_check_snapshot_too_old);
 
@@ -831,7 +838,39 @@ Result<ReadQuery::ReadRestartInfo> ReadQuery::DoReadImpl() {
 
   if (!req_->pgsql_batch().empty()) {
     size_t total_num_rows_read = 0;
+    auto* metadata = tablet()->metadata();
     for (const auto& pgsql_read_req : req_->pgsql_batch()) {
+      // For colocated secondary index scans, the inner nested index_request targets the index.
+      auto table_info = VERIFY_RESULT(metadata->GetTableInfo(pgsql_read_req.has_index_request()
+          ? pgsql_read_req.index_request().table_id()
+          : pgsql_read_req.table_id()));
+      if (table_info->index_info && !table_info->IsVectorIndex() && read_time_ &&
+          PREDICT_TRUE(!FLAGS_TEST_disable_index_birth_time_check)) {
+        // Reject reads arriving at index with a read time earlier than the index birth time.
+        // TODO(#33155): index birth_time isn't set for xCluster automatic-mode target (where
+        // backfill is replicated from the source).
+        auto birth_time = table_info->index_info->birth_time();
+        auto birth_ht = HybridTime(birth_time);
+        if (birth_time != 0 && !birth_ht.is_special() && read_time_.read < birth_ht) {
+          return STATUS(
+              SnapshotTooOld,
+              Format("Query read time < index birth time: $0 < [$1] $2",
+                     read_time_.read.ToString(), table_info->table_id, birth_ht.ToString()),
+              TransactionError(TransactionErrorCode::kSnapshotTooOld));
+        }
+        // Master persists index birth before launching AsyncBackfillDone task in
+        // AllowCompactionsToGCDeleteMarkers. So if the delete markers are still set,
+        // reject reads with retryable error until the task to clear the delete markers
+        // is processed, which would set birth_time (if one exists).
+        if (birth_time == 0 &&
+            table_info->schema().table_properties().retain_delete_markers()) {
+          return STATUS_FORMAT(
+              LeaderNotReadyToServe,
+              "Index table $0 backfill metadata not yet applied locally "
+              "(retain_delete_markers still set)",
+              table_info->table_id);
+        }
+      }
       tablet::PgsqlReadRequestResult result(resp_->arena(), &context_.sidecars().Start());
       TRACE("Start HandlePgsqlReadRequest");
       RETURN_NOT_OK(abstract_tablet_->HandlePgsqlReadRequest(

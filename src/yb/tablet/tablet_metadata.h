@@ -787,8 +787,10 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   // Called to update related metadata when index table backfilling is complete.
   // Returns kStatusNotFound if table is not found in kv_store, in other case returns kStatusOk.
-  Status OnBackfillDone(const TableId& table_id) EXCLUDES(data_mutex_);
-  Status OnBackfillDone(const OpId& op_id, const TableId& table_id) EXCLUDES(data_mutex_);
+  Status OnBackfillDone(const TableId& table_id, uint64_t birth_time = 0)
+      EXCLUDES(data_mutex_);
+  Status OnBackfillDone(const OpId& op_id, const TableId& table_id,
+                        uint64_t birth_time = 0) EXCLUDES(data_mutex_);
 
   // Updates related meta data as a reaction for post split compaction completed. Returns true
   // if any field has been updated and a flush may be required.
@@ -840,7 +842,8 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   void OnChangeMetadataOperationAppliedUnlocked(const OpId& applied_op_id) REQUIRES(data_mutex_);
 
-  Status OnBackfillDoneUnlocked(const TableId& table_id) REQUIRES(data_mutex_);
+  Status OnBackfillDoneUnlocked(const TableId& table_id, uint64_t birth_time = 0)
+      REQUIRES(data_mutex_);
 
   Status SetTableInfoUnlocked(const TableInfoMap::iterator& it,
                               const TableInfoPtr& new_table_info) REQUIRES(data_mutex_);

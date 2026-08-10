@@ -292,8 +292,12 @@ const Configuration kIndexRPCs{
     ash::PggateRPC::kGetIndexBackfillProgress,
     ash::PggateRPC::kWaitForBackendsCatalogVersion},
   .tserver_flags = {
-    "--ysql_yb_test_block_index_phase=postbackfill",
-    "--ysql_disable_index_backfill=false"}};
+    "--ysql_yb_test_block_index_phase=indisvalid",
+    "--ysql_disable_index_backfill=false",
+    "--enable_object_locking_for_table_locks=false",
+    "--ysql_yb_ddl_transaction_block_enabled=false",
+    "--allowed_preview_flags_csv=ysql_enable_concurrent_ddl",
+    "--ysql_enable_concurrent_ddl=false"}};
 
 // Test for RPCs which are fired with queries related to replication slots
 const Configuration kReplicationRPCs{

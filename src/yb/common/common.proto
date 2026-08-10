@@ -315,6 +315,11 @@ message IndexInfoPB {
   // are not included in this count. Moreover, after backfill is completed, this field is no longer
   // updated.
   optional double num_rows_backfilled_in_index = 36;
+
+  // Index inception / birth hybrid time: the backfill read time, persisted on the index
+  // table's IndexInfoPB after backfill completes successfully. Used to reject reads whose
+  // snapshot predates when the index became consistent.
+  optional fixed64 birth_time = 37;
 }
 
 // The possible order modes for clients.

@@ -378,6 +378,10 @@ message IndexStatusPB {
   // Backfill status for the specified index table on base of index permissions. Value absence means
   // either error field is specified, or backfill_status is not present in BackfillStatus enum.
   optional BackfillStatus backfill_status = 3;
+
+  // Index inception / birth hybrid time, used to reject reads from older backends with
+  // read time < birth time that might hit the index.
+  optional fixed64 birth_time = 4;
 }
 
 message GetBackfillStatusResponsePB {

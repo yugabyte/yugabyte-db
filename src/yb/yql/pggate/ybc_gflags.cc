@@ -181,6 +181,7 @@ DECLARE_bool(TEST_ysql_log_perdb_allocated_new_objectid);
 DECLARE_bool(use_fast_backward_scan);
 DECLARE_uint32(ysql_max_invalidation_message_queue_size);
 DECLARE_uint32(max_replication_slots);
+DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_string(placement_cloud);
 DECLARE_string(placement_region);
@@ -286,7 +287,9 @@ const YbcPgGFlagsAccessor* YBCGetGFlags() {
       .TEST_delay_after_table_analyze_ms = &FLAGS_TEST_delay_after_table_analyze_ms,
       .TEST_enable_obj_tuple_locks = &FLAGS_TEST_enable_obj_tuple_locks,
       .TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization =
-          &FLAGS_TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization
+          &FLAGS_TEST_force_use_explicit_row_lock_skip_locked_read_ahead_optimization,
+      .wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms =
+          &FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms,
   };
   // clang-format on
   return &accessor;

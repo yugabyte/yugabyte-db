@@ -1439,7 +1439,7 @@ void CatalogManager::ValidateIndexTablesPostLoad(
         table_id, std::move(indexes),
         [this, tables_to_persist = DCHECK_NOTNULL(tables_to_persist)](
             const Status& status, const TableId& index_id,
-            IndexStatusPB::BackfillStatus backfill_status) {
+            IndexStatusPB::BackfillStatus backfill_status, uint64_t /*birth_time*/) {
           DCHECK(status.ok());
           if (!status.ok()) {
             LOG(WARNING) << "ValidateIndexTablesPostLoad: Failed to get backfill status for "
@@ -6782,7 +6782,7 @@ void CatalogManager::GetBackfillStatus(
   // Utility functor to respond with the provided error for the remaining indexes.
   auto callback_failure = [&callback, &indexes](const Status& status) {
     for (const auto& index : indexes) {
-      callback(status, index, IndexStatusPB::BACKFILL_UNKNOWN);
+      callback(status, index, IndexStatusPB::BACKFILL_UNKNOWN, /*birth_time=*/uint64_t{0});
     }
   };
 
@@ -6823,7 +6823,14 @@ void CatalogManager::GetBackfillStatus(
   }
 
   for (const auto& [index_id, backfill_status] : indexes_for_callback) {
-    callback(Status::OK(), index_id, backfill_status);
+    uint64_t birth_time = 0;
+    if (auto index_table = GetTableInfo(index_id)) {
+      auto l = index_table->LockForRead();
+      if (l->pb.has_index_info() && l->pb.index_info().has_birth_time()) {
+        birth_time = l->pb.index_info().birth_time();
+      }
+    }
+    callback(Status::OK(), index_id, backfill_status, birth_time);
   }
 
   // Notify the caller with the remaining indexes. There's a chance some of the indexes
@@ -6884,13 +6891,16 @@ Status CatalogManager::GetBackfillStatus(
         table_id, std::move(indexes),
         [&index_to_identifier_map, &resp](
             const Status& status, const TableId& index_id,
-            IndexStatusPB::BackfillStatus backfill_status) {
+            IndexStatusPB::BackfillStatus backfill_status, uint64_t birth_time) {
           auto identifier_it = index_to_identifier_map.find(index_id);
           CHECK(identifier_it != index_to_identifier_map.end());
           auto* index_status = resp->add_index_status();
           index_status->mutable_index_table()->CopyFrom(*identifier_it->second);
           if (status.ok()) {
             index_status->set_backfill_status(backfill_status);
+            if (birth_time != 0) {
+              index_status->set_birth_time(birth_time);
+            }
           } else {
              StatusToPB(status, index_status->mutable_error());
           }

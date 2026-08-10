@@ -1388,6 +1388,10 @@ TEST_P(PgCatalogVersionNonIncrementingDDLModeTest, NonIncrementingDDLMode) {
   const bool enable_inval_messages = GetParam();
   enable_inval_messages ? RestartClusterWithInvalMessageEnabled()
                         : RestartClusterWithInvalMessageDisabled();
+  // Concurrent CREATE INDEX bumps the catalog version once more with object locking
+  // for the post-backfill WaitForBackendsCatalogVersion.
+  const int concurrent_create_index_bumps =
+      (enable_inval_messages && IsObjectLockingEnabled()) ? 4 : 3;
   const string kDatabaseName = "yugabyte";
 
   auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
@@ -1410,12 +1414,11 @@ TEST_P(PgCatalogVersionNonIncrementingDDLModeTest, NonIncrementingDDLMode) {
 
   ASSERT_OK(conn.Execute("CREATE INDEX idx1 ON t1(a)"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
-  // By default CREATE INDEX runs concurrently and its algorithm requires to bump up catalog
-  // version 3 times.
-  ASSERT_EQ(new_version, version + 3);
+  // By default CREATE INDEX runs concurrently.
+  ASSERT_EQ(new_version, version + concurrent_create_index_bumps);
   version = new_version;
 
-  // CREATE INDEX CONCURRENTLY bumps up catalog version by 1.
+  // CREATE INDEX NONCONCURRENTLY bumps up catalog version by 1.
   ASSERT_OK(conn.Execute("CREATE INDEX NONCONCURRENTLY idx2 ON t1(a)"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
   ASSERT_EQ(new_version, version + 1);
@@ -1446,12 +1449,14 @@ TEST_P(PgCatalogVersionNonIncrementingDDLModeTest, NonIncrementingDDLMode) {
   ASSERT_OK(conn.Execute("SET yb_make_next_ddl_statement_nonincrementing TO TRUE"));
   ASSERT_OK(conn.Execute("CREATE INDEX idx3 ON t1(a)"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
-  // By default CREATE INDEX runs concurrently and its algorithm requires to bump up catalog
-  // version 3 times, only the first bump is suppressed.
+  // Concurrent CREATE INDEX bumps the catalog version concurrent_create_index_bumps times; with
+  // invalidation messages disabled only the first bump is suppressed by
+  // yb_make_next_ddl_statement_nonincrementing. version is still the pre-REVOKE baseline, so with
+  // invalidation messages enabled also add the REVOKE and GRANT bumps (+2).
   if (enable_inval_messages) {
-    ASSERT_EQ(new_version, version + 5);
+    ASSERT_EQ(new_version, version + 2 + concurrent_create_index_bumps);
   } else {
-    ASSERT_EQ(new_version, version + 2);
+    ASSERT_EQ(new_version, version + concurrent_create_index_bumps - 1);
   }
   version = new_version;
 
@@ -1481,7 +1486,7 @@ TEST_P(PgCatalogVersionNonIncrementingDDLModeTest, NonIncrementingDDLMode) {
 
   ASSERT_OK(conn.Execute("CREATE INDEX idx5 ON t1(a)"));
   new_version = ASSERT_RESULT(GetCatalogVersion(&conn));
-  ASSERT_EQ(new_version, version + 3);
+  ASSERT_EQ(new_version, version + concurrent_create_index_bumps);
   version = new_version;
 
   ASSERT_OK(conn.Execute("CREATE INDEX NONCONCURRENTLY idx6 ON t1(a)"));
@@ -2347,8 +2352,15 @@ DROP TABLE tempTable2;
   auto fingerprint = HashUtil::MurmurHash2_64(result.data(), result.size(), 0 /* seed */);
   LOG(INFO) << "result.size(): " << result.size();
   LOG(INFO) << "fingerprint: " << fingerprint;
-  ASSERT_EQ(result.size(), 80932U);
-  ASSERT_EQ(fingerprint, 148605032842492807UL);
+  // Concurrent CREATE INDEX produces one extra invalidation message with object locking
+  // (post-backfill WaitForBackendsCatalogVersion).
+  if (IsObjectLockingEnabled()) {
+    ASSERT_EQ(result.size(), 80986U);
+    ASSERT_EQ(fingerprint, 16473784601673178567UL);
+  } else {
+    ASSERT_EQ(result.size(), 80932U);
+    ASSERT_EQ(fingerprint, 148605032842492807UL);
+  }
 }
 
 // Regression test for https://github.com/yugabyte/yugabyte-db/issues/31431.
