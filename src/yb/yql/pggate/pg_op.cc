@@ -63,31 +63,10 @@ Result<bool> PrepareNextRequest(const PgTableDesc& table, PgsqlReadOp* read_op) 
     req = req->mutable_index_request();
   }
 
-  // Backward scan for range partitioned tables has a special case on DocDB side: paging_state is
-  // not reused, and upper_bound is configured instead to continue reading from the correct tablet.
-  // This approach is not applicable for index read requests.
+  // Copy over the paging state from the response to the next request.
   const auto& paging_state = res.paging_state();
   VLOG_WITH_FUNC(1) << "Response paging state: " << paging_state.ShortDebugString();
-  if (&top_level_req == req &&
-      !top_level_req.is_forward_scan() &&
-      table.num_hash_key_columns() == 0 &&
-      paging_state.has_next_partition_key() &&
-      !paging_state.has_next_row_key()) {
-    const auto& current_next_partition_key = paging_state.next_partition_key();
-
-    // Need to check lower bound here because DocDB fails to do so.
-    if (req->has_lower_bound() && current_next_partition_key < req->lower_bound().key()) {
-      return false;
-    }
-
-    // Setting up upper bound for backward scan for the next request, returning false to indicate
-    // paging state should not be used for the next request.
-    top_level_req.clear_paging_state();
-    top_level_req.mutable_upper_bound()->dup_key(current_next_partition_key);
-    top_level_req.mutable_upper_bound()->set_is_inclusive(false);
-  } else {
-    *req->mutable_paging_state() = paging_state;
-  }
+  *req->mutable_paging_state() = paging_state;
 
   // Parse/Analysis/Rewrite catalog version has already been checked on the first request.
   // The docdb layer will check the target table's schema version is compatible.
@@ -144,8 +123,7 @@ Status PgsqlReadOp::InitPartitionKey(const PgTableDesc& table) {
   if (!yb_allow_dockey_bounds && table.schema().num_hash_key_columns() > 0) {
     RETURN_NOT_OK(PgReadRange::ConvertBoundsToHashCode(read_request_));
   }
-  return client::InitPartitionKey(
-       table.schema(), table.partition_schema(), table.GetPartitionList(), &read_request_);
+  return client::InitPartitionKey(table.schema(), table.partition_schema(), &read_request_);
 }
 
 PgsqlOpPtr PgsqlReadOp::DeepCopy(const std::shared_ptr<ThreadSafeArena>& arena_ptr) const {
