@@ -2625,7 +2625,9 @@ Status Tablet::Flush(
   ScopedRWOperation pending_op;
   if (!HasFlags(flags, FlushFlags::kNoScopedOperation)) {
     pending_op = CreateScopedRWOperationBlockingRocksDbShutdownStart();
-    LOG_IF(DFATAL, !pending_op.ok())
+    // A background flush (e.g. from TabletMemoryManager) legitimately races with shutdown of the
+    // tablet it picked, and its caller just logs the returned error.
+    LOG_IF(DFATAL, !pending_op.ok() && !IsShutdownRequested())
         << "CreateScopedRWOperationBlockingRocksDbShutdownStart failed";
     RETURN_NOT_OK(pending_op);
   }
