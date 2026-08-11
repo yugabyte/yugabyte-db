@@ -291,6 +291,19 @@ class PgCatalogPerfBasicTest : public PgCatalogPerfTestBase {
     }));
     ASSERT_EQ(master_rpc_count_for_select, expected_master_rpc_count);
   }
+
+  // Test to verify the number of RPCs sent to the master during the first SELECT statement with
+  // aggregate functions after a cache refresh. Every distinct aggregate is looked up in
+  // `pg_aggregate` via the AGGFNOID cache.
+  void TestAfterCacheRefreshRPCCountOnSelectWithAggregates(size_t expected_master_rpc_count) {
+    auto aux_conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(aux_conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+    auto master_rpc_count_for_select = ASSERT_RESULT(RPCCountAfterCacheRefresh([](PGConn* conn) {
+      VERIFY_RESULT(conn->Fetch("SELECT count(*), sum(v), max(v) FROM t"));
+      return static_cast<Status>(Status::OK());
+    }));
+    ASSERT_EQ(master_rpc_count_for_select, expected_master_rpc_count);
+  }
 };
 
 constexpr auto kResponseCacheSize5MB = 5 * 1024 * 1024;
@@ -300,6 +313,7 @@ constexpr auto kExtendedTableList =
     "pg_cast,pg_inherits,pg_policy,pg_proc,pg_tablespace,pg_trigger,pg_statistic,pg_invalid"sv;
 constexpr auto kShortTableList = "pg_inherits"sv;
 constexpr auto kStatsTableList = "pg_statistic,pg_statistic_ext,pg_statistic_ext_data"sv;
+constexpr auto kAggregateTableList = "pg_aggregate"sv;
 
 constexpr Configuration kConfigDefault;
 
@@ -336,6 +350,9 @@ constexpr Configuration kConfigSmallPreload{
 constexpr Configuration kConfigStatsPreload{
     .preload_additional_catalog_list = kStatsTableList};
 
+constexpr Configuration kConfigAggregatePreload{
+    .preload_additional_catalog_list = kAggregateTableList};
+
 template<class Base, const Configuration& Config>
 class ConfigurableTest : public Base {
  private:
@@ -347,6 +364,7 @@ class ConfigurableTest : public Base {
 using PgCatalogPerfTest = ConfigurableTest<PgCatalogPerfBasicTest, kConfigDefault>;
 using PgCatalogMinPreloadTest = ConfigurableTest<PgCatalogPerfBasicTest, kConfigMinPreload>;
 using PgStatsPreloadTest = ConfigurableTest<PgCatalogPerfBasicTest, kConfigStatsPreload>;
+using PgAggregatePreloadTest = ConfigurableTest<PgCatalogPerfBasicTest, kConfigAggregatePreload>;
 using PgCatalogWithUnlimitedCachePerfTest =
     ConfigurableTest<PgCatalogPerfTestBase, kConfigWithUnlimitedCache>;
 using PgCatalogWithLimitedCachePerfTest =
@@ -499,6 +517,16 @@ TEST_F_EX(PgCatalogPerfTest,
           AfterCacheRefreshRPCCountOnSelectWithExtStatsPreload,
           PgStatsPreloadTest) {
   TestAfterCacheRefreshRPCCountOnSelectWithExtStats(/*expected_master_rpc_count=*/ 3);
+}
+
+TEST_F(PgCatalogPerfTest, AfterCacheRefreshRPCCountOnSelectWithAggregates) {
+  TestAfterCacheRefreshRPCCountOnSelectWithAggregates(/*expected_master_rpc_count=*/ 16);
+}
+
+TEST_F_EX(PgCatalogPerfTest,
+          AfterCacheRefreshRPCCountOnSelectWithAggregatesPreload,
+          PgAggregatePreloadTest) {
+  TestAfterCacheRefreshRPCCountOnSelectWithAggregates(/*expected_master_rpc_count=*/ 12);
 }
 
 // The test checks number of hits in response cache in case of multiple connections and aggressive
