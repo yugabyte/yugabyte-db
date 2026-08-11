@@ -165,6 +165,7 @@
       }
     },
     "universeActions": {
+      "blockedByKubernetesOperator": "This universe is controlled by the Kubernetes operator and cannot be modified from YugabyteDB Anywhere.",
       "precheckInitiatedMsg": "Running Prechecks...",
       "runPrecheckOnlyButton": "Run Pre-check Only",
       "lbState": {
@@ -3695,6 +3696,7 @@
           "enabled": "Enabled",
           "disabled": "Disabled",
           "creating": "Policy creation is in progress...",
+          "operatorControlledPolicy": "This backup schedule is controlled by the Kubernetes operator and cannot be changed from YugabyteDB Anywhere.",
           "deleteMsg": "scheduled backup policy is being deleted",
           "editModal": {
             "title": "Edit Scheduled Backup Policy",
