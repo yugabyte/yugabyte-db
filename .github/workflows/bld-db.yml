@@ -31,4 +31,4 @@ jobs:
     runs-on: ybdbghr
     steps:
       - name: DB Build Trigger
-        run: ybbld {{ github.event.pull_request.number }} DB
+        run: ybbld ${{ github.event.pull_request.number }} DB
