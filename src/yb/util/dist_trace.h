@@ -39,10 +39,21 @@ void InitDistTrace(
     opentelemetry::nostd::string_view service_name, opentelemetry::nostd::string_view node_uuid);
 void ShutdownDistTrace();
 nostd::shared_ptr<opentelemetry::trace::Tracer> GetDistTracer();
-bool IsDistTraceEnabled();
+
+namespace internal {
+// Set from otel_collector_traces_endpoint by a flag callback during gflag initialization.
+extern bool g_dist_trace_enabled;
+}  // namespace internal
+
+inline bool IsDistTraceEnabled() { return internal::g_dist_trace_enabled; }
+
+// Sets otel_collector_traces_endpoint and refreshes g_dist_trace_enabled, for in-process tests.
+void TEST_SetOtelCollectorEndpoint(const std::string& endpoint);
+
 trace::SpanContext GetTraceparentSpanContext(const char* traceparent);
 
-trace::SpanContext GetActiveSpanContext();
+// The active span's context, or nullopt if there is no active span.
+std::optional<trace::SpanContext> GetActiveSpanContext();
 
 bool IsSpanContextValidAndRemote(const trace::SpanContext& span_context);
 
@@ -65,8 +76,7 @@ nostd::shared_ptr<trace::Span> StartClientSpan(std::string_view op_name);
 nostd::shared_ptr<trace::Span> StartServerSpan(
     std::string_view op_name, const trace::SpanContext& parent_context);
 
-// Thread-local attribute buffer for the next RPC span. Producers (e.g. PgSession) add
-// attributes here; the OutboundCall Span consumes them when started.
+// Buffers an attribute for the next RPC span started on this thread.
 void AddPendingRpcStringAttr(std::string key, std::string value);
 
 // Makes a span (or a captured parent context) current on this thread for the enclosing block,
@@ -79,8 +89,8 @@ class ScopedAdoptSpan {
     }
   }
 
-  // Adopts a context captured elsewhere without starting a span; no-op when it is invalid.
-  explicit ScopedAdoptSpan(const trace::SpanContext& parent_context);
+  // Adopts a context captured elsewhere without starting a span; no-op when there is none.
+  explicit ScopedAdoptSpan(const std::optional<trace::SpanContext>& parent_context);
 
   ScopedAdoptSpan(const ScopedAdoptSpan&) = delete;
   ScopedAdoptSpan& operator=(const ScopedAdoptSpan&) = delete;
