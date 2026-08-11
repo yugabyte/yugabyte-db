@@ -579,6 +579,9 @@ public class UsersController extends AuthenticatedController {
     if (formData.getNewUniverseUiTourCompleted() != null) {
       user.setNewUniverseUiTourCompleted(formData.getNewUniverseUiTourCompleted());
     }
+    if (formData.getUserSettings() != null) {
+      user.upsertSettings(formData.getUserSettings());
+    }
 
     if (useNewAuthz) {
       // Timezone validation for new RBAC.

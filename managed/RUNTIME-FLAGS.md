@@ -214,9 +214,11 @@
 | "Allow Duplicates in Existing AZs" | "yb.provider.allow_existing_duplicate_az" | "GLOBAL" | "Allow duplicates in already existing availability zones" | "Boolean" |
 | "Disable YNP Node Preflight Check" | "yb.node_agent.disable_ynp_node_preflight_check" | "GLOBAL" | "Disable preflight check in YNP node agent provision" | "Boolean" |
 | "Enable YNP Version Check" | "yb.node_agent.enable_ynp_version_check" | "GLOBAL" | "Enable YNP version check when adding nodes to a universe. When enabled, the node's YNP major version must match the expected version." | "Boolean" |
+| "Enable new Universe experience" | "yb.ui.feature_flags.enable_new_universe_experience" | "GLOBAL" | "Enable new Universe experience in UI" | "Boolean" |
 | "Memory per node for advanced observability" | "yb.pa.memory_per_node_advanced_observability_mb" | "GLOBAL" | "Estimated memory usage per node when advanced observability is enabled (in MB). Used to precheck YBA node memory headroom before enabling advanced observability." | "Integer" |
 | "Memory per node for PA collector" | "yb.pa.memory_per_node_pa_collector_mb" | "GLOBAL" | "Estimated memory usage per node when PA collector is enabled without advanced observability (in MB). Used to precheck YBA node memory headroom before enabling PA collection." | "Integer" |
 | "Skip PA Collector memory validation" | "yb.pa.skip_memory_validation" | "GLOBAL" | "Skip memory availability validation when enabling Performance Advisor Collection" | "Boolean" |
+| "Whether to enable new universe experience for all users" | "yb.ui.enable_new_universe_experience_for_all_users" | "GLOBAL" | "Whether to enable new universe experience for all users" | "Boolean" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |
