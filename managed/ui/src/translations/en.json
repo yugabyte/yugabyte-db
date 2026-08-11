@@ -4431,6 +4431,7 @@
         "noOfNodes": "No. of Nodes",
         "noOfPods": "No. of Pods",
         "reviewChanges": "Review Changes",
+        "noPlacementChanges": "Nothing to update - no placement fields changed.",
         "editPlacementConfirmModal": {
           "title": "Review Changes",
           "summary": "Summary of instance configuration changes:",
@@ -4990,7 +4991,8 @@
         },
         "toast": {
           "addRRFailed": "Failed to add read replica",
-          "updateRRFailed": "Failed to update read replica"
+          "updateRRFailed": "Failed to update read replica",
+          "noPlacementChanges": "Nothing to update - no placement fields changed."
         },
         "validation": {
           "invalidArchitecture": "Invalid CPU Architecture",
