@@ -2718,9 +2718,17 @@ YbRunWithPrefetcher(YbcStatus (*func) (YbRunWithPrefetcherContext *),
 	 * become stale for subsequent connections used for restoring catalog metadata.
 	 * When a subsequent connection works with stale catalog metadata to do retore
 	 * work, it can lead to incorrect catalog restore result.
+	 *
+	 * yb_read_time != 0 indicates the session reads the catalog as of a point in
+	 * time in the past. The response cache key does not include yb_read_time, so
+	 * a cache hit would return rows as of the entry's fill time instead of
+	 * yb_read_time, while a cache miss reads at yb_read_time. Even if we fixed this,
+	 * it doesn't worth using the limited LRU cache in response_cache to hold
+	 * yb_read_time requests which likely don't reuse the read time often.
 	 */
 	if (!YBCIsInitDbModeEnvVarSet() &&
 		!IsBinaryUpgrade &&
+		yb_read_time == 0 &&
 		*YBCGetGFlags()->ysql_enable_read_request_caching)
 	{
 		starter_idx = 0;
