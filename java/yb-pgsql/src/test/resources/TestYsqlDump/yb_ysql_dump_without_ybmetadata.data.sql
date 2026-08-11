@@ -600,7 +600,7 @@ CREATE INDEX level2_1_c3_idx ON public.level2_1 USING lsm (c3 ASC);
 --
 
 ALTER TABLE ONLY public.part_uniq_const
-    ADD CONSTRAINT part_uniq_const_unique UNIQUE  (v1, v2);
+    ADD CONSTRAINT part_uniq_const_unique UNIQUE (v1, v2);
 
 
 --
@@ -608,7 +608,7 @@ ALTER TABLE ONLY public.part_uniq_const
 --
 
 ALTER TABLE ONLY public.part_uniq_const_30_50
-    ADD CONSTRAINT part_uniq_const_30_50_v1_v2_key UNIQUE  (v1, v2);
+    ADD CONSTRAINT part_uniq_const_30_50_v1_v2_key UNIQUE (v1, v2);
 
 
 --
@@ -616,7 +616,7 @@ ALTER TABLE ONLY public.part_uniq_const_30_50
 --
 
 ALTER TABLE ONLY public.part_uniq_const_50_100
-    ADD CONSTRAINT part_uniq_const_50_100_v1_v2_key UNIQUE  (v1, v2);
+    ADD CONSTRAINT part_uniq_const_50_100_v1_v2_key UNIQUE (v1, v2);
 
 
 --
@@ -634,7 +634,7 @@ ALTER TABLE ONLY public.part_uniq_const_50_100
 --
 
 ALTER TABLE ONLY public.part_uniq_const_default
-    ADD CONSTRAINT part_uniq_const_default_v1_v2_key UNIQUE  (v1, v2);
+    ADD CONSTRAINT part_uniq_const_default_v1_v2_key UNIQUE (v1, v2);
 
 
 --

@@ -3561,7 +3561,7 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16611'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16611'::pg_catalog.oid);
 
 ALTER TABLE ONLY public.part_uniq_const
-    ADD CONSTRAINT part_uniq_const_unique UNIQUE  (v1, v2);
+    ADD CONSTRAINT part_uniq_const_unique UNIQUE (v1, v2);
 
 
 --
@@ -3574,7 +3574,7 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16613'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16613'::pg_catalog.oid);
 
 ALTER TABLE ONLY public.part_uniq_const_30_50
-    ADD CONSTRAINT part_uniq_const_30_50_v1_v2_key UNIQUE  (v1, v2);
+    ADD CONSTRAINT part_uniq_const_30_50_v1_v2_key UNIQUE (v1, v2);
 
 
 --
@@ -3587,7 +3587,7 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16615'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16615'::pg_catalog.oid);
 
 ALTER TABLE ONLY public.part_uniq_const_50_100
-    ADD CONSTRAINT part_uniq_const_50_100_v1_v2_key UNIQUE  (v1, v2);
+    ADD CONSTRAINT part_uniq_const_50_100_v1_v2_key UNIQUE (v1, v2);
 
 
 --
@@ -3615,7 +3615,7 @@ SELECT pg_catalog.binary_upgrade_set_next_index_pg_class_oid('16617'::pg_catalog
 SELECT pg_catalog.binary_upgrade_set_next_index_relfilenode('16617'::pg_catalog.oid);
 
 ALTER TABLE ONLY public.part_uniq_const_default
-    ADD CONSTRAINT part_uniq_const_default_v1_v2_key UNIQUE  (v1, v2);
+    ADD CONSTRAINT part_uniq_const_default_v1_v2_key UNIQUE (v1, v2);
 
 
 --
