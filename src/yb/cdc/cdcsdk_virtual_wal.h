@@ -50,7 +50,6 @@ class CDCSDKVirtualWAL {
       {Status::Code::kNotFound, "Not leader for"},
       {Status::Code::kLeaderNotReadyToServe, "Not ready to serve"},
       {Status::Code::kNotFound, "Footer for segment"},
-      {Status::Code::kNotFound, "Log index cache entry for op index"},
       {Status::Code::kIllegalState, "LogReader is not initialized"}};
 
   Status InitVirtualWALInternal(
