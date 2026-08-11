@@ -54,8 +54,8 @@ class LocalOutboundCall : public OutboundCall {
   // (local calls carry no wire header). nullopt when tracing is off. Safe after the scope is
   // dropped.
   std::optional<opentelemetry::trace::SpanContext> otel_span_context() const {
-    if (const auto& span = otel_span(); span) {
-      return span->GetContext();
+    if (otel_span_) {
+      return otel_span_->GetContext();
     }
     return std::nullopt;
   }
