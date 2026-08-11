@@ -333,6 +333,9 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
 void YBInboundCall::CreateServerSpan(std::optional<opentelemetry::trace::SpanContext> parent) {
   // Remote calls supply no `parent` and fall back to the context parsed from the wire header; local
   // calls pass the originating outbound span's context explicitly (there is no wire header).
+  if (!dist_trace::IsDistTraceEnabled()) {
+    return;
+  }
   const auto& parent_context = parent ? parent : parent_span_context_;
   if (!parent_context) {
     return;
