@@ -219,6 +219,7 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
 
   vector<TableInfoPtr> tables;
   std::unordered_set<TableId> processed_tables;
+  bool state_was_post_processing_failed = false;
   {
     LockGuard lock(ddl_txn_verifier_mutex_);
     auto verifier_state = FindOrNull(ysql_ddl_txn_verfication_state_map_, txn);
@@ -228,6 +229,8 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
     }
 
     auto state = verifier_state->state;
+    state_was_post_processing_failed =
+        state == YsqlDdlVerificationState::kDdlPostProcessingFailed;
     auto txn_state = is_committed.has_value() ?
         (*is_committed ? TxnState::kCommitted : TxnState::kAborted) : TxnState::kNoChange;
     if (state == YsqlDdlVerificationState::kDdlPostProcessing) {
@@ -258,6 +261,12 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
       if (verifier_state->txn_state != TxnState::kCommitted &&
           verifier_state->txn_state != TxnState::kAborted) {
         verifier_state->txn_state = txn_state;
+      }
+      if (state_was_post_processing_failed) {
+        LOG(INFO) << "Transaction " << txn
+                  << " moving from " << state
+                  << " to " << YsqlDdlVerificationState::kDdlPostProcessing
+                  << ", debug_caller_info " << debug_caller_info;
       }
       verifier_state->state = YsqlDdlVerificationState::kDdlPostProcessing;
     }
@@ -290,6 +299,7 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
   }
 
   bool ddl_verification_success = true;
+  bool has_still_bound_table = false;
   for (auto& table : tables) {
     if (processed_tables.contains(table->id())) {
       VLOG(1) << "DDL already processed on table " << table->id();
@@ -312,6 +322,7 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
       if (schema_version_txn != ddl_txns_waiting_for_schema_version.cend()) {
         LOG(INFO) << "table " << table->id() << " has no txn id but is waiting for "
                   << schema_version_txn->first << ". So it is still bound by txn " << txn;
+        has_still_bound_table = true;
         continue;
       }
 
@@ -356,13 +367,21 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(TableInfoPtr table,
         LOG(WARNING) << "YsqlDdlTxnCompleteCallback failed for table " << table->ToString()
                      << " txn " << txn << ": " << s.ToString();
         UpdateDdlVerificationState(txn, YsqlDdlVerificationState::kDdlPostProcessingFailed);
+        TEST_SYNC_POINT("CatalogManager::YsqlDdlTxnCompleteCallback:PostProcessingFailed");
       }
     });
     if (!s.ok()) {
       ddl_verification_success = false;
     }
   }
-  if (!ddl_verification_success) {
+  // A still-bound table stays in the transaction's entry until the alter that bumps its
+  // schema version is acknowledged (see HandleTabletSchemaVersionReport). When the state was
+  // kDdlPostProcessingFailed on entry, that alter may never have been sent, and this
+  // invocation scheduled no work for the still-bound table. kDdlPostProcessingFailed is the
+  // only state the re-trigger paths act on (see TriggerDdlVerificationIfNeeded), so restore
+  // it rather than leave the transaction in kDdlPostProcessing with nothing pending.
+  if (!ddl_verification_success ||
+      (state_was_post_processing_failed && has_still_bound_table)) {
     UpdateDdlVerificationState(txn, YsqlDdlVerificationState::kDdlPostProcessingFailed);
   }
   return Status::OK();
