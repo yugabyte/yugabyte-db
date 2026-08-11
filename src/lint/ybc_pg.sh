@@ -36,7 +36,7 @@ Ybc$handle_type for $macro:$lineno:$(sed -n "$lineno"p "$1")"
 
 check_ctags
 echo "$1" \
-  | ctags -n -L - --languages=c,c++ --c-kinds=t --c++-kinds=t -f /dev/stdout \
+  | ctags_types \
   | while read -r line; do
       symbol=$(echo "$line" | cut -f1)
       lineno=$(echo "$line" | cut -f3 | grep -Eo '^[0-9]+')

@@ -72,6 +72,22 @@ lint_git_grep() {
   git grep --no-color --no-line-number --no-column --no-full-name -G "$@"
 }
 
+# Run ctags over the file names on stdin and print the type tags it finds.
+ctags_types() {
+  ctags -n -L - --languages=c,c++ --c-kinds=t --c++-kinds=t -f /dev/stdout
+}
+
+# Print every type name that ctags can find under src/postgres and in the pggate
+# ybc headers, sorted and unique.  The file set is the one the collection recipe
+# in src/postgres/src/tools/pgindent/README uses.
+all_ctags_types() {
+  git ls-files ':(exclude)src/postgres/third-party-extensions' 'src/postgres/*' \
+      'src/yb/yql/pggate/*ybc_*.h' \
+    | ctags_types \
+    | awk '{print $1}' \
+    | sort -u
+}
+
 # Print the macros that mint Ybc handle type names, joined with | so that the
 # result works as a grep -E pattern, such as
 # YB_DEFINE_HANDLE_TYPE|YB_DEFINE_YB_HANDLE_TYPE.  Read them from the header
