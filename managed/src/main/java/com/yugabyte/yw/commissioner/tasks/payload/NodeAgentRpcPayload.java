@@ -31,6 +31,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.common.utils.Pair;
@@ -49,7 +50,6 @@ import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.UniverseLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.exporters.audit.YCQLAuditConfig;
-import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.UniverseQueryLogsExporterConfig;
 import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
@@ -479,7 +479,7 @@ public class NodeAgentRpcPayload {
     Map<String, String> gflags = new HashMap<>();
     AuditLogConfig config = null;
     QueryLogConfig queryLogConfig = null;
-    MetricsExportConfig metricsExportConfig = null;
+    TelemetryConfig telemetryConfig = null;
     // Refresh-only mode: node-agent should just rewrite log_cleanup_env +
     // refresh the on-node zip_purge_yb_logs.sh script, without going through
     // the (expensive) otel-collector install steps. Triggered when the caller
@@ -488,16 +488,16 @@ public class NodeAgentRpcPayload {
     boolean refreshScriptOnly = false;
     if (taskParams instanceof ManageOtelCollector.Params) {
       ManageOtelCollector.Params params = (ManageOtelCollector.Params) taskParams;
-      config = params.auditLogConfig;
-      queryLogConfig = params.queryLogConfig;
-      metricsExportConfig = params.metricsExportConfig;
+      telemetryConfig = params.telemetryConfig;
+      config = params.getAuditLogConfig();
+      queryLogConfig = params.getQueryLogConfig();
       gflags = params.gflags;
       refreshScriptOnly = !params.otelCollectorEnabled;
     } else if (taskParams instanceof AnsibleConfigureServers.Params) {
       AnsibleConfigureServers.Params params = (AnsibleConfigureServers.Params) taskParams;
-      config = params.auditLogConfig;
-      queryLogConfig = params.queryLogConfig;
-      metricsExportConfig = params.metricsExportConfig;
+      telemetryConfig = params.telemetryConfig;
+      config = params.getAuditLogConfig();
+      queryLogConfig = params.getQueryLogConfig();
       gflags =
           GFlagsUtil.getGFlagsForAZ(
               taskParams.azUuid,
@@ -563,23 +563,14 @@ public class NodeAgentRpcPayload {
     }
     installOtelCollectorInputBuilder.addAllMountPoints(getMountPoints(taskParams));
 
-    boolean auditLogsExportActive = OtelCollectorUtil.isAuditLogExportEnabledInUniverse(config);
-    boolean queryLogsExportActive =
-        OtelCollectorUtil.isQueryLogExportEnabledInUniverse(queryLogConfig);
-    boolean metricsExportActive =
-        OtelCollectorUtil.isMetricsExportEnabledInUniverse(metricsExportConfig);
-
-    if (!refreshScriptOnly
-        && (auditLogsExportActive || queryLogsExportActive || metricsExportActive)) {
+    if (!refreshScriptOnly && OtelCollectorUtil.isAnyExportEnabledInUniverse(telemetryConfig)) {
       String otelCollectorConfigFile =
           otelCollectorConfigGenerator
               .generateConfigFile(
                   taskParams,
                   provider,
                   universe.getUniverseDetails().getPrimaryCluster().userIntent,
-                  config,
-                  queryLogConfig,
-                  metricsExportConfig,
+                  telemetryConfig,
                   GFlagsUtil.getLogLinePrefix(
                       queryLogConfig, gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
                   NodeManager.getOtelColMetricsPort(taskParams),

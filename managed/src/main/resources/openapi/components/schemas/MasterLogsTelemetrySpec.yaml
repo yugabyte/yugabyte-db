@@ -1,0 +1,27 @@
+x-yba-api-visibility: internal
+title: MasterLogsTelemetrySpec
+type: object
+description: yb-master logs. Omit or set to null to disable.
+properties:
+  exporters:
+    description: List of exporters. Empty = no export.
+    type: array
+    items:
+      $ref: "./UniverseServerLogsExporterConfig.yaml"
+  min_level:
+    description: Minimum yb-master glog severity to export. Lines below this level are dropped.
+    type: string
+    default: INFO
+    enum:
+      - INFO
+      - WARNING
+      - ERROR
+      - FATAL
+  noise_sample_drop_ratio:
+    description: |
+      Fraction (0.0-1.0) of high-volume, low-value noise log lines to drop. Defaults to 0.99 (drop 99%). Set to 0.0 to keep all such lines.
+    type: number
+    format: double
+    default: 0.99
+    maximum: 1
+    minimum: 0

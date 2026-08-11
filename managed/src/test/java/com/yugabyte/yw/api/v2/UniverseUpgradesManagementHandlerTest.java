@@ -16,11 +16,11 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.SoftwareUpgradeHelper;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.export.TelemetryConfig;
 import com.yugabyte.yw.controllers.RequestContext;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.ExportTelemetryConfigParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.TelemetryProvider;
 import com.yugabyte.yw.models.Universe;
@@ -110,8 +110,19 @@ public class UniverseUpgradesManagementHandlerTest extends FakeDBApplication {
     queryExporter.setExporterUuid(UUID.randomUUID());
     existingQuery.setUniverseLogsExporterConfig(Collections.singletonList(queryExporter));
 
-    when(v1Handler.getCurrentTelemetryConfig(any(Universe.class)))
-        .thenReturn(TelemetryConfig.of(existingAudit, existingQuery, null));
+    // Persist the existing audit + query configs on the universe so the real
+    // OtelCollectorUtil.getCurrentTelemetryConfig (a static source-of-truth read) returns them.
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              UniverseDefinitionTaskParams.UserIntent userIntent =
+                  details.getPrimaryCluster().userIntent;
+              userIntent.auditLogConfig = existingAudit;
+              userIntent.queryLogConfig = existingQuery;
+              u.setUniverseDetails(details);
+            });
 
     // Telemetry provider backing the new metrics exporter (DATA_DOG is allowed for metrics).
     UUID metricsExporterUuid = UUID.randomUUID();

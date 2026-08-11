@@ -1,4 +1,4 @@
-package com.yugabyte.yw.models.helpers.exporters.query;
+package com.yugabyte.yw.models.helpers.exporters.server;
 
 import com.yugabyte.yw.models.helpers.exporters.BatchedLogsExporterConfig;
 import io.swagger.annotations.ApiModel;
@@ -9,5 +9,5 @@ import lombok.ToString;
 @Data
 @EqualsAndHashCode(callSuper = true)
 @ToString(callSuper = true)
-@ApiModel(description = "Universe Logs Exporter Config")
-public class UniverseQueryLogsExporterConfig extends BatchedLogsExporterConfig {}
+@ApiModel(description = "Universe Server Logs Exporter Config")
+public class UniverseServerLogsExporterConfig extends BatchedLogsExporterConfig {}

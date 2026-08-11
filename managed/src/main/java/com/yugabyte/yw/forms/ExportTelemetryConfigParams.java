@@ -16,6 +16,7 @@ import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.exporters.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.exporters.metrics.MetricsExportConfig;
 import com.yugabyte.yw.models.helpers.exporters.query.QueryLogConfig;
+import com.yugabyte.yw.models.helpers.exporters.server.MasterLogConfig;
 import com.yugabyte.yw.models.helpers.telemetry.ExportType;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -45,6 +46,12 @@ public class ExportTelemetryConfigParams extends UpgradeTaskParams {
   /** Delay in seconds between tserver restarts (rolling upgrade). Default 0. */
   public Integer delayBetweenTserverServers = 0;
 
+  /**
+   * True when the caller explicitly chose an upgrade option (e.g. set rollingUpgrade in the API
+   * request). When false, the handler may downgrade a collector-only change to NON_RESTART_UPGRADE.
+   */
+  private boolean upgradeOptionExplicitlySet = false;
+
   public AuditLogConfig getAuditLogConfig() {
     return telemetryConfig != null ? telemetryConfig.getAuditLogConfig() : null;
   }
@@ -55,6 +62,10 @@ public class ExportTelemetryConfigParams extends UpgradeTaskParams {
 
   public MetricsExportConfig getMetricsExportConfig() {
     return telemetryConfig != null ? telemetryConfig.getMetricsExportConfig() : null;
+  }
+
+  public MasterLogConfig getMasterLogConfig() {
+    return telemetryConfig != null ? telemetryConfig.getMasterLogConfig() : null;
   }
 
   @Override
@@ -111,6 +122,11 @@ public class ExportTelemetryConfigParams extends UpgradeTaskParams {
           .getUniverseMetricsExporterConfig()
           .forEach(c -> exporterUuids.add(c.getExporterUuid()));
     }
+    if (OtelCollectorUtil.isMasterLogExportEnabledInUniverse(getMasterLogConfig())) {
+      getMasterLogConfig()
+          .getUniverseLogsExporterConfig()
+          .forEach(c -> exporterUuids.add(c.getExporterUuid()));
+    }
     if (!exporterUuids.isEmpty()) {
       TelemetryProviderService telemetryProviderService =
           StaticInjectorHolder.injector().instanceOf(TelemetryProviderService.class);
@@ -125,6 +141,12 @@ public class ExportTelemetryConfigParams extends UpgradeTaskParams {
       throw new PlatformServiceException(
           play.mvc.Http.Status.BAD_REQUEST,
           "Metrics export is not yet supported for kubernetes based universes.");
+    }
+
+    if (OtelCollectorUtil.isMasterLogExportEnabledInUniverse(getMasterLogConfig())) {
+      throw new PlatformServiceException(
+          play.mvc.Http.Status.BAD_REQUEST,
+          "Master log export is not yet supported for kubernetes based universes.");
     }
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
