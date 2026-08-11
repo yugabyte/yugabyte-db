@@ -35,6 +35,7 @@ import { OtherAdvancedProps } from './dtos';
 import { USER_TAGS_FIELD } from '../../fields/FieldNames';
 import { OtherAdvancedValidationSchema } from '@app/redesign/features-v2/universe/create-universe/steps/advanced-settings/ValidationSchema';
 import { DEFAULT_COMMUNICATION_PORTS } from '../../helpers/constants';
+import { canOverrideCommunicationPorts } from '../../helpers/syncConnectionPoolingPorts';
 
 const { Box, Typography } = mui;
 
@@ -150,20 +151,18 @@ export const OtherAdvancedSettings = forwardRef<StepsRef>((_, forwardRef) => {
           </YBAccordion>
         )}
         {provider &&
-        provider?.code !== CloudType.kubernetes &&
-        databaseSettings?.ysql &&
-        databaseSettings?.ycql ? (
-          <YBAccordion titleContent={t('portsOverrideHeader')} sx={{ width: '100%' }}>
-            <DeploymentPortsField
-              providerCode={generalSettings?.providerConfiguration?.code as string}
-              ysql={!!databaseSettings?.ysql?.enable}
-              ycql={!!databaseSettings?.ycql?.enable}
-              enableConnectionPooling={databaseSettings?.enableConnectionPooling}
-            />
-          </YBAccordion>
-        ) : (
-          <></>
-        )}
+          canOverrideCommunicationPorts(provider.code) &&
+          databaseSettings?.ysql &&
+          databaseSettings?.ycql && (
+            <YBAccordion titleContent={t('portsOverrideHeader')} sx={{ width: '100%' }}>
+              <DeploymentPortsField
+                providerCode={generalSettings?.providerConfiguration?.code as string}
+                ysql={!!databaseSettings?.ysql?.enable}
+                ycql={!!databaseSettings?.ycql?.enable}
+                enableConnectionPooling={databaseSettings?.enableConnectionPooling}
+              />
+            </YBAccordion>
+          )}
       </Box>
       {provider?.code === CloudType.kubernetes && (
         <YBAccordion titleContent={t('k8sOverrides')} sx={{ width: '100%' }} defaultExpanded={true}>

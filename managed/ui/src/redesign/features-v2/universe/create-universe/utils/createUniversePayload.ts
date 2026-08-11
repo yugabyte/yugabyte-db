@@ -17,7 +17,11 @@ import { SecuritySettingsProps, CertType } from '../steps/security-settings/dtos
 import { getEffectiveReplicationFactorForResilience } from './resilienceReplication';
 import { getNodeCount, getPlacementRegions } from './placementAndAvailability';
 import { effectiveUseDedicatedNodes, getNodeSpec } from './createUniverseNodeSpec';
-import { DEFAULT_CONNECTION_POOLING_PORTS } from '../helpers/syncConnectionPoolingPorts';
+import {
+  DEFAULT_CONNECTION_POOLING_PORTS,
+  shouldApplyConnectionPoolingPortOverrides
+} from '../helpers/syncConnectionPoolingPorts';
+import { DEFAULT_COMMUNICATION_PORTS } from '../helpers/constants';
 
 export const getCreateEITPayload = (
   securitySettings: SecuritySettingsProps,
@@ -216,13 +220,19 @@ export const mapCreateUniversePayload = (
       networking_spec: {
         assign_public_ip: securitySettings.assignPublicIP,
         assign_static_public_ip: false,
-        communication_ports: mapCommunicationPorts({
-          ...otherAdvancedSettings,
-          // Custom Internal YSQL Port only applies when CP + override ports are enabled.
-          ...(!(databaseSettings.enableConnectionPooling && databaseSettings.overrideCPPorts) && {
-            internalYsqlServerRpcPort: DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
-          })
-        }),
+        communication_ports: mapCommunicationPorts(
+          // K8s does not support custom deployment ports — always send defaults.
+          providerType === CloudType.kubernetes
+            ? DEFAULT_COMMUNICATION_PORTS
+            : {
+                ...otherAdvancedSettings,
+                // Custom Internal YSQL Port only applies when CP + override ports are enabled.
+                ...(!shouldApplyConnectionPoolingPortOverrides(databaseSettings, providerType) && {
+                  internalYsqlServerRpcPort:
+                    DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
+                })
+              }
+        ),
         enable_ipv6: securitySettings.enableIPV6 ?? false
       },
       universe_settings: {

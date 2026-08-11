@@ -20,6 +20,8 @@ const { Box, Typography, styled, Link } = mui;
 interface ConnectionPoolFieldProps {
   disabled: boolean;
   dbVersion: string;
+  /** Hide Override ports UI (e.g. Kubernetes providers). */
+  hideOverridePorts?: boolean;
 }
 
 const MAX_PORT = 65535;
@@ -49,7 +51,11 @@ const StyledLinkText = styled(Link)({
   color: '#67666C'
 });
 
-export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled, dbVersion }) => {
+export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({
+  disabled,
+  dbVersion,
+  hideOverridePorts = false
+}) => {
   const { control, setValue } = useFormContext<DatabaseSettingsProps>();
 
   const { t } = useTranslation('translation', {
@@ -105,8 +111,9 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
   }, [isYSQLEnabled]);
 
   // Disabling the override (or CP itself) must restore default CP ports.
+  // K8s never supports port overrides — keep defaults and clear the toggle.
   useUpdateEffect(() => {
-    if (!isConPoolEnabled) {
+    if (hideOverridePorts || !isConPoolEnabled) {
       setValue('overrideCPPorts', false);
       setValue('ysqlServerRpcPort', DEFAULT_CONNECTION_POOLING_PORTS.ysqlServerRpcPort);
       setValue(
@@ -122,7 +129,7 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
         DEFAULT_CONNECTION_POOLING_PORTS.internalYsqlServerRpcPort
       );
     }
-  }, [isOverrideCPEnabled, isConPoolEnabled, setValue]);
+  }, [hideOverridePorts, isOverrideCPEnabled, isConPoolEnabled, setValue]);
 
   return (
     <FieldContainer>
@@ -177,8 +184,8 @@ export const ConnectionPoolingField: FC<ConnectionPoolFieldProps> = ({ disabled,
           </StyledSubText>
         </Box>
       </Box>
-      {/* If CP Enabled */}
-      {isConPoolEnabled && (
+      {/* If CP Enabled — Override ports is hidden for K8s providers */}
+      {isConPoolEnabled && !hideOverridePorts && (
         <Box
           sx={{
             display: 'flex',
