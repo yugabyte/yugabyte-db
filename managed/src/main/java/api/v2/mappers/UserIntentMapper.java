@@ -51,9 +51,11 @@ import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.ValueMapping;
 import org.mapstruct.ValueMappings;
+import org.mapstruct.factory.Mappers;
 
 @Mapper(config = CentralConfig.class)
 public interface UserIntentMapper {
+  public static UserIntentMapper INSTANCE = Mappers.getMapper(UserIntentMapper.class);
 
   default ClusterNodeSpec userIntentToClusterNodeSpec(
       UniverseDefinitionTaskParams.UserIntent userIntent) {
@@ -260,6 +262,16 @@ public interface UserIntentMapper {
     }
     userIntent.auditLogConfig = toV1AuditLogConfig(clusterSpec.getAuditLogConfig());
     userIntent.queryLogConfig = toV1QueryLogConfig(clusterSpec.getQueryLogConfig());
+    // Keep the stored exportActive flag consistent with the exporter list (it defaults to true), so
+    // an edit-universe spec with logging on but no exporters is not persisted or shown as "export
+    // active" with no exporters. Metrics computes its isExportActive() from the list, so it is
+    // exempt. Mirrors the normalization in UpdateAndPersistExportTelemetryConfig.
+    if (userIntent.auditLogConfig != null) {
+      userIntent.auditLogConfig.normalizeExportActive();
+    }
+    if (userIntent.queryLogConfig != null) {
+      userIntent.queryLogConfig.normalizeExportActive();
+    }
     userIntent.metricsExportConfig = toV1MetricsExportConfig(clusterSpec.getMetricsExportConfig());
     userIntent.specificGFlags = clusterSpecToSpecificGFlags(clusterSpec);
 

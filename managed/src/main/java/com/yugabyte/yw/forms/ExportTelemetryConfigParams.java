@@ -25,6 +25,7 @@ import java.util.UUID;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 
 /** Task params for the unified ConfigureExportTelemetryConfig task. */
 @Data
@@ -64,6 +65,31 @@ public class ExportTelemetryConfigParams extends UpgradeTaskParams {
   @Override
   public void verifyParams(Universe universe, boolean isFirstTry) {
     super.verifyParams(universe, isFirstTry);
+
+    AuditLogConfig auditLogConfig = getAuditLogConfig();
+    if (modifiedExportTypes.contains(ExportType.AUDIT_LOGS)
+        && auditLogConfig != null
+        && auditLogConfig.isExportActive()
+        && CollectionUtils.isEmpty(auditLogConfig.getUniverseLogsExporterConfig())) {
+      throw new PlatformServiceException(
+          play.mvc.Http.Status.BAD_REQUEST,
+          String.format(
+              "Audit log config is set to export active, but no exporter configured on universe"
+                  + " '%s'.",
+              universe.getUniverseUUID()));
+    }
+    QueryLogConfig queryLogConfig = getQueryLogConfig();
+    if (modifiedExportTypes.contains(ExportType.QUERY_LOGS)
+        && queryLogConfig != null
+        && queryLogConfig.isExportActive()
+        && CollectionUtils.isEmpty(queryLogConfig.getUniverseLogsExporterConfig())) {
+      throw new PlatformServiceException(
+          play.mvc.Http.Status.BAD_REQUEST,
+          String.format(
+              "Query log config is set to export active, but no exporter configured on universe"
+                  + " '%s'.",
+              universe.getUniverseUUID()));
+    }
 
     // Validate that every referenced telemetry exporter exists up front, so a missing/deleted
     // provider fails synchronously with a 400 here instead of deep inside the task at config
