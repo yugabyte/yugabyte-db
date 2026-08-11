@@ -853,8 +853,16 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
               .forEach(
                   az -> {
                     int rf = partition.isDefaultPartition() ? az.replicationFactor : 0;
-                    PlacementInfoUtil.addPlacementZone(
-                        az.uuid, result, rf, az.numNodesInAZ, az.isAffinitized);
+                    PlacementInfo.PlacementAZ mergedAz =
+                        PlacementInfoUtil.addPlacementZone(
+                            az.uuid, result, rf, az.numNodesInAZ, az.isAffinitized);
+                    // AZs are disjoint across partitions, so each AZ is added exactly once
+                    // and it is safe to copy the K8s statefulset indices directly. These
+                    // indices must be preserved: master addresses and pod names computed
+                    // from the overall placement (e.g. during a K8s full move) rely on them,
+                    // and dropping them would generate stale/incorrect master addresses.
+                    mergedAz.masterStsIndex = az.masterStsIndex;
+                    mergedAz.tsStsIndex = az.tsStsIndex;
                   });
         }
         return result;

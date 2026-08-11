@@ -5014,6 +5014,115 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     assertEquals(Map.of(ToBeRemoved, 3, ToBeAdded, 5), counts);
   }
 
+  // getOverallPlacement() rebuilds the PlacementInfo from partitions. It must carry over the K8s
+  // statefulset indices from the partition placement, otherwise master addresses / pod names
+  // computed from the overall placement point at the wrong (old) statefulsets during a full move.
+  @Test
+  public void testGetOverallPlacementCopiesK8sStsIndicesFromPartitions() {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, CloudType.kubernetes);
+    Region region = Region.create(provider, "r1", "region-1", "yb-image");
+    AvailabilityZone az1 = AvailabilityZone.createOrThrow(region, "az1", "az1", "subnet-1");
+    AvailabilityZone az2 = AvailabilityZone.createOrThrow(region, "az2", "az2", "subnet-2");
+
+    PlacementInfo partitionPlacement = new PlacementInfo();
+    PlacementAZ pAz1 =
+        PlacementInfoUtil.addPlacementZone(az1.getUuid(), partitionPlacement, 1, 1, true);
+    PlacementAZ pAz2 =
+        PlacementInfoUtil.addPlacementZone(az2.getUuid(), partitionPlacement, 1, 1, true);
+    pAz1.masterStsIndex = 2;
+    pAz1.tsStsIndex = 3;
+    pAz2.masterStsIndex = 4;
+    pAz2.tsStsIndex = 5;
+
+    UserIntent userIntent = new UserIntent();
+    userIntent.providerType = CloudType.kubernetes;
+    userIntent.provider = provider.getUuid().toString();
+    userIntent.replicationFactor = 2;
+    Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
+
+    UniverseDefinitionTaskParams.PartitionInfo partition =
+        new UniverseDefinitionTaskParams.PartitionInfo();
+    partition.setDefaultPartition(true);
+    partition.setReplicationFactor(2);
+    partition.setPlacement(partitionPlacement);
+    cluster.setPartitions(Collections.singletonList(partition));
+
+    PlacementInfo overall = cluster.getOverallPlacement();
+
+    PlacementAZ overallAz1 = overall.findByAZUUID(az1.getUuid());
+    PlacementAZ overallAz2 = overall.findByAZUUID(az2.getUuid());
+    assertNotNull(overallAz1);
+    assertNotNull(overallAz2);
+    assertEquals(2, overallAz1.masterStsIndex);
+    assertEquals(3, overallAz1.tsStsIndex);
+    assertEquals(4, overallAz2.masterStsIndex);
+    assertEquals(5, overallAz2.tsStsIndex);
+  }
+
+  // A K8s full move increments the statefulset index on cluster.placementInfo. Those increments
+  // must be propagated to the partition placements too, since getOverallPlacement() (and therefore
+  // the computed master addresses) is rebuilt from partitions.
+  @Test
+  public void testApplyK8sStsIndexIncrementSyncsPartitions() {
+    Customer customer = ModelFactory.testCustomer("Test Customer");
+    Provider provider = ModelFactory.newProvider(customer, CloudType.kubernetes);
+    Region region = Region.create(provider, "r1", "region-1", "yb-image");
+    AvailabilityZone az1 = AvailabilityZone.createOrThrow(region, "az1", "az1", "subnet-1");
+
+    // cluster.placementInfo and the partition placement are distinct objects, both at index 0,
+    // mirroring what the client submits for a partition-based (new UX) universe.
+    PlacementInfo clusterPlacement = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), clusterPlacement, 1, 1, true);
+
+    PlacementInfo partitionPlacement = new PlacementInfo();
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), partitionPlacement, 1, 1, true);
+
+    UserIntent userIntent = new UserIntent();
+    userIntent.providerType = CloudType.kubernetes;
+    userIntent.provider = provider.getUuid().toString();
+    userIntent.replicationFactor = 1;
+    Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
+    cluster.placementInfo = clusterPlacement;
+
+    UniverseDefinitionTaskParams.PartitionInfo partition =
+        new UniverseDefinitionTaskParams.PartitionInfo();
+    partition.setDefaultPartition(true);
+    partition.setReplicationFactor(1);
+    partition.setPlacement(partitionPlacement);
+    cluster.setPartitions(Collections.singletonList(partition));
+
+    // Full move for the AZ: an existing master+tserver removed and a new master+tserver added.
+    Set<NodeDetails> nodes = new HashSet<>();
+    nodes.add(makeK8sMoveNode(az1.getUuid(), ToBeRemoved));
+    nodes.add(makeK8sMoveNode(az1.getUuid(), ToBeAdded));
+
+    PlacementInfoUtil.applyK8sStsIndexIncrement(cluster, nodes);
+
+    PlacementAZ clusterAz = cluster.placementInfo.findByAZUUID(az1.getUuid());
+    assertEquals(1, clusterAz.masterStsIndex);
+    assertEquals(1, clusterAz.tsStsIndex);
+
+    // Partition placement must be synced with the incremented cluster placement.
+    PlacementAZ partitionAz = partition.getPlacement().findByAZUUID(az1.getUuid());
+    assertEquals(1, partitionAz.masterStsIndex);
+    assertEquals(1, partitionAz.tsStsIndex);
+
+    // getOverallPlacement() (rebuilt from partitions) must reflect the new indices.
+    PlacementAZ overallAz = cluster.getOverallPlacement().findByAZUUID(az1.getUuid());
+    assertEquals(1, overallAz.masterStsIndex);
+    assertEquals(1, overallAz.tsStsIndex);
+  }
+
+  private NodeDetails makeK8sMoveNode(UUID azUuid, NodeState state) {
+    NodeDetails node = new NodeDetails();
+    node.azUuid = azUuid;
+    node.state = state;
+    node.isMaster = true;
+    node.isTserver = true;
+    return node;
+  }
+
   @Test
   public void testConfigureIncreaseRF6nodes() {
     Customer customer = ModelFactory.testCustomer("Test Customer");
