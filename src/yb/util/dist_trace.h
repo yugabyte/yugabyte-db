@@ -35,9 +35,7 @@ namespace context = opentelemetry::context;
 namespace nostd = opentelemetry::nostd;
 namespace trace = opentelemetry::trace;
 
-// Bundles a span with a context token attached to the constructing thread, so work started after it
-// inherits the span as parent. DropScope detaches the token, End ends the span; the two are
-// independent, so either may run first and from any thread.
+// A span plus a context token attached to the constructing thread, so later work inherits the span.
 struct SpanWithScope {
   explicit SpanWithScope(nostd::shared_ptr<trace::Span> s, bool attach = true)
       : span(std::move(s)) {
@@ -70,8 +68,7 @@ struct SpanWithScope {
     return span ? span->GetContext() : trace::SpanContext::GetInvalid();
   }
 
-  // Detaches the token from the context stack. Only the thread that attached it can pop it, so call
-  // this on the constructing thread; elsewhere it is a no-op. The token itself outlives the call.
+  // Detaches the token; only the attaching thread can pop it, elsewhere it is a no-op.
   void DropScope() {
     if (token) {
       const bool detached = context::RuntimeContext::Detach(*token);
@@ -99,10 +96,21 @@ void InitDistTrace(
     opentelemetry::nostd::string_view service_name, opentelemetry::nostd::string_view node_uuid);
 void ShutdownDistTrace();
 nostd::shared_ptr<opentelemetry::trace::Tracer> GetDistTracer();
-bool IsDistTraceEnabled();
+
+namespace internal {
+// Set from otel_collector_traces_endpoint by a flag callback during gflag initialization.
+extern bool g_dist_trace_enabled;
+}  // namespace internal
+
+inline bool IsDistTraceEnabled() { return internal::g_dist_trace_enabled; }
+
+// Sets otel_collector_traces_endpoint and refreshes g_dist_trace_enabled, for in-process tests.
+void TEST_SetOtelCollectorEndpoint(const std::string& endpoint);
+
 trace::SpanContext GetTraceparentSpanContext(const char* traceparent);
 
-trace::SpanContext GetActiveSpanContext();
+// The active span's context, or nullopt if there is no active span.
+std::optional<trace::SpanContext> GetActiveSpanContext();
 
 bool IsSpanContextValidAndRemote(const trace::SpanContext& span_context);
 
@@ -117,22 +125,17 @@ nostd::shared_ptr<trace::Span> StartSpan(
     const std::vector<std::pair<nostd::string_view, opentelemetry::common::AttributeValue>>& attrs);
 nostd::shared_ptr<trace::Span> StartSpan(std::string_view op_name);
 
-// Client span for an outbound RPC, bundled with an activated scope so it becomes current; drains
-// pending thread-local attrs onto it. nullptr when no active context. Pass attach=false when the
-// span is never made current -- consumers then read it through GetContext().
+// Client span for an outbound RPC, draining the pending attrs; attach=false leaves it non-current.
 SpanWithScopePtr StartClientSpanWithScope(std::string_view op_name, bool attach = true);
 
-// Span as a remote child of parent_context (from an inbound request) + activated scope --
-// the server end of a propagated trace; needs no local active context.
+// Server span as a remote child of parent_context; needs no local active context.
 SpanWithScopePtr StartServerSpanWithScope(
     std::string_view op_name, const trace::SpanContext& parent_context);
 
-// Re-establishes parent_context as this thread's active context WITHOUT a new span, so RPCs built
-// here nest under it -- for RPCs issued off the origin's thread.
-SpanWithScopePtr ActivateParentScope(const trace::SpanContext& parent_context);
+// Makes parent_context current without starting a span, for RPCs issued off the origin's thread.
+SpanWithScopePtr ActivateParentScope(const std::optional<trace::SpanContext>& parent_context);
 
-// Thread-local attribute buffer for the next RPC span. Producers (e.g. PgSession) add
-// attributes here; the OutboundCall Span consumes them when started.
+// Buffers an attribute for the next RPC span started on this thread.
 void AddPendingRpcStringAttr(std::string key, std::string value);
 
 }  // namespace yb::dist_trace

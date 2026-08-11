@@ -41,8 +41,8 @@ LocalOutboundCall::LocalOutboundCall(
                    response_storage, controller, std::move(rpc_metrics), std::move(callback),
                    callback_thread_pool, /* metadata_serializer_factory= */ nullptr) {
   TRACE_TO(trace_, "LocalOutboundCall");
-  if (otel_span()) {
-    otel_span()->SetAttribute("rpc.local_call", true);
+  if (otel_span_) {
+    otel_span_->SetAttribute("rpc.local_call", true);
   }
 }
 
