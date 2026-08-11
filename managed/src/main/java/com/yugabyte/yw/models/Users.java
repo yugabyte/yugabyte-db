@@ -9,6 +9,8 @@ import static play.mvc.Http.Status.UNAUTHORIZED;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.concurrent.KeyLock;
@@ -30,15 +32,19 @@ import io.ebean.annotation.Transactional;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -52,6 +58,7 @@ import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
+import play.libs.Json;
 import play.mvc.Http.Status;
 
 @Slf4j
@@ -63,6 +70,8 @@ import play.mvc.Http.Status;
 // are never emitted by toString(), which reaches the logs via RoleBinding and Principal.
 @ToString(onlyExplicitlyIncluded = true)
 public class Users extends Model {
+  // Max serialized size of user settings JSON.
+  public static final int SETTINGS_MAX_BYTES = 64 * 1024;
 
   public static final Logger LOG = LoggerFactory.getLogger(Users.class);
 
@@ -254,14 +263,69 @@ public class Users extends Model {
   @ApiModelProperty(value = "YbaApi Internal. Used to turn off new UI feature for particular user")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.29.0.0")
   @ToString.Include
-  private Boolean newUniverseUiEnabled = true;
+  private Boolean newUniverseUiEnabled = false;
 
   @ApiModelProperty(value = "YbaApi Internal. Whether the new UI tour was shown to particular user")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.31.0.0")
   @ToString.Include
   private Boolean newUniverseUiTourCompleted;
 
+  /**
+   * Persistent per-user key-value settings (server-side analog of browser localStorage). Top-level
+   * keys are setting names; values may be any JSON. Null values on upsert remove keys.
+   */
+  @Column(columnDefinition = "TEXT")
+  @ApiModelProperty(value = "YbaApi Internal. Per-user key-value settings")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.31.0.0")
+  private JsonNode settings;
+
   public static final Finder<UUID, Users> find = new Finder<UUID, Users>(Users.class) {};
+
+  /** Get settings for this user. Returns an empty object when unset. */
+  public JsonNode getSettings() {
+    return settings == null || settings.isNull() ? Json.newObject() : settings;
+  }
+
+  /**
+   * Upserts settings for this user. Only specified top-level keys are updated (flat merge). Pass a
+   * null value for a key to remove it. Existing keys not present in {@code input} are kept.
+   */
+  public void upsertSettings(JsonNode settings) {
+    if (settings == null) {
+      this.settings = null;
+      return;
+    }
+    if (!settings.isObject()) {
+      throw new PlatformServiceException(BAD_REQUEST, "User settings must be a JSON object.");
+    }
+    ObjectNode prefs =
+        (this.settings == null || this.settings.isNull())
+            ? Json.newObject()
+            : (ObjectNode) this.settings.deepCopy();
+
+    for (Iterator<Map.Entry<String, JsonNode>> it = settings.fields(); it.hasNext(); ) {
+      Map.Entry<String, JsonNode> entry = it.next();
+      if (entry.getValue() == null || entry.getValue().isNull()) {
+        prefs.remove(entry.getKey());
+      } else {
+        prefs.set(entry.getKey(), entry.getValue());
+      }
+    }
+
+    validateSettingsSize(prefs);
+    this.settings = prefs;
+    save();
+  }
+
+  private static void validateSettingsSize(JsonNode settings) {
+    int size = settings.toString().getBytes(StandardCharsets.UTF_8).length;
+    if (size > SETTINGS_MAX_BYTES) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "User settings exceed maximum size of %d bytes (got %d).", SETTINGS_MAX_BYTES, size));
+    }
+  }
 
   @Deprecated
   public static Users get(UUID userUUID) {

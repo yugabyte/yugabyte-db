@@ -2225,6 +2225,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " tablespace.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> editUniverseV2UiEnabled =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.enable_new_universe_experience",
+          ScopeType.GLOBAL,
+          "Enable new Universe experience",
+          "Enable new Universe experience in UI",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> paMemoryPerNodeAdvancedObservabilityMb =
       new ConfKeyInfo<>(
           "yb.pa.memory_per_node_advanced_observability_mb",
@@ -2262,12 +2270,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " accept the X-AUTH-TP-API-TOKEN service token as full user-request auth.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<Boolean> editUniverseV2UiEnabled =
+  public static final ConfKeyInfo<Boolean> showNewUniverseUIToEveryone =
       new ConfKeyInfo<>(
-          "yb.ui.feature_flags.edit_universe_v2_ui_enabled",
+          "yb.ui.enable_new_universe_experience_for_all_users",
           ScopeType.GLOBAL,
-          "Enable Edit Universe V2 UI",
-          "Enable the new Edit Universe V2 UI for editing/viewing universe configurations",
+          "Whether to enable new universe experience for all users",
+          "Whether to enable new universe experience for all users",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
