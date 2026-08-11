@@ -25,7 +25,122 @@ For information on modifying or scaling an existing universe, refer to [Modify u
 
 Before you start creating a universe, ensure that you have created a provider configuration as described in [Create provider configurations](../../configure-yugabyte-platform/).
 
-## Preferred region
+
+## Resilience
+
+| Fault tolerance | Description | Scaling |
+| :--- | :--- | :--- |
+| **Zone** | Resilient to a single zone outage. Minimum of 3 nodes spread across 3 availability zones. This configuration provides the maximum protection for a data center outage. Recommended for production deployments. | Nodes are scaled in increments of 3 (each zone has the same number of nodes). |
+| **Node** | Resilient to 1, 2, or 3 node outages, with a minimum of 3, 5, or 7 nodes respectively, deployed in a single availability zone. Not resilient to zone outages. | Nodes are scaled in increments of 1. |
+| **None** | Minimum of 1 node, with no replication or resiliency. [Operations requiring a restart](../../../cloud-clusters/#locking-operations) result in downtime (no rolling restart is possible). Recommended for development and testing only. | Nodes are scaled in increments of 1. |
+
+
+## Create a universe
+
+To create a universe:
+
+1. Navigate to **Dashboard** or **Universes**, and click **Create Universe**.
+
+1. Follow the instructions in the **Create Cluster** wizard.
+
+The **Create Cluster** wizard has the following pages:
+
+1. [General Settings](#general)
+1. [Placement](#placement)
+1. [Hardware](#hardware)
+1. [Database](#database)
+1. [Security](#security)
+1. [Advanced](#advanced)
+
+## Settings
+
+### General Settings
+
+Set the following options:
+
+- **Universe Name**: Enter a name for the universe.
+- **Provider**: Choose a cloud provider.
+- **Provider Configuration**: Choose the [provider configuration](../../configure-yugabyte-platform/) to use to create the universe.
+- **Database Version**: Choose the version of YugabyteDB to install on the nodes. If the version you want to add is not listed, you can add it to YugabyteDB Anywhere. Refer to [Manage YugabyteDB releases](../../manage-deployments/ybdb-releases/).
+
+### Placement
+
+Specify the placement of nodes for your universe.
+
+- For quick setup for development or testing, select **Single-Node Cluster**, choose a region, and choose an availability zone.
+
+- For production universes, select **Regular Cluster**.
+
+You can specify placement using **Guided** (suitable for most topologies) or **Expert** (more flexible) mode.
+
+{{< tabpane text=true >}}
+
+{{% tab header="Guided" lang="guide" %}}
+
+In Guided mode, you set the following:
+
+1. Resilience. This determines how many failures your primary cluster can tolerate without interruption or downtime.
+1. Regions. Select the regions where you want to locate the primary cluster.
+1. Availability Zones and Nodes. Select the zones in the regions where you want to place the nodes, specify the number of nodes per region, and specify the preferred region(s) in ranked order.
+
+  All zones have the same number of nodes.
+
+{{% /tab %}}
+
+{{% tab header="Expert" lang="expert" %}}
+
+In Expert mode, you set the following:
+
+1. Regions. Select the regions where you want to locate the primary cluster.
+1. Replication factor. This determines how many replicas of your data to create in the cluster. This in turn determines how many regions and zones the cluster will require, and, by extension, how many failures it can tolerate without interruption or downtime.
+1. Availability Zones and Nodes. Select the zones in the regions where you want to place the nodes, specify the number of nodes per region, and specify the preferred region(s) in ranked order.
+
+  All zones have the same number of nodes.
+
+{{% /tab %}}
+
+{{< /tabpane >}}
+
+#### Resilience
+
+_Guided mode only_
+
+Resilience determines how many failures (node, zone, and region) the cluster can tolerate.
+
+| Resilience | Description |
+| :--- | :--- |
+| **Region** | Resilient to 1, 2, or 3 region outages. Minimum of 3 nodes spread across 3 regions. Provides the maximum protection for a region outage. Recommended for production deployments. |
+| **Zone** | Resilient to 1, 2, or 3 zone outages. Minimum of 3 nodes spread across 3 availability zones. Provides the maximum protection for a data center outage. Not resilient to region outages. Recommended for production deployments. |
+| **Node** | Resilient to 1, 2, or 3 node outages, with a minimum of 3, 5, or 7 nodes respectively, deployed in a single availability zone. Not resilient to zone or region outages. |
+| **None** | Minimum of 1 node, with no replication or resiliency. Operations requiring a restart result in downtime (no rolling restart is possible). For development and testing only. |
+
+#### Regions
+
+Select the regions where you want your cluster located.
+
+You can only select regions that have been added to the [provider configuration](../../configure-yugabyte-platform/).
+
+#### Replication Factor
+
+_Expert mode only_
+
+Select the [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) for the universe.
+
+#### Availability Zones and Nodes
+
+- Select the availability zones for each region.
+
+  In Expert mode, depending on the number of regions you selected and the replication factor, you can add additional availability zones to regions.
+
+- Enter the number of nodes per zone.
+
+  In Guided mode, all zones have the same number of nodes.
+
+  In Expert mode, you can vary the number of nodes per zone.
+
+- For multi region clusters, set one or more regions as [preferred](#preferred-region), in ranked order.
+
+#### Preferred region
 
 You can optionally designate regions (ranked in order of preference) in the cluster as preferred. The preferred region handles all read and write requests from clients.
 
@@ -39,34 +154,9 @@ You can enable [follower reads](../../../../explore/going-beyond-sql/follower-re
 
 In cases where the cluster has read replicas and a client connects to a read replica, reads are served from the replica; writes continue to be handled by the preferred region.
 
-## Create a universe
+#### Advanced Configurations
 
-To create a universe:
-
-- Navigate to **Dashboard** or **Universes**, and click **Create Universe**.
-
-The **Create Cluster** wizard has the following pages:
-
-1. [General Settings](#general)
-1. [Placement](#placement)
-1. [Hardware](#hardware)
-1. [Database](#database)
-1. [Security](#security)
-1. [Advanced](#advanced)
-
-### General Settings
-
-![Create Universe Wizard - General](/images/yb-cloud/cloud-addcluster-general.png)
-
-Set the following options:
-
-- **Universe Name**: Enter a name for the universe.
-- **Provider**: Choose a cloud provider.
-- **Provider Configuration**: Choose the [provider configuration](../../configure-yugabyte-platform/) to use to create the universe.
-- **Database Version**: Choose the version of YugabyteDB to install on the nodes. If the version you want to add is not listed, you can add it to YugabyteDB Anywhere. Refer to [Manage YugabyteDB releases](../../manage-deployments/ybdb-releases/).
-
-### Placement
-
+Select **Allocate dedicated nodes to master servers** to place master servers on dedicated nodes. Refer to [Dedicated masters](../dedicated-master/) for more details.
 
 
 ### Hardware
@@ -238,38 +328,6 @@ Optionally, use the **Kubernetes Overrides** section, as follows:
 1. Click **Validate and Save**.
 
 If there are any errors in your overrides definitions, a detailed error message is displayed. You can correct the errors and try to save again. To save your Kubernetes overrides regardless of any validation errors, select **Force Apply**.
-
-
-
-
-
-
-
-
-
-
-### Cloud Configuration
-
-Specify the provider and geolocations for the nodes in the universe:
-
-
-- Select the regions in which to deploy nodes. The available regions will depend on the provider you selected.
-
-- Specify the master placement for the YB-Master processes. Refer to [Create a universe with dedicated nodes](../dedicated-master/) for more details.
-
-- Enter the number of nodes to deploy in the universe. When you provide the value in the **Nodes** field, the nodes are automatically placed across all the availability zones to guarantee the maximum availability.
-
-- Select the [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) for the universe.
-
-- Configure the availability zones where the nodes will be deployed by clicking **Add Zone**.
-
-- Use the **Preferred** setting to set the [preferred zone or region](../../../explore/multi-region-deployments/synchronous-replication-yba/#preferred-region).
-
-
-
-
-
-
 
 ## Examine the universe
 
