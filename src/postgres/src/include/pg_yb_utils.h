@@ -1929,4 +1929,6 @@ extern void HandleExplicitRowLockStatus(YbcPgExplicitRowLockStatus status);
 extern YbcAdvisoryLockId GetYBAdvisoryLockId(LOCKTAG tag);
 extern bool HandleStatusIgnoreSkipLocking(YbcStatus status);
 
+extern void YbSetParallelFetchLimits(YbcPgExecParameters *exec_params);
+
 #endif							/* PG_YB_UTILS_H */

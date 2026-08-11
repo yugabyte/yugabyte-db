@@ -307,6 +307,12 @@ DEFINE_RUNTIME_PG_FLAG(uint64, yb_fetch_row_limit, 1024,
 DEFINE_RUNTIME_PG_FLAG(uint64, yb_fetch_size_limit, 0,
     "Maximum size of a fetch response.");
 
+DEFINE_RUNTIME_PG_FLAG(uint64, yb_parallel_fetch_row_limit, 0,
+    "Maximum number of rows to fetch per parallel scan.");
+
+DEFINE_RUNTIME_PG_FLAG(uint64, yb_parallel_fetch_size_limit, 0,
+    "Maximum size of a parallel fetch response.");
+
 DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr_stats, true,
   "Enable stats collection from Ysql Connection Manager. These stats will be "
   "displayed at the endpoint '<ip_address_of_cluster>:13000/connections'");
