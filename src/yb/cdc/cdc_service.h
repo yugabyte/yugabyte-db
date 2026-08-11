@@ -125,10 +125,7 @@ using RollBackTabletIdCheckpointMap =
   TEST_SIMULATE_ERROR( \
       PeerNotReadyToServe, 3, LeaderNotReadyToServe, "Not ready to serve requested tablet id") \
   TEST_SIMULATE_ERROR(LogSegmentFooterNotFound, 4, NotFound, "Footer for segment not found") \
-  TEST_SIMULATE_ERROR( \
-      LogIndexCacheEntryNotFound, 5, NotFound, "Log index cache entry for op index not found") \
-  TEST_SIMULATE_ERROR( \
-      LogReaderNotInitialized, 6, IllegalState, "LogReader is not initialized")
+  TEST_SIMULATE_ERROR(LogReaderNotInitialized, 5, IllegalState, "LogReader is not initialized")
 
 enum TestSimulateErrorCode : int32_t {
 #define TEST_SIMULATE_ERROR(name, value, status_code, message) name = value,
