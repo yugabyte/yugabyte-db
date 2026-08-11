@@ -73,7 +73,7 @@ class TraceContextSerializer {
   uint8_t* SerializeToArray(uint8_t* out) const;
 
  private:
-  rpc::TraceContextPB trace_context_;
+  std::optional<rpc::TraceContextPB> trace_context_;
   size_t serialized_size_ = 0;
 };
 
