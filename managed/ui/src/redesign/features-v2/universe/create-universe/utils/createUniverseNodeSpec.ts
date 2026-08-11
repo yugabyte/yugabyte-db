@@ -1,13 +1,10 @@
 import { createUniverseFormProps } from '../CreateUniverseContext';
-import {
-  ClusterNodeSpec,
-  ClusterStorageSpec
-} from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
+import { ClusterNodeSpec, ClusterStorageSpec } from '@app/v2/api/yugabyteDBAnywhereV2APIs.schemas';
 import { CloudType, DeviceInfo } from '@app/redesign/features/universe/universe-form/utils/dto';
 
 /**
  * Builds API storage_spec from form device info. Omits storage_type when unset (e.g. Kubernetes).
- * Matches legacy fillNodeSpec: num_volumes fixed to 1, volume_size = numVolumes * volumeSize from deviceInfo.
+ * Maps num_volumes / volume_size 1:1 from deviceInfo (same as edit-universe).
  */
 export const buildStorageSpecFromDeviceInfo = (
   deviceInfo: DeviceInfo,
@@ -17,10 +14,8 @@ export const buildStorageSpecFromDeviceInfo = (
   const numVol = Number(deviceInfo.numVolumes);
   const volSize = Number(deviceInfo.volumeSize);
   const storage_spec: ClusterStorageSpec = {
-    num_volumes: 1,
-    volume_size:
-      (Number.isFinite(numVol) && numVol > 0 ? numVol : 1) *
-      (Number.isFinite(volSize) && volSize > 0 ? volSize : 1),
+    num_volumes: Number.isFinite(numVol) && numVol > 0 ? numVol : 1,
+    volume_size: Number.isFinite(volSize) && volSize > 0 ? volSize : 1,
     ...(deviceInfo.storageClass ? { storage_class: deviceInfo.storageClass } : {}),
     ...(deviceInfo.diskIops !== undefined && deviceInfo.diskIops !== null
       ? { disk_iops: deviceInfo.diskIops }
@@ -122,7 +117,7 @@ export const getNodeSpec = (formContext: createUniverseFormProps): ClusterNodeSp
     }
     const masterDeviceInfo = instanceSettings.keepMasterTserverSame
       ? instanceSettings.deviceInfo
-      : instanceSettings.masterDeviceInfo ?? instanceSettings.deviceInfo;
+      : (instanceSettings.masterDeviceInfo ?? instanceSettings.deviceInfo);
     if (masterDeviceInfo) {
       k8sSpec.master = {
         storage_spec: buildStorageSpecFromDeviceInfo(masterDeviceInfo, ebsEnc, ebsKms)

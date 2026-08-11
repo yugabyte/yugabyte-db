@@ -102,6 +102,9 @@ export const InstanceTypeField = ({
 
     const currentInstanceType = getValues(UPDATE_FIELD);
 
+    // In edit mode, allow a cleared value — do not autofill it back.
+    if (isEditMode && !currentInstanceType) return;
+
     if (!instanceExists(currentInstanceType)) {
       const defaultInstanceType = getDefaultInstanceType(provider.code, providerRuntimeConfigs);
       const code =
@@ -138,10 +141,14 @@ export const InstanceTypeField = ({
 
   const instanceTypes = sortAndGroup(data, provider?.code);
 
-  const handleChange = (e: ChangeEvent<{}>, option: any) => {
-    setValue(UPDATE_FIELD, option?.instanceTypeCode, { shouldValidate: true });
-    const deviceInfo = getDeviceInfoFromInstance(option, providerRuntimeConfigs);
-    setValue(UPDATE_DEVICE_INFO_FIELD, deviceInfo);
+  const handleChange = (_e: ChangeEvent<{}>, option: InstanceType | null) => {
+    if (!option) {
+      setValue(UPDATE_FIELD, null, { shouldValidate: true });
+      setValue(UPDATE_DEVICE_INFO_FIELD, null);
+      return;
+    }
+    setValue(UPDATE_FIELD, option.instanceTypeCode, { shouldValidate: true });
+    setValue(UPDATE_DEVICE_INFO_FIELD, getDeviceInfoFromInstance(option, providerRuntimeConfigs));
   };
 
   return (
@@ -151,7 +158,7 @@ export const InstanceTypeField = ({
       render={({ field, fieldState }) => {
         const value =
           instanceTypes.find((i: InstanceTypeWithGroup) => i.instanceTypeCode === field.value) ??
-          '';
+          null;
 
         return (
           <Box
@@ -168,6 +175,10 @@ export const InstanceTypeField = ({
                 options={instanceTypes as unknown as Record<string, string>[]}
                 getOptionLabel={getOptionLabel}
                 renderOption={renderOption}
+                isOptionEqualToValue={(option, val) =>
+                  option?.instanceTypeCode === val?.instanceTypeCode
+                }
+                filterSelectedOptions={false}
                 onChange={handleChange}
                 ybInputProps={{
                   error: !!fieldState.error,
