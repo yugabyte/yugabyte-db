@@ -11,22 +11,22 @@ menu:
 type: docs
 ---
 
-The [pg_duckdb](https://github.com/duckdb/pg_duckdb) extension embeds the [DuckDB](https://duckdb.org/) analytics engine in PostgreSQL. In YugabyteDB, pg_duckdb runs in a fixed [lake_io](#limitations) mode that supports only data-lake I/O: reading and writing *lake files* (Parquet, CSV, and JSON files on object stores or the local file system). You use it to:
+The [pg_duckdb](https://github.com/duckdb/pg_duckdb) extension embeds the [DuckDB](https://duckdb.org/) analytics engine in PostgreSQL. In YugabyteDB, pg_duckdb runs in a fixed [`lake_io`](#limitations) mode that supports only data-lake I/O: reading and writing *lake files* (Parquet, CSV, and JSON files on object stores or the local file system). You use it to:
 
 - Import lake files into YugabyteDB tables using `read_parquet()`, `read_csv()`, and `read_json()`.
 - Export the result of a YugabyteDB query to a lake file using `COPY (SELECT ...) TO`.
 
-The imported data lands in regular YugabyteDB tables and can be queried and joined normally. `lake_io` mode disables everything else DuckDB offers.
+The imported data lands in regular YugabyteDB tables and can be queried and joined normally. [`lake_io`](#limitations) mode disables everything else DuckDB offers.
 
 Available in v2025.2.6.0 and later.
 
 ## Enable pg_duckdb
 
-pg_duckdb is gated behind the [ysql_yb_enable_pg_duckdb](../../../reference/configuration/yb-tserver/#ysql-yb-enable-pg-duckdb) preview flag and is not available on sanitizer (ASAN/TSAN) builds.
+pg_duckdb is gated behind the [`ysql_yb_enable_pg_duckdb`](../../../reference/configuration/yb-tserver/#ysql-yb-enable-pg-duckdb) preview flag and is not available on sanitizer (ASAN/TSAN) builds.
 
 To enable the pg_duckdb extension:
 
-1. Enable the `ysql_yb_enable_pg_duckdb` flag on YB-TServer by adding it to [--allowed_preview_flags_csv](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) and setting it to true:
+1. Enable the preview flag on the YB-TServer by adding it to [`--allowed_preview_flags_csv`](../../../reference/configuration/yb-tserver/#allowed-preview-flags-csv) and setting it to true:
 
     ```sh
     --allowed_preview_flags_csv="ysql_yb_enable_pg_duckdb" \
@@ -49,7 +49,7 @@ You can use pg_duckdb to do the following:
 
 ### Import lake files
 
-Use `read_parquet()`, `read_csv()`, or `read_json()` inside a `CREATE TABLE AS` (or `INSERT INTO ... SELECT`) query to load a lake file into a YugabyteDB table. Reference columns from the lake file with the `r['column']` syntax, where `r` is the alias for the function call.
+Use `read_parquet()`, `read_csv()`, or `read_json()` inside a `CREATE TABLE AS` (or `INSERT INTO ... SELECT`) to load a lake file into a YugabyteDB table. Reference columns from the lake file with the `r['column']` syntax, where `r` is the alias for the function call.
 
 Import a Parquet file:
 
@@ -122,7 +122,7 @@ CREATE TABLE sales AS
 ```
 
 {{< note title="credential_chain is not supported" >}}
-In YugabyteDB, the DuckDB `credential_chain` secret provider (which resolves credentials from the environment or instance metadata) is not supported. Specify credentials explicitly using `duckdb.create_simple_secret()`, or a `SERVER` with a `USER MAPPING` that provides `KEY_ID` and `SECRET`.
+On YugabyteDB, the DuckDB `credential_chain` secret provider (which resolves credentials from the environment or instance metadata) is not supported. Specify credentials explicitly using `duckdb.create_simple_secret()`, or a `SERVER` with a `USER MAPPING` that provides `KEY_ID` and `SECRET`.
 {{< /note >}}
 
 ## Limitations
@@ -136,4 +136,4 @@ pg_duckdb is limited to `lake_io` mode, which supports only the data-lake I/O de
 - Data-lake table formats other than Parquet, CSV, and JSON reads (for example, `delta_scan()` and `iceberg_scan()`).
 - [MotherDuck](https://motherduck.com/).
 - Azure Blob Storage (`az://`). The DuckDB `azure` extension is not part of the bundled set (only `httpfs`, `json`, and `icu` are bundled), and `lake_io` mode does not allow loading additional extensions. Azure paths and `duckdb.create_azure_secret()` therefore do not work; use Amazon S3 (`s3://`) or Google Cloud Storage (`gs://`) instead.
-- Exports whose query requires a sort or other parallel operation can terminate the session. An export that runs work on a DuckDB worker thread, for example, `COPY (SELECT ... ORDER BY ...) TO ...`, can crash the backend connection. As a workaround, set `duckdb.threads = 1` before running the export. (Tracked in {{<issue 32655>}}.)
+- Exports whose query requires a sort or other parallel operation can terminate the session. An export that runs work on a DuckDB worker thread — for example, `COPY (SELECT ... ORDER BY ...) TO ...` — can crash the backend connection. As a workaround, set `duckdb.threads = 1` before running the export. (Tracked in {{<issue 32655>}}.)
