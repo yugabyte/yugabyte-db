@@ -415,6 +415,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status StartYSQLLeaseRefresher();
 
+  /// Stops the ysql lease manager threads, which call back into the PG supervisor to restart or
+  /// kill PG. Idempotent, also invoked by Shutdown.
+  void ShutdownYSQLLeaseManager();
+
   TserverXClusterContextIf& GetXClusterContext() const;
 
   PgMutationCounter& GetPgNodeLevelMutationCounter();
