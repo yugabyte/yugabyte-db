@@ -42,8 +42,7 @@ if [[ "$1" == */yb_typedefs.list ]]; then
     fi
   done
 
-  # Find all header files in pggate that define handle types, then extract the
-  # names from them.
+  # Missing handle types: see the corresponding rule in ybc_pg.sh.
   macros=$(handle_type_macros) || exit 1
   lint_git_grep -lE "$macros" src/yb/yql/pggate | \
     xargs grep -hoE "($macros)\([A-Z][a-zA-Z0-9_]*\)" | \

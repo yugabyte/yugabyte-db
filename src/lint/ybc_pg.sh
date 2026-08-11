@@ -19,6 +19,21 @@ set -euo pipefail
 
 . "${BASH_SOURCE%/*}/common.sh"
 
+# Missing handle types.  typedefs_list.sh has the same rule, but it only runs
+# when yb_typedefs.list is in the lint set, so a change confined to this header
+# would go unreported.
+yb_typedefs_list=src/postgres/src/tools/pgindent/yb_typedefs.list
+macros=$(handle_type_macros)
+{ grep -noE "($macros)\([A-Z][a-zA-Z0-9_]*\)" "$1" || true; } \
+  | while IFS=: read -r lineno macro; do
+      handle_type=${macro#*(}
+      handle_type=${handle_type%)}
+      if ! grep -q "^Ybc$handle_type$" "$yb_typedefs_list"; then
+        echo "error:missing_handle_type:yb_typedefs.list is missing \
+Ybc$handle_type for $macro:$lineno:$(sed -n "$lineno"p "$1")"
+      fi
+    done
+
 check_ctags
 echo "$1" \
   | ctags -n -L - --languages=c,c++ --c-kinds=t --c++-kinds=t -f /dev/stdout \
