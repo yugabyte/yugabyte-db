@@ -99,6 +99,7 @@ DECLARE_bool(TEST_assert_local_op);
 DECLARE_bool(TEST_echo_service_enabled);
 DECLARE_bool(enable_load_balancing);
 DECLARE_int32(load_balancer_initial_delay_secs);
+DECLARE_int32(load_balancer_min_inbound_remote_bootstraps_per_tserver);
 DECLARE_bool(TEST_pause_rbs_before_download_wal);
 DECLARE_int32(TEST_sleep_before_reporting_lb_ui_ms);
 DECLARE_bool(ysql_enable_auto_analyze_infra);
@@ -1866,6 +1867,10 @@ TEST_F(MasterPathHandlersItest, ClusterBalancerTasksSummary) {
 }
 
 TEST_F(MasterPathHandlersItest, ClusterBalancerOngoingRbs) {
+  // The paused RBSs never finish, so the cluster balancer's inbound size limit (which assumes
+  // unknown tablet sizes are 1GB) would stop scheduling RBSs after a few tablets. Raise the
+  // parallelism floor so that system tablets do not take all the slots before this table's tablets.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_min_inbound_remote_bootstraps_per_tserver) = 50;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_rbs_before_download_wal) = true;
   CreateTestTable(3 /* num_tablets */);
   auto& cm = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
