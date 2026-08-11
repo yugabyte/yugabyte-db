@@ -277,18 +277,22 @@ OutboundCall::OutboundCall(const RemoteMethod& remote_method,
   IncrementCounter(rpc_metrics_->outbound_calls_created);
   IncrementGauge(rpc_metrics_->outbound_calls_alive);
 
-  // Capture this call's parent; InvokeCallbackSync restores it around the callback so its
-  // follow-on work nests as a sibling.
-  trace_parent_ = dist_trace::GetActiveSpanContext();
+  // Guarded so that with tracing off the span name below is never formatted.
+  if (dist_trace::HasActiveContext()) {
+    // Capture this call's parent; InvokeCallbackSync restores it around the callback so its
+    // follow-on work nests as a sibling.
+    trace_parent_ = dist_trace::GetActiveSpanContext();
 
-  // Not attached: the wire header and the local inbound call both take this span from GetContext().
-  otel_span_ = dist_trace::StartClientSpanWithScope(
-      Format("rpc $0", remote_method_.ToString()), /*attach=*/false);
-  if (otel_span_) {
-    otel_span_->SetAttribute("rpc.system", "outbound_rpc");
-    otel_span_->SetAttribute("rpc.service", remote_method_.service_name());
-    otel_span_->SetAttribute("rpc.method", remote_method_.method_name());
-    otel_span_->SetAttribute("rpc.call_id", call_id_);
+    // Not attached: the wire header and the local inbound call both take this span from
+    // GetContext().
+    otel_span_ = dist_trace::StartClientSpanWithScope(
+        Format("rpc $0", remote_method_.ToString()), /*attach=*/false);
+    if (otel_span_) {
+      otel_span_->SetAttribute("rpc.system", "outbound_rpc");
+      otel_span_->SetAttribute("rpc.service", remote_method_.service_name());
+      otel_span_->SetAttribute("rpc.method", remote_method_.method_name());
+      otel_span_->SetAttribute("rpc.call_id", call_id_);
+    }
   }
 }
 
@@ -621,7 +625,7 @@ void OutboundCall::InvokeCallbackSync(std::optional<CoarseTimePoint> now_optiona
 
   int64_t start_cycles = CycleClock::Now();
   // Re-activate the call's parent context so RPCs the callback issues nest as siblings, not
-  // parentless roots. No-op when trace_parent_ is invalid; parent_scope drops at block end so it
+  // parentless roots. No-op when trace_parent_ is empty; parent_scope drops at block end so it
   // can't leak.
   {
     auto parent_scope = dist_trace::ActivateParentScope(trace_parent_);
